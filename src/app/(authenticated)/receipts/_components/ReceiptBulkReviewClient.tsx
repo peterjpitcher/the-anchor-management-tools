@@ -11,10 +11,12 @@ import {
   CardHeader,
   Checkbox,
   Empty,
+  Fieldset,
   FormFooter,
   Icon,
   Input,
   Select,
+  SubHeading,
   toast,
 } from '@/ds'
 import type { ReceiptBulkReviewData } from '@/app/actions/receipts'
@@ -29,9 +31,6 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { RECEIPT_STATUS_LABEL, RECEIPT_SUGGESTION_SOURCE_LABEL, RECEIPT_SUGGESTION_SOURCE_TONE } from '../_shared/status-ui'
 
 const STATUS_LABELS = RECEIPT_STATUS_LABEL
-
-/** Styled as the DS Field label, for a group of checkboxes. */
-const GROUP_LEGEND = 'mb-2 text-xs font-medium uppercase tracking-wider text-text-muted'
 
 const EXPENSE_OPTIONS = receiptExpenseCategorySchema.options
 const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = [
@@ -394,9 +393,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
         <CardHeader title="Filters" subtitle="Fine-tune which transactions are grouped before you approve them" />
         <CardBody>
           <div className="grid gap-4 md:grid-cols-3">
-            <fieldset>
-              <legend className={GROUP_LEGEND}>Statuses</legend>
-              <div className="flex flex-wrap gap-3">
+            <Fieldset legend="Statuses">
+              <div className="flex flex-wrap gap-x-3">
                 {statusOrder.map((status) => (
                   <Checkbox
                     key={status}
@@ -406,7 +404,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   />
                 ))}
               </div>
-            </fieldset>
+            </Fieldset>
             <Select
               label="Group limit"
               value={String(localLimit)}
@@ -416,8 +414,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                 label: `${option} rows`,
               }))}
             />
-            <fieldset className="space-y-2">
-              <legend className={GROUP_LEGEND}>Scope</legend>
+            <Fieldset legend="Scope" hint={`Currently reviewing: ${statusesLabel || 'pending transactions'}`}>
               <Checkbox
                 label="Only show transactions missing vendor and expense tags"
                 checked={localOnlyUnclassified}
@@ -428,8 +425,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                 checked={localFuzzyGrouping}
                 onChange={(checked) => handleFuzzyToggle(checked)}
               />
-              <p className="text-xs text-text-muted">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
-            </fieldset>
+            </Fieldset>
           </div>
         </CardBody>
       </Card>
@@ -539,7 +535,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
                 {sample && (
                   <div className="border-t border-border pt-4 text-xs text-text-muted">
-                    <p className={GROUP_LEGEND}>Sample transaction</p>
+                    <SubHeading className="mb-2">Sample Transaction</SubHeading>
                     <div className="grid gap-2 sm:grid-cols-3">
                       <div>
                         <span className="font-medium text-text">Date:</span> {formatDate(sample.transactionDate)}
@@ -612,10 +608,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
                 {activeRuleGroup === group.details && ruleDraft && (
                   <div className="space-y-4">
-                    <p className="flex items-center gap-2 text-sm font-semibold text-text-strong">
+                    <SubHeading className="flex items-center gap-2">
                       <Icon name="rocket" size={20} className="text-success" />
-                      Create automation rule
-                    </p>
+                      Create Automation Rule
+                    </SubHeading>
                     <div className="grid gap-4 md:grid-cols-2">
                       <Input
                         label="Rule name"

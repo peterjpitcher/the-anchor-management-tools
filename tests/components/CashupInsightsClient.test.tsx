@@ -62,4 +62,13 @@ describe('InsightsClient', () => {
     expect(screen.getAllByText('£100').length).toBeGreaterThan(0)
     expect(screen.getByText('£50')).toBeInTheDocument()
   })
+
+  it('draws the sales mix and the day-of-week takings as named DS charts', () => {
+    render(<InsightsClient initialData={insightData} />)
+
+    expect(
+      screen.getByRole('figure', { name: "Monthly drinks, food and other sales, with each one's share of sales" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('figure', { name: 'Average takings by day of the week' })).toBeInTheDocument()
+  })
 })

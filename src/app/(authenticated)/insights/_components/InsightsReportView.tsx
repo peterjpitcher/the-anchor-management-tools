@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Card, CardBody, CardHeader, LinkButton, PageLayout, Table, TableBody, TableCell, TableRow } from '@/ds'
+import { Card, CardBody, CardHeader, LinkButton, PageLayout, SubHeading, Table, TableBody, TableCell, TableRow } from '@/ds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '@/lib/insights/format'
 import type { InsightAction, InsightList, InsightSection, InsightSignal, InsightsReport, Rag, SectionStatus } from '@/lib/insights/types'
 import { cn } from '@/lib/utils'
@@ -71,7 +71,7 @@ function SignalList({ title, signals }: { title: string; signals: InsightSignal[
   if (signals.length === 0) return null
   return (
     <div>
-      <p className="mb-1 text-sm font-semibold text-text-strong">{title}</p>
+      <SubHeading className="mb-1">{title}</SubHeading>
       <ul className="list-disc space-y-1.5 pl-5 text-sm">
         {signals.map((signal, index) => (
           <li key={`${index}-${signal.key}`}>
@@ -124,7 +124,7 @@ function SectionList({ list }: { list: InsightList }): React.JSX.Element | null 
   const rest = list.items.slice(LIST_VISIBLE)
   return (
     <div>
-      <p className="mb-1 text-sm font-semibold text-text-strong">{list.title}</p>
+      <SubHeading className="mb-1">{list.title}</SubHeading>
       {list.items.length === 0 ? (
         <p className="text-sm text-text-muted">{list.emptyText}</p>
       ) : (

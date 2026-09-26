@@ -9,6 +9,7 @@ import {
   Input,
   Select,
   Field,
+  Fieldset,
   Card,
   CardHeader,
   CardBody,
@@ -115,8 +116,8 @@ export default function InvoiceExportPage() {
   }
 
   const layoutProps = {
-    title: 'Export Invoices',
-    subtitle: 'Export invoices as a ZIP file containing individual PDFs',
+    title: 'Invoices',
+    subtitle: 'Export invoices as a ZIP file of individual PDFs',
     navItems: FINANCE_NAV,
     containerSize: 'md' as const,
   }
@@ -138,12 +139,8 @@ export default function InvoiceExportPage() {
       <Card>
         <CardHeader title="Export Options" />
         <CardBody className="space-y-4">
-          {/* A fieldset names the group of presets; the legend carries the DS field label style
-              because Field's <label> can only name a single control. */}
-          <fieldset>
-            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-text-muted">
-              Quick Select
-            </legend>
+          {/* The preset buttons answer one question, so the DS Fieldset names them as a group. */}
+          <Fieldset legend="Quick Select">
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -179,7 +176,7 @@ export default function InvoiceExportPage() {
                 Current Year
               </Button>
             </div>
-          </fieldset>
+          </Fieldset>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Start Date" required>

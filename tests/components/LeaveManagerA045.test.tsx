@@ -65,13 +65,25 @@ describe('LeaveManagerClient A-045', () => {
     renderManager()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Alex Rowe holiday request' }))
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-07-22' } })
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-07-23' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Dates' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Holiday Dates' })
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: '2026-07-22' } })
+    fireEvent.change(within(dialog).getByLabelText('End date'), { target: { value: '2026-07-23' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Dates' }))
 
     await waitFor(() => {
       expect(updateLeaveRequestDates).toHaveBeenCalledWith(request.id, '2026-07-22', '2026-07-23')
     })
+  })
+
+  it('shows the shared status wording and the submitted day as a real date', () => {
+    renderManager()
+
+    expect(screen.getByText('Pending approval')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Alex Rowe'))
+
+    expect(screen.getByText('24 Jun 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
   })
 
   it('confirms delete before removing the request', async () => {

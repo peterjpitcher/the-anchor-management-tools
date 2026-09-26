@@ -35,9 +35,10 @@ export default async function MarketingContactsPage({
   const canView = await checkUserPermission('marketing', 'view')
   if (!canView) redirect('/unauthorized')
 
-  const [canEdit, canCreate] = await Promise.all([
+  const [canEdit, canCreate, canManageSettings] = await Promise.all([
     checkUserPermission('marketing', 'edit'),
     checkUserPermission('marketing', 'create'),
+    checkUserPermission('marketing', 'manage'),
   ])
 
   const params = await searchParams
@@ -69,7 +70,7 @@ export default async function MarketingContactsPage({
 
   if (listResult.error || !listResult.data) {
     return (
-      <PageLayout {...marketingLayout('contacts')}>
+      <PageLayout {...marketingLayout('contacts', { canManageSettings })}>
         <Alert tone="danger" title="Could not load contacts">
           {listResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>
@@ -95,6 +96,7 @@ export default async function MarketingContactsPage({
       pendingReviewCount={pendingResult.data?.total ?? 0}
       canEdit={canEdit}
       canCreate={canCreate}
+      canManageSettings={canManageSettings}
     />
   )
 }

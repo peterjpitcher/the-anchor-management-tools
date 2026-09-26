@@ -109,24 +109,9 @@ export function eventTicketTypeSaleTone(isActive: boolean): EventBadgeTone {
   return isActive ? 'success' : 'neutral'
 }
 
-// The delivery status of an event marketing text. Sent or delivered is green; still on its way
-// (queued, scheduled, accepted) is info, as on the private booking communications tab and the
-// marketing screens; failed or undelivered is red. Wave 3 merges this with the other delivery
-// status maps.
-const EVENT_MESSAGE_STATUS_TONES = new Map<string, EventBadgeTone>([
-  ['sent', 'success'],
-  ['delivered', 'success'],
-  ['queued', 'info'],
-  ['scheduled', 'info'],
-  ['accepted', 'info'],
-  ['failed', 'danger'],
-  ['undelivered', 'danger'],
-])
-
-export function eventMessageStatusTone(status: string | null | undefined): EventBadgeTone {
-  if (!status) return 'neutral'
-  return EVENT_MESSAGE_STATUS_TONES.get(status.toLowerCase()) ?? 'neutral'
-}
+// The delivery status of an event marketing text is not mapped here: the event page uses
+// messageDeliveryStatusTone and messageDeliveryStatusLabel from src/lib/messages/status-ui.ts,
+// the one delivery map every screen shares.
 
 // How full an event is, as the fill of the small capacity bar on the events list: sold out
 // (or over) is red, 80% or more is amber, anything less is green.

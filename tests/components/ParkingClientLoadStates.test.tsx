@@ -61,6 +61,18 @@ describe('ParkingClient load states', () => {
     expect(screen.getByText('Total Bookings')).toBeInTheDocument()
   })
 
+  it('shows no figures or count before the first load finishes, only the loading state', () => {
+    // Never settles: the page is still on its first load.
+    mockListParkingBookings.mockReturnValueOnce(new Promise(() => {}))
+    render(<ParkingClient permissions={permissions} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading bookings')
+    // PageLayout renders its header twice (desktop and phone), so the subtitle is counted.
+    expect(screen.queryAllByText('0 bookings total')).toHaveLength(0)
+    expect(screen.queryByText('Total Bookings')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pending Payments')).not.toBeInTheDocument()
+  })
+
   it('treats a server action that throws the same way', async () => {
     mockListParkingBookings.mockRejectedValueOnce(new Error('fetch failed'))
     render(<ParkingClient permissions={permissions} />)

@@ -57,7 +57,8 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
-import { BACK_TO_INVOICES } from '../_shared/nav'
+import { getTodayIsoDate } from '@/lib/dateUtils'
+import { BACK_TO_INVOICES, invoicePageTitle } from '../_shared/nav'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -752,7 +753,7 @@ export default function InvoiceDetailClient({
 
   return (
     <PageLayout
-      title={`Invoice ${invoice.invoice_number}`}
+      title={invoicePageTitle(invoice.invoice_number)}
       subtitle={invoice.vendor?.name}
       backButton={BACK_TO_INVOICES}
       headerActions={headerActions}
@@ -779,11 +780,13 @@ export default function InvoiceDetailClient({
 
       <StatGrid columns={3}>
         <Stat label="Total Amount" value={`£${invoice.total_amount.toFixed(2)}`} />
-        <Stat label="Paid Amount" value={`£${invoice.paid_amount.toFixed(2)}`} />
+        <Stat label="Paid Amount" value={`£${invoice.paid_amount.toFixed(2)}`} tone="success" />
+        {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
         <Stat
           label="Outstanding"
           value={`£${(invoiceBalanceDue(invoice)).toFixed(2)}`}
           hint={invoice.status === 'overdue' ? 'Overdue' : undefined}
+          tone={invoice.status === 'overdue' ? 'danger' : 'default'}
         />
       </StatGrid>
 
@@ -1134,7 +1137,7 @@ export default function InvoiceDetailClient({
             placeholder="Re-issued too close to the event"
             disabled={savingDueDate}
           />
-          {invoice.status === 'overdue' && newDueDate >= new Date().toISOString().slice(0, 10) && (
+          {invoice.status === 'overdue' && newDueDate >= getTodayIsoDate() && (
             <Alert tone="info" role="status">
               This invoice is marked overdue. Giving more time will also stop the
               overdue chasers.

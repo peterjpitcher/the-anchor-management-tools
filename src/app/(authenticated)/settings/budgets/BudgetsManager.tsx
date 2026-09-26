@@ -259,13 +259,12 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
       {...layoutProps}
       headerActions={
         <>
-          <div role="group" aria-label="Budget year">
-            <Segmented
-              options={years.map(y => ({ id: String(y), label: String(y) }))}
-              value={String(year)}
-              onChange={id => setYear(Number(id))}
-            />
-          </div>
+          <Segmented
+            aria-label="Budget year"
+            options={years.map(y => ({ id: String(y), label: String(y) }))}
+            value={String(year)}
+            onChange={id => setYear(Number(id))}
+          />
           {canManage && !showAddForm && (
             <Button
               type="button"

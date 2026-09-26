@@ -475,6 +475,7 @@ export function DishDrawer({
 
   // ---- Drawer header content ----
   const drawerTitle = isEditing ? (dish?.name ?? 'Edit Dish') : 'New Dish';
+  const drawerDescription = isEditing ? undefined : 'Cost a dish from its recipes and ingredients, then place it on menus';
 
   const gpDisplayPct = computedGp !== null ? `${Math.round(computedGp * 100)}%` : '\u2014';
 
@@ -550,6 +551,7 @@ export function DishDrawer({
         size={isMobile ? 'full' : 'xl'}
         width={isMobile ? '100vw' : 'min(1040px, calc(100vw - 72px))'}
         title={drawerTitle}
+        description={drawerDescription}
         footer={
           <FormFooter
             className="w-full"
@@ -655,6 +657,7 @@ export function DishDrawer({
             <PageLoading inline label="Loading dish details" />
           ) : (
             <Tabs
+              aria-label="Dish sections"
               tabs={tabItems}
               activeTab={activeTab}
               onTabChange={setActiveTab}

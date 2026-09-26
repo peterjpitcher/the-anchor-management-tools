@@ -484,12 +484,13 @@ export function ProjectsOverview({
           <div id="oj-projects-work-history">
             <CardBody className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-ui font-medium text-text">Period</span>
+                <span id="oj-projects-work-history-period" className="text-ui font-medium text-text">Period</span>
                 <Segmented
                   options={WORK_HISTORY_RANGES.map((range) => ({ id: String(range.days), label: range.label }))}
                   value={String(workHistoryDays)}
                   onChange={(id) => applyFilters({ days: Number(id) as WorkHistoryRangeDays })}
                   size="sm"
+                  aria-labelledby="oj-projects-work-history-period"
                 />
               </div>
               {isPending ? (
@@ -830,6 +831,7 @@ export function ProjectsOverview({
             value={createType}
             onChange={(id) => setCreateType(id as 'time' | 'mileage' | 'one_off')}
             size="sm"
+            aria-label="Entry type"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Client" required>

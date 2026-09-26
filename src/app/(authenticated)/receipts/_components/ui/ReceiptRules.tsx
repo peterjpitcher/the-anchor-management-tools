@@ -766,6 +766,7 @@ export function ReceiptRules({
                 value={ruleSearch}
                 onChange={setRuleSearch}
                 placeholder="Search rules..."
+                aria-label="Search rules"
               />
 
               <div className="flex items-center justify-between gap-4">
@@ -982,7 +983,7 @@ export function ReceiptRules({
         title="Deactivate Rule"
         message="This rule will stop matching new transactions. Transactions it has already classified are left as they are."
         confirmLabel="Deactivate"
-        tone="danger"
+        tone="primary"
       />
     </Card>
   )

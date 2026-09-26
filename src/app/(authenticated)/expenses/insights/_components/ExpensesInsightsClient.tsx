@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
+  BarChart,
   Card,
   CardBody,
   CardHeader,
@@ -16,7 +17,6 @@ import {
   StatGrid,
   type Column,
 } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
 import {
   getExpenseInsights,
   type ExpenseInsightsData,
@@ -150,6 +150,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
           value={granularity}
           onChange={handlePeriodChange}
           size="sm"
+          aria-label="Period"
         />
       }
     >
@@ -175,6 +176,8 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                   color="var(--color-chart-1)"
                   formatType="shorthandCurrency"
                   onBarClick={handleBarClick}
+                  seriesLabel="Spend"
+                  ariaLabel="Expenses over time"
                 />
               ) : (
                 <Empty size="sm" title="No expense data available" />

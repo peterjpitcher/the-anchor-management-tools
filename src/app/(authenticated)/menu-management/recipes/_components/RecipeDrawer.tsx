@@ -326,6 +326,7 @@ export function RecipeDrawer({
   // ---- Render ----
 
   const drawerTitle = isEditing ? (recipe?.name ?? 'Edit Recipe') : 'New Recipe';
+  const drawerDescription = isEditing ? undefined : 'Create a reusable prep recipe from ingredients';
 
   return (
     <>
@@ -334,6 +335,7 @@ export function RecipeDrawer({
         onClose={requestClose}
         size={isMobile ? 'full' : 'lg'}
         title={drawerTitle}
+        description={drawerDescription}
         footer={
           <FormFooter
             className="w-full"

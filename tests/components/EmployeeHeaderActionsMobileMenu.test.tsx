@@ -62,10 +62,9 @@ function renderHeader(status: 'Active' | 'Started Separation') {
 }
 
 async function chooseFromMobileMenu(user: ReturnType<typeof userEvent.setup>, label: string) {
-  // The phone row carries two copies of the menu (CSS shows the one that opens towards the middle
-  // of the screen) and the desktop row repeats the actions as buttons, so take the first More and
-  // scope the click to the open menu.
-  const more = screen.getAllByRole('button', { name: 'More' })[0]
+  // The phone row has the one More menu; the desktop row repeats the actions as buttons, so scope
+  // the click to the open menu.
+  const more = screen.getByRole('button', { name: 'More' })
   await user.click(more)
   await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: label }))
   expect(more).toHaveAttribute('aria-expanded', 'false')
@@ -79,6 +78,29 @@ describe('employee header "More" menu on a phone', () => {
     beginMock.mockResolvedValue({ success: true, retainedShiftCount: 0, releasedShiftCount: 1 })
     revokeMock.mockResolvedValue({ success: true })
     deleteMock.mockResolvedValue({ type: 'error', message: 'Insufficient permissions to delete employees.' })
+  })
+
+  it('has one More menu at 375px, holding the PDFs and every action', async () => {
+    const originalWidth = window.innerWidth
+    window.innerWidth = 375
+    window.dispatchEvent(new Event('resize'))
+    try {
+      const user = userEvent.setup()
+      renderHeader('Active')
+
+      // One trigger: the menu is portalled and flips, so no second copy is needed for the
+      // narrowest phones.
+      const triggers = screen.getAllByRole('button', { name: 'More' })
+      expect(triggers).toHaveLength(1)
+
+      await user.click(triggers[0])
+      const menu = screen.getByRole('menu')
+      const items = within(menu).getAllByRole('menuitem').map((item) => item.textContent)
+      expect(items).toEqual(['New Starter PDF', 'Casual Worker Agreement', 'Begin Separation', 'Delete Employee'])
+    } finally {
+      window.innerWidth = originalWidth
+      window.dispatchEvent(new Event('resize'))
+    }
   })
 
   // findByRole only returns accessible elements, so each dialog found below is also proved to be

@@ -95,7 +95,8 @@ export default function UserRolesModal({
       open={isOpen}
       onClose={onClose}
       title="Manage User Roles"
-      size="md"
+      description={user.email || undefined}
+      width="md"
       footer={
         <>
           <Button
@@ -115,8 +116,6 @@ export default function UserRolesModal({
         </>
       }
     >
-      {/* Modal dropped its description prop, so the user's email never showed; it sits here. */}
-      {user.email && <p className="mb-3 text-sm text-text-muted">{user.email}</p>}
       {loading ? (
         <PageLoading inline label="Loading roles" />
       ) : (

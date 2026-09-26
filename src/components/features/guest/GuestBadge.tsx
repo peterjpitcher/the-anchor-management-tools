@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { GUEST_BADGE_TONE_CLASS, guestBadgeToneForStatus, type GuestBadgeTone } from './status-ui'
 
 export { guestBadgeToneForStatus, type GuestBadgeTone }
@@ -24,7 +24,7 @@ export function GuestBadge({
 }: GuestBadgeProps): React.JSX.Element {
   return (
     <span
-      className={clsx(
+      className={cn(
         'inline-flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-guest-2xs font-anchor-body text-guest-note font-semibold leading-guest-flat',
         GUEST_BADGE_TONE_CLASS[tone],
         className

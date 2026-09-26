@@ -54,7 +54,7 @@ import {
   formatPercent,
   skipReasonLabel,
 } from '../../_shared/marketing-ui'
-import { MARKETING_BACK_TO_CAMPAIGNS, MARKETING_NAV } from '../../_shared/nav'
+import { MARKETING_BACK } from '../../_shared/nav'
 
 /**
  * `skippedByReason` is keyed by whatever string the database held, including the literal
@@ -170,8 +170,7 @@ export function CampaignDetailClient({
     <PageLayout
       title={campaign.name}
       subtitle={campaign.subject}
-      navItems={MARKETING_NAV}
-      backButton={MARKETING_BACK_TO_CAMPAIGNS}
+      backButton={MARKETING_BACK}
       headerActions={
         <>
           <Button
@@ -320,8 +319,12 @@ export function CampaignDetailClient({
               value={stats.unsubscribed}
               hint={formatPercent(stats.rates.unsubscribeRate)}
             />
-            <Stat label="Failed" value={stats.failed} />
-            <Stat label="Needs review" value={stats.needsReview} />
+            <Stat label="Failed" value={stats.failed} tone={stats.failed > 0 ? 'danger' : 'default'} />
+            <Stat
+              label="Needs review"
+              value={stats.needsReview}
+              tone={stats.needsReview > 0 ? 'warning' : 'default'}
+            />
           </StatGrid>
         )}
 
@@ -331,7 +334,7 @@ export function CampaignDetailClient({
             description="Counted through our own short links and our own booking records, so these say which call to action worked and whether it turned into business"
           >
             <div className="space-y-4">
-              <StatGrid columns={3}>
+              <StatGrid columns={6}>
                 <Stat
                   label="Link visits"
                   value={stats.engagement.clicks}

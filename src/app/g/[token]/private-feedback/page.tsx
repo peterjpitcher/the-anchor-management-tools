@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, normalizeGuestFirstName } from '@/lib/guest/names'
 import { getPrivateBookingFeedbackPreviewByRawToken } from '@/lib/private-bookings/feedback'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import {
   GuestAlert,
   GuestBlockedState,
@@ -93,7 +93,7 @@ function SummaryRow({
   return (
     <div className="flex items-baseline justify-between gap-4">
       <span className="text-guest-text-muted">{label}</span>
-      <span className={clsx('text-right font-semibold text-guest-text', mono && 'font-mono')}>
+      <span className={cn('text-right font-semibold text-guest-text', mono && 'font-mono')}>
         {value}
       </span>
     </div>

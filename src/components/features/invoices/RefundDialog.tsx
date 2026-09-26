@@ -8,6 +8,7 @@ import {
   Card,
   CardBody,
   Checkbox,
+  Fieldset,
   Input,
   Modal,
   Radio,
@@ -235,12 +236,8 @@ export function RefundDialog({
 
         {remaining > 0 && (
           <>
-            {/* Refund method. A fieldset and legend name the radio group; the legend carries the
-                DS field label style because Field's <label> can only name a single control. */}
-            <fieldset className="space-y-2">
-              <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-text-muted">
-                Refund method
-              </legend>
+            {/* Refund method: one radio group, named by the DS Fieldset's legend. */}
+            <Fieldset legend="Refund method">
               {methodOptions.map((option) => (
                 <Radio
                   key={option.value}
@@ -253,7 +250,7 @@ export function RefundDialog({
                   disabled={option.disabled}
                 />
               ))}
-            </fieldset>
+            </Fieldset>
 
             {/* Amount input */}
             <div className="space-y-1">

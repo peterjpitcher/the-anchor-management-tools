@@ -8,7 +8,7 @@ import type { LeaveRequest } from '@/app/actions/leave';
 import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
 import { getHolidayYear } from '@/lib/leave/working-days';
 import { getTodayIsoDate } from '@/lib/dateUtils';
-import { portalLeaveStatusTone } from '../_shared/status-ui';
+import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,8 +114,9 @@ export default async function MyLeavePage() {
                           <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
                         )}
                       </div>
-                      <Badge tone={portalLeaveStatusTone(req.status)} size="sm" className="capitalize">
-                        {req.status}
+                      {/* The same colours and words as every manager screen that lists a holiday request. */}
+                      <Badge tone={rotaLeaveStatusTone(req.status)} size="sm">
+                        {rotaLeaveStatusLabel(req.status)}
                       </Badge>
                     </div>
                     {req.status === 'pending' && <CancelLeaveRequestButton requestId={req.id} />}

@@ -6,8 +6,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/expenses/insights',
 }))
 vi.mock('@/app/actions/expenses', () => ({ getExpenseInsights: vi.fn() }))
-// The chart draws nothing this test needs, so it is kept out of jsdom.
-vi.mock('@/components/charts/BarChart', () => ({ BarChart: () => null }))
 
 import { getExpenseInsights } from '@/app/actions/expenses'
 import { ExpensesInsightsClient } from '@/app/(authenticated)/expenses/insights/_components/ExpensesInsightsClient'
@@ -33,5 +31,18 @@ describe('ExpensesInsightsClient period switch', () => {
     expect(screen.getByText("Couldn't load this period")).toBeInTheDocument()
     expect(getExpenseInsights).toHaveBeenCalledWith('quarterly')
     expect(screen.queryByText('Booker')).not.toBeInTheDocument()
+  })
+
+  it('draws spend over time as the DS chart, named for screen readers', () => {
+    render(
+      <ExpensesInsightsClient
+        initialData={{
+          bars: [{ label: 'Sep 2026', periodStart: '2026-09-01', amount: 520, vatAmount: 86.67 }],
+          totals: { totalAmount: 520, totalVat: 86.67, count: 4 },
+          byCompany: [],
+        }}
+      />,
+    )
+    expect(screen.getByRole('figure', { name: 'Expenses over time' })).toBeInTheDocument()
   })
 })

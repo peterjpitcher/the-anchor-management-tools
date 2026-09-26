@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Card, CardHeader, CardBody, Checkbox, ProgressBar, Badge, Empty } from '@/ds'
+import { Card, CardHeader, CardBody, Checkbox, ProgressBar, Badge, Empty, toast } from '@/ds'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import type { ChecklistTodoItem } from '@/lib/event-checklist'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface TodoClientProps {
   initialTodos: ChecklistTodoItem[]
@@ -42,17 +43,27 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
 
   const groups = groupByEvent(todos)
 
+  function setCompleted(eventId: string, taskKey: string, completed: boolean) {
+    setTodos((prev) =>
+      prev.map((t) => (t.eventId === eventId && t.key === taskKey ? { ...t, completed } : t))
+    )
+  }
+
+  // The box ticks straight away. A refusal or a network failure puts it back and says so,
+  // rather than leaving a tick that was never saved.
   function handleToggle(eventId: string, taskKey: string, currentCompleted: boolean) {
+    const nextCompleted = !currentCompleted
+    setCompleted(eventId, taskKey, nextCompleted)
     startTransition(async () => {
-      const result = await toggleEventChecklistTask(eventId, taskKey, !currentCompleted)
-      if (result.success) {
-        setTodos((prev) =>
-          prev.map((t) =>
-            t.eventId === eventId && t.key === taskKey
-              ? { ...t, completed: !currentCompleted }
-              : t
-          )
-        )
+      try {
+        const result = await toggleEventChecklistTask(eventId, taskKey, nextCompleted)
+        if (!result.success) {
+          setCompleted(eventId, taskKey, currentCompleted)
+          toast.error(result.error ?? 'Could not update todo')
+        }
+      } catch {
+        setCompleted(eventId, taskKey, currentCompleted)
+        toast.error('Could not update todo')
       }
     })
   }
@@ -83,7 +94,9 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
               title={group.eventName}
               action={
                 <div className="flex items-center gap-2">
-                  <Badge tone="neutral">{group.eventDate}</Badge>
+                  <Badge tone="neutral">
+                    {formatDateInLondon(group.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Badge>
                   <span className="text-xs text-text-muted">
                     {completed}/{total} complete
                   </span>
@@ -91,7 +104,7 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
               }
             />
             <CardBody className="space-y-4">
-              <ProgressBar value={pct} />
+              <ProgressBar value={pct} label={`${group.eventName} todos complete`} />
               <div className="flex flex-col gap-2">
                 {group.items.map((item) => (
                   <Checkbox

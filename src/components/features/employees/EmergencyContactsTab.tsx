@@ -5,7 +5,7 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, FormFooter, Icon, IconButton, Modal } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, FormFooter, Icon, IconButton, Modal, SubHeading } from '@/ds'
 import { contactPriorityTone } from '@/app/(authenticated)/employees/_shared/status-ui'
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 import EditEmergencyContactModal from '@/components/modals/EditEmergencyContactModal'
@@ -129,7 +129,8 @@ export default function EmergencyContactsTab({
                 <div className="flex items-start justify-between">
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-text">{contact.name}</p>
+                      {/* Each contact is headed by its name, under the card's title. */}
+                      <SubHeading>{contact.name}</SubHeading>
                       {contact.priority && contact.priority !== 'Other' && (
                         <Badge tone={contactPriorityTone(contact.priority)}>
                           {contact.priority}

@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   Card,
+  CustomerLink,
   Empty,
   PageLayout,
   Section,
@@ -21,7 +22,7 @@ import {
   TableRow,
 } from '@/ds'
 import { loadUndeliveredGuestMessages } from '@/lib/notifications/undelivered'
-import { SMS_FAILURE_TONES } from '../_shared/status-ui'
+import { SMS_FAILURE_TONES, smsFailureBadge } from '../_shared/status-ui'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 import { UndeliveredGuestMessagesSection } from './UndeliveredGuestMessagesSection'
 import { WindowSwitch } from './WindowSwitch'
@@ -100,6 +101,10 @@ function getFailureCode(row: SmsFailureRow): string | null {
   return row.error_code || row.twilio_status || null
 }
 
+function getFailureBadge(row: SmsFailureRow): ReturnType<typeof smsFailureBadge> {
+  return smsFailureBadge(row.error_code, row.twilio_status)
+}
+
 function getFailureMessage(row: SmsFailureRow): string {
   const code = getFailureCode(row)
   return row.error_message || formatErrorMessage(code)
@@ -174,7 +179,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
   const rows = (data ?? []) as SmsFailureRow[]
   const undelivered = await loadUndeliveredGuestMessages({ sinceIso })
   const codeCounts = rows.reduce<Record<string, number>>((acc, row) => {
-    const code = getFailureCode(row) ?? 'unknown'
+    const code = getFailureBadge(row)?.label ?? 'Unknown'
     acc[code] = (acc[code] ?? 0) + 1
     return acc
   }, {})
@@ -194,7 +199,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
         </Alert>
       ) : (
         <StatGrid columns={3}>
-          <Stat label="Failed messages" value={rows.length} />
+          <Stat label="Failed messages" value={rows.length} tone={rows.length > 0 ? 'danger' : 'default'} />
           <Stat label="Most common code" value={Object.entries(codeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '--'} />
           <Stat label="Window" value={windowLabel} />
         </StatGrid>
@@ -213,21 +218,19 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
               <ul className="divide-y divide-border md:hidden">
                 {rows.map((row) => {
                   const source = getSource(row)
-                  const code = getFailureCode(row)
+                  const failureBadge = getFailureBadge(row)
 
                   return (
                     <li key={row.id} className="px-pad-card py-4">
                       <div className="flex items-start justify-between gap-2">
-                        <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">
-                          {getCustomerName(row)}
-                        </Link>
+                        <CustomerLink customerId={row.customer_id} name={getCustomerName(row)} />
                         <span className="shrink-0 text-xs text-text-muted">
                           {new Date(row.created_at).toLocaleString('en-GB')}
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {code && <Badge tone={SMS_FAILURE_TONES.errorCode}>{code}</Badge>}
-                        {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>not sent</Badge>}
+                        {failureBadge && <Badge tone={failureBadge.tone}>{failureBadge.label}</Badge>}
+                        {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>Not sent</Badge>}
                       </div>
                       <p className="mt-2 text-sm text-text-muted">{getFailureMessage(row)}</p>
                       <dl className="mt-3 space-y-1.5 text-sm">
@@ -288,7 +291,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                   <TableBody>
                     {rows.map((row) => {
                       const source = getSource(row)
-                      const code = getFailureCode(row)
+                      const failureBadge = getFailureBadge(row)
 
                       return (
                         <TableRow key={row.id} className="align-top">
@@ -296,9 +299,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                             {new Date(row.created_at).toLocaleString('en-GB')}
                           </TableCell>
                           <TableCell>
-                            <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">
-                              {getCustomerName(row)}
-                            </Link>
+                            <CustomerLink customerId={row.customer_id} name={getCustomerName(row)} />
                           </TableCell>
                           <TableCell className="whitespace-normal">
                             {source.href ? (
@@ -311,8 +312,8 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                           </TableCell>
                           <TableCell className="min-w-[220px] whitespace-normal">
                             <div className="flex flex-wrap items-center gap-2">
-                              {code && <Badge tone={SMS_FAILURE_TONES.errorCode}>{code}</Badge>}
-                              {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>not sent</Badge>}
+                              {failureBadge && <Badge tone={failureBadge.tone}>{failureBadge.label}</Badge>}
+                              {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>Not sent</Badge>}
                             </div>
                             <div className="mt-1 text-text-muted">{getFailureMessage(row)}</div>
                           </TableCell>

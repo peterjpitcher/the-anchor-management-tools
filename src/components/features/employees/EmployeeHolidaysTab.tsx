@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Field, FormFooter, Icon, Input, ProgressBar, Segmented, toast } from '@/ds';
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Field, FormFooter, Icon, Input, ProgressBar, Segmented, SubHeading, toast } from '@/ds';
 import {
   HOLIDAY_ALLOWANCE_TEXT_CLASSES,
   holidayAllowanceTone,
-  leaveStatusTone,
 } from '@/app/(authenticated)/employees/_shared/status-ui';
+import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
@@ -148,7 +148,7 @@ export default function EmployeeHolidaysTab({
         {/* Book holiday form */}
         {showBookForm && canCreateLeave && (
           <CardBody className="space-y-4 border-b border-border">
-            <p className="text-sm font-medium text-text">Book approved holiday</p>
+            <SubHeading>Book Approved Holiday</SubHeading>
             {bookError && <Alert tone="danger" size="sm">{bookError}</Alert>}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Start date" required>
@@ -191,6 +191,7 @@ export default function EmployeeHolidaysTab({
           {/* Year selector: the same figures for another holiday year */}
           <div className="max-w-full overflow-x-auto">
             <Segmented
+              aria-label="Holiday year"
               options={availableYears.map(y => ({ id: String(y), label: yearLabel(y) }))}
               value={String(selectedYear)}
               onChange={id => setSelectedYear(Number(id))}
@@ -237,8 +238,8 @@ export default function EmployeeHolidaysTab({
                       {r.note && ` · ${r.note}`}
                     </p>
                   </div>
-                  <Badge tone={leaveStatusTone(r.status)} size="sm">
-                    {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                  <Badge tone={rotaLeaveStatusTone(r.status)} size="sm">
+                    {rotaLeaveStatusLabel(r.status)}
                   </Badge>
                 </li>
               );

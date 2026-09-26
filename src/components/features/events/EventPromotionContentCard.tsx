@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Icon, Input, Textarea, toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Icon, Input, SubHeading, Textarea, toast } from '@/ds'
 import { generateEventPromotionContent, type EventPromotionContentType } from '@/app/actions/event-content'
 import { Select } from '@/ds'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
@@ -342,7 +342,7 @@ export function EventPromotionContentCard({
               variant="secondary"
               disabled={!selectedCtaUrl}
               onClick={() => selectedCtaUrl && handleCopy(selectedCtaUrl, 'CTA link')}
-              leftIcon={<Icon name="copy" size={16} />}
+              icon={<Icon name="copy" size={16} />}
             >
               Copy Link
             </Button>
@@ -372,7 +372,7 @@ export function EventPromotionContentCard({
           onClick={handleGenerate}
           disabled={Boolean(aiUnavailableMessage)}
           loading={isGenerating}
-          leftIcon={<Icon name="refresh" size={16} />}
+          icon={<Icon name="refresh" size={16} />}
         >
           {`Generate ${selectedTypeMeta?.label ?? eventName} Copy`}
         </Button>
@@ -390,12 +390,12 @@ export function EventPromotionContentCard({
               return (
                 <section className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Facebook Event</p>
+                    <SubHeading>Facebook Event</SubHeading>
                     <Button
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.name}\n\n${content.description}`.trim(), 'Facebook copy')}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy All
                     </Button>
@@ -407,12 +407,11 @@ export function EventPromotionContentCard({
                         <Button
                           size="xs"
                           variant="ghost"
-                          iconOnly
                           aria-label="Copy event name"
                           title="Copy event name"
                           disabled={content.name.trim().length === 0}
                           onClick={() => handleCopy(content.name.trim(), 'Event name')}
-                          leftIcon={<Icon name="copy" size={16} />}
+                          icon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <p className="break-words rounded-default border border-border bg-surface p-3 text-sm text-text-strong">
@@ -427,12 +426,11 @@ export function EventPromotionContentCard({
                         <Button
                           size="xs"
                           variant="ghost"
-                          iconOnly
                           aria-label="Copy description"
                           title="Copy description"
                           disabled={content.description.trim().length === 0}
                           onClick={() => handleCopy(content.description, 'Description')}
-                          leftIcon={<Icon name="copy" size={16} />}
+                          icon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <Textarea
@@ -454,12 +452,12 @@ export function EventPromotionContentCard({
               return (
                 <section className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{titleLabel}</p>
+                    <SubHeading>{titleLabel}</SubHeading>
                     <Button
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.title}\n\n${content.description}`.trim(), copyLabel)}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy All
                     </Button>
@@ -471,12 +469,11 @@ export function EventPromotionContentCard({
                         <Button
                           size="xs"
                           variant="ghost"
-                          iconOnly
                           aria-label="Copy title"
                           title="Copy title"
                           disabled={content.title.trim().length === 0}
                           onClick={() => handleCopy(content.title.trim(), 'Title')}
-                          leftIcon={<Icon name="copy" size={16} />}
+                          icon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <p className="break-words rounded-default border border-border bg-surface p-3 text-sm text-text-strong">
@@ -491,12 +488,11 @@ export function EventPromotionContentCard({
                         <Button
                           size="xs"
                           variant="ghost"
-                          iconOnly
                           aria-label="Copy description"
                           title="Copy description"
                           disabled={content.description.trim().length === 0}
                           onClick={() => handleCopy(content.description, 'Description')}
-                          leftIcon={<Icon name="copy" size={16} />}
+                          icon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <Textarea

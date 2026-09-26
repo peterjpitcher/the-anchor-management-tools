@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition, useRef, ChangeEvent } from 'react'
-import { Badge, Button, Card, ConfirmDialog, IconButton, Input, Select, toast, Icon } from '@/ds'
+import { useState, useTransition } from 'react'
+import { Badge, Button, Card, ConfirmDialog, FileButton, IconButton, Input, Select, SubHeading, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -52,7 +52,6 @@ export function ReceiptMobileCard({
   
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleStatusUpdate(status: ReceiptTransaction['status']) {
     if (!canManageReceipts) return
@@ -80,10 +79,9 @@ export function ReceiptMobileCard({
     })
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleUpload(files: File[]) {
     if (!canManageReceipts) return
-    const file = event.target.files?.[0]
-    event.target.value = ''
+    const file = files[0]
     if (!file) return
 
     startTransition(async () => {
@@ -229,7 +227,7 @@ export function ReceiptMobileCard({
                 {transaction.transaction_type ? ` \u00b7 ${transaction.transaction_type}` : ''}
                 </p>
                 <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold leading-snug text-text-strong">{transaction.details}</p>
+                    <SubHeading className="leading-snug">{transaction.details}</SubHeading>
                     <SourceBadge sourceType={transaction.source_type} />
                 </div>
                 {transaction.source_type === 'amex' && transaction.card_member && (
@@ -331,9 +329,8 @@ export function ReceiptMobileCard({
         </div>
         
         <div className="mt-2 border-t border-border pt-2 flex flex-wrap gap-2">
-             <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isPending || !canManageReceipts}>Upload</Button>
-             {/* Hidden picker behind the Upload button: the DS FileUpload is a drop zone, too big for a card. */}
-             <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
+             {/* FileButton, not the FileUpload drop zone, which is too big for a card. */}
+             <FileButton variant="secondary" size="sm" accept={RECEIPT_UPLOAD_ACCEPT} onFiles={handleUpload} disabled={isPending || !canManageReceipts}>Upload</FileButton>
 
              {transaction.files.map(f => (
                  <span key={f.id} className="inline-flex items-center gap-1">

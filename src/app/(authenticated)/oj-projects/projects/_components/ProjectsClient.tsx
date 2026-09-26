@@ -242,6 +242,7 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
           value={search}
           onChange={setSearch}
           placeholder="Search projects..."
+          aria-label="Search projects"
           className="min-w-[220px] flex-1 sm:max-w-xs"
         />
         <Select

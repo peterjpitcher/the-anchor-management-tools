@@ -18,7 +18,7 @@ export default async function MarketingSettingsPage() {
 
   if (settingsResult.error || !settingsResult.data) {
     return (
-      <PageLayout {...marketingLayout('settings')} containerSize="md">
+      <PageLayout {...marketingLayout('settings', { canManageSettings: true })} containerSize="md">
         <Alert tone="danger" title="Could not load marketing settings">
           {settingsResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>

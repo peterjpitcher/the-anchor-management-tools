@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   createRightToWorkDocumentUploadUrl,
@@ -11,7 +11,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Field, FormFooter, Icon, Input, LinkButton, Select, Spinner, Textarea, toast } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Field, FileButton, FormFooter, Icon, Input, LinkButton, Select, Spinner, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 
@@ -47,7 +47,6 @@ export default function RightToWorkTab({
 }: RightToWorkTabProps) {
   const router = useRouter()
   const supabase = useSupabase()
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [state, setState] = useState<ActionFormState>(null)
   const [isSaving, startTransition] = useTransition()
   const [rightToWorkData, setRightToWorkData] = useState<EmployeeRightToWork | null>(rightToWork)
@@ -161,9 +160,6 @@ export default function RightToWorkTab({
 
         if (result?.type === 'success') {
           setSelectedFile(null)
-          if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-          }
           router.refresh()
         }
       } catch (error) {
@@ -331,73 +327,58 @@ export default function RightToWorkTab({
               />
             </Field>
 
-            <Field label="Document Photo" hint="Upload scan or photo (PDF/JPG/PNG)" className="sm:col-span-2">
-              {/* The DS Input as a single-file picker, as on the new employee page: it can be
-                  disabled, takes its label from the Field, stays in the tab order and is cleared
-                  through the ref after a save. */}
-              <Input
-                type="file"
+            <Field
+              label="Document Photo"
+              // The chosen file is named in the hint, so it is read out with the button too.
+              hint={`${selectedFile ? `${selectedFile.name}. ` : ''}Upload scan or photo (PDF/JPG/PNG)`}
+              className="sm:col-span-2"
+            >
+              {/* The DS file picker: a Button over a hidden input, named by the Field and in the
+                  tab order. The file is uploaded from state on save, so the input keeps no value. */}
+              <FileButton
                 id="document_photo"
-                ref={fileInputRef}
                 accept=".pdf,.jpg,.jpeg,.png"
                 disabled={!canEdit || isSaving}
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (!file) {
-                    setSelectedFile(null)
-                    return
-                  }
-
+                icon={<Icon name="upload" size={16} />}
+                onFiles={([file]) => {
                   if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
                     toast.error('Only PDF, JPG, and PNG files are allowed.')
-                    event.target.value = ''
                     setSelectedFile(null)
                     return
                   }
 
                   if (file.size >= MAX_FILE_SIZE) {
                     toast.error('File size must be less than 10MB.')
-                    event.target.value = ''
                     setSelectedFile(null)
                     return
                   }
 
                   setSelectedFile(file)
                 }}
-              />
+              >
+                {selectedFile ? 'Choose Another File' : 'Choose File'}
+              </FileButton>
             </Field>
 
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
-              <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-                <div className="flex items-center gap-2 rounded-default bg-surface-2 px-3 py-2 text-sm text-text-muted">
-                  <Icon name="eye" size={16} />
-                  {loadingPhoto ? (
-                    <span className="inline-flex items-center gap-2" role="status">
-                      <Spinner size="sm" />
-                      Generating preview…
-                    </span>
-                  ) : photoUrl ? (
-                    <>
-                      <a
-                        href={photoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        View current document
-                      </a>
-                      <a
-                        href={photoUrl}
-                        download
-                        className="inline-flex items-center text-primary hover:underline"
-                      >
-                        <Icon name="download" size={16} className="mr-1" /> Download
-                      </a>
-                    </>
-                  ) : (
-                    <span>Unable to generate preview</span>
-                  )}
-                </div>
+              <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                {loadingPhoto ? (
+                  <span className="inline-flex items-center gap-2 text-sm text-text-muted" role="status">
+                    <Spinner size="sm" />
+                    Generating preview…
+                  </span>
+                ) : photoUrl ? (
+                  <>
+                    <LinkButton href={photoUrl} target="_blank" size="sm" icon={<Icon name="eye" size={16} />}>
+                      View Current Document
+                    </LinkButton>
+                    <LinkButton href={photoUrl} download size="sm" icon={<Icon name="download" size={16} />}>
+                      Download
+                    </LinkButton>
+                  </>
+                ) : (
+                  <span className="text-sm text-text-muted">Unable to generate preview</span>
+                )}
                 {canEdit && (
                   <Button
                     type="button"

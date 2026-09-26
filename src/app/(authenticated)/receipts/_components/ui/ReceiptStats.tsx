@@ -29,10 +29,10 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
     <>
       {summary.failedAiJobCount > 0 && (
         <Alert tone="warning" title={`${summary.failedAiJobCount} AI classification job${summary.failedAiJobCount !== 1 ? 's' : ''} failed`}>
-          These could not be retried automatically. Use the re-queue button to retry classification.
+          These could not be retried automatically. Use Re-classify Untagged at the top of the page to try them again.
         </Alert>
       )}
-      <StatGrid columns={3} className="xl:grid-cols-6">
+      <StatGrid columns={6}>
         <Stat label="OpenAI spend" value={formatCurrencyStrict(summary.openAICost)} hint={aiSpendHint(summary.openAICost, summary.aiUsageBreakdown)} />
         <Stat label="Pending" value={summary.totals.pending} hint={formatCount(summary.totals.pending)} />
         <Stat label="Completed" value={summary.totals.completed} hint={formatCount(summary.totals.completed)} />

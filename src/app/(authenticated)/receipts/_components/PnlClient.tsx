@@ -297,6 +297,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
             value={selectedTimeframe}
             onChange={(key) => setSelectedTimeframe(key as PnlTimeframeKey)}
             size="sm"
+            aria-label="Period"
           />
           {canExport && (
             <>

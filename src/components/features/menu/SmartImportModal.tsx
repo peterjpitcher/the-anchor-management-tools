@@ -99,7 +99,7 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
             <p>
               Paste <strong>any</strong> product text, HTML source, or JSON below. Our AI will extract the details for you.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Badge tone="neutral" size="sm">Booker HTML</Badge>
               <Badge tone="neutral" size="sm">Supplier Emails</Badge>
               <Badge tone="neutral" size="sm">Spreadsheet Rows</Badge>

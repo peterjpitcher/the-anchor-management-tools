@@ -652,6 +652,7 @@ export function MgdClient({
         title="Delete Collection"
         message="Are you sure? The return totals will be recalculated."
         confirmLabel="Delete"
+        tone="danger"
         onConfirm={handleDelete}
         onClose={() => { setShowDeleteConfirm(false); setDeletingId(null) }}
       />
@@ -666,6 +667,7 @@ export function MgdClient({
             : 'This will reopen the return for editing. Are you sure?'
         }
         confirmLabel="Reopen"
+        tone="primary"
         onConfirm={handleReopen}
         onClose={() => setShowReopenConfirm(false)}
       />
@@ -694,6 +696,7 @@ export function MgdClient({
         open={showHmrcFormat}
         onClose={() => setShowHmrcFormat(false)}
         title="HMRC Submission Format"
+        description={viewingReturn ? periodLabel(viewingReturn.period_start, viewingReturn.period_end) : undefined}
       >
         {viewingReturn && <HmrcFormatContent viewingReturn={viewingReturn} />}
       </Modal>
@@ -783,9 +786,6 @@ function HmrcFormatContent({ viewingReturn }: { viewingReturn: MgdReturn }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-text-muted mb-4">
-        {periodLabel(viewingReturn.period_start, viewingReturn.period_end)}
-      </p>
       {lines.map((line) => (
         <div key={line.box} className="flex items-baseline gap-2 py-1 border-b border-border last:border-0">
           <span className="text-sm font-medium text-text-muted whitespace-nowrap">Box {line.box}</span>

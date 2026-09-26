@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Button, Card, CardBody, Input, SearchInput, Select } from '@/ds'
+import { Button, Card, CardBody, Field, Input, SearchInput, Select } from '@/ds'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import { DEFAULT_MILEAGE_LIST_QUERY, hasActiveFilters, type MileageListQuery } from '@/lib/mileage/list-query'
 import { CUSTOM_PRESET_VALUE, presetValueFor, type PeriodPresetGroup } from '@/lib/mileage/period-presets'
@@ -78,12 +78,9 @@ export function MileageFilters({ query, presets, places, drivers, onChange }: Mi
               </optgroup>
             ))}
           </Select>
-          {/* The DS SearchInput takes no id, label or aria-label, so Field cannot label it; a label
-              wrapping it does, styled as the Field label. */}
-          <label className="flex min-w-0 flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wider text-text-muted">Search</span>
+          <Field label="Search" className="min-w-0">
             <SearchInput value={query.q} onChange={handleSearch} debounceDelay={500} placeholder="Reason or place" />
-          </label>
+          </Field>
           <Select
             label="Place"
             value={query.placeId ?? ''}

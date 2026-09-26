@@ -12,15 +12,17 @@ interface BookHolidayModalProps {
   onBooked: (days: { employee_id: string; leave_date: string; request_id: string; status: 'approved' }[]) => void;
 }
 
+// Leave dates are plain days: read as UTC midnights and formatted in UTC, so a day never moves
+// with the browser's zone (and a count across the clock change stays whole).
 function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long',
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
   });
 }
 
 function dayCount(start: string, end: string): number {
-  const s = new Date(start + 'T00:00:00');
-  const e = new Date(end + 'T00:00:00');
+  const s = new Date(start + 'T00:00:00Z');
+  const e = new Date(end + 'T00:00:00Z');
   if (e < s) return 0;
   return Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
 }
@@ -61,7 +63,8 @@ export default function BookHolidayModal({
     <Modal
       open
       onClose={onClose}
-      title={employeeName}
+      title="Book Holiday"
+      description={employeeName}
       width="sm"
       footer={
         <>
@@ -75,7 +78,6 @@ export default function BookHolidayModal({
       }
     >
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">Book holiday</p>
         {error && <Alert tone="danger">{error}</Alert>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

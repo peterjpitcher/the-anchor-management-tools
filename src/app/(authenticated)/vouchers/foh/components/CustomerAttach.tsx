@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Badge, Button, Card, FormFooter, Input } from '@/ds'
+import { Badge, Button, Card, Fieldset, FormFooter, Input } from '@/ds'
 import {
   fetchEventBookers,
   quickAddCustomer,
@@ -106,11 +106,9 @@ export function CustomerAttach({
 
   if (value) {
     return (
-      <div>
-        {/* A caption in the field-label style: the chosen customer is a chip, not a field. */}
-        <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-text-muted">
-          Customer (optional)
-        </span>
+      // The chosen customer is a chip with a Remove button, not a field, so the group carries
+      // the label.
+      <Fieldset legend="Customer (optional)">
         <div className="flex flex-wrap items-center gap-2">
           {/* The attached customer reads as a selected chip. */}
           <Badge tone="primary" className="min-h-touch px-4 py-2 text-base">
@@ -135,7 +133,7 @@ export function CustomerAttach({
             </p>
           )}
         </div>
-      </div>
+      </Fieldset>
     )
   }
 

@@ -280,7 +280,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
       headerActions={
         canManage ? (
           <Button variant="primary" size="sm" onClick={() => { setActiveLink(null); setFormModalOpen(true) }} icon={<Icon name="plus" size={16} />}>
-            Create Link
+            New Short Link
           </Button>
         ) : undefined
       }
@@ -308,6 +308,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
           value={search}
           onChange={setSearch}
           placeholder="Search links..."
+          aria-label="Search short links"
           className="w-full max-w-md"
         />
       </div>

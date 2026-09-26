@@ -60,4 +60,19 @@ describe('MobileInvoiceCard', () => {
     expect(onDownload).toHaveBeenCalledWith(invoice)
     expect(onClick).not.toHaveBeenCalled()
   })
+
+  it('opens the invoice from the keyboard, but Enter on the download button only downloads', () => {
+    const onClick = vi.fn()
+    const onDownload = vi.fn()
+    const { container } = render(<MobileInvoiceCard invoice={invoice} onClick={onClick} onDownload={onDownload} />)
+
+    const row = container.firstElementChild as HTMLElement
+    fireEvent.keyDown(row, { key: 'Enter' })
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(onClick).toHaveBeenCalledTimes(2)
+
+    onClick.mockClear()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Download invoice INV-001' }), { key: 'Enter' })
+    expect(onClick).not.toHaveBeenCalled()
+  })
 })

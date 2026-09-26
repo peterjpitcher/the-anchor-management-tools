@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Alert, Badge, Button, Card, ConfirmDialog, IconButton, PageLoading, Spinner, toast, Icon } from '@/ds'
+import {
+  Alert, Badge, Button, Card, ConfirmDialog, FileButton, IconButton, LinkButton, PageLoading, Spinner, SubHeading, toast, Icon,
+} from '@/ds'
 import { cn } from '@/lib/utils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -97,7 +99,6 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
   const [talkerPixels, setTalkerPixels] = useState<
     { url: string; width: number; height: number } | null
   >(null)
-  const inputRefs = useRef<Partial<Record<EventImageVariant, HTMLInputElement | null>>>({})
   const inFlight = useRef(0)
 
   const tileFor = (variant: EventImageVariant): TileState => tiles[variant] ?? EMPTY_TILE
@@ -203,11 +204,10 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       const dimensions = await readImageDimensions(file)
       const validationError = validateEventImageFile(variant, file, dimensions)
 
-      // A rejected file must not disturb the tile at all.
+      // A rejected file must not disturb the tile at all. (FileButton clears its own input
+      // after every pick, so the same file can be chosen again.)
       if (validationError) {
         toast.error(validationError)
-        const input = inputRefs.current[variant]
-        if (input) input.value = ''
         return
       }
 
@@ -216,9 +216,6 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         dimensions,
         previewUrl: URL.createObjectURL(file),
       }
-
-      const input = inputRefs.current[variant]
-      if (input) input.value = ''
 
       // Nothing to upload against yet, so hold it until the event exists.
       if (!eventId) {
@@ -317,16 +314,20 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     return (
       <div className="space-y-3">
         <PanelHeading />
-        <Alert tone="warning">
-          <p>The images for this event could not be loaded.</p>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => eventId && load(eventId)}
-            className="mt-2 min-h-touch"
-          >
-            Try Again
-          </Button>
+        <Alert
+          tone="danger"
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => eventId && load(eventId)}
+              className="min-h-touch"
+            >
+              Try Again
+            </Button>
+          }
+        >
+          The images for this event could not be loaded.
         </Alert>
       </div>
     )
@@ -490,42 +491,30 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               {/* mt-auto keeps the controls on the tile's bottom edge, so they
                   line up across a row whatever shape the preview above is. */}
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-                {/* The DS has no file-picker button, so the native file input stays,
-                    hidden, and the DS Button in front of it opens it. */}
-                <input
+                {/* Replacing an existing file still goes through the confirm below, because
+                    startUpload asks before it deletes anything. */}
+                <FileButton
                   id={inputId}
-                  ref={(element) => {
-                    inputRefs.current[variant] = element
-                  }}
-                  type="file"
                   accept={acceptAttribute(variant)}
-                  className="hidden"
-                  disabled={tile.uploading}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) void startUpload(variant, file)
-                  }}
-                />
-                <Button
-                  type="button"
                   variant="secondary"
-                  onClick={() => inputRefs.current[variant]?.click()}
                   disabled={tile.uploading}
                   className="min-h-touch"
+                  onFiles={(files) => void startUpload(variant, files[0])}
                 >
                   {previewUrl ? 'Replace' : 'Add'}
                   <span className="sr-only"> {config.label}</span>
-                </Button>
+                </FileButton>
 
                 {state?.url && (
-                  <a
+                  <LinkButton
                     href={buildEventImageDownloadUrl(state.url, state.fileName)}
-                    download={state.fileName ?? undefined}
-                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-default border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                    download={state.fileName ?? true}
+                    variant="secondary"
+                    icon={<Icon name="download" size={16} />}
+                    className="min-h-touch min-w-touch px-2"
                   >
-                    <Icon name="download" size={16} />
                     <span className="sr-only">Download {config.label}</span>
-                  </a>
+                  </LinkButton>
                 )}
 
                 {/* Inherited artwork belongs to the category and is shared with
@@ -727,7 +716,7 @@ function VariantPromptBox() {
 function PanelHeading() {
   return (
     <div>
-      <p className="text-sm font-medium text-text sm:text-base">Event artwork</p>
+      <SubHeading>Event Artwork</SubHeading>
       <p className="text-sm text-text-muted">
         Drag a file onto a tile, or click it to browse. The square, landscape and
         social images appear on the website. The story, A4 poster and table talker

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, Empty, ConfirmDialog, FormFooter, Stat, toast } from '@/ds'
+import { Alert, Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, Empty, ConfirmDialog, Fieldset, FormFooter, Stat, SubHeading, toast } from '@/ds'
 import { eventTicketTypeSaleTone } from '../_shared/status-ui'
 import { resolveTicketTypeSellPrice, type EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { createEventTicketType, updateEventTicketType, deleteEventTicketType } from '@/app/actions/eventTicketTypes'
@@ -89,7 +89,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
       {!types.length && <Empty size="sm" title="No Ticket Prices Yet" description="Add your first ticket to set the entry price." />}
       {types.map(row => <div key={row.id} className="space-y-4 rounded-default border border-border p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><p className="font-semibold text-text-strong">{row.name}</p><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>
+          <div><SubHeading>{row.name}</SubHeading><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>
           <Badge tone={eventTicketTypeSaleTone(row.is_active)}>{row.is_active ? 'On sale' : 'Off sale'}</Badge>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -104,8 +104,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
           </>}
         </div>}
       </div>)}
-      {editing && <fieldset disabled={pending} className="space-y-4 rounded-default border border-border p-4">
-        <legend className="px-1 text-sm font-semibold text-text-strong">{editing === 'new' ? 'New Ticket Type' : 'Edit Ticket'}</legend>
+      {editing && <div className="rounded-default border border-border p-4"><Fieldset legend={editing === 'new' ? 'New Ticket Type' : 'Edit Ticket'} disabled={pending}><div className="space-y-4">
         <Input label="Ticket name" maxLength={80} value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
         <Checkbox label="Free ticket" checked={draft.free} onChange={checked => setDraft(current => ({ ...current, free: checked }))} />
         {!draft.free && <Input label="Full ticket price (£)" type="number" min="0.01" step="0.01" value={draft.base_price} onChange={event => setDraft(current => ({ ...current, base_price: event.target.value }))} />}
@@ -114,7 +113,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
           <Button type="button" variant="secondary" onClick={() => { setEditing(null); setError(null) }}>Cancel</Button>
           <Button type="button" variant="primary" onClick={save} loading={pending}>Save Ticket</Button>
         </FormFooter>
-      </fieldset>}
+      </div></Fieldset></div>}
       {error && <Alert tone="danger" size="sm">{error}</Alert>}
     </CardBody>
     <ConfirmDialog open={removeId !== null} onClose={() => setRemoveId(null)} onConfirm={remove} title="Remove Ticket From Sale" message="Tickets already booked are kept for your records. This type will no longer be offered to new guests." confirmLabel="Remove From Sale" tone="danger" />

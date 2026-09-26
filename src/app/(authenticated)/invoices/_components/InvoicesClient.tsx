@@ -266,23 +266,21 @@ export default function InvoicesClient({
       subtitle={`${formatNumber(initialTotal)} invoices · ${formatCurrency(initialSummary.total_outstanding)} outstanding`}
       navItems={FINANCE_NAV}
       headerActions={
-        <>
-          {resolvedPermissions.canExport && (
-            <LinkButton href="/invoices/export" variant="secondary" size="sm">
-              Export
-            </LinkButton>
-          )}
-          {resolvedPermissions.canCreate && (
-            <LinkButton href="/invoices/new" variant="primary" size="sm">
-              New Invoice
-            </LinkButton>
-          )}
-        </>
+        resolvedPermissions.canCreate ? (
+          <LinkButton href="/invoices/new" variant="primary" size="sm">
+            New Invoice
+          </LinkButton>
+        ) : undefined
       }
     >
       <StatGrid columns={4}>
         <Stat label="Total Outstanding" value={formatCurrency(initialSummary.total_outstanding)} hint="Awaiting payment" />
-        <Stat label="Overdue" value={formatCurrency(initialSummary.total_overdue)} hint="Past due date" />
+        <Stat
+          label="Overdue"
+          value={formatCurrency(initialSummary.total_overdue)}
+          hint="Past due date"
+          tone={initialSummary.total_overdue > 0 ? 'danger' : 'default'}
+        />
         <Stat label="This Month" value={formatCurrency(initialSummary.total_this_month)} hint="Collected" />
         <Stat label="Drafts" value={formatNumber(initialSummary.count_draft)} hint="Unsent invoices" />
       </StatGrid>
@@ -296,6 +294,7 @@ export default function InvoicesClient({
       {/* Filters: status, search, vendor and the date range the list and the download share */}
       <div className="flex flex-wrap items-end gap-3">
         <Segmented
+          aria-label="Quick status filter"
           options={STATUS_QUICK_FILTERS}
           value={statusFilter === 'unpaid' ? 'all' : statusFilter}
           onChange={(id) => {
@@ -307,12 +306,14 @@ export default function InvoicesClient({
           value={searchTerm}
           onChange={setSearchTerm}
           placeholder="Search invoice or reference..."
+          aria-label="Search invoices by number or reference"
           className="w-full sm:w-64"
         />
         <SearchInput
           value={vendorSearchTerm}
           onChange={setVendorSearchTerm}
           placeholder="Filter vendor..."
+          aria-label="Filter invoices by vendor"
           className="w-full sm:w-48"
         />
         <Select

@@ -223,13 +223,12 @@ export default function EditRecurringInvoicePage() {
     }
   }
 
+  // Cancel and the back button both return to the recurring invoice this page edits.
+  const backHref = recurringInvoiceId ? `/invoices/recurring/${recurringInvoiceId}` : '/invoices/recurring'
   const layoutProps = {
     title: 'Edit Recurring Invoice',
     subtitle: 'Update recurring invoice template',
-    backButton: {
-      label: 'Back to Recurring Invoice',
-      href: recurringInvoiceId ? `/invoices/recurring/${recurringInvoiceId}` : '/invoices/recurring',
-    },
+    backButton: { label: 'Back to Recurring Invoice', href: backHref },
   }
 
   if (permissionsLoading || (loading && canEdit)) {
@@ -530,7 +529,7 @@ export default function EditRecurringInvoicePage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => router.push('/invoices/recurring')}
+            onClick={() => router.push(backHref)}
           >
             Cancel
           </Button>

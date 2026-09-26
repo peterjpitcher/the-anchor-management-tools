@@ -10,11 +10,11 @@
  * `GuestChoice`, `GuestLink` and friends); these strings are what those
  * components are built from, exported for the few places that need the raw class.
  *
- * NEVER pass these strings through `cn()`. Until the guest type sizes are registered
- * with tailwind-merge in src/lib/utils.ts, it reads an unknown `text-guest-*` size
- * as a colour and silently drops either the size or the colour. The guest kit joins
- * type classes with `clsx`, which never removes a class, and keeps `cn()` for box
- * classes (padding, width, margins) where a caller's override has to win.
+ * Join them with `cn()` like any other class: src/lib/utils.ts registers the guest type
+ * sizes, spacing, radii, shadows, leading and tracking with tailwind-merge (colours need
+ * no entry), so `cn('text-center', GUEST_NOTE_CLASS)` keeps the size,
+ * the colour and the alignment, and a later class of the same kind replaces an earlier
+ * one. tests/components/guest/guest-class-merge.test.tsx pins that.
  */
 
 /** Uppercase gold eyebrow naming the flow, e.g. `Table booking`. */

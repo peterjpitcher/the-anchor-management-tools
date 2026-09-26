@@ -9,7 +9,7 @@ import { Alert, Badge, Empty, IconButton, PageLoading, Stat, LinkButton } from '
 import { Icon } from '@/ds/icons'
 import { getWeeklyDataAction } from '@/app/actions/cashing-up'
 import { cashingUpLayout } from '../../_shared/nav'
-import { cashupSessionStatusTone, signedAmountTextClass } from '../../_shared/status-ui'
+import { cashupSessionStatusTone, signedAmountTextClass, signedAmountTone } from '../../_shared/status-ui'
 
 interface WeeklyRow {
   session_date: string
@@ -215,12 +215,12 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
           </Card>
 
           {/* Category stats */}
-          <StatGrid columns={3} className="xl:grid-cols-5">
+          <StatGrid columns={5}>
             <Stat label="Weekly target" value={`£${fmt(totals.target)}`} />
             <Stat label="Weekly expected" value={`£${fmt(totals.expected)}`} />
             <Stat label="Weekly counted" value={`£${fmt(totals.counted)}`} />
-            <Stat label="Cash variance" value={`£${fmt(totals.cashVariance)}`} />
-            <Stat label="Vs target" value={`£${fmt(totals.targetVariance)}`} />
+            <Stat label="Cash variance" value={`£${fmt(totals.cashVariance)}`} tone={signedAmountTone(totals.cashVariance)} />
+            <Stat label="Vs target" value={`£${fmt(totals.targetVariance)}`} tone={signedAmountTone(totals.targetVariance)} />
           </StatGrid>
         </>
       )}

@@ -14,7 +14,7 @@ interface DeleteBookingButtonProps {
    * for backwards compatibility with existing callers.
    */
   deleteAction: (formData: FormData) => Promise<void>
-  /** ISO date string (`YYYY-MM-DD`) — required for the typed-date friction check. */
+  /** ISO date string (`YYYY-MM-DD`), required for the typed-date friction check. */
   eventDate?: string
   status?: string
 }

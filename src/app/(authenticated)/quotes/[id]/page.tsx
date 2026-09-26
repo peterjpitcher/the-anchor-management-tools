@@ -212,9 +212,13 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   // calculateLineTotal was unused; removed to satisfy lint
 
+  // The quote number is only known once the quote has loaded, so it sits in the subtitle and
+  // the title stays "Quote" in every state (loading, error and loaded).
   const layoutProps = {
-    title: quote ? `Quote ${quote.quote_number}` : 'Quote',
-    subtitle: quote?.reference ? `Reference: ${quote.reference}` : undefined,
+    title: 'Quote',
+    subtitle: quote
+      ? [quote.quote_number, quote.reference ? `Reference: ${quote.reference}` : null].filter(Boolean).join(' · ')
+      : undefined,
     backButton: BACK_TO_QUOTES,
   }
 

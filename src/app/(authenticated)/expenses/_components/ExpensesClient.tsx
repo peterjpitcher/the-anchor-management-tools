@@ -346,6 +346,7 @@ export function ExpensesClient({
         <Stat
           label="Missing Receipts"
           value={String(stats.missingReceipts)}
+          tone={stats.missingReceipts > 0 ? 'warning' : 'default'}
           hint={stats.missingReceipts > 0 ? 'Needs attention' : 'All receipts present'}
         />
       </StatGrid>

@@ -205,13 +205,19 @@ export default function EditPrivateBookingPage({
     ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
     : 'Unknown'
 
+  // The booking page is titled with the customer's name ("Private Booking" until it loads), so
+  // the way back names it the same way.
+  const parentTitle = booking
+    ? booking.customer_full_name || booking.customer_name || 'Private Booking'
+    : 'Private Booking'
+
   // One header for every state: the title stays put while the booking loads.
   const layoutProps = {
-    title: 'Edit Private Booking',
+    title: 'Edit Booking',
     subtitle: booking
       ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
       : undefined,
-    backButton: { label: 'Back to Booking', href: `/private-bookings/${id}` },
+    backButton: { label: `Back to ${parentTitle}`, href: `/private-bookings/${id}` },
     containerSize: 'md' as const,
   }
 
@@ -416,7 +422,7 @@ export default function EditPrivateBookingPage({
                     <Checkbox
                       name="deposit_waived"
                       value="true"
-                      label="Deposit waived (GM approved — venue-hosted/internal event)"
+                      label="Deposit waived (GM approved: venue-hosted/internal event)"
                     />
                     <Field label="Reason for waiving the deposit">
                       <Input

@@ -108,6 +108,22 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeDisabled()
   })
 
+  it('shows the shift choices as unavailable when the remaining rota cannot load', async () => {
+    previewMock.mockResolvedValue({ success: false, error: 'Could not load the remaining shifts.' })
+    const user = userEvent.setup()
+    renderActions()
+
+    await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
+
+    expect(await screen.findByText('Could not load the remaining shifts.')).toBeInTheDocument()
+    for (const name of ['Work agreed shifts', 'Release all remaining shifts']) {
+      expect(screen.getByRole('radio', { name: new RegExp(name) })).toBeDisabled()
+      // The DS Radio dims its label only from its own prop, not from the disabled fieldset.
+      expect(screen.getByText(name)).toHaveClass('opacity-50')
+    }
+    expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeDisabled()
+  })
+
   it('shows the retained and released split for work agreed shifts', async () => {
     const user = userEvent.setup()
     renderActions()

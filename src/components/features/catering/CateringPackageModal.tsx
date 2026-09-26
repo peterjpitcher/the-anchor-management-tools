@@ -8,12 +8,13 @@ import {
     Checkbox,
     ConfirmDialog,
     Field,
+    Fieldset,
     FormFooter,
     Icon,
     Input,
     Modal,
-    Section,
     Select,
+    SubHeading,
     Textarea,
 } from '@/ds'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
@@ -271,7 +272,7 @@ export function CateringPackageModal({
                     </div>
                 </div>
 
-                <Section title="Compliance">
+                <Fieldset legend="Compliance">
                     <div className="space-y-4">
                     <Checkbox
                         name="requires_waiver"
@@ -294,10 +295,11 @@ export function CateringPackageModal({
                         defaultChecked={packageToEdit?.seasonal ?? false}
                     />
                     </div>
-                </Section>
+                </Fieldset>
 
-                <Section title="Package Details">
-                    <div className="space-y-4">
+                {/* The dialog title is the h2, so this part of the form is an h3. */}
+                <div className="space-y-4">
+                    <SubHeading as="h3">Package Details</SubHeading>
                     <Field label="Summary" hint="One-line overview shown to staff">
                         <Textarea
                             name="summary"
@@ -321,7 +323,7 @@ export function CateringPackageModal({
                             name="served"
                             defaultValue={packageToEdit?.served || ''}
                             rows={2}
-                            placeholder="e.g. Buffet-style — guests help themselves."
+                            placeholder="e.g. Buffet-style: guests help themselves."
                         />
                     </Field>
 
@@ -339,7 +341,7 @@ export function CateringPackageModal({
                             name="guest_description"
                             defaultValue={packageToEdit?.guest_description || ''}
                             rows={3}
-                            placeholder="e.g. Enjoy a delicious spread of BBQ classics including burgers, chicken, sausages and fresh salads — all laid out for guests to help themselves."
+                            placeholder="e.g. Enjoy a delicious spread of BBQ classics including burgers, chicken, sausages and fresh salads, all laid out for guests to help themselves."
                         />
                     </Field>
 
@@ -351,8 +353,7 @@ export function CateringPackageModal({
                             placeholder="e.g. Contains gluten, dairy. Vegan option available on request."
                         />
                     </Field>
-                    </div>
-                </Section>
+                </div>
 
                 <FormFooter
                     start={

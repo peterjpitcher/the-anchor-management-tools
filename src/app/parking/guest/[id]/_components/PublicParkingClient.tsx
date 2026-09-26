@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import type { IconName } from '@/ds/icons'
 import {
   DetailGrid,
@@ -165,7 +165,7 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
         </div>
       </GuestCard>
 
-      <div className={clsx(GUEST_SUNK_BOX_CLASS, 'flex flex-col gap-3')}>
+      <div className={cn(GUEST_SUNK_BOX_CLASS, 'flex flex-col gap-3')}>
         {ASSURANCES.map(({ icon, title, sub }) => (
           <div key={title} className="flex items-start gap-2.5">
             <GuestStatusMark tone="brand" icon={icon} size="sm" />

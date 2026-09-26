@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 
 type DetailRowProps = {
   label: React.ReactNode
@@ -26,7 +26,7 @@ export function DetailRow({ label, value, emphasis = 'default' }: DetailRowProps
     <div className="flex items-baseline justify-between gap-4 border-t border-guest-border py-2.5">
       <span className="font-anchor-body text-guest-small text-guest-text-muted">{label}</span>
       <span
-        className={clsx(
+        className={cn(
           'text-right font-anchor-body text-guest-body font-semibold leading-guest-snug',
           VALUE_TONE_CLASS[emphasis]
         )}

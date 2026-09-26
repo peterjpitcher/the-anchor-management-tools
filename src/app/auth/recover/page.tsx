@@ -22,7 +22,7 @@ export default function RecoverPage() {
         <div className="text-center">
           <AuthLink href="/auth/login">
             <Icon name="arrowLeft" size={14} />
-            Back to Login
+            Back to Sign In
           </AuthLink>
         </div>
       </div>

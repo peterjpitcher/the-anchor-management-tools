@@ -4,7 +4,7 @@ import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
 import { checkUserPermission } from '@/app/actions/rbac'
 import DashboardClient from './_components/DashboardClient'
-import { EVENT_FILL_BADGE, eventFillStatus } from './_shared/status-ui'
+import { EVENT_FILL_BADGE, attentionCountTone, eventFillStatus } from './_shared/status-ui'
 
 const LONDON_TIMEZONE = 'Europe/London'
 
@@ -207,17 +207,18 @@ export default async function DashboardPage() {
   }
 
   // --- Mini Metrics ---
-  // Shown as DS Stats. The old tiles carried an always-empty sparkline, and its amber colour for
-  // a non-zero SMS failure or unread count was the only thing the tone changed; "Action
-  // Required" above still flags both.
+  // Shown as DS Stats. A non-zero SMS failure or unread count is amber, as the old tiles'
+  // sparkline was; "Action Required" above flags both too.
   const miniMetrics = [
     {
       label: 'SMS failures (24h)',
       value: snapshot.systemHealth.permitted ? String(snapshot.systemHealth.smsFailures24h) : '--',
+      tone: snapshot.systemHealth.permitted ? attentionCountTone(snapshot.systemHealth.smsFailures24h) : undefined,
     },
     {
       label: 'Unread messages',
       value: snapshot.messages.permitted ? String(snapshot.messages.unread) : '--',
+      tone: snapshot.messages.permitted ? attentionCountTone(snapshot.messages.unread) : undefined,
     },
     {
       label: 'Active private bookings',

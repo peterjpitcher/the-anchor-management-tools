@@ -6,6 +6,7 @@ import {
   CardHeader,
   Empty,
   Select,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -181,7 +182,7 @@ export function ReceiptList({
                 style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-bold">{group.vendorName}</p>
+                  <SubHeading className="font-bold text-on-dark">{group.vendorName}</SubHeading>
                   <span className="text-xs font-bold">Total {formatCurrency(group.totalAmount)}</span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-on-dark-muted">
@@ -312,9 +313,7 @@ export function ReceiptList({
 /**
  * The server sorts every matching transaction and the order lives in the address, so DataTable
  * (which sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is
- * used. That header only listens for clicks on the cell, which a keyboard cannot reach, so the raw
- * button inside gives it a tab stop; its click bubbles to the cell, so a press sorts once. A DS
- * Button would add its own height and padding to the header row.
+ * used, and the caller picks the next direction.
  */
 function SortHeader({
   column,
@@ -340,13 +339,7 @@ function SortHeader({
       onSort={() => onSort(column)}
       className={isActive ? 'text-primary' : undefined}
     >
-      <button
-        type="button"
-        aria-label={`Sort by ${label}`}
-        className="rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-      >
-        {label}
-      </button>
+      {label}
     </TableHead>
   )
 }

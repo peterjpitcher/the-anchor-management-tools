@@ -127,6 +127,19 @@ describe('marketing campaign list page', () => {
     }))
   })
 
+  it('points only someone who can open Settings at the Settings tab when sending is off', async () => {
+    vi.mocked(getMarketingSettings).mockResolvedValue({ data: { sendsEnabled: false } } as Awaited<ReturnType<typeof getMarketingSettings>>)
+    await renderPage()
+    expect(screen.getByRole('alert')).toHaveTextContent('Turn sending back on in the Settings tab')
+
+    cleanup()
+    // The Settings tab is hidden without marketing:manage, so the warning must not send them there.
+    vi.mocked(checkUserPermission).mockImplementation(async (_module, action) => action !== 'manage')
+    await renderPage()
+    expect(screen.getByRole('alert')).toHaveTextContent('Someone who manages marketing settings can turn it back on.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Settings tab')
+  })
+
   it('stops unauthorised requests before loading campaigns', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
     await expect(renderPage()).rejects.toThrow('Redirect: /unauthorized')

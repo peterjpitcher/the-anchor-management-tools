@@ -6,7 +6,13 @@ import { format } from 'date-fns'
 import { Card, CardHeader, CardBody, PageLayout, StatGrid, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
 import { Alert, Stat, Badge, Empty, ProgressBar, Select, Input } from '@/ds'
 import { cashingUpLayout } from '../../_shared/nav'
-import { cashVarianceTextClass, targetPerformanceRowClass, targetPerformanceTone, weeklyProgressTone } from '../../_shared/status-ui'
+import {
+  cashVarianceTextClass,
+  signedAmountTone,
+  targetPerformanceRowClass,
+  targetPerformanceTone,
+  weeklyProgressTone,
+} from '../../_shared/status-ui'
 
 interface DashboardData {
   kpis: {
@@ -172,6 +178,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
         <Stat
           label="Total Variance"
           value={`£${fmt(kpis.totalVariance)}`}
+          tone={signedAmountTone(kpis.totalVariance)}
           delta={comp ? pctChange(kpis.totalVariance, comp.totalVariance) : undefined}
           hint={comp ? `vs £${fmt(comp.totalVariance)} (${compareYear})` : undefined}
         />

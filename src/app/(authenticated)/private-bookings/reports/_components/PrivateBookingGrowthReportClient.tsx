@@ -2,22 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ComposedChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
   Badge,
+  BarChart,
   Button,
   Card,
   CardBody,
   CardHeader,
+  ComboChart,
   Empty,
   Segmented,
   Select,
@@ -75,25 +66,6 @@ function utcDate(value: string): Date {
 function formatSignedChange(value: number): string {
   if (value === 0) return 'No change'
   return `${value > 0 ? '+' : ''}${numberFormatter.format(value)}`
-}
-
-function TrendTooltip({ active, payload, label }: {
-  active?: boolean
-  payload?: Array<{ dataKey: string; value: number; color: string }>
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="min-w-[150px] rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-lg">
-      <p className="mb-1 font-semibold text-text-strong">{label}</p>
-      {payload.map((item) => (
-        <p key={item.dataKey} className="flex items-center justify-between gap-4 text-text-muted">
-          <span>{item.dataKey === 'bookings' ? 'Bookings' : 'Running total'}</span>
-          <span className="font-semibold text-text-strong">{numberFormatter.format(item.value)}</span>
-        </p>
-      ))}
-    </div>
-  )
 }
 
 export default function PrivateBookingGrowthReportClient({ snapshot }: {
@@ -184,13 +156,12 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
 
       {/* Filters, directly above the figures they filter */}
       <div className="flex flex-wrap items-end gap-3">
-        <div role="group" aria-label="Reporting period">
-          <Segmented
-            options={RANGE_OPTIONS}
-            value={range}
-            onChange={(id) => setRange(id as PrivateBookingGrowthRange)}
-          />
-        </div>
+        <Segmented
+          aria-label="Reporting period"
+          options={RANGE_OPTIONS}
+          value={range}
+          onChange={(id) => setRange(id as PrivateBookingGrowthRange)}
+        />
         <div className="w-full sm:w-64">
           <Select
             label="Occasion"
@@ -242,60 +213,33 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
           title="Bookings and Running Total"
           subtitle="Bars show events in each period. The line shows the accumulated booking record."
           action={
-            <div role="group" aria-label="Chart interval">
-              <Segmented
-                size="sm"
-                options={GRANULARITY_OPTIONS}
-                value={granularity}
-                onChange={(id) => setGranularity(id as Granularity)}
-              />
-            </div>
+            <Segmented
+              aria-label="Chart interval"
+              size="sm"
+              options={GRANULARITY_OPTIONS}
+              value={granularity}
+              onChange={(id) => setGranularity(id as Granularity)}
+            />
           }
         />
         <CardBody>
           {filteredRecords.length === 0 ? (
             <Empty size="sm" icon="chart" title="No bookings match these filters" />
           ) : (
-            <div className="h-[360px] min-w-0 w-full" role="img" aria-label="Private bookings and running total over time">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trendSeries} margin={{ top: 8, right: 12, bottom: 8, left: 0 }}>
-                  <defs>
-                    <linearGradient id="privateBookingGrowthFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-chart-3)" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="var(--color-chart-3)" stopOpacity={0.04} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 5" />
-                  <XAxis
-                    dataKey="period"
-                    axisLine={false}
-                    tickLine={false}
-                    minTickGap={granularity === 'month' ? 32 : 8}
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                  />
-                  <YAxis
-                    yAxisId="period"
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    width={30}
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                  />
-                  <YAxis
-                    yAxisId="total"
-                    orientation="right"
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    width={34}
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                  />
-                  <Tooltip content={<TrendTooltip />} cursor={{ fill: 'var(--color-surface-hover)' }} />
-                  <Bar yAxisId="period" dataKey="bookings" fill="var(--color-primary)" radius={[4, 4, 1, 1]} maxBarSize={42} isAnimationActive={false} />
-                  <Area yAxisId="total" type="monotone" dataKey="cumulative" stroke="var(--color-chart-3)" strokeWidth={2.5} fill="url(#privateBookingGrowthFill)" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+            <ComboChart
+              data={trendSeries}
+              xKey="period"
+              height={360}
+              xMinTickGap={granularity === 'month' ? 32 : 8}
+              leftAxis={{ allowDecimals: false }}
+              rightAxis={{ allowDecimals: false }}
+              maxBarSize={42}
+              series={[
+                { key: 'bookings', label: 'Bookings', color: 'var(--color-chart-1)' },
+                { key: 'cumulative', label: 'Running total', type: 'area', axis: 'right', color: 'var(--color-chart-3)' },
+              ]}
+              ariaLabel="Private bookings and running total over time"
+            />
           )}
         </CardBody>
       </Card>
@@ -307,17 +251,15 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
             {occasionMix.length === 0 ? (
               <Empty size="sm" icon="chart" title="No occasion data for this selection" />
             ) : (
-              <div className="h-[340px] min-w-0" role="img" aria-label="Private bookings by occasion category">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={occasionMix} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 12 }}>
-                    <CartesianGrid horizontal={false} stroke="var(--color-border)" strokeDasharray="3 5" />
-                    <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
-                    <YAxis type="category" dataKey="category" width={142} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
-                    <Tooltip formatter={(value) => [numberFormatter.format(Number(value)), 'Bookings']} cursor={{ fill: 'var(--color-surface-hover)' }} />
-                    <Bar dataKey="bookings" fill="var(--color-chart-3)" radius={[0, 4, 4, 0]} maxBarSize={28} isAnimationActive={false} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <BarChart
+                data={occasionMix.map((row) => ({ label: row.category, value: row.bookings }))}
+                horizontal
+                height={340}
+                color="var(--color-chart-3)"
+                seriesLabel="Bookings"
+                maxBarSize={28}
+                ariaLabel="Private bookings by occasion category"
+              />
             )}
           </CardBody>
         </Card>
@@ -325,17 +267,16 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
         <Card className="min-w-0">
           <CardHeader title="When Bookings Happen" subtitle="Month of the event across the selected years." />
           <CardBody>
-            <div className="h-[340px] min-w-0" role="img" aria-label="Private bookings by month of year">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={seasonality} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-                  <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 5" />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} width={28} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
-                  <Tooltip formatter={(value) => [numberFormatter.format(Number(value)), 'Bookings']} cursor={{ fill: 'var(--color-surface-hover)' }} />
-                  <Bar dataKey="bookings" fill="var(--color-primary)" radius={[4, 4, 1, 1]} maxBarSize={34} isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ComboChart
+              data={seasonality}
+              xKey="month"
+              height={340}
+              xInterval={0}
+              leftAxis={{ allowDecimals: false }}
+              maxBarSize={34}
+              series={[{ key: 'bookings', label: 'Bookings', color: 'var(--color-chart-1)' }]}
+              ariaLabel="Private bookings by month of year"
+            />
           </CardBody>
         </Card>
       </div>

@@ -7,8 +7,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/mileage/insights',
 }))
 vi.mock('@/app/actions/mileage', () => ({ getMileageInsights: vi.fn() }))
-// The chart draws nothing this test needs, so it is kept out of jsdom.
-vi.mock('@/components/charts/BarChart', () => ({ BarChart: () => null }))
 
 import { MileageInsightsClient } from '@/app/(authenticated)/mileage/insights/_components/MileageInsightsClient'
 

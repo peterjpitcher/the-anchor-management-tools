@@ -17,18 +17,12 @@ import {
   Input,
   PageLayout,
   Select,
+  SubHeading,
   Textarea,
 } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { PB_BACK_TO_LIST, PB_SETTINGS_NAV } from '../../_shared/nav'
+import { PB_BACK_TO_LIST, PB_SETTINGS_TITLE, privateBookingSettingsNav } from '../../_shared/nav'
 import { PREFERRED_VENDOR_TONE, settingsActiveLabel, settingsActiveTone } from '../../_shared/status-ui'
-
-const layoutProps = {
-  title: 'Vendor Database',
-  subtitle: 'Manage preferred vendors and service providers',
-  backButton: PB_BACK_TO_LIST,
-  navItems: PB_SETTINGS_NAV,
-}
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -118,6 +112,13 @@ export default async function VendorsPage({
 
   if (!canManageVendors) {
     redirect('/unauthorized')
+  }
+
+  const layoutProps = {
+    title: PB_SETTINGS_TITLE,
+    subtitle: 'Preferred vendors and service providers',
+    backButton: PB_BACK_TO_LIST,
+    navItems: privateBookingSettingsNav(actions),
   }
 
   const vendorsResult = await getVendorsForManagement()
@@ -302,7 +303,7 @@ export default async function VendorsPage({
                 return (
                   <div key={vendor.id} className="space-y-4 p-pad-card">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-text-strong">{vendor.name}</p>
+                      <SubHeading>{vendor.name}</SubHeading>
                       {vendor.preferred && (
                         <Badge tone={PREFERRED_VENDOR_TONE} icon={<Icon name="star" size={12} />}>
                           Preferred

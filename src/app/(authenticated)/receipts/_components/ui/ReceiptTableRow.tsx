@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition, useRef, ChangeEvent } from 'react'
-import { Badge, Button, ConfirmDialog, IconButton, Input, Select, toast, Icon } from '@/ds'
+import { useState, useTransition, useRef } from 'react'
+import { Badge, Button, ConfirmDialog, FileButton, IconButton, Input, Select, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -81,7 +81,6 @@ export function ReceiptTableRow({
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const noteInputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleStatusUpdate(status: ReceiptTransaction['status']) {
     if (!canManageReceipts) return
@@ -120,10 +119,9 @@ export function ReceiptTableRow({
     })
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleUpload(files: File[]) {
     if (!canManageReceipts) return
-    const file = event.target.files?.[0]
-    event.target.value = ''
+    const file = files[0]
     if (!file) return
 
     startTransition(async () => {
@@ -443,17 +441,15 @@ export function ReceiptTableRow({
         {/* Default IconButton size (31px square), not sm (25px): this table is used on an iPad,
             and the buttons these replaced were 36px wide, so sm would shrink every target. */}
         <div className="flex flex-row items-center gap-1">
-          <IconButton
+          {/* FileButton, not the FileUpload drop zone, which is too big for a table row. */}
+          <FileButton
             variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
+            accept={RECEIPT_UPLOAD_ACCEPT}
+            onFiles={handleUpload}
             disabled={isPending || !canManageReceipts}
-            title="Upload receipt"
-            label="Upload receipt"
+            aria-label="Upload receipt"
             icon={<Icon name="upload" size={16} />}
           />
-          {/* Hidden picker behind the Upload receipt button: the DS FileUpload is a drop zone, too big
-              for a table row. */}
-          <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
           {transaction.status !== 'completed' && (
             <IconButton

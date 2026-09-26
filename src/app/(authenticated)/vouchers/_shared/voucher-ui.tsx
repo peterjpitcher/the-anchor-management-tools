@@ -84,6 +84,14 @@ export const REMINDER_STATUS_TONES: Record<ReminderStatus, BadgeTone> = {
   cancelled: 'neutral',
 }
 
+/**
+ * The overview's "Expiring within 14 days" figure: amber while any issued voucher is about to
+ * lapse, plain at zero.
+ */
+export function voucherExpiringSoonTone(count: number): 'warning' | 'default' {
+  return count > 0 ? 'warning' : 'default'
+}
+
 export function formatPence(pence: number | null | undefined): string {
   if (pence === null || pence === undefined) return ''
   const pounds = pence / 100

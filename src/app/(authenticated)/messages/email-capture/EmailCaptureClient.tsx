@@ -22,6 +22,7 @@ import {
   ConfirmDialog,
   Empty,
   FormFooter,
+  SubHeading,
   toast,
 } from '@/ds'
 import {
@@ -159,9 +160,7 @@ export default function EmailCaptureClient() {
 
               {preview.sampleMessages.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-text">
-                    Exactly what they will receive
-                  </p>
+                  <SubHeading>Exactly What They Will Receive</SubHeading>
                   {preview.sampleMessages.map((message, index) => (
                     <pre
                       key={index}
@@ -200,7 +199,8 @@ export default function EmailCaptureClient() {
         onConfirm={handleSend}
         title={`Text ${preview?.thisRunCount ?? 0} Guests?`}
         message="This sends real text messages and cannot be undone. Each guest is asked only once, so there is no way to re-send to them later."
-        confirmText="Send Now"
+        confirmLabel="Send Now"
+        tone="primary"
       />
     </PageLayout>
   )

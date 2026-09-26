@@ -54,7 +54,7 @@ const SETTINGS_TILE_GROUPS: SettingsTileGroupEntry[] = [
     tiles: [
       { href: '/settings/rota', title: 'Rota Settings', description: 'Holiday year, default allowance, and notification email addresses', icon: 'briefcase', requires: 'settingsManage' },
       { href: '/settings/pay-bands', title: 'Pay Bands', description: 'Age bands, rates, and overrides', icon: 'pound', requires: 'settingsManage' },
-      { href: '/settings/budgets', title: 'Budgets', description: 'Set annual hours budgets per department for rota planning', icon: 'barChart', requires: 'settingsManage' },
+      { href: '/settings/budgets', title: 'Department Budgets', description: 'Set annual hours budgets per department for rota planning', icon: 'barChart', requires: 'settingsManage' },
       { href: '/settings/categories', title: 'Attachment Categories', description: 'Manage categories for employee file attachments', icon: 'paperclip', requires: 'settingsManage' },
     ],
   },
@@ -88,7 +88,7 @@ const SETTINGS_TILE_GROUPS: SettingsTileGroupEntry[] = [
       { href: '/settings/api-keys', title: 'API Keys', description: 'External API access and revocation', icon: 'link', requires: 'settingsView' },
       { href: '/settings/audit-logs', title: 'Audit Logs', description: 'View system audit logs for security and compliance', icon: 'clipboardList', requires: 'settingsManage' },
       { href: '/settings/background-jobs', title: 'Background Jobs', description: 'Monitor and manage background job processing', icon: 'refresh', requires: 'settingsManage' },
-      { href: '/settings/gdpr', title: 'GDPR', description: 'Data export and deletion tools', icon: 'eyeOff', requires: 'settingsManage' },
+      { href: '/settings/gdpr', title: 'GDPR & Privacy', description: 'Data export and deletion tools', icon: 'eyeOff', requires: 'settingsManage' },
       // Super-admin only: the maintenance tracker has no RBAC module on purpose.
       { href: '/settings/maintenance', title: 'Maintenance Areas', description: 'Parts of the pub a maintenance item can belong to', icon: 'alertTriangle', requires: 'maintenanceAreas' },
     ],

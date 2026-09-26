@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { PageLayout, Icon } from '@/ds'
-import { Card, CardBody, CardHeader, FormFooter } from '@/ds'
+import { Card, CardBody, CardHeader, Fieldset, FormFooter } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
@@ -514,10 +514,9 @@ export default function BulkMessagesClient({
       <Card>
         <CardHeader title="Compose Message" />
         <CardBody className="space-y-4">
-          {/* Personalisation variables */}
-          <div>
-            <span className="text-sm text-text-muted mr-2">Insert variable:</span>
-            <div className="inline-flex gap-2 flex-wrap">
+          {/* Personalisation variables: one question ("which variable?"), so one Fieldset. */}
+          <Fieldset legend="Insert Variable">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 size="xs"
@@ -533,7 +532,7 @@ export default function BulkMessagesClient({
                 {'{{last_name}}'}
               </Button>
             </div>
-          </div>
+          </Fieldset>
 
           <div>
             {/* Message textarea */}
@@ -605,19 +604,21 @@ export default function BulkMessagesClient({
         onConfirm={handleSend}
         title="Send Bulk SMS"
         message={
-          <>
-            Are you sure you want to send this message to{' '}
-            <strong>{selectedKeys.size}</strong> recipient
-            {selectedKeys.size !== 1 ? 's' : ''}?
+          <div className="space-y-2">
+            <p>
+              Are you sure you want to send this message to{' '}
+              <strong>{selectedKeys.size}</strong> recipient
+              {selectedKeys.size !== 1 ? 's' : ''}?
+            </p>
             {quietHoursEval.inQuietHours && (
-              <span className="block mt-2 text-warning-fg">
+              <p className="text-warning-fg">
                 Note: Messages will be queued until quiet hours end.
-              </span>
+              </p>
             )}
-          </>
+          </div>
         }
-        type="info"
-        confirmText="Send Messages"
+        tone="primary"
+        confirmLabel="Send Messages"
         loadingText="Sending..."
       />
     </PageLayout>

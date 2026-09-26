@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 // Imported file by file rather than through the `guest` barrel, which would pull
 // the guest webfont module into this client bundle. GuestShell stays on the server page.
 import { GuestAlert } from '@/components/features/guest/GuestAlert'
@@ -184,7 +184,7 @@ export default function LegacyLinkClient({
         </GuestCard>
       )}
 
-      <p className={clsx('text-center', GUEST_MUTED_CLASS)}>
+      <p className={cn('text-center', GUEST_MUTED_CLASS)}>
         Nothing is broken. Old links keep working while we swap them over.
       </p>
     </>

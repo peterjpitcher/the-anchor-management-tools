@@ -6,7 +6,7 @@ import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { getDepartments } from '@/app/actions/budgets';
 import ShiftTemplatesManager from './ShiftTemplatesManager';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
-import { rotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,16 +15,17 @@ export default async function ShiftTemplatesPage() {
   if (!canView) redirect('/');
 
   const canEdit = await checkUserPermission('rota', 'edit');
-  const [result, employeesResult, deptResult] = await Promise.all([
+  const [result, employeesResult, deptResult, navItems] = await Promise.all([
     getShiftTemplates(),
     getActiveEmployeesForRota(),
     getDepartments(),
+    getRotaNavItems(),
   ]);
   const templates = result.success ? result.data : [];
   const layout = {
-    title: 'Shift Templates',
-    subtitle: 'Create reusable shift blocks for the rota palette',
-    navItems: rotaNavItems,
+    title: 'Rota',
+    subtitle: 'Shift templates: reusable shift blocks for the rota palette',
+    navItems,
   };
 
   // A failed load shows the error under the same header, never an empty list.

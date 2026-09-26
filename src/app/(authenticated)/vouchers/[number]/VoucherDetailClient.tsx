@@ -18,9 +18,9 @@ import {
   Alert,
   Badge,
   PageLayout,
+  SubHeading,
   toast,
 } from '@/ds'
-import type { HeaderNavItem } from '@/ds'
 import { formatDateInLondon, formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 import {
   redeemVoucher,
@@ -54,7 +54,6 @@ import {
 export interface VoucherDetailLayout {
   title: string
   subtitle?: string
-  navItems: HeaderNavItem[]
   backButton: { label: string; href: string }
 }
 
@@ -399,7 +398,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
 
           {detail.reminders.length > 0 && (
             <div>
-              <div className="text-sm font-medium text-text mb-2">Reminders</div>
+              <SubHeading className="mb-2">Reminders</SubHeading>
               <ul className="space-y-1 text-sm">
                 {detail.reminders.map((reminder) => (
                   <li key={reminder.id} className="flex flex-wrap items-center gap-2">
@@ -926,7 +925,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         title="Remove the Customer?"
         message="Pending SMS reminders for this voucher will be cancelled."
         confirmLabel="Remove Customer"
-        tone="warning"
+        tone="primary"
       />
 
       <ConfirmDialog
@@ -939,7 +938,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         title="Reprint an Issued Card?"
         message="Reprinting an issued card is only allowed when the original is destroyed or unusable."
         confirmLabel="Original Destroyed or Unusable, Reprint"
-        tone="warning"
+        tone="primary"
       />
     </PageLayout>
   )

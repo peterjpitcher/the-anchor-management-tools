@@ -4,7 +4,6 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { getVoucherSummary } from '@/app/actions/vouchers'
 import {
   PageLayout,
-  LinkButton,
   Card,
   CardHeader,
   Alert,
@@ -21,7 +20,7 @@ import {
 } from '@/ds'
 import { getLocalIsoDateDaysAgo, formatDateInLondon } from '@/lib/dateUtils'
 import type { VoucherAgeBucket } from '@/types/vouchers'
-import { formatPence, ledgerHref } from './_shared/voucher-ui'
+import { formatPence, ledgerHref, voucherExpiringSoonTone } from './_shared/voucher-ui'
 import { VOUCHERS_NAV } from './_shared/nav'
 
 export const dynamic = 'force-dynamic'
@@ -65,20 +64,11 @@ export default async function VouchersOverviewPage() {
 
   const summaryResult = await getVoucherSummary()
 
+  // Hand-Out Mode and Generate are tabs in the row above, so the header repeats neither.
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'Prize voucher stock, hand-outs and redemptions',
+    subtitle: 'Overview of prize voucher stock, hand-outs and redemptions',
     navItems: VOUCHERS_NAV,
-    headerActions: (
-      <>
-        <LinkButton href="/vouchers/handout" variant="secondary" size="sm">
-          Hand-Out Mode
-        </LinkButton>
-        <LinkButton href="/vouchers/generate" variant="primary" size="sm">
-          Generate Vouchers
-        </LinkButton>
-      </>
-    ),
   }
 
   if (summaryResult.error || !summaryResult.data) {
@@ -260,7 +250,7 @@ export default async function VouchersOverviewPage() {
         title="Outstanding by Age"
         description="Completed London days since hand-out, alongside expiry"
       >
-        <StatGrid columns={4}>
+        <StatGrid columns={5}>
           {summary.ageBuckets.map((bucket) => (
             <Link key={bucket.bucket} href={ageBucketHref(bucket.bucket)} className={STAT_LINK_CLASS}>
               <Stat label={AGE_BUCKET_LABELS[bucket.bucket]} value={bucket.count} />
@@ -270,7 +260,11 @@ export default async function VouchersOverviewPage() {
             href={ledgerHref({ status: 'issued', expiringWithinDays: 14 })}
             className={STAT_LINK_CLASS}
           >
-            <Stat label="Expiring within 14 days" value={summary.expiringSoon} />
+            <Stat
+              label="Expiring within 14 days"
+              value={summary.expiringSoon}
+              tone={voucherExpiringSoonTone(summary.expiringSoon)}
+            />
           </Link>
         </StatGrid>
       </Section>

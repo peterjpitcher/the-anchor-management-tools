@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
-import { Card, CardBody, CardHeader, Button, FormFooter, Input, Select, Alert, Badge, toast } from '@/ds'
+import { Card, CardBody, CardHeader, Button, Fieldset, FormFooter, Input, Select, Alert, Badge, toast } from '@/ds'
 import { EXPIRY_PRESET_DAYS, LOOKUP_MIN_CHARS } from '@/lib/vouchers/constants'
 import { normaliseVoucherNumberInput } from '@/lib/vouchers/numbering'
 import {
@@ -25,10 +24,6 @@ import {
   formatTime12Hour,
 } from '@/lib/dateUtils'
 import { newIdempotencyKey, VoucherStatusBadge } from '../_shared/voucher-ui'
-
-// A caption for a group of toggle buttons, in the DS field-label style. The group points at it
-// with aria-labelledby, because a <label> can only name a single control.
-const GROUP_CAPTION = 'mb-2 block text-xs font-medium uppercase tracking-wider text-text-muted'
 
 const STORAGE_KEY = 'ams-voucher-handout-v1'
 const DEFAULT_EXPIRY_DAYS = EXPIRY_PRESET_DAYS[0]
@@ -308,11 +303,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
       <Card>
         <CardHeader title="Session Context" subtitle="Applies to every card until you change it" />
         <CardBody className="space-y-4">
-          <div>
-            <span id="handout-won-at" className={GROUP_CAPTION}>
-              Won at
-            </span>
-            <div className="flex flex-wrap gap-2" role="group" aria-labelledby="handout-won-at">
+          <Fieldset legend="Won at">
+            <div className="flex flex-wrap gap-2">
               {context.events.map((event) => (
                 <Button
                   key={event.id}
@@ -332,16 +324,14 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 </span>
               )}
             </div>
-            <div className="mt-2">
-              <Input
-                aria-label="Won at (free text)"
-                placeholder={selectedEvent ? `Using event: ${selectedEvent.name}` : 'For example: Sunday quiz raffle'}
-                value={freeTextLabel}
-                onChange={(event) => setFreeTextLabel(event.target.value)}
-                maxLength={200}
-              />
-            </div>
-          </div>
+            <Input
+              aria-label="Won at (free text)"
+              placeholder={selectedEvent ? `Using event: ${selectedEvent.name}` : 'For example: Sunday quiz raffle'}
+              value={freeTextLabel}
+              onChange={(event) => setFreeTextLabel(event.target.value)}
+              maxLength={200}
+            />
+          </Fieldset>
 
           <Select
             label="Handed out by"
@@ -354,11 +344,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
             }))}
           />
 
-          <div>
-            <span id="handout-expiry" className={GROUP_CAPTION}>
-              Expiry (required)
-            </span>
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="handout-expiry">
+          <Fieldset legend="Expiry" required>
+            <div className="flex flex-wrap items-center gap-2">
               {presetDates.map((preset) => (
                 <Button
                   key={preset.days}
@@ -385,11 +372,11 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
               <Alert
                 tone="success"
                 role="status"
-                className="mt-3"
+                className="mt-1.5"
                 title={`Write this date on every card: ${expiryLong}`}
               />
             )}
-          </div>
+          </Fieldset>
         </CardBody>
       </Card>
 
@@ -472,10 +459,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 </div>
               </Card>
 
-              <div>
-                <span id="handout-customer" className={GROUP_CAPTION}>
-                  Customer (optional, for SMS reminders)
-                </span>
+              <Fieldset legend="Customer (optional, for SMS reminders)">
                 {customer ? (
                   <div className="flex items-center gap-2">
                     <Badge tone="primary">{customer.name}</Badge>
@@ -484,7 +468,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2" role="group" aria-labelledby="handout-customer">
+                  <div className="space-y-2">
                     {bookers.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {bookers.map((booker) => (
@@ -591,7 +575,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                     )}
                   </div>
                 )}
-              </div>
+              </Fieldset>
 
               {errorMessage && (
                 <Alert tone="danger" title="Not recorded">
@@ -624,14 +608,10 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
         </CardBody>
       </Card>
 
-      <div className="flex items-center justify-between text-sm text-text-muted">
-        <span aria-live="polite">
-          Handed out this session: <span className="font-semibold text-text">{counter}</span>
-        </span>
-        <Link href="/vouchers/all" className="underline underline-offset-2">
-          View the ledger
-        </Link>
-      </div>
+      {/* The ledger is the All Vouchers tab above, so no link to it here. */}
+      <p className="text-sm text-text-muted" aria-live="polite">
+        Handed out this session: <span className="font-semibold text-text">{counter}</span>
+      </p>
     </div>
   )
 }

@@ -13,6 +13,7 @@ import {
   Textarea,
   ConfirmDialog,
   Checkbox,
+  Fieldset,
   Table,
   TableHeader,
   TableBody,
@@ -333,41 +334,45 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
           </div>
 
           {/* Status and type toggles: a pressed button is an active filter. */}
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-            {ALL_STATUSES.map((status) => {
-              const active = Boolean(filters.status?.includes(status))
-              return (
-                <Button
-                  key={status}
-                  type="button"
-                  size="sm"
-                  variant={active ? 'primary' : 'secondary'}
-                  aria-pressed={active}
-                  onClick={() => toggleStatus(status)}
-                >
-                  {VOUCHER_STATUS_LABELS[status]}
-                </Button>
-              )
-            })}
-          </div>
+          <Fieldset legend="Status">
+            <div className="flex flex-wrap gap-2">
+              {ALL_STATUSES.map((status) => {
+                const active = Boolean(filters.status?.includes(status))
+                return (
+                  <Button
+                    key={status}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'primary' : 'secondary'}
+                    aria-pressed={active}
+                    onClick={() => toggleStatus(status)}
+                  >
+                    {VOUCHER_STATUS_LABELS[status]}
+                  </Button>
+                )
+              })}
+            </div>
+          </Fieldset>
 
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
-            {types.map((type) => {
-              const active = Boolean(filters.typeIds?.includes(type.id))
-              return (
-                <Button
-                  key={type.id}
-                  type="button"
-                  size="sm"
-                  variant={active ? 'primary' : 'secondary'}
-                  aria-pressed={active}
-                  onClick={() => toggleType(type.id)}
-                >
-                  {type.displayTitle}
-                </Button>
-              )
-            })}
-          </div>
+          <Fieldset legend="Type">
+            <div className="flex flex-wrap gap-2">
+              {types.map((type) => {
+                const active = Boolean(filters.typeIds?.includes(type.id))
+                return (
+                  <Button
+                    key={type.id}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'primary' : 'secondary'}
+                    aria-pressed={active}
+                    onClick={() => toggleType(type.id)}
+                  >
+                    {type.displayTitle}
+                  </Button>
+                )
+              })}
+            </div>
+          </Fieldset>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Select
@@ -598,7 +603,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
         title="Reprint Issued Cards?"
         message="Reprinting an issued card is only allowed when the original is destroyed or unusable. Confirm that applies to every issued card selected."
         confirmLabel="Original Destroyed or Unusable, Reprint"
-        tone="warning"
+        tone="primary"
       />
     </>
   )

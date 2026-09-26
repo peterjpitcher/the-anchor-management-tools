@@ -170,7 +170,7 @@ export default function QuotesClient({
       </StatGrid>
 
       {error && (
-        <Alert tone="danger" title="Error">
+        <Alert tone="danger" title="Could not load quotes">
           {error}
         </Alert>
       )}
@@ -188,6 +188,7 @@ export default function QuotesClient({
           value={searchTerm}
           onChange={setSearchTerm}
           placeholder="Search quotes..."
+          aria-label="Search quotes by number, client or reference"
           className="w-full sm:w-64"
         />
       </div>
@@ -271,7 +272,21 @@ export default function QuotesClient({
               {/* Mobile cards */}
               <div className="sm:hidden divide-y divide-border">
                 {filteredQuotes.map((q) => (
-                  <div key={q.id} className="p-4 cursor-pointer" onClick={() => router.push(`/quotes/${q.id}`)}>
+                  <div
+                    key={q.id}
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer p-pad-card transition-colors hover:bg-surface-hover"
+                    onClick={() => router.push(`/quotes/${q.id}`)}
+                    onKeyDown={(event) => {
+                      // Only the row itself: Enter on the Convert button inside must not open the quote.
+                      if (event.target !== event.currentTarget) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        router.push(`/quotes/${q.id}`)
+                      }
+                    }}
+                  >
                     <div className="flex justify-between items-start mb-3">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-text">{q.quote_number}</p>

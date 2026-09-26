@@ -29,9 +29,10 @@ interface ShiftDetailModalProps {
   onDeleted: (shiftId: string) => void;
 }
 
+// A shift date is a plain day: read as a UTC midnight and formatted in UTC, so it never moves.
 function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   });
 }
 
@@ -94,6 +95,7 @@ const FIELD_LABELS: Record<string, string> = {
   premium_end_time: 'Premium to',
 };
 
+/** A recorded moment (an audit entry, a decision), shown as London wall-clock time. */
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
     day: 'numeric',
@@ -101,6 +103,7 @@ function formatDateTime(iso: string): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Europe/London',
   });
 }
 
@@ -180,6 +183,8 @@ export default function ShiftDetailModal({
   const empName = employee
     ? displayName(employee, 'Unknown')
     : 'Unknown employee';
+  // An open shift has nobody on it yet, so the dialog is named for the shift itself.
+  const isUnassignedOpenShift = shift.is_open_shift && !employee;
 
   const paidH = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const premiumSummary = describePremium(shift);
@@ -267,7 +272,8 @@ export default function ShiftDetailModal({
     <Modal
       open
       onClose={onClose}
-      title={empName}
+      title={isUnassignedOpenShift ? 'Open Shift' : empName}
+      description={formatDate(shift.shift_date)}
       width="md"
       footer={
         editing ? (
@@ -315,7 +321,6 @@ export default function ShiftDetailModal({
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-text-muted">{formatDate(shift.shift_date)}</p>
         {!editing ? (
           /* Read view */
           <>
@@ -471,7 +476,9 @@ export default function ShiftDetailModal({
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
         title="Delete Shift?"
-        message={`Delete ${empName}'s shift on ${formatDate(shift.shift_date)}?`}
+        message={isUnassignedOpenShift
+          ? `Delete the open shift on ${formatDate(shift.shift_date)}?`
+          : `Delete ${empName}'s shift on ${formatDate(shift.shift_date)}?`}
         confirmLabel="Delete"
         tone="danger"
       />

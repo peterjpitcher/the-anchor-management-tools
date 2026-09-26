@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge, Empty } from '@/ds'
+import { Badge, Card, CardBody, CardHeader, Empty } from '@/ds'
 import { EventCard } from './EventCard'
 import type { Event } from '@/types/database'
 
@@ -32,18 +32,10 @@ export function EventBoardView({ events, onEventClick }: EventBoardViewProps) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
       {columns.map(({ stage, events: columnEvents }) => (
-        <div
-          key={stage}
-          className="flex-shrink-0 w-64 flex flex-col bg-surface-2 rounded-default border border-border"
-        >
-          {/* Column header */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-            <span className="text-sm font-semibold text-text-strong">{stage}</span>
-            <Badge tone="neutral">{columnEvents.length}</Badge>
-          </div>
-
-          {/* Column body */}
-          <div className="flex-1 p-2 flex flex-col gap-2 overflow-y-auto max-h-[600px]">
+        // One stage column: a sunk DS Card holding the stage's event tiles.
+        <Card key={stage} variant="secondary" className="flex w-64 shrink-0 flex-col">
+          <CardHeader title={stage} action={<Badge tone="neutral">{columnEvents.length}</Badge>} />
+          <CardBody className="flex max-h-[600px] flex-1 flex-col gap-2 overflow-y-auto p-2">
             {columnEvents.length === 0 ? (
               <Empty size="sm" title="No Events" description="No events in this stage" />
             ) : (
@@ -55,8 +47,8 @@ export function EventBoardView({ events, onEventClick }: EventBoardViewProps) {
                 />
               ))
             )}
-          </div>
-        </div>
+          </CardBody>
+        </Card>
       ))}
     </div>
   )

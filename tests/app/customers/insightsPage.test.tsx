@@ -17,8 +17,7 @@ vi.mock('@/lib/analytics/customer-insights', () => ({
   loadCustomerInsightsSnapshot: loadSnapshotMock,
   resolveCustomerInsightsWindow: () => '30d',
 }))
-// The canvas chart and the campaign form are not under test and need a browser or server actions.
-vi.mock('@/components/charts/BarChart', () => ({ BarChart: () => null }))
+// The campaign form is not under test and needs server actions.
 vi.mock('@/components/features/customers/WinBackCampaign', () => ({ WinBackCampaign: () => null }))
 
 import CustomersInsightsPage from '@/app/(authenticated)/customers/insights/page'
@@ -109,5 +108,16 @@ describe('CustomersInsightsPage, New Customers stat', () => {
     })
 
     expect(within(tile).getByText('0%')).toHaveClass('text-text-muted')
+  })
+})
+
+describe('CustomersInsightsPage, charts', () => {
+  it('draws the booking mix with the DS chart, named for screen readers', async () => {
+    loadSnapshotMock.mockResolvedValue(
+      buildSnapshot({ new_customers: 1, previous_new_customers: 1, new_customer_growth_percent: 0 })
+    )
+    render(await CustomersInsightsPage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByRole('figure', { name: 'Bookings in the window by booking type' })).toBeInTheDocument()
   })
 })

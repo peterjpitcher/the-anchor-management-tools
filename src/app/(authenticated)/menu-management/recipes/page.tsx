@@ -85,6 +85,37 @@ function mapApiRecipe(raw: Record<string, unknown>): RecipeListItem {
 }
 
 // ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+type RecipeRow = Record<string, unknown>;
+
+function asRecipe(row: RecipeRow): RecipeListItem {
+  return row as unknown as RecipeListItem;
+}
+
+function getRecipeRowKey(row: RecipeRow): string {
+  return asRecipe(row).id;
+}
+
+/**
+ * Column sorts the pipeline applies to the whole filtered list before it is cut into pages (the
+ * table is sorted under control, so a header click never sorts just the 25 rows on screen). Name
+ * and cost compare their own field; the counts and the status need their own rule.
+ */
+const RECIPE_SORT_FNS: Record<string, (a: RecipeRow, b: RecipeRow) => number> = {
+  portion_cost: (a, b) => asRecipe(a).portion_cost - asRecipe(b).portion_cost,
+  ingredients_count: (a, b) => asRecipe(a).ingredients.length - asRecipe(b).ingredients.length,
+  usage_count: (a, b) => asRecipe(a).usage.length - asRecipe(b).usage.length,
+  // Active recipes first.
+  status: (a, b) => {
+    const activeA = asRecipe(a).is_active;
+    const activeB = asRecipe(b).is_active;
+    return activeA === activeB ? 0 : activeA ? -1 : 1;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Filter definitions
 // ---------------------------------------------------------------------------
 
@@ -202,6 +233,7 @@ export default function MenuRecipesPage(): React.ReactElement {
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
     filterFn: recipeFilterFn,
+    sortFns: RECIPE_SORT_FNS,
   });
 
   // ---- Actions ----
@@ -257,11 +289,6 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Cost / portion',
         align: 'right' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.portion_cost - rb.portion_cost;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return <span className="font-semibold">£{Number(recipe.portion_cost ?? 0).toFixed(2)}</span>;
@@ -272,11 +299,6 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Ingredients',
         align: 'center' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.ingredients.length - rb.ingredients.length;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return <Badge tone="neutral">{recipe.ingredients.length}</Badge>;
@@ -287,11 +309,6 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Dishes',
         align: 'center' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.usage.length - rb.usage.length;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return <Badge tone="neutral">{recipe.usage.length}</Badge>;
@@ -301,11 +318,6 @@ export default function MenuRecipesPage(): React.ReactElement {
         key: 'status',
         header: 'Status',
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.is_active === rb.is_active ? 0 : ra.is_active ? -1 : 1;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return canManage ? (
@@ -394,6 +406,7 @@ export default function MenuRecipesPage(): React.ReactElement {
         searchValue={pipeline.searchQuery}
         onSearchChange={pipeline.setSearchQuery}
         searchPlaceholder="Search recipes..."
+        searchLabel="Search recipes"
         onClear={pipeline.clearFilters}
       />
 
@@ -414,7 +427,10 @@ export default function MenuRecipesPage(): React.ReactElement {
           <DataTable
             data={pipeline.pageData}
             columns={columns}
-            getRowKey={(row) => (row as unknown as RecipeListItem).id}
+            getRowKey={getRecipeRowKey}
+            sortKey={pipeline.sortKey || null}
+            sortDirection={pipeline.sortDirection}
+            onSortChange={pipeline.setSort}
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0

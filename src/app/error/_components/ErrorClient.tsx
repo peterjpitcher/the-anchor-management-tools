@@ -33,7 +33,7 @@ export default function ErrorClient({ title, message, code }: ErrorClientProps) 
           Try Again
         </Button>
         <LinkButton href="/dashboard" variant="secondary" size="lg" className="w-full">
-          Back to Dashboard
+          Go to Dashboard
         </LinkButton>
       </div>
     </AuthCard>

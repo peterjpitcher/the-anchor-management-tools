@@ -38,6 +38,7 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps): React.JSX
 
       <div className="min-w-0">
         <Tabs
+          aria-label="Employee record"
           tabs={tabs.map((t) => ({ id: t.key, label: t.label, content: t.content }))}
           activeTab={activeTab?.key}
           onTabChange={setActive}

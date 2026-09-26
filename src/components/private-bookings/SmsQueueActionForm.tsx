@@ -101,7 +101,8 @@ export function SmsQueueActionForm({
         title="Please Confirm"
         message={confirmMessage}
         confirmLabel="Confirm"
-        tone={variant === 'danger' ? 'danger' : 'warning'}
+        // Rejecting cancels the message, so it is red; approving and sending are primary.
+        tone={variant === 'danger' ? 'danger' : 'primary'}
       />
     </>
   )

@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { GUEST_CHOICE_ROW_CLASS } from './styles'
 
 type GuestChoiceProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'children'> & {
@@ -21,7 +21,7 @@ const BOXED_CLASS = 'rounded-guest-field border border-guest-border px-3 py-2'
  */
 export function GuestChoice({ label, id, boxed = false, ...inputProps }: GuestChoiceProps): React.JSX.Element {
   return (
-    <label htmlFor={id} className={clsx(GUEST_CHOICE_ROW_CLASS, boxed && BOXED_CLASS)}>
+    <label htmlFor={id} className={cn(GUEST_CHOICE_ROW_CLASS, boxed && BOXED_CLASS)}>
       <input id={id} {...inputProps} />
       <span>{label}</span>
     </label>

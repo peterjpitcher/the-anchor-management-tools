@@ -22,6 +22,7 @@ import { MenuTableFilters, type MenuFilterDefinition } from '../_components/Menu
 import { MENU_NAV, MENU_TITLE } from '../_shared/nav';
 import {
   GP_TARGET_UI,
+  dishCostingCountTone,
   gpTargetState,
   menuActiveLabel,
   menuActiveTone,
@@ -183,6 +184,37 @@ function dishFilterFn(item: Record<string, unknown>, filters: Record<string, unk
 
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+type DishRow = Record<string, unknown>;
+
+function asDish(row: DishRow): DishListItem {
+  return row as unknown as DishListItem;
+}
+
+function getDishRowKey(row: DishRow): string {
+  return asDish(row).id;
+}
+
+/**
+ * Column sorts the pipeline applies to the whole filtered list before it is cut into pages (the
+ * table is sorted under control, so a header click never sorts just the 25 rows on screen). Name
+ * and price compare their own field; these columns need their own rule.
+ */
+const DISH_SORT_FNS: Record<string, (a: DishRow, b: DishRow) => number> = {
+  portion_cost: (a, b) => asDish(a).portion_cost - asDish(b).portion_cost,
+  // A dish with no GP yet sorts as the lowest.
+  gp_pct: (a, b) => (asDish(a).gp_pct ?? -1) - (asDish(b).gp_pct ?? -1),
+  // Active dishes first.
+  status: (a, b) => {
+    const activeA = asDish(a).is_active;
+    const activeB = asDish(b).is_active;
+    return activeA === activeB ? 0 : activeA ? -1 : 1;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Page Component
@@ -363,6 +395,7 @@ export default function MenuDishesPage(): React.ReactElement {
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
     filterFn: dishFilterFn,
+    sortFns: DISH_SORT_FNS,
   });
 
   // Sync URL menu filter into pipeline filters
@@ -446,11 +479,6 @@ export default function MenuDishesPage(): React.ReactElement {
         header: 'Cost',
         align: 'right' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const da = a as unknown as DishListItem;
-          const db = b as unknown as DishListItem;
-          return da.portion_cost - db.portion_cost;
-        },
         cell: (row) => {
           const dish = row as unknown as DishListItem;
           const belowTarget = dish.gp_pct !== null && dish.gp_pct < (dish.target_gp_pct ?? targetGpPct);
@@ -467,13 +495,6 @@ export default function MenuDishesPage(): React.ReactElement {
         header: 'GP%',
         align: 'right' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const da = a as unknown as DishListItem;
-          const db = b as unknown as DishListItem;
-          const aGp = da.gp_pct ?? -1;
-          const bGp = db.gp_pct ?? -1;
-          return aGp - bGp;
-        },
         cell: (row) => {
           const dish = row as unknown as DishListItem;
           const target = dish.target_gp_pct ?? targetGpPct;
@@ -531,11 +552,6 @@ export default function MenuDishesPage(): React.ReactElement {
         key: 'status',
         header: 'Status',
         sortable: true,
-        sortFn: (a, b) => {
-          const da = a as unknown as DishListItem;
-          const db = b as unknown as DishListItem;
-          return da.is_active === db.is_active ? 0 : da.is_active ? -1 : 1;
-        },
         cell: (row) => {
           const dish = row as unknown as DishListItem;
           return canManage ? (
@@ -674,11 +690,13 @@ export default function MenuDishesPage(): React.ReactElement {
         <Stat
           label="Below GP Target"
           value={dishStats.belowTarget}
+          tone={dishCostingCountTone('alert', dishStats.belowTarget)}
           hint={dishStats.belowTarget > 0 ? 'Needs attention' : 'On track'}
         />
         <Stat
           label="Missing Costing"
           value={dishStats.missingCosting}
+          tone={dishCostingCountTone('missing', dishStats.missingCosting)}
           hint={dishStats.missingCosting > 0 ? 'Needs costing data' : 'All costed'}
         />
         <Stat
@@ -704,6 +722,7 @@ export default function MenuDishesPage(): React.ReactElement {
         searchValue={pipeline.searchQuery}
         onSearchChange={pipeline.setSearchQuery}
         searchPlaceholder="Search dishes, menus, or ingredients..."
+        searchLabel="Search dishes"
         onClear={() => {
           pipeline.clearFilters();
           handleMenuFilterChange('all');
@@ -727,7 +746,10 @@ export default function MenuDishesPage(): React.ReactElement {
           <DataTable
             data={pipeline.pageData}
             columns={columns}
-            getRowKey={(row) => (row as unknown as DishListItem).id}
+            getRowKey={getDishRowKey}
+            sortKey={pipeline.sortKey || null}
+            sortDirection={pipeline.sortDirection}
+            onSortChange={pipeline.setSort}
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0

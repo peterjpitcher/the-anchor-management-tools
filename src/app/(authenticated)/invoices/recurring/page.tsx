@@ -197,8 +197,8 @@ export default function RecurringInvoicesPage() {
   }
 
   const layoutProps = {
-    title: 'Recurring Invoices',
-    subtitle: 'Manage automated invoice generation',
+    title: 'Invoices',
+    subtitle: 'Recurring invoices raised automatically on a schedule',
     navItems: FINANCE_NAV,
   }
 
@@ -413,7 +413,7 @@ export default function RecurringInvoicesPage() {
         title="Generate Invoice Now"
         message="Generate invoice now? This will create a new invoice immediately."
         confirmLabel="Generate Invoice"
-        tone="warning"
+        tone="primary"
       />
 
       <ConfirmDialog
@@ -425,7 +425,7 @@ export default function RecurringInvoicesPage() {
         title={toggleTarget?.isActive ? 'Deactivate Recurring Invoice' : 'Activate Recurring Invoice'}
         message={`Are you sure you want to ${toggleTarget?.isActive ? 'deactivate' : 'activate'} this recurring invoice?`}
         confirmLabel={toggleTarget?.isActive ? 'Deactivate' : 'Activate'}
-        tone="warning"
+        tone="primary"
       />
     </PageLayout>
   )

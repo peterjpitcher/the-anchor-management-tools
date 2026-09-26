@@ -145,8 +145,8 @@ P.S. I've attached a copy of the invoice for your reference.`
       open={isOpen}
       onClose={onClose}
       title="Chase Payment"
-      size="lg"
-      mobileFullscreen
+      description={`Invoice ${invoice.invoice_number} is ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue`}
+      width="lg"
       footer={
         <>
           <Button
@@ -169,14 +169,6 @@ P.S. I've attached a copy of the invoice for your reference.`
       }
     >
       <div className="space-y-4">
-        {/* Chase Payment Header */}
-        <div className="flex items-center gap-3 pb-4 border-b border-border">
-          <Icon name="clock" size={24} className="text-warning" />
-          <div>
-            <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
-          </div>
-        </div>
-
         {recentChaseWarning && lastChaseDate && (
           <Alert
             tone="warning"
@@ -222,10 +214,9 @@ P.S. I've attached a copy of the invoice for your reference.`
           rows={12}
         />
 
-        <Alert tone="warning"
-          title="Attachment"
-        >
-          <p className="text-sm text-warning-fg mt-2">
+        <Alert tone="warning" title="Attachment">
+          <p>{`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}</p>
+          <p className="mt-2">
             <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
           </p>
         </Alert>

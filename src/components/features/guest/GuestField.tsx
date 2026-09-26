@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 
 type GuestFieldProps = {
   /** Required. Wires the label, the hint and error ids, and the control. */
@@ -80,7 +80,7 @@ export function GuestField({
   const { hintId, errorId } = guestFieldIds(id)
 
   return (
-    <div className={clsx('flex flex-col gap-2', className)}>
+    <div className={cn('flex flex-col gap-2', className)}>
       <label
         htmlFor={id}
         className={labelHidden ? 'sr-only' : 'font-anchor-body text-guest-body font-semibold leading-guest-snug text-guest-text'}

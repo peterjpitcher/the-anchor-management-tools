@@ -62,7 +62,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
         className="min-h-touch"
         autoFocus
       />
-      {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} /> : null}
+      {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} appearance="foh" /> : null}
     </Modal>
   )
 })

@@ -7,9 +7,8 @@ import {
   type CustomerInsightsWindow
 } from '@/lib/analytics/customer-insights'
 import { PageLayout, Icon } from '@/ds'
-import { Alert, Badge, Card, CardBody, CardHeader, Empty, Section, Stat, StatGrid } from '@/ds'
+import { Alert, Badge, BarChart, Card, CardBody, CardHeader, Empty, Section, Stat, StatGrid, SubHeading } from '@/ds'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
 import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
 import { CUSTOMERS_NAV } from '../_shared/nav'
 import { STRATEGIC_SIGNAL_TONE } from '../_shared/status-ui'
@@ -90,8 +89,8 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
     return <PageLayout {...layoutProps} error={errorMessage || 'Failed to load customer insights'} />
   }
 
-  // Chart tokens (the canvas BarChart resolves var() colours). Each booking type keeps a
-  // colour close to its old one: event sky, table brand green, private amber, parking violet.
+  // Chart tokens. Each booking type keeps a colour close to its old one: event sky, table
+  // brand green, private amber, parking violet.
   const bookingMixChartData = [
     { label: 'Event', value: snapshot.booking_mix.by_type.event, color: 'var(--color-chart-2)' },
     { label: 'Table', value: snapshot.booking_mix.by_type.table, color: 'var(--color-chart-1)' },
@@ -182,13 +181,13 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 subtitle={`Total bookings in window: ${formatNumber(snapshot.booking_mix.total_bookings)}`}
               />
               <CardBody className="space-y-4">
-                <div className="h-[280px]">
-                  <BarChart
-                    data={bookingMixChartData}
-                    height={250}
-                    formatType="number"
-                  />
-                </div>
+                <BarChart
+                  data={bookingMixChartData}
+                  height={280}
+                  formatType="number"
+                  seriesLabel="Bookings"
+                  ariaLabel="Bookings in the window by booking type"
+                />
                 <div className="grid grid-cols-2 gap-2 text-sm text-text-muted">
                   <p>Event: {formatPercent(snapshot.booking_mix.shares_percent.event)}</p>
                   <p>Table: {formatPercent(snapshot.booking_mix.shares_percent.table)}</p>
@@ -207,9 +206,13 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 {categoryChartData.length === 0 ? (
                   <Empty size="sm" title="No category-preference data available" />
                 ) : (
-                  <div className="h-[280px]">
-                    <BarChart data={categoryChartData} height={250} formatType="number" />
-                  </div>
+                  <BarChart
+                    data={categoryChartData}
+                    height={280}
+                    formatType="number"
+                    seriesLabel="Customers"
+                    ariaLabel="Customers interested in each event category"
+                  />
                 )}
               </CardBody>
             </Card>
@@ -239,7 +242,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 </dl>
 
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Top Failure Reasons</p>
+                  <SubHeading>Top Failure Reasons</SubHeading>
                   {snapshot.sms_health.top_failure_reasons.length === 0 ? (
                     <p className="mt-2 text-sm text-text-muted">No dominant failure reason detected.</p>
                   ) : (
@@ -282,7 +285,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
           </div>
 
           <Card>
-            <CardHeader title="Win-back Candidates" subtitle="High-value customers dormant for 90+ days" />
+            <CardHeader title="Win-Back Candidates" subtitle="High-value customers dormant for 90+ days" />
 
             {snapshot.win_back_candidates.length === 0 ? (
               <CardBody>

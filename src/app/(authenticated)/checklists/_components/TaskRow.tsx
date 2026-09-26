@@ -353,7 +353,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
         title="Unusual Reading"
         message="That reading looks unusual, is it correct?"
         confirmLabel="Yes, Save It"
-        tone="warning"
+        tone="primary"
       />
     </div>
   )

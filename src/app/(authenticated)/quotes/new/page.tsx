@@ -291,7 +291,7 @@ export default function NewQuotePage() {
           </CardBody>
         </Card>
 
-        <Card className="overflow-visible">
+        <Card>
           <CardHeader
             title="Line Items"
             action={

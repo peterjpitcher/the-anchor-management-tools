@@ -10,6 +10,7 @@ import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeRightToWork } from '@/types/database'
 import { displayName } from '@/lib/employees/display-name'
 import { PageLayout, Tabs } from '@/ds'
+import { employeePageTitle } from '../../_shared/employee-title'
 
 interface EmployeeEditClientProps {
   employee: Employee
@@ -100,10 +101,11 @@ export default function EmployeeEditClient({
     <PageLayout
       title={`Edit ${displayName(employee, employee.email_address)}`}
       subtitle="Update employee details"
-      backButton={{ label: 'Back to Employee', href: employeeHref }}
+      // Back to the employee's page, named as that page is titled.
+      backButton={{ label: `Back to ${employeePageTitle(employee)}`, href: employeeHref }}
       containerSize="md"
     >
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
+      <Tabs aria-label="Employee details" tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
     </PageLayout>
   )
 }

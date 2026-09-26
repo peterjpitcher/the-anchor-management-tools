@@ -10,6 +10,8 @@ import {
   CardHeader,
   Checkbox,
   Field,
+  Fieldset,
+  FileButton,
   FormFooter,
   Icon,
   Input,
@@ -625,13 +627,13 @@ export default function NewEmployeeOnboardingClient() {
             <Field label="Uniform Preference" hint="Optional (e.g. branded t-shirt, own clothes).">
               <Input value={state.employee.uniform_preference} onChange={(e) => updateEmployee('uniform_preference', e.target.value)} />
             </Field>
-            <Field label="Keyholder Status" hint="Mark if keys have been issued.">
+            <Fieldset legend="Keyholder Status" hint="Mark if keys have been issued.">
               <Checkbox
                 checked={state.employee.keyholder_status}
                 onChange={(checked) => updateEmployee('keyholder_status', checked)}
                 label="Employee is a keyholder"
               />
-            </Field>
+            </Fieldset>
           </CardBody>
         </Card>
       )
@@ -729,8 +731,8 @@ export default function NewEmployeeOnboardingClient() {
           <Card>
             <CardHeader title="Health Questionnaire" />
             <CardBody className="space-y-4">
-              <Field label="Do you have any allergies?">
-                <div role="radiogroup" aria-label="Do you have any allergies?" className="flex flex-wrap gap-6">
+              <Fieldset legend="Do you have any allergies?">
+                <div className="flex flex-wrap gap-6">
                   <Radio
                     name="has_allergies"
                     value="yes"
@@ -746,7 +748,7 @@ export default function NewEmployeeOnboardingClient() {
                     onChange={() => updateHealth('has_allergies', false)}
                   />
                 </div>
-              </Field>
+              </Fieldset>
 
               {state.health.has_allergies && (
                 <Field label="If yes, please specify">
@@ -893,34 +895,36 @@ export default function NewEmployeeOnboardingClient() {
                     <Input type="date" value={state.right_to_work.follow_up_date} onChange={(e) => updateRightToWork('follow_up_date', e.target.value)} />
                   </Field>
 
-                  <Field label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
-                    <Input
-                      type="file"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] ?? null
-                        if (!file) {
-                          updateRightToWork('document_photo', null)
-                          return
-                        }
-
+                  <Field
+                    label="Document photo / scan"
+                    // The chosen file is named in the hint, so it is read out with the button too.
+                    hint={`${state.right_to_work.document_photo ? `${state.right_to_work.document_photo.name}. ` : ''}PDF, JPG or PNG`}
+                    className="sm:col-span-2"
+                  >
+                    {/* The DS file picker: a Button over a hidden input, named by the Field. The
+                        file is kept in state and uploaded after the employee is created. */}
+                    <FileButton
+                      id="new-employee-document-photo"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      icon={<Icon name="upload" size={16} />}
+                      onFiles={([file]) => {
                         if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
                           toast.error('Only PDF, JPG, and PNG files are allowed.')
-                          e.target.value = ''
                           updateRightToWork('document_photo', null)
                           return
                         }
 
                         if (file.size >= MAX_FILE_SIZE) {
                           toast.error('File size must be less than 10MB.')
-                          e.target.value = ''
                           updateRightToWork('document_photo', null)
                           return
                         }
 
                         updateRightToWork('document_photo', file)
                       }}
-                      accept=".pdf,.jpg,.jpeg,.png"
-                    />
+                    >
+                      {state.right_to_work.document_photo ? 'Choose Another File' : 'Choose File'}
+                    </FileButton>
                   </Field>
 
                   <Field label="Additional details" className="sm:col-span-2">
@@ -1032,7 +1036,7 @@ export default function NewEmployeeOnboardingClient() {
     >
       {/* Six tabs are wider than the form column; wrap them rather than hide the last ones off
           the edge, since the DS strip hides its scrollbar. */}
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} className="flex-wrap" />
+      <Tabs aria-label="New employee details" tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} className="flex-wrap" />
 
       <Alert tone="info">
         You can move between tabs without losing your progress. Clicking “Create Employee” will create the employee and then save any

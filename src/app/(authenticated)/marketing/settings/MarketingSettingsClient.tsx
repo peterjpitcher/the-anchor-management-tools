@@ -10,6 +10,7 @@ import {
   CardHeader,
   ConfirmDialog,
   Field,
+  Fieldset,
   FormFooter,
   Input,
   PageLayout,
@@ -137,7 +138,7 @@ export function MarketingSettingsClient({
   }
 
   return (
-    <PageLayout {...marketingLayout('settings')} containerSize="md">
+    <PageLayout {...marketingLayout('settings', { canManageSettings: true })} containerSize="md">
         <Card>
           <CardHeader title="Campaign Sending" action={<SendSwitchBadge enabled={settings.sendsEnabled} />} />
           <CardBody>
@@ -201,8 +202,8 @@ export function MarketingSettingsClient({
                 </Field>
               </div>
 
-              <Field
-                label="Days"
+              <Fieldset
+                legend="Days"
                 hint="A scheduled campaign waits for the next allowed day if it falls outside these."
               >
                 <div className="flex flex-wrap gap-2">
@@ -222,7 +223,7 @@ export function MarketingSettingsClient({
                     )
                   })}
                 </div>
-              </Field>
+              </Fieldset>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
@@ -326,7 +327,7 @@ export function MarketingSettingsClient({
         title="Turn Campaign Sending On?"
         message="Any campaign already scheduled for a time that has passed will start going out at the next send window. Check the campaign list first if you are not sure what is queued."
         confirmLabel="Turn Sending On"
-        tone="warning"
+        tone="primary"
       />
     </PageLayout>
   )

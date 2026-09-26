@@ -51,6 +51,7 @@ export function EventArtworkDownloadsCard({ event }: { event: Event }) {
                   <p className="mt-0.5 min-h-8 text-xs text-text-muted">{config.helpText}</p>
                   <LinkButton
                     href={buildEventImageDownloadUrl(url, fileName)}
+                    download={fileName}
                     variant="secondary"
                     size="sm"
                     className="mt-3 w-full"

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MaintenanceListClient } from '@/app/(authenticated)/maintenance/_components/MaintenanceListClient'
 import {
   DEFAULT_MAINTENANCE_FILTERS,
@@ -127,6 +127,16 @@ describe('MaintenanceListClient', () => {
 
     expect(statFor('Our open estimate').textContent).toContain('£0.00')
     expect(statFor('Uncosted').textContent).toContain('4')
+  })
+
+  it('shows the overdue figure in red only while something is overdue', () => {
+    const { unmount } = renderList()
+    const overdueValue = within(statFor('Overdue')).getByText('2')
+    expect(overdueValue).toHaveClass('text-danger-fg')
+    unmount()
+
+    renderList({ initialCosts: { ...costs, overdueCount: 0 } })
+    expect(within(statFor('Overdue')).getByText('0')).not.toHaveClass('text-danger-fg')
   })
 
   it('shows an item without an estimate as not costed rather than as nil', () => {

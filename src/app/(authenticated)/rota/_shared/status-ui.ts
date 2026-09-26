@@ -4,10 +4,9 @@
  * from server and client components. Call sites never pick a tone themselves; they ask this
  * file, so a status looks the same wherever it shows.
  *
- * Shift, holiday, department, day-note and hours-report colours are not here: they live in
- * src/lib/rota/status-ui.ts because the printed rota and the staff portal read them too.
- * Leave request statuses are not here either: the portal and employee screens hold copies of
- * that map, and they are merged in one change across all three.
+ * Shift, holiday, department, day-note, hours-report and leave request colours are not here:
+ * they live in src/lib/rota/status-ui.ts because the printed rota, the staff portal and the
+ * employee screens read them too.
  */
 
 import type { IconName } from '@/ds';
@@ -16,27 +15,20 @@ import { isCouldntWorkPayrollFlag } from '@/lib/rota/payroll-flags';
 
 export type RotaBadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 
-/**
- * The colour a status icon takes for a tone, for a figure that carries its state as an icon
- * (Stat has no tone of its own). Base shades: these colour icons, never text.
- */
-export const ROTA_TONE_ICON_CLASSES: Readonly<Record<RotaBadgeTone, string>> = {
-  neutral: 'text-text-muted',
-  primary: 'text-primary',
-  success: 'text-success',
-  warning: 'text-warning',
-  danger: 'text-danger',
-  info: 'text-info',
-};
+/** The tones a DS `Stat` value takes: a figure that is itself good or bad news. */
+export type RotaStatTone = 'default' | 'success' | 'warning' | 'danger';
 
-/** The icon a status tone takes when a figure shows its state as an icon. */
-export const ROTA_TONE_ICON: Readonly<Record<RotaBadgeTone, IconName>> = {
-  neutral: 'circle',
-  primary: 'info',
-  success: 'checkCircle',
-  warning: 'alertTriangle',
-  danger: 'alertCircle',
-  info: 'info',
+/**
+ * A status tone as a figure's colour. Neutral, primary and informational states leave the
+ * figure in the default colour; only good and bad news colour it.
+ */
+export const ROTA_STAT_TONE: Readonly<Record<RotaBadgeTone, RotaStatTone>> = {
+  neutral: 'default',
+  primary: 'default',
+  info: 'default',
+  success: 'success',
+  warning: 'warning',
+  danger: 'danger',
 };
 
 /* ------------------------------------------------------------------ */
@@ -222,17 +214,14 @@ export const PAYROLL_VARIANCE_TONE: Readonly<Record<PayrollVarianceState, RotaBa
   well_under: 'danger',
 };
 
-export const PAYROLL_VARIANCE_ICON: Readonly<Record<PayrollVarianceState, IconName>> = {
-  ahead: 'checkCircle',
-  under: 'alertTriangle',
-  well_under: 'alertCircle',
-};
-
 /** A day's or a row's hours difference as text: short is danger, over is success, level is muted. */
 export function payrollDiffClasses(diffHours: number): string {
   if (Math.abs(diffHours) < 0.05) return 'text-text-muted';
   return diffHours < 0 ? 'text-danger-fg font-medium' : 'text-success-fg';
 }
+
+/** Money earned to date on the payroll figures: success, as the employee summary cards show it. */
+export const PAYROLL_EARNED_TONE: RotaBadgeTone = 'success';
 
 /** Whether an employee has a pay rate on the payroll summary. */
 export const PAYROLL_PAY_RATE_TONE: Readonly<Record<'set' | 'missing', RotaBadgeTone>> = {

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Card, CardHeader, CardBody, Button, Empty, FormFooter, Input, Select, Checkbox, toast } from '@/ds'
+import { Alert, Card, CardHeader, CardBody, Button, Empty, FormFooter, Input, Select, Checkbox, SubHeading, toast } from '@/ds'
 import { saveEventTicketSettings } from '@/app/actions/event-ticket-settings'
 import type { BookingQuestion } from '@/lib/events/booking-questions'
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
@@ -103,7 +103,7 @@ export function EventTicketSettings({ event, canManage }: Props) {
             </div>
             {questions.length === 0 && <Empty size="sm" title="No Extra Questions" description={mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'} />}
             {questions.map((question, index) => <div key={question.id} className="space-y-3 rounded-default border border-border p-4">
-              <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-text-strong">Guest question {index + 1}</p>
+              <div className="flex items-center justify-between gap-2"><SubHeading>Guest Question {index + 1}</SubHeading>
                 <div className="flex gap-1">
                   <Button type="button" variant="ghost" size="sm" aria-label={`Move question ${index + 1} up`} disabled={index === 0} onClick={() => moveQuestion(index, -1)}>Up</Button>
                   <Button type="button" variant="ghost" size="sm" aria-label={`Move question ${index + 1} down`} disabled={index === questions.length - 1} onClick={() => moveQuestion(index, 1)}>Down</Button>

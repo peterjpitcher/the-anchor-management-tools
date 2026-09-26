@@ -60,12 +60,13 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
   if (search) filterQuery.search = search
   if (audience) filterQuery.audience = audience
   const pageHref = (nextPage: number) => `/marketing?${new URLSearchParams({ ...filterQuery, page: String(nextPage) })}`
-  const layoutProps = marketingLayout('campaigns')
 
-  const [canCreate, canEdit] = await Promise.all([
+  const [canCreate, canEdit, canManageSettings] = await Promise.all([
     checkUserPermission('marketing', 'create'),
     checkUserPermission('marketing', 'edit'),
+    checkUserPermission('marketing', 'manage'),
   ])
+  const layoutProps = marketingLayout('campaigns', { canManageSettings })
 
   const [campaignsResult, settingsResult] = await Promise.all([
     listMarketingCampaigns({
@@ -115,17 +116,14 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
         ) : undefined
       }
     >
+      {/* No "Go to Settings" button: Settings is a tab in the row above. The tab only shows to
+          someone with marketing:manage, so only they are pointed at it. */}
       {sendingOff && (
         <Alert tone="warning" title="Sending is switched off">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="min-w-0">
-              Nothing will go out, even if a campaign is scheduled. Turn sending back on in
-              Settings when you are ready.
-            </p>
-            <LinkButton href="/marketing/settings" variant="secondary" size="sm">
-              Go to Settings
-            </LinkButton>
-          </div>
+          Nothing will go out, even if a campaign is scheduled.{' '}
+          {canManageSettings
+            ? 'Turn sending back on in the Settings tab when you are ready.'
+            : 'Someone who manages marketing settings can turn it back on.'}
         </Alert>
       )}
 

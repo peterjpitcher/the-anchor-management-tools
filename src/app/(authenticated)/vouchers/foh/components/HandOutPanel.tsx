@@ -399,7 +399,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
         onConfirm={confirmIssue}
         title="Hand Out This Voucher?"
         confirmLabel="Yes, Hand It Out"
-        tone="warning"
+        tone="primary"
         message={
           selected && expiryDate ? (
             <>

@@ -32,7 +32,7 @@ import {
   Icon,
   type IconName,
 } from '@/ds';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateInLondon, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
@@ -68,13 +68,11 @@ import {
   ROTA_CAPACITY_TEXT_CLASSES,
   ROTA_HOURS_LIMIT_TEXT_CLASSES,
   ROTA_OPEN_SHIFTS_TONE,
-  ROTA_TONE_ICON,
-  ROTA_TONE_ICON_CLASSES,
+  ROTA_STAT_TONE,
   ROTA_WAGES_COSTING_TONE,
   ROTA_WEEK_PUBLISH_LABEL,
   ROTA_WEEK_PUBLISH_TONE,
   rotaCapacityState,
-  type RotaBadgeTone,
   type RotaWeekPublishState,
 } from './_shared/status-ui';
 
@@ -134,25 +132,22 @@ function empDisplayName(emp: RotaEmployee): string {
   return displayName(emp, 'Unknown');
 }
 
+// Rota days are plain YYYY-MM-DD dates: read as UTC midnights and formatted in UTC, so a day
+// never moves with the browser's or the server's zone. Today is the London day.
 function formatDayHeader(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
-}
-
-function getLocalIsoDate(): string {
-  const t = new Date();
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 function isToday(iso: string): boolean {
-  return iso === getLocalIsoDate();
+  return iso === getTodayIsoDate();
 }
 
 function formatWeekRange(days: string[]): string {
   const s = new Date(days[0] + 'T00:00:00Z');
   const e = new Date(days[6] + 'T00:00:00Z');
-  const startStr = s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
-  const endStr = e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const startStr = s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const endStr = e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   return `${startStr} – ${endStr}`;
 }
 
@@ -194,7 +189,7 @@ function employeeRole(emp: RotaEmployee): string {
 // A job title is a category, not a state, so role groups take the brand and category
 // colours. They used the status tones before, which put whole teams in "danger" red.
 const ROLE_STYLES = [
-  { header: 'bg-primary-soft border-primary/20 text-primary-soft-fg', chip: 'bg-primary-soft text-primary-soft-fg', stripe: 'border-l-primary' },
+  { header: 'bg-primary-soft border-border text-primary-soft-fg', chip: 'bg-primary-soft text-primary-soft-fg', stripe: 'border-l-primary' },
   { header: 'bg-cat-1-soft border-cat-1/20 text-cat-1-fg', chip: 'bg-cat-1-soft text-cat-1-fg', stripe: 'border-l-cat-1' },
   { header: 'bg-cat-2-soft border-cat-2/20 text-cat-2-fg', chip: 'bg-cat-2-soft text-cat-2-fg', stripe: 'border-l-cat-2' },
   { header: 'bg-cat-4-soft border-cat-4/20 text-cat-4-fg', chip: 'bg-cat-4-soft text-cat-4-fg', stripe: 'border-l-cat-4' },
@@ -294,17 +289,6 @@ function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
   return shifts
     .filter(s => s.employee_id === employeeId && countsTowardHours(s))
     .reduce((sum, s) => sum + calculatePaidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
-}
-
-/**
- * The week's figures sit in a StatGrid, and a Stat has no tone of its own, so a figure that
- * needs attention carries its state as an icon in the tone's colour. Stat hides its icon from
- * screen readers, so the state is visual only, as the tinted pills it replaced were. Neutral and
- * informational figures carry none.
- */
-function statToneIcon(tone: RotaBadgeTone, label: string): React.ReactNode {
-  if (tone === 'neutral' || tone === 'info' || tone === 'primary') return undefined;
-  return <Icon name={ROTA_TONE_ICON[tone]} size={20} label={label} className={ROTA_TONE_ICON_CLASSES[tone]} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -1024,18 +1008,20 @@ export default function RotaGrid({
       : 'info';
 
   const wageShareState = wagePercentOverTarget ? 'over' : 'within';
+  // The wage share only means something, and only takes a colour, when this viewer can see it.
+  const wageShareVisible = canViewSpend && canViewSalesTargets;
   const wagesTone = ROTA_WAGES_COSTING_TONE[uncostedShiftCount > 0 && canViewSpend ? 'uncosted' : 'costed'];
   const openShiftsTone = ROTA_OPEN_SHIFTS_TONE[openShifts.length > 0 ? 'some' : 'none'];
 
   return (
     <>
-      {/* The week in figures. A figure that needs attention shows it as an icon in its tone. */}
+      {/* The week in figures. A figure that is good or bad news takes its tone's colour. */}
       <StatGrid columns={4}>
         <Stat
           label="Status"
           value={weekStatusLabel}
-          hint={week.published_at ? new Date(week.published_at).toLocaleDateString('en-GB') : undefined}
-          icon={statToneIcon(weekStatusTone, weekStatusLabel)}
+          hint={week.published_at ? formatDateInLondon(week.published_at, { day: '2-digit', month: '2-digit', year: 'numeric' }) : undefined}
+          tone={ROTA_STAT_TONE[weekStatusTone]}
         />
         <Stat
           label="Hours"
@@ -1046,22 +1032,20 @@ export default function RotaGrid({
           label="Open"
           value={openShifts.length}
           hint={openShifts.length > 0 ? 'Available' : 'None'}
-          icon={statToneIcon(openShiftsTone, openShifts.length > 0 ? 'Open shifts to fill' : 'No open shifts')}
+          tone={ROTA_STAT_TONE[openShiftsTone]}
         />
         <Stat
           label="People"
           value={`${scheduledEmployeeCount}/${employees.length}`}
           hint={publishStatusDetail}
-          icon={hasPendingChanges
-            ? statToneIcon(ROTA_WEEK_PUBLISH_TONE.unpublished_changes, ROTA_WEEK_PUBLISH_LABEL.unpublished_changes)
-            : undefined}
+          tone={hasPendingChanges ? ROTA_STAT_TONE[ROTA_WEEK_PUBLISH_TONE.unpublished_changes] : 'default'}
         />
         {periodSummary && (
           <Stat
             label="Wages"
             value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
             hint={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
-            icon={statToneIcon(wagesTone, 'Some shifts are not costed')}
+            tone={ROTA_STAT_TONE[wagesTone]}
           />
         )}
         {periodSummary && (
@@ -1074,9 +1058,13 @@ export default function RotaGrid({
         {periodSummary && (
           <Stat
             label="Wage %"
-            value={canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
-            hint={`Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
-            icon={statToneIcon(LABOUR_SHARE_TONE[wageShareState], LABOUR_SHARE_LABEL[wageShareState])}
+            value={wageShareVisible ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
+            hint={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
+              ? `${LABOUR_SHARE_LABEL[wageShareState]}, limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`
+              : `Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
+            tone={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
+              ? ROTA_STAT_TONE[LABOUR_SHARE_TONE[wageShareState]]
+              : 'default'}
           />
         )}
       </StatGrid>
@@ -1107,7 +1095,7 @@ export default function RotaGrid({
                   />
                   <Button
                     type="button"
-                    onClick={() => navigateToWeek(getLocalIsoDate())}
+                    onClick={() => navigateToWeek(getTodayIsoDate())}
                     variant="secondary"
                     size="sm"
                     disabled={navPending}

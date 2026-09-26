@@ -8,6 +8,7 @@ import {
   CardBody,
   CardHeader,
   Empty,
+  FileButton,
   Modal,
   PageLoading,
   Spinner,
@@ -92,8 +93,6 @@ export function MaintenancePhotos({
   const [redactError, setRedactError] = useState<string | null>(null)
   const [redacting, setRedacting] = useState(false)
 
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const libraryInputRef = useRef<HTMLInputElement>(null)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -204,19 +203,6 @@ export function MaintenancePhotos({
     [itemId, updateTask]
   )
 
-  const onInputChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const input = event.currentTarget
-      // Copied before the input is cleared, because clearing empties input.files.
-      const files = Array.from(input.files ?? [])
-      // Cleared first, so choosing the same file twice still fires a change
-      // event. Doing it after the await left a failed photo unpickable.
-      input.value = ''
-      await handleFiles(files)
-    },
-    [handleFiles]
-  )
-
   const dismissTask = useCallback((taskId: string) => {
     setTasks((current) => current.filter((task) => task.id !== taskId))
   }, [])
@@ -291,51 +277,28 @@ export function MaintenancePhotos({
             {/*
               Two controls, not one. capture is only a hint, and a camera-only
               control would make attaching an older photo impossible.
-            */}
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => cameraInputRef.current?.click()}
-            >
-              Take Photo
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => libraryInputRef.current?.click()}
-            >
-              Choose Existing Photo
-            </Button>
 
-            {/*
               HEIC is deliberately absent from accept. It also stops Safari 17+
-              turning a JPEG into HEIC on the way out of the picker.
-
-              The two native file inputs stay: they are the hidden pickers behind the
-              DS buttons above (out of the tab order and hidden from screen readers).
-              The DS FileUpload is a drop zone, which would replace the camera and
-              library buttons, and cannot carry capture="environment".
+              turning a JPEG into HEIC on the way out of the picker. FileButton
+              clears its input before handing over the files, so choosing the same
+              photo again after a failure still fires.
             */}
-            <input
-              ref={cameraInputRef}
-              type="file"
+            <FileButton
+              variant="primary"
               accept={MAINTENANCE_PHOTO_ACCEPT}
               capture="environment"
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={onInputChange}
-            />
-            <input
-              ref={libraryInputRef}
-              type="file"
+              onFiles={(files) => void handleFiles(files)}
+            >
+              Take Photo
+            </FileButton>
+            <FileButton
+              variant="secondary"
               accept={MAINTENANCE_PHOTO_ACCEPT}
               multiple
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={onInputChange}
-            />
+              onFiles={(files) => void handleFiles(files)}
+            >
+              Choose Existing Photo
+            </FileButton>
           </div>
         ) : null}
 
@@ -446,6 +409,7 @@ export function MaintenancePhotos({
           open={redactTarget !== null}
           onClose={closeRedact}
           title="Remove This Photo"
+          description="The photo file is deleted permanently and cannot be recovered. The record that it was here, who removed it and why stays on this item."
           footer={
             <>
               <Button type="button" variant="secondary" onClick={closeRedact} disabled={redacting}>
@@ -463,21 +427,15 @@ export function MaintenancePhotos({
             </>
           }
         >
-          <div className="space-y-3">
-            <p className="text-sm text-text">
-              The photo file is deleted permanently and cannot be recovered. The record that
-              it was here, who removed it and why stays on this item.
-            </p>
-            <Textarea
-              label="Why is it being removed?"
-              value={redactReason}
-              onChange={(event) => setRedactReason(event.target.value)}
-              rows={3}
-              maxLength={500}
-              disabled={redacting}
-              error={redactError ?? undefined}
-            />
-          </div>
+          <Textarea
+            label="Why is it being removed?"
+            value={redactReason}
+            onChange={(event) => setRedactReason(event.target.value)}
+            rows={3}
+            maxLength={500}
+            disabled={redacting}
+            error={redactError ?? undefined}
+          />
         </Modal>
       </CardBody>
     </Card>

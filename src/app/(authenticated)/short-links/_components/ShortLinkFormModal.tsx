@@ -141,7 +141,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title={link ? 'Edit Short Link' : 'Create Short Link'}
+      title={link ? 'Edit Short Link' : 'New Short Link'}
       width="lg"
       footer={
         <>

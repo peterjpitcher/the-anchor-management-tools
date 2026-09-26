@@ -85,7 +85,23 @@ describe('MaintenancePhotos', () => {
     const withCapture = inputs.filter((input) => input.getAttribute('capture') === 'environment')
     expect(withCapture).toHaveLength(1)
     // capture is a hint browsers may ignore, so the other control has none.
-    expect(inputs.filter((input) => !input.hasAttribute('capture'))).toHaveLength(1)
+    const withoutCapture = inputs.filter((input) => !input.hasAttribute('capture'))
+    expect(withoutCapture).toHaveLength(1)
+
+    // Each button opens its own picker: the camera for Take Photo, the library (several at
+    // once) for Choose Existing Photo.
+    const camera = withCapture[0] as HTMLInputElement
+    const library = withoutCapture[0] as HTMLInputElement
+    expect(camera.multiple).toBe(false)
+    expect(library.multiple).toBe(true)
+    const openCamera = vi.spyOn(camera, 'click')
+    const openLibrary = vi.spyOn(library, 'click')
+    fireEvent.click(take)
+    expect(openCamera).toHaveBeenCalledTimes(1)
+    expect(openLibrary).not.toHaveBeenCalled()
+    fireEvent.click(choose)
+    expect(openLibrary).toHaveBeenCalledTimes(1)
+    expect(openCamera).toHaveBeenCalledTimes(1)
   })
 
   it('announces upload status politely', async () => {
@@ -202,6 +218,10 @@ describe('MaintenancePhotos', () => {
     expect(
       await screen.findByText(/The photo file is deleted permanently and cannot be recovered/)
     ).toBeInTheDocument()
+    // It is the dialog's description, so a screen reader hears it with the title.
+    expect(screen.getByRole('dialog', { name: 'Remove This Photo' })).toHaveAccessibleDescription(
+      /The photo file is deleted permanently/
+    )
 
     // An empty reason is refused before anything is sent.
     fireEvent.click(screen.getByRole('button', { name: 'Remove Photo' }))

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Icon, PageLoading, Select, toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Icon, PageLoading, Select, SubHeading, toast } from '@/ds'
 import { eventLinkTypeTone } from '@/app/(authenticated)/events/_shared/status-ui'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import { generateSingleMarketingLink } from '@/app/actions/event-marketing-links'
@@ -215,7 +215,7 @@ export function EventMarketingLinksCard({
                   size="xs"
                   variant="secondary"
                   onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                  leftIcon={<Icon name="copy" size={16} />}
+                  icon={<Icon name="copy" size={16} />}
                 >
                   Copy Link
                 </Button>
@@ -223,7 +223,7 @@ export function EventMarketingLinksCard({
                   size="xs"
                   variant="secondary"
                   onClick={() => handleDownloadQr(link)}
-                  leftIcon={<Icon name="download" size={16} />}
+                  icon={<Icon name="download" size={16} />}
                   disabled={!link.qrCode}
                 >
                   Download QR
@@ -238,7 +238,7 @@ export function EventMarketingLinksCard({
               size="xs"
               variant="ghost"
               onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-              leftIcon={<Icon name="copy" size={16} />}
+              icon={<Icon name="copy" size={16} />}
             >
               Copy URL
             </Button>
@@ -262,9 +262,8 @@ export function EventMarketingLinksCard({
       <CardHeader
         title="Marketing Links & QR Codes"
         subtitle="Tracked links and QR assets for event promotion"
-        // One button only: CardHeader keeps its action on one line beside the title, so a second
-        // button pushed the pair past a phone-width card, which clips it. Generating the missing
-        // QR links sits with the QR placements below instead.
+        // Refresh covers every link, so it sits in the header. Generating the missing QR links
+        // sits with the QR placements below, beside the count of placements that are ready.
         action={
           onRegenerate ? (
             <Button
@@ -275,7 +274,7 @@ export function EventMarketingLinksCard({
                 await onRegenerate()
               }}
               disabled={loading}
-              leftIcon={<Icon name="refresh" size={16} />}
+              icon={<Icon name="refresh" size={16} />}
             >
               Refresh Links
             </Button>
@@ -334,7 +333,7 @@ export function EventMarketingLinksCard({
           {/* Section 1: QR code placements */}
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">QR code placements</p>
+              <SubHeading>QR Code Placements</SubHeading>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="neutral" size="sm">
                   {readyQrPlacementChannels.length}/{qrPlacementChannels.length} ready
@@ -345,7 +344,7 @@ export function EventMarketingLinksCard({
                     size="sm"
                     onClick={handleGenerateAllQr}
                     loading={generatingAllQr}
-                    leftIcon={<Icon name="refresh" size={16} />}
+                    icon={<Icon name="refresh" size={16} />}
                   >
                     Generate Missing QR Links
                   </Button>
@@ -363,7 +362,7 @@ export function EventMarketingLinksCard({
 
           {/* Section 2: Always-on digital */}
           <section>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Digital channels</p>
+            <SubHeading className="mb-3">Digital Channels</SubHeading>
             <div className="space-y-3">
               {alwaysOnLinks.map((link) => (
                 <div key={link.id} className="rounded-default border border-border p-4">
@@ -383,7 +382,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy Link
                     </Button>
@@ -395,7 +394,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>
@@ -416,7 +415,7 @@ export function EventMarketingLinksCard({
 
           {/* Section 3: On-demand digital */}
           <section>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Optional digital channels</p>
+            <SubHeading className="mb-3">Optional Digital Channels</SubHeading>
             <div className="space-y-3">
               {onDemandDigitalLinks.length === 0 ? (
                 <Empty size="sm" variant="dashed" title="No Optional Digital Links Yet" />
@@ -438,7 +437,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy Link
                     </Button>
@@ -450,7 +449,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<Icon name="copy" size={16} />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>

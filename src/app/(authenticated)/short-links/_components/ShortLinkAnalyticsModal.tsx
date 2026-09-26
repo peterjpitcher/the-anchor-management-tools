@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, Card, CardBody, CardHeader, Empty, PageLoading, Sparkline, StatGrid } from '@/ds'
+import { Alert, Button, Modal, Card, CardBody, CardHeader, Empty, PageLoading, Sparkline, StatGrid } from '@/ds'
 import { Stat, Badge } from '@/ds'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -26,22 +26,36 @@ interface Props {
 export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(false)
+  // A failed read is reported, never shown as a link nobody has clicked.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && shortCode) {
       loadAnalytics()
     } else {
       setData(null)
+      setLoadError(null)
     }
   }, [open, shortCode])
 
   const loadAnalytics = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const [analyticsRes, summaryRes] = await Promise.all([
         getShortLinkAnalytics(shortCode),
         getShortLinkAnalyticsSummary(shortCode, 30),
       ])
+
+      const failure =
+        (analyticsRes && 'error' in analyticsRes && analyticsRes.error) ||
+        (summaryRes && 'error' in summaryRes && summaryRes.error) ||
+        null
+      if (failure) {
+        setData(null)
+        setLoadError(failure)
+        return
+      }
 
       const summaryData = Array.isArray(summaryRes?.data) ? summaryRes.data : []
       const chartData = summaryData.map((d: Record<string, unknown>) => Number(d.total_clicks ?? 0))
@@ -76,6 +90,7 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
       })
     } catch {
       setData(null)
+      setLoadError('Could not load the analytics for this link')
     } finally {
       setLoading(false)
     }
@@ -85,6 +100,15 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
     <Modal open={open} onClose={onClose} title="Link Analytics" width="xl">
       {loading ? (
         <PageLoading inline label="Loading analytics" />
+      ) : loadError ? (
+        <Alert tone="danger" title="Could not load analytics">
+          {loadError}
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={() => void loadAnalytics()}>
+              Try again
+            </Button>
+          </div>
+        </Alert>
       ) : data ? (
         <div className="space-y-4">
           {/* Summary stats */}

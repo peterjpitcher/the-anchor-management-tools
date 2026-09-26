@@ -17,7 +17,7 @@ import {
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
-import { RECEIPT_FLOW_TEXT_CLASS } from '../_shared/status-ui'
+import { RECEIPT_FLOW_TEXT_CLASS, RECEIPT_FLOW_TONE } from '../_shared/status-ui'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-GB', {
@@ -62,9 +62,25 @@ export default async function ReceiptsMissingExpensePage() {
       canManage={canManage}
     >
       <StatGrid columns={3}>
-        <Stat label="Transactions without expense" value={totalTransactions} hint="Needs attention" />
-        <Stat label="Uncategorised outgoing" value={formatCurrency(totalOutgoing)} hint="Awaiting categorisation" />
-        <Stat label="Uncategorised incoming" value={formatCurrency(totalIncoming)} hint="Incoming balance" />
+        {/* Amber while anything needs a category; money out red and money in green, as in the table below. */}
+        <Stat
+          label="Transactions without expense"
+          value={totalTransactions}
+          tone={totalTransactions > 0 ? 'warning' : 'default'}
+          hint="Needs attention"
+        />
+        <Stat
+          label="Uncategorised outgoing"
+          value={formatCurrency(totalOutgoing)}
+          tone={totalOutgoing > 0 ? RECEIPT_FLOW_TONE.spend : 'default'}
+          hint="Awaiting categorisation"
+        />
+        <Stat
+          label="Uncategorised incoming"
+          value={formatCurrency(totalIncoming)}
+          tone={totalIncoming > 0 ? RECEIPT_FLOW_TONE.income : 'default'}
+          hint="Incoming balance"
+        />
       </StatGrid>
 
       {summary.length === 0 ? (

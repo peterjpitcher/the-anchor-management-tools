@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
-import { Alert, Button, Field, FormFooter, Input, Select, Textarea, toast } from '@/ds'
+import { Alert, Button, Field, FileButton, FormFooter, Icon, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
 const ATTACHMENT_ALLOWED_MIME_TYPES = [
@@ -42,7 +42,6 @@ export default function AddEmployeeAttachmentForm({
   const [isUploading, startTransition] = useTransition()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -68,9 +67,6 @@ export default function AddEmployeeAttachmentForm({
 
         if (result?.type === 'success') {
           formRef.current?.reset()
-          if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-          }
           setSelectedFile(null)
           router.refresh()
         }
@@ -91,44 +87,35 @@ export default function AddEmployeeAttachmentForm({
 
       <Field
         label="File"
-        hint="Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10 MB)."
+        // The chosen file is named in the hint, so it is read out with the button too.
+        hint={`${selectedFile ? `${selectedFile.name}. ` : ''}Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10 MB).`}
         error={state?.errors?.attachment_file?.join(' ') || undefined}
       >
-        {/* The DS Input as a single-file picker, as on the new employee page: it can be disabled,
-            takes its label from the Field, stays in the tab order and is cleared through the ref
-            after an upload. */}
-        <Input
+        {/* The DS file picker: a Button over a hidden input, named by the Field. The file is sent
+            from state (the handler builds the FormData), so the input keeps no value. */}
+        <FileButton
           id="attachment_file"
-          name="attachment_file"
-          type="file"
-          ref={fileInputRef}
           accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
-          required
           disabled={!hasCategories || isUploading}
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (!file) {
-              setSelectedFile(null)
-              return
-            }
-
+          icon={<Icon name="upload" size={16} />}
+          onFiles={([file]) => {
             if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
               toast.error('Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.')
-              event.target.value = ''
               setSelectedFile(null)
               return
             }
 
             if (file.size >= MAX_FILE_SIZE) {
               toast.error('File size must be less than 10MB.')
-              event.target.value = ''
               setSelectedFile(null)
               return
             }
 
             setSelectedFile(file)
           }}
-        />
+        >
+          {selectedFile ? 'Choose Another File' : 'Choose File'}
+        </FileButton>
       </Field>
 
       <Field label="Category">

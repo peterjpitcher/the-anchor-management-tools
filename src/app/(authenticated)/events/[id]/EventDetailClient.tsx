@@ -19,9 +19,12 @@ import {
   Select,
   ConfirmDialog,
   CustomerLink,
+  DescriptionList,
   Empty,
+  LinkButton,
   toast,
 } from '@/ds'
+import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
@@ -60,11 +63,11 @@ import { buildEventBookingStats } from '@/lib/events/stats'
 import {
   eventBookingStatusTone,
   eventLinkTypeTone,
-  eventMessageStatusTone,
   eventSeatingTypeTone,
   eventStatusLabel,
   eventStatusTone,
 } from '../_shared/status-ui'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -656,6 +659,7 @@ export default function EventDetailClient({
                   {cancelRefundOn && (
                     <div className="space-y-2 pl-7">
                       <Select
+                        label="Refund"
                         value={cancelRefundMode}
                         onChange={(e) => {
                           const mode = e.target.value === 'partial' ? 'partial' : 'full'
@@ -671,13 +675,14 @@ export default function EventDetailClient({
                       />
                       {cancelRefundMode === 'partial' && (
                         <Input
+                          label="Refund amount (£)"
                           type="number"
                           min={0}
                           max={cancelRefundInfo.maxRefundable}
                           step="0.01"
                           value={cancelRefundAmount}
                           onChange={(e) => setCancelRefundAmount(e.target.value)}
-                          placeholder="Refund amount"
+                          placeholder="0.00"
                         />
                       )}
                       <p className="text-xs text-text-muted">
@@ -713,7 +718,7 @@ export default function EventDetailClient({
         title="Comp Booking"
         message="Mark this booking as complimentary? It will be confirmed with no payment taken."
         confirmLabel="Comp Booking"
-        tone="warning"
+        tone="primary"
         loading={isPending}
       />
 
@@ -762,6 +767,91 @@ export default function EventDetailClient({
 /* ================================================================== */
 
 function OverviewTab({ event }: { event: Event }) {
+  // One row per fact, in the order the page has always shown them; rows that do not apply to
+  // this event are left out.
+  const items: DescriptionListItem[] = [
+    { key: 'date', label: 'Date', value: formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' }) },
+    { key: 'time', label: 'Time', value: formatTime12Hour(event.time) },
+  ]
+  if (event.end_time) items.push({ key: 'end-time', label: 'End Time', value: formatTime12Hour(event.end_time) })
+  if (event.doors_time) items.push({ key: 'doors', label: 'Doors', value: formatTime12Hour(event.doors_time) })
+  if (event.last_entry_time) items.push({ key: 'last-entry', label: 'Last Entry', value: formatTime12Hour(event.last_entry_time) })
+  if (event.booking_cutoff_at) {
+    items.push({
+      key: 'sales-close',
+      label: 'Online Sales Close',
+      value: (
+        <ValueWithExtra value={formatDateTime12Hour(event.booking_cutoff_at)}>
+          {new Date(event.booking_cutoff_at).getTime() < Date.now() && (
+            <Badge tone="neutral" size="sm">Online sales closed</Badge>
+          )}
+        </ValueWithExtra>
+      ),
+    })
+  }
+  if (event.capacity_unavailable) {
+    items.push({ key: 'availability', label: 'Availability', value: 'Currently unavailable' })
+  } else if (event.booking_mode === 'communal') {
+    items.push(
+      { key: 'seated-remaining', label: 'Seated Places Remaining', value: String(event.seated_remaining ?? 'Unavailable') },
+      { key: 'standing-remaining', label: 'Standing Tickets Remaining', value: String(event.standing_remaining ?? 'Unavailable') },
+      { key: 'standing-limit', label: 'Standing Ticket Limit', value: String(event.resolved_standing_capacity ?? 0) },
+    )
+    if (event.seated_capacity != null) {
+      items.push({ key: 'seating-limit', label: 'Existing Seating Limit', value: String(event.seated_capacity) })
+    }
+  } else if (event.booking_mode === 'general') {
+    items.push({ key: 'ticket-limit', label: 'Ticket Limit', value: String(event.capacity ?? 'Unlimited') })
+  } else {
+    items.push({
+      key: 'seated-remaining',
+      label: 'Seated Places Remaining',
+      value: (
+        <>
+          {String(event.seated_remaining ?? 'Unavailable')}
+          <span className="block text-sm text-text-muted">Subject to a suitable table for the party size.</span>
+        </>
+      ),
+    })
+  }
+  items.push(
+    { key: 'booking-type', label: 'Booking Type', value: formatBookingMode(event.booking_mode) },
+    { key: 'cost', label: 'Cost', value: formatEventCost(event) },
+  )
+  if (event.performer_name) {
+    items.push({
+      key: 'performer',
+      label: 'Performer',
+      value: `${event.performer_name}${event.performer_type ? ` (${event.performer_type})` : ''}`,
+    })
+  }
+  if (event.slug) {
+    items.push({
+      key: 'slug',
+      label: 'Slug',
+      value: (
+        <ValueWithExtra value={event.slug}>
+          <CopyButton text={event.slug} label="Slug" />
+        </ValueWithExtra>
+      ),
+    })
+  }
+  if (event.brief) {
+    items.push({ key: 'brief', label: 'Brief', value: <CopyButton text={event.brief} label="Brief" />, span: 2 })
+  }
+  if (event.booking_url) {
+    items.push({
+      key: 'booking-url',
+      label: 'Booking URL',
+      value: (
+        <ValueWithExtra value={event.booking_url}>
+          <CopyButton text={event.booking_url} label="Booking URL" />
+        </ValueWithExtra>
+      ),
+      span: 2,
+    })
+  }
+
   return (
     <Card>
       <CardHeader title="Event Details" />
@@ -776,57 +866,7 @@ function OverviewTab({ event }: { event: Event }) {
               />
             </div>
           )}
-          <dl className="grid flex-1 gap-4 sm:grid-cols-2 content-start">
-            <DetailRow label="Date" value={formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' })} />
-            <DetailRow label="Time" value={formatTime12Hour(event.time)} />
-            {event.end_time && <DetailRow label="End Time" value={formatTime12Hour(event.end_time)} />}
-            {event.doors_time && <DetailRow label="Doors" value={formatTime12Hour(event.doors_time)} />}
-            {event.last_entry_time && <DetailRow label="Last Entry" value={formatTime12Hour(event.last_entry_time)} />}
-            {event.booking_cutoff_at && (
-              <DetailRow label="Online sales close" value={formatDateTime12Hour(event.booking_cutoff_at)}>
-                {new Date(event.booking_cutoff_at).getTime() < Date.now() && (
-                  <Badge tone="neutral" size="sm">Online sales closed</Badge>
-                )}
-              </DetailRow>
-            )}
-            {event.capacity_unavailable ? (
-              <DetailRow label="Availability" value="Currently unavailable" />
-            ) : event.booking_mode === 'communal' ? (
-              <>
-                <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')} />
-                <DetailRow label="Standing tickets remaining" value={String(event.standing_remaining ?? 'Unavailable')} />
-                <DetailRow label="Standing ticket limit" value={String(event.resolved_standing_capacity ?? 0)} />
-                {event.seated_capacity != null && <DetailRow label="Existing seating limit" value={String(event.seated_capacity)} />}
-              </>
-            ) : event.booking_mode === 'general' ? (
-              <DetailRow label="Ticket limit" value={String(event.capacity ?? 'Unlimited')} />
-            ) : (
-              <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')}>
-                <span className="text-sm text-text-muted">Subject to a suitable table for the party size.</span>
-              </DetailRow>
-            )}
-            <DetailRow label="Booking Type" value={formatBookingMode(event.booking_mode)} />
-            <DetailRow label="Cost" value={formatEventCost(event)} />
-            {event.performer_name && <DetailRow label="Performer" value={`${event.performer_name}${event.performer_type ? ` (${event.performer_type})` : ''}`} />}
-            {event.slug && (
-              <DetailRow label="Slug" value={event.slug}>
-                <CopyButton text={event.slug} label="Slug" />
-              </DetailRow>
-            )}
-            {event.brief && (
-              <div className="sm:col-span-2">
-                <dt className="text-xs font-medium text-text-muted">Brief</dt>
-                <dd className="mt-0.5">
-                  <CopyButton text={event.brief} label="Brief" />
-                </dd>
-              </div>
-            )}
-            {event.booking_url && (
-              <DetailRow label="Booking URL" value={event.booking_url} className="sm:col-span-2">
-                <CopyButton text={event.booking_url} label="Booking URL" />
-              </DetailRow>
-            )}
-          </dl>
+          <DescriptionList items={items} className="flex-1 content-start" />
         </div>
       </CardBody>
     </Card>
@@ -1080,6 +1120,7 @@ function AttendeesTab({
       return (
         <div className="flex flex-wrap items-center gap-1">
           <Select
+            aria-label="Transfer to event"
             value={transferTargetEventId}
             onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
             options={transferOptions}
@@ -1178,45 +1219,45 @@ function AttendeesTab({
         <CardHeader
           title="Attendees"
           action={
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            // CardHeader wraps these under the title on a narrow card.
+            <>
               {canManage && (
                 <Button
                   variant="secondary"
                   size="sm"
                   icon={<Icon name="check" size={14} />}
                   onClick={() => {
+                    // A full page load: check-in is the event kiosk, outside the staff shell.
                     window.location.href = `/events/${event.id}/check-in`
                   }}
                 >
                   Check-In
                 </Button>
               )}
-              <Button
+              <LinkButton
+                href={`/api/events/${event.id}/booking-sheets`}
+                download
                 variant="secondary"
                 size="sm"
                 icon={<Icon name="download" size={14} />}
-                onClick={() => {
-                  window.location.href = `/api/events/${event.id}/booking-sheets`
-                }}
                 disabled={activeBookingsCount === 0}
               >
                 Booking Sheets
-              </Button>
-              <Button
+              </LinkButton>
+              <LinkButton
+                href={`/api/events/${event.id}/guest-list`}
+                download
                 variant="secondary"
                 size="sm"
                 icon={<Icon name="download" size={14} />}
-                onClick={() => {
-                  window.location.href = `/api/events/${event.id}/guest-list`
-                }}
                 disabled={activeBookingsCount === 0}
               >
                 Guest List
-              </Button>
+              </LinkButton>
               <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
                 {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
               </Button>
-            </div>
+            </>
           }
         />
         {visibleBookings.length === 0 ? (
@@ -1457,8 +1498,8 @@ function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[]
                     <Badge tone="info" size="sm">
                       {formatMarketingTemplateLabel(message.templateKey)}
                     </Badge>
-                    <Badge tone={eventMessageStatusTone(message.status)} size="sm">
-                      {formatStatusLabel(message.status)}
+                    <Badge tone={messageDeliveryStatusTone(message.status)} size="sm">
+                      {messageDeliveryStatusLabel(message.status)}
                     </Badge>
                     <span className="text-xs text-text-muted">
                       Sent {formatDateInLondon(message.sentAt, {
@@ -1528,25 +1569,13 @@ function MarketingTab({
 /*  Shared sub-components                                              */
 /* ================================================================== */
 
-function DetailRow({
-  label,
-  value,
-  className,
-  children,
-}: {
-  label: string
-  value: string
-  className?: string
-  children?: React.ReactNode
-}) {
+/** A value with something beside it: a copy button or a small badge. */
+function ValueWithExtra({ value, children }: { value: string; children?: React.ReactNode }) {
   return (
-    <div className={className}>
-      <dt className="text-xs font-medium text-text-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-text flex items-center gap-1.5 min-w-0">
-        <span className="truncate min-w-0">{value}</span>
-        {children}
-      </dd>
-    </div>
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="min-w-0 break-words">{value}</span>
+      {children}
+    </span>
   )
 }
 

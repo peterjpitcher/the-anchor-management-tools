@@ -409,7 +409,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
               <LinkButton
                 variant="secondary"
                 href={`/api/vouchers/batches/${batchId}/manifest`}
-                target="_blank"
+                download
               >
                 Download Manifest CSV
               </LinkButton>
@@ -444,7 +444,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
           (downloadWarning?.deadCount ?? 0) === 1 ? '' : 's'
         } that have since been issued or cancelled. Only reprint pages you know are safe to print.`}
         confirmLabel="Download Anyway"
-        tone="warning"
+        tone="primary"
       />
     </>
   )

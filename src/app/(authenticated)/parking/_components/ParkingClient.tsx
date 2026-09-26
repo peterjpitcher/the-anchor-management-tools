@@ -28,6 +28,7 @@ import {
   Select,
   Stat,
   StatGrid,
+  SubHeading,
   Switch,
   Table,
   TableBody,
@@ -39,7 +40,13 @@ import {
   Textarea,
   toast,
 } from '@/ds'
-import { PARKING_BOOKING_STATUS_TONE, PARKING_PAYMENT_STATUS_TONE } from '../_shared/status-ui'
+import {
+  PARKING_BOOKING_STATUS_LABEL,
+  PARKING_BOOKING_STATUS_TONE,
+  PARKING_PAYMENT_STATUS_LABEL,
+  PARKING_PAYMENT_STATUS_TONE,
+} from '../_shared/status-ui'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import { RefundDialog } from './RefundDialog'
 import { RefundHistoryTable } from './RefundHistoryTable'
 import type {
@@ -84,23 +91,32 @@ interface Props {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
+// The filters use the same words as the status badges.
 const statusOptions = [
   { value: 'all', label: 'All statuses' },
-  { value: 'pending_payment', label: 'Pending Payment' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'expired', label: 'Expired' },
+  ...Object.entries(PARKING_BOOKING_STATUS_LABEL).map(([value, label]) => ({ value, label })),
 ]
 
 const paymentStatusOptions = [
   { value: 'all', label: 'All payment states' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'paid', label: 'Paid' },
-  { value: 'refunded', label: 'Refunded' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'expired', label: 'Expired' },
+  ...Object.entries(PARKING_PAYMENT_STATUS_LABEL).map(([value, label]) => ({ value, label })),
 ]
+
+const NOTIFICATION_CHANNEL_LABEL: Record<ParkingNotificationRecord['channel'], string> = {
+  sms: 'SMS',
+  email: 'Email',
+}
+
+// Sentence case, as a table cell (the old `capitalize` class turned these into Title Case).
+const NOTIFICATION_EVENT_LABEL: Record<ParkingNotificationRecord['event_type'], string> = {
+  payment_request: 'Payment request',
+  payment_reminder: 'Payment reminder',
+  payment_confirmation: 'Payment confirmation',
+  session_start: 'Session start',
+  session_end: 'Session end',
+  payment_overdue: 'Payment overdue',
+  refund_confirmation: 'Refund confirmation',
+}
 
 const initialFormState = {
   customer_first_name: '',
@@ -146,6 +162,8 @@ function formatDuration(minutes: number): string {
 export default function ParkingClient({ permissions, initialError }: Props) {
   const [bookings, setBookings] = useState<ParkingBooking[]>([])
   const [loading, setLoading] = useState(true)
+  // False until the first load settles: until then the count and the figures would read 0.
+  const [firstLoadSettled, setFirstLoadSettled] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
   // A failed load is shown as a failure, never as "No bookings": an empty list after an outage
   // reads as a quiet day rather than a broken request.
@@ -225,6 +243,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       return []
     } finally {
       setLoading(false)
+      setFirstLoadSettled(true)
     }
     return records
   }
@@ -576,8 +595,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   return (
     <PageLayout
       title="Parking"
-      // No count while the list failed to load: "0 bookings total" would be a claim, not a fact.
-      subtitle={loadError ? undefined : `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
+      // No count before the first load settles or while the list failed to load: "0 bookings
+      // total" would be a claim, not a fact.
+      subtitle={!firstLoadSettled || loadError ? undefined : `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
       headerActions={
         <>
           <Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>
@@ -591,17 +611,22 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     >
       {pageError && <Alert tone="danger" title="We couldn't load everything">{pageError}</Alert>}
 
-      {/* On a failed load the figures would all read 0, so the alert in the bookings card
-          explains the gap instead. */}
-      {!loadError && (
+      {/* Before the first load settles, or after a failed load, the figures would all read 0.
+          The bookings card shows the loading state or the alert that explains the gap instead. */}
+      {firstLoadSettled && !loadError && (
         <StatGrid columns={3}>
           <Stat label="Total Bookings" value={bookings.length} />
           <Stat label="Upcoming" value={upcomingCount} />
-          <Stat label="Pending Payments" value={pendingPaymentCount} hint={pendingPaymentCount > 0 ? 'Requires attention' : undefined} />
+          <Stat
+            label="Pending Payments"
+            value={pendingPaymentCount}
+            tone={pendingPaymentCount > 0 ? 'warning' : 'default'}
+            hint={pendingPaymentCount > 0 ? 'Requires attention' : undefined}
+          />
         </StatGrid>
       )}
 
-      <Tabs tabs={sections} activeTab={activeSection} onTabChange={setActiveSection} />
+      <Tabs aria-label="Parking sections" tabs={sections} activeTab={activeSection} onTabChange={setActiveSection} />
 
       {activeSection === 'bookings' && (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px]">
@@ -609,7 +634,14 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           <Card>
             <CardHeader title="Bookings" />
             <CardBody className="flex flex-wrap items-end gap-3 border-b border-border">
-              <SearchInput placeholder="Reference or customer" value={search} onChange={setSearch} className="w-full sm:w-64" />
+              <SearchInput
+                id="parking-search"
+                aria-label="Search parking bookings"
+                placeholder="Reference or customer"
+                value={search}
+                onChange={setSearch}
+                className="w-full sm:w-64"
+              />
               <Select aria-label="Filter by status" options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
               <Select aria-label="Filter by payment" options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />
             </CardBody>
@@ -663,8 +695,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                         </TableCell>
                         <TableCell>{formatDateTime(booking.start_at)}</TableCell>
                         <TableCell>{formatDateTime(booking.end_at)}</TableCell>
-                        <TableCell><Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{booking.status.replace('_', ' ')}</Badge></TableCell>
-                        <TableCell><Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{booking.payment_status}</Badge></TableCell>
+                        <TableCell><Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge></TableCell>
+                        <TableCell><Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge></TableCell>
                         <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
                         <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '-'}</TableCell>
                       </TableRow>
@@ -696,8 +728,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                         {`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim() || 'Unknown Customer'}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{booking.status.replace('_', ' ')}</Badge>
-                        <Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{booking.payment_status}</Badge>
+                        <Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge>
+                        <Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge>
                       </div>
                       <dl className="space-y-1 text-xs text-text-muted">
                         <div className="flex justify-between gap-2">
@@ -756,7 +788,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                           label: 'Status',
                           value: (
                             <Badge tone={PARKING_BOOKING_STATUS_TONE[selectedBooking.status]}>
-                              {selectedBooking.status.replace('_', ' ')}
+                              {PARKING_BOOKING_STATUS_LABEL[selectedBooking.status]}
                             </Badge>
                           ),
                         },
@@ -765,7 +797,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                           label: 'Payment',
                           value: (
                             <Badge tone={PARKING_PAYMENT_STATUS_TONE[selectedBooking.payment_status]}>
-                              {selectedBooking.payment_status}
+                              {PARKING_PAYMENT_STATUS_LABEL[selectedBooking.payment_status]}
                             </Badge>
                           ),
                         },
@@ -864,9 +896,11 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <TableBody>
                 {notifications.map((n) => (
                   <TableRow key={n.id}>
-                    <TableCell className="capitalize">{n.channel}</TableCell>
-                    <TableCell className="capitalize">{n.event_type.replace('_', ' ')}</TableCell>
-                    <TableCell>{n.status}</TableCell>
+                    <TableCell>{NOTIFICATION_CHANNEL_LABEL[n.channel] ?? n.channel}</TableCell>
+                    <TableCell>{NOTIFICATION_EVENT_LABEL[n.event_type] ?? n.event_type.replace(/_/g, ' ')}</TableCell>
+                    <TableCell>
+                      <Badge tone={messageDeliveryStatusTone(n.status)}>{messageDeliveryStatusLabel(n.status)}</Badge>
+                    </TableCell>
                     <TableCell>{n.sent_at ? formatDateTime(n.sent_at) : '-'}</TableCell>
                   </TableRow>
                 ))}
@@ -951,8 +985,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       {/* Create Booking Modal */}
       <Modal open={showCreateModal} onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }} title="Create Parking Booking">
         <form onSubmit={handleCreateBooking} className="flex flex-col gap-5">
+          {/* Each group keeps its fieldset, and its legend is a real sub-heading (h3 under the
+              dialog's h2 title), so both the group and the heading reach a screen reader. */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Customer</legend>
+            <legend><SubHeading as="h3">Customer</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="First name" required value={createForm.customer_first_name} onChange={(e) => handleInputChange('customer_first_name', e.target.value)} />
               <Input label="Last name" value={createForm.customer_last_name} onChange={(e) => handleInputChange('customer_last_name', e.target.value)} />
@@ -962,7 +998,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Schedule</legend>
+            <legend><SubHeading as="h3">Schedule</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Start" type="datetime-local" required value={createForm.start_at} onChange={(e) => handleInputChange('start_at', e.target.value)} />
               <Input label="End" type="datetime-local" required value={createForm.end_at} onChange={(e) => handleInputChange('end_at', e.target.value)} />
@@ -970,7 +1006,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Vehicle</legend>
+            <legend><SubHeading as="h3">Vehicle</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Registration" required placeholder="AB12CDE" value={createForm.vehicle_registration} onChange={(e) => handleInputChange('vehicle_registration', e.target.value.toUpperCase())} />
               <Input label="Make" value={createForm.vehicle_make} onChange={(e) => handleInputChange('vehicle_make', e.target.value)} />
@@ -980,7 +1016,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Pricing</legend>
+            <legend><SubHeading as="h3">Pricing</SubHeading></legend>
             {pricingPreview && (
               <Alert tone="info" role="status" title={`Estimated price: ${formatCurrency(pricingPreview.total)}`}>
                 <p>Covers {formatDuration(pricingPreview.durationMinutes)}</p>
@@ -1014,7 +1050,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       <Modal open={showEditModal} onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }} title="Edit Parking Booking">
         <form onSubmit={handleEditBooking} className="flex flex-col gap-5">
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Customer</legend>
+            <legend><SubHeading as="h3">Customer</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="First name" required value={editForm.customer_first_name} onChange={(e) => handleEditInputChange('customer_first_name', e.target.value)} />
               <Input label="Last name" value={editForm.customer_last_name} onChange={(e) => handleEditInputChange('customer_last_name', e.target.value)} />
@@ -1024,7 +1060,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Schedule</legend>
+            <legend><SubHeading as="h3">Schedule</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Start" type="datetime-local" required value={editForm.start_at} onChange={(e) => handleEditInputChange('start_at', e.target.value)} />
               <Input label="End" type="datetime-local" required value={editForm.end_at} onChange={(e) => handleEditInputChange('end_at', e.target.value)} />
@@ -1032,7 +1068,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Vehicle</legend>
+            <legend><SubHeading as="h3">Vehicle</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Registration" required placeholder="AB12CDE" value={editForm.vehicle_registration} onChange={(e) => handleEditInputChange('vehicle_registration', e.target.value.toUpperCase())} />
               <Input label="Make" value={editForm.vehicle_make} onChange={(e) => handleEditInputChange('vehicle_make', e.target.value)} />
@@ -1042,7 +1078,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Pricing</legend>
+            <legend><SubHeading as="h3">Pricing</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Override price" type="number" min="0" step="0.01" value={editForm.override_price} onChange={(e) => handleEditInputChange('override_price', e.target.value)} />
               <Input label="Override reason" value={editForm.override_reason} onChange={(e) => handleEditInputChange('override_reason', e.target.value)} />
@@ -1065,11 +1101,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         open={Boolean(cancelTarget)}
         onClose={() => setCancelTarget(null)}
         onConfirm={handleConfirmCancelBooking}
-        type="warning"
+        tone="danger"
         title="Cancel Parking Booking?"
         message={cancelTarget ? `Cancel booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
-        confirmText="Cancel Booking"
-        confirmVariant="danger"
+        confirmLabel="Cancel Booking"
       />
 
       {/* Refund Dialog */}

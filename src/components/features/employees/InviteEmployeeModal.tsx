@@ -24,12 +24,14 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
 
   // The buttons stay inside the form (not the Modal footer) so Send Invite submits it.
   return (
-    <Modal open onClose={onClose} title="Invite Employee" width="md">
+    <Modal
+      open
+      onClose={onClose}
+      title="Invite Employee"
+      description="They will receive an invite by email to create their account and complete their profile."
+      width="md"
+    >
       <form action={formAction} className="space-y-4">
-        <p className="text-sm text-text-muted">
-          Enter the employee&apos;s email address. They will receive an invite to create their account and complete their profile.
-        </p>
-
         <Input
           id="invite-email"
           name="email"

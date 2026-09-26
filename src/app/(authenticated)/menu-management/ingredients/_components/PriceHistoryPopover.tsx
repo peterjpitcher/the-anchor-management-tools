@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect, ReactNode } from 'react';
-import { Alert, Card, Empty, PageLoading, Popover } from '@/ds';
+import { useState, useCallback, ReactNode } from 'react';
+import { Alert, Card, Empty, PageLoading, Popover, SubHeading, type PopoverPlacement } from '@/ds';
 import { getMenuIngredientPrices } from '@/app/actions/menu-management';
 import { toast } from '@/ds';
 
@@ -19,31 +19,25 @@ interface PriceHistoryPopoverProps {
   ingredientId: string;
   ingredientName: string;
   trigger: ReactNode;
-}
-
-/**
- * Runs `onOpen` when the popover panel mounts. The DS Popover renders its panel only while it is
- * open and has no open callback, so this is how the history loads the first time it is shown.
- */
-function OnOpen({ onOpen }: { onOpen: () => void }): null {
-  useEffect(() => {
-    onOpen();
-    // Once per opening: the panel unmounts when it closes.
-  }, []);
-  return null;
+  /**
+   * Where the panel opens. A table row's Prices button opens it below, lined up with the button's
+   * right edge (the default); the ingredient drawer's footer button opens it above.
+   */
+  placement?: PopoverPlacement;
 }
 
 export function PriceHistoryPopover({
   ingredientId,
   ingredientName,
   trigger,
+  placement = 'bottom-end',
 }: PriceHistoryPopoverProps): React.ReactElement {
   const [prices, setPrices] = useState<IngredientPriceEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleOpen = useCallback(async () => {
+  const loadPrices = useCallback(async () => {
     if (loaded) return;
     setLoading(true);
     setLoadError(null);
@@ -65,14 +59,34 @@ export function PriceHistoryPopover({
     }
   }, [ingredientId, loaded]);
 
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        void loadPrices();
+      } else {
+        // A failure is shown until the panel closes; the next opening starts a fresh load.
+        setLoadError(null);
+      }
+    },
+    [loadPrices]
+  );
+
+  // Until the first load has landed, the panel shows the spinner rather than an empty history.
+  const showLoading = loading || (!loaded && !loadError);
+
   return (
-    <Popover trigger={trigger} align="right">
-      <OnOpen onOpen={() => void handleOpen()} />
-      <p className="mb-2 border-b border-border pb-2 text-sm font-semibold text-text-strong">
+    <Popover
+      trigger={trigger}
+      placement={placement}
+      width="lg"
+      label={`Price history for ${ingredientName}`}
+      onOpenChange={handleOpenChange}
+    >
+      <SubHeading className="mb-2 border-b border-border pb-2">
         Price History &ndash; {ingredientName}
-      </p>
+      </SubHeading>
       <div className="max-h-80 overflow-y-auto">
-        {loading ? (
+        {showLoading ? (
           <PageLoading inline label="Loading prices" className="py-4" />
         ) : loadError ? (
           <Alert tone="danger" size="sm">{loadError}</Alert>

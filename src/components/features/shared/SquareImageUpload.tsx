@@ -136,51 +136,45 @@ export function SquareImageUpload({
     }
   }
 
-  const canUpload = entityId !== 'new' && !isUploading
-
   return (
     <div className="space-y-4">
+      {/* The drop zone is the Field's direct child, so the label names it and the hint describes it. */}
       <Field label={label} hint={helpText}>
-        <div className="space-y-4">
-          {/* Preview */}
-          {previewUrl && (
-            <div className="relative inline-block">
-              <div className="h-32 w-32 overflow-hidden rounded-lg border border-border-strong bg-surface-hover sm:h-48 sm:w-48">
-                <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
-              </div>
-              {currentImageUrl && (
-                <IconButton
-                  variant="danger"
-                  size="sm"
-                  label="Delete image"
-                  title="Delete Image"
-                  icon={<Icon name="trash" size={16} />}
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={isDeleting}
-                  className="absolute -right-2 -top-2 rounded-full shadow-default"
-                />
-              )}
-            </div>
-          )}
-
-          {/* Upload controls */}
-          {entityId === 'new' ? (
-            <Alert tone="warning">Save the {entityType} first before uploading images</Alert>
-          ) : canUpload ? (
-            <FileUpload
-              accept="image/jpeg,image/jpg,image/png,image/webp"
-              onFiles={handleFileSelect}
-              hint={previewUrl ? 'Choose another image to replace this one' : 'JPEG, PNG or WebP, up to 10MB'}
-            />
-          ) : null}
-
-          <p className="text-sm text-text-soft" aria-live="polite">
-            {isUploading
-              ? 'Uploading...'
-              : 'The image uploads as soon as you choose it.'}
-          </p>
-        </div>
+        {entityId === 'new' ? (
+          <Alert tone="warning">Save the {entityType} first before uploading images</Alert>
+        ) : (
+          <FileUpload
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            onFiles={handleFileSelect}
+            disabled={isUploading}
+            hint={previewUrl ? 'Choose another image to replace this one' : 'JPEG, PNG or WebP, up to 10MB'}
+          />
+        )}
       </Field>
+
+      {previewUrl && (
+        <div className="relative inline-block">
+          <div className="h-32 w-32 overflow-hidden rounded-lg border border-border-strong bg-surface-hover sm:h-48 sm:w-48">
+            <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+          </div>
+          {currentImageUrl && (
+            <IconButton
+              variant="danger"
+              size="sm"
+              label="Delete image"
+              title="Delete Image"
+              icon={<Icon name="trash" size={16} />}
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              className="absolute -right-2 -top-2 rounded-full shadow-default"
+            />
+          )}
+        </div>
+      )}
+
+      <p className="text-sm text-text-soft" aria-live="polite">
+        {isUploading ? 'Uploading...' : 'The image uploads as soon as you choose it.'}
+      </p>
 
       <ConfirmDialog
         open={showDeleteConfirm}

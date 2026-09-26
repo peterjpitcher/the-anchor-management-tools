@@ -13,6 +13,8 @@ import {
   Empty,
   IconButton,
   Input,
+  LinkButton,
+  Modal,
   PageLayout,
   Section,
   Select,
@@ -34,7 +36,6 @@ import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
 import { hasCouldntWorkPayrollFlag, isCouldntWorkPayrollFlag, parsePayrollFlags, payrollFlagLabel } from '@/lib/rota/payroll-flags';
 import { ROTA_CALENDAR_NOTE_CLASSES, ROTA_DAY_INFO_CLASSES } from '@/lib/rota/status-ui';
-import { DownloadLink } from '../_shared/DownloadLink';
 import type { RotaLayoutProps } from '../_shared/layout';
 import {
   PAYROLL_APPROVAL_TONE,
@@ -140,6 +141,16 @@ function formatTime12h(time: string | null | undefined): string {
 /** Shown in a cell with no value to report. */
 const NO_VALUE = '–';
 
+/** Said wherever a change would undo this month's approval. */
+const AFTER_APPROVAL_WARNING = 'Payroll is already approved: re-approve after this change to update the snapshot.';
+
+/** The planned time under a worked-time field, so the correction can be checked against it. */
+function plannedHint(row: PayrollRow, edge: 'start' | 'end'): string | undefined {
+  if (hasCouldntWorkPayrollFlag(row.flags)) return undefined;
+  const planned = edge === 'start' ? row.plannedStart : row.plannedEnd;
+  return planned ? `Planned ${formatTime12h(planned)}` : undefined;
+}
+
 function diffLabel(diff: number) {
   if (Math.abs(diff) < 0.05) return '–';
   return `${diff > 0 ? '+' : ''}${diff.toFixed(1)}h`;
@@ -211,67 +222,57 @@ export default function PayrollClient({
   const [sendPending, startSendTransition] = useTransition();
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
-  // Edit / delete state
-  const [editingKey, setEditingKey] = useState<string | null>(null);
+  // Edit / delete state: a row's worked times and its payroll note each edit in a dialog.
+  const [editingRow, setEditingRow] = useState<PayrollRow | null>(null);
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
   const [editSaving, setEditSaving] = useState(false);
-  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<PayrollRow | null>(null);
 
   useEffect(() => {
     setApproval(initialApproval);
   }, [initialApproval]);
 
-  const startEdit = (key: string, row: import('@/lib/rota/excel-export').PayrollRow) => {
-    setEditingKey(key);
+  const startEdit = (row: PayrollRow) => {
+    setEditingRow(row);
     setEditClockIn(row.actualStart ?? '');
     setEditClockOut(row.actualEnd ?? '');
-    setConfirmDeleteKey(null);
   };
 
-  const handleSaveEdit = async (row: import('@/lib/rota/excel-export').PayrollRow) => {
+  const handleSaveEdit = async (row: PayrollRow) => {
     if (!editClockIn) { toast.error('Clock-in time is required'); return; }
     setEditSaving(true);
     const result = await updatePayrollRowTimes(row.sessionId, row.employeeId, row.date, editClockIn, editClockOut || null, year, month);
     setEditSaving(false);
     if (!result.success) { toast.error(result.error); return; }
-    setEditingKey(null);
+    setEditingRow(null);
     if (approval) setApproval(null);
     router.refresh();
   };
 
-  const handleDelete = async (row: import('@/lib/rota/excel-export').PayrollRow) => {
+  const handleDelete = async (row: PayrollRow) => {
     const result = await deletePayrollRow(row.sessionId, row.shiftId, year, month);
     if (!result.success) { toast.error(result.error); return; }
-    setConfirmDeleteKey(null);
     setConfirmDeleteRow(null);
     if (approval) setApproval(null);
     router.refresh();
-  };
-
-  const closeDeleteConfirm = () => {
-    setConfirmDeleteKey(null);
-    setConfirmDeleteRow(null);
   };
 
   // Note editing
-  const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
+  const [noteRow, setNoteRow] = useState<PayrollRow | null>(null);
   const [editNoteValue, setEditNoteValue] = useState('');
   const [notePending, startNoteTransition] = useTransition();
 
-  const startEditNote = (key: string, currentNote: string | null) => {
-    setEditingNoteKey(key);
-    setEditNoteValue(currentNote ?? '');
-    setEditingKey(null);
-    setConfirmDeleteKey(null);
+  const startEditNote = (row: PayrollRow) => {
+    setNoteRow(row);
+    setEditNoteValue(row.note ?? '');
   };
 
   const handleSaveNote = (shiftId: string) => {
     startNoteTransition(async () => {
       const result = await upsertShiftNote(shiftId, editNoteValue, year, month);
       if (!result.success) { toast.error(result.error); return; }
-      setEditingNoteKey(null);
+      setNoteRow(null);
       if (approval) setApproval(null);
       router.refresh();
     });
@@ -366,9 +367,15 @@ export default function PayrollClient({
             {approvalLabel}
           </Badge>
           {canExport && approval && (
-            <DownloadLink href={`/api/rota/export?year=${year}&month=${month}`}>
+            <LinkButton
+              href={`/api/rota/export?year=${year}&month=${month}`}
+              download
+              size="sm"
+              variant="secondary"
+              icon={<Icon name="download" size={16} />}
+            >
               Download Excel
-            </DownloadLink>
+            </LinkButton>
           )}
           {canSend && approval && !approval.email_sent_at && (
             <Button type="button" size="sm" variant="secondary" icon={<Icon name="mail" size={14} />} onClick={handleSend} disabled={sendPending}>
@@ -435,12 +442,6 @@ export default function PayrollClient({
           </div>
         )}
       </div>
-
-      {approval && (editingKey !== null || confirmDeleteKey !== null) && (
-        <Alert tone="warning" role="status">
-          Editing after approval. Re-approve to update the snapshot.
-        </Alert>
-      )}
 
       {/* Cycle stats: planned against actual to date, and earned */}
       <PayrollSummaryBar rows={initialRows} />
@@ -528,13 +529,12 @@ export default function PayrollClient({
                     </TableRow>,
 
                     /* Employee rows (expanded) */
-                    ...(isExpanded ? dayRows.flatMap((row, i) => {
+                    ...(isExpanded ? dayRows.map((row, i) => {
                       const rowKey = `${date}-${i}`;
                       const empDiff = (row.actualHours ?? 0) - (row.plannedHours ?? 0);
-                      const isEditing = editingKey === rowKey;
                       const isCouldntWork = hasCouldntWorkPayrollFlag(row.flags);
 
-                      const dataRow = (
+                      return (
                         <TableRow key={`row-${rowKey}`} className="group">
                           <TableCell />
                           <TableCell className="pl-8 text-text-strong">
@@ -581,7 +581,7 @@ export default function PayrollClient({
                               <IconButton
                                 type="button"
                                 size="sm"
-                                onClick={() => startEdit(rowKey, row)}
+                                onClick={() => startEdit(row)}
                                 className="text-text-subtle hover:text-text"
                                 title="Edit times"
                                 label="Edit times"
@@ -591,7 +591,7 @@ export default function PayrollClient({
                                 <IconButton
                                   type="button"
                                   size="sm"
-                                  onClick={() => startEditNote(rowKey, row.note)}
+                                  onClick={() => startEditNote(row)}
                                   className={row.note ? 'text-info-fg' : 'text-text-subtle hover:text-text'}
                                   title={row.note ? 'Edit note' : 'Add note'}
                                   label={row.note ? 'Edit note' : 'Add note'}
@@ -601,7 +601,7 @@ export default function PayrollClient({
                               <IconButton
                                 type="button"
                                 size="sm"
-                                onClick={() => { setConfirmDeleteKey(rowKey); setConfirmDeleteRow(row); setEditingKey(null); setEditingNoteKey(null); }}
+                                onClick={() => setConfirmDeleteRow(row)}
                                 className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
                                 title="Delete row"
                                 label="Delete row"
@@ -611,109 +611,6 @@ export default function PayrollClient({
                           </TableCell>
                         </TableRow>
                       );
-
-                      const editRow = isEditing ? (
-                        <TableRow key={`edit-${rowKey}`} className="bg-info-soft hover:bg-info-soft">
-                          <TableCell />
-                          <TableCell className="pl-8 text-xs text-text-muted">
-                            Edit actual times for <span className="font-medium text-text">{row.employeeName}</span>
-                          </TableCell>
-                          <TableCell align="right" className="text-xs text-text-soft tabular-nums">
-                            {isCouldntWork ? null : row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : NO_VALUE}
-                          </TableCell>
-                          <TableCell align="right" colSpan={2}>
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Input
-                                type="time"
-                                value={editClockIn}
-                                onChange={e => setEditClockIn(e.target.value)}
-                                aria-label={`Clock in for ${row.employeeName}`}
-                                className="h-btn-h-sm w-28 text-xs"
-                              />
-                              <span className="text-xs text-text-soft">–</span>
-                              <Input
-                                type="time"
-                                value={editClockOut}
-                                onChange={e => setEditClockOut(e.target.value)}
-                                aria-label={`Clock out for ${row.employeeName}`}
-                                className="h-btn-h-sm w-28 text-xs"
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell align="right" className="text-xs">
-                            <PayRateDisplay row={row} />
-                          </TableCell>
-                          <TableCell />
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="xs"
-                                onClick={() => setEditingKey(null)}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="primary"
-                                size="xs"
-                                onClick={() => handleSaveEdit(row)}
-                                disabled={editSaving}
-                              >
-                                {editSaving ? '…' : 'Save'}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : null;
-
-                      const noteEditRow = editingNoteKey === rowKey && row.shiftId ? (
-                        <TableRow key={`note-${rowKey}`} className="bg-warning-soft hover:bg-warning-soft">
-                          <TableCell />
-                          <TableCell className="pl-8 text-xs text-text-muted" colSpan={5}>
-                            <div className="flex items-center gap-2">
-                              <span className="text-text-muted shrink-0">Payroll note for <span className="font-medium text-text">{row.employeeName}</span>:</span>
-                              <div className="min-w-0 flex-1">
-                                <Input
-                                  autoFocus
-                                  type="text"
-                                  value={editNoteValue}
-                                  onChange={e => setEditNoteValue(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveNote(row.shiftId!); if (e.key === 'Escape') setEditingNoteKey(null); }}
-                                  placeholder="Add a note for this shift…"
-                                  aria-label={`Payroll note for ${row.employeeName}`}
-                                  className="h-btn-h-sm text-xs"
-                                />
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell />
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="xs"
-                                onClick={() => setEditingNoteKey(null)}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="primary"
-                                size="xs"
-                                onClick={() => handleSaveNote(row.shiftId!)}
-                                disabled={notePending}
-                              >
-                                {notePending ? '…' : 'Save'}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : null;
-
-                      return [dataRow, editRow, noteEditRow].filter(Boolean);
                     }) : []),
                   ];
                 })}
@@ -772,14 +669,98 @@ export default function PayrollClient({
         </Section>
       )}
 
+      {/* A row's worked times and its note are forms, so each opens in a dialog. */}
+      <Modal
+        open={editingRow !== null}
+        onClose={() => { if (!editSaving) setEditingRow(null); }}
+        title="Edit Worked Times"
+        description={editingRow ? `${editingRow.employeeName}, ${formatDate(editingRow.date)}` : undefined}
+        width="md"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditingRow(null)} disabled={editSaving}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => { if (editingRow) void handleSaveEdit(editingRow); }}
+              loading={editSaving}
+            >
+              Save Changes
+            </Button>
+          </>
+        }
+      >
+        {editingRow && (
+          <div className="space-y-4">
+            {approval && <Alert tone="warning">{AFTER_APPROVAL_WARNING}</Alert>}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="Clock in"
+                type="time"
+                value={editClockIn}
+                onChange={e => setEditClockIn(e.target.value)}
+                hint={plannedHint(editingRow, 'start')}
+              />
+              <Input
+                label="Clock out"
+                type="time"
+                value={editClockOut}
+                onChange={e => setEditClockOut(e.target.value)}
+                hint={plannedHint(editingRow, 'end')}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={noteRow !== null}
+        onClose={() => { if (!notePending) setNoteRow(null); }}
+        title={noteRow?.note ? 'Edit Payroll Note' : 'Add Payroll Note'}
+        description={noteRow ? `${noteRow.employeeName}, ${formatDate(noteRow.date)}` : undefined}
+        width="md"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setNoteRow(null)} disabled={notePending}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => { if (noteRow?.shiftId) handleSaveNote(noteRow.shiftId); }}
+              loading={notePending}
+            >
+              Save Note
+            </Button>
+          </>
+        }
+      >
+        {noteRow && (
+          <div className="space-y-4">
+            {approval && <Alert tone="warning">{AFTER_APPROVAL_WARNING}</Alert>}
+            <Input
+              autoFocus
+              label="Note"
+              type="text"
+              value={editNoteValue}
+              onChange={e => setEditNoteValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && noteRow.shiftId) handleSaveNote(noteRow.shiftId); }}
+              placeholder="Add a note for this shift…"
+            />
+          </div>
+        )}
+      </Modal>
+
       <ConfirmDialog
         open={confirmDeleteRow !== null}
-        onClose={closeDeleteConfirm}
+        onClose={() => setConfirmDeleteRow(null)}
         onConfirm={async () => { if (confirmDeleteRow) await handleDelete(confirmDeleteRow); }}
         title="Delete Payroll Row?"
         message={
           confirmDeleteRow
-            ? `Delete ${confirmDeleteRow.employeeName}'s row for ${formatDate(confirmDeleteRow.date)}?`
+            ? `Delete ${confirmDeleteRow.employeeName}'s row for ${formatDate(confirmDeleteRow.date)}?${approval ? ` ${AFTER_APPROVAL_WARNING}` : ''}`
             : undefined
         }
         confirmLabel="Delete"

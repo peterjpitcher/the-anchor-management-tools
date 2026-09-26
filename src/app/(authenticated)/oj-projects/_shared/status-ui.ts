@@ -85,6 +85,16 @@ export function ojBalanceText(amount: number): string {
   return amount > 0 ? OJ_MONEY_TEXT.owed : OJ_MONEY_TEXT.settled
 }
 
+/** The same meanings for a Stat figure's tone: a balance still owed is red, otherwise green. */
+export function ojBalanceTone(amount: number): 'danger' | 'success' {
+  return amount > 0 ? 'danger' : 'success'
+}
+
+/** Money received, as a Stat figure: green once anything has been paid, plain at zero. */
+export function ojReceivedTone(amount: number): 'success' | 'default' {
+  return amount > 0 ? 'success' : 'default'
+}
+
 /** Budget used, as a progress bar: red once more than 90% has gone. */
 export function ojBudgetTone(percentUsed: number): 'primary' | 'danger' {
   return percentUsed > 90 ? 'danger' : 'primary'

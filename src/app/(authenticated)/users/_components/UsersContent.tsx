@@ -87,6 +87,7 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search users..."
+          aria-label="Search users"
           className="w-full sm:w-64"
         />
         <Select

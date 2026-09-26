@@ -81,7 +81,9 @@ export default function EventTodosWidget({
                 >
                   {canManage && (
                     // Not a field label: the DS Checkbox box is 16px, and this wrapper widens the
-                    // area that ticks it to the 44px touch target without adding visible text.
+                    // area that ticks it to the 44px touch target without adding visible text. The
+                    // DS Checkbox grows its own touch row only when it has a visible label, and the
+                    // todo's name beside it is a link to the event, not the checkbox's label.
                     <label className="-m-3.5 inline-flex shrink-0 cursor-pointer p-3.5">
                       <Checkbox
                         aria-label={`Mark "${item.label}" complete`}

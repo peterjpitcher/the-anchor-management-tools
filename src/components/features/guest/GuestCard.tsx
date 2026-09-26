@@ -24,7 +24,7 @@ const VARIANT_CLASS: Record<GuestCardVariant, string> = {
  * page is plain. `variant="danger"` is the red-tinted panel that holds the
  * confirmation of something that cannot be undone, such as cancelling a booking.
  *
- * A titled card opens with `GuestCardHeader`. Box classes only go through
+ * A titled card opens with `GuestCardHeader`. Classes are joined with
  * `cn()` here, so a caller's padding override still wins.
  */
 export function GuestCard({

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Input, Select, Card, CardBody, CardHeader, FormFooter, toast } from '@/ds'
+import { Button, Select, Card, CardBody, CardHeader, Field, FileButton, FormFooter, Icon, toast } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'
@@ -80,12 +80,19 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
               { value: 'amex', label: 'American Express statement' },
             ]}
           />
-          <Input
-            label="CSV file"
-            type="file"
-            accept=".csv"
-            onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
-          />
+          {/* The picked file lives in state only, so Clear and a finished upload really do empty it
+              (a plain file input kept showing the old file name after both). */}
+          <Field label="CSV file" hint={statementFile ? statementFile.name : 'No file chosen'}>
+            <FileButton
+              accept=".csv"
+              icon={<Icon name="upload" size={16} />}
+              onFiles={(files) => setStatementFile(files[0] ?? null)}
+              disabled={isStatementPending}
+              className="self-start"
+            >
+              {statementFile ? 'Choose Another File' : 'Choose CSV File'}
+            </FileButton>
+          </Field>
           <FormFooter
             start={lastImport ? `Last: ${formatDate(lastImport.uploaded_at)} \u00b7 ${lastImport.original_filename}` : undefined}
           >

@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { addMonths, subMonths, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Button, Segmented, SHELL_MEDIA_QUERY } from '@/ds'
+import { Button, Icon, IconButton, Segmented, SHELL_MEDIA_QUERY } from '@/ds'
 import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
 import { ScheduleCalendarList } from './ScheduleCalendarList'
@@ -82,28 +82,37 @@ export function ScheduleCalendar({
             <div className="flex items-center gap-2 flex-wrap">
                 {!isMobile && effectiveView !== 'list' && (
                     <div className="flex items-center gap-1">
-                        <Button size="sm" variant="ghost" type="button" onClick={goPrev} aria-label="Previous">
-                            {'\u2039'}
-                        </Button>
+                        <IconButton
+                            size="sm"
+                            variant="ghost"
+                            type="button"
+                            onClick={goPrev}
+                            label="Previous month"
+                            icon={<Icon name="chevronLeft" size={16} />}
+                        />
                         <Button size="sm" variant="ghost" type="button" onClick={goToday}>
                             Today
                         </Button>
-                        <Button size="sm" variant="ghost" type="button" onClick={goNext} aria-label="Next">
-                            {'\u203A'}
-                        </Button>
+                        <IconButton
+                            size="sm"
+                            variant="ghost"
+                            type="button"
+                            onClick={goNext}
+                            label="Next month"
+                            icon={<Icon name="chevronRight" size={16} />}
+                        />
                         <span className="ml-2 text-sm font-medium">{format(anchor, 'MMMM yyyy')}</span>
                     </div>
                 )}
                 <div className="flex-1" />
                 {!isMobile && (
-                    <div role="group" aria-label="Calendar view">
-                        <Segmented
-                            size="sm"
-                            options={CALENDAR_VIEW_OPTIONS}
-                            value={view}
-                            onChange={(id) => onViewChange(id as ScheduleCalendarView)}
-                        />
-                    </div>
+                    <Segmented
+                        size="sm"
+                        aria-label="Calendar view"
+                        options={CALENDAR_VIEW_OPTIONS}
+                        value={view}
+                        onChange={(id) => onViewChange(id as ScheduleCalendarView)}
+                    />
                 )}
             </div>
 

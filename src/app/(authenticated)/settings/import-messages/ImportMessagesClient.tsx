@@ -70,7 +70,8 @@ export default function ImportMessagesClient({
 
   return (
     <PageLayout
-      title="Import Missed Messages from Twilio"
+      title="Import Messages"
+      subtitle="Missed SMS messages from your Twilio account"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       containerSize="md"
     >
@@ -149,9 +150,9 @@ export default function ImportMessagesClient({
             <Stat label="Inbound messages" value={result.summary.inboundMessages} />
             <Stat label="Outbound messages" value={result.summary.outboundMessages} />
             <Stat label="Already in database" value={result.summary.alreadyInDatabase} />
-            <Stat label="Successfully imported" value={result.summary.imported} />
+            <Stat label="Successfully imported" value={result.summary.imported} tone="success" />
             {result.summary.failed > 0 && (
-              <Stat label="Failed to import" value={result.summary.failed} />
+              <Stat label="Failed to import" value={result.summary.failed} tone="danger" />
             )}
           </StatGrid>
 

@@ -157,7 +157,8 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
     >
       <StatGrid columns={4}>
         <Stat label="Active Staff" value={activeCount} />
-        <Stat label="Clocked In" value={clockedInCount} />
+        {/* Who is on shift is the good news the kiosk leads with, as it always has. */}
+        <Stat label="Clocked In" value={clockedInCount} tone="success" />
         <Stat label="Not Clocked In" value={activeCount - clockedInCount} />
         <Stat label="On Leave" value={0} />
       </StatGrid>
@@ -201,6 +202,7 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
         open={pinOpen}
         onClose={closePin}
         title={pinTarget ? empName(pinTarget) : undefined}
+        description={pinTargetClockedIn ? 'Enter your PIN to clock out' : 'Enter your PIN to clock in'}
         width="sm"
         footer={
           <>
@@ -235,7 +237,6 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
             submitPin()
           }}
         >
-          <p className="text-sm text-text-muted">{pinTargetClockedIn ? 'Clock out' : 'Clock in'}</p>
           {/* autoFocus raises the iPad keyboard as the dialog opens: React focuses the field in
               the same commit as the tap, and the dialog keeps focus where it already is. */}
           <Input

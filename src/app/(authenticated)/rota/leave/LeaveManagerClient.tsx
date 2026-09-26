@@ -12,6 +12,7 @@ import {
   FormFooter,
   IconButton,
   Input,
+  Modal,
   ProgressBar,
   Segmented,
   toast,
@@ -19,6 +20,8 @@ import {
 } from '@/ds';
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
+import { formatDateInLondon } from '@/lib/dateUtils';
+import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import {
   LEAVE_ALLOWANCE_TEXT_CLASSES,
   LEAVE_ALLOWANCE_TONE,
@@ -33,31 +36,23 @@ interface LeaveManagerClientProps {
   usageMap: Record<string, { count: number; allowance: number }>; // `${emp_id}:${year}` -> usage
 }
 
-// The same tones as the holiday dialog on the rota (HolidayDetailModal STATUS_TONES), keyed and
-// typed the same way: approved success, waiting warning, declined danger.
-const STATUS_BADGE: Record<LeaveRequest['status'], 'warning' | 'success' | 'danger'> = {
-  pending: 'warning',
-  approved: 'success',
-  declined: 'danger',
-};
-
-const STATUS_LABEL: Record<LeaveRequest['status'], string> = {
-  pending: 'Pending',
-  approved: 'Approved',
-  declined: 'Declined',
-};
-
 type LeaveFilter = 'all' | 'pending' | 'approved' | 'declined';
 
 function daysBetween(start: string, end: string): number {
-  const ms = new Date(end + 'T00:00:00').getTime() - new Date(start + 'T00:00:00').getTime();
+  const ms = new Date(end + 'T00:00:00Z').getTime() - new Date(start + 'T00:00:00Z').getTime();
   return Math.round(ms / 86400000) + 1;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    day: 'numeric', month: 'short', year: 'numeric',
+/** A leave date (YYYY-MM-DD). It is a UTC midnight, formatted in UTC so it never moves a day. */
+function formatDate(isoDate: string): string {
+  return new Date(isoDate + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   });
+}
+
+/** When the request was made: a timestamp, shown as its London day. */
+function formatSubmitted(timestamp: string): string {
+  return formatDateInLondon(timestamp, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function getUsageProgress(usage: { count: number; allowance: number }) {
@@ -89,7 +84,7 @@ function LeaveRequestRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [managerNote, setManagerNote] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [editStartDate, setEditStartDate] = useState(request.start_date);
   const [editEndDate, setEditEndDate] = useState(request.end_date);
   const [editError, setEditError] = useState('');
@@ -123,8 +118,15 @@ function LeaveRequestRow({
       }
       toast.success('Request dates updated');
       onUpdated({ ...request, start_date: editStartDate, end_date: editEndDate });
-      setIsEditing(false);
+      setEditOpen(false);
     });
+  };
+
+  const openEdit = () => {
+    setEditStartDate(request.start_date);
+    setEditEndDate(request.end_date);
+    setEditError('');
+    setEditOpen(true);
   };
 
   const runDelete = async () => {
@@ -144,8 +146,8 @@ function LeaveRequestRow({
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <Badge tone={STATUS_BADGE[request.status] ?? 'neutral'} size="sm">
-            {STATUS_LABEL[request.status] ?? request.status}
+          <Badge tone={rotaLeaveStatusTone(request.status)} size="sm">
+            {rotaLeaveStatusLabel(request.status)}
           </Badge>
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-strong truncate">{empName}</p>
@@ -184,7 +186,7 @@ function LeaveRequestRow({
               <IconButton
                 type="button"
                 size="sm"
-                onClick={e => { e.stopPropagation(); setExpanded(true); setIsEditing(true); }}
+                onClick={e => { e.stopPropagation(); openEdit(); }}
                 className="text-text-muted hover:text-text-strong"
                 title="Edit dates"
                 label={`Edit ${empName} holiday request`}
@@ -214,7 +216,7 @@ function LeaveRequestRow({
           <DescriptionList
             columns={2}
             items={[
-              { key: 'submitted', label: 'Submitted', value: formatDate(request.created_at) },
+              { key: 'submitted', label: 'Submitted', value: formatSubmitted(request.created_at) },
               { key: 'year', label: 'Holiday year', value: holidayYear },
               ...(usageProgress
                 ? [{
@@ -277,55 +279,55 @@ function LeaveRequestRow({
           )}
 
           {canEdit && (
-            !isEditing ? (
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
-                  Edit Dates
-                </Button>
-                <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
-                  Delete Request
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Input
-                    type="date"
-                    label="Start date"
-                    value={editStartDate}
-                    onChange={e => setEditStartDate(e.target.value)}
-                  />
-                  <Input
-                    type="date"
-                    label="End date"
-                    value={editEndDate}
-                    onChange={e => setEditEndDate(e.target.value)}
-                  />
-                </div>
-                {editError && <Alert tone="danger">{editError}</Alert>}
-                <FormFooter>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setEditStartDate(request.start_date);
-                      setEditEndDate(request.end_date);
-                      setEditError('');
-                      setIsEditing(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" size="sm" variant="primary" onClick={handleSaveDates} disabled={isPending}>
-                    {isPending ? 'Saving…' : 'Save Dates'}
-                  </Button>
-                </FormFooter>
-              </div>
-            )
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={openEdit}>
+                Edit Dates
+              </Button>
+              <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
+                Delete Request
+              </Button>
+            </div>
           )}
         </div>
       )}
+
+      {/* Editing a row's dates is a form, so it opens in a dialog like every other list edit. */}
+      <Modal
+        open={editOpen}
+        onClose={() => { if (!isPending) setEditOpen(false); }}
+        title="Edit Holiday Dates"
+        description={empName}
+        width="md"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={handleSaveDates} loading={isPending}>
+              Save Dates
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              type="date"
+              label="Start date"
+              value={editStartDate}
+              onChange={e => setEditStartDate(e.target.value)}
+            />
+            <Input
+              type="date"
+              label="End date"
+              value={editEndDate}
+              min={editStartDate}
+              onChange={e => setEditEndDate(e.target.value)}
+            />
+          </div>
+          {editError && <Alert tone="danger">{editError}</Alert>}
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={confirmDecision !== null}
@@ -342,7 +344,8 @@ function LeaveRequestRow({
             : `Decline ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}? This will remove pending holiday days from the rota.`
         }
         confirmLabel={confirmDecision === 'approved' ? 'Approve' : 'Decline'}
-        tone={confirmDecision === 'approved' ? 'warning' : 'danger'}
+        // Declining cannot be undone from here, so it is red; approving is the primary colour.
+        tone={confirmDecision === 'approved' ? 'primary' : 'danger'}
       />
 
       <ConfirmDialog
@@ -392,6 +395,7 @@ export default function LeaveManagerClient({
     <div className="space-y-4">
       {/* A status filter over the same list: a view switch, so Segmented. */}
       <Segmented
+        aria-label="Show requests"
         options={filterOptions}
         value={filter}
         onChange={id => setFilter(id as LeaveFilter)}

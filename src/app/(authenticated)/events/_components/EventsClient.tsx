@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { Alert, PageLayout, PageLoading, Segmented, Button } from '@/ds'
 import { Icon } from '@/ds/icons'
+import { cn } from '@/lib/utils'
 import { EventListView } from './EventListView'
 import { EventBoardView } from './EventBoardView'
 import { EventDrawer } from './EventDrawer'
@@ -454,6 +455,7 @@ export default function EventsClient({
             value={view}
             onChange={(id) => setView(id as ViewMode)}
             size="sm"
+            aria-label="Events view"
           />
           <Button
             variant="primary"
@@ -477,7 +479,7 @@ export default function EventsClient({
             />
           )}
 
-          <div className={isPending ? 'opacity-50 pointer-events-none' : ''}>
+          <div className={cn('space-y-6', isPending && 'pointer-events-none opacity-50')}>
             {view === 'list' && listError && (
               <Alert
                 tone="danger"
@@ -505,6 +507,22 @@ export default function EventsClient({
               />
             )}
 
+            {/* The events are the calendar's main content, so a failed load is a danger Alert above
+                it, as on the list and the board; the other layers' warnings stay under the grid. */}
+            {view === 'calendar' && calendarEventsError && (
+              <Alert
+                tone="danger"
+                title="Events could not be loaded"
+                actions={
+                  <Button type="button" variant="secondary" size="sm" onClick={fetchCalendarData}>
+                    Try Again
+                  </Button>
+                }
+              >
+                {calendarEventsError}
+              </Alert>
+            )}
+
             {view === 'calendar' && (
               <VenueCalendar
                 events={calendarEvents}
@@ -520,7 +538,6 @@ export default function EventsClient({
                 showFilters
                 onNotesChanged={fetchCalendarData}
                 datasetWarnings={[
-                  ...(calendarEventsError ? [`Events could not be loaded: ${calendarEventsError}`] : []),
                   ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
                   ...calendarDatasetWarnings,
                 ]}

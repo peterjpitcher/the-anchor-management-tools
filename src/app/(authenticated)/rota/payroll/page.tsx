@@ -9,7 +9,7 @@ import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import PayrollClient from './PayrollClient';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
-import { rotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +44,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     ?? await getOrCreatePayrollPeriod(year, month)
   ) as PayrollPeriod;
 
-  const [payrollResult, approvalResult] = await Promise.all([
+  const [payrollResult, approvalResult, navItems] = await Promise.all([
     getPayrollMonthData(year, month),
     supabase
       .from('payroll_month_approvals')
@@ -52,6 +52,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       .eq('year', year)
       .eq('month', month)
       .maybeSingle(),
+    getRotaNavItems(),
   ]);
   const dayInfo = await getRotaWeekDayInfo(payrollPeriod.period_start, payrollPeriod.period_end);
 
@@ -66,9 +67,9 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
   // One header for every state, so a failed load keeps the page's title, month and tabs.
   const layoutProps = {
-    title: 'Payroll',
-    subtitle: monthLabel,
-    navItems: rotaNavItems,
+    title: 'Rota',
+    subtitle: `Payroll: ${monthLabel}`,
+    navItems,
   };
 
   if (!payrollResult.success) {

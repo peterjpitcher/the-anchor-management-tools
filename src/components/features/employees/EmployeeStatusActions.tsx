@@ -10,13 +10,11 @@ import {
   type EmployeeSeparationShift,
   type SeparationShiftPolicy,
 } from '@/app/actions/employeeSeparation';
-import { Alert, Badge, Button, ConfirmDialog, Empty, Input, Modal, PageLoading, Radio, Textarea, toast } from '@/ds';
+import { Alert, Badge, Button, ConfirmDialog, Empty, Fieldset, Input, Modal, PageLoading, Radio, SubHeading, Textarea, toast } from '@/ds';
 import { formatDateFull, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
-import {
-  SEPARATION_SHIFT_DECISION_TONES,
-  rotaWeekStatusTone,
-} from '@/app/(authenticated)/employees/_shared/status-ui';
+import { SEPARATION_SHIFT_DECISION_TONES } from '@/app/(authenticated)/employees/_shared/status-ui';
+import { ROTA_WEEK_PUBLISH_LABEL, ROTA_WEEK_PUBLISH_TONE } from '@/app/(authenticated)/rota/_shared/status-ui';
 import { EmployeeActionButton, type EmployeeHeaderAction } from './employeeHeaderActions';
 
 interface EmployeeStatusActionsProps {
@@ -191,6 +189,9 @@ export function useEmployeeStatusActions({
     || Boolean(dateError)
     || !shiftPolicy;
 
+  // No shift choice until the remaining rota has loaded.
+  const shiftPolicyDisabled = previewLoading || Boolean(previewError);
+
   const actions: EmployeeHeaderAction[] = [];
   if (status === 'Onboarding') {
     actions.push({
@@ -226,6 +227,7 @@ export function useEmployeeStatusActions({
         open={showConfirm === 'separation'}
         onClose={closeSeparation}
         title="Begin Separation"
+        description="Review the remaining rota before starting the separation process. System access is not affected yet."
         width="lg"
         footer={
           <>
@@ -239,10 +241,6 @@ export function useEmployeeStatusActions({
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-text-muted">
-            Review the remaining rota before starting the separation process. System access is not affected yet.
-          </p>
-
           <Input
             ref={dateInputRef}
             id="separation-end-date"
@@ -255,39 +253,38 @@ export function useEmployeeStatusActions({
             required
           />
 
-          <fieldset disabled={previewLoading || Boolean(previewError)}>
-            <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
-              What should happen to remaining shifts?
-            </legend>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-border-strong p-4 has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
-                <Radio
-                  name="separation-shift-policy"
-                  value="work_remaining"
-                  checked={shiftPolicy === 'work_remaining'}
-                  onChange={() => setShiftPolicy('work_remaining')}
-                  label="Work agreed shifts"
-                  description="Keep shifts through the last working day and open any later shifts."
-                />
-              </div>
-              <div className="rounded-lg border border-border-strong p-4 has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
-                <Radio
-                  name="separation-shift-policy"
-                  value="release_remaining"
-                  checked={shiftPolicy === 'release_remaining'}
-                  onChange={() => setShiftPolicy('release_remaining')}
-                  label="Release all remaining shifts"
-                  description="Open every shift which has not started, including later today."
-                />
-              </div>
-            </div>
-          </fieldset>
+          {/* The DS Radio's label is the tap target, 44px tall on a touch screen, so the options
+              need no hand-built label or card around them. The fieldset disables the inputs; each
+              Radio is told as well, because its drawn circle and label only dim from its own prop. */}
+          <Fieldset
+            legend="What should happen to remaining shifts?"
+            required
+            disabled={shiftPolicyDisabled}
+          >
+            <Radio
+              name="separation-shift-policy"
+              value="work_remaining"
+              checked={shiftPolicy === 'work_remaining'}
+              onChange={() => setShiftPolicy('work_remaining')}
+              disabled={shiftPolicyDisabled}
+              label="Work agreed shifts"
+              description="Keep shifts through the last working day and open any later shifts."
+            />
+            <Radio
+              name="separation-shift-policy"
+              value="release_remaining"
+              checked={shiftPolicy === 'release_remaining'}
+              onChange={() => setShiftPolicy('release_remaining')}
+              disabled={shiftPolicyDisabled}
+              label="Release all remaining shifts"
+              description="Open every shift which has not started, including later today."
+            />
+          </Fieldset>
 
-          <section aria-labelledby="remaining-shifts-heading" className="space-y-2">
+          <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <p id="remaining-shifts-heading" className="text-sm font-medium text-text">
-                Remaining scheduled shifts
-              </p>
+              {/* h3: the dialog title is the h2. */}
+              <SubHeading as="h3">Remaining Scheduled Shifts</SubHeading>
               {preview && (
                 <span className="text-xs text-text-muted">
                   {preview.shifts.length} shift{preview.shifts.length === 1 ? '' : 's'}
@@ -326,8 +323,8 @@ export function useEmployeeStatusActions({
                           </p>
                         </div>
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          <Badge tone={rotaWeekStatusTone(shift.weekStatus)}>
-                            {shift.weekStatus === 'published' ? 'Published' : 'Draft'}
+                          <Badge tone={ROTA_WEEK_PUBLISH_TONE[shift.weekStatus]}>
+                            {ROTA_WEEK_PUBLISH_LABEL[shift.weekStatus]}
                           </Badge>
                           {acceptance && shift.acceptanceStatus && (
                             <Badge className={rotaShiftStatusClasses(shift.acceptanceStatus)}>
@@ -346,7 +343,7 @@ export function useEmployeeStatusActions({
                 })}
               </ul>
             )}
-          </section>
+          </div>
 
           {preview && shiftPolicy && (
             <Alert tone="info" size="sm" role="status">

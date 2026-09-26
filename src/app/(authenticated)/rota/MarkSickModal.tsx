@@ -16,12 +16,14 @@ interface MarkSickModalProps {
   onMarked: (shift: RotaShift) => void;
 }
 
+// A shift date is a plain day: read as a UTC midnight and formatted in UTC, so it never moves.
 function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -37,6 +39,7 @@ export default function MarkSickModal({
   const [reason, setReason] = useState(shift?.sick_reason ?? '');
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+  const dateIso = shift?.shift_date ?? shiftDate;
 
   const handleSubmit = () => {
     const trimmedReason = reason.trim();
@@ -71,6 +74,7 @@ export default function MarkSickModal({
       open
       onClose={onClose}
       title="Mark as Couldn't Work"
+      description={dateIso ? `${employeeName}, ${formatDate(dateIso)}` : employeeName}
       width="md"
       footer={
         <>
@@ -84,17 +88,11 @@ export default function MarkSickModal({
       }
     >
       <div className="space-y-4">
-        <div>
-          <p className="text-sm text-text-muted">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
-          <p className="mt-0.5 text-sm font-medium text-text-strong">{employeeName}</p>
-          {shift ? (
-            <p className="mt-1 text-sm text-text-muted">
-              {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-text-muted">No shift scheduled</p>
-          )}
-        </div>
+        <p className="text-sm text-text-muted">
+          {shift
+            ? `Shift ${formatTime12Hour(shift.start_time)} to ${formatTime12Hour(shift.end_time)}`
+            : 'No shift scheduled'}
+        </p>
 
         {error && <Alert tone="danger">{error}</Alert>}
 

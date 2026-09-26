@@ -16,6 +16,7 @@ import {
   DropdownItem,
   Empty,
   Field,
+  Fieldset,
   FormFooter,
   Input,
   Modal,
@@ -41,6 +42,7 @@ import {
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import { displayName } from '@/lib/employees/display-name'
 import { formatAvailabilityAnswer } from '@/lib/recruitment/answers'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import {
   addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
@@ -591,10 +593,9 @@ function SlotDateTimeInput({
     }
   }
 
-  // Three controls read as one field: the group carries the label, each control its own.
+  // Three controls read as one field: the Fieldset's legend names the group, each control its own.
   return (
-    <div role="group" aria-label={label} className="flex flex-col gap-1.5">
-      <span aria-hidden="true" className={SUB_LABEL}>{label}</span>
+    <Fieldset legend={label}>
       <input type="hidden" name={name} value={partsToDateTimeLocal(currentValue)} />
       <div className="grid grid-cols-[minmax(0,1fr)_86px_86px] gap-2">
         <Input
@@ -627,7 +628,7 @@ function SlotDateTimeInput({
           ))}
         </Select>
       </div>
-    </div>
+    </Fieldset>
   )
 }
 
@@ -665,6 +666,7 @@ function ActionFeedbackForm({
   className,
   confirmTitle,
   confirmMessage,
+  confirmTone = 'primary',
   successMessage = 'Done.',
   onSuccess,
 }: {
@@ -673,6 +675,8 @@ function ActionFeedbackForm({
   className?: string
   confirmTitle?: string
   confirmMessage?: string
+  /** The confirm button's colour: danger only for destructive actions (cancel, delete, erase). */
+  confirmTone?: 'primary' | 'danger'
   successMessage?: string
   onSuccess?: () => void
 }) {
@@ -732,7 +736,7 @@ function ActionFeedbackForm({
         title={confirmTitle ?? 'Confirm Action'}
         message={confirmMessage}
         confirmLabel="Confirm"
-        tone="warning"
+        tone={confirmTone}
       />
     </>
   )
@@ -1436,28 +1440,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         </>
       ) : undefined}
     >
+        {/* Figures only: the Schedule tab below is the one way to the interviews and trials. */}
         <StatGrid columns={4}>
-          {(dashboard?.actionItems ?? []).map((item: any) => {
-            const icon = <Icon name={ACTION_ITEM_ICONS[item.id] ?? 'userPlus'} size={20} />
-            return item.id === 'appointments' ? (
-              // The whole figure opens the schedule. A DS Button is a fixed-height control and
-              // cannot hold a figure, so this tile stays a native button.
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveTab('schedule')}
-                aria-label="View upcoming interviews and trials"
-                className="block w-full rounded-default text-left focus-visible:outline-hidden focus-visible:shadow-ring"
-              >
-                <Stat label={item.label} value={item.count} icon={icon} />
-              </button>
-            ) : (
-              <Stat key={item.id} label={item.label} value={item.count} icon={icon} />
-            )
-          })}
+          {(dashboard?.actionItems ?? []).map((item: any) => (
+            <Stat
+              key={item.id}
+              label={item.label}
+              value={item.count}
+              icon={<Icon name={ACTION_ITEM_ICONS[item.id] ?? 'userPlus'} size={20} />}
+            />
+          ))}
         </StatGrid>
 
         <Tabs
+          aria-label="Recruitment views"
           activeTab={activeTab}
           onTabChange={(id) => setActiveTab(id as DashboardTab)}
           tabs={[
@@ -1483,6 +1479,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   setSelectedBulkIds([])
                 }}
                 placeholder="Search candidates, role, status..."
+                aria-label="Search applications"
                 className="w-full sm:w-80"
               />
               <Select
@@ -1757,6 +1754,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         scrolls up flush against the tabs and reads as clipped. */}
                     <div className="mt-3">
                       <Tabs
+                        aria-label="Application details"
                         activeTab={drawerTab}
                         onTabChange={(id) => setDrawerTab(id as DrawerTab)}
                         tabs={DRAWER_TABS.map(tab => {
@@ -2072,6 +2070,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                         action={cancelAppointmentFormAction}
                                         className="flex flex-wrap gap-2"
                                         confirmTitle="Cancel Appointment"
+                                        confirmTone="danger"
                                         confirmMessage="Cancel this appointment and notify the candidate if configured?"
                                         successMessage="Appointment cancelled."
                                         onSuccess={() => router.refresh()}
@@ -2300,8 +2299,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <details open={index === 0}>
                             <summary className="cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring">
                               <span className="text-sm font-medium text-text-strong">{communication.subject || communication.type?.replaceAll('_', ' ') || communication.channel}</span>
+                              <Badge tone={messageDeliveryStatusTone(communication.delivery_status)} size="sm" className="ml-2">
+                                {messageDeliveryStatusLabel(communication.delivery_status)}
+                              </Badge>
                               <span className="ml-2 text-xs text-text-muted">
-                                {communication.type?.replaceAll('_', ' ')} · {communication.delivery_status} · {formatDateTime(communication.sent_at || communication.created_at)}
+                                {communication.type?.replaceAll('_', ' ')} · {formatDateTime(communication.sent_at || communication.created_at)}
                               </span>
                             </summary>
                             <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap border-t border-border pt-2 text-sm text-text">{communication.final_body}</pre>
@@ -2372,13 +2374,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       dialogs (like the ConfirmDialog below). The buttons stay inside each form so
                       the submit buttons can read the form's pending state. */}
                   {hireDialogOpen && selectedApplication && (
-                    <Modal open onClose={() => setHireDialogOpen(false)} title="Create Employee Invite" width="md">
-                      <p className="text-xs text-text-muted">
-                        Creates an employee invite for {candidateName(selectedApplication.candidate)} and links it to this application.
-                      </p>
+                    <Modal
+                      open
+                      onClose={() => setHireDialogOpen(false)}
+                      title="Create Employee Invite"
+                      description={`Creates an employee invite for ${candidateName(selectedApplication.candidate)} and links it to this application.`}
+                      width="md"
+                    >
                       <ActionFeedbackForm
                         action={hireFormAction}
-                        className="mt-3 space-y-3"
+                        className="space-y-3"
                         successMessage="Employee invite created."
                         onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
                       >
@@ -2395,13 +2400,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   )}
 
                   {stageDialogOpen && selectedApplication && (
-                    <Modal open onClose={() => setStageDialogOpen(false)} title="Change Stage Manually" width="md">
-                      <p className="text-xs text-text-muted">
-                        Use this only when the normal actions do not fit. It records a status change with no email to the candidate.
-                      </p>
+                    <Modal
+                      open
+                      onClose={() => setStageDialogOpen(false)}
+                      title="Change Stage Manually"
+                      description="Use this only when the normal actions do not fit. It records a status change with no email to the candidate."
+                      width="md"
+                    >
                       <ActionFeedbackForm
                         action={statusFormAction}
-                        className="mt-3 space-y-3"
+                        className="space-y-3"
                         successMessage="Stage saved."
                         onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
                       >
@@ -2429,7 +2437,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     title={pendingBarAction?.title ?? 'Confirm Action'}
                     message={pendingBarAction?.message ?? ''}
                     confirmLabel="Confirm"
-                    tone="warning"
+                    // Status moves, booking links, a re-score and archive (which Restore undoes):
+                    // none is destructive.
+                    tone="primary"
                   />
 
                   {decisionDialog && selectedApplication && (
@@ -2791,6 +2801,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                   <ActionFeedbackForm
                                     action={cancelSlotFormAction}
                                     confirmTitle="Delete Slot"
+                                    confirmTone="danger"
                                     confirmMessage="Delete this slot? It will no longer be available for booking."
                                     successMessage="Slot deleted."
                                     onSuccess={() => router.refresh()}
@@ -2969,6 +2980,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <ActionFeedbackForm
                     action={cancelSlotFormAction}
                     confirmTitle="Delete Slot"
+                    confirmTone="danger"
                     confirmMessage="Delete this slot? It will no longer be available for booking."
                     successMessage="Slot deleted."
                     onSuccess={() => {
@@ -3137,6 +3149,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     action={cancelAppointmentFormAction}
                     className="flex flex-wrap gap-2"
                     confirmTitle="Cancel Appointment"
+                    confirmTone="danger"
                     confirmMessage="Cancel this appointment and notify the candidate if configured?"
                     successMessage="Appointment cancelled."
                   >
@@ -3168,6 +3181,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     value={talentSearch}
                     onChange={handleTalentSearch}
                     placeholder="Search name or email..."
+                    aria-label="Search the talent pool"
                     className="w-full sm:w-80"
                   />
                     <Select
@@ -3274,6 +3288,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               action={erasureFormAction}
                               className="flex gap-2"
                               confirmTitle="Erase Candidate"
+                              confirmTone="danger"
                               confirmMessage="This permanently anonymises the candidate record. Continue?"
                               successMessage="Candidate erased."
                             >
@@ -3416,6 +3431,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   action={erasureFormAction}
                   className="flex flex-wrap gap-2 border-t border-border pt-4"
                   confirmTitle="Erase Candidate"
+                  confirmTone="danger"
                   confirmMessage="This permanently anonymises the candidate record. Continue?"
                   successMessage="Candidate erased."
                 >
@@ -3507,7 +3523,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </Button>
                         </TableCell>
                         <TableCell>{communication.channel}</TableCell>
-                        <TableCell>{communication.delivery_status}</TableCell>
+                        <TableCell>
+                          <Badge tone={messageDeliveryStatusTone(communication.delivery_status)}>
+                            {messageDeliveryStatusLabel(communication.delivery_status)}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="whitespace-normal">
                           <p className="max-w-md truncate">{communication.subject || communication.final_body}</p>
                         </TableCell>
@@ -3565,7 +3585,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 </div>
                 <div>
                   <p className={SUB_LABEL}>Status</p>
-                  <p>{selectedCommunication.delivery_status}</p>
+                  <Badge tone={messageDeliveryStatusTone(selectedCommunication.delivery_status)}>
+                    {messageDeliveryStatusLabel(selectedCommunication.delivery_status)}
+                  </Badge>
                 </div>
                 <div>
                   <p className={SUB_LABEL}>Provider</p>

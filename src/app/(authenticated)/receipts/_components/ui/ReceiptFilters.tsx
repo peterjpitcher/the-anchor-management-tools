@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, FormEvent, ChangeEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Button, Input, Select, Checkbox } from '@/ds'
+import { Button, Input, Select, Checkbox, Fieldset } from '@/ds'
 import type { ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 
@@ -199,34 +199,37 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
       </div>
 
       {monthOptions.length > 0 && (
-        <div
-          className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-        >
-          <Button
-            variant={!localFilters.month ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => applyFilters({ ...localFilters, month: undefined })}
-            className="whitespace-nowrap flex-shrink-0"
+        <Fieldset legend="Month">
+          <div
+            className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            All Time
-          </Button>
-          {monthOptions.map((monthValue) => {
-            const isActive = monthValue === localFilters.month
-            return (
-              <Button
-                key={monthValue}
-                variant={isActive ? 'secondary' : 'ghost'}
-                size="sm"
-                aria-pressed={isActive}
-                onClick={() => handleMonthSelect(monthValue)}
-                className="whitespace-nowrap flex-shrink-0"
-              >
-                {formatMonthLabel(monthValue)}
-              </Button>
-            )
-          })}
-        </div>
+            <Button
+              variant={!localFilters.month ? 'secondary' : 'ghost'}
+              size="sm"
+              aria-pressed={!localFilters.month}
+              onClick={() => applyFilters({ ...localFilters, month: undefined })}
+              className="whitespace-nowrap flex-shrink-0"
+            >
+              All Time
+            </Button>
+            {monthOptions.map((monthValue) => {
+              const isActive = monthValue === localFilters.month
+              return (
+                <Button
+                  key={monthValue}
+                  variant={isActive ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={isActive}
+                  onClick={() => handleMonthSelect(monthValue)}
+                  className="whitespace-nowrap flex-shrink-0"
+                >
+                  {formatMonthLabel(monthValue)}
+                </Button>
+              )
+            })}
+          </div>
+        </Fieldset>
       )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">

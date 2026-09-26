@@ -3,21 +3,13 @@
 import { useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
   Button,
   Card,
   CardBody,
   CardHeader,
+  ChartTooltipRow,
   Checkbox,
+  ComboChart,
   Empty,
   Field,
   Input,
@@ -32,6 +24,8 @@ import {
   TableHeader,
   TableRow,
   Icon,
+  type ChartSeries,
+  type ChartTooltipContext,
 } from '@/ds';
 import { cn } from '@/lib/utils';
 import { ROTA_CHART_COLOURS } from '@/lib/rota/status-ui';
@@ -133,7 +127,7 @@ interface SickRecordRow {
 // (this report once drew them amber and blue).
 const HOLIDAY_COLOUR = ROTA_CHART_COLOURS.holiday;
 const SICK_COLOUR = ROTA_CHART_COLOURS.couldntWork;
-// The same two meanings as classes, for the legend and table dots a class can reach.
+// The same two meanings as classes, for the dots in the holiday and Couldn't Work tables.
 const HOLIDAY_DOT = 'bg-success';
 const SICK_DOT = 'bg-danger';
 
@@ -141,8 +135,9 @@ function formatHours(value: number): string {
   return `${value.toFixed(1)}h`;
 }
 
+// Report dates are plain days read as UTC midnights, so they are formatted in UTC too.
 function shortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 function fullDate(iso: string): string {
@@ -151,6 +146,7 @@ function fullDate(iso: string): string {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -199,89 +195,47 @@ function formatSickEntries(entries: SickEntry[]): string {
     .join(', ');
 }
 
-function HoursTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{
-    dataKey?: string | number;
-    value?: number;
-    color?: string;
-    name?: string;
-    payload?: WeeklyHoursRow;
-  }>;
-  label?: string;
-}) {
-  const chartRow = payload?.find(item => item.payload)?.payload;
-  const holidayDays = Number(chartRow?.__holidayDays ?? 0);
-  const holidayDetails = chartRow?.__holidayDetails ?? [];
-  const sickDays = Number(chartRow?.__sickDays ?? 0);
-  const sickDetails = chartRow?.__sickDetails ?? [];
-  const rows = (payload ?? [])
-    .filter(item =>
-      typeof item.value === 'number' &&
-      item.value > 0 &&
-      !String(item.dataKey ?? '').startsWith('__')
-    )
-    .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
+/**
+ * The chart tooltip body (the DS tooltip card and the week title wrap it): each person's hours
+ * that week, largest first, then who was on holiday or could not work and when.
+ */
+function renderHoursTooltip({ row, items }: ChartTooltipContext<WeeklyHoursRow>): React.ReactNode {
+  const holidayDays = Number(row.__holidayDays ?? 0);
+  const holidayDetails = row.__holidayDetails ?? [];
+  const sickDays = Number(row.__sickDays ?? 0);
+  const sickDetails = row.__sickDetails ?? [];
+  const hourItems = items
+    .filter(item => !item.key.startsWith('__') && item.value > 0)
+    .sort((a, b) => b.value - a.value);
 
-  if (!active || (rows.length === 0 && holidayDays === 0 && sickDays === 0)) return null;
+  if (hourItems.length === 0 && holidayDays === 0 && sickDays === 0) return null;
 
   return (
-    <div className="min-w-[180px] rounded-default border border-border bg-surface px-3 py-2 text-xs shadow-lg">
-      <p className="font-semibold text-text-strong">{label}</p>
-      {rows.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {rows.map(row => (
-            <div key={String(row.dataKey)} className="flex items-center justify-between gap-3">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
-                <span className="truncate text-text-muted">{row.name}</span>
-              </span>
-              <span className="shrink-0 font-semibold text-text-strong">{formatHours(Number(row.value))}</span>
-            </div>
+    <>
+      {hourItems.map(item => (
+        <ChartTooltipRow key={item.key} color={item.color} label={item.label} value={item.formatted} />
+      ))}
+      {holidayDays > 0 && (
+        <div className="mt-2 space-y-1 border-t border-border pt-2">
+          <ChartTooltipRow color={HOLIDAY_COLOUR} label="Holiday booked" value={formatHolidayDays(holidayDays)} />
+          {holidayDetails.map(item => (
+            <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
+              <span className="font-medium text-text">{item.name}</span>: {formatDateRange(item.dates)}
+            </p>
           ))}
         </div>
       )}
-      {holidayDays > 0 && (
-        <div className="mt-2 border-t border-border pt-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-success-fg">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${HOLIDAY_DOT}`} />
-              Holiday booked
-            </span>
-            <span className="font-semibold text-text-strong">{formatHolidayDays(holidayDays)}</span>
-          </div>
-          <div className="mt-1 space-y-1">
-            {holidayDetails.map(item => (
-              <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
-                <span className="font-medium text-text">{item.name}</span>: {formatDateRange(item.dates)}
-              </p>
-            ))}
-          </div>
-        </div>
-      )}
       {sickDays > 0 && (
-        <div className="mt-2 border-t border-border pt-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-danger-fg">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${SICK_DOT}`} />
-              Couldn&apos;t Work recorded
-            </span>
-            <span className="font-semibold text-text-strong">{formatSickDays(sickDays)}</span>
-          </div>
-          <div className="mt-1 space-y-1">
-            {sickDetails.map(item => (
-              <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
-                <span className="font-medium text-text">{item.name}</span>: {formatSickEntries(item.entries)}
-              </p>
-            ))}
-          </div>
+        <div className="mt-2 space-y-1 border-t border-border pt-2">
+          <ChartTooltipRow color={SICK_COLOUR} label="Couldn't Work recorded" value={formatSickDays(sickDays)} />
+          {sickDetails.map(item => (
+            <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
+              <span className="font-medium text-text">{item.name}</span>: {formatSickEntries(item.entries)}
+            </p>
+          ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -341,7 +295,10 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
 
   return (
     <Field label="Employees" htmlFor="hours-employees">
+      {/* The panel matches the trigger's width; Done, Escape or a click outside closes it. */}
       <Popover
+        className="w-72 max-w-full"
+        width="md"
         trigger={
           <Button
             id="hours-employees"
@@ -349,7 +306,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
             variant="secondary"
             aria-describedby="hours-employees-summary"
             disabled={employees.length === 0}
-            className="h-auto min-h-input-h w-72 max-w-full justify-between gap-3 px-3 py-2 text-left font-normal"
+            className="h-auto min-h-input-h w-full justify-between gap-3 px-3 py-2 text-left font-normal"
           >
             <span className="flex min-w-0 items-center gap-2">
               <Icon name="users" size={16} className="shrink-0 text-text-subtle" />
@@ -365,60 +322,71 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
           </Button>
         }
       >
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-text-muted">Employees</p>
-          <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              icon={<Icon name="check" size={12} />}
-              onClick={() => onChange(sortIds(employees.map(employee => employee.id)))}
-            >
-              Select All
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              icon={<Icon name="x" size={12} />}
-              disabled={selectedEmployeeIds.length === 0}
-              onClick={() => onChange([])}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search employees"
-          className="mt-3"
-        />
-
-        <div className="mt-3 max-h-72 overflow-y-auto pr-1">
-          {filteredEmployees.length === 0 ? (
-            <Empty size="sm" title="No employees match this search" />
-          ) : (
-            <div className="space-y-1">
-              {filteredEmployees.map(employee => {
-                const selected = selectedIdSet.has(employee.id);
-
-                return (
-                  <Checkbox
-                    key={employee.id}
-                    checked={selected}
-                    onChange={() => toggleEmployee(employee.id)}
-                    label={employee.name}
-                    description={`${employee.role || 'No role'} · ${formatHours(employee.totalHours)} · ${formatHolidayDays(employee.holidayDays)} holiday · Couldn't Work: ${formatSickDays(employee.sickDays)}`}
-                    className={cn('rounded-default px-2.5 py-2 hover:bg-surface-hover', selected && 'bg-primary-soft')}
-                  />
-                );
-              })}
+        {({ close }) => (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-text-muted">Employees</p>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  icon={<Icon name="check" size={12} />}
+                  onClick={() => onChange(sortIds(employees.map(employee => employee.id)))}
+                >
+                  Select All
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  icon={<Icon name="x" size={12} />}
+                  disabled={selectedEmployeeIds.length === 0}
+                  onClick={() => onChange([])}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
-          )}
-        </div>
+
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search employees"
+              aria-label="Search employees"
+              className="mt-3"
+            />
+
+            <div className="mt-3 max-h-72 overflow-y-auto pr-1">
+              {filteredEmployees.length === 0 ? (
+                <Empty size="sm" title="No employees match this search" />
+              ) : (
+                <div className="space-y-1">
+                  {filteredEmployees.map(employee => {
+                    const selected = selectedIdSet.has(employee.id);
+
+                    return (
+                      <Checkbox
+                        key={employee.id}
+                        checked={selected}
+                        onChange={() => toggleEmployee(employee.id)}
+                        label={employee.name}
+                        description={`${employee.role || 'No role'} · ${formatHours(employee.totalHours)} · ${formatHolidayDays(employee.holidayDays)} holiday · Couldn't Work: ${formatSickDays(employee.sickDays)}`}
+                        className={cn('rounded-default px-2.5 py-2 hover:bg-surface-hover', selected && 'bg-primary-soft')}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex justify-end border-t border-border pt-3">
+              <Button type="button" size="sm" variant="secondary" onClick={close}>
+                Done
+              </Button>
+            </div>
+          </>
+        )}
       </Popover>
     </Field>
   );
@@ -448,12 +416,27 @@ export default function HoursByEmployeeClient({
 
   const averagePerWeek = weekCount > 0 ? totalHours / weekCount : 0;
   const isWideRange = chartData.length > 52;
-  const xAxisInterval = isWideRange ? Math.ceil(chartData.length / 16) : 'preserveStartEnd';
-  const maxBarSize = isWideRange ? 12 : 24;
   const absenceAxisMax = Math.max(
     1,
     Math.ceil(Math.max(...chartData.map(row => Number(row.__holidayDays ?? 0)))),
     Math.ceil(Math.max(...chartData.map(row => Number(row.__sickDays ?? 0)))),
+  );
+  // One line per person in their own colour on the hours axis, and the week's holiday and
+  // Couldn't Work days as bars on the days axis.
+  const chartSeries = useMemo<ChartSeries[]>(
+    () => [
+      ...series.map((item): ChartSeries => ({
+        key: item.employeeId,
+        label: item.name,
+        type: 'line',
+        curve: 'linear',
+        color: item.colour,
+        format: formatHours,
+      })),
+      { key: '__holidayDays', label: 'Holiday days', type: 'bar', axis: 'right', color: HOLIDAY_COLOUR, format: formatHolidayDays },
+      { key: '__sickDays', label: "Couldn't Work days", type: 'bar', axis: 'right', color: SICK_COLOUR, format: formatSickDays },
+    ],
+    [series],
   );
   const holidayDaysByEmployee = useMemo(
     () => new Map(holidaySummaries.map(summary => [summary.employeeId, summary.holidayDays])),
@@ -540,91 +523,26 @@ export default function HoursByEmployeeClient({
           <CardHeader
             title="Hours by Week"
             subtitle={`${rangeLabel} · ${weekCount} week${weekCount === 1 ? '' : 's'} · ${series.length} employee${series.length === 1 ? '' : 's'}`}
-            action={
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                <span>Actual + planned hours</span>
-                <span className={`ml-2 h-2.5 w-2.5 rounded-full ${HOLIDAY_DOT}`} />
-                <span>Holiday days</span>
-                <span className={`ml-2 h-2.5 w-2.5 rounded-full ${SICK_DOT}`} />
-                <span>Couldn&apos;t Work days</span>
-              </div>
-            }
           />
           {!hasChart ? (
             <Empty size="sm" icon="users" title="Select at least one employee to show hours" />
           ) : (
             <CardBody>
-            <div className={isWideRange ? 'h-[420px]' : 'h-[380px]'}>
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={chartData}
-                  margin={{ top: 12, right: 16, bottom: 6, left: 0 }}
-                  barCategoryGap={isWideRange ? 2 : 8}
-                  barGap={2}
-                >
-                  <CartesianGrid vertical={false} stroke="var(--color-border)" />
-                  <XAxis
-                    dataKey="weekLabel"
-                    interval={xAxisInterval}
-                    minTickGap={16}
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    yAxisId="hours"
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                    axisLine={false}
-                    tickLine={false}
-                    unit="h"
-                  />
-                  <YAxis
-                    yAxisId="absence"
-                    orientation="right"
-                    domain={[0, absenceAxisMax]}
-                    allowDecimals={false}
-                    tickFormatter={(value) => `${value}d`}
-                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <RechartsTooltip content={<HoursTooltip />} cursor={{ fill: 'var(--color-surface-hover)' }} />
-                  {series.map(item => (
-                    <Line
-                      key={item.employeeId}
-                      yAxisId="hours"
-                      dataKey={item.employeeId}
-                      name={item.name}
-                      type="linear"
-                      stroke={item.colour}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 3 }}
-                      isAnimationActive={false}
-                    />
-                  ))}
-                  <Bar
-                    yAxisId="absence"
-                    dataKey="__holidayDays"
-                    name="Holiday days"
-                    fill={HOLIDAY_COLOUR}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={maxBarSize}
-                    isAnimationActive={false}
-                  />
-                  <Bar
-                    yAxisId="absence"
-                    dataKey="__sickDays"
-                    name="Couldn't Work days"
-                    fill={SICK_COLOUR}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={maxBarSize}
-                    isAnimationActive={false}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+              <ComboChart
+                data={chartData}
+                xKey="weekLabel"
+                series={chartSeries}
+                height={isWideRange ? 420 : 380}
+                xInterval={isWideRange ? Math.ceil(chartData.length / 16) : 'preserveStartEnd'}
+                leftAxis={{ format: value => `${value}h` }}
+                rightAxis={{ format: value => `${value}d`, domain: [0, absenceAxisMax], allowDecimals: false }}
+                maxBarSize={isWideRange ? 12 : 24}
+                barCategoryGap={isWideRange ? 2 : 8}
+                barGap={2}
+                showLegend
+                renderTooltip={renderHoursTooltip}
+                ariaLabel={`Hours per week for ${series.length} employee${series.length === 1 ? '' : 's'}, with holiday and Couldn't Work days`}
+              />
             </CardBody>
           )}
         </Card>

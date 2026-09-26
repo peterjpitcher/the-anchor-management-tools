@@ -168,6 +168,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
     <>
       <PageLayout
         title="Employees"
+        subtitle="The team roster"
         navItems={EMPLOYEES_NAV}
         headerActions={headerActions}
         // A failed load keeps the header and says so, rather than showing an empty roster.
@@ -187,6 +188,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
               rather than pushing the page wider than the screen. */}
           <div className="max-w-full overflow-x-auto">
             <Segmented
+              aria-label="Employment status"
               options={[
                 { id: 'all', label: `All (${roster.statusCounts.all})` },
                 { id: 'Active', label: `Active (${roster.statusCounts.active})` },
@@ -202,6 +204,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
             value={searchTerm}
             onChange={(v) => updateFilters({ search: v })}
             debounceDelay={350}
+            aria-label="Search employees"
             placeholder="Search by name, role..."
             className="w-full sm:w-60"
           />

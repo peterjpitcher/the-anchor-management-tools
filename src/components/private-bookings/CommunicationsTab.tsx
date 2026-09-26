@@ -3,6 +3,7 @@
 import type { ScheduledSmsPreview, ScheduledSmsSuppressionReason } from '@/services/private-bookings/scheduled-sms'
 import { Alert, Badge, Card, CardBody, CardHeader, Empty, Icon } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import { SCHEDULED_REMINDER_TONE } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 export type CommunicationsHistoryRow = {
@@ -28,44 +29,17 @@ export type CommunicationsEmailRow = {
   error: string | null
 }
 
-const UNDELIVERED_EMAIL_STATUSES = new Set(['bounced', 'complained', 'failed', 'suppressed'])
-
-function emailStatusTone(status: string): StatusTone {
-  if (UNDELIVERED_EMAIL_STATUSES.has(status)) return 'danger'
-  if (status === 'delivered' || status === 'opened' || status === 'clicked') return 'success'
-  if (status === 'sent' || status === 'queued') return 'info'
-  return 'neutral'
-}
-
-type StatusTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
-
-function statusTone(status: string): StatusTone {
-  switch (status) {
-    case 'sent':
-      return 'success'
-    case 'approved':
-    case 'pending':
-      return 'info'
-    case 'failed':
-      return 'danger'
-    case 'cancelled':
-      return 'neutral'
-    default:
-      return 'neutral'
-  }
-}
-
-function statusLabel(status: string): string {
-  if (!status) return 'Unknown'
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
+// Texts and emails take their delivery tone and words from the one shared map
+// (MESSAGE_DELIVERY_STATUS_TONE and MESSAGE_DELIVERY_STATUS_LABEL in src/lib/messages/status-ui.ts).
+/** An email that did not arrive (failed, bounced, marked as spam, suppressed): its error is shown. */
+const isUndelivered = (status: string): boolean => messageDeliveryStatusTone(status) === 'danger'
 
 function labelForSuppression(reason: ScheduledSmsSuppressionReason): string {
   switch (reason) {
     case 'feature_flag_disabled':
-      return "Won't send — feature disabled in production."
+      return "Won't send: feature disabled in production."
     case 'date_tbd':
-      return 'No date-based reminders — booking date is TBD.'
+      return 'No date-based reminders: booking date is TBD.'
     case 'already_sent':
       return 'Already sent this cycle.'
     case 'stop_opt_out':
@@ -122,8 +96,8 @@ export function CommunicationsTab({
                       <span className="text-sm font-medium text-text">
                         {row.trigger_type ?? row.template_key ?? 'Manual'}
                       </span>
-                      <Badge tone={statusTone(row.status)} size="sm">
-                        {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : statusLabel(row.status)}
+                      <Badge tone={messageDeliveryStatusTone(row.status)} size="sm">
+                        {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : messageDeliveryStatusLabel(row.status)}
                       </Badge>
                     </div>
                     <time
@@ -174,8 +148,8 @@ export function CommunicationsTab({
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-text">{email.subject || '(no subject)'}</span>
-                      <Badge tone={emailStatusTone(email.status)} size="sm">
-                        {statusLabel(email.status)}
+                      <Badge tone={messageDeliveryStatusTone(email.status)} size="sm">
+                        {messageDeliveryStatusLabel(email.status)}
                       </Badge>
                     </div>
                     <time className="text-xs text-text-muted" dateTime={email.created_at}>
@@ -186,7 +160,7 @@ export function CommunicationsTab({
                     {email.comm_type ?? 'email'}
                     {email.to_address ? ` to ${email.to_address}` : ''}
                   </p>
-                  {email.error && UNDELIVERED_EMAIL_STATUSES.has(email.status) && (
+                  {email.error && isUndelivered(email.status) && (
                     <p className="mt-1 text-xs text-danger-fg">{email.error}</p>
                   )}
                 </li>

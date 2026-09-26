@@ -176,8 +176,10 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Talent pool/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Erase' }))
 
-    expect(screen.getByRole('dialog', { name: 'Erase Candidate' })).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Erase Candidate' })
+    expect(dialog).toBeInTheDocument()
     expect(screen.getByText('This permanently anonymises the candidate record. Continue?')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-danger')
   })
 
   it('uses explicit quarter-hour slot time controls and defaults close time two hours later', () => {
@@ -187,6 +189,8 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     const startsAt = container.querySelector<HTMLInputElement>('input[name="starts_at"]')
     const endsAt = container.querySelector<HTMLInputElement>('input[name="ends_at"]')
+    // The three controls sit in one group named by its legend.
+    expect(screen.getByRole('group', { name: 'Opens' })).toBeInTheDocument()
     const opensDate = screen.getByLabelText('Opens date')
     const opensHour = screen.getByLabelText('Opens hour')
     const opensMinute = screen.getByLabelText('Opens minute')
@@ -249,6 +253,8 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('dialog', { name: 'Delete Slot' })
     expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
+    // Deleting is destructive, so the confirm button is red.
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-danger')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() => expect(cancelRecruitmentSlotAction).toHaveBeenCalledTimes(1))
@@ -341,6 +347,9 @@ describe('RecruitmentDashboardClient A-039', () => {
     // A confirmation step gates the action (it emails the candidate + books a calendar slot).
     expect(scheduleRecruitmentInterviewForCandidateAction).not.toHaveBeenCalled()
     const dialog = await screen.findByRole('dialog', { name: 'Schedule Interview' })
+    // Booking is not destructive, so the confirm button is the primary colour, not red.
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-primary')
+    expect(within(dialog).getByRole('button', { name: 'Confirm' })).not.toHaveClass('bg-danger')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() => expect(scheduleRecruitmentInterviewForCandidateAction).toHaveBeenCalledTimes(1))

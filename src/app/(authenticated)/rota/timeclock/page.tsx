@@ -8,7 +8,7 @@ import { getTodayIsoDate } from '@/lib/dateUtils';
 import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import TimeclockManager from './TimeclockManager';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
-import { rotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,19 +28,20 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   const month = params.month ? parseInt(params.month) : defaultPeriod.month;
 
   // Fetch the pay period and employees in parallel, then sessions using period dates
-  const [period, employeesResult] = await Promise.all([
+  const [period, employeesResult, navItems] = await Promise.all([
     availablePeriods.find(availablePeriod => availablePeriod.year === year && availablePeriod.month === month)
       ?? getOrCreatePayrollPeriod(year, month),
     getActiveEmployeesForRota(),
+    getRotaNavItems(),
   ]);
 
   const result = await getTimeclockSessionsForWeek(period.period_start, period.period_end);
   const employees = employeesResult.success ? employeesResult.data : [];
 
   const layout = {
-    title: 'Timeclock',
-    subtitle: 'Review and correct clock-in/out times',
-    navItems: rotaNavItems,
+    title: 'Rota',
+    subtitle: 'Timeclock: review and correct clock-in and clock-out times',
+    navItems,
   };
 
   // A failed load shows the error under the same header, never an empty list.

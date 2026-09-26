@@ -104,6 +104,13 @@ export default function RolePermissionsModal({
     setSelectedPermissions(newSelected);
   };
 
+  // Why the checkboxes are locked, under the title where it is read before the list.
+  const readOnlyReason = role.is_system
+    ? 'System roles cannot be modified'
+    : !canManage
+      ? 'You do not have permission to change role permissions'
+      : undefined;
+
   // Group permissions by module
   const groupedPermissions = allPermissions.reduce<GroupedPermissions>((acc, permission) => {
     if (!acc[permission.module_name]) {
@@ -118,7 +125,8 @@ export default function RolePermissionsModal({
       open={isOpen}
       onClose={onClose}
       title={`Manage Permissions: ${role.name}`}
-      size="lg"
+      description={readOnlyReason}
+      width="lg"
       footer={
         <>
           <Button
@@ -173,14 +181,6 @@ export default function RolePermissionsModal({
             </Card>
           ))}
         </div>
-      )}
-      
-      {(role.is_system || !canManage) && (
-        <p className="mt-4 text-sm text-text-muted text-center">
-          {role.is_system
-            ? 'System roles cannot be modified.'
-            : 'You do not have permission to change role permissions.'}
-        </p>
       )}
     </Modal>
   );

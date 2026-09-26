@@ -53,7 +53,7 @@ import {
   type DragMoveEvent,
 } from '@dnd-kit/core'
 import { z } from 'zod'
-import { Alert, Button, Checkbox, ConfirmDialog, Modal, toast } from '@/ds'
+import { Alert, Button, Checkbox, ConfirmDialog, Modal, SubHeading, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   LOGO_DEFAULT_WIDTH_FRAC,
@@ -664,6 +664,7 @@ export function ArtworkBrandingModal({
       open={open}
       onClose={onClose}
       title={`Branding: ${config.label}`}
+      description={`${imageW} x ${imageH} px. The logo is stamped on the saved file.`}
       width="xl"
       footer={
         <>
@@ -680,10 +681,6 @@ export function ArtworkBrandingModal({
       }
     >
       <div className="space-y-4">
-        <p className="text-xs text-text-muted">
-          {imageW} x {imageH} px. The logo is stamped on the saved file.
-        </p>
-
         <DndContext
           sensors={sensors}
           onDragMove={handleDragMove}
@@ -824,8 +821,8 @@ export function ArtworkBrandingModal({
             flattened to one column below 820px by globals.css, which is what a
             phone wants here. */}
         <div className="grid gap-6 md:grid-cols-2">
-          <fieldset className="min-w-0 space-y-3">
-            <legend className="mb-3 text-sm font-semibold text-text-strong">Logo</legend>
+          <section className="min-w-0 space-y-3">
+            <SubHeading as="h3">Logo</SubHeading>
             <p className="text-xs text-text-muted">
               The logo is applied to every size of this event&apos;s artwork.
             </p>
@@ -911,11 +908,11 @@ export function ArtworkBrandingModal({
                 </Button>
               </>
             )}
-          </fieldset>
+          </section>
 
           {print && (
-            <fieldset className="min-w-0 space-y-3">
-              <legend className="mb-3 text-sm font-semibold text-text-strong">Booking QR Code</legend>
+            <section className="min-w-0 space-y-3">
+              <SubHeading as="h3">Booking QR Code</SubHeading>
 
               <Checkbox
                 label={`Put a QR code on the ${print.surfaceName}`}
@@ -984,7 +981,7 @@ export function ArtworkBrandingModal({
                   </Button>
                 </>
               )}
-            </fieldset>
+            </section>
           )}
         </div>
 
@@ -1015,7 +1012,8 @@ export function ArtworkBrandingModal({
         title="Revert to Original"
         message="This puts the uploaded file back and removes the logo and QR code from it. Continue?"
         confirmLabel="Revert"
-        tone="danger"
+        // Not destructive: the original upload comes back and the branding can be applied again.
+        tone="primary"
         closeOnConfirm={false}
       />
     </Modal>
@@ -1124,7 +1122,7 @@ function PlacementOverlay({
         'group border-2 border-dashed focus-visible:outline-hidden focus-visible:shadow-ring',
         draggable ? 'cursor-grab' : 'cursor-default',
         isDragging && 'cursor-grabbing opacity-70',
-        invalid ? 'border-danger' : 'border-primary/70'
+        invalid ? 'border-danger' : 'border-primary'
       )}
     >
       {children}

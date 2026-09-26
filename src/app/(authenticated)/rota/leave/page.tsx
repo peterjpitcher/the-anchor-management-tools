@@ -4,7 +4,7 @@ import { Alert, Card, Empty, PageLayout, Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import LeaveManagerClient from './LeaveManagerClient';
-import { rotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 import { displayName } from '@/lib/employees/display-name';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
 
@@ -21,12 +21,13 @@ export default async function LeaveManagementPage() {
   const supabase = await createClient();
 
   // Fetch requests and employees in parallel
-  const [requestsResult, { data: employees, error: employeesError }] = await Promise.all([
+  const [requestsResult, { data: employees, error: employeesError }, navItems] = await Promise.all([
     getLeaveRequests(),
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, preferred_name')
       .order('first_name'),
+    getRotaNavItems(),
   ]);
 
   // A failed load shows the error, never an empty list.
@@ -57,9 +58,9 @@ export default async function LeaveManagementPage() {
 
   return (
     <PageLayout
-      title="Leave Requests"
-      subtitle={pendingCount > 0 ? `${pendingCount} pending approval` : 'All holiday requests'}
-      navItems={rotaNavItems}
+      title="Rota"
+      subtitle={pendingCount > 0 ? `Leave requests: ${pendingCount} pending approval` : 'Leave requests'}
+      navItems={navItems}
     >
       <PartialLoadAlert
         missing={requestsResult.success && employeesError ? ['staff names'] : []}

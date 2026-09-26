@@ -1,7 +1,17 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, CardBody, CardHeader, Empty } from '@/ds';
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  ChartTooltipRow,
+  ComboChart,
+  Empty,
+  chartColour,
+  type ChartSeries,
+} from '@/ds';
+import { RECEIPT_FLOW_CHART_COLOUR } from '../_shared/status-ui';
 
 type MonthlyChartPoint = {
   monthStart: string;
@@ -22,19 +32,26 @@ const currencyFormatter = new Intl.NumberFormat('en-GB', {
   maximumFractionDigits: 0,
 });
 
+function formatMonth(value: string): string {
+  return monthFormatter.format(new Date(value));
+}
+
+function formatPounds(value: number): string {
+  return currencyFormatter.format(value);
+}
+
+// Income and spending keep the colours they have everywhere else in Receipts (income green, spend
+// red) rather than the next chart tokens, so the chart reads at a glance.
+const INCOME_SPEND_SERIES: ChartSeries[] = [
+  { key: 'income', label: 'Income', color: RECEIPT_FLOW_CHART_COLOUR.income, format: formatPounds },
+  { key: 'outgoing', label: 'Spending', color: RECEIPT_FLOW_CHART_COLOUR.spend, format: formatPounds },
+];
+
 export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
   const ordered = useMemo(
     () => [...data].sort((a, b) => a.monthStart.localeCompare(b.monthStart)),
     [data],
   );
-
-  const maxValue = useMemo(() => {
-    const peak = ordered.reduce(
-      (max, point) => Math.max(max, point.income, point.outgoing),
-      0,
-    );
-    return peak > 0 ? peak : 1;
-  }, [ordered]);
 
   if (ordered.length === 0) {
     return (
@@ -52,77 +69,17 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
     <Card>
       <CardHeader title="Income vs Spending (Last 12 Months)" />
       <CardBody>
-        <div className="mb-4 flex items-center gap-4 text-sm text-text-muted">
-          <LegendSwatch className="bg-success" label="Income" />
-          <LegendSwatch className="bg-danger" label="Spending" />
-        </div>
-        <div className="overflow-x-auto">
-          <div className="flex min-w-[720px] gap-4 pb-2">
-            {ordered.map((point) => {
-              const incomeHeight = Math.max((point.income / maxValue) * 100, 0);
-              const outgoingHeight = Math.max((point.outgoing / maxValue) * 100, 0);
-              const monthLabel = monthFormatter.format(new Date(point.monthStart));
-
-              return (
-                <div key={point.monthStart} className="flex flex-col items-center gap-2 text-xs">
-                  <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-default bg-surface-2 p-2">
-                    <Bar
-                      heightPercent={incomeHeight}
-                      colorClass="bg-success"
-                      value={point.income}
-                      ariaLabel={`${monthLabel} income ${currencyFormatter.format(point.income)}`}
-                    />
-                    <Bar
-                      heightPercent={outgoingHeight}
-                      colorClass="bg-danger"
-                      value={point.outgoing}
-                      ariaLabel={`${monthLabel} spending ${currencyFormatter.format(point.outgoing)}`}
-                    />
-                  </div>
-                  <span className="text-center font-medium text-text">{monthLabel}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ComboChart
+          data={ordered}
+          xKey="monthStart"
+          series={INCOME_SPEND_SERIES}
+          formatX={formatMonth}
+          leftAxis={{ format: 'shorthandCurrency' }}
+          maxBarSize={28}
+          ariaLabel="Income and spending by month, last 12 months"
+        />
       </CardBody>
     </Card>
-  );
-}
-
-function Bar({
-  heightPercent,
-  colorClass,
-  value,
-  ariaLabel,
-}: {
-  heightPercent: number;
-  colorClass: string;
-  value: number;
-  ariaLabel: string;
-}) {
-  const formattedValue = currencyFormatter.format(value);
-  const clampedHeight = Number.isFinite(heightPercent) ? Math.max(heightPercent, 2) : 2;
-
-  return (
-    <div
-      className={`relative flex w-6 items-end justify-center rounded-sm ${colorClass}`}
-      style={{ height: `${clampedHeight}%` }}
-      aria-label={ariaLabel}
-    >
-      <span className="absolute -top-6 text-meta font-semibold text-text">
-        {formattedValue}
-      </span>
-    </div>
-  );
-}
-
-function LegendSwatch({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className={`inline-block h-3 w-3 rounded-sm ${className}`} />
-      <span>{label}</span>
-    </span>
   );
 }
 
@@ -131,15 +88,19 @@ type StackedBreakdownPoint = {
   segments: Array<{ label: string; amount: number }>;
 };
 
+type StackedBreakdownRow = Record<string, string | number> & { monthStart: string };
+
+/**
+ * One stacked bar per month, one segment per category. Categories are ordered by their total over
+ * the period and take the chart colours in that order; "Other" always takes the last one.
+ */
 export function StackedBreakdownChart({
   title,
   data,
-  palette,
   emptyDescription,
 }: {
   title: string;
   data: StackedBreakdownPoint[];
-  palette: string[];
   emptyDescription: string;
 }) {
   const ordered = useMemo(
@@ -147,24 +108,44 @@ export function StackedBreakdownChart({
     [data],
   );
 
-  const labelTotals = ordered.reduce<Record<string, number>>((acc, point) => {
-    point.segments.forEach((segment) => {
-      if (!segment.amount) return;
-      acc[segment.label] = (acc[segment.label] ?? 0) + segment.amount;
+  const { rows, series } = useMemo(() => {
+    const labelTotals = ordered.reduce<Record<string, number>>((acc, point) => {
+      point.segments.forEach((segment) => {
+        if (!segment.amount) return;
+        acc[segment.label] = (acc[segment.label] ?? 0) + segment.amount;
+      });
+      return acc;
+    }, {});
+
+    const legendLabels = Object.entries(labelTotals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label]) => label);
+
+    // Series keys are positional, so a category name can never clash with the month field.
+    const keyFor = new Map(legendLabels.map((label, index) => [label, `segment${index}`]));
+
+    const breakdownRows: StackedBreakdownRow[] = ordered.map((point) => {
+      const row: StackedBreakdownRow = { monthStart: point.monthStart };
+      point.segments.forEach((segment) => {
+        const key = keyFor.get(segment.label);
+        if (!key || segment.amount <= 0) return;
+        row[key] = (typeof row[key] === 'number' ? (row[key] as number) : 0) + segment.amount;
+      });
+      return row;
     });
-    return acc;
-  }, {});
 
-  const legendLabels = Object.entries(labelTotals)
-    .sort((a, b) => b[1] - a[1])
-    .map(([label]) => label);
+    const breakdownSeries: ChartSeries[] = legendLabels.map((label, index) => ({
+      key: `segment${index}`,
+      label,
+      stackId: 'total',
+      color: label === 'Other' ? chartColour(5) : chartColour(index),
+      format: formatPounds,
+    }));
 
-  const colorMap = new Map<string, string>();
-  legendLabels.forEach((label, index) => {
-    colorMap.set(label, palette[index % palette.length]);
-  });
-  colorMap.set('Other', palette[palette.length - 1] ?? 'bg-border-strong');
+    return { rows: breakdownRows, series: breakdownSeries };
+  }, [ordered]);
 
+  // Only positive amounts become bars, so a chart with none of them is empty.
   const hasValues = ordered.some((point) => point.segments.some((segment) => segment.amount > 0));
 
   return (
@@ -174,53 +155,27 @@ export function StackedBreakdownChart({
         {!hasValues ? (
           <Empty size="sm" title="No data available" description={emptyDescription} />
         ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
-              {legendLabels.map((label) => (
-                <LegendSwatch key={label} className={colorMap.get(label) ?? 'bg-border-strong'} label={label} />
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {ordered.map((point) => {
-                const total = point.segments.reduce((sum, segment) => sum + segment.amount, 0);
-                const monthLabel = monthFormatter.format(new Date(point.monthStart));
-
-                return (
-                  <div key={point.monthStart} className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-text-muted">
-                      <span>{monthLabel}</span>
-                      <span className="font-medium text-text">{currencyFormatter.format(total)}</span>
-                    </div>
-                    {total === 0 ? (
-                      <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-soft">
-                        No activity recorded
-                      </div>
-                    ) : (
-                      <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-surface">
-                        {point.segments
-                          .filter((segment) => segment.amount > 0)
-                          .map((segment) => {
-                            const width = (segment.amount / total) * 100;
-                            const colorClass = colorMap.get(segment.label) ?? 'bg-border-strong';
-                            const label = `${segment.label} · ${currencyFormatter.format(segment.amount)}`;
-
-                            return (
-                              <div
-                                key={segment.label}
-                                className={`h-full ${colorClass}`}
-                                style={{ width: `${width}%` }}
-                                title={label}
-                              />
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <ComboChart
+            data={rows}
+            xKey="monthStart"
+            series={series}
+            formatX={formatMonth}
+            leftAxis={{ format: 'shorthandCurrency' }}
+            showLegend
+            maxBarSize={28}
+            ariaLabel={`${title} by month`}
+            renderTooltip={({ items }) => (
+              <>
+                {items.map((item) => (
+                  <ChartTooltipRow key={item.key} color={item.color} label={item.label} value={item.formatted} />
+                ))}
+                <ChartTooltipRow
+                  label="Total"
+                  value={formatPounds(items.reduce((sum, item) => sum + item.value, 0))}
+                />
+              </>
+            )}
+          />
         )}
       </CardBody>
     </Card>

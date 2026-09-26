@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { Button } from '@/ds';
 import { Alert } from '@/ds';
-import { Card, CardBody, Section } from '@/ds';
+import { Card, CardBody, Section, SubHeading } from '@/ds';
 import { cn } from '@/lib/utils';
 import { UPGRADE_TEXT } from '../../_shared/status-ui';
 import {
@@ -596,9 +596,10 @@ function CostBreakdownFooter({
 
             {hasAnyUpgrades && (
               <>
-                <div className={cn('mt-2 mb-1 text-xs font-semibold uppercase tracking-wide', UPGRADE_TEXT)}>
+                {/* A heading over the upgrade rows; h3 because this card has no CardHeader. */}
+                <SubHeading as="h3" className="pt-2">
                   Upgrades
-                </div>
+                </SubHeading>
                 {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
                   <div key={`ug-${name}`} className="flex items-center justify-between">
                     <span className="text-sm text-text">

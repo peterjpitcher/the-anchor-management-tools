@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Alert, Drawer, Button, Field, Input, Select, Textarea, DateTimePicker,
-  Checkbox, ConfirmDialog, Empty, FormFooter, PageLoading, Spinner, toast, Switch,
+  Checkbox, ConfirmDialog, Empty, FormFooter, PageLoading, Spinner, SubHeading, toast, Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
@@ -1060,12 +1060,13 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   )
 }
 
-/* ── A titled group of fields in the drawer ── */
+/* ── A titled part of the drawer's form: an h3 under the drawer's title, so screen reader
+      users can jump between the parts of a long form. ── */
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <fieldset className="min-w-0">
-      <legend className="mb-3 text-sm font-semibold text-text-strong">{title}</legend>
-      <div className="space-y-3">{children}</div>
-    </fieldset>
+    <section className="min-w-0 space-y-3">
+      <SubHeading as="h3">{title}</SubHeading>
+      {children}
+    </section>
   )
 }

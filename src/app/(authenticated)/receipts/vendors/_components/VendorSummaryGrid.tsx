@@ -21,6 +21,7 @@ import {
 import {
   Alert,
   Badge,
+  BarChart,
   Button,
   Card,
   CardBody,
@@ -43,10 +44,12 @@ import {
   TableRow,
 } from '@/ds'
 import {
+  RECEIPT_FLOW_TONE,
   RECEIPT_STATUS_LABEL,
   RECEIPT_STATUS_TONE,
-  spendMovementBarClass,
+  spendMovementBarColour,
   spendMovementTextClass,
+  spendMovementTone,
   vendorSignalTone,
 } from '@/app/(authenticated)/receipts/_shared/status-ui'
 import { ReceiptsPageChrome } from '../../_components/ReceiptsPageChrome'
@@ -289,6 +292,7 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
           value={comparison}
           onChange={(value) => setComparison(value as ReceiptVendorMovementComparison)}
           size="sm"
+          aria-label="Compare against"
         />
       }
     >
@@ -343,44 +347,38 @@ function movementReviewStatus(
     ?? (movement.signal ? 'needs_review' : 'reviewed')
 }
 
+/** "+£1.2k" / "-£950": the signed short form the movement chart prints on its axis and bars. */
+function formatSignedShortCurrency(value: number): string {
+  const size = Math.abs(value)
+  const short = size >= 1_000_000 ? `£${(size / 1_000_000).toFixed(1)}M` : size >= 1_000 ? `£${(size / 1_000).toFixed(1)}k` : `£${size.toFixed(0)}`
+  return value > 0 ? `+${short}` : value < 0 ? `-${short}` : short
+}
+
+/** The ten biggest movements as bars either side of zero: spend up in red, spend down in green. */
 function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovementSummary[] }) {
   const rows = [...movements]
     .filter((movement) => movement.delta !== null && movement.delta !== 0)
     .sort((left, right) => Math.abs(right.delta ?? 0) - Math.abs(left.delta ?? 0))
     .slice(0, 10)
-  const maxDelta = rows.reduce((max, movement) => Math.max(max, Math.abs(movement.delta ?? 0)), 0)
 
   if (!rows.length) {
     return <Empty size="sm" title="No movement is available for this comparison" />
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-meta font-semibold uppercase tracking-wide text-text-soft">
-        <span>Vendor</span>
-        <div className="grid grid-cols-2 text-center"><span>Down</span><span>Up</span></div>
-        <span className="text-right">Movement</span>
-      </div>
-      {rows.map((movement) => {
-        const delta = movement.delta ?? 0
-        const width = maxDelta > 0 ? Math.max((Math.abs(delta) / maxDelta) * 50, 2) : 0
-        return (
-          <div key={movement.vendorLabel} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3">
-            <span className="truncate text-xs font-medium text-text" title={movement.vendorLabel}>{movement.vendorLabel}</span>
-            <div className="relative h-5 rounded-sm bg-surface-2">
-              <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
-              <div
-                className={`absolute inset-y-1 rounded-sm ${delta > 0 ? 'left-1/2' : 'right-1/2'} ${spendMovementBarClass(delta)}`}
-                style={{ width: `${width}%` }}
-              />
-            </div>
-            <span className={`text-right text-xs font-semibold tabular-nums ${spendMovementTextClass(delta)}`}>
-              {formatSignedCurrency(delta)}
-            </span>
-          </div>
-        )
-      })}
-    </div>
+    <BarChart
+      horizontal
+      data={rows.map((movement) => ({
+        label: movement.vendorLabel,
+        value: movement.delta ?? 0,
+        color: spendMovementBarColour(movement.delta ?? 0),
+      }))}
+      height={rows.length * 36 + 40}
+      valueFormatter={formatSignedShortCurrency}
+      seriesLabel="Movement"
+      maxBarSize={20}
+      ariaLabel="Biggest spend movements by vendor"
+    />
   )
 }
 
@@ -542,12 +540,22 @@ function VendorMovementPanel({
             {state.error}
           </Alert>
         ) : state.movements.length ? (
-          <StatGrid columns={3} className="xl:grid-cols-5">
+          <StatGrid columns={5}>
             <Stat label={comparison === 'rolling_3m' ? 'Average monthly spend' : 'Total spend'} value={formatCurrency(summary.currentSpend)} hint={periodLabel} />
-            <Stat label="Spend increases" value={`+${formatCurrency(summary.increaseTotal)}`} hint="Across vendors that increased" />
-            <Stat label="Spend decreases" value={`-${formatCurrency(summary.decreaseTotal)}`} hint="Across vendors that decreased" />
-            <Stat label="Net movement" value={formatSignedCurrency(summary.netChange)} hint="Increases less decreases" />
-            <Stat label="Needs attention" value={summary.attentionCount.toLocaleString('en-GB')} hint="Material movements not closed" />
+            <Stat label="Spend increases" value={`+${formatCurrency(summary.increaseTotal)}`} tone={spendMovementTone(summary.increaseTotal)} hint="Across vendors that increased" />
+            <Stat label="Spend decreases" value={`-${formatCurrency(summary.decreaseTotal)}`} tone={spendMovementTone(-summary.decreaseTotal)} hint="Across vendors that decreased" />
+            <Stat
+              label="Net movement"
+              value={formatSignedCurrency(summary.netChange)}
+              tone={spendMovementTone(summary.netChange)}
+              hint="Increases less decreases"
+            />
+            <Stat
+              label="Needs attention"
+              value={summary.attentionCount.toLocaleString('en-GB')}
+              tone={summary.attentionCount > 0 ? 'warning' : 'default'}
+              hint="Material movements not closed"
+            />
           </StatGrid>
         ) : (
           <Card>
@@ -563,7 +571,9 @@ function VendorMovementPanel({
               title="Biggest Movements"
               subtitle="Top vendors ranked by absolute pound movement"
               action={
-                <div className="hidden items-center gap-4 text-xs sm:flex">
+                // The chart's key, on phones too: the CardHeader puts it under the title when the
+                // card is narrow, and the chart itself has no Down and Up headings.
+                <div className="flex flex-wrap items-center gap-4 text-xs">
                   <span className="inline-flex items-center gap-1 text-success-fg"><Icon name="trendDown" size={16} /> Spend down</span>
                   <span className="inline-flex items-center gap-1 text-danger-fg"><Icon name="trendUp" size={16} /> Spend up</span>
                 </div>
@@ -583,6 +593,7 @@ function VendorMovementPanel({
                   value={view}
                   onChange={(value) => setView(value as MovementView)}
                   size="sm"
+                  aria-label="Which vendors to show"
                 />
               </div>
 
@@ -738,7 +749,7 @@ function VendorDetailDrawer({
           </div>
 
           <StatGrid columns={3}>
-            <Stat label="12m spend" value={formatCurrency(detail.totalOutgoing)} />
+            <Stat label="12m spend" value={formatCurrency(detail.totalOutgoing)} tone={RECEIPT_FLOW_TONE.spend} />
             <Stat label="Full history" value={detail.historyTransactionCount.toLocaleString('en-GB')} />
             <Stat label="Recent avg" value={formatCurrency(detail.recentAverageOutgoing)} />
           </StatGrid>

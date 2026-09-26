@@ -49,6 +49,7 @@ import {
   TableHead,
   TableCell,
   TablePagination,
+  Icon,
 } from '@/ds'
 
 /* ---------- Toast helper (re-use existing) ---------- */
@@ -62,20 +63,6 @@ const SMS_FILTER_OPTIONS: Array<{ id: CustomerSmsFilter; label: string }> = [
   { id: 'active', label: 'SMS Active' },
   { id: 'deactivated', label: 'Deactivated' },
 ]
-
-/* ---------- SVG Icons ---------- */
-const PlusIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-)
-const PencilIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
-)
-const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-)
-const MessageIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" /></svg>
-)
 
 // ---------------------------------------------------------------------------
 // Props
@@ -388,12 +375,12 @@ export default function CustomersClient({
 
   // --- Form/Import subviews ---
   // Both stay on /customers (no route of their own), so the back button returns to the list
-  // in place rather than navigating.
+  // in place rather than navigating. They are child pages, so they show the back button and
+  // not the Customers tab row.
   if (showForm || editingCustomer) {
     return (
       <PageLayout
         title={editingCustomer ? 'Edit Customer' : 'New Customer'}
-        navItems={CUSTOMERS_NAV}
         backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: closeForm }}
         containerSize="md"
       >
@@ -412,7 +399,6 @@ export default function CustomersClient({
       <PageLayout
         title="Import Customers"
         subtitle="Import multiple customers from a CSV file"
-        navItems={CUSTOMERS_NAV}
         backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: () => setShowImport(false) }}
       >
         <CustomerImport
@@ -435,7 +421,7 @@ export default function CustomersClient({
         canManageCustomers ? (
           <>
             <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
-            <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
+            <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openCreateCustomer}>
               New Customer
             </Button>
           </>
@@ -461,9 +447,11 @@ export default function CustomersClient({
           onChange={handleSearch}
           debounceDelay={350}
           placeholder="Search by name, phone, or email..."
+          aria-label="Search customers"
           className="w-full sm:w-80"
         />
         <Segmented
+          aria-label="SMS status"
           options={SMS_FILTER_OPTIONS}
           value={smsFilter}
           onChange={(id) => handleFilterChange(id as CustomerSmsFilter)}
@@ -473,7 +461,7 @@ export default function CustomersClient({
           <div className="flex items-center gap-2">
             <span className="text-xs text-text-muted">{selected.size} selected</span>
             {canSendBulkMessages && (
-              <Button size="sm" icon={<MessageIcon />} onClick={openBulkSmsForSelected}>
+              <Button size="sm" icon={<Icon name="message" size={14} />} onClick={openBulkSmsForSelected}>
                 SMS
               </Button>
             )}
@@ -593,8 +581,8 @@ export default function CustomersClient({
                     {canManageCustomers && (
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <IconButton icon={<PencilIcon />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
-                          <IconButton icon={<TrashIcon />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
+                          <IconButton icon={<Icon name="edit" size={14} />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
+                          <IconButton icon={<Icon name="trash" size={14} />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
                         </div>
                       </TableCell>
                     )}
@@ -637,8 +625,8 @@ export default function CustomersClient({
                       </div>
                       {canManageCustomers && (
                         <div className="flex flex-shrink-0 items-center gap-1">
-                          <IconButton icon={<PencilIcon />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
-                          <IconButton icon={<TrashIcon />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
+                          <IconButton icon={<Icon name="edit" size={14} />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
+                          <IconButton icon={<Icon name="trash" size={14} />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
                         </div>
                       )}
                     </div>
@@ -687,22 +675,22 @@ export default function CustomersClient({
         title="Delete Customer"
         message={
           deleteTarget ? (
-            // Spans, not paragraphs: ConfirmDialog renders `message` inside a <p>.
-            <>
-              <span className="block">
+            // ConfirmDialog renders a node message inside a <div>, so it may hold paragraphs.
+            <div className="space-y-2">
+              <p>
                 Delete {deleteTarget.first_name}
                 {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Where the record can be
                 removed, this permanently deletes it along with their event bookings, message history,
                 consent records, event check-ins, labels and loyalty membership.
-              </span>
-              <span className="mt-2 block">
+              </p>
+              <p>
                 A record tied to a table, private or parking booking, or to an SMS campaign, cannot be
                 removed. It is anonymised instead: the name becomes &quot;Deleted Customer&quot;, the
                 phone number and email are cleared, internal notes are wiped and every marketing opt-in
                 is switched off. Their bookings and message history stay.
-              </span>
-              <span className="mt-2 block font-medium">Either way, this cannot be undone.</span>
-            </>
+              </p>
+              <p className="font-medium">Either way, this cannot be undone.</p>
+            </div>
           ) : (
             ''
           )

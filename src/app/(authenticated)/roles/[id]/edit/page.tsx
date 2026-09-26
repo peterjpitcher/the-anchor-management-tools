@@ -16,8 +16,9 @@ export default async function EditRolePage({ params }: EditRolePageProps) {
   const { id } = await params
   const rolesResult = await getAllRoles()
 
-  // One set of header props for every state. The role's name is only known once it has loaded.
+  // One set of header props for every state: an edit page is titled with its action.
   const layoutProps = {
+    title: 'Edit Role',
     subtitle: "Update this role's name and description",
     backButton: { label: 'Back to Roles', href: '/roles' },
     containerSize: 'md',
@@ -25,7 +26,7 @@ export default async function EditRolePage({ params }: EditRolePageProps) {
 
   if (rolesResult.error) {
     return (
-      <PageLayout title="Edit Role" {...layoutProps}>
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Unable to load role">{rolesResult.error}</Alert>
       </PageLayout>
     )
@@ -41,7 +42,7 @@ export default async function EditRolePage({ params }: EditRolePageProps) {
   }
 
   return (
-    <PageLayout title={`Edit ${role.name}`} {...layoutProps}>
+    <PageLayout {...layoutProps}>
       <RoleForm
         action={updateRole}
         initialData={{

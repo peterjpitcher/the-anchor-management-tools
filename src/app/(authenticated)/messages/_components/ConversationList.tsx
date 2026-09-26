@@ -121,6 +121,7 @@ export function ConversationList({
             value={searchQuery}
             onChange={onSearchChange}
             placeholder="Search name, phone or email..."
+            aria-label="Search conversations"
           />
           {searching && (
             <span className="absolute right-9 top-1/2 -translate-y-1/2" aria-hidden="true">
