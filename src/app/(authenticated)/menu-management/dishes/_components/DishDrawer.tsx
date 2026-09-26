@@ -9,6 +9,7 @@ import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { formatDateInLondon } from '@/lib/dateUtils';
 import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
 import {
   createMenuDish,
@@ -628,7 +629,7 @@ export function DishDrawer({
                 <Badge
                   tone="success"
                   icon={<CheckCircleIcon />}
-                  title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}
+                  title={allergenVerifiedAt ? `Verified ${formatDateInLondon(allergenVerifiedAt)}` : undefined}
                 >
                   Allergens Verified
                 </Badge>
