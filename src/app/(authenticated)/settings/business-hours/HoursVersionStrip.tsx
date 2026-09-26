@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useTransition } from 'react'
 import { Alert, Button, CardBody, ConfirmDialog, Field, FormFooter, Input, Modal, Tabs, toast } from '@/ds'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   createScheduledHoursVersion,
   publishHoursVersion,
@@ -45,7 +45,7 @@ export function HoursVersionStrip({
   const [pending, startTransition] = useTransition()
   const [confirming, setConfirming] = useState<{ kind: 'publish' | 'withdraw'; version: HoursVersionSummary } | null>(null)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getTodayIsoDate()
   const future = versions.filter(v => v.effectiveFrom > today && v.status !== 'withdrawn')
   const current = versions.filter(v => v.isActive)
   const past = versions.filter(v => !v.isActive && v.effectiveFrom <= today)
@@ -199,7 +199,7 @@ export function HoursVersionStrip({
             <Input
               type="date"
               value={newDate}
-              min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
+              min={getLocalIsoDateDaysAhead(1)}
               onChange={e => setNewDate(e.target.value)}
             />
           </Field>

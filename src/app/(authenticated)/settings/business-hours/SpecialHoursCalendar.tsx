@@ -12,7 +12,6 @@ import {
   format,
   isSameDay,
   isSameMonth,
-  isToday,
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
@@ -24,6 +23,7 @@ import {
   SPECIAL_HOURS_DAY_CLASSES,
   type SpecialHoursDayState,
 } from '../_shared/status-ui'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface SpecialHoursCalendarProps {
   canManage: boolean
@@ -60,7 +60,9 @@ const normalizeOverrides = (items: ServiceStatusOverride[]) =>
 
 export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOverrides = NO_OVERRIDES }: SpecialHoursCalendarProps) {
   const router = useRouter()
-  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
+  // London's month, not the host's: this renders on the UTC server first. Noon keeps the host-local
+  // Date on the London calendar date whatever zone the host is in.
+  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date(`${getTodayIsoDate()}T12:00:00`)))
   const [specialHours, setSpecialHours] = useState<SpecialHours[]>(() => normalizeSpecialHours(initialSpecialHours))
   const [overrides, setOverrides] = useState<ServiceStatusOverride[]>(() => normalizeOverrides(initialOverrides))
   const [loading, setLoading] = useState(false)
@@ -141,6 +143,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
     const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
 
     const days = eachDayOfInterval({ start, end })
+    const todayIso = getTodayIsoDate()
     return days.map((day) => {
       const iso = format(day, 'yyyy-MM-dd')
       const special = specialHours.find((entry) => entry.date === iso)
@@ -151,7 +154,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
         date: day,
         iso,
         inCurrentMonth: isSameMonth(day, currentMonth),
-        isToday: isToday(day),
+        isToday: iso === todayIso,
         special,
         overrides: overridesForDay,
       }

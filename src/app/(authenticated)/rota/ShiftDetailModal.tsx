@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, DescriptionList, Empty, Field, Input, Modal, Select, toast } from '@/ds';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateTimeInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
@@ -97,7 +97,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 /** A recorded moment (an audit entry, a decision), shown as London wall-clock time. */
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
+  return formatDateTimeInLondon(iso, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

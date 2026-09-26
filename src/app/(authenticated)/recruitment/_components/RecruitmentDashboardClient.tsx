@@ -98,6 +98,7 @@ import {
   recruitmentScoreBand,
 } from '../_shared/status-ui'
 import { RECRUITMENT_LAYOUT } from '../_shared/layout'
+import { formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 
 type Props = {
   initialData: any
@@ -246,10 +247,10 @@ function formatDateTime(value: string | null | undefined) {
   if (!value) return 'Not set'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Not set'
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(date, {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(date)
+  })
 }
 
 function formatSlotDateTime(value: string | null | undefined) {
@@ -556,7 +557,7 @@ function formatDateOnly(value: string | null | undefined) {
 
 function isPastClosingDate(value: string | null | undefined) {
   if (!value) return false
-  return value.slice(0, 10) < new Date().toISOString().slice(0, 10)
+  return value.slice(0, 10) < getTodayIsoDate()
 }
 
 function postingVisibilityText(posting: any) {

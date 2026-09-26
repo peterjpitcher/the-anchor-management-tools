@@ -34,6 +34,7 @@ import {
   type PayAgeBand,
   type PayBandRate,
 } from '@/app/actions/pay-bands';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 interface PayBandsManagerProps {
   canManage: boolean;
@@ -138,7 +139,7 @@ function RateHistory({
     });
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayIsoDate();
   const current = rates.find(r => r.effective_from <= today) ?? null;
 
   const rateStatus = (r: PayBandRate): PayRateStatus =>
@@ -282,7 +283,7 @@ function RateHistory({
 
 /** The current rate for a band: the latest one already in force. */
 function currentRateFor(rates: PayBandRate[]): PayBandRate | null {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayIsoDate();
   return rates.find(r => r.effective_from <= today) ?? null;
 }
 

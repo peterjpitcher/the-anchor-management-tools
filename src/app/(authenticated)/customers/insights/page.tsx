@@ -13,6 +13,7 @@ import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign
 import { CUSTOMERS_NAV } from '../_shared/nav'
 import { STRATEGIC_SIGNAL_TONE } from '../_shared/status-ui'
 import { InsightsWindowPicker } from './_components/InsightsWindowPicker'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 const WINDOW_OPTIONS: Array<{ key: CustomerInsightsWindow; label: string }> = [
   { key: '30d', label: '30 days' },
@@ -43,10 +44,10 @@ function formatDate(value: string | null): string {
 }
 
 function formatGeneratedAt(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(iso, {
     dateStyle: 'medium',
     timeStyle: 'short'
-  }).format(new Date(iso))
+  })
 }
 
 type CustomerInsightsPageProps = {

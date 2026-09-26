@@ -17,6 +17,7 @@ import { formatCurrency, formatDate } from '@/app/(authenticated)/receipts/utils
 import { RECEIPT_FLOW_TONE, RECEIPT_STATUS_LABEL, RECEIPT_STATUS_TONE } from '@/app/(authenticated)/receipts/_shared/status-ui'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 import { SourceBadge } from './ReceiptTableRow'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type WorkspaceTransaction = ReceiptTransaction & {
   files: ReceiptFile[]
@@ -191,7 +192,7 @@ export function ReceiptMobileCard({
   async function saveNote() {
       if (!canManageReceipts) return
       const trimmed = noteDraft.trim()
-      const timestamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      const timestamp = formatDateTimeInLondon(new Date(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       const formatted = trimmed.length ? `${timestamp} — ${trimmed}` : ''
       
       startTransition(async () => {

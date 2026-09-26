@@ -57,7 +57,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { BACK_TO_INVOICES, invoicePageTitle } from '../_shared/nav'
 
 interface InvoiceDetailClientProps {
@@ -842,12 +842,12 @@ export default function InvoiceDetailClient({
                   {
                     key: 'invoice_date',
                     label: 'Invoice Date',
-                    value: <span className="font-medium">{new Date(invoice.invoice_date).toLocaleDateString('en-GB')}</span>,
+                    value: <span className="font-medium">{formatDateInLondon(invoice.invoice_date)}</span>,
                   },
                   {
                     key: 'due_date',
                     label: 'Due Date',
-                    value: <span className="font-medium">{new Date(invoice.due_date).toLocaleDateString('en-GB')}</span>,
+                    value: <span className="font-medium">{formatDateInLondon(invoice.due_date)}</span>,
                   },
                 ]}
               />
@@ -961,7 +961,7 @@ export default function InvoiceDetailClient({
                       <div className="flex-1">
                         <p className="font-medium">£{payment.amount.toFixed(2)}</p>
                         <p className="text-sm text-text-muted">
-                          {new Date(payment.payment_date).toLocaleDateString('en-GB')}
+                          {formatDateInLondon(payment.payment_date)}
                         </p>
                         {payment.reference && (
                           <p className="text-sm text-text-muted truncate">{payment.reference}</p>
@@ -1117,7 +1117,7 @@ export default function InvoiceDetailClient({
           <p className="text-sm text-text-muted">
             Currently due{' '}
             <span className="font-medium text-text">
-              {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+              {formatDateInLondon(invoice.due_date)}
             </span>
             . Changing this does not email the customer, so tell them yourself
             or re-send the invoice.

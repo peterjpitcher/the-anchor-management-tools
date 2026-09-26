@@ -11,6 +11,7 @@ import {
 import { MESSAGE_DELIVERY_STATUS_LABEL, MESSAGE_DELIVERY_STATUS_TONE } from '@/lib/messages/status-ui'
 
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
+import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
 
 interface MessageThreadProps {
   messages: CustomerCommunication[]
@@ -89,7 +90,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
 
   // Group messages by date
   const groupedMessages = messages.reduce((groups, message) => {
-    const date = new Date(message.created_at).toLocaleDateString()
+    const date = formatDateInLondon(message.created_at)
     if (!groups[date]) {
       groups[date] = []
     }
@@ -98,11 +99,12 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
   }, {} as Record<string, CustomerCommunication[]>)
 
   const getMessageTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
+    // en-US: en-GB with hour12 renders noon as "0pm" on Node 20.
+    return formatDateTimeInLondon(timestamp, { 
       hour: 'numeric', 
       minute: '2-digit',
       hour12: true 
-    })
+    }, 'en-US')
   }
 
   const getStatusText = (status?: string) => {
@@ -144,7 +146,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
               <Badge size="sm">
-                {date === new Date().toLocaleDateString() ? 'Today' : date}
+                {date === formatDateInLondon(new Date()) ? 'Today' : date}
               </Badge>
             </div>
             

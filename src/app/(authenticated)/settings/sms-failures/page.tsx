@@ -26,6 +26,7 @@ import { SMS_FAILURE_TONES, smsFailureBadge } from '../_shared/status-ui'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 import { UndeliveredGuestMessagesSection } from './UndeliveredGuestMessagesSection'
 import { WindowSwitch } from './WindowSwitch'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type SmsFailureRow = {
   id: string
@@ -225,7 +226,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                       <div className="flex items-start justify-between gap-2">
                         <CustomerLink customerId={row.customer_id} name={getCustomerName(row)} />
                         <span className="shrink-0 text-xs text-text-muted">
-                          {new Date(row.created_at).toLocaleString('en-GB')}
+                          {formatDateTimeInLondon(row.created_at)}
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -296,7 +297,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                       return (
                         <TableRow key={row.id} className="align-top">
                           <TableCell className="text-text-muted">
-                            {new Date(row.created_at).toLocaleString('en-GB')}
+                            {formatDateTimeInLondon(row.created_at)}
                           </TableCell>
                           <TableCell>
                             <CustomerLink customerId={row.customer_id} name={getCustomerName(row)} />
