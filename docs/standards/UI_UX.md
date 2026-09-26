@@ -23,7 +23,7 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - Capitalisation on staff screens: Title Case for page, section, card and dialog titles, tab labels, back labels and button labels ("New Invoice", "Back to Roles", "Save Changes"). Sentence case for subtitles, descriptions, help text, messages and table cells. Field labels and table headers are uppercased by the components. Guest pages follow the website's voice rules instead.
 - `subtitle`: optional, one short line, sentence case, no full stop. On a tab page it names the tab or says what the page is for.
 - Never pass spacing classes to `PageLayout` (`className`, `headerClassName`, `contentClassName`) and never wrap it in padding, `max-w-*`, `mx-auto` or `min-h-screen`. **(guard)** The only `<main>` is the app shell's. **(guard)**
-- Width: leave `containerSize` at `full`, except a page whose content is one form with no table (change password, a role, a maintenance item, a campaign, a simple settings form), which uses `containerSize="md"`.
+- Width: leave `containerSize` at `full`, except a page whose content is one form with no table (a line-item editor such as the invoice and quote builders counts as a table, so those stay full) (change password, a role, a maintenance item, a campaign, a simple settings form), which uses `containerSize="md"`.
 
 ### Navigation
 
@@ -62,6 +62,36 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - Labels come from `Field` or the `label` prop of `Input`, `Select` and `Textarea` (12px, uppercase, `tracking-wider`, muted). Never a raw `<label>` styled by hand.
 - Every form ends with `FormFooter`: secondary first, primary last; right-aligned on desktop, full width with the primary on top on phones.
 - Confirming a delete or another irreversible action is `ConfirmDialog`, never `confirm()`.
+
+### Wording and small patterns
+
+The same action has the same words and the same look on every page.
+
+- **Create:** the header button that starts a new record is "New X" (never "Add X" or "Create X"), and what it opens is titled with the same words ("New Vendor" opens "New Vendor"). Its submit button says "Create X" for a standalone record and "Add X" for something added to the record on screen (a line item, a contact, a note). A domain verb is fine ("Log an Issue", "Book Table", "Record Collection", "Invite") as long as the page or dialog it opens uses the same words.
+- **Save:** an edit form's submit button says "Save Changes"; a form split into sections names the section ("Save Opening Hours"). Never "Update X". The one exception is a form whose whole job is one action ("Change Password", "Record Payment").
+- **Edit:** a detail page's edit action is "Edit", secondary. The primary slot is for the record's next step.
+- **Delete:** the header action is "Delete", danger. A delete ConfirmDialog is titled "Delete <Thing>", its message says what is lost, and its confirm button says "Delete". Its dismiss button stays "Cancel".
+- **Cancel a booking, campaign or voucher:** the action is "Cancel <Thing>"; the ConfirmDialog is titled "Cancel <Thing>", confirms with "Cancel <Thing>" in danger and dismisses with "Keep <Thing>" (a dismiss button labelled "Cancel" next to "Cancel Booking" is ambiguous).
+- **Tones:** danger only for something that cannot be undone from the screen (delete, cancel, void, revoke, anonymise). Reversible actions (deactivate, disable, archive, mark as no-show when it can be reverted) are primary. A danger button always opens a danger confirm.
+- **Dialog titles** never end in "?": the question goes in the message.
+- **Retry:** "Try Again", secondary, sm, always.
+- **Export and download:** "Export CSV" for data, "Download PDF" for documents; "Email <Thing>" for sending a document ("Email Invoice", "Email Quote"). No second, shorter label for phones.
+- **Pending labels:** prefer the Button `loading` prop and keep the label. If the label must change, it ends with the single character "…" ("Saving…"), never three full stops.
+- **Cancel on forms** is a `LinkButton` to the same place as the back button (a `Button` with `onClick` only when it must also reset state). A tab page has no Cancel. Every new and edit page has one.
+- **Empty states:** the title is sentence case and short; the description is a full sentence ending in a full stop. Wording by cause: "No X yet" when nothing has been added; "No X match these filters" under a search or filter; "No X for this period" under a date window. Never "No data available".
+- **Icon-only buttons** are named in sentence case (their `aria-label` is read out, not shown).
+- **Subtitles on tab pages** read "<Tab>: <what this page is for>". Every tab has its own subtitle.
+- **First tab** of a row is the section name when it is the list, "Overview" when it is a dashboard.
+- **Status of the record** shows as a Badge in the first card (or the CardHeader action), not in the page header.
+- **Filters** never sit in the header, whatever the page.
+- **Destructive actions** on a detail page sit in the header actions (after the secondary actions, before the primary), not in a "danger zone" card.
+- **Overflow menu:** more than three header actions collapse the extras into a secondary "More" Dropdown, labelled, with an icon.
+
+### Dialogs
+
+- A Modal's action buttons always go in its `footer` prop (a form in the body links its submit button with `form="<form id>"`). `FormFooter` is for forms on a page, never inside a Modal.
+- A yes/no confirmation is `ConfirmDialog`. A confirmation that must submit a server-action form (so the action runs as a form post) may use a Modal whose footer mirrors ConfirmDialog exactly (same button order, labels and tones).
+- A confirm-style dialog with no fields is always `ConfirmDialog`.
 
 ### Components
 
