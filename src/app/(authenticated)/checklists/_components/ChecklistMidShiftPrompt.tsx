@@ -139,17 +139,19 @@ export function ChecklistMidShiftPrompt() {
   if (!open || prompts.length === 0) return null
 
   return (
+    // Shown on the FOH kiosk page, which the owner keeps exactly as it is (26 Sep 2026), so
+    // its wording stays as the floor staff know it rather than following the Title Case rule.
     <Modal
       open={open}
       onClose={handleLater}
-      title={closingOnly ? 'Time to Start Closing' : 'Checks Are Due'}
+      title={closingOnly ? 'Time to start closing' : 'Checks are due'}
       footer={
         <>
           <Button variant="ghost" onClick={handleLater}>
             Later
           </Button>
           <Button variant="primary" onClick={handleOpenChecklist}>
-            Open Checklist
+            Open checklist
           </Button>
         </>
       }
