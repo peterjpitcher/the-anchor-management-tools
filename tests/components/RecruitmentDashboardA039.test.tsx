@@ -373,6 +373,9 @@ describe('RecruitmentDashboardClient Run Retention', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Run Retention?')).toBeInTheDocument()
     expect(dialog).toHaveTextContent('anonymised')
+    // The run also blanks every message sent to them (runRecruitmentRetentionCleanup), so the
+    // warning says so.
+    expect(dialog).toHaveTextContent('the text of messages sent to them are removed')
     expect(dialog).toHaveTextContent('permanently deleted')
     expect(dialog).toHaveTextContent('This cannot be undone.')
     expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()

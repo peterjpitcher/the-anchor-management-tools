@@ -502,7 +502,7 @@ export function FiguresSection(): React.JSX.Element {
               <Code>deltaGood=&quot;down&quot;</Code>, for figures where a fall is good (costs, no-shows, wastage).
             </li>
             <li>
-              <Code>StatGrid columns</Code> takes 2 to 6: one column on a phone, two on a small screen, the full count
+              <Code>StatGrid columns</Code> takes 2 to 6: two across on a phone and a small screen, the full count
               on a wide one. Never override its grid classes.
             </li>
           </ul>

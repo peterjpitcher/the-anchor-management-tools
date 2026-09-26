@@ -36,7 +36,9 @@ export function Segmented({
   return (
     <div
       className={cn(
-        'inline-flex bg-surface-2 p-0.5 rounded-default border border-border',
+        // On a narrow screen the options scroll sideways rather than wrapping their labels
+        // onto several lines.
+        'inline-flex max-w-full overflow-x-auto bg-surface-2 p-0.5 rounded-default border border-border',
         className,
       )}
       role="radiogroup"
@@ -53,7 +55,7 @@ export function Segmented({
             role="radio"
             aria-checked={isActive}
             className={cn(
-              'text-ui font-medium rounded-sm transition-all duration-150 focus-visible:outline-hidden focus-visible:shadow-ring',
+              'shrink-0 whitespace-nowrap text-ui font-medium rounded-sm transition-all duration-150 focus-visible:outline-hidden focus-visible:shadow-ring',
               size === 'sm' ? 'px-2 py-0.5' : 'px-3 py-1',
               isActive
                 ? 'bg-surface text-text shadow-sm'

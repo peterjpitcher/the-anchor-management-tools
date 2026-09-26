@@ -68,6 +68,14 @@ export default function TimeclockClient({
 }: TimeclockClientProps) {
   const router = useRouter()
   const [sessions, setSessions] = useState(initialSessions)
+  // A refresh (Try Again, or the one after each clock in or out) brings the server's list of who
+  // is clocked in. Take it, so a load that failed and then worked never leaves the kiosk showing
+  // the empty list from the failed load as "everyone not clocked in".
+  const [sessionsFromServer, setSessionsFromServer] = useState(initialSessions)
+  if (initialSessions !== sessionsFromServer) {
+    setSessionsFromServer(initialSessions)
+    setSessions(initialSessions)
+  }
   const [isPending, startTransition] = useTransition()
   const [currentTime, setCurrentTime] = useState('')
   const [currentDate, setCurrentDate] = useState('')

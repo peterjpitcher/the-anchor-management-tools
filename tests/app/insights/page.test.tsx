@@ -98,6 +98,19 @@ describe('InsightsReportView', () => {
     expect(html).not.toMatch(/<h4[^>]*>Needs attention<\/h4>/)
   })
 
+  it('shows a campaign list title exactly as written, never recased into Title Case', () => {
+    const withCampaign = buildFixtureReport()
+    withCampaign.sections[7].lists.push({
+      title: 'Halloween party (customer email, first sent Thu 24 Sep, early figures)',
+      titleAsWritten: true,
+      items: [{ text: 'Delivered 90 of 100 sent so far.' }],
+    })
+    const markup = renderToStaticMarkup(<InsightsReportView report={withCampaign} />)
+
+    expect(markup).toMatch(/<h4[^>]*>Halloween party \(customer email, first sent Thu 24 Sep, early figures\)<\/h4>/)
+    expect(markup).not.toContain('Halloween Party')
+  })
+
   it('keeps links on this host rather than the configured origin', () => {
     expect(html).toContain('href="/private-bookings/p1"')
     expect(html).not.toContain('href="https://management.example.test')

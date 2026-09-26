@@ -112,6 +112,12 @@ export interface InsightListItem {
 
 export interface InsightList {
   title: string
+  /**
+   * The title names something and describes it (a marketing campaign's own name, with its
+   * audience and send date), so the page shows it exactly as written. Other list titles are
+   * shown in Title Case.
+   */
+  titleAsWritten?: boolean
   items: InsightListItem[]
   /** Shown instead of an empty list. Omit to hide the list when empty. */
   emptyText?: string

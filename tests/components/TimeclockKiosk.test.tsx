@@ -117,6 +117,26 @@ describe('timeclock kiosk', () => {
     expect(clockIn).not.toHaveBeenCalled()
   })
 
+  it('shows who is clocked in once Try Again loads it, not the empty list from the failed load', () => {
+    const { rerender } = render(<TimeclockClient employees={EMPLOYEES} openSessions={[]} sessionsLoadFailed />)
+    fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Try Again' }))
+    expect(refresh).toHaveBeenCalled()
+
+    // The refreshed server page hands the same kiosk the list that loaded this time.
+    rerender(
+      <TimeclockClient
+        employees={EMPLOYEES}
+        openSessions={[{ employee_id: EMPLOYEES[0].employee_id, clock_in_at: '2026-09-26T11:00:00Z', employee_name: 'Mandy' }]}
+      />,
+    )
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Clocked In').nextSibling).toHaveTextContent('1')
+    expect(screen.getByText('Not Clocked In').nextSibling).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /Mandy/ })).toHaveTextContent('In since 12:00')
+    expect(screen.getByRole('button', { name: /Billy/ })).toHaveTextContent('Not clocked in')
+  })
+
   it('shows no load error when both loads worked', () => {
     render(<TimeclockClient employees={EMPLOYEES} openSessions={[]} />)
 
