@@ -5,10 +5,10 @@ Spec: `tasks/spec-2026-09-26-design-system-alignment.md`. Rules: `docs/standards
 ## Waves
 
 - [x] Wave 0: DS foundation (Section padding, PageLayout rhythm and breakpoints, shell landmarks, PageLoading inline, FormFooter, StatGrid, SHELL_MEDIA_QUERY, Quotes gate, page contract). Commit ab429d21.
-- [ ] Wave 1: mechanical codemods (FormGroup, EmptyState, Badge and Alert tones, toast imports, icons, dead compat code) and the page-contract guard with its baseline.
-- [ ] Wave 2: section owners apply the whole contract to their files, in parallel, on disjoint file sets (table below).
-- [ ] Wave 3: cross-cutting clean-up: shared status maps, DS Pagination removal, Headless UI removal, chart approach, BEM CSS and dead selectors in globals.css, design-system reference page, token-guard additions, docs drift.
-- [ ] Wave 4: full gates, adversarial consistency review across sections until no new findings, browser check of the DS pieces at 390, 800 and 1280px.
+- [x] Wave 1: mechanical codemods (FormGroup, EmptyState, Badge and Alert tones, toast imports, icons, dead compat code) and the page-contract guard with its baseline.
+- [x] Wave 2: section owners apply the whole contract to their files, in parallel, on disjoint file sets (table below).
+- [x] Wave 3: cross-cutting clean-up: shared status maps, DS Pagination removal, Headless UI removal, chart approach, BEM CSS and dead selectors in globals.css, design-system reference page, token-guard additions, docs drift.
+- [x] Wave 4: full gates, adversarial consistency review across sections until no new findings, browser check of the DS pieces at 390, 800 and 1280px.
 - [ ] Owner go-ahead to merge and deploy; verify the production deployment.
 
 Gate for every wave: `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test`, `npm run test:utc`, `npm run build`, both guards.
@@ -38,4 +38,9 @@ Not owned in wave 2 (left for wave 3 or untouched): `src/ds`, `globals.css` outs
 
 ## Results
 
-(filled in as each wave lands)
+- Wave 1 4f6c29f4: codemods (FormGroup, EmptyState, tones, toasts, 588 icons) and the page-contract guard (baseline 1,449).
+- Wave 2 849b2383: 14 section owners plus reviewers; every staff page on PageLayout; baseline down to FOH files and justified grid cells.
+- Wave 3 bff21796, 26a0d218, 29212fc2: DS additions (FileButton, Fieldset, SubHeading, Stat tone, portalled overlays, sortable TableHead, DS charts), shared status maps, CSS clean-up, stricter token guard, final pass, tidy-up; merge of main's London date fixes 764650fc.
+- Wave 4 6be44c58, 1933799a, 586dbb16: browser check at 375/800/1280 (figures two-up on phones, switches scroll), review fixes, cross-app matrix of 148 pages, wording and dialog rules applied everywhere.
+- Final gates on 586dbb16: lint clean, tsc and typecheck:tests clean, 10,834 tests pass in London and UTC, build passes, guards pass (page-contract baseline 93 counts in 22 files, 11 of them FOH).
+- Not browser-checked with a real signed-in session (no credentials); checked through a harness rendering the real components in the real shell with dummy settings.
