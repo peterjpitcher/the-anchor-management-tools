@@ -21,7 +21,7 @@ import {
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 import { formatDateInLondon } from '@/lib/dateUtils';
-import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
+import { ROTA_LEAVE_STATUS_LABEL, rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import {
   LEAVE_ALLOWANCE_TEXT_CLASSES,
   LEAVE_ALLOWANCE_TONE,
@@ -384,10 +384,15 @@ export default function LeaveManagerClient({
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
+  // The same words as the status badges (ROTA_LEAVE_STATUS_LABEL), so "Pending approval" here
+  // matches the badge on every pending request below.
   const filterOptions: Array<{ id: LeaveFilter; label: string }> = [
-    { id: 'pending', label: pendingCount > 0 ? `Pending (${pendingCount})` : 'Pending' },
-    { id: 'approved', label: 'Approved' },
-    { id: 'declined', label: 'Declined' },
+    {
+      id: 'pending',
+      label: pendingCount > 0 ? `${ROTA_LEAVE_STATUS_LABEL.pending} (${pendingCount})` : ROTA_LEAVE_STATUS_LABEL.pending,
+    },
+    { id: 'approved', label: ROTA_LEAVE_STATUS_LABEL.approved },
+    { id: 'declined', label: ROTA_LEAVE_STATUS_LABEL.declined },
     { id: 'all', label: 'All' },
   ];
 

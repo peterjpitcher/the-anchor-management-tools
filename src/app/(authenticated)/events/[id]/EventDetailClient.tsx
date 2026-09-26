@@ -24,7 +24,7 @@ import {
   LinkButton,
   toast,
 } from '@/ds'
-import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+import type { DescriptionListItem } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'

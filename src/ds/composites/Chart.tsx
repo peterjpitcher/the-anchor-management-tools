@@ -417,7 +417,7 @@ function ChartFrame({
   )
 }
 
-/* --- BarChart (drop-in for src/components/charts/BarChart.tsx) --- */
+/* --- BarChart: single series --- */
 
 export interface BarChartDatum {
   label: string
@@ -429,8 +429,8 @@ export interface BarChartDatum {
 }
 
 /**
- * Props for `BarChart`. The first eight match the old canvas chart in
- * `src/components/charts/BarChart.tsx`, with the same defaults, so a caller can swap the import.
+ * Props for `BarChart`, the one single-series bar chart. (It replaced a canvas chart, since
+ * deleted, whose first eight props and defaults it kept.)
  *
  * @property data         One bar per item: `label`, `value`, and optionally `color` and `targetLineValue`.
  * @property height       Pixel height (default 300). `heightClassName` overrides it for responsive heights.
@@ -492,8 +492,8 @@ function BarWithTarget(props: BarShapeProps & { domain: [number, number]; horizo
 }
 
 /**
- * A single-series bar chart. A drop-in replacement for the canvas `BarChart` in
- * `src/components/charts/BarChart.tsx` (same props and defaults), drawn in the DS chart style.
+ * A single-series bar chart in the DS chart style: chart tokens, `formatChartValue` numbers and
+ * the shared tooltip frame.
  */
 export function BarChart({
   data,

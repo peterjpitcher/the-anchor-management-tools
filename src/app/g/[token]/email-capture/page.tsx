@@ -38,7 +38,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'Add your email address',
+  title: 'Add your email address - The Anchor',
 }
 
 type PageProps = {

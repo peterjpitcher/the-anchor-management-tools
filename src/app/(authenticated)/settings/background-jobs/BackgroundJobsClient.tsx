@@ -29,7 +29,7 @@ import {
   TablePagination,
   toast,
 } from '@/ds'
-import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+import type { DescriptionListItem } from '@/ds'
 import { backgroundJobStatusTone } from '../_shared/status-ui'
 
 const jobTypeLabels: Record<string, string> = {

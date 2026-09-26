@@ -19,7 +19,7 @@ import {
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { FINANCE_NAV } from '../_shared/nav'
+import { financeNav } from '../_shared/nav'
 
 interface CatalogFormData {
   name: string
@@ -188,7 +188,7 @@ export default function LineItemCatalogPage() {
   const layoutProps = {
     title: 'Invoices',
     subtitle: 'Catalog of reusable line items for invoices and quotes',
-    navItems: FINANCE_NAV,
+    navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
   if (permissionsLoading || loading) {

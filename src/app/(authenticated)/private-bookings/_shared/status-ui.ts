@@ -112,10 +112,11 @@ export function privateBookingPaymentTextClass(state: PrivateBookingPaymentState
 // Full class strings, never built from the tone name: Tailwind only generates classes it can
 // read in the source. They match DS Badge's tones, so a calendar pill or legend swatch looks
 // like the badge for the same status. Neutral is one step darker than the badge because a
-// block sits on a white day cell, where the badge's near-white fill would disappear.
+// block sits on a white day cell, where the badge's near-white fill would disappear. Every edge
+// is a -border token, never an opacity of the base colour.
 const TONE_PANEL_CLASSES: Record<PrivateBookingBadgeTone, string> = {
   neutral: 'bg-surface-hover text-text-muted border-border-strong',
-  primary: 'bg-primary-soft text-primary-soft-fg border-primary/20',
+  primary: 'bg-primary-soft text-primary-soft-fg border-primary-border',
   success: 'bg-success-soft text-success-fg border-success-border',
   warning: 'bg-warning-soft text-warning-fg border-warning-border',
   danger: 'bg-danger-soft text-danger-fg border-danger-border',

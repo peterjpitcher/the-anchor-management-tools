@@ -18,7 +18,7 @@ import {
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { FINANCE_NAV } from '../_shared/nav'
+import { financeNav } from '../_shared/nav'
 import { recurringScheduleLabel, recurringScheduleTone } from '../_shared/status-ui'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
@@ -199,7 +199,7 @@ export default function RecurringInvoicesPage() {
   const layoutProps = {
     title: 'Invoices',
     subtitle: 'Recurring invoices raised automatically on a schedule',
-    navItems: FINANCE_NAV,
+    navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
   if (permissionsLoading || loading) {

@@ -27,7 +27,7 @@ import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
-import { FINANCE_NAV } from '@/app/(authenticated)/invoices/_shared/nav'
+import { financeNav } from '@/app/(authenticated)/invoices/_shared/nav'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +44,8 @@ type PermissionSnapshot = {
   canCreate: boolean
   canEdit: boolean
   canDelete: boolean
+  /** Shows the Export tab, as on every Finance page. */
+  canExport: boolean
 }
 
 type QuotesClientProps = {
@@ -97,6 +99,7 @@ export default function QuotesClient({
       canCreate: hasPermission('invoices', 'create'),
       canEdit: hasPermission('invoices', 'edit'),
       canDelete: hasPermission('invoices', 'delete'),
+      canExport: hasPermission('invoices', 'export'),
     }
   }, [permissionsLoading, permissions, hasPermission])
 
@@ -153,7 +156,7 @@ export default function QuotesClient({
     <PageLayout
       title="Quotes"
       subtitle="Pre-invoice proposals for OJ consultancy work"
-      navItems={FINANCE_NAV}
+      navItems={financeNav({ canExport: resolvedPermissions.canExport })}
       headerActions={
         resolvedPermissions.canCreate ? (
           <LinkButton href="/quotes/new" variant="primary" size="sm">

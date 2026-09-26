@@ -16,6 +16,12 @@ interface StarRatingProps {
    * 'staff' uses the staff tokens, for staff screens such as the feedback inbox.
    */
   tone?: StarRatingTone
+  /**
+   * The id of the visible question the stars answer ("How would you rate your visit?"). The
+   * group of star buttons is then named by it, instead of the generic "Star rating", so a caller
+   * never needs its own wrapping group. Only for the interactive stars.
+   */
+  'aria-labelledby'?: string
 }
 
 /*
@@ -44,7 +50,13 @@ const TONE_STYLES: Record<StarRatingTone, { button: string; filled: string; empt
  * it. With no `onChange` the stars are a read-only picture of the rating: 16px,
  * no buttons, and one accessible name for the whole row.
  */
-export function StarRating({ value, onChange, max = 5, tone = 'guest' }: StarRatingProps): React.JSX.Element {
+export function StarRating({
+  value,
+  onChange,
+  max = 5,
+  tone = 'guest',
+  'aria-labelledby': ariaLabelledBy,
+}: StarRatingProps): React.JSX.Element {
   const [hovered, setHovered] = useState(0)
   const styles = TONE_STYLES[tone]
 
@@ -86,7 +98,11 @@ export function StarRating({ value, onChange, max = 5, tone = 'guest' }: StarRat
   }
 
   return (
-    <div className="flex items-center gap-0.5" role="group" aria-label="Star rating">
+    <div
+      className="flex items-center gap-0.5"
+      role="group"
+      {...(ariaLabelledBy ? { 'aria-labelledby': ariaLabelledBy } : { 'aria-label': 'Star rating' })}
+    >
       {Array.from({ length: max }, (_, i) => i + 1).map((n) => {
         const active = (hovered || value) >= n
         return (

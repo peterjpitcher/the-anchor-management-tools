@@ -64,3 +64,33 @@ describe('LinkButton download', () => {
     expect(external).toHaveAttribute('rel', 'noopener noreferrer')
   })
 })
+
+describe('LinkButton disabled', () => {
+  it.each([
+    ['an internal link', '/private-bookings/sms-queue', {}],
+    ['an external link', 'https://example.com', {}],
+    ['a download', '/api/rota/export', { download: true }],
+  ] as const)('makes %s inert: no href, out of the tab order and announced as disabled', (_kind, href, extra) => {
+    render(
+      <LinkButton href={href} disabled {...extra}>
+        SMS Queue
+      </LinkButton>,
+    )
+
+    const link = screen.getByRole('link', { name: 'SMS Queue' })
+    expect(link).not.toHaveAttribute('href')
+    expect(link).toHaveAttribute('tabindex', '-1')
+    expect(link).toHaveAttribute('aria-disabled', 'true')
+    expect(link).not.toHaveAttribute('download')
+    expect(link).toHaveClass('opacity-50', 'pointer-events-none')
+  })
+
+  it('leaves an enabled link focusable and followable', () => {
+    render(<LinkButton href="/private-bookings/sms-queue">SMS Queue</LinkButton>)
+
+    const link = screen.getByRole('link', { name: 'SMS Queue' })
+    expect(link).toHaveAttribute('href', '/private-bookings/sms-queue')
+    expect(link).not.toHaveAttribute('tabindex')
+    expect(link).not.toHaveAttribute('aria-disabled')
+  })
+})

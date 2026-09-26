@@ -753,7 +753,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [slotUpdateState, slotUpdateAction] = useActionState(updateRecruitmentSlotAction, null)
   const [templateState, templateAction] = useActionState(saveRecruitmentEmailTemplateAction, null)
   const [scorecardState, scorecardAction] = useActionState(recordRecruitmentScorecardAction, null)
-  const [retentionState, retentionAction] = useActionState(runRecruitmentRetentionAction, null)
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<DashboardTab>('pipeline')
@@ -1431,12 +1430,18 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             </Button>
             <ActionStateMessage state={cvBatchState} />
           </form>
-          <form action={retentionAction}>
+          {/* Irreversible: anonymises candidates and deletes their CVs, so it asks first. */}
+          <ActionFeedbackForm
+            action={() => runRecruitmentRetentionAction()}
+            confirmTitle="Run Retention?"
+            confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details and notes are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
+            confirmTone="danger"
+            successMessage="Recruitment retention cleanup completed."
+          >
             <Button type="submit" size="sm" variant="secondary" icon={<Icon name="trash" size={16} />}>
               Run Retention
             </Button>
-            <ActionStateMessage state={retentionState} />
-          </form>
+          </ActionFeedbackForm>
         </>
       ) : undefined}
     >

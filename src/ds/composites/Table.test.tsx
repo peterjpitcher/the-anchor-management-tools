@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './Table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TablePagination, TableRow } from './Table'
 import type { TableSortDirection } from './Table'
 
 function renderHeader(sortDirection: TableSortDirection, onSort = vi.fn(), className?: string) {
@@ -77,29 +77,16 @@ describe('TableHead', () => {
     expect(within(header).getByRole('button')).not.toHaveClass('text-text-muted')
   })
 
-  it('keeps the old markup when a caller still passes its own button, so buttons never nest', () => {
-    const onSort = vi.fn()
-    render(
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead sortable sortDirection="asc" onSort={onSort}>
-              <button type="button" aria-label="Sort by Amount">
-                Amount
-              </button>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-      </Table>,
-    )
+  it('gives a sortable header exactly one button, and one press sorts once', () => {
+    // Callers pass plain text: the header draws its own button, so buttons never nest.
+    const onSort = renderHeader('asc')
 
-    const header = screen.getByRole('columnheader')
+    const header = screen.getByRole('columnheader', { name: 'Date' })
     expect(header).toHaveAttribute('aria-sort', 'ascending')
     const buttons = within(header).getAllByRole('button')
     expect(buttons).toHaveLength(1)
     expect(buttons[0].querySelector('button')).toBeNull()
 
-    // The click bubbles from the caller's button to the cell: one press, one sort.
     buttons[0].click()
     expect(onSort).toHaveBeenCalledTimes(1)
   })
@@ -110,5 +97,28 @@ describe('TableHead', () => {
     const header = screen.getByRole('columnheader', { name: 'Notes' })
     expect(header).not.toHaveAttribute('aria-sort')
     expect(within(header).queryByRole('button')).toBeNull()
+  })
+})
+
+describe('TablePagination', () => {
+  it('names the previous and next buttons, which show only an arrow', async () => {
+    const user = userEvent.setup()
+    const onPageChange = vi.fn()
+    render(<TablePagination page={2} totalPages={3} onPageChange={onPageChange} />)
+
+    await user.click(screen.getByRole('button', { name: 'Previous page' }))
+    expect(onPageChange).toHaveBeenLastCalledWith(1)
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(onPageChange).toHaveBeenLastCalledWith(3)
+  })
+
+  it('disables Previous on the first page and Next on the last', () => {
+    const { rerender } = render(<TablePagination page={1} totalPages={2} onPageChange={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeEnabled()
+
+    rerender(<TablePagination page={2} totalPages={2} onPageChange={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled()
   })
 })

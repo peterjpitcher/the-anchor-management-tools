@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeclockClient from '@/app/(timeclock)/timeclock/_components/TimeclockClient'
 
@@ -72,5 +72,54 @@ describe('timeclock kiosk', () => {
 
     await waitFor(() => expect(clockIn).toHaveBeenCalledWith(EMPLOYEES[1].employee_id, '1234'))
     await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  it('says the staff list failed to load instead of showing an empty grid', () => {
+    render(<TimeclockClient employees={[]} openSessions={[]} employeesLoadFailed />)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Could Not Load Staff')
+    expect(alert).toHaveClass('bg-danger-soft')
+    expect(screen.queryByText('Tap to Clock In/Out')).not.toBeInTheDocument()
+    // No made-up zeros for figures the failed load decides.
+    expect(screen.getByText('Active Staff').nextSibling).toHaveTextContent('-')
+    expect(screen.getByText('Not Clocked In').nextSibling).toHaveTextContent('-')
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try Again' }))
+    expect(refresh).toHaveBeenCalled()
+  })
+
+  it('says who is clocked in failed to load instead of showing everyone as not clocked in', () => {
+    render(<TimeclockClient employees={EMPLOYEES} openSessions={[]} sessionsLoadFailed />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Could Not Load Who Is Clocked In')
+    // The grid stays, so the kiosk is still usable, but no tile claims "Not clocked in".
+    expect(screen.getByRole('button', { name: /Billy/ })).toHaveTextContent('Status unavailable')
+    expect(screen.queryByText('Not clocked in')).not.toBeInTheDocument()
+    expect(screen.getByText('Clocked In').nextSibling).toHaveTextContent('-')
+    expect(screen.getByText('Clocked In').nextSibling).not.toHaveClass('text-success-fg')
+    expect(screen.getByText('Active Staff').nextSibling).toHaveTextContent('2')
+  })
+
+  it('lets someone clock out when who is clocked in is unknown, by asking which way', async () => {
+    clockOut.mockResolvedValue({ success: true })
+    render(<TimeclockClient employees={EMPLOYEES} openSessions={[]} sessionsLoadFailed />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Mandy/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Mandy' })
+    expect(dialog).toHaveAccessibleDescription('Enter your PIN, then choose Clock In or Clock Out')
+    expect(within(dialog).queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '4321' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Clock Out' }))
+
+    await waitFor(() => expect(clockOut).toHaveBeenCalledWith(EMPLOYEES[0].employee_id, '4321'))
+    expect(clockIn).not.toHaveBeenCalled()
+  })
+
+  it('shows no load error when both loads worked', () => {
+    render(<TimeclockClient employees={EMPLOYEES} openSessions={[]} />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

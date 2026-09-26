@@ -23,6 +23,7 @@ import {
   RECEIPT_FLOW_TONE,
   RECEIPT_INSIGHT_LABEL,
   RECEIPT_INSIGHT_TONE,
+  automationCoverageDeltaLabel,
   automationCoverageTone,
   netAmountTextClass,
   netAmountTone,
@@ -177,6 +178,9 @@ export default async function ReceiptsMonthlyPage() {
         return total > 0 ? automated / total : 0
       })()
     : null
+  // Coverage is a percentage, so its change is in percentage points.
+  const automationCoveragePoints =
+    previousAutomationCoverage !== null ? toPercentDelta(automationCoverage - previousAutomationCoverage) : null
 
   const manualReceipts = currentStatusTotals.pending + currentStatusTotals.cant_find
 
@@ -243,7 +247,8 @@ export default async function ReceiptsMonthlyPage() {
     <ReceiptsPageChrome subtitle={MONTHLY_SUBTITLE} navState={{ view: 'monthly' }} canManage={canManage}>
       <StatGrid columns={3}>
         {/* The value is green or red for good or bad news; the arrow shows the change in percent
-            (a fall in spending is the good direction), and the hint carries the change in pounds. */}
+            (a fall in spending is the good direction), and the hint carries the change in pounds.
+            Automation coverage shows its change in percentage points. */}
         <Stat
           label={`Net cash \u00b7 ${formatMonthLabel(current.monthStart)}`}
           value={formatCurrency(netCash)}
@@ -266,7 +271,8 @@ export default async function ReceiptsMonthlyPage() {
           label="Automation coverage"
           value={percentFormatter.format(automationCoverage)}
           tone={automationCoverageTone(automationCoverage)}
-          delta={previousAutomationCoverage !== null ? toPercentDelta(automationCoverage - previousAutomationCoverage) : undefined}
+          delta={automationCoveragePoints ?? undefined}
+          deltaLabel={automationCoveragePoints !== null ? automationCoverageDeltaLabel(automationCoveragePoints) : undefined}
           hint={`${automatedTransactions} / ${totalTransactions} receipts auto matched`}
         />
       </StatGrid>

@@ -44,6 +44,9 @@
   --color-primary-hover: var(--color-brand-700);
   --color-primary-soft: var(--color-brand-50);
   --color-primary-soft-fg: var(--color-brand-800);
+  /* The edge of a primary-soft block, one tint darker than its fill, as the status -border
+     tokens are (success, warning, danger, info). */
+  --color-primary-border: var(--color-brand-200);
   --color-primary-fg: #ffffff;
 
   /* On dark surfaces (sidebar, kiosk, FOH header) */

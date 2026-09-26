@@ -25,7 +25,7 @@ import {
 import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { FINANCE_NAV } from '../_shared/nav'
+import { financeNav } from '../_shared/nav'
 import { VENDOR_CONTACT_FLAG_TONE } from '../_shared/status-ui'
 
 function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
@@ -130,6 +130,8 @@ export default function VendorsPage() {
   // A failed load is kept apart from a failed save or delete, so it is never drawn as an empty list.
   const [loadError, setLoadError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<InvoiceVendor | null>(null)
+  // A contact waiting for the delete to be confirmed.
+  const [contactDeleteTarget, setContactDeleteTarget] = useState<VendorContact | null>(null)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -369,7 +371,7 @@ export default function VendorsPage() {
   const layoutProps = {
     title: 'Invoices',
     subtitle: 'Vendors who receive invoices and quotes',
-    navItems: FINANCE_NAV,
+    navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
   if (permissionsLoading || loading) {
@@ -538,7 +540,7 @@ export default function VendorsPage() {
 
             <div className="sm:col-span-2">
               <Alert tone="info" title="Contacts moved">
-                Manage people and email recipients via the Contacts button above. The vendor’s default email remains visible in the list for legacy invoices.
+                Manage people and email recipients with the Contacts button on the vendor’s row in the vendor list (a new vendor gets one once it is saved). The vendor’s default email remains visible in the list for legacy invoices.
               </Alert>
             </div>
 
@@ -664,7 +666,7 @@ export default function VendorsPage() {
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={() => removeContact(c.id)}
+                            onClick={() => setContactDeleteTarget(c)}
                             disabled={!canEdit}
                             title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
                           >
@@ -745,6 +747,22 @@ export default function VendorsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={contactDeleteTarget !== null}
+        onClose={() => setContactDeleteTarget(null)}
+        onConfirm={async () => {
+          if (contactDeleteTarget) await removeContact(contactDeleteTarget.id)
+        }}
+        title="Delete Contact"
+        message={
+          contactDeleteTarget
+            ? `Delete ${contactDeleteTarget.name || contactDeleteTarget.email || 'this contact'} from the contacts for ${contactsModalVendor?.name ?? 'this vendor'}? This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        tone="danger"
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

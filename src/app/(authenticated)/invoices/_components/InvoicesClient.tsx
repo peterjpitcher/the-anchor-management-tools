@@ -37,7 +37,7 @@ import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-fil
 import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { MobileInvoiceCard } from '../MobileInvoiceCard'
-import { FINANCE_NAV } from '../_shared/nav'
+import { financeNav } from '../_shared/nav'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -264,7 +264,7 @@ export default function InvoicesClient({
     <PageLayout
       title="Invoices"
       subtitle={`${formatNumber(initialTotal)} invoices · ${formatCurrency(initialSummary.total_outstanding)} outstanding`}
-      navItems={FINANCE_NAV}
+      navItems={financeNav({ canExport: resolvedPermissions.canExport })}
       headerActions={
         resolvedPermissions.canCreate ? (
           <LinkButton href="/invoices/new" variant="primary" size="sm">

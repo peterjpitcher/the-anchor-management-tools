@@ -419,22 +419,30 @@ function formatMetricValue(value: number, decimals = 0): string {
   return new Intl.NumberFormat('en-GB').format(Math.round(value))
 }
 
-/**
- * The change against the previous period as a percentage, for the Stat's coloured delta. None
- * when the previous period had nothing, because a rise from zero has no percentage. A change too
- * small to show at the figure's own precision (average party size 4.02 against 4.0, shown as
- * "0.0") reads as no change, so the arrow never contradicts the hint beneath it.
- */
-function getDeltaPercent(current: number, previous: number, decimals = 0): number | undefined {
-  if (previous === 0) return undefined
-  if (Number((current - previous).toFixed(decimals)) === 0) return 0
-  return Number((((current - previous) / previous) * 100).toFixed(1))
-}
-
 /** The change against the previous period in the figure's own units, as "+3" or "-0.5". */
 function getDeltaText(current: number, previous: number, decimals = 0): string {
   const delta = Number((current - previous).toFixed(decimals))
   return `${delta > 0 ? '+' : ''}${formatMetricValue(delta, decimals)}`
+}
+
+/**
+ * The change against the previous period for the Stat's coloured delta, as a percentage. A rise
+ * from zero has no percentage, so it shows the change in the figure's own units ("+2") instead,
+ * still coloured by whether it is good news; nothing against nothing shows no delta. A change too
+ * small to show at the figure's own precision (average party size 4.02 against 4.0, shown as
+ * "0.0") reads as no change, so the arrow never contradicts the hint beneath it.
+ */
+function getStatDelta(
+  current: number,
+  previous: number,
+  decimals = 0
+): { delta?: number; deltaLabel?: string } {
+  const change = Number((current - previous).toFixed(decimals))
+  if (previous === 0) {
+    return change === 0 ? {} : { delta: change, deltaLabel: getDeltaText(current, previous, decimals) }
+  }
+  if (change === 0) return { delta: 0 }
+  return { delta: Number((((current - previous) / previous) * 100).toFixed(1)) }
 }
 
 export function BohBookingsClient({
@@ -992,7 +1000,7 @@ export function BohBookingsClient({
             {/* The same retry row as PageLayout's own error state. */}
             <div className="mt-3">
               <Button type="button" variant="secondary" size="sm" onClick={() => void loadBookings()}>
-                Try again
+                Try Again
               </Button>
             </div>
           </Alert>
@@ -1003,7 +1011,7 @@ export function BohBookingsClient({
                 key={card.key}
                 label={card.title}
                 value={formatMetricValue(card.value, card.decimals)}
-                delta={getDeltaPercent(card.value, card.previous, card.decimals)}
+                {...getStatDelta(card.value, card.previous, card.decimals)}
                 deltaGood={card.deltaGood}
                 hint={`${getDeltaText(card.value, card.previous, card.decimals)} compared with ${previousPeriodLabel}`}
               />

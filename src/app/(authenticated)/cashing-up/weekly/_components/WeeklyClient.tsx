@@ -9,7 +9,13 @@ import { Alert, Badge, Empty, IconButton, PageLoading, Stat, LinkButton } from '
 import { Icon } from '@/ds/icons'
 import { getWeeklyDataAction } from '@/app/actions/cashing-up'
 import { cashingUpLayout } from '../../_shared/nav'
-import { cashupSessionStatusTone, signedAmountTextClass, signedAmountTone } from '../../_shared/status-ui'
+import {
+  cashVarianceTextClass,
+  cashVarianceTone,
+  cashupSessionStatusTone,
+  signedAmountTextClass,
+  signedAmountTone,
+} from '../../_shared/status-ui'
 
 interface WeeklyRow {
   session_date: string
@@ -172,7 +178,7 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
                           <TableCell align="right" className="font-mono">{'£'}{fmt(countedAmount)}</TableCell>
                           <TableCell
                             align="right"
-                            className={`font-mono font-bold ${signedAmountTextClass(cashVariance)}`}
+                            className={`font-mono font-bold ${cashVarianceTextClass(cashVariance)}`}
                           >
                             {'£'}{fmt(cashVariance)}
                           </TableCell>
@@ -196,7 +202,7 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
                       <TableCell align="right" className="font-mono font-bold">{'£'}{fmt(totals.counted)}</TableCell>
                       <TableCell
                         align="right"
-                        className={`font-mono font-bold ${signedAmountTextClass(totals.cashVariance)}`}
+                        className={`font-mono font-bold ${cashVarianceTextClass(totals.cashVariance)}`}
                       >
                         {'£'}{fmt(totals.cashVariance)}
                       </TableCell>
@@ -219,7 +225,7 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
             <Stat label="Weekly target" value={`£${fmt(totals.target)}`} />
             <Stat label="Weekly expected" value={`£${fmt(totals.expected)}`} />
             <Stat label="Weekly counted" value={`£${fmt(totals.counted)}`} />
-            <Stat label="Cash variance" value={`£${fmt(totals.cashVariance)}`} tone={signedAmountTone(totals.cashVariance)} />
+            <Stat label="Cash variance" value={`£${fmt(totals.cashVariance)}`} tone={cashVarianceTone(totals.cashVariance)} />
             <Stat label="Vs target" value={`£${fmt(totals.targetVariance)}`} tone={signedAmountTone(totals.targetVariance)} />
           </StatGrid>
         </>

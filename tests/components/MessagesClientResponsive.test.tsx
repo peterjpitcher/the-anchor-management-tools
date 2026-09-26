@@ -414,7 +414,7 @@ describe('MessagesClient, honesty about data', () => {
     expect(screen.queryByText('No conversations')).not.toBeInTheDocument()
 
     getMessages.mockResolvedValue(inbox())
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Try Again' }))
     await waitFor(() => expect(screen.getByRole('option', { name: /Jane Smith/i })).toBeInTheDocument())
   })
 
@@ -490,13 +490,13 @@ describe('MessagesClient, header actions', () => {
     render(<MessagesClient />)
     await screen.findByRole('option', { name: /Jane Smith/i })
     // Showing this to a user without send_marketing sent them to /unauthorized.
-    expect(screen.queryAllByRole('button', { name: 'Bulk Message' })).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: 'Bulk Messages' })).toHaveLength(0)
   })
 
   it('shows the bulk link to a marketing sender', async () => {
     render(<MessagesClient />)
     // PageLayout draws a phone and a desktop header (CSS shows one), so the button is in both.
-    expect((await screen.findAllByRole('button', { name: 'Bulk Message' })).length).toBeGreaterThan(0)
+    expect((await screen.findAllByRole('button', { name: 'Bulk Messages' })).length).toBeGreaterThan(0)
   })
 
   it('keeps the header to one primary button plus an overflow menu', async () => {
@@ -506,7 +506,7 @@ describe('MessagesClient, header actions', () => {
     // PageLayout renders a phone header and a desktop header; the desktop one, last in the
     // document, carries the actions beside the title.
     const header = screen.getAllByRole('heading', { name: 'Messages' }).at(-1)?.closest('div')?.parentElement
-    expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk Message' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk Messages' })).toBeInTheDocument()
     expect(
       within(header as HTMLElement).getByRole('button', { name: 'More inbox actions' }),
     ).toBeInTheDocument()

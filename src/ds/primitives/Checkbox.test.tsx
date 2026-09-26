@@ -62,6 +62,42 @@ describe('Checkbox with no visible label', () => {
     expect(control).not.toHaveClass('pointer-coarse:h-full')
   })
 
+  it('grows the tap area to 44px on touch screens with touchTarget, without moving the box', () => {
+    render(<Checkbox aria-label="Select Quiz Night" touchTarget />)
+
+    const control = screen.getByRole('checkbox', { name: 'Select Quiz Night' })
+    // Mouse layout unchanged: the 16px input over the 16px box.
+    expect(control).toHaveClass('absolute', 'inset-0', 'h-4', 'w-4')
+    // Touch: a 44px square centred on the box.
+    expect(control).toHaveClass(
+      'pointer-coarse:h-touch',
+      'pointer-coarse:w-touch',
+      'pointer-coarse:top-[calc((1rem_-_var(--spacing-touch))/2)]',
+      'pointer-coarse:left-[calc((1rem_-_var(--spacing-touch))/2)]',
+    )
+    // The column and the drawn box keep their compact size, so nothing beside it moves.
+    const column = control.parentElement as HTMLElement
+    expect(column).not.toHaveClass('pointer-coarse:box-content')
+    expect(column.querySelector('span[aria-hidden="true"]')).not.toHaveClass(TOUCH_BOX_FACE)
+  })
+
+  it('still toggles and keeps its aria-label name with touchTarget', () => {
+    const onChange = vi.fn()
+    render(<Checkbox aria-label="Mark done" touchTarget onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Mark done' }))
+
+    expect(onChange).toHaveBeenCalledWith(true)
+  })
+
+  it('leaves a labelled checkbox on its label touch row even with touchTarget', () => {
+    render(<Checkbox label="Vegan" touchTarget />)
+
+    const control = screen.getByRole('checkbox', { name: 'Vegan' })
+    expect(control).toHaveClass('pointer-coarse:h-full')
+    expect(control).not.toHaveClass('pointer-coarse:w-touch')
+  })
+
   it('draws the tick at the box, not at the top of the padded column', () => {
     render(<Checkbox label="Vegan" checked onChange={() => {}} />)
 

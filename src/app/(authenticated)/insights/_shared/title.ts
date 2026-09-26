@@ -2,9 +2,10 @@
 const SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with'])
 
 /**
- * A report section's title as the page shows it on a card or a button: Title Case (UI_UX.md,
- * Page chrome). The report stores it in sentence case ("Hosted events"), which the weekly email
- * and the running text keep; only the card titles and the jump links change.
+ * A report heading as the page shows it: Title Case (UI_UX.md, Page chrome) for section card
+ * titles, the jump links and the sub-headings inside a card ("Needs Attention", a list's title).
+ * The report stores them in sentence case ("Hosted events"), which the weekly email and the
+ * running text keep; only the page's display changes.
  */
 export function insightSectionTitle(title: string): string {
   return title

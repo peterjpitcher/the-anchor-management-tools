@@ -105,7 +105,7 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
           {loadError}
           <div className="mt-3">
             <Button variant="secondary" size="sm" onClick={() => void loadAnalytics()}>
-              Try again
+              Try Again
             </Button>
           </div>
         </Alert>

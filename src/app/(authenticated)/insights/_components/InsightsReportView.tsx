@@ -71,7 +71,7 @@ function SignalList({ title, signals }: { title: string; signals: InsightSignal[
   if (signals.length === 0) return null
   return (
     <div>
-      <SubHeading className="mb-1">{title}</SubHeading>
+      <SubHeading className="mb-1">{insightSectionTitle(title)}</SubHeading>
       <ul className="list-disc space-y-1.5 pl-5 text-sm">
         {signals.map((signal, index) => (
           <li key={`${index}-${signal.key}`}>
@@ -124,7 +124,7 @@ function SectionList({ list }: { list: InsightList }): React.JSX.Element | null 
   const rest = list.items.slice(LIST_VISIBLE)
   return (
     <div>
-      <SubHeading className="mb-1">{list.title}</SubHeading>
+      <SubHeading className="mb-1">{insightSectionTitle(list.title)}</SubHeading>
       {list.items.length === 0 ? (
         <p className="text-sm text-text-muted">{list.emptyText}</p>
       ) : (

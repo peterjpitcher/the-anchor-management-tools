@@ -2,6 +2,10 @@ import RecruitmentBookingClient from './RecruitmentBookingClient'
 import { previewRecruitmentBookingToken } from '@/services/recruitment'
 import { GuestShell } from '@/components/features/guest'
 
+// Static and non-personal on purpose, like every guest page's title: no token or name may reach
+// a browser title or history entry. The words are the page heading's own kicker.
+export const metadata = { title: 'Interview booking - The Anchor' }
+
 export const dynamic = 'force-dynamic'
 
 type PageProps = {

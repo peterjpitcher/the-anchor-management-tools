@@ -39,24 +39,54 @@ export function targetPerformanceRowClass(percent: number | null): string | unde
   return 'bg-danger-soft hover:bg-danger-soft'
 }
 
+/** A till count against the Z-read: short, over, or balanced to the penny. */
+export type CashVarianceKind = 'shortfall' | 'overage' | 'balanced'
+
 /**
- * Text colour for a till count against the Z-read. Any difference to the penny needs review:
- * short is red, over is amber, balanced is muted.
+ * The one map for cash variance, on every Cashing Up screen (the daily entry, the weekly table
+ * and its totals, the dashboard's rows and its Total Variance figure). Any difference to the
+ * penny needs review: short is danger, over is warning (money that should not be there is still
+ * a discrepancy, never good news), balanced is neutral. `text` colours a figure written in a
+ * table or line, `stat` is the Stat tone, and `alert` the daily entry's balance banner, where a
+ * balanced till is confirmed in the success colour because an Alert has no neutral tone.
  */
-export function cashVarianceTextClass(variance: number): string {
-  const rounded = Number(variance.toFixed(2))
-  if (rounded === 0) return 'text-text-muted'
-  return rounded < 0 ? 'text-danger-fg' : 'text-warning-fg'
+export const CASH_VARIANCE_UI: Record<
+  CashVarianceKind,
+  { text: string; stat: 'danger' | 'warning' | 'default'; alert: 'danger' | 'warning' | 'success' }
+> = {
+  shortfall: { text: 'text-danger-fg', stat: 'danger', alert: 'danger' },
+  overage: { text: 'text-warning-fg', stat: 'warning', alert: 'warning' },
+  balanced: { text: 'text-text-muted', stat: 'default', alert: 'success' },
 }
 
-/** Text colour for a signed amount where more is better (weekly takings against target). */
+/** Which way a cash variance goes, rounded to the penny. */
+export function cashVarianceKind(variance: number): CashVarianceKind {
+  const rounded = Number(variance.toFixed(2))
+  if (rounded === 0) return 'balanced'
+  return rounded < 0 ? 'shortfall' : 'overage'
+}
+
+/** Text colour for a cash variance figure (CASH_VARIANCE_UI). */
+export function cashVarianceTextClass(variance: number): string {
+  return CASH_VARIANCE_UI[cashVarianceKind(variance)].text
+}
+
+/** Stat tone for a cash variance figure (CASH_VARIANCE_UI). */
+export function cashVarianceTone(variance: number): 'danger' | 'warning' | 'default' {
+  return CASH_VARIANCE_UI[cashVarianceKind(variance)].stat
+}
+
+/**
+ * Text colour for a signed amount where more is better (weekly takings against target). Not for
+ * cash variance, where over is not good news: that is CASH_VARIANCE_UI.
+ */
 export function signedAmountTextClass(amount: number): string {
   if (amount < 0) return 'text-danger-fg'
   if (amount > 0) return 'text-success-fg'
   return ''
 }
 
-/** The same rule as a Stat tone, for the weekly totals and the dashboard's total variance. */
+/** The same rule as a Stat tone, for the weekly takings against target. */
 export function signedAmountTone(amount: number): 'danger' | 'success' | 'default' {
   if (amount < 0) return 'danger'
   if (amount > 0) return 'success'
@@ -73,7 +103,7 @@ export function weeklyProgressTone(percentOfTarget: number): 'success' | 'primar
   return percentOfTarget >= 100 ? 'success' : 'primary'
 }
 
-/** The balance banner on the daily entry: any difference to the penny is flagged for review. */
-export function cashVarianceAlertTone(variance: number): 'success' | 'warning' {
-  return Number(variance.toFixed(2)) === 0 ? 'success' : 'warning'
+/** The balance banner on the daily entry (CASH_VARIANCE_UI): any difference is flagged for review. */
+export function cashVarianceAlertTone(variance: number): 'danger' | 'warning' | 'success' {
+  return CASH_VARIANCE_UI[cashVarianceKind(variance)].alert
 }

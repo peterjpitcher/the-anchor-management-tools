@@ -51,7 +51,7 @@ describe('ShortLinksClient when the list cannot be read', () => {
     getShortLinks.mockResolvedValue({ data: [], total: 0, linkTotal: 0, page: 1 })
     renderClient('Database unavailable')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Try Again' }))
 
     await waitFor(() => expect(screen.getByText('No short links found')).toBeInTheDocument())
     expect(screen.queryByText('Could not load short links')).not.toBeInTheDocument()

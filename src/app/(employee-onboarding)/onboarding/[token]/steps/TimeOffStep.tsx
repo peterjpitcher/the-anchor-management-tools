@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
 import { cn } from '@/lib/utils';
 import { TIME_OFF_ROW_BORDER_CLASSES } from '../../_shared/status-ui';
@@ -35,10 +35,100 @@ const LEAVE_TYPE_OPTIONS = [
   { value: 'unavailable', label: 'Cannot work (not holiday)' },
 ];
 
-let rowCounter = 0;
-function emptyRow(): BlockRow {
-  rowCounter += 1;
-  return { key: `row-${rowCounter}`, startDate: '', endDate: '', leaveType: 'holiday', note: '' };
+function emptyRow(key: string): BlockRow {
+  return { key, startDate: '', endDate: '', leaveType: 'holiday', note: '' };
+}
+
+interface TimeOffBlockFieldsProps {
+  row: BlockRow;
+  index: number;
+  rowCount: number;
+  rejected: boolean;
+  disabled: boolean;
+  minDate: string;
+  maxDate: string;
+  onChange: (patch: Partial<BlockRow>) => void;
+  onRemove: () => void;
+}
+
+/**
+ * One set of dates. Its field ids come from useId, so they are the same on the server and in the
+ * browser (no hydration mismatch) and unique on the page, however rows are added and removed.
+ */
+function TimeOffBlockFields({
+  row,
+  index,
+  rowCount,
+  rejected,
+  disabled,
+  minDate,
+  maxDate,
+  onChange,
+  onRemove,
+}: TimeOffBlockFieldsProps) {
+  const id = useId();
+
+  return (
+    // The border and padding sit on a wrapper: a fieldset's legend straddles the
+    // fieldset's own top border, so a border there would run through it. Each set of
+    // dates is a group of fields under its own sub-heading, like the emergency contacts,
+    // not a Fieldset (which is for radios or buttons that answer one question).
+    <div className={cn('rounded-lg border p-4', TIME_OFF_ROW_BORDER_CLASSES[rejected ? 'rejected' : 'ok'])}>
+      <StepSection title={`Dates ${index + 1}`} disabled={disabled}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First day" htmlFor={`${id}-start`} required>
+            <Input
+              id={`${id}-start`}
+              type="date"
+              min={minDate}
+              max={maxDate}
+              value={row.startDate}
+              onChange={e => onChange({ startDate: e.target.value })}
+            />
+          </Field>
+          <Field label="Last day" htmlFor={`${id}-end`} required>
+            <Input
+              id={`${id}-end`}
+              type="date"
+              min={row.startDate || minDate}
+              max={maxDate}
+              value={row.endDate}
+              onChange={e => onChange({ endDate: e.target.value })}
+            />
+          </Field>
+          <Field label="What is it?" htmlFor={`${id}-type`}>
+            <Select
+              id={`${id}-type`}
+              value={row.leaveType}
+              onChange={e => onChange({ leaveType: e.target.value })}
+              options={LEAVE_TYPE_OPTIONS}
+            />
+          </Field>
+          <Field
+            label="Note (optional)"
+            htmlFor={`${id}-note`}
+            hint="Please do not include medical details."
+          >
+            <Input
+              id={`${id}-note`}
+              maxLength={MAX_NOTE_LENGTH}
+              placeholder="e.g. Wedding"
+              value={row.note}
+              onChange={e => onChange({ note: e.target.value })}
+            />
+          </Field>
+        </div>
+
+        {rowCount > 1 && (
+          <div>
+            <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+              Remove These Dates
+            </Button>
+          </div>
+        )}
+      </StepSection>
+    </div>
+  );
 }
 
 export default function TimeOffStep({
@@ -52,10 +142,17 @@ export default function TimeOffStep({
   const { minDate, maxDate } = useMemo(() => getTimeOffDateBounds(), []);
 
   const [nothingBooked, setNothingBooked] = useState(initialAnswer === 'none');
-  const [rows, setRows] = useState<BlockRow[]>(
+  // React keys for the rows, counted per form rather than across the module, so they never
+  // depend on what else the server rendered. They are keys only: field ids come from useId.
+  const nextRowKey = useRef(0);
+  const newRow = (): BlockRow => {
+    nextRowKey.current += 1;
+    return emptyRow(`row-${nextRowKey.current}`);
+  };
+  const [rows, setRows] = useState<BlockRow[]>(() =>
     initialBlocks.length > 0
-      ? initialBlocks.map(block => ({ ...emptyRow(), ...block }))
-      : [emptyRow()],
+      ? initialBlocks.map(block => ({ ...newRow(), ...block }))
+      : [newRow()],
   );
   const [error, setError] = useState('');
   const [errorRow, setErrorRow] = useState<number | null>(null);
@@ -66,9 +163,14 @@ export default function TimeOffStep({
     setRows(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
-  const addRow = () => setRows(prev => (prev.length >= MAX_BLOCKS ? prev : [...prev, emptyRow()]));
-  const removeRow = (index: number) =>
-    setRows(prev => (prev.length === 1 ? [emptyRow()] : prev.filter((_, i) => i !== index)));
+  const addRow = () => {
+    const row = newRow();
+    setRows(prev => (prev.length >= MAX_BLOCKS ? prev : [...prev, row]));
+  };
+  const removeRow = (index: number) => {
+    const replacement = newRow();
+    setRows(prev => (prev.length === 1 ? [replacement] : prev.filter((_, i) => i !== index)));
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -137,68 +239,18 @@ export default function TimeOffStep({
       <div className={nothingBooked ? 'pointer-events-none opacity-50' : undefined}>
         <div className="space-y-4">
           {rows.map((row, index) => (
-            // The border and padding sit on a wrapper: a fieldset's legend straddles the
-            // fieldset's own top border, so a border there would run through it. Each set of
-            // dates is a group of fields under its own sub-heading, like the emergency contacts,
-            // not a Fieldset (which is for radios or buttons that answer one question).
-            <div
+            <TimeOffBlockFields
               key={row.key}
-              className={cn('rounded-lg border p-4', TIME_OFF_ROW_BORDER_CLASSES[errorRow === index ? 'rejected' : 'ok'])}
-            >
-              <StepSection title={`Dates ${index + 1}`} disabled={nothingBooked}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="First day" htmlFor={`${row.key}-start`} required>
-                    <Input
-                      id={`${row.key}-start`}
-                      type="date"
-                      min={minDate}
-                      max={maxDate}
-                      value={row.startDate}
-                      onChange={e => updateRow(index, { startDate: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Last day" htmlFor={`${row.key}-end`} required>
-                    <Input
-                      id={`${row.key}-end`}
-                      type="date"
-                      min={row.startDate || minDate}
-                      max={maxDate}
-                      value={row.endDate}
-                      onChange={e => updateRow(index, { endDate: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="What is it?" htmlFor={`${row.key}-type`}>
-                    <Select
-                      id={`${row.key}-type`}
-                      value={row.leaveType}
-                      onChange={e => updateRow(index, { leaveType: e.target.value })}
-                      options={LEAVE_TYPE_OPTIONS}
-                    />
-                  </Field>
-                  <Field
-                    label="Note (optional)"
-                    htmlFor={`${row.key}-note`}
-                    hint="Please do not include medical details."
-                  >
-                    <Input
-                      id={`${row.key}-note`}
-                      maxLength={MAX_NOTE_LENGTH}
-                      placeholder="e.g. Wedding"
-                      value={row.note}
-                      onChange={e => updateRow(index, { note: e.target.value })}
-                    />
-                  </Field>
-                </div>
-
-                {rows.length > 1 && (
-                  <div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(index)}>
-                      Remove These Dates
-                    </Button>
-                  </div>
-                )}
-              </StepSection>
-            </div>
+              row={row}
+              index={index}
+              rowCount={rows.length}
+              rejected={errorRow === index}
+              disabled={nothingBooked}
+              minDate={minDate}
+              maxDate={maxDate}
+              onChange={patch => updateRow(index, patch)}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
 

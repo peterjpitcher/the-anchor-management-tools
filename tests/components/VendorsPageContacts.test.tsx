@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InvoiceVendor } from '@/types/invoices'
 import VendorsPage from '@/app/(authenticated)/invoices/vendors/page'
@@ -117,5 +117,63 @@ describe('VendorsPage contacts dialog', () => {
     expect(await screen.findByText('Pat Jones')).toBeInTheDocument()
     expect(screen.getByText('Primary')).toBeInTheDocument()
     expect(screen.getByText('Invoice CC')).toBeInTheDocument()
+  })
+
+  it('asks before deleting a contact, in a danger dialog, and deletes only on confirm', async () => {
+    contactActions.getVendorContacts.mockResolvedValue({
+      contacts: [{ id: 'contact-1', name: 'Pat Jones', email: 'pat@example.com', is_primary: false }],
+    })
+    contactActions.deleteVendorContact.mockResolvedValue({ success: true })
+
+    await openContacts()
+    await screen.findByText('Pat Jones')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Contact' })
+    expect(confirm).toHaveTextContent('Delete Pat Jones from the contacts for Acme Ltd? This cannot be undone.')
+    expect(contactActions.deleteVendorContact).not.toHaveBeenCalled()
+
+    const confirmButton = within(confirm).getByRole('button', { name: 'Delete' })
+    expect(confirmButton).toHaveClass('bg-danger')
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => expect(contactActions.deleteVendorContact).toHaveBeenCalledTimes(1))
+    const sent = contactActions.deleteVendorContact.mock.calls[0][0] as FormData
+    expect(sent.get('id')).toBe('contact-1')
+  })
+
+  it('keeps the contact when the delete is cancelled', async () => {
+    contactActions.getVendorContacts.mockResolvedValue({
+      contacts: [{ id: 'contact-1', name: 'Pat Jones', email: 'pat@example.com', is_primary: false }],
+    })
+
+    await openContacts()
+    await screen.findByText('Pat Jones')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Contact' })
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete Contact' })).not.toBeInTheDocument())
+    expect(contactActions.deleteVendorContact).not.toHaveBeenCalled()
+  })
+})
+
+describe('VendorsPage vendor dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vendorActions.getVendors.mockResolvedValue({ vendors: [vendor] })
+  })
+
+  it('points to where contacts are managed, not to a button the dialog does not have', async () => {
+    render(<VendorsPage />)
+    await screen.findAllByRole('button', { name: 'Manage contacts' })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /New Vendor|Add Vendor/ })[0])
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Contacts button on the vendor’s row in the vendor list')
+    expect(dialog).not.toHaveTextContent('Contacts button above')
   })
 })

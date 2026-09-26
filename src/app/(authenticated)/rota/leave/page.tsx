@@ -7,6 +7,7 @@ import LeaveManagerClient from './LeaveManagerClient';
 import { getRotaNavItems } from '../_shared/nav';
 import { displayName } from '@/lib/employees/display-name';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
+import { leaveSubtitle } from '../_shared/layout';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export default async function LeaveManagementPage() {
   return (
     <PageLayout
       title="Rota"
-      subtitle={pendingCount > 0 ? `Leave requests: ${pendingCount} pending approval` : 'Leave requests'}
+      subtitle={leaveSubtitle(pendingCount)}
       navItems={navItems}
     >
       <PartialLoadAlert

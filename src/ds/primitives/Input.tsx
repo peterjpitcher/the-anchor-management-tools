@@ -91,12 +91,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         </div>
 
         {error && (
-          <p id={errorId} className="text-danger text-xs mt-1" role="alert">
+          <p id={errorId} className="text-danger-fg text-xs mt-1" role="alert">
             {error}
           </p>
         )}
         {showWarning && (
-          <p id={warningId} className="text-warning-fg text-xs mt-1">
+          // role="status": a warning that appears as the user types is read out politely,
+          // without interrupting them the way an error's role="alert" does.
+          <p id={warningId} className="text-warning-fg text-xs mt-1" role="status">
             {warning}
           </p>
         )}

@@ -21,7 +21,7 @@ import { toLocalIsoDate } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
-import { FINANCE_NAV } from '../_shared/nav'
+import { financeNav } from '../_shared/nav'
 
 export default function InvoiceExportPage() {
   const router = useRouter()
@@ -118,7 +118,7 @@ export default function InvoiceExportPage() {
   const layoutProps = {
     title: 'Invoices',
     subtitle: 'Export invoices as a ZIP file of individual PDFs',
-    navItems: FINANCE_NAV,
+    navItems: financeNav({ canExport }),
     containerSize: 'md' as const,
   }
 

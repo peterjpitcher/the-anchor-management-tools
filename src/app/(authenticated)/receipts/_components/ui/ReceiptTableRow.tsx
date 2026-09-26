@@ -448,6 +448,7 @@ export function ReceiptTableRow({
             onFiles={handleUpload}
             disabled={isPending || !canManageReceipts}
             aria-label="Upload receipt"
+            title="Upload receipt"
             icon={<Icon name="upload" size={16} />}
           />
 

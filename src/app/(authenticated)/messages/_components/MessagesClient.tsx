@@ -606,7 +606,7 @@ export function MessagesClient() {
           )}
           {canSendBulk && (
             <Button variant="primary" size="sm" onClick={() => router.push('/messages/bulk')}>
-              Bulk Message
+              Bulk Messages
             </Button>
           )}
         </>

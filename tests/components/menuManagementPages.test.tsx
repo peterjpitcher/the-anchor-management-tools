@@ -209,7 +209,7 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findByText('Database unavailable')).toBeInTheDocument()
     expectMenuChrome(/^Overview: /)
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
     expect(screen.queryByText('Total Dishes')).not.toBeInTheDocument()
   })
 

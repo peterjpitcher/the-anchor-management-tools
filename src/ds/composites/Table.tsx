@@ -128,28 +128,6 @@ export function TableHead({
     <span className="w-3" aria-hidden="true" /> /* Placeholder to prevent layout shift */
   )
 
-  // Older callers (the mileage trips and receipts lists) put their own <button> in the header to
-  // give it a tab stop. Keep their markup: the cell takes the click that bubbles from that button,
-  // so a press sorts once and no button sits inside another. New code passes plain text.
-  if (sortable && React.isValidElement(children) && children.type === 'button') {
-    return (
-      <th scope="col"
-        aria-sort={ARIA_SORT[sortDirection ?? 'none']}
-        className={cn(
-          'px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider select-none cursor-pointer hover:text-text transition-colors',
-          alignClass,
-          className,
-        )}
-        onClick={onSort}
-      >
-        <span className="inline-flex items-center gap-1">
-          {children}
-          {sortIndicator}
-        </span>
-      </th>
-    )
-  }
-
   if (sortable) {
     return (
       <th scope="col"
@@ -252,6 +230,7 @@ export function TablePagination({
       <div className="flex items-center gap-1">
         <button
           type="button"
+          aria-label="Previous page"
           disabled={page <= 1}
           className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onPageChange(page - 1)}
@@ -294,6 +273,7 @@ export function TablePagination({
 
         <button
           type="button"
+          aria-label="Next page"
           disabled={page >= totalPages}
           className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onPageChange(page + 1)}

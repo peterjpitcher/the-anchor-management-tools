@@ -13,6 +13,11 @@ const TOUCH_LABEL = 'pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-
 const TOUCH_BOX_COLUMN = 'pointer-coarse:box-content pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
 const TOUCH_BOX_INPUT = 'pointer-coarse:h-full'
 const TOUCH_BOX_FACE = 'pointer-coarse:inset-y-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+// A checkbox named only by aria-label (a row selector, a "mark done" tick) has no label to grow,
+// so with `touchTarget` the invisible input itself becomes a 44px square centred on the 16px box
+// on touch screens. Nothing around it moves: only the area a finger can hit grows.
+const TOUCH_TARGET_INPUT =
+  'pointer-coarse:h-touch pointer-coarse:w-touch pointer-coarse:top-[calc((1rem_-_var(--spacing-touch))/2)] pointer-coarse:left-[calc((1rem_-_var(--spacing-touch))/2)]'
 
 interface CheckboxProps {
   label?: string
@@ -26,6 +31,13 @@ interface CheckboxProps {
   id?: string
   name?: string
   value?: string
+  /**
+   * For a checkbox with no visible label (named by `aria-label`): on touch screens its tap area
+   * grows to a 44px square around the box, the touch row a visible label would give it, without
+   * moving anything. Use it instead of wrapping the checkbox in a <label> to make it easier to
+   * tap. A checkbox with a visible label already gets its touch row from the label.
+   */
+  touchTarget?: boolean
   /** @deprecated Accepted for backward compatibility */
   error?: boolean
   className?: string
@@ -44,6 +56,7 @@ export function Checkbox({
   id: idProp,
   name,
   value,
+  touchTarget = false,
   error: _error,
   className,
   children,
@@ -85,7 +98,7 @@ export function Checkbox({
           }}
           className={cn(
             'peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed',
-            displayLabel && TOUCH_BOX_INPUT
+            displayLabel ? TOUCH_BOX_INPUT : touchTarget && TOUCH_TARGET_INPUT
           )}
         />
         <span

@@ -28,10 +28,12 @@ vi.mock('@/ds', async () => {
     Checkbox: ({
       onChange,
       checked,
+      touchTarget,
       ...rest
     }: {
       onChange?: (v: boolean) => void
       checked?: boolean
+      touchTarget?: boolean
       'aria-label'?: string
     }) =>
       React.createElement('button', {
@@ -39,6 +41,7 @@ vi.mock('@/ds', async () => {
         role: 'checkbox',
         'aria-checked': Boolean(checked),
         'aria-label': rest['aria-label'],
+        'data-touch-target': touchTarget ? 'true' : undefined,
         onClick: () => onChange?.(!checked),
       }),
     Alert: ({ tone, children }: { tone?: string; children: React.ReactNode }) =>
@@ -126,6 +129,13 @@ describe('EventTodosWidget', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' }),
     ).toBeInTheDocument()
+  })
+
+  it('asks the DS checkbox for its 44px tap area instead of wrapping it in a label', () => {
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Update All Event Details and Publish' })]} canManage todayIso={TODAY} />)
+    const checkbox = screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' })
+    expect(checkbox).toHaveAttribute('data-touch-target', 'true')
+    expect(checkbox.closest('label')).toBeNull()
   })
 
   it('optimistically removes a todo on successful completion', async () => {

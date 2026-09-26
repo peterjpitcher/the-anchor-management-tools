@@ -90,10 +90,12 @@ describe('InsightsReportView', () => {
   })
 
   it('keeps the sub-list titles inside a card as headings, so screen readers can jump between them', () => {
-    // SubHeading: h4 under the card title (h3).
-    expect(html).toMatch(/<h4[^>]*>Needs attention<\/h4>/)
-    expect(html).toMatch(/<h4[^>]*>Going well<\/h4>/)
-    expect(html).toMatch(/<h4[^>]*>Next 14 days<\/h4>/)
+    // SubHeading: h4 under the card title (h3), in Title Case like every other sub-heading.
+    expect(html).toMatch(/<h4[^>]*>Needs Attention<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Going Well<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Next 14 Days<\/h4>/)
+    // Only the display changes: the stored sentence-case titles stay as the report wrote them.
+    expect(html).not.toMatch(/<h4[^>]*>Needs attention<\/h4>/)
   })
 
   it('keeps links on this host rather than the configured origin', () => {

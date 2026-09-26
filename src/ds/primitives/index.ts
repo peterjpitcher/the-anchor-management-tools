@@ -19,6 +19,7 @@ export { ProgressBar } from './ProgressBar'
 export { Spinner } from './Spinner'
 export { SearchInput } from './SearchInput'
 export { Dropdown, DropdownItem } from './Dropdown'
+export type { DropdownWidth } from './Dropdown'
 
 export { Tooltip } from './Tooltip'
 export { ConfirmDialog } from './ConfirmDialog'
