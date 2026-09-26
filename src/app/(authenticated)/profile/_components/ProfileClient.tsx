@@ -224,7 +224,7 @@ export function ProfileClient(): React.JSX.Element {
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={requestAccountDeletion}
         title="Request Account Deletion"
-        message="Are you sure you want to request account deletion? This action cannot be undone."
+        message="Request the deletion of your account? We will contact you within 48 hours to process it. This cannot be undone."
         confirmLabel="Request Deletion"
         tone="danger"
       />

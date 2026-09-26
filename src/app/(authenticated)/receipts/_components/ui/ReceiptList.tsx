@@ -59,7 +59,8 @@ interface ReceiptListProps {
   }
 }
 
-const NO_MATCHES = 'No transactions match your filters'
+const NO_MATCHES = 'No transactions match these filters'
+const NO_MATCHES_HINT = 'Change or clear the filters to see more transactions.'
 
 export function ReceiptList({
   transactions,
@@ -173,7 +174,7 @@ export function ReceiptList({
       <div className="flex flex-col gap-2 px-pad-card pb-pad-card lg:hidden">
         {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
         {transactions.length === 0 ? (
-          <Empty size="sm" variant="dashed" title={NO_MATCHES} />
+          <Empty size="sm" variant="dashed" title={NO_MATCHES} description={NO_MATCHES_HINT} />
         ) : shouldGroupByVendor ? (
           vendorGroups.map((group) => (
             <section key={group.key} className="space-y-2" aria-label={group.vendorName}>
@@ -242,7 +243,7 @@ export function ReceiptList({
             {transactions.length === 0 && (
               <TableRow>
                 <TableCell colSpan={10}>
-                  <Empty size="sm" title={NO_MATCHES} />
+                  <Empty size="sm" title={NO_MATCHES} description={NO_MATCHES_HINT} />
                 </TableCell>
               </TableRow>
             )}

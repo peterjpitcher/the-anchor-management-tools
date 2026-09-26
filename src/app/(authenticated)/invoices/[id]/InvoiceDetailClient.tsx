@@ -59,6 +59,7 @@ import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { BACK_TO_INVOICES, invoicePageTitle } from '../_shared/nav'
+import { DetailHeaderActions, type DetailHeaderAction } from '../_components/DetailHeaderActions'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -640,135 +641,109 @@ export default function InvoiceDetailClient({
     }
   }
 
-  // Page-level actions: secondary first, the destructive delete next, the primary action last.
-  const headerActions = (
-    <>
-      {canShowCreditNoteAction && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={openCreditNoteModal}
-          disabled={actionLoading || creditNoteSubmitting}
-          leftIcon={<Icon name="fileMinus" size={16} />}
-        >
-          Issue Credit Note
-        </Button>
-      )}
+  const isPastDue = invoice.status === 'overdue' || (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())
 
-      {invoice.status === 'draft' && canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => handleStatusChange('sent')}
-          disabled={actionLoading}
-          leftIcon={<Icon name="mail" size={16} />}
-        >
-          Mark as Sent
-        </Button>
-      )}
-
-      {invoice.status === 'draft' && canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
-          leftIcon={<Icon name="edit" size={16} />}
-        >
-          Edit
-        </Button>
-      )}
-
-      {(invoice.status === 'sent' || invoice.status === 'overdue' || invoice.status === 'partially_paid') && canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
-          disabled={actionLoading}
-          leftIcon={<Icon name="checkCircle" size={16} />}
-        >
-          Record Payment
-        </Button>
-      )}
-
-      {emailConfigured && canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShowEmailModal(true)}
-          disabled={actionLoading}
-          leftIcon={<Icon name="mail" size={16} />}
-        >
-          Email
-        </Button>
-      )}
-
-      {emailConfigured && canEdit && (invoice.status === 'overdue' || (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShowChaseModal(true)}
-          disabled={actionLoading}
-          leftIcon={<Icon name="clock" size={16} />}
-        >
-          Chase
-        </Button>
-      )}
-
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => void handleDownloadPdf()}
-        disabled={actionLoading}
-        leftIcon={<Icon name="download" size={16} />}
-      >
-        PDF
-      </Button>
-
-      {invoice.status === 'draft' && canDelete && (
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={actionLoading}
-          leftIcon={<Icon name="trash" size={16} />}
-        >
-          Delete
-        </Button>
-      )}
-
-      {showOjReissueAction && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => void handleOpenReissuePreview()}
-          disabled={actionLoading || reissueLoading || reissueSubmitting}
-          loading={reissueLoading}
-          leftIcon={<Icon name="refresh" size={16} />}
-        >
-          Reissue OJ Invoice
-        </Button>
-      )}
-    </>
-  )
+  // Page-level actions in priority order: the first ones show, the rest go in the "More" menu
+  // (DetailHeaderActions). Edit and the next step come first, destructive actions after the
+  // secondary ones, and the primary action last.
+  const headerActions: DetailHeaderAction[] = [
+    ...(invoice.status === 'draft' && canEdit
+      ? [{ key: 'edit', label: 'Edit', icon: 'edit' as const, href: `/invoices/${invoice.id}/edit` }]
+      : []),
+    ...((invoice.status === 'sent' || invoice.status === 'overdue' || invoice.status === 'partially_paid') && canEdit
+      ? [{
+        key: 'record-payment',
+        label: 'Record Payment',
+        icon: 'checkCircle' as const,
+        href: `/invoices/${invoice.id}/payment`,
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(invoice.status === 'draft' && canDelete
+      ? [{
+        key: 'delete',
+        label: 'Delete',
+        icon: 'trash' as const,
+        tone: 'danger' as const,
+        onSelect: () => setShowDeleteConfirm(true),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(emailConfigured && canEdit
+      ? [{
+        key: 'email',
+        label: 'Email Invoice',
+        icon: 'mail' as const,
+        onSelect: () => setShowEmailModal(true),
+        disabled: actionLoading,
+      }]
+      : []),
+    {
+      key: 'download-pdf',
+      label: 'Download PDF',
+      icon: 'download',
+      onSelect: () => void handleDownloadPdf(),
+      disabled: actionLoading,
+    },
+    ...(invoice.status === 'draft' && canEdit
+      ? [{
+        key: 'mark-sent',
+        label: 'Mark as Sent',
+        icon: 'send' as const,
+        onSelect: () => void handleStatusChange('sent'),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(emailConfigured && canEdit && isPastDue
+      ? [{
+        key: 'chase',
+        label: 'Chase Payment',
+        icon: 'clock' as const,
+        onSelect: () => setShowChaseModal(true),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(canShowCreditNoteAction
+      ? [{
+        key: 'credit-note',
+        label: 'Issue Credit Note',
+        icon: 'fileMinus' as const,
+        onSelect: openCreditNoteModal,
+        disabled: actionLoading || creditNoteSubmitting,
+      }]
+      : []),
+    // Voiding cannot be undone from the screen, so it is a danger action in the header (not a
+    // button in the Actions card) and opens a danger confirm.
+    ...(invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit
+      ? [{
+        key: 'void',
+        label: 'Void',
+        icon: 'ban' as const,
+        tone: 'danger' as const,
+        onSelect: () => requestStatusChange('void'),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(showOjReissueAction
+      ? [{
+        key: 'reissue',
+        label: 'Reissue OJ Invoice',
+        icon: 'refresh' as const,
+        tone: 'primary' as const,
+        onSelect: () => void handleOpenReissuePreview(),
+        disabled: actionLoading || reissueLoading || reissueSubmitting,
+        loading: reissueLoading,
+      }]
+      : []),
+  ]
 
   return (
     <PageLayout
       title={invoicePageTitle(invoice.invoice_number)}
       subtitle={invoice.vendor?.name}
       backButton={BACK_TO_INVOICES}
-      headerActions={headerActions}
+      headerActions={<DetailHeaderActions actions={headerActions} />}
     >
-      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-        <Badge tone={invoiceStatusTone(invoice.status)} dot>
-          {invoiceStatusLabel(invoice.status)}
-        </Badge>
-        {invoice.reference && (
-          <span className="text-sm sm:text-base text-text-muted">
-            Reference: {invoice.reference}
-          </span>
-        )}
-      </div>
-
       {error && (
         <Alert tone="danger">{error}</Alert>
       )}
@@ -793,7 +768,14 @@ export default function InvoiceDetailClient({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
-            <CardHeader title="Invoice Details" />
+            <CardHeader
+              title="Invoice Details"
+              action={
+                <Badge tone={invoiceStatusTone(invoice.status)} dot>
+                  {invoiceStatusLabel(invoice.status)}
+                </Badge>
+              }
+            />
             <CardBody className="space-y-6">
               <DescriptionList
                 items={[
@@ -849,6 +831,9 @@ export default function InvoiceDetailClient({
                     label: 'Due Date',
                     value: <span className="font-medium">{formatDateInLondon(invoice.due_date)}</span>,
                   },
+                  ...(invoice.reference
+                    ? [{ key: 'reference', label: 'Reference', value: invoice.reference }]
+                    : []),
                 ]}
               />
             </CardBody>
@@ -1067,18 +1052,6 @@ export default function InvoiceDetailClient({
                   leftIcon={<Icon name="fileMinus" size={16} />}
                 >
                   Issue Credit Note
-                </Button>
-              )}
-
-              {invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit && (
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => requestStatusChange('void')}
-                  disabled={actionLoading}
-                  loading={actionLoading}
-                >
-                  Void Invoice
                 </Button>
               )}
             </CardBody>
@@ -1409,7 +1382,7 @@ export default function InvoiceDetailClient({
         onConfirm={() => handleStatusChange('void')}
         title="Void Invoice"
         message="Void this invoice?"
-        confirmLabel="Void Invoice"
+        confirmLabel="Void"
         tone="danger"
       />
       <ConfirmDialog

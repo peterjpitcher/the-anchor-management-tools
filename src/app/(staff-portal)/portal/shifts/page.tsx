@@ -527,7 +527,7 @@ export default async function MyShiftsPage({
   if (!employee) {
     return (
       <>
-        <StandalonePageHeader title="My Shifts" />
+        <StandalonePageHeader title="My Shifts" subtitle="My shifts: your published shifts for this pay period" />
         <Alert tone="warning">
           Your account is not linked to an employee profile. Please contact your manager.
         </Alert>
@@ -680,7 +680,6 @@ export default async function MyShiftsPage({
 
   // A greeting, so use the name they go by. 'there' keeps "Hi there" readable
   // when an employee record somehow carries no name at all.
-  const empName = displayName(employee, 'there');
   const calToken = generateCalendarToken(employee.employee_id);
   const feedUrl = `${getAppUrl()}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;
 
@@ -688,7 +687,7 @@ export default async function MyShiftsPage({
     <>
       <StandalonePageHeader
         title="My Shifts"
-        subtitle={`Hi ${empName}, here are ${isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period`}
+        subtitle={`My shifts: ${isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period`}
       />
 
       <Card>
@@ -729,7 +728,7 @@ export default async function MyShiftsPage({
           <Empty
             size="sm"
             icon="calendar"
-            title="No published shifts in this pay period"
+            title="No shifts for this period"
             description="Check another period or wait for your manager to publish the rota."
           />
         </Card>
@@ -826,7 +825,7 @@ export default async function MyShiftsPage({
         ) : (
           <Card padding="none">
             {openShifts.length === 0 ? (
-              <Empty size="sm" title="No open shifts in this pay period" />
+              <Empty size="sm" title="No open shifts for this period" />
             ) : (
               <ul className="divide-y divide-border">
                 {openShifts.map(shift => {
@@ -873,7 +872,7 @@ export default async function MyShiftsPage({
         ) : (
           <Card padding="none">
             {couldntWorkRecords.length === 0 ? (
-              <Empty size="sm" title="No Couldn't Work records" />
+              <Empty size="sm" title="No Couldn't Work days for this period" />
             ) : (
               <ul className="divide-y divide-border">
                 {couldntWorkRecords.map(record => (

@@ -8,7 +8,7 @@ import type { HeaderNavItem } from '@/ds'
  * server layout cannot read the path, so no tab was ever shown as active.
  */
 export const CASHING_UP_NAV: HeaderNavItem[] = [
-  { label: 'Dashboard', href: '/cashing-up/dashboard' },
+  { label: 'Overview', href: '/cashing-up/dashboard' },
   { label: 'Daily Entry', href: '/cashing-up/daily' },
   { label: 'Weekly', href: '/cashing-up/weekly' },
   { label: 'Insights', href: '/cashing-up/insights' },
@@ -16,7 +16,7 @@ export const CASHING_UP_NAV: HeaderNavItem[] = [
 ]
 
 /** The daily entry page's subtitle, shared by the page (its error states) and DailyClient. */
-export const CASHING_UP_DAILY_SUBTITLE = "Count the till and record the day's takings"
+export const CASHING_UP_DAILY_SUBTITLE = "Daily Entry: count the till and record the day's takings"
 
 /** The page chrome every Cashing Up page shares: the section title and the tab row. */
 export function cashingUpLayout(subtitle: string): { title: string; subtitle: string; navItems: HeaderNavItem[] } {

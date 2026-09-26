@@ -255,7 +255,7 @@ export default function CalendarNotesManager({
           {canManage && (
             <Card>
               <CardHeader
-                title={editingNoteId ? 'Edit Calendar Note' : 'Add Manual Calendar Note'}
+                title={editingNoteId ? 'Edit Calendar Note' : 'New Calendar Note'}
                 subtitle="Your own notes for holidays, campaigns, closures, and reminders"
               />
               <CardBody>
@@ -333,7 +333,7 @@ export default function CalendarNotesManager({
                       loading={isMutating}
                       icon={<Icon name="calendar" size={16} />}
                     >
-                      {editingNoteId ? 'Save Changes' : 'Add Note'}
+                      {editingNoteId ? 'Save Changes' : 'Create Calendar Note'}
                     </Button>
                   </FormFooter>
                 </form>

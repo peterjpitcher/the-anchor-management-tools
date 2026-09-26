@@ -22,10 +22,10 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmDialog,
   Empty,
   Field,
   FileUpload,
-  FormFooter,
   Icon,
   IconButton,
   Input,
@@ -438,7 +438,7 @@ export function WaiverRiskPanel({
                   disabled={settingRisk}
                   icon={<Icon name="shieldCheck" size={16} />}
                 >
-                  Update Risk Status
+                  Save Risk Review
                 </Button>
               </div>
             )}
@@ -561,8 +561,23 @@ function SupplierModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={supplier ? 'Edit Supplier' : 'Add Supplier'} size="lg">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={supplier ? 'Edit Supplier' : 'Add Supplier'}
+      size="lg"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="pb-supplier-form" variant="primary" loading={saving}>
+            {supplier ? 'Save Changes' : 'Add Supplier'}
+          </Button>
+        </>
+      }
+    >
+      <form id="pb-supplier-form" onSubmit={handleSubmit} className="space-y-4">
         <Field label="Name" required>
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} required placeholder="e.g. Sound & Light Co." />
         </Field>
@@ -591,14 +606,6 @@ function SupplierModal({
             <Input value={form.documentsReceived} onChange={(e) => update('documentsReceived', e.target.value)} placeholder="PLI" />
           </Field>
         </div>
-        <FormFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-            {supplier ? 'Save Changes' : 'Add Supplier'}
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   )
@@ -817,6 +824,8 @@ export function DeductionsPanel({
   const [proposing, setProposing] = useState(false)
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Rejecting is a final GM decision, so the red button confirms first.
+  const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -908,7 +917,7 @@ export function DeductionsPanel({
           <Empty
             size="sm"
             icon={<Icon name="cash" size={48} />}
-            title="No deductions proposed"
+            title="No deductions yet"
             description="Damage or extra-cost deductions from the deposit will appear here."
           />
         ) : (
@@ -970,7 +979,7 @@ export function DeductionsPanel({
                           type="button"
                           size="sm"
                           variant="danger"
-                          onClick={() => handleDecide(deduction.id, 'rejected')}
+                          onClick={() => setConfirmRejectId(deduction.id)}
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
                         >
@@ -1015,6 +1024,17 @@ export function DeductionsPanel({
           </div>
         )}
       </CardBody>
+      <ConfirmDialog
+        open={confirmRejectId !== null}
+        onClose={() => setConfirmRejectId(null)}
+        onConfirm={async () => {
+          if (confirmRejectId) await handleDecide(confirmRejectId, 'rejected')
+        }}
+        title="Reject Deduction"
+        message="Reject this proposed deduction? This is a GM decision and cannot be undone."
+        confirmLabel="Reject (GM)"
+        tone="danger"
+      />
     </Card>
   )
 }
@@ -1093,7 +1113,7 @@ function ComplaintRow({
           </Field>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={handleSave} loading={saving} disabled={saving}>
-          Save Complaint
+          Save Changes
         </Button>
         {!canManage && (
           <p className="text-xs text-text-muted">Resolving or closing a complaint is a manager decision.</p>
@@ -1171,7 +1191,7 @@ export function ComplaintsPanel({
           <Empty
             size="sm"
             icon={<Icon name="message" size={48} />}
-            title="No complaints logged"
+            title="No complaints yet"
             description="Any complaint about this booking will appear here."
           />
         ) : (

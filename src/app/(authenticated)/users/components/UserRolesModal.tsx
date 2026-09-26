@@ -94,7 +94,7 @@ export default function UserRolesModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title="Manage User Roles"
+      title="Manage Roles"
       description={user.email || undefined}
       width="md"
       footer={
@@ -111,7 +111,7 @@ export default function UserRolesModal({
             disabled={saving || loading || readOnly || !!loadError}
             loading={saving}
           >
-            Save Roles
+            Save Changes
           </Button>
         </>
       }

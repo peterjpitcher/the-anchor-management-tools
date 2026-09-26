@@ -854,7 +854,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             {checklistLoading ? (
               <PageLoading inline label="Loading checklist" className="py-4" />
             ) : checklistItems.length === 0 ? (
-              <Empty size="sm" title="No Checklist Items" />
+              <Empty size="sm" title="No checklist items" />
             ) : (
               <div className="flex flex-col gap-2">
                 {checklistItems.map((item) => (
@@ -893,7 +893,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               loading={aiLoading}
               icon={<Icon name="edit" size={14} />}
             >
-              {aiLoading ? 'Generating...' : 'Generate All'}
+              Generate All
             </Button>
           </div>
 
@@ -902,12 +902,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             <div className="flex items-center gap-2 text-sm text-text-muted">
               <Spinner size="sm" />
               <span>
-                {generationPhase === 'checking' && 'Checking event details...'}
-                {generationPhase === 'drafting' && 'Drafting SEO copy...'}
+                {generationPhase === 'checking' && 'Checking event details…'}
+                {generationPhase === 'drafting' && 'Drafting SEO copy…'}
                 {elapsedSeconds >= 10 && ` (${elapsedSeconds}s)`}
               </span>
               {elapsedSeconds >= 30 && (
-                <span className="text-warning-fg">Still working...</span>
+                <span className="text-warning-fg">Still working…</span>
               )}
             </div>
           )}

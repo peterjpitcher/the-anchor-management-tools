@@ -125,7 +125,11 @@ export function EventListView({
           {events.length === 0 ? (
             <TableRow>
               <TableCell colSpan={9}>
-                <Empty size="sm" title="No Events Found" />
+                <Empty
+                  size="sm"
+                  title="No events match these filters"
+                  description="Change the search, category, status or dates to see more events."
+                />
               </TableCell>
             </TableRow>
           ) : (
@@ -211,7 +215,11 @@ export function EventListView({
       {/* Mobile card list */}
       <div className="block md:hidden divide-y divide-border px-pad-card">
         {events.length === 0 ? (
-          <Empty size="sm" title="No Events Found" />
+          <Empty
+            size="sm"
+            title="No events match these filters"
+            description="Change the search, category, status or dates to see more events."
+          />
         ) : (
           events.map((event) => {
             const capacity = resolveEventCapacity(event)

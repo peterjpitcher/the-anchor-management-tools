@@ -66,7 +66,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
             size="sm"
             icon={<Icon name="shieldCheck" size={16} />}
           >
-            {canManage ? 'Permissions' : 'View Permissions'}
+            {canManage ? 'Manage Permissions' : 'View Permissions'}
           </Button>
 
           <div className="flex gap-2">
@@ -100,8 +100,8 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleDelete}
         title="Delete Role"
-        message={`Are you sure you want to delete the role "${role.name}"?`}
-        confirmLabel="Delete Role"
+        message={`Delete the role "${role.name}"? Anyone who has it loses its permissions. This cannot be undone.`}
+        confirmLabel="Delete"
         tone="danger"
       />
     </Card>

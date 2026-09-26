@@ -73,8 +73,8 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
         >
           Cancel
         </Button>
-        <Button type="button" variant="primary" size="sm" onClick={submitRequest} disabled={isPending}>
-          {isPending ? 'Sending...' : 'Confirm Request'}
+        <Button type="button" variant="primary" size="sm" onClick={submitRequest} loading={isPending}>
+          Confirm Request
         </Button>
       </FormFooter>
     </div>

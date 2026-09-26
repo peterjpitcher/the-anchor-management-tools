@@ -92,7 +92,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
             Cancel
           </Button>
           <Button type="submit" variant="primary" form="add-note-form" loading={isSubmitting || isLoadingEmployees}>
-            Save Note
+            Add Note
           </Button>
         </>
       }
@@ -106,7 +106,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
 
         <form id="add-note-form" onSubmit={handleSubmit} className="space-y-4">
           {isLoadingEmployees ? (
-            <PageLoading inline label="Loading employees..." className="py-4" />
+            <PageLoading inline label="Loading employees…" className="py-4" />
           ) : (
             <Select
               id="employee-select"

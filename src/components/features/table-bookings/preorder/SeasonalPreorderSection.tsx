@@ -476,7 +476,7 @@ export default function SeasonalPreorderSection({
         )}
 
         {order.covers.length === 0 ? (
-          <Empty size="sm" title="No seats set up yet" description="So nothing has been chosen." />
+          <Empty size="sm" title="No seats set up yet" description="Nothing has been chosen for this booking." />
         ) : (
           <ul className="divide-y divide-border">
             {order.covers.map((cover) => {

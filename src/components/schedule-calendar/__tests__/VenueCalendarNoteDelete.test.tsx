@@ -75,7 +75,7 @@ describe('VenueCalendar note delete', () => {
     vi.clearAllMocks()
   })
 
-  it('asks in a danger ConfirmDialog, and Keep It leaves the note untouched', async () => {
+  it('asks in a danger ConfirmDialog, and Cancel leaves the note untouched', async () => {
     openNote()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
@@ -83,7 +83,7 @@ describe('VenueCalendar note delete', () => {
     const confirm = await screen.findByRole('dialog', { name: 'Delete Calendar Note' })
     expect(within(confirm).getByText(/removes the entry from the shared Pub Ops calendar/)).toBeInTheDocument()
 
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Keep It' }))
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete Calendar Note' })).toBeNull())
     expect(screen.getByRole('dialog', { name: 'Edit Calendar Note' })).toBeInTheDocument()
@@ -96,7 +96,7 @@ describe('VenueCalendar note delete', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     const confirm = await screen.findByRole('dialog', { name: 'Delete Calendar Note' })
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete Permanently' }))
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(deleteCalendarNote).toHaveBeenCalledWith('note-1'))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Calendar Note' })).toBeNull())
@@ -110,7 +110,7 @@ describe('VenueCalendar note delete', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
     const confirm = await screen.findByRole('dialog', { name: 'Delete Calendar Note' })
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete Permanently' }))
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Calendar sync failed'))
     // The note dialog is still mounted, with the draft, under the confirm; a modal confirm on top

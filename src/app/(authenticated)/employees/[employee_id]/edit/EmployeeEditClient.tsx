@@ -8,7 +8,6 @@ import HealthRecordsForm from '@/components/features/employees/HealthRecordsForm
 import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeRightToWork } from '@/types/database'
-import { displayName } from '@/lib/employees/display-name'
 import { PageLayout, Tabs } from '@/ds'
 import { employeePageTitle } from '../../_shared/employee-title'
 
@@ -99,8 +98,9 @@ export default function EmployeeEditClient({
 
   return (
     <PageLayout
-      title={`Edit ${displayName(employee, employee.email_address)}`}
-      subtitle="Update employee details"
+      title="Edit Employee"
+      // The employee's name, as their page is titled.
+      subtitle={employeePageTitle(employee)}
       // Back to the employee's page, named as that page is titled.
       backButton={{ label: `Back to ${employeePageTitle(employee)}`, href: employeeHref }}
       containerSize="md"

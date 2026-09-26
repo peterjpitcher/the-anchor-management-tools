@@ -12,13 +12,13 @@ export const MGD_NAV: HeaderNavItem[] = [
  */
 export const MGD_COLLECTIONS_LAYOUT = {
   title: 'MGD',
-  subtitle: 'Machine Games Duty collections and quarterly returns',
+  subtitle: 'Collections: Machine Games Duty collections and quarterly returns',
   navItems: MGD_NAV,
 }
 
 /** The chrome of the insights page, shared by its loaded and failed states. */
 export const MGD_INSIGHTS_LAYOUT = {
   title: 'MGD',
-  subtitle: 'Machine Games Duty net takings and duty over time',
+  subtitle: 'Insights: Machine Games Duty net takings and duty over time',
   navItems: MGD_NAV,
 }

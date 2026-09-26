@@ -971,7 +971,7 @@ export function TableSetupManager() {
           ) : setupLoadError ? (
             loadFailure('Could not load tables', setupLoadError, () => { void loadSetup() })
           ) : sortedTables.length === 0 ? (
-            <Empty size="sm" title="No tables found" description="Add your first table below." />
+            <Empty size="sm" title="No tables yet" description="Create the first table below." />
           ) : (
             <>
               <CardBody className="pb-0">
@@ -1077,7 +1077,7 @@ export function TableSetupManager() {
 
         {/* Add table */}
         <Card>
-          <CardHeader title="Add Table" />
+          <CardHeader title="New Table" />
           <CardBody>
             <form onSubmit={createTable} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <Input
@@ -1233,7 +1233,7 @@ export function TableSetupManager() {
                       disabled={savingGroup}
                       loading={savingGroup}
                     >
-                      Save Group
+                      {editingGroup.id ? 'Save Changes' : 'Create Group'}
                     </Button>
                   </FormFooter>
                 </CardBody>
@@ -1335,7 +1335,7 @@ export function TableSetupManager() {
           ) : sortedAreas.length === 0 ? (
             <Empty size="sm" title="No table areas yet" description="Add at least one table area before mapping private-booking spaces." />
           ) : sortedVenueSpaces.length === 0 ? (
-            <Empty size="sm" title="No private-booking spaces found" />
+            <Empty size="sm" title="No private-booking spaces yet" />
           ) : (
             <div className="divide-y divide-border border-t border-border">
               {sortedVenueSpaces.map((space) => (

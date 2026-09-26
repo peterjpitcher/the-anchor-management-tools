@@ -104,9 +104,9 @@ export default function HolidayDetailModal({
           {canEdit && request && !isEditing && (
             <Button
               type="button"
-              variant="ghost"
+              variant="danger"
               onClick={() => setConfirmDelete(true)}
-              className="text-danger-fg hover:bg-danger-soft sm:mr-auto"
+              className="sm:mr-auto"
             >
               Delete
             </Button>
@@ -139,9 +139,10 @@ export default function HolidayDetailModal({
                 type="button"
                 variant="primary"
                 onClick={handleSave}
-                disabled={isSaving || !editStart || !editEnd || editStart > editEnd}
+                disabled={!editStart || !editEnd || editStart > editEnd}
+                loading={isSaving}
               >
-                {isSaving ? 'Saving…' : 'Save Changes'}
+                Save Changes
               </Button>
             </>
           )}
@@ -210,7 +211,7 @@ export default function HolidayDetailModal({
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="Delete Holiday Request?"
+        title="Delete Holiday Request"
         message={`This removes ${days} day${days !== 1 ? 's' : ''} of leave for ${employeeName} and cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"

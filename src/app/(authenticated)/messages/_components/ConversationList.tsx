@@ -178,7 +178,7 @@ export function ConversationList({
           <div className="p-6">
             <Empty
               size="sm"
-              title={isFiltered ? 'No matching conversations' : 'No conversations'}
+              title={isFiltered ? 'No conversations match these filters' : 'No conversations yet'}
               description={
                 isFiltered
                   ? 'Try a different search or clear the filters.'

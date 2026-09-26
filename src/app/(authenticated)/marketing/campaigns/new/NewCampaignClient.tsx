@@ -16,6 +16,7 @@ import {
   FormFooter,
   Icon,
   Input,
+  LinkButton,
   PageLayout,
   PageLoading,
   Stat,
@@ -366,7 +367,7 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
         <Card>
           <CardHeader
             title="Who It Goes To"
-            subtitle="Pick tags to include. Leave them all unpicked to reach every eligible contact"
+            subtitle="Pick tags to include, or leave them all unpicked to reach every eligible contact"
           />
           <CardBody>
             <div className="space-y-4">
@@ -458,7 +459,7 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
         <Card>
           <CardHeader
             title="When It Goes Out"
-            subtitle="London time. It still waits for the send window and the send switch"
+            subtitle="London time: it still waits for the send window and the send switch"
           />
           <CardBody>
             <Input
@@ -478,6 +479,9 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
               : undefined
           }
         >
+          <LinkButton href={MARKETING_BACK.href} variant="secondary">
+            Cancel
+          </LinkButton>
           <Button variant="secondary" onClick={handleSaveDraft} loading={saving}>
             Save as Draft
           </Button>

@@ -141,7 +141,7 @@ export default function RolePermissionsModal({
             disabled={saving || loading || role.is_system || !canManage}
             loading={saving}
           >
-            Save Permissions
+            Save Changes
           </Button>
         </>
       }

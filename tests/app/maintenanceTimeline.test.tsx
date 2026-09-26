@@ -102,7 +102,7 @@ describe('MaintenanceTimeline', () => {
 
     const box = screen.getByLabelText('Add a note') as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'Rang the landlord.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
 
     await waitFor(() => expect(screen.getByText('Could not save that note.')).toBeInTheDocument())
     expect(box.value).toBe('Rang the landlord.')
@@ -127,7 +127,7 @@ describe('MaintenanceTimeline', () => {
     fireEvent.change(screen.getByLabelText('Add a note'), {
       target: { value: 'Rang the landlord.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
 
     await waitFor(() => expect(screen.getByText('Rang the landlord.')).toBeInTheDocument())
     expect((screen.getByLabelText('Add a note') as HTMLTextAreaElement).value).toBe('')
@@ -144,14 +144,14 @@ describe('MaintenanceTimeline', () => {
 
     const box = screen.getByLabelText('Add a note') as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'Rang the landlord.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
 
     await waitFor(() =>
       expect(
         screen.getByText('Could not save the note. Check your connection and try again.')
       ).toBeInTheDocument()
     )
-    expect(screen.getByRole('button', { name: 'Save Note' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add Note' })).not.toBeDisabled()
     expect(box.value).toBe('Rang the landlord.')
 
     // And the retry actually goes through, rather than being swallowed by the guard.
@@ -166,7 +166,7 @@ describe('MaintenanceTimeline', () => {
         createdAt: '2026-09-06T09:00:00.000Z',
       },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
     await waitFor(() => expect(addMaintenanceNoteMock).toHaveBeenCalledTimes(2))
   })
 

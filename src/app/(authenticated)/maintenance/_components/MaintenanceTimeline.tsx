@@ -171,8 +171,8 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
             placeholder="What has happened, or what still needs doing"
           />
           <FormFooter>
-            <Button type="submit" size="sm" loading={savingNote} disabled={savingNote}>
-              Save Note
+            <Button type="submit" variant="secondary" size="sm" loading={savingNote} disabled={savingNote}>
+              Add Note
             </Button>
           </FormFooter>
         </form>
@@ -185,7 +185,7 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
           <Alert tone="danger" title="Could not load the history">
             <p>{loadError}</p>
             <p className="mt-2">
-              <Button size="sm" onClick={() => void loadFirstPage()}>
+              <Button variant="secondary" size="sm" onClick={() => void loadFirstPage()}>
                 Try Again
               </Button>
             </p>
@@ -236,7 +236,7 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
 
                 <div id="maintenance-system-events" hidden={!showSystem} className="mt-2">
                   {systemEvents.length === 0 ? (
-                    <Empty size="sm" title="Nothing recorded yet" />
+                    <Empty size="sm" title="No system events yet" />
                   ) : (
                     <ul className="space-y-2">
                       {systemEvents.map(entry => (

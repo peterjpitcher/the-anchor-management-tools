@@ -18,9 +18,9 @@ export const MARKETING_BACK = { label: 'Back to Marketing', href: '/marketing' }
 
 /** What each tab is for, shown as the subtitle under the section title. */
 const MARKETING_SUBTITLES = {
-  campaigns: 'Email campaigns to guests and business contacts',
-  contacts: 'Business contacts for email campaigns',
-  settings: 'Settings for campaign email',
+  campaigns: 'Campaigns: email campaigns to guests and business contacts',
+  contacts: 'Contacts: business contacts for email campaigns',
+  settings: 'Settings: when and how campaign email goes out',
 } as const
 
 /**

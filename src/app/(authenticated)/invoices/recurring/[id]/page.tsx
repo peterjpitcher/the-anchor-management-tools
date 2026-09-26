@@ -9,7 +9,6 @@ import {
   Card,
   CardHeader,
   CardBody,
-  Button,
   Alert,
   Badge,
   DataTable,
@@ -23,6 +22,7 @@ import { formatDateInLondon } from '@/lib/dateUtils'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
 import { BACK_TO_RECURRING } from '../../_shared/nav'
 import { recurringScheduleLabel, recurringScheduleTone } from '../../_shared/status-ui'
+import { DetailHeaderActions, type DetailHeaderAction } from '../../_components/DetailHeaderActions'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -231,62 +231,46 @@ export default function RecurringInvoiceDetailPage() {
     ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
     : null
 
-  // Page-level actions: secondary first, the destructive delete next, the primary action last.
-  const headerActions = (
-    <>
-      {canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-          leftIcon={<Icon name="edit" size={16} />}
-        >
-          Edit
-        </Button>
-      )}
-      {canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleToggleStatus}
-          disabled={actionLoading}
-          leftIcon={recurringInvoice.is_active ? <Icon name="pause" size={16} /> : <Icon name="play" size={16} />}
-        >
-          {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
-        </Button>
-      )}
-      <Button
-        variant="danger"
-        size="sm"
-        onClick={() => setShowDeleteDialog(true)}
-        leftIcon={<Icon name="trash" size={16} />}
-        disabled={!canDelete}
-        title={!canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined}
-      >
-        Delete Template
-      </Button>
-      {canCreate && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleGenerateNow}
-          disabled={!recurringInvoice.is_active || actionLoading}
-          loading={actionLoading}
-          leftIcon={<Icon name="fileText" size={16} />}
-          title={
-            !recurringInvoice.is_active
-              ? 'Activate this template before generating.'
-              : undefined
-          }
-        >
-          Generate Now
-        </Button>
-      )}
-    </>
-  )
+  // Page-level actions in priority order: the first ones show, the rest go in the "More" menu
+  // (DetailHeaderActions), with Generate Now, the next step, always last.
+  const headerActions: DetailHeaderAction[] = [
+    ...(canEdit
+      ? [{ key: 'edit', label: 'Edit', icon: 'edit' as const, href: `/invoices/recurring/${recurringInvoice.id}/edit` }]
+      : []),
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: 'trash',
+      tone: 'danger',
+      onSelect: () => setShowDeleteDialog(true),
+      disabled: !canDelete,
+      title: !canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined,
+    },
+    ...(canEdit
+      ? [{
+        key: 'toggle',
+        label: recurringInvoice.is_active ? 'Deactivate' : 'Activate',
+        icon: recurringInvoice.is_active ? 'pause' as const : 'play' as const,
+        onSelect: () => void handleToggleStatus(),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(canCreate
+      ? [{
+        key: 'generate',
+        label: 'Generate Now',
+        icon: 'fileText' as const,
+        tone: 'primary' as const,
+        onSelect: () => void handleGenerateNow(),
+        disabled: !recurringInvoice.is_active || actionLoading,
+        loading: actionLoading,
+        title: !recurringInvoice.is_active ? 'Activate this template before generating.' : undefined,
+      }]
+      : []),
+  ]
 
   return (
-    <PageLayout {...layoutProps} headerActions={headerActions}>
+    <PageLayout {...layoutProps} headerActions={<DetailHeaderActions actions={headerActions} />}>
       {isReadOnly && (
         <Alert tone="info">
           You have read-only access to this recurring invoice. Management actions are disabled.
@@ -482,17 +466,6 @@ export default function RecurringInvoiceDetailPage() {
         <CardHeader
           title="Last Invoice Generated"
           subtitle="Track the latest invoice produced by this schedule"
-          action={
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-              leftIcon={<Icon name="edit" size={16} />}
-              disabled={!canEdit}
-            >
-              Edit Schedule
-            </Button>
-          }
         />
         <CardBody>
           <DescriptionList

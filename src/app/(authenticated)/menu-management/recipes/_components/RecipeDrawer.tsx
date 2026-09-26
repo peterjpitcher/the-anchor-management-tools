@@ -373,9 +373,9 @@ export function RecipeDrawer({
               type="button"
               variant="primary"
               onClick={() => void handleSave()}
-              disabled={saving}
+              loading={saving}
             >
-              {saving ? 'Saving...' : isEditing ? 'Update' : 'Create Recipe'}
+              {isEditing ? 'Save Changes' : 'Create Recipe'}
             </Button>
           </FormFooter>
         }
@@ -511,6 +511,7 @@ export function RecipeDrawer({
         title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
         confirmLabel="Discard"
+        cancelLabel="Keep Editing"
         tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {
@@ -522,7 +523,7 @@ export function RecipeDrawer({
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete Recipe?"
+        title="Delete Recipe"
         message={
           recipe
             ? `This removes ${recipe.name} from every dish that uses it.`

@@ -34,7 +34,7 @@ export default function SendBirthdayRemindersButton() {
       size="sm" 
       loading={sending}
     >
-      {sending ? 'Sending…' : 'Send Weekly Reminders'}
+      Send Weekly Reminders
     </Button>
   )
 }

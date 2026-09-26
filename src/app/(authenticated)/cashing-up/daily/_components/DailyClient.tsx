@@ -492,28 +492,10 @@ export function DailyClient({
     }
   }
 
+  // Header actions: the secondary Lock or Unlock first, the destructive Delete and Void next,
+  // and Approve, the primary next step, last.
   const statusActions = (
     <>
-      {sessionId && currentStatus !== 'locked' && (
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() => setShowDeleteConfirm(true)}
-          loading={saving}
-        >
-          Delete
-        </Button>
-      )}
-      {sessionId && !isVoided && (
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() => setShowVoidConfirm(true)}
-          loading={voiding}
-        >
-          Void…
-        </Button>
-      )}
       {!isVoided && currentStatus === 'approved' && (
         <Button
           variant="secondary"
@@ -532,6 +514,26 @@ export function DailyClient({
           loading={saving}
         >
           Unlock
+        </Button>
+      )}
+      {sessionId && currentStatus !== 'locked' && (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setShowDeleteConfirm(true)}
+          loading={saving}
+        >
+          Delete
+        </Button>
+      )}
+      {sessionId && !isVoided && (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setShowVoidConfirm(true)}
+          loading={voiding}
+        >
+          Void
         </Button>
       )}
       {!isVoided && currentStatus === 'submitted' && (
@@ -887,7 +889,7 @@ export function DailyClient({
               ) : weeklyData.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <Empty size="sm" title="No data for this week" />
+                    <Empty size="sm" title="No takings for this week" description="No cash-ups were recorded this week." />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -980,7 +982,7 @@ export function DailyClient({
               disabled={!voidReasonInput.trim()}
               onClick={handleVoidSession}
             >
-              Void Session
+              Void
             </Button>
           </>
         }

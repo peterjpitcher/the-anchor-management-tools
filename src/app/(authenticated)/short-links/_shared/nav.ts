@@ -5,7 +5,7 @@ import type { HeaderNavItem } from '@/ds'
  * Every Short Links page passes this as `navItems`, and the page's own tab is found from the path.
  */
 export const SHORT_LINKS_NAV: HeaderNavItem[] = [
-  { label: 'Links', href: '/short-links' },
+  { label: 'Short Links', href: '/short-links' },
   { label: 'Insights', href: '/short-links/insights' },
   { label: 'Legacy Domain', href: '/short-links/legacy-domain' },
 ]

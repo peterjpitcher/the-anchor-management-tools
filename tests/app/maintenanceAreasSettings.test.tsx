@@ -77,7 +77,7 @@ describe('the maintenance areas settings screen', () => {
     render(<MaintenanceAreasClient initialAreas={AREAS} initialError={null} />)
 
     await userEvent.type(screen.getByLabelText('Area name'), 'main   BAR')
-    await userEvent.click(screen.getByRole('button', { name: 'Add Area' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Create Area' }))
 
     await waitFor(() => {
       expect(screen.getByText(AREA_DUPLICATE_NAME_MESSAGE)).toBeInTheDocument()
@@ -93,7 +93,7 @@ describe('the maintenance areas settings screen', () => {
     const field = screen.getByLabelText('Rename Main Bar')
     await userEvent.clear(field)
     await userEvent.type(field, 'Front Bar')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/Existing items now show the new name/))

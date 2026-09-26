@@ -14,6 +14,7 @@ import {
   CardBody,
   Button,
   IconButton,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -295,7 +296,7 @@ export default function EditInvoicePage() {
                 onClick={addLineItem}
                 leftIcon={<Icon name="plus" size={16} />}
               >
-                Add Item
+                Add Line Item
               </Button>
             }
           />
@@ -334,8 +335,8 @@ export default function EditInvoicePage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => router.push('/invoices/catalog')}
-                    title="Manage Catalog"
-                    label="Manage Catalog"
+                    title="Manage catalog"
+                    label="Manage catalog"
                     icon={<Icon name="package" size={16} />}
                   />
                 </div>
@@ -402,11 +403,11 @@ export default function EditInvoicePage() {
                   <div className="flex lg:col-span-1 lg:items-start lg:pt-5">
                     <IconButton
                       type="button"
-                      variant="danger"
+                      variant="ghost"
                       onClick={() => removeLineItem(index)}
                       size="sm"
                       label="Remove line item"
-                      icon={<Icon name="trash" size={16} />}
+                      icon={<Icon name="trash" size={16} className="text-danger" />}
                     />
                   </div>
                 </div>
@@ -478,21 +479,16 @@ export default function EditInvoicePage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push(backHref)}
-            disabled={submitting}
-          >
+          <LinkButton href={backHref} variant="secondary" disabled={submitting}>
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             disabled={submitting || !canEditInvoice}
             loading={submitting}
-            leftIcon={!submitting && <Icon name="save" size={16} />}
+            leftIcon={<Icon name="save" size={16} />}
           >
-            {submitting ? 'Saving...' : 'Save Changes'}
+            Save Changes
           </Button>
         </FormFooter>
       </form>

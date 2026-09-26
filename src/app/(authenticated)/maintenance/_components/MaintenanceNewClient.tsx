@@ -246,7 +246,7 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
               aria-expanded={showMore}
               aria-controls="maintenance-more-detail"
             >
-              {showMore ? 'Hide the Extra Detail' : 'Add More Detail'}
+              {showMore ? 'Hide More Detail' : 'Add More Detail'}
             </Button>
           }
         />
@@ -322,7 +322,7 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
           Cancel
         </LinkButton>
         <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-          Save and Open
+          Log an Issue
         </Button>
       </FormFooter>
     </form>

@@ -52,7 +52,7 @@ describe('SquareImageUpload', () => {
 
     const zone = screen.getByRole('button', { name: 'Image' })
     expect(zone).toBeDisabled()
-    expect(screen.getByText('Uploading...')).toBeInTheDocument()
+    expect(screen.getByText('Uploading…')).toBeInTheDocument()
 
     finish({ type: 'success', imageUrl: 'https://example.test/hero.png' })
     expect(await screen.findByText('The image uploads as soon as you choose it.')).toBeInTheDocument()

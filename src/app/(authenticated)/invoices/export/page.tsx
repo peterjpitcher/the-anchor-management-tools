@@ -117,7 +117,7 @@ export default function InvoiceExportPage() {
 
   const layoutProps = {
     title: 'Invoices',
-    subtitle: 'Export invoices as a ZIP file of individual PDFs',
+    subtitle: 'Export: a ZIP of invoice PDFs and a summary CSV for the accountant',
     navItems: financeNav({ canExport }),
     containerSize: 'md' as const,
   }
@@ -220,22 +220,15 @@ export default function InvoiceExportPage() {
         </CardBody>
       </Card>
 
+      {/* A tab page has no Cancel: there is nothing to go back to. */}
       <FormFooter>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => router.push('/invoices')}
-          disabled={loading}
-        >
-          Cancel
-        </Button>
         <Button variant="primary"
           onClick={handleExport}
           disabled={loading || !startDate || !endDate || !canExport}
           loading={loading}
           leftIcon={<Icon name="download" size={16} />}
         >
-          Export Invoices
+          Export ZIP
         </Button>
       </FormFooter>
     </PageLayout>

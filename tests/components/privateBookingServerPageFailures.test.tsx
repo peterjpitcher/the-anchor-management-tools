@@ -60,8 +60,8 @@ describe('SMS queue page', () => {
     expect(html).toMatch(/<h1[^>]*>Private Bookings<\/h1>/)
     expect(html).toContain('SMS Queue')
     expect(html).toContain('We could not load the SMS queue.')
-    expect(html).not.toContain('No messages pending approval')
-    expect(html).not.toContain('No approved messages ready to send')
+    expect(html).not.toContain('No messages to approve')
+    expect(html).not.toContain('No messages to send')
   })
 
   it('shows the empty states when the queue really is empty', async () => {
@@ -71,8 +71,8 @@ describe('SMS queue page', () => {
     const html = renderToStaticMarkup(await SmsQueuePage())
 
     expect(html).not.toContain('We could not load the SMS queue.')
-    expect(html).toContain('No messages pending approval')
-    expect(html).toContain('No approved messages ready to send')
+    expect(html).toContain('No messages to approve')
+    expect(html).toContain('No messages to send')
   })
 })
 
@@ -84,7 +84,7 @@ describe('Private booking growth report page', () => {
     const html = renderToStaticMarkup(await ReportsPage())
 
     expect(html).toMatch(/<h1[^>]*>Private Bookings<\/h1>/)
-    expect(html).toContain('Growth report')
+    expect(html).toContain('Reports: customer private events by the date they happened')
     expect(html).toContain('We could not load the growth report.')
     expect(html).toContain('href="/private-bookings/reports"')
     expect(html).not.toContain('Growth report body')

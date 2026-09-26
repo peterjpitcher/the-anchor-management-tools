@@ -107,7 +107,7 @@ describe('settings groups of controls are named by a visible legend', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'New Label' })[0])
 
     // Named like every other create dialog in Settings ("New Template", "New Period").
-    expect(screen.getByRole('dialog', { name: 'New Customer Label' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'New Label' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Colour' }).tagName).toBe('FIELDSET')
     expect(screen.getByRole('group', { name: 'Icon' }).tagName).toBe('FIELDSET')
   })

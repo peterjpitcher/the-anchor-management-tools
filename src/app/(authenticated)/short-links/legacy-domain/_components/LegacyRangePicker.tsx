@@ -19,6 +19,7 @@ export function LegacyRangePicker({ options, days }: LegacyRangePickerProps): Re
   return (
     <Segmented
       aria-label="Reporting range"
+      size="sm"
       options={options.map((option) => ({ id: String(option), label: `${option} days` }))}
       value={String(days)}
       onChange={(id) => router.push(`/short-links/legacy-domain?days=${id}`)}

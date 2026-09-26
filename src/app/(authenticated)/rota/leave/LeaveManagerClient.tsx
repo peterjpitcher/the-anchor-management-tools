@@ -255,13 +255,13 @@ function LeaveRequestRow({
                 onChange={e => setManagerNote(e.target.value)}
               />
               <FormFooter>
+                {/* Declining cannot be undone from here, so it is red and confirms in red. */}
                 <Button
                   type="button"
                   size="sm"
-                  variant="secondary"
+                  variant="danger"
                   onClick={() => setConfirmDecision('declined')}
                   disabled={isPending}
-                  className="text-danger-fg border-danger-border hover:bg-danger-soft"
                 >
                   Decline
                 </Button>
@@ -270,9 +270,9 @@ function LeaveRequestRow({
                   size="sm"
                   variant="primary"
                   onClick={() => setConfirmDecision('approved')}
-                  disabled={isPending}
+                  loading={isPending}
                 >
-                  {isPending ? 'Saving…' : 'Approve'}
+                  Approve
                 </Button>
               </FormFooter>
             </div>
@@ -284,7 +284,7 @@ function LeaveRequestRow({
                 Edit Dates
               </Button>
               <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
-                Delete Request
+                Delete
               </Button>
             </div>
           )}
@@ -295,7 +295,7 @@ function LeaveRequestRow({
       <Modal
         open={editOpen}
         onClose={() => { if (!isPending) setEditOpen(false); }}
-        title="Edit Holiday Dates"
+        title="Edit Dates"
         description={empName}
         width="md"
         footer={
@@ -304,7 +304,7 @@ function LeaveRequestRow({
               Cancel
             </Button>
             <Button type="button" variant="primary" onClick={handleSaveDates} loading={isPending}>
-              Save Dates
+              Save Changes
             </Button>
           </>
         }
@@ -337,7 +337,7 @@ function LeaveRequestRow({
           await runReview(confirmDecision);
           setConfirmDecision(null);
         }}
-        title={confirmDecision === 'approved' ? 'Approve Holiday Request?' : 'Decline Holiday Request?'}
+        title={confirmDecision === 'approved' ? 'Approve Holiday Request' : 'Decline Holiday Request'}
         message={
           confirmDecision === 'approved'
             ? `Approve ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`
@@ -355,8 +355,8 @@ function LeaveRequestRow({
           await runDelete();
           setConfirmDelete(false);
         }}
-        title="Delete Holiday Request?"
-        message={`Delete ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`}
+        title="Delete Holiday Request"
+        message={`This removes ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}. This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"
       />
@@ -408,7 +408,11 @@ export default function LeaveManagerClient({
 
       <Card padding="none">
         {filtered.length === 0 ? (
-          <Empty size="sm" icon="calendar" title={`No ${filter === 'all' ? '' : `${filter} `}requests`} />
+          <Empty
+            size="sm"
+            icon="calendar"
+            title={filter === 'all' ? 'No holiday requests yet' : 'No requests match these filters'}
+          />
         ) : (
           <ul className="divide-y divide-border">
             {filtered.map(req => (

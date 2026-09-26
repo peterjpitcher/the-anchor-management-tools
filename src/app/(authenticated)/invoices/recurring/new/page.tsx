@@ -13,6 +13,7 @@ import {
   CardBody,
   Button,
   IconButton,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -365,8 +366,8 @@ export default function NewRecurringInvoicePage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => router.push('/invoices/catalog')}
-                        title="Manage Catalog"
-                        label="Manage Catalog"
+                        title="Manage catalog"
+                        label="Manage catalog"
                         icon={<Icon name="package" size={16} />}
                       />
                     </div>
@@ -440,11 +441,11 @@ export default function NewRecurringInvoicePage() {
                     {lineItems.length > 1 && (
                       <IconButton
                         type="button"
-                        variant="danger"
+                        variant="ghost"
                         size="sm"
                         onClick={() => removeLineItem(index)}
                         label="Remove line item"
-                        icon={<Icon name="trash" size={16} />}
+                        icon={<Icon name="trash" size={16} className="text-danger" />}
                       />
                     )}
                   </div>
@@ -522,19 +523,15 @@ export default function NewRecurringInvoicePage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/invoices/recurring')}
-          >
+          <LinkButton href={BACK_TO_RECURRING.href} variant="secondary">
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             disabled={submitting || !vendorId || lineItems.length === 0 || !canCreate}
             loading={submitting}
           >
-            {submitting ? 'Creating...' : 'Create Recurring Invoice'}
+            Create Recurring Invoice
           </Button>
         </FormFooter>
       </form>

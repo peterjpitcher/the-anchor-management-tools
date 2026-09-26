@@ -141,7 +141,7 @@ function KeyForm({
           Cancel
         </Button>
         <Button type="submit" variant="primary" loading={isSaving} disabled={!formData.name}>
-          {isSaving ? 'Saving…' : submitLabel}
+          {submitLabel}
         </Button>
       </FormFooter>
     </form>
@@ -284,7 +284,7 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
               onSubmit={handleCreateKey}
               onCancel={() => setShowCreateForm(false)}
               isSaving={isCreating}
-              submitLabel="Create Key"
+              submitLabel="Create API Key"
             />
           </CardBody>
         </Card>
@@ -403,7 +403,6 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
         message={revokeTarget ? `Revoke ${revokeTarget.name}? Existing integrations using it will stop working.` : 'Revoke this API key?'}
         confirmLabel="Revoke"
         loading={isMutatingKey}
-        loadingText="Revoking..."
         closeOnConfirm={false}
       />
 
@@ -416,7 +415,6 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
         message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : 'Delete this API key?'}
         confirmLabel="Delete"
         loading={isMutatingKey}
-        loadingText="Deleting..."
         closeOnConfirm={false}
       />
 

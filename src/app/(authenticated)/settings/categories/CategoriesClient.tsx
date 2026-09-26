@@ -160,7 +160,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
       )}
 
       <Card>
-        <CardHeader title="Add New Category" />
+        <CardHeader title="New Category" />
         <CardBody>
           <form onSubmit={handleAddCategory} className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -190,7 +190,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                 icon={<Icon name="plus" size={16} />}
                 disabled={!canManage || isMutating}
               >
-                Add Category
+                Create Category
               </Button>
             </FormFooter>
           </form>
@@ -205,8 +205,8 @@ export default function CategoriesClient({ initialCategories, canManage, initial
           loadFailed ? null : (
             <Empty
               size="sm"
-              title="No categories defined"
-              description="Add your first category above to get started."
+              title="No categories yet"
+              description="Create the first category above."
             />
           )
         ) : (
@@ -248,7 +248,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                         size="sm"
                         disabled={isMutating}
                       >
-                        Save
+                        Save Changes
                       </Button>
                     </div>
                   </div>

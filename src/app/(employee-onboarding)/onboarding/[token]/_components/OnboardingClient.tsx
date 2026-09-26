@@ -75,7 +75,6 @@ function PortalAccessSetup({ token, email }: { token: string; email: string }) {
             email={email}
             description="Create a password for your staff portal account. Your existing employee details will not be changed."
             buttonLabel="Set Up Portal Access"
-            loadingLabel="Setting up access..."
             onSuccess={() => router.push('/onboarding/success?type=portal_access')}
           />
         </CardBody>

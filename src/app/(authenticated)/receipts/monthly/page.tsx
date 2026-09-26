@@ -111,7 +111,7 @@ function toPercentDelta(fraction: number): number {
   return Math.round(fraction * 1000) / 10
 }
 
-const MONTHLY_SUBTITLE = 'Income and spending trends across recent months'
+const MONTHLY_SUBTITLE = 'Monthly: income and spending trends across recent months'
 
 export default async function ReceiptsMonthlyPage() {
   const [canView, canManage] = await Promise.all([
@@ -128,11 +128,11 @@ export default async function ReceiptsMonthlyPage() {
     return (
       <ReceiptsPageChrome subtitle={MONTHLY_SUBTITLE} navState={{ view: 'monthly' }} canManage={canManage}>
         <Card>
-          {/* No link to the Workspace here: it is the first tab in the row above. */}
+          {/* No link to the Receipts tab here: it is the first tab in the row above. */}
           <Empty
             size="sm"
             title="No receipt data yet"
-            description="Upload a bank statement on the Workspace tab to start tracking monthly trends."
+            description="Upload a bank statement on the Receipts tab to start tracking monthly trends."
           />
         </Card>
       </ReceiptsPageChrome>
@@ -283,12 +283,14 @@ export default async function ReceiptsMonthlyPage() {
         <StackedBreakdownChart
           title="Where Spending Went"
           data={spendingStack}
-          emptyDescription="No spending recorded for the selected period."
+          emptyTitle="No spending for this period"
+          emptyDescription="No spending was recorded in the selected period."
         />
         <StackedBreakdownChart
           title="Income Sources"
           data={incomeStack}
-          emptyDescription="No income recorded for the selected period."
+          emptyTitle="No income for this period"
+          emptyDescription="No income was recorded in the selected period."
         />
         <InsightsFeed items={insightItems} />
       </div>

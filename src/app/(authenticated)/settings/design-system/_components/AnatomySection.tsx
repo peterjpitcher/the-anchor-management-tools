@@ -31,13 +31,13 @@ const PAGE_LAYOUT_PROPS: readonly { prop: string; marker?: number; does: string;
     prop: 'subtitle',
     marker: 2,
     does: 'One line under the title.',
-    rule: 'Short, sentence case, no full stop. On a tab page it may name the tab.',
+    rule: 'Short, sentence case, no full stop. On a tab page it reads "<Tab>: <what this page is for>", and every tab has its own.',
   },
   {
     prop: 'headerActions',
     marker: 3,
     does: 'The page\'s actions: beside the title on a desktop, in the row under it on a phone.',
-    rule: 'size="sm", secondary first, the primary action (the main "New X") last. Refresh, Export and view switchers go here too.',
+    rule: 'size="sm", secondary first, the primary action (the main "New X") last. Refresh, Export CSV and view switchers go here too; filters never do. More than three actions: the extras go in a labelled "More" Dropdown.',
   },
   {
     prop: 'navItems',
@@ -54,7 +54,7 @@ const PAGE_LAYOUT_PROPS: readonly { prop: string; marker?: number; does: string;
   {
     prop: 'containerSize',
     does: 'The body\'s width.',
-    rule: 'Leave it at "full", except a page that is one form with no table: "md".',
+    rule: 'Leave it at "full", except a page whose content is one form with no table (a line-item editor counts as a table): "md".',
   },
   {
     prop: 'loading',
@@ -63,7 +63,7 @@ const PAGE_LAYOUT_PROPS: readonly { prop: string; marker?: number; does: string;
   },
   {
     prop: 'error, onRetry',
-    does: 'The header stays and the body shows a danger Alert, with a retry button when onRetry is set.',
+    does: 'The header stays and the body shows a danger Alert, with a Try Again button when onRetry is set.',
     rule: 'A failed load is never shown as an empty list.',
   },
 ]
@@ -125,7 +125,9 @@ function Illustrations(): React.JSX.Element {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Marker n={3} />
-                <Button size="sm">Export</Button>
+                <Button size="sm" variant="secondary">
+                  Export CSV
+                </Button>
                 <Button size="sm" variant="primary" icon={<Icon name="plus" size={14} />}>
                   New Invoice
                 </Button>

@@ -73,8 +73,8 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
       <Card>
         <Empty
           size="sm"
-          title="No Outstanding Todos"
-          description="No outstanding todos across events."
+          title="No outstanding todos"
+          description="Every event checklist is up to date."
         />
       </Card>
     )

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 
 /**
@@ -163,10 +164,9 @@ describe('private booking detail page chrome', () => {
     expect(
       screen.queryAllByRole('link').filter((link) => link.getAttribute('href') === '/private-bookings/booking-1/messages'),
     ).toEqual([])
-    // Header actions render in the desktop header and again in the phone nav row.
-    const contract = screen.getAllByRole('link', { name: 'Open Contract' })[0]
-    expect(contract).toHaveAttribute('href', '/private-bookings/booking-1/contract')
-    expect(contract).toHaveAttribute('target', '_blank')
+    // Header actions render in the desktop header and again in the phone nav row. Edit is a
+    // secondary link to the edit page.
+    expect(screen.getAllByRole('link', { name: 'Edit' })[0]).toHaveAttribute('href', '/private-bookings/booking-1/edit')
     expect(screen.queryByRole('navigation', { name: 'Breadcrumbs' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Back to Private Bookings' }).length).toBeGreaterThan(0)
     for (const title of ['Event Details', 'Booking Items', 'Financial Summary', 'Quick Actions', 'Booking Information', 'Audit Trail']) {
@@ -174,6 +174,15 @@ describe('private booking detail page chrome', () => {
     }
     // The workflow panels finish loading without throwing.
     await waitFor(() => expect(screen.getByRole('heading', { level: 3, name: 'Suppliers' })).toBeInTheDocument())
+
+    // With Change Status and Edit there are more than three actions, so Share Link and Open
+    // Contract sit in the labelled More menu; Open Contract opens the contract in a new tab.
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole('button', { name: 'More' })[0])
+    await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Open Contract' }))
+    expect(open).toHaveBeenCalledWith('/private-bookings/booking-1/contract', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
   })
 
   it('keeps the cancellation questions out of the live status alert', async () => {
@@ -187,13 +196,13 @@ describe('private booking detail page chrome', () => {
     )
 
     // Header actions render in the desktop header and again in the phone nav row.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Update Status' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Change Status' })[0])
     const changeTo = await screen.findByRole('group', { name: 'Change To' })
     fireEvent.click(within(changeTo).getByRole('radio', { name: 'Cancelled' }))
 
     const channel = await screen.findByLabelText('How was the cancellation received?')
     const alert = screen.getByRole('status')
-    expect(alert).toHaveTextContent('Cancel This Booking?')
+    expect(alert).toHaveTextContent('Cancel Booking')
     // A live region announces its content; the fields that follow it must not sit inside it.
     expect(alert).not.toContainElement(channel)
     expect(within(alert).queryByRole('combobox')).not.toBeInTheDocument()
@@ -255,7 +264,7 @@ describe('private bookings list page chrome', () => {
       expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
     }
     expect(screen.getAllByRole('link', { name: 'New Booking' })[0]).toHaveAttribute('href', '/private-bookings/new')
-    expect(screen.getByText('No bookings found')).toBeInTheDocument()
+    expect(screen.getByText('No bookings match these filters')).toBeInTheDocument()
   })
 
   it('hides the tabs a person cannot open', () => {
@@ -285,7 +294,7 @@ describe('private bookings list page chrome', () => {
     )
 
     expect(screen.getByText('Failed to load private bookings.')).toBeInTheDocument()
-    expect(screen.queryByText('No bookings found')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.queryByText('No bookings match these filters')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
   })
 })

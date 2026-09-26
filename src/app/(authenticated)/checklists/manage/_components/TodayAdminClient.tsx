@@ -22,8 +22,11 @@ import {
 } from '@/app/actions/checklists-admin'
 import type { ChecklistFlags } from '@/app/actions/checklists-admin'
 import type { TodayChecklistResult } from '@/app/actions/checklists'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { CHECKLIST_GENERATION_STATUS } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('today')
 
 type Settings = ChecklistFlags & { spotChecksPerDay: number }
 
@@ -108,7 +111,7 @@ export function TodayAdminClient({
   const status = today ? CHECKLIST_GENERATION_STATUS[today.generationStatus] : null
 
   return (
-    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+    <PageLayout {...LAYOUT}>
       {settingsError && (
         <Alert tone="danger" title="Could not load settings">
           {settingsError}
@@ -196,7 +199,7 @@ export function TodayAdminClient({
               loading={savingSpot}
               disabled={!settings}
             >
-              Save
+              Save Spot Checks
             </Button>
           </div>
         </CardBody>

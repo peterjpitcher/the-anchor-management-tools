@@ -292,7 +292,7 @@ export default function CustomerSearchInput({
       {showDropdown && searchResults.length === 0 && searchTerm.trim().length >= 2 && !isSearching && (
         <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-lg border border-border p-4">
           <p className={searchError ? 'text-sm text-danger-fg text-center' : 'text-sm text-text-muted text-center'} role={searchError ? 'alert' : undefined}>
-            {searchError ? 'Customer search failed. Please try again.' : 'No customers found'}
+            {searchError ? 'Customer search failed. Please try again.' : 'No customers match this search'}
           </p>
         </div>
       )}

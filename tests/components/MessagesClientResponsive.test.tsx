@@ -499,7 +499,7 @@ describe('MessagesClient, header actions', () => {
     expect((await screen.findAllByRole('button', { name: 'Bulk Messages' })).length).toBeGreaterThan(0)
   })
 
-  it('keeps the header to one primary button plus an overflow menu', async () => {
+  it('shows Refresh as a header button, the primary action and a labelled More menu', async () => {
     render(<MessagesClient />)
     await screen.findByRole('option', { name: /Jane Smith/i })
 
@@ -507,10 +507,8 @@ describe('MessagesClient, header actions', () => {
     // document, carries the actions beside the title.
     const header = screen.getAllByRole('heading', { name: 'Messages' }).at(-1)?.closest('div')?.parentElement
     expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk Messages' })).toBeInTheDocument()
-    expect(
-      within(header as HTMLElement).getByRole('button', { name: 'More inbox actions' }),
-    ).toBeInTheDocument()
-    expect(within(header as HTMLElement).queryByRole('button', { name: 'Refresh' })).toBeNull()
+    expect(within(header as HTMLElement).getByRole('button', { name: 'More' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
 
   it('confirms before marking every conversation read', async () => {
@@ -535,10 +533,10 @@ describe('MessagesClient, header actions', () => {
     await screen.findByRole('option', { name: /Sam Patel/i })
     await waitFor(() => expect(markConversationAsRead).toHaveBeenCalled())
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'More inbox actions' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'More' })[0])
     fireEvent.click(await screen.findByText('Mark All Read'))
 
-    expect(await screen.findByText('Mark Every Conversation as Read?')).toBeInTheDocument()
+    expect(await screen.findByText('Mark Every Conversation as Read')).toBeInTheDocument()
     // The bulk clear only runs once it has been confirmed.
     expect(markAllMessagesAsRead).not.toHaveBeenCalled()
 

@@ -576,9 +576,10 @@ export function DishDrawer({
               type="button"
               variant="primary"
               onClick={() => void handleSave()}
-              disabled={saving || loadingDetail}
+              disabled={loadingDetail}
+              loading={saving}
             >
-              {saving ? 'Saving...' : isEditing ? 'Update Dish' : 'Create Dish'}
+              {isEditing ? 'Save Changes' : 'Create Dish'}
             </Button>
           </FormFooter>
         }
@@ -642,10 +643,10 @@ export function DishDrawer({
                       variant="secondary"
                       size="xs"
                       onClick={() => void handleVerifyAllergens()}
-                      disabled={verifying}
+                      loading={verifying}
                       icon={<Icon name="alertTriangle" size={14} className={ALLERGEN_VERIFICATION_UI.unverified.iconClass} />}
                     >
-                      {verifying ? 'Verifying...' : 'Verify Allergens'}
+                      Verify Allergens
                     </Button>
                   )
                 )}
@@ -673,6 +674,7 @@ export function DishDrawer({
         title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
         confirmLabel="Discard"
+        cancelLabel="Keep Editing"
         tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {
@@ -684,7 +686,7 @@ export function DishDrawer({
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete Dish?"
+        title="Delete Dish"
         message={
           dish
             ? `Are you sure you want to delete ${dish.name}? This cannot be undone.`

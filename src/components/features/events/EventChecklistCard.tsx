@@ -177,7 +177,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                   size="sm"
                   variant="minimal"
                   centered={false}
-                  title="All Caught Up"
+                  title="All caught up"
                   description="Every checklist item is complete for this event."
                 />
               ) : (
@@ -220,7 +220,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
             <SubHeading>Completed Tasks</SubHeading>
             <div className="mt-3 space-y-2">
               {completedItems.length === 0 ? (
-                <Empty size="sm" variant="minimal" centered={false} title="No Tasks Completed Yet" />
+                <Empty size="sm" variant="minimal" centered={false} title="No tasks completed yet" />
               ) : (
                 completedItems.map((item) => (
                   <div

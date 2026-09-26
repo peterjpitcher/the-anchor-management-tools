@@ -14,13 +14,13 @@ export const EXPENSES_NAV: HeaderNavItem[] = [
 /** The chrome of the list page, shared by its loaded and failed states. */
 export const EXPENSES_LIST_LAYOUT = {
   title: 'Expenses',
-  subtitle: 'Track and manage business expenses with receipt images',
+  subtitle: 'Expenses: track and manage business expenses with receipt images',
   navItems: EXPENSES_NAV,
 }
 
 /** The chrome of the insights page, shared by its loaded and failed states. */
 export const EXPENSES_INSIGHTS_LAYOUT = {
   title: 'Expenses',
-  subtitle: 'Spend over time and by company',
+  subtitle: 'Insights: spend over time and by company',
   navItems: EXPENSES_NAV,
 }

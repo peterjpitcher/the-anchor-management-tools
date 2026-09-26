@@ -255,7 +255,7 @@ export function TemplateModal({
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={saving}>
-            {isEdit ? 'Save Task' : 'Create Task'}
+            {isEdit ? 'Save Changes' : 'Create Task'}
           </Button>
         </>
       }

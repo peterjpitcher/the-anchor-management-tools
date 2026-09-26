@@ -71,6 +71,8 @@ import {
   Checkbox,
   ConfirmDialog,
   DescriptionList,
+  Dropdown,
+  DropdownItem,
   Empty,
   Field,
   Fieldset,
@@ -115,6 +117,7 @@ import {
   CANCELLATION_OUTCOME_TONE,
   privateBookingPaymentTextClass,
   privateBookingPaymentTone,
+  privateBookingStatusLabel,
   privateBookingStatusTone,
   type CancellationOutcome,
   type PrivateBookingPaymentState,
@@ -345,9 +348,20 @@ function PaymentModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title={type === "deposit" ? "Record Deposit Payment" : "Record Payment"}
+      title="Record Payment"
+      description={type === "deposit" ? "The booking's deposit" : "Towards the remaining balance"}
+      footer={
+        <>
+          <Button type="button" onClick={onClose} variant="secondary">
+            Cancel
+          </Button>
+          <Button type="submit" form={`record-payment-${type}`} variant="primary" loading={isSubmitting}>
+            Record Payment
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
+      <form id={`record-payment-${type}`} onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         {type === "deposit" ? (
           // The deposit is fixed, so the amount is shown in a read-only field rather than typed.
           <Input
@@ -389,15 +403,6 @@ function PaymentModal({
             />
           ))}
         </Fieldset>
-
-        <FormFooter>
-          <Button type="button" onClick={onClose} variant="secondary">
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={isSubmitting}>
-            {isSubmitting ? "Recording..." : "Record Payment"}
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   );
@@ -716,16 +721,43 @@ function StatusModal({
     newStatus === 'completed' && currentStatus !== 'completed';
   const isDestructive = newStatus === 'cancelled';
 
-  const confirmLabel = isSubmitting
-    ? 'Updating...'
-    : newStatus === 'cancelled'
-      ? 'Cancel Booking and Send SMS'
-      : newStatus === 'completed'
-        ? 'Mark Complete and Send SMS'
-        : 'Update Status';
+  // The customer message each choice sends is previewed in the dialog, so the button names only
+  // the action. Next to Cancel Booking the dismiss button is Keep Booking, never a second Cancel.
+  const confirmLabel = newStatus === 'cancelled'
+    ? 'Cancel Booking'
+    : newStatus === 'completed'
+      ? 'Mark as Complete'
+      : 'Change Status';
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Change Booking Status" mobileFullscreen>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Change Status"
+      mobileFullscreen
+      footer={
+        availableStatuses.length > 0 ? (
+          <>
+            <Button type="button" onClick={onClose} variant="secondary">
+              {isDestructive ? 'Keep Booking' : 'Cancel'}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={newStatus === currentStatus}
+              loading={isSubmitting}
+              variant={isDestructive ? 'danger' : 'primary'}
+            >
+              {confirmLabel}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" onClick={onClose} variant="secondary">
+            Close
+          </Button>
+        )
+      }
+    >
       <div className="space-y-4">
         <div>
           <p className="text-sm text-text-muted">Current status:</p>
@@ -761,11 +793,11 @@ function StatusModal({
               <>
                 {/* The alert only reports the outcome; the questions it raises sit below it, so no
                     form field is inside a live region. */}
-                <Alert tone="danger" title="Cancel This Booking?" role="status">
+                <Alert tone="danger" title="Cancel Booking" role="status">
                   {previewLoading ? (
                     <div className="flex items-center gap-2">
                       <Spinner size="sm" />
-                      Computing outcome...
+                      Computing outcome…
                     </div>
                   ) : cancelPreview?.error ? (
                     <p>{cancelPreview.error}</p>
@@ -889,12 +921,12 @@ function StatusModal({
             )}
 
             {showCompletePreview && (
-              <Alert tone="info" title="Mark This Booking as Complete?" role="status">
+              <Alert tone="info" title="Mark as Complete" role="status">
                 <div className="space-y-3">
                 {previewLoading ? (
                   <div className="flex items-center gap-2">
                     <Spinner size="sm" />
-                    Loading preview...
+                    Loading preview…
                   </div>
                 ) : completePreview ? (
                   <div>
@@ -914,30 +946,12 @@ function StatusModal({
               </Alert>
             )}
 
-            <FormFooter>
-              <Button type="button" onClick={onClose} variant="secondary">
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting || newStatus === currentStatus}
-                loading={isSubmitting}
-                variant={isDestructive ? 'danger' : 'primary'}
-              >
-                {confirmLabel}
-              </Button>
-            </FormFooter>
           </>
         ) : (
           <Empty
             size="sm"
-            title="No status changes available for completed bookings"
-            action={
-              <Button onClick={onClose} variant="secondary">
-                Close
-              </Button>
-            }
+            title="No status changes available"
+            description="A completed booking cannot change status."
           />
         )}
       </div>
@@ -1119,10 +1133,20 @@ function AddItemModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title="Add Booking Item"
+      title="Add Item"
       size="lg"
+      footer={
+        <>
+          <Button type="button" onClick={onClose} variant="secondary">
+            Cancel
+          </Button>
+          <Button type="submit" form="pb-add-item-form" variant="primary" loading={isSubmitting}>
+            Add Item
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
+      <form id="pb-add-item-form" onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         {/* Item Type Selection */}
         <Fieldset legend="Item Type">
           <Segmented
@@ -1295,15 +1319,6 @@ function AddItemModal({
           />
         </Field>
 
-        {/* Actions */}
-        <FormFooter>
-          <Button type="button" onClick={onClose} variant="secondary">
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={isSubmitting}>
-            {isSubmitting ? "Adding..." : "Add Item"}
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   );
@@ -1362,8 +1377,29 @@ function DiscountModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount" mobileFullscreen>
-      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Apply Discount"
+      mobileFullscreen
+      footer={
+        <>
+          <Button type="button" onClick={onClose} variant="secondary">
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="pb-discount-form"
+            variant="primary"
+            disabled={!discountAmount}
+            loading={isSubmitting}
+          >
+            Apply Discount
+          </Button>
+        </>
+      }
+    >
+      <form id="pb-discount-form" onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         <Fieldset legend="Discount Type">
           <Segmented
             aria-label="Discount type"
@@ -1419,19 +1455,6 @@ function DiscountModal({
           </div>
         )}
 
-        <FormFooter>
-          <Button type="button" onClick={onClose} variant="secondary">
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!discountAmount}
-            loading={isSubmitting}
-          >
-            {isSubmitting ? "Applying..." : "Apply Discount"}
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   );
@@ -1519,8 +1542,23 @@ function EditItemModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
-      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Edit Item"
+      mobileFullscreen
+      footer={
+        <>
+          <Button type="button" onClick={onClose} variant="secondary">
+            Cancel
+          </Button>
+          <Button type="submit" form="pb-edit-item-form" variant="primary" loading={isSubmitting}>
+            Save Changes
+          </Button>
+        </>
+      }
+    >
+      <form id="pb-edit-item-form" onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         <Input label="Description" value={item.description} readOnly />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1592,14 +1630,6 @@ function EditItemModal({
           </div>
         </div>
 
-        <FormFooter>
-          <Button type="button" onClick={onClose} variant="secondary">
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={isSubmitting}>
-            {isSubmitting ? "Saving..." : "Save Changes"}
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   );
@@ -1992,7 +2022,7 @@ export default function PrivateBookingDetailClient({
           toast.success(`Invoice ${result.invoiceNumber} sent`);
         } else {
           toast.error(
-            `Invoice ${result.invoiceNumber} was created but the email did not send. Use Retry sending.`,
+            `Invoice ${result.invoiceNumber} was created but the email did not send. Use Email Invoice.`,
           );
         }
         router.refresh();
@@ -2227,13 +2257,13 @@ export default function PrivateBookingDetailClient({
   // the booking shows the customer's name.
   const layoutProps = {
     title: booking ? booking.customer_full_name || booking.customer_name : 'Private Booking',
-    subtitle: booking?.event_type ?? undefined,
+    subtitle: 'Overview: the booking at a glance',
     backButton: PB_BACK_TO_LIST,
     navItems: PB_DETAIL_NAV(bookingId),
   }
 
   if (loading) {
-    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking..." />
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking…" />
   }
 
   if (!booking) {
@@ -2404,31 +2434,60 @@ export default function PrivateBookingDetailClient({
       {...layoutProps}
       headerActions={
         <>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleCopyPortalLink}
-            loading={isCopyingLink}
-            icon={<Icon name="link" size={16} />}
-            aria-label="Copy customer portal link to clipboard"
-          >
-            Share Link
-          </Button>
-          {/* The contract is a PDF that opens outside the app, so it is an action, not a tab. */}
-          <LinkButton
-            href={privateBookingContractHref(bookingId)}
-            target="_blank"
-            variant="secondary"
-            size="sm"
-            icon={<Icon name="externalLink" size={16} />}
-          >
-            Open Contract
-          </LinkButton>
+          {/* With Change Status and Edit there are more than three actions, so Share Link and
+              Open Contract collapse into the labelled More menu. The contract is a PDF that opens
+              outside the app, so it is an action, not a tab. */}
+          {canEdit ? (
+            <Dropdown
+              width="auto"
+              trigger={
+                <Button type="button" variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+                  More
+                </Button>
+              }
+            >
+              <DropdownItem
+                icon={<Icon name="link" size={16} />}
+                onClick={() => void handleCopyPortalLink()}
+                disabled={isCopyingLink}
+              >
+                Share Link
+              </DropdownItem>
+              <DropdownItem
+                icon={<Icon name="externalLink" size={16} />}
+                onClick={() => window.open(privateBookingContractHref(bookingId), '_blank', 'noopener,noreferrer')}
+              >
+                Open Contract
+              </DropdownItem>
+            </Dropdown>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleCopyPortalLink}
+                loading={isCopyingLink}
+                icon={<Icon name="link" size={16} />}
+                aria-label="Copy customer portal link to clipboard"
+              >
+                Share Link
+              </Button>
+              <LinkButton
+                href={privateBookingContractHref(bookingId)}
+                target="_blank"
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="externalLink" size={16} />}
+              >
+                Open Contract
+              </LinkButton>
+            </>
+          )}
           {canEdit && (
             <>
-              <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>Update Status</Button>
-              <LinkButton variant="primary" size="sm" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
+              <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>Change Status</Button>
+              <LinkButton variant="secondary" size="sm" href={`/private-bookings/${bookingId}/edit`}>Edit</LinkButton>
             </>
           )}
         </>
@@ -2468,7 +2527,14 @@ export default function PrivateBookingDetailClient({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card>
-            <CardHeader title="Event Details" />
+            <CardHeader
+              title="Event Details"
+              action={
+                <Badge tone={privateBookingStatusTone(booking.status)}>
+                  {privateBookingStatusLabel(booking.status)}
+                </Badge>
+              }
+            />
             <CardBody className="space-y-4">
               <DescriptionList
                 items={[
@@ -2642,10 +2708,10 @@ export default function PrivateBookingDetailClient({
                 <Empty
                   size="sm"
                   icon={<Icon name="clipboardList" size={48} />}
-                  title="No items added yet"
+                  title="No items yet"
                   description={
                     canEdit
-                      ? "Click 'Add Item' to build this booking."
+                      ? "Build this booking with Add Item."
                       : "Items will appear here once added."
                   }
                 />
@@ -2764,9 +2830,9 @@ export default function PrivateBookingDetailClient({
                       size="sm"
                       variant="primary"
                       loading={addingNote}
-                      disabled={addingNote || noteText.trim().length === 0}
+                      disabled={noteText.trim().length === 0}
                     >
-                      Save Note
+                      Add Note
                     </Button>
                   </FormFooter>
                 </form>
@@ -3193,13 +3259,11 @@ export default function PrivateBookingDetailClient({
                   variant="secondary"
                   className="w-full"
                   onClick={handleDownloadContract}
-                  disabled={downloadingContract}
+                  loading={downloadingContract}
                   icon={<Icon name="file" size={16} />}
                   iconRight={<Icon name="download" size={16} />}
                 >
-                  <span className="flex-1 text-left">
-                    {downloadingContract ? 'Preparing Contract…' : 'Download Contract'}
-                  </span>
+                  <span className="flex-1 text-left">Download Contract</span>
                 </Button>
 
                 <LinkButton
@@ -3218,13 +3282,12 @@ export default function PrivateBookingDetailClient({
                   variant="secondary"
                   className="w-full"
                   onClick={handleSendContract}
-                  disabled={sendingContract || !booking.contact_email}
-                  icon={<Icon name="file" size={16} />}
+                  disabled={!booking.contact_email}
+                  loading={sendingContract}
+                  icon={<Icon name="mail" size={16} />}
                   iconRight={<Icon name="chevronRight" size={16} />}
                 >
-                  <span className="flex-1 text-left">
-                    {sendingContract ? 'Sending Contract…' : 'Send Contract to Customer'}
-                  </span>
+                  <span className="flex-1 text-left">Email Contract</span>
                 </Button>
                 {booking.contract_sent_at ? (
                   <p className="text-xs text-text-muted px-1">
@@ -3283,9 +3346,9 @@ export default function PrivateBookingDetailClient({
                               variant="link"
                               size="sm"
                               onClick={handleRetryInvoiceEmail}
-                              disabled={retryingInvoiceEmail}
+                              loading={retryingInvoiceEmail}
                             >
-                              {retryingInvoiceEmail ? 'Sending…' : 'Retry Sending'}
+                              Email Invoice
                             </Button>
                           )}
                           {/* The way back when the booked items change after
@@ -3411,9 +3474,9 @@ export default function PrivateBookingDetailClient({
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
         onConfirm={() => deleteConfirm && handleDeleteItem(deleteConfirm)}
-        title="Delete Item?"
-        message="Are you sure you want to delete this item? This action cannot be undone."
-        confirmLabel="Delete Item"
+        title="Delete Item"
+        message="This removes the item and its price from the booking. This cannot be undone."
+        confirmLabel="Delete"
         tone="danger"
       />
 
@@ -3508,7 +3571,7 @@ export default function PrivateBookingDetailClient({
             setCancelInvoiceReason('');
           }
         }}
-        title="Cancel This Invoice"
+        title="Cancel Invoice"
         mobileFullscreen
         footer={
           <>

@@ -381,6 +381,7 @@ export default function CustomersClient({
     return (
       <PageLayout
         title={editingCustomer ? 'Edit Customer' : 'New Customer'}
+        subtitle={editingCustomer ? "Update this customer's name and contact details" : 'Create a new customer'}
         backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: closeForm }}
         containerSize="md"
       >
@@ -414,13 +415,13 @@ export default function CustomersClient({
   return (
     <PageLayout
       title="Customers"
-      // A failed read reports zero customers, so the count is only shown once a read succeeds.
-      subtitle={loadError ? undefined : `${totalCount.toLocaleString()} customers`}
+      // The count lives in the figures below, which are hidden after a failed read.
+      subtitle="Customers: everyone who has booked or been added"
       navItems={CUSTOMERS_NAV}
       headerActions={
         canManageCustomers ? (
           <>
-            <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
+            <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import Customers</Button>
             <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openCreateCustomer}>
               New Customer
             </Button>
@@ -492,8 +493,12 @@ export default function CustomersClient({
           <CardBody>
             <Empty
               size="sm"
-              title="No customers found"
-              description="Adjust your search or add a new customer."
+              title={searchTerm || smsFilter !== 'all' ? 'No customers match these filters' : 'No customers yet'}
+              description={
+                searchTerm || smsFilter !== 'all'
+                  ? 'Try a different search or SMS filter, or add a new customer.'
+                  : 'Customers appear here once they book or are added.'
+              }
               action={
                 canManageCustomers ? (
                   <Button size="sm" onClick={openCreateCustomer}>New Customer</Button>

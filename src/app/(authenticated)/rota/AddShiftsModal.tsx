@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import { Badge, Button, Checkbox, Fieldset, FormFooter, Modal, Select, toast, Icon } from '@/ds';
+import { Badge, Button, Checkbox, Fieldset, Modal, Select, toast, Icon } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
@@ -365,15 +365,12 @@ export default function AddShiftsModal({
       description={weekSummary || undefined}
       width="lg"
       footer={
-        <FormFooter
-          className="w-full"
-          start={
-            <>
-              <strong className="text-text-strong">{totalSelected}</strong>{' '}
-              {totalSelected === 1 ? 'shift' : 'shifts'} selected
-            </>
-          }
-        >
+        <>
+          {/* Left on desktop, under the buttons on phones: how many shifts will be added. */}
+          <p className="self-center text-sm text-text-muted sm:mr-auto">
+            <strong className="text-text-strong">{totalSelected}</strong>{' '}
+            {totalSelected === 1 ? 'shift' : 'shifts'} selected
+          </p>
           <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
@@ -381,11 +378,12 @@ export default function AddShiftsModal({
             type="button"
             variant="primary"
             onClick={handleSubmit}
-            disabled={isPending || totalSelected === 0 || floatingValidationError}
+            disabled={totalSelected === 0 || floatingValidationError}
+            loading={isPending}
           >
-            {isPending ? 'Adding…' : `Add ${totalSelected} Shift${totalSelected !== 1 ? 's' : ''}`}
+            {`Add ${totalSelected} Shift${totalSelected !== 1 ? 's' : ''}`}
           </Button>
-        </FormFooter>
+        </>
       }
     >
       <div className="space-y-4">

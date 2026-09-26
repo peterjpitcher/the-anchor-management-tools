@@ -20,6 +20,7 @@ export function InsightsWindowPicker({ options, value }: InsightsWindowPickerPro
   return (
     <Segmented
       aria-label="Time window"
+      size="sm"
       options={options.map((option) => ({ id: option.key, label: option.label }))}
       value={value}
       onChange={(id) => router.push(`/customers/insights?window=${id}`)}

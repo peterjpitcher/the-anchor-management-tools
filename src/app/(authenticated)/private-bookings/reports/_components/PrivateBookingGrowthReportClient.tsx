@@ -250,7 +250,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
           <CardHeader title="Occasion Mix" subtitle="Broad categories combine spelling and naming variations." />
           <CardBody>
             {occasionMix.length === 0 ? (
-              <Empty size="sm" icon="chart" title="No occasion data for this selection" />
+              <Empty size="sm" icon="chart" title="No occasions match these filters" />
             ) : (
               <BarChart
                 data={occasionMix.map((row) => ({ label: row.category, value: row.bookings }))}

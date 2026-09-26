@@ -16,7 +16,7 @@ type Props = {
   canManage: boolean
 }
 
-const BANK_BALANCE_SUBTITLE = 'How the account balance has moved across imported bank statements'
+const BANK_BALANCE_SUBTITLE = 'Bank Balance: how the account balance has moved across imported bank statements'
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -65,7 +65,7 @@ export function BankBalanceClient({ points, sourceRowCount, canManage }: Props) 
         <Card>
           <Empty
             size="sm"
-            title="No bank balances available"
+            title="No bank balances yet"
             description="Import a bank statement with a Balance column to start this chart."
           />
         </Card>

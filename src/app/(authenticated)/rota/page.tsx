@@ -4,7 +4,7 @@ import { generateRotaFeedToken } from '@/lib/portal/calendar-token';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PageLayout, Icon, LinkButton } from '@/ds';
-import RotaFeedButton from './RotaFeedButton';
+import RotaMoreMenu from './RotaMoreMenu';
 import { PartialLoadAlert } from './_shared/PartialLoadAlert';
 import {
   getOrCreateRotaWeek,
@@ -153,7 +153,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   // One header for every state, so a failed load keeps the page's title, week and tabs.
   const layoutProps = {
     title: 'Rota',
-    subtitle: formatWeekRange(weekStart, weekEnd),
+    subtitle: `Rota: the week of ${formatWeekRange(weekStart, weekEnd)}`,
     navItems,
   };
 
@@ -323,24 +323,27 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       {...layoutProps}
       headerActions={
         <>
-          <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
-          {/* Shift Templates and Rota Settings are tabs, so only the settings outside the tab row sit here. */}
-          {canManageSettings && (
-            <>
-              <LinkButton href="/settings/pay-bands" variant="secondary" size="sm" icon={<Icon name="cash" size={16} />}>Pay Bands</LinkButton>
-              <LinkButton href="/settings/budgets" variant="secondary" size="sm" icon={<Icon name="barChart" size={16} />}>Budgets</LinkButton>
-            </>
-          )}
+          {/* The calendar feed and the settings outside the tab row (Shift Templates and Rota
+              Settings are tabs) sit in the More menu, so the header shows at most three actions. */}
+          <RotaMoreMenu
+            feedUrl={feedUrl}
+            showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)}
+            links={canManageSettings ? [
+              { key: 'pay-bands', label: 'Pay Bands', href: '/settings/pay-bands', icon: 'cash' },
+              { key: 'budgets', label: 'Budgets', href: '/settings/budgets', icon: 'barChart' },
+            ] : []}
+          />
           <LinkButton
             href={`/api/rota/pdf?week=${weekStart}`}
             download
             size="sm"
             variant="secondary"
-            icon={<Icon name="printer" size={16} />}
+            icon={<Icon name="download" size={16} />}
           >
             Download PDF
           </LinkButton>
-          {/* The week's publish status and, for publishers, the primary Publish action, last. */}
+          {/* For publishers, the primary Publish action, last. The week's status is the Badge on
+              the Schedule card. */}
           <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
         </>
       }

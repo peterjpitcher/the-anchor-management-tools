@@ -3,15 +3,24 @@
 import { useState, type FormEvent } from 'react'
 
 import { unsubscribeMarketingEmailAddress } from '@/app/actions/marketing-contacts'
-import { Button, Card, CardBody, CardHeader, Input, toast } from '@/ds'
+import { Button, Card, CardBody, CardHeader, ConfirmDialog, Input, toast } from '@/ds'
 
 export function UnsubscribeEmailCard() {
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  // The address cannot be put back from this screen, so the red button asks first. The address
+  // being confirmed is held separately, so the dialog keeps its text while the field clears.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const value = email.trim()
+    if (!value) return
+    setPendingEmail(value)
+  }
+
+  async function handleUnsubscribe() {
+    const value = pendingEmail
     if (!value) return
 
     setSaving(true)
@@ -67,6 +76,16 @@ export function UnsubscribeEmailCard() {
           Marketing only. Booking confirmations and reminders will still be sent.
         </p>
       </CardBody>
+
+      <ConfirmDialog
+        open={pendingEmail !== null}
+        onClose={() => setPendingEmail(null)}
+        onConfirm={handleUnsubscribe}
+        title="Unsubscribe Email Address"
+        message={`Stop marketing email to ${pendingEmail ?? ''}? The address goes on the do-not-contact list, so an import cannot add it back. Booking confirmations and reminders still send.`}
+        confirmLabel="Unsubscribe"
+        tone="danger"
+      />
     </Card>
   )
 }

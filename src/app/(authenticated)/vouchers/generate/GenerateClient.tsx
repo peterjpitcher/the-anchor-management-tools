@@ -317,7 +317,17 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
   if (phase === 'blocked') {
     return (
       <>
-        <Alert tone="warning" title="This batch cannot be rendered right now">
+        <Alert
+          tone="warning"
+          title="This batch cannot be rendered right now"
+          actions={
+            batchId && refusal?.retryable !== false ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => void triggerRender(batchId)}>
+                Try Again
+              </Button>
+            ) : undefined
+          }
+        >
           {refusal?.message ?? 'This batch cannot be rendered at the moment.'}
         </Alert>
         {batchId && (
@@ -330,11 +340,6 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
           <Button variant="secondary" onClick={resetForm}>
             Start a New Batch
           </Button>
-          {batchId && refusal?.retryable !== false && (
-            <Button variant="primary" onClick={() => void triggerRender(batchId)}>
-              Try the Render Again
-            </Button>
-          )}
         </FormFooter>
       </>
     )
@@ -343,16 +348,23 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
   if (phase === 'failed') {
     return (
       <>
-        <Alert tone="danger" title="The PDF render failed">
+        <Alert
+          tone="danger"
+          title="The PDF render failed"
+          actions={
+            batchId ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => void triggerRender(batchId)}>
+                Try Again
+              </Button>
+            ) : undefined
+          }
+        >
           {progress?.batch.renderError ?? error ?? 'Unknown render error.'}
         </Alert>
         {batchId && (
           <FormFooter>
             <Button variant="secondary" onClick={resetForm}>
               Start a New Batch
-            </Button>
-            <Button variant="primary" onClick={() => void triggerRender(batchId)}>
-              Retry Render
             </Button>
           </FormFooter>
         )}
@@ -411,7 +423,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
                 href={`/api/vouchers/batches/${batchId}/manifest`}
                 download
               >
-                Download Manifest CSV
+                Export CSV
               </LinkButton>
             )}
             <Button variant="ghost" onClick={resetForm}>

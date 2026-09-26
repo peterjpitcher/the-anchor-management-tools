@@ -303,7 +303,7 @@ export function TripForm({
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSubmit} loading={isPending} disabled={isLockedShape}>
-            {editingTrip ? 'Save Changes' : 'Save Trip'}
+            {editingTrip ? 'Save Changes' : 'Create Trip'}
           </Button>
         </>
       }

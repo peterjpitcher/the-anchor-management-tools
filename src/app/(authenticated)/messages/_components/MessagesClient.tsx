@@ -540,36 +540,21 @@ export function MessagesClient() {
 
   const unreadLabel = formatUnreadCount(totalUnreadCount, unreadIsCapped)
 
-  const overflowActions = (
+  // Refresh, the holding queue and Bulk Messages stay in the header; the rest collapse into a
+  // labelled More menu, so the header never holds more than three actions plus More.
+  const showMarkAllRead = canWriteReadState && totalUnreadCount > 0
+  const overflowActions = showMarkAllRead || canManageTemplates ? (
     <Dropdown
       align="right"
       trigger={
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Icon name="moreVertical" size={16} />}
-          aria-label="More inbox actions"
-        />
+        <Button type="button" variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+          More
+        </Button>
       }
     >
-      {/* Below the shell breakpoint the header row has no room for a third
-          button beside the title, so the holding queue moves into the menu. */}
-      {unmatchedCount > 0 && (
-        <div className="shell:hidden">
-          <DropdownItem
-            onClick={() => router.push('/messages/holding')}
-            icon={<Icon name="alertCircle" size={14} />}
-          >
-            Holding Queue ({unmatchedCount})
-          </DropdownItem>
-        </div>
-      )}
-      <DropdownItem onClick={handleRetryList} icon={<Icon name="refresh" size={14} />}>
-        Refresh
-      </DropdownItem>
-      {canWriteReadState && totalUnreadCount > 0 && (
+      {showMarkAllRead && (
         <DropdownItem onClick={() => setConfirmMarkAllOpen(true)} icon={<Icon name="check" size={14} />}>
-          {markingAll ? 'Marking all read...' : 'Mark All Read'}
+          {markingAll ? 'Marking all read…' : 'Mark All Read'}
         </DropdownItem>
       )}
       {canManageTemplates && (
@@ -581,7 +566,7 @@ export function MessagesClient() {
         </DropdownItem>
       )}
     </Dropdown>
-  )
+  ) : null
 
   return (
     <PageLayout
@@ -593,17 +578,15 @@ export function MessagesClient() {
       }
       headerActions={
         <>
-          {overflowActions}
+          <Button variant="secondary" size="sm" onClick={handleRetryList} loading={listLoading}>
+            Refresh
+          </Button>
           {unmatchedCount > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="hidden shell:inline-flex"
-              onClick={() => router.push('/messages/holding')}
-            >
+            <Button variant="secondary" size="sm" onClick={() => router.push('/messages/holding')}>
               Holding Queue ({unmatchedCount})
             </Button>
           )}
+          {overflowActions}
           {canSendBulk && (
             <Button variant="primary" size="sm" onClick={() => router.push('/messages/bulk')}>
               Bulk Messages
@@ -746,7 +729,7 @@ export function MessagesClient() {
         open={confirmMarkAllOpen}
         onClose={() => setConfirmMarkAllOpen(false)}
         onConfirm={() => void handleMarkAllAsRead()}
-        title="Mark Every Conversation as Read?"
+        title="Mark Every Conversation as Read"
         message="This clears the unread flag on every inbound message for the whole team, including conversations that are not shown here. It cannot be undone in bulk."
         confirmLabel="Mark All Read"
         tone="primary"

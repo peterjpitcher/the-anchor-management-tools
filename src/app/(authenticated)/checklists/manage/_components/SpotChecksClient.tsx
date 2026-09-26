@@ -16,8 +16,11 @@ import {
 } from '@/ds'
 import { recordSpotCheck } from '@/app/actions/checklists-spotcheck'
 import type { SpotCheckView } from '@/app/actions/checklists-spotcheck'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { CHECKLIST_SPOT_CHECK_STATUS } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('spot-checks')
 
 interface SpotChecksClientProps {
   items: SpotCheckView[]
@@ -47,7 +50,7 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
 
   if (error) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load spot checks">
           {error}
         </Alert>
@@ -57,7 +60,7 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
 
   if (items.length === 0) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Card>
           <Empty
             title="Nothing to check yet"
@@ -69,7 +72,7 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
   }
 
   return (
-    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+    <PageLayout {...LAYOUT}>
       {items.map((item) => {
         const recorded = item.state === 'recorded'
         const status =
@@ -107,9 +110,11 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
                     >
                       Pass
                     </Button>
+                    {/* Secondary, not danger: a fail is a result to record, not something destroyed,
+                        and a danger button always opens a danger confirm. */}
                     <Button
                       type="button"
-                      variant="danger"
+                      variant="secondary"
                       onClick={() => record(item, 'fail')}
                       loading={busyId === item.id}
                     >

@@ -8,7 +8,7 @@ import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 const STATUS_VALUES = new Set(receiptTransactionStatusSchema.options)
-const BULK_SUBTITLE = 'Group similar transactions, confirm AI suggestions and roll out rules in one sweep'
+const BULK_SUBTITLE = 'Bulk: group similar transactions, confirm AI suggestions and roll out rules in one sweep'
 
 type BulkStatus = ReceiptTransaction['status']
 

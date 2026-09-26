@@ -16,7 +16,6 @@ import {
   ConfirmDialog,
   Empty,
   Fieldset,
-  FormFooter,
   Icon,
   IconButton,
   Input,
@@ -268,7 +267,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
             action={
               canManageUI ? (
                 <Button variant="primary" onClick={() => setShowForm(true)} icon={<Icon name="plus" size={16} />}>
-                  Create Your First Label
+                  New Label
                 </Button>
               ) : undefined
             }
@@ -325,9 +324,19 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
         <Modal
           open={showForm}
           onClose={resetForm}
-          title={editingLabel ? 'Edit Customer Label' : 'New Customer Label'}
+          title={editingLabel ? 'Edit Label' : 'New Label'}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+              <Button type="submit" form="customer-label-form" variant="primary" disabled={!canManageUI}>
+                {editingLabel ? 'Save Changes' : 'Create Label'}
+              </Button>
+            </>
+          }
         >
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="customer-label-form" onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="Name"
               required
@@ -399,15 +408,6 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                 })}
               </div>
             </Fieldset>
-
-            <FormFooter>
-              <Button type="button" variant="secondary" onClick={resetForm}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" disabled={!canManageUI}>
-                {editingLabel ? 'Save Changes' : 'Create Label'}
-              </Button>
-            </FormFooter>
           </form>
         </Modal>
       )}
@@ -416,7 +416,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
         <ConfirmDialog
           open
           title="Delete Label"
-          message={`Are you sure you want to delete "${deleteConfirm.name}"? This action cannot be undone.`}
+          message={`Delete "${deleteConfirm.name}"? It comes off every customer who has it. This cannot be undone.`}
           confirmLabel="Delete"
           tone="danger"
           onClose={() => setDeleteConfirm(null)}

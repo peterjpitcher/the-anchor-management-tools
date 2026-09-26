@@ -55,8 +55,7 @@ describe('Edit recurring invoice', () => {
     fireEvent.click(back)
     expect(routerPush).toHaveBeenLastCalledWith('/invoices/recurring/recurring-1')
 
-    routerPush.mockClear()
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(routerPush).toHaveBeenLastCalledWith('/invoices/recurring/recurring-1')
+    // Cancel is a link to the same place as the back button.
+    expect(await screen.findByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/invoices/recurring/recurring-1')
   })
 })

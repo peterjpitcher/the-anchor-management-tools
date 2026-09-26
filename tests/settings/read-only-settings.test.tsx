@@ -123,7 +123,7 @@ describe('Settings read-only behaviour', () => {
       expect(checkbox).toBeDisabled()
     })
 
-    expect(screen.getByRole('button', { name: /Save Changes/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Save Opening Hours/i })).toBeDisabled()
   })
 
   it('renders customer labels read-only state without manage permission', () => {

@@ -93,7 +93,7 @@ export default async function EmployeeBirthdaysPage() {
   return (
     <PageLayout
       title="Employees"
-      subtitle="Birthdays through the year"
+      subtitle="Birthdays: every employee birthday, month by month"
       navItems={EMPLOYEES_NAV}
       headerActions={headerActions}
     >
@@ -111,8 +111,8 @@ export default async function EmployeeBirthdaysPage() {
           <Empty
             size="sm"
             icon={<Icon name="cake" size={40} />}
-            title="No birthdays found"
-            description="No active employees have birthdays recorded."
+            title="No birthdays yet"
+            description="No active employees have a date of birth recorded."
           />
         </Card>
       ) : (

@@ -164,7 +164,7 @@ export function MileageReportDialog({
     <Modal
       open={open}
       onClose={handleClose}
-      title="Download Mileage Report"
+      title="Download Report"
       description="The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment."
       footer={
         <>
@@ -172,7 +172,7 @@ export function MileageReportDialog({
             Cancel
           </Button>
           <Button variant="primary" onClick={handleDownload} loading={isDownloading} disabled={isDownloading}>
-            {isDownloading ? 'Building report' : 'Download PDF'}
+            Download PDF
           </Button>
         </>
       }

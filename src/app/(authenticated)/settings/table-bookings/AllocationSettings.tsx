@@ -34,6 +34,17 @@ type SectionKey =
   | 'turn_times' | 'kitchen_pacing' | 'outside'
   | 'drinks' | 'party_limits' | 'holds' | 'messages'
 
+/** Each card saves on its own, so its button names what it saves (UI_UX.md: "Save Opening Hours"). */
+const SECTION_SAVE_LABEL: Record<SectionKey, string> = {
+  turn_times: 'Save Turn Times',
+  kitchen_pacing: 'Save Kitchen Pacing',
+  outside: 'Save Outside Seating',
+  drinks: 'Save Drinks Bookings',
+  party_limits: 'Save Party Size Limits',
+  holds: 'Save Holds',
+  messages: 'Save Customer Messages',
+}
+
 const PUBLIC_REASONS = [
   { key: 'tables_full',  label: 'No table fits', hint: 'Also used when a private booking or maintenance blocks a table. The customer is never told which.' },
   { key: 'kitchen_full', label: 'Kitchen at capacity' },
@@ -207,7 +218,7 @@ export function AllocationSettings() {
   const saveButton = (section: SectionKey, keys: string[]) => (
     <FormFooter>
       <Button variant="primary" onClick={() => void save(section, keys)} loading={saving === section}>
-        Save
+        {SECTION_SAVE_LABEL[section]}
       </Button>
     </FormFooter>
   )

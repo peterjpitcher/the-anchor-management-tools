@@ -48,7 +48,12 @@ export default async function HoldingQueuePage() {
       ) : rows.length === 0 ? (
         <Card>
           <CardBody>
-            <Empty size="sm" icon="inbox" title="No unmatched communications" />
+            <Empty
+              size="sm"
+              icon="inbox"
+              title="No unmatched communications"
+              description="Messages we cannot match to a customer wait here to be linked."
+            />
           </CardBody>
         </Card>
       ) : (

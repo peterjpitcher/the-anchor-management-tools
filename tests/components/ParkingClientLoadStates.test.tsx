@@ -49,14 +49,14 @@ describe('ParkingClient load states', () => {
     expect(await screen.findByText('Bookings could not be loaded')).toBeInTheDocument()
     expect(screen.getByText('Database unavailable')).toBeInTheDocument()
     // Neither the empty-list message nor figures of 0 stand in for the outage.
-    expect(screen.queryByText('No bookings')).not.toBeInTheDocument()
+    expect(screen.queryByText('No bookings yet')).not.toBeInTheDocument()
     expect(screen.queryByText('Total Bookings')).not.toBeInTheDocument()
     expect(screen.queryByText('0 bookings total')).not.toBeInTheDocument()
 
     mockListParkingBookings.mockResolvedValueOnce({ data: [] })
     await userEvent.setup().click(screen.getByRole('button', { name: 'Try Again' }))
 
-    expect(await screen.findByText('No bookings')).toBeInTheDocument()
+    expect(await screen.findByText('No bookings yet')).toBeInTheDocument()
     expect(screen.queryByText('Bookings could not be loaded')).not.toBeInTheDocument()
     expect(screen.getByText('Total Bookings')).toBeInTheDocument()
   })
@@ -78,6 +78,6 @@ describe('ParkingClient load states', () => {
     render(<ParkingClient permissions={permissions} />)
 
     await waitFor(() => expect(screen.getByText('Bookings could not be loaded')).toBeInTheDocument())
-    expect(screen.queryByText('No bookings')).not.toBeInTheDocument()
+    expect(screen.queryByText('No bookings yet')).not.toBeInTheDocument()
   })
 })

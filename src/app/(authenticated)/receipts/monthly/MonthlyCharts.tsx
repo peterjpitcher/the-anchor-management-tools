@@ -58,8 +58,8 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
       <Card>
         <Empty
           size="sm"
-          title="No data available"
-          description="We couldn’t find any income or spending in the last 12 months."
+          title="No income or spending for this period"
+          description="Nothing came in or went out in the last 12 months."
         />
       </Card>
     );
@@ -97,10 +97,12 @@ type StackedBreakdownRow = Record<string, string | number> & { monthStart: strin
 export function StackedBreakdownChart({
   title,
   data,
+  emptyTitle,
   emptyDescription,
 }: {
   title: string;
   data: StackedBreakdownPoint[];
+  emptyTitle: string;
   emptyDescription: string;
 }) {
   const ordered = useMemo(
@@ -153,7 +155,7 @@ export function StackedBreakdownChart({
       <CardHeader title={title} />
       <CardBody>
         {!hasValues ? (
-          <Empty size="sm" title="No data available" description={emptyDescription} />
+          <Empty size="sm" title={emptyTitle} description={emptyDescription} />
         ) : (
           <ComboChart
             data={rows}

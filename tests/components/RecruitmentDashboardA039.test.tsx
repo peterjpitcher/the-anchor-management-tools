@@ -179,7 +179,7 @@ describe('RecruitmentDashboardClient A-039', () => {
     const dialog = screen.getByRole('dialog', { name: 'Erase Candidate' })
     expect(dialog).toBeInTheDocument()
     expect(screen.getByText('This permanently anonymises the candidate record. Continue?')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-danger')
+    expect(within(dialog).getByRole('button', { name: 'Erase' })).toHaveClass('bg-danger')
   })
 
   it('uses explicit quarter-hour slot time controls and defaults close time two hours later', () => {
@@ -248,14 +248,16 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByRole('button', { name: 'Save Slot' })).toBeInTheDocument()
+    // Edit opens the slot drawer, which has its own Delete beside the row's.
+    const drawer = await screen.findByRole('dialog', { name: 'Interview Slot' })
+    expect(within(drawer).getByRole('button', { name: 'Save Changes' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('dialog', { name: 'Delete Slot' })
     expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
     // Deleting is destructive, so the confirm button is red.
-    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-danger')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toHaveClass('bg-danger')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(cancelRecruitmentSlotAction).toHaveBeenCalledTimes(1))
     const formData = (cancelRecruitmentSlotAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
@@ -348,9 +350,9 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(scheduleRecruitmentInterviewForCandidateAction).not.toHaveBeenCalled()
     const dialog = await screen.findByRole('dialog', { name: 'Schedule Interview' })
     // Booking is not destructive, so the confirm button is the primary colour, not red.
-    expect(within(dialog).getByRole('button', { name: 'Confirm' })).toHaveClass('bg-primary')
-    expect(within(dialog).getByRole('button', { name: 'Confirm' })).not.toHaveClass('bg-danger')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    expect(within(dialog).getByRole('button', { name: 'Schedule' })).toHaveClass('bg-primary')
+    expect(within(dialog).getByRole('button', { name: 'Schedule' })).not.toHaveClass('bg-danger')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Schedule' }))
 
     await waitFor(() => expect(scheduleRecruitmentInterviewForCandidateAction).toHaveBeenCalledTimes(1))
     const formData = (scheduleRecruitmentInterviewForCandidateAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
@@ -371,7 +373,7 @@ describe('RecruitmentDashboardClient Run Retention', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Run Retention' })[0])
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('Run Retention?')).toBeInTheDocument()
+    expect(within(dialog).getByText('Run Retention')).toBeInTheDocument()
     expect(dialog).toHaveTextContent('anonymised')
     // The run also blanks every message sent to them (runRecruitmentRetentionCleanup), so the
     // warning says so.
@@ -380,7 +382,7 @@ describe('RecruitmentDashboardClient Run Retention', () => {
     expect(dialog).toHaveTextContent('This cannot be undone.')
     expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()
 
-    const confirm = within(dialog).getByRole('button', { name: 'Confirm' })
+    const confirm = within(dialog).getByRole('button', { name: 'Run' })
     expect(confirm).toHaveClass('bg-danger')
     fireEvent.click(confirm)
 

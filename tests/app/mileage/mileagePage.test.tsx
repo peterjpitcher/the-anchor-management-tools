@@ -58,7 +58,7 @@ function pageResult(rows: unknown[], totalCount: number, totals = { trips: total
 function expectLoadError(message: string): void {
   expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
   expect(screen.getByText(message)).toBeInTheDocument()
-  expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+  expect(screen.queryByText('No trips yet')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Period')).not.toBeInTheDocument()
 }
 
@@ -160,7 +160,7 @@ describe('MileagePage', () => {
   it('says when there are no trips at all', async () => {
     mocks.listMileageTrips.mockResolvedValue(pageResult([], 0))
     render(await page())
-    expect(screen.getByText('No trips recorded')).toBeInTheDocument()
+    expect(screen.getByText('No trips yet')).toBeInTheDocument()
   })
 
   it('opens the report dialog on the table dates and driver, and names the ignored filters', async () => {

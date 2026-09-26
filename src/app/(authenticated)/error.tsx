@@ -46,7 +46,7 @@ export default function AuthenticatedError({
       title="Something went wrong"
       description="An error occurred while loading this page. Please try again."
       action={
-        <Button type="button" onClick={reset}>
+        <Button type="button" variant="secondary" size="sm" onClick={reset}>
           Try Again
         </Button>
       }

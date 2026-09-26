@@ -88,13 +88,13 @@ describe('TimeclockManager', () => {
     renderManager()
 
     // PageLayout renders header actions twice (desktop and phone).
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Entry' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'New Entry' })[0])
 
-    const dialog = await screen.findByRole('dialog', { name: 'Add Timeclock Entry' })
+    const dialog = await screen.findByRole('dialog', { name: 'New Entry' })
     fireEvent.change(within(dialog).getByLabelText('Employee'), { target: { value: 'employee-2' } })
     fireEvent.change(within(dialog).getByLabelText('Clock in'), { target: { value: '09:00' } })
     fireEvent.change(within(dialog).getByLabelText('Clock out (optional)'), { target: { value: '17:00' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Entry' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Entry' }))
 
     await waitFor(() => {
       expect(actionMocks.createTimeclockSession).toHaveBeenCalledWith(
@@ -117,7 +117,7 @@ describe('TimeclockManager', () => {
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Edit Timeclock Entry' })
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Entry' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Use Planned (4pm)' }))
     fireEvent.change(within(dialog).getByLabelText('Clock out'), { target: { value: '22:00' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))

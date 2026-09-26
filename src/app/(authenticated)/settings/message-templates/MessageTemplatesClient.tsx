@@ -17,7 +17,6 @@ import {
   ConfirmDialog,
   Empty,
   Field,
-  FormFooter,
   Icon,
   Input,
   Modal,
@@ -323,7 +322,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
             <Empty
               size="sm"
               title="No templates yet"
-              description="Create your first template to start automating messages."
+              description="Templates added here are kept as reference copy."
               action={
                 canManage ? (
                   <Button variant="primary" onClick={openNewTemplateModal} icon={<Icon name="plus" size={16} />}>
@@ -413,7 +412,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
         onClose={() => setDeleteConfirm(null)}
         onConfirm={confirmDelete}
         title="Delete Template"
-        message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
+        message={`Delete the "${deleteConfirm?.name}" template? This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"
       />
@@ -427,8 +426,27 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
         }}
         title={editingTemplate ? 'Edit Template' : 'New Template'}
         width="lg"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowForm(false)
+                setEditingTemplate(null)
+                resetForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="message-template-form" variant="primary" loading={isMutating}>
+              {editingTemplate ? 'Save Changes' : 'Create Template'}
+            </Button>
+          </>
+        }
       >
         <form
+          id="message-template-form"
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
@@ -535,23 +553,6 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
               {preview || 'Start typing to see preview...'}
             </pre>
           </Field>
-
-          <FormFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowForm(false)
-                setEditingTemplate(null)
-                resetForm()
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={isMutating} loading={isMutating}>
-              {editingTemplate ? 'Save Changes' : 'Create Template'}
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
     </PageLayout>

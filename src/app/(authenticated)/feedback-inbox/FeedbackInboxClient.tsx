@@ -335,26 +335,23 @@ export function FeedbackInboxClient({
   )
 
   return (
-    <PageLayout
-      title="Feedback"
-      subtitle="Guest review feedback that needs following up"
-      headerActions={
-        <>
-          <Badge tone={FEEDBACK_STATUS_TONE.new}>{newCount} new</Badge>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={toggleResolved}
-            loading={loadingList}
-            disabled={loadingList}
-            aria-pressed={showResolved}
-          >
-            {showResolved ? 'Hide Resolved' : 'Show Resolved'}
-          </Button>
-        </>
-      }
-    >
+    <PageLayout title="Feedback" subtitle="Guest review feedback that needs following up">
+      {/* The filter sits directly above the list it filters, never in the header. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={toggleResolved}
+          loading={loadingList}
+          disabled={loadingList}
+          aria-pressed={showResolved}
+        >
+          {showResolved ? 'Hide Resolved' : 'Show Resolved'}
+        </Button>
+        <Badge tone={FEEDBACK_STATUS_TONE.new}>{newCount} new</Badge>
+      </div>
+
       {listError && <Alert tone="danger">{listError}</Alert>}
 
       {!listError && (

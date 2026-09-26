@@ -290,6 +290,7 @@ export function OverlaysSection(): React.JSX.Element {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [showCancelled, setShowCancelled] = useState(false)
   const [area, setArea] = useState('all')
   const [note, setNote] = useState('')
@@ -302,7 +303,10 @@ export function OverlaysSection(): React.JSX.Element {
       className={SECTION_CLASS}
     >
       <div className="grid gap-6 lg:grid-cols-2">
-        <ReferenceCard title="Modal and Drawer" subtitle="The description prop shows under the title and is read with it">
+        <ReferenceCard
+          title="Modal and Drawer"
+          subtitle="The description prop shows under the title and is read with it. Actions go in the footer prop; a form in the body links its submit button with form"
+        >
           <Example title="Open One">
             <Button onClick={() => setModalOpen(true)}>Open Modal</Button>
             <Button onClick={() => setDrawerOpen(true)}>Open Drawer</Button>
@@ -317,19 +321,22 @@ export function OverlaysSection(): React.JSX.Element {
                 <Button variant="secondary" onClick={() => setModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setModalOpen(false)
-                    toast.success('Note saved (example only)')
-                  }}
-                >
-                  Save Note
+                <Button type="submit" form="ds-day-note-form" variant="primary">
+                  Save Changes
                 </Button>
               </>
             }
           >
-            <Textarea label="Note" rows={3} value={note} onChange={(event) => setNote(event.target.value)} />
+            <form
+              id="ds-day-note-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                setModalOpen(false)
+                toast.success('Note saved (example only)')
+              }}
+            >
+              <Textarea label="Note" rows={3} value={note} onChange={(event) => setNote(event.target.value)} />
+            </form>
           </Modal>
           <Drawer
             open={drawerOpen}
@@ -350,12 +357,15 @@ export function OverlaysSection(): React.JSX.Element {
 
         <ReferenceCard
           title="ConfirmDialog"
-          subtitle="tone danger only for destructive actions (delete, cancel a booking, revoke, void); everything else primary"
+          subtitle="Every yes/no question. tone danger only for what the screen cannot undo (delete, cancel a booking, revoke, void); everything else primary. Titles never end in a question mark"
         >
           <Example title="Tones">
             <Button onClick={() => setPublishOpen(true)}>Publish Rota</Button>
             <Button variant="danger" onClick={() => setDeleteOpen(true)}>
               Delete Shift
+            </Button>
+            <Button variant="danger" onClick={() => setCancelOpen(true)}>
+              Cancel Booking
             </Button>
           </Example>
           <ConfirmDialog
@@ -372,20 +382,38 @@ export function OverlaysSection(): React.JSX.Element {
             onClose={() => setDeleteOpen(false)}
             onConfirm={() => toast.success('Deleted (example only)')}
             title="Delete Shift"
-            message="This cannot be undone."
+            message="The shift comes off the rota and the member of staff is no longer booked for it. This cannot be undone."
             confirmLabel="Delete"
+            tone="danger"
+          />
+          <ConfirmDialog
+            open={cancelOpen}
+            onClose={() => setCancelOpen(false)}
+            onConfirm={() => toast.success('Cancelled (example only)')}
+            title="Cancel Booking"
+            message="The table is released for other guests."
+            confirmLabel="Cancel Booking"
+            cancelLabel="Keep Booking"
             tone="danger"
           />
         </ReferenceCard>
 
-        <ReferenceCard title="Dropdown" subtitle="DropdownLabel heads a group; closeOnSelect false keeps the menu open for a toggle">
+        <ReferenceCard
+          title="Dropdown"
+          subtitle="More than three header actions: the extras go in this labelled More menu. DropdownLabel heads a group; closeOnSelect false keeps the menu open for a toggle"
+        >
           <Dropdown
             align="left"
-            trigger={<Button iconRight={<Icon name="chevronDown" size={14} />}>Options</Button>}
+            width="auto"
+            trigger={
+              <Button variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+                More
+              </Button>
+            }
           >
             <DropdownLabel>Export</DropdownLabel>
             <DropdownItem icon={<Icon name="download" size={14} />} onClick={() => toast.info('CSV (example only)')}>
-              Download CSV
+              Export CSV
             </DropdownItem>
             <DropdownItem icon={<Icon name="printer" size={14} />} onClick={() => toast.info('Print (example only)')}>
               Print

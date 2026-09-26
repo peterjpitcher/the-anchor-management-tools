@@ -80,7 +80,7 @@ describe('table setup blocks that fail to load', () => {
     expect(screen.getByDisplayValue('Window')).toBeInTheDocument()
   })
 
-  it('shows the tables error rather than "No tables found", and will not save an empty mapping', async () => {
+  it('shows the tables error rather than "No tables yet", and will not save an empty mapping', async () => {
     stubFetch({
       '/api/settings/table-bookings/tables': FAILED,
       '/api/settings/table-bookings/space-area-links': OK_SPACE_AREAS,
@@ -96,7 +96,7 @@ describe('table setup blocks that fail to load', () => {
 
     expect(await screen.findByText('Could not load tables')).toBeInTheDocument()
     expect(screen.getByText('Could not load private-booking mappings')).toBeInTheDocument()
-    expect(screen.queryByText('No tables found')).not.toBeInTheDocument()
+    expect(screen.queryByText('No tables yet')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save Private-Booking Area Mapping' })).toBeDisabled()
   })
 

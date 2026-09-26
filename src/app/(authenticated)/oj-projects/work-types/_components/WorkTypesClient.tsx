@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react'
 import {
   Alert,
   Card,
-  FormFooter,
   PageLayout,
   Table,
   TableHeader,
@@ -31,8 +30,11 @@ import {
   updateWorkType,
   disableWorkType,
 } from '@/app/actions/oj-projects/work-types'
-import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
+import { ojProjectsLayout } from '../../_shared/nav'
 import { ojActive } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('work-types')
 
 type WorkTypeForm = {
   id?: string
@@ -141,7 +143,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
 
   if (loadError) {
     return (
-      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load work types">
           {loadError}
         </Alert>
@@ -151,7 +153,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
 
   return (
     <PageLayout
-      {...OJ_PROJECTS_LAYOUT}
+      {...LAYOUT}
       headerActions={
         canCreate ? (
           <Button variant="primary" onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
@@ -162,7 +164,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
     >
       <Card padding="none">
         {workTypes.length === 0 ? (
-          <Empty size="sm" title="No work types" description="Add a work type to categorize time entries." />
+          <Empty size="sm" title="No work types yet" description="Work types you create show here, ready to categorise time entries." />
         ) : (
           <>
             <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -195,8 +197,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
                         canEdit && wt.is_active && {
                           key: 'disable',
                           label: 'Disable',
-                          icon: <Icon name="trash" size={16} />,
-                          tone: 'danger',
+                          icon: <Icon name="ban" size={16} />,
                           onSelect: () => setDisableId(wt.id),
                         },
                       ]}
@@ -245,8 +246,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
                         canEdit && wt.is_active && {
                           key: 'disable',
                           label: 'Disable',
-                          icon: <Icon name="trash" size={16} />,
-                          tone: 'danger',
+                          icon: <Icon name="ban" size={16} />,
                           onSelect: () => setDisableId(wt.id),
                         },
                       ]}
@@ -265,8 +265,18 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={isEditing ? 'Edit Work Type' : 'New Work Type'}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-work-type-form" variant="primary" loading={saving}>
+              {isEditing ? 'Save Changes' : 'Create Work Type'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form id="oj-work-type-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Field label="Name" required>
             <Input
               value={form.name}
@@ -288,14 +298,6 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
             checked={form.is_active}
             onChange={(checked) => setForm({ ...form, is_active: checked })}
           />
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              {isEditing ? 'Save Changes' : 'Create Work Type'}
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
 

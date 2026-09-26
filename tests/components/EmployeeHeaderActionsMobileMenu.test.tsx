@@ -80,7 +80,7 @@ describe('employee header "More" menu on a phone', () => {
     deleteMock.mockResolvedValue({ type: 'error', message: 'Insufficient permissions to delete employees.' })
   })
 
-  it('has one More menu at 375px, holding the PDFs and every action', async () => {
+  it('has one More menu at 375px, holding the PDFs and the status actions', async () => {
     const originalWidth = window.innerWidth
     window.innerWidth = 375
     window.dispatchEvent(new Event('resize'))
@@ -92,11 +92,14 @@ describe('employee header "More" menu on a phone', () => {
       // narrowest phones.
       const triggers = screen.getAllByRole('button', { name: 'More' })
       expect(triggers).toHaveLength(1)
+      // Edit and Delete stay in the header row beside the menu.
+      expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', `/employees/${EMPLOYEE_ID}/edit`)
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
 
       await user.click(triggers[0])
       const menu = screen.getByRole('menu')
       const items = within(menu).getAllByRole('menuitem').map((item) => item.textContent)
-      expect(items).toEqual(['New Starter PDF', 'Casual Worker Agreement', 'Begin Separation', 'Delete Employee'])
+      expect(items).toEqual(['New Starter PDF', 'Casual Worker Agreement', 'Begin Separation'])
     } finally {
       window.innerWidth = originalWidth
       window.dispatchEvent(new Event('resize'))
@@ -118,7 +121,7 @@ describe('employee header "More" menu on a phone', () => {
 
     fireEvent.change(within(dialog).getByLabelText('Last working day'), { target: { value: '2026-09-19' } })
     await user.click(within(dialog).getByRole('radio', { name: /Release all remaining shifts/ }))
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm Separation' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Begin Separation' }))
 
     await waitFor(() => {
       expect(beginMock).toHaveBeenCalledWith(EMPLOYEE_ID, {
@@ -136,19 +139,19 @@ describe('employee header "More" menu on a phone', () => {
 
     await chooseFromMobileMenu(user, 'Mark as Former')
 
-    const dialog = await screen.findByRole('dialog', { name: 'Mark as Former and Revoke Access' })
+    const dialog = await screen.findByRole('dialog', { name: 'Mark as Former' })
     expect(revokeMock).not.toHaveBeenCalled()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as Former' }))
 
     await waitFor(() => expect(revokeMock).toHaveBeenCalledWith(EMPLOYEE_ID))
   })
 
-  it('opens the Delete Employee dialog and still submits the delete form', async () => {
+  it('opens the Delete Employee dialog from the header and still submits the delete form', async () => {
     const user = userEvent.setup()
     renderHeader('Active')
 
-    await chooseFromMobileMenu(user, 'Delete Employee')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Delete Employee' })
     expect(within(dialog).getByText(/Are you sure you want to delete Sam Example\?/)).toBeInTheDocument()

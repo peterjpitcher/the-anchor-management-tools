@@ -81,8 +81,8 @@ export default function MarkSickModal({
           <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Saving...' : "Mark Couldn't Work"}
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+            Mark as Couldn&apos;t Work
           </Button>
         </>
       }

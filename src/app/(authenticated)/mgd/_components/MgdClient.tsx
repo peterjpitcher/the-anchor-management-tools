@@ -31,7 +31,7 @@ import {
 import { toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { buildMgdHmrcLines } from '@/lib/mgd/hmrcFormat'
-import { CollectionForm } from './CollectionForm'
+import { CollectionForm, type CollectionFormStatus } from './CollectionForm'
 import {
   getCollections,
   getReturns,
@@ -44,6 +44,9 @@ import type { MgdCollection, MgdReturn } from '@/app/actions/mgd'
 import { useSort } from '@/hooks/useSort'
 import { MGD_COLLECTIONS_LAYOUT } from '../_shared/nav'
 import { MGD_RETURN_STATUS_TONE, mgdReturnStatusLabel } from '../_shared/status-ui'
+
+/** The Modal footer's submit button names the collection form by this id. */
+const COLLECTION_FORM_ID = 'mgd-collection-form'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,6 +134,8 @@ export function MgdClient({
   const [showForm, setShowForm] = useState(false)
   const [editingCollection, setEditingCollection] = useState<MgdCollection | undefined>()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // The collection form saves itself; the Modal footer's submit button follows its state.
+  const [collectionFormStatus, setCollectionFormStatus] = useState<CollectionFormStatus>({ saving: false, canSubmit: false })
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showReopenConfirm, setShowReopenConfirm] = useState(false)
   const [showPayDialog, setShowPayDialog] = useState(false)
@@ -450,8 +455,12 @@ export function MgdClient({
         ) : visibleCollections.length === 0 ? (
           <Empty
             size="sm"
-            title={collectionSearch ? 'No collections match your search' : 'No collections'}
-            description={collectionSearch ? 'Try a different search.' : 'No machine game collections recorded for this period.'}
+            title={collectionSearch ? 'No collections match this search' : 'No collections for this period'}
+            description={
+              collectionSearch
+                ? 'Change or clear the search to see more collections.'
+                : 'No machine game collections were recorded in this period.'
+            }
           />
         ) : (
           <Table>
@@ -553,8 +562,12 @@ export function MgdClient({
         {visibleReturns.length === 0 ? (
           <Empty
             size="sm"
-            title={returnSearch ? 'No returns match your search' : 'No returns'}
-            description={returnSearch ? 'Try a different search.' : 'Returns are created automatically when you record collections.'}
+            title={returnSearch ? 'No returns match this search' : 'No returns yet'}
+            description={
+              returnSearch
+                ? 'Change or clear the search to see more returns.'
+                : 'Returns are created automatically when you record collections.'
+            }
           />
         ) : (
           <Table>
@@ -637,12 +650,29 @@ export function MgdClient({
         open={showForm}
         onClose={() => { setShowForm(false); setEditingCollection(undefined) }}
         title={editingCollection ? 'Edit Collection' : 'Record Collection'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setShowForm(false); setEditingCollection(undefined) }}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={COLLECTION_FORM_ID}
+              variant="primary"
+              loading={collectionFormStatus.saving}
+              disabled={!collectionFormStatus.canSubmit}
+            >
+              {editingCollection ? 'Save Changes' : 'Record Collection'}
+            </Button>
+          </>
+        }
       >
         <CollectionForm
           collection={editingCollection}
           disabled={locked}
+          formId={COLLECTION_FORM_ID}
+          onStatusChange={setCollectionFormStatus}
           onSuccess={() => { setShowForm(false); setEditingCollection(undefined); refreshData() }}
-          onCancel={() => { setShowForm(false); setEditingCollection(undefined) }}
         />
       </Modal>
 
@@ -650,7 +680,7 @@ export function MgdClient({
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Delete Collection"
-        message="Are you sure? The return totals will be recalculated."
+        message="Delete this collection? The return totals will be recalculated."
         confirmLabel="Delete"
         tone="danger"
         onConfirm={handleDelete}
@@ -676,7 +706,7 @@ export function MgdClient({
       <Modal
         open={showPayDialog}
         onClose={() => { setShowPayDialog(false); setDatePaid('') }}
-        title="Mark Return as Paid"
+        title="Mark as Paid"
         footer={
           <>
             <Button variant="secondary" onClick={() => { setShowPayDialog(false); setDatePaid('') }}>Cancel</Button>

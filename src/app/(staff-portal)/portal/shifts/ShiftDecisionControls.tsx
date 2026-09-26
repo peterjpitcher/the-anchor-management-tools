@@ -111,8 +111,8 @@ export default function ShiftDecisionControls({
               variant="primary"
               onClick={onAccept}
               disabled={isPending}
-              label="Accept Shift"
-              title="Accept Shift"
+              label="Accept shift"
+              title="Accept shift"
               icon={<Icon name="check" size={16} />}
             />
             <IconButton
@@ -120,8 +120,8 @@ export default function ShiftDecisionControls({
               variant="secondary"
               onClick={() => setRejecting(true)}
               disabled={isPending}
-              label="Reject Shift"
-              title="Reject Shift"
+              label="Reject shift"
+              title="Reject shift"
               icon={<Icon name="x" size={16} />}
             />
           </div>
@@ -147,8 +147,8 @@ export default function ShiftDecisionControls({
             >
               Cancel
             </Button>
-            <Button type="button" variant="danger" size="sm" onClick={onReject} disabled={isPending}>
-              {isPending ? 'Saving...' : 'Confirm Reject'}
+            <Button type="button" variant="danger" size="sm" onClick={onReject} loading={isPending}>
+              Confirm Reject
             </Button>
           </FormFooter>
         </div>

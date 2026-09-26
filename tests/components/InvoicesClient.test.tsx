@@ -305,7 +305,8 @@ describe('InvoicesClient', () => {
     const dateInputs = container.querySelectorAll('input[type="date"]')
     fireEvent.change(dateInputs[0], { target: { value: '2026-04-01' } })
     fireEvent.change(dateInputs[1], { target: { value: '2026-06-30' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    // The export is a header action, drawn in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export ZIP' })[0])
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(

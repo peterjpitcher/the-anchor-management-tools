@@ -257,7 +257,7 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
   return (
     <PageLayout
       title={SHORT_LINKS_TITLE}
-      subtitle="Legacy domain retirement tracking"
+      subtitle="Legacy Domain: tracking use of vip-club.uk as it retires"
       navItems={SHORT_LINKS_NAV}
       headerActions={<LegacyRangePicker options={RANGE_OPTIONS} days={days} />}
     >
@@ -282,14 +282,14 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
             title="Top Legacy Domain Links"
             subtitle={`vip-club.uk clicks since ${formatDateTime(usage.startAt)}`}
             links={usage.topLegacyLinks}
-            emptyMessage="No legacy-domain clicks in this range"
+            emptyMessage="No legacy-domain clicks for this period"
           />
 
           <Card>
             <CardHeader title="Recent Legacy Clicks" subtitle="Latest tracked vip-club.uk requests" />
             {usage.recentLegacyClicks.length === 0 ? (
               <CardBody>
-                <Empty size="sm" title="No recent legacy-domain clicks" />
+                <Empty size="sm" title="No legacy-domain clicks for this period" />
               </CardBody>
             ) : (
             <Table>

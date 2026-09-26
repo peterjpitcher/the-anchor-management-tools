@@ -16,7 +16,7 @@ describe('EventBoardView', () => {
     expect(within(planned).getByText('1')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Quiz Night/ })).toBeInTheDocument()
     expect(screen.getByText('Quiz')).toBeInTheDocument()
-    expect(screen.getAllByText('No Events').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('No events').length).toBeGreaterThan(0)
   })
 
   it('opens an event from a click, Enter or Space on its tile', () => {

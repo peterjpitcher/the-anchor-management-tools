@@ -79,7 +79,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
   const layoutProps = {
     title: 'Customers',
-    subtitle: 'Strategy-focused customer intelligence',
+    subtitle: 'Insights: customer trends, SMS health and win-back candidates',
     navItems: CUSTOMERS_NAV,
     headerActions: (
       <InsightsWindowPicker options={WINDOW_OPTIONS} value={snapshot?.selected_window.key ?? selectedWindow} />
@@ -123,7 +123,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
             <Empty
               size="sm"
               icon="chart"
-              title="No customer insight data yet"
+              title="No customer insights yet"
               description="Once customers and bookings are active, strategy signals will appear here."
             />
           </CardBody>
@@ -205,7 +205,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               />
               <CardBody>
                 {categoryChartData.length === 0 ? (
-                  <Empty size="sm" title="No category-preference data available" />
+                  <Empty size="sm" title="No category preferences yet" />
                 ) : (
                   <BarChart
                     data={categoryChartData}
@@ -264,7 +264,11 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               <CardHeader title="Strategic Signals" />
               {snapshot.strategic_signals.length === 0 ? (
                 <CardBody>
-                  <Empty size="sm" title="No strategic signals" />
+                  <Empty
+                    size="sm"
+                    title="No strategic signals"
+                    description="Signals show here when the figures point to something worth acting on."
+                  />
                 </CardBody>
               ) : (
                 <ul className="divide-y divide-border">
@@ -290,7 +294,11 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
             {snapshot.win_back_candidates.length === 0 ? (
               <CardBody>
-                <Empty size="sm" title="No dormant high-value candidates detected in current scoring data" />
+                <Empty
+                  size="sm"
+                  title="No win-back candidates"
+                  description="High-value customers show here once they have not booked for 90 days."
+                />
               </CardBody>
             ) : (
               <>

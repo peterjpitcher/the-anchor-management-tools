@@ -135,7 +135,7 @@ export default async function VenueSpacesPage({
 
   const layoutProps = {
     title: PB_SETTINGS_TITLE,
-    subtitle: 'Venue spaces available for private hire',
+    subtitle: 'Spaces: venue spaces available for private hire',
     backButton: PB_BACK_TO_LIST,
     navItems: privateBookingSettingsNav(actions),
   }
@@ -162,9 +162,9 @@ export default async function VenueSpacesPage({
         <Alert tone="danger" title="Error">{errorMessage}</Alert>
       )}
 
-      {/* Add New Space Form */}
+      {/* New space form */}
       <Card>
-        <CardHeader title="Add New Space" />
+        <CardHeader title="New Space" />
         <CardBody>
           <form action={handleCreateSpace} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -276,7 +276,7 @@ export default async function VenueSpacesPage({
             </Field>
             <FormFooter>
               <Button type="submit" variant="primary">
-                Add Space
+                Create Space
               </Button>
             </FormFooter>
           </form>
@@ -293,8 +293,8 @@ export default async function VenueSpacesPage({
           <Empty
             size="sm"
             icon={<Icon name="mapPin" size={48} />}
-            title="No venue spaces configured yet"
-            description="Add your first space using the form above."
+            title="No spaces yet"
+            description="Create your first space with the form above."
           />
         ) : (
           <div className="divide-y divide-border">
@@ -418,7 +418,7 @@ export default async function VenueSpacesPage({
                   </form>
 
                   {/* The delete button submits its own form, so this footer sits outside the edit
-                      form and Update reaches that form through the form attribute. */}
+                      form and Save Changes reaches that form through the form attribute. */}
                   <FormFooter
                     start={
                       <span className="flex flex-wrap items-center gap-2">
@@ -443,7 +443,7 @@ export default async function VenueSpacesPage({
                       variant="primary"
                       icon={<Icon name="check" size={16} />}
                     >
-                      Update Space
+                      Save Changes
                     </Button>
                   </FormFooter>
                 </div>

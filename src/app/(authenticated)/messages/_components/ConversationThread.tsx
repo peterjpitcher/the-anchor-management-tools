@@ -321,7 +321,7 @@ export function ConversationThread({
             </DropdownItem>
             {canWriteReadState && (
               <DropdownItem onClick={onMarkUnread} icon={<Icon name="mail" size={14} />}>
-                {markingUnread ? 'Marking unread...' : 'Mark Whole Conversation Unread'}
+                {markingUnread ? 'Marking unread…' : 'Mark Whole Conversation Unread'}
               </DropdownItem>
             )}
           </Dropdown>

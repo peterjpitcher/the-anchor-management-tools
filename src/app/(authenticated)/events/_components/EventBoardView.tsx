@@ -37,7 +37,7 @@ export function EventBoardView({ events, onEventClick }: EventBoardViewProps) {
           <CardHeader title={stage} action={<Badge tone="neutral">{columnEvents.length}</Badge>} />
           <CardBody className="flex max-h-[600px] flex-1 flex-col gap-2 overflow-y-auto p-2">
             {columnEvents.length === 0 ? (
-              <Empty size="sm" title="No Events" description="No events in this stage" />
+              <Empty size="sm" title="No events" description="No events are at this stage." />
             ) : (
               columnEvents.map((event) => (
                 <EventCard

@@ -180,7 +180,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                   ariaLabel="Expenses over time"
                 />
               ) : (
-                <Empty size="sm" title="No expense data available" />
+                <Empty size="sm" title="No expenses for this period" description="No expenses were recorded in this period." />
               )}
             </CardBody>
           </Card>

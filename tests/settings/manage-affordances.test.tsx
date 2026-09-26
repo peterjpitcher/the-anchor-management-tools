@@ -113,7 +113,7 @@ describe('settings manage affordances for read-only roles', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /add category/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /create category/i })).toBeDisabled()
     expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
   })

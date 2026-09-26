@@ -14,8 +14,8 @@ interface AddEmployeeNoteFormProps {
 function SubmitNoteButton() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? 'Adding Note...' : 'Add Note'}
+    <Button type="submit" variant="primary" loading={pending}>
+      Add Note
     </Button>
   )
 }

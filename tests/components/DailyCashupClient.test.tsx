@@ -212,7 +212,7 @@ describe('DailyClient', () => {
     const failure = screen.getByText('Database unavailable').closest('[role="alert"]')
     expect(failure).not.toBeNull()
     expect(within(failure as HTMLElement).getByText("Couldn't load this week")).toBeInTheDocument()
-    expect(screen.queryByText('No data for this week')).not.toBeInTheDocument()
+    expect(screen.queryByText('No takings for this week')).not.toBeInTheDocument()
   })
 
   it('wires approve action for submitted sessions', async () => {

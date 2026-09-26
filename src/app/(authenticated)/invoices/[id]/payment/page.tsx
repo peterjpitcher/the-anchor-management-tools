@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardBody,
   Button,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -251,14 +252,9 @@ export default function RecordPaymentPage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push(`/invoices/${invoice.id}`)}
-            disabled={submitting}
-          >
+          <LinkButton href={`/invoices/${invoice.id}`} variant="secondary" disabled={submitting}>
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             disabled={

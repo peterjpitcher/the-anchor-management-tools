@@ -81,7 +81,7 @@ The same action has the same words and the same look on every page.
 - **Empty states:** the title is sentence case and short; the description is a full sentence ending in a full stop. Wording by cause: "No X yet" when nothing has been added; "No X match these filters" under a search or filter; "No X for this period" under a date window. Never "No data available".
 - **Icon-only buttons** are named in sentence case (their `aria-label` is read out, not shown).
 - **Subtitles on tab pages** read "<Tab>: <what this page is for>". Every tab has its own subtitle.
-- **First tab** of a row is the section name when it is the list, "Overview" when it is a dashboard.
+- **First tab** of a row names what it shows: the list's noun ("Invoices", "Campaigns", "Trips", "Bookings"), or "Overview" when it is a dashboard.
 - **Status of the record** shows as a Badge in the first card (or the CardHeader action), not in the page header.
 - **Filters** never sit in the header, whatever the page.
 - **Destructive actions** on a detail page sit in the header actions (after the secondary actions, before the primary), not in a "danger zone" card.

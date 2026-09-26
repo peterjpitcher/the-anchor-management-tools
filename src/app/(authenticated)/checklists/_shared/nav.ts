@@ -19,12 +19,40 @@ export const CHECKLISTS_MANAGE_NAV: HeaderNavItem[] = [
   { label: 'Setup', href: '/checklists/manage/setup' },
 ]
 
+/** One key per Checklists management tab, for the page chrome below. */
+export type ChecklistsManageTab =
+  | 'review'
+  | 'today'
+  | 'insights'
+  | 'spot-checks'
+  | 'problems'
+  | 'todos'
+  | 'setup'
+
+/** Each tab's subtitle: "<Tab>: <what this page is for>", one per tab. */
+const CHECKLISTS_MANAGE_SUBTITLES: Record<ChecklistsManageTab, string> = {
+  review: 'Weekly Review: every task, day by day, for one week',
+  today: "Today: today's checklist and the switches that run it",
+  insights: 'Insights: completion and timeliness over a date range',
+  'spot-checks': "Spot Checks: today's checks on completed tasks",
+  problems: 'Problems: misses, breaches and failed spot checks',
+  todos: 'Todos: one-off jobs outside the daily checklists',
+  setup: 'Setup: the checklists and the tasks in each',
+}
+
 /**
- * The page chrome every Checklists management page shares. The title is the section name the
- * sidebar uses; the subtitle stays the one line the section header always carried.
+ * The page chrome of one Checklists management tab: the section name the sidebar uses as the
+ * title, the tab's own subtitle and the tab row. Every state of the page (loading, error,
+ * loaded) spreads the same object, so the header never changes.
  */
-export const CHECKLISTS_MANAGE_LAYOUT = {
-  title: 'Checklists',
-  subtitle: 'Setup, oversight and spot checks',
-  navItems: CHECKLISTS_MANAGE_NAV,
-} as const
+export function checklistsManageLayout(tab: ChecklistsManageTab): {
+  title: string
+  subtitle: string
+  navItems: HeaderNavItem[]
+} {
+  return {
+    title: 'Checklists',
+    subtitle: CHECKLISTS_MANAGE_SUBTITLES[tab],
+    navItems: CHECKLISTS_MANAGE_NAV,
+  }
+}

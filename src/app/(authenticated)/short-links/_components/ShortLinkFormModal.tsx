@@ -6,6 +6,9 @@ import { createShortLink, updateShortLink } from '@/app/actions/short-links'
 import { applyUtmParams } from './utm-url'
 import type { ShortLink } from '@/types/short-links'
 
+/** Links the dialog's footer Save button to the form in its body. */
+const SHORT_LINK_FORM_ID = 'short-link-form'
+
 const LINK_TYPE_OPTIONS = [
   { value: 'custom', label: 'Custom' },
   { value: 'booking_confirmation', label: 'Booking Confirmation' },
@@ -80,8 +83,8 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // The footer submit button sits outside the <form>, so the input's own
-    // type="url" validation never runs, so validate here instead.
+    // The form skips the browser's own type="url" check (noValidate), so the URL is
+    // validated here and the message shows in the dialog.
     try {
       new URL(destinationUrl)
     } catch {
@@ -146,13 +149,19 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSubmit} loading={submitting} disabled={!destinationUrl}>
-            {link ? 'Save Changes' : 'Create Link'}
+          <Button
+            type="submit"
+            form={SHORT_LINK_FORM_ID}
+            variant="primary"
+            loading={submitting}
+            disabled={!destinationUrl}
+          >
+            {link ? 'Save Changes' : 'Create Short Link'}
           </Button>
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id={SHORT_LINK_FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-4">
         <Field label="Destination URL" required>
           <Input
             type="url"

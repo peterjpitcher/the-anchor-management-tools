@@ -93,7 +93,8 @@ describe('InvoiceDetailClient void confirmation', () => {
   it('asks before voiding and does nothing when cancelled', async () => {
     render(<InvoiceDetailClient initialInvoice={sentInvoice} emailConfigured={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Void Invoice' }))
+    // Void is a header action, drawn in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Void' })[0])
     expect(await screen.findByText('Void this invoice?')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -106,9 +107,10 @@ describe('InvoiceDetailClient void confirmation', () => {
     mockUpdateInvoiceStatus.mockResolvedValue({ success: true })
     render(<InvoiceDetailClient initialInvoice={sentInvoice} emailConfigured={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Void Invoice' }))
+    // Void is a header action, drawn in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Void' })[0])
     await screen.findByText('Void this invoice?')
-    const voidButtons = screen.getAllByRole('button', { name: 'Void Invoice' })
+    const voidButtons = screen.getAllByRole('button', { name: 'Void' })
     fireEvent.click(voidButtons[voidButtons.length - 1])
 
     await waitFor(() => expect(mockUpdateInvoiceStatus).toHaveBeenCalledTimes(1))
@@ -122,9 +124,10 @@ describe('InvoiceDetailClient void confirmation', () => {
       .mockResolvedValueOnce({ success: true })
     render(<InvoiceDetailClient initialInvoice={sentInvoice} emailConfigured={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Void Invoice' }))
+    // Void is a header action, drawn in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Void' })[0])
     await screen.findByText('Void this invoice?')
-    const voidButtons = screen.getAllByRole('button', { name: 'Void Invoice' })
+    const voidButtons = screen.getAllByRole('button', { name: 'Void' })
     fireEvent.click(voidButtons[voidButtons.length - 1])
 
     expect(await screen.findByText('Void and unbill linked OJ Projects items?')).toBeInTheDocument()
@@ -143,9 +146,10 @@ describe('InvoiceDetailClient void confirmation', () => {
     })
     render(<InvoiceDetailClient initialInvoice={sentInvoice} emailConfigured={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Void Invoice' }))
+    // Void is a header action, drawn in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Void' })[0])
     await screen.findByText('Void this invoice?')
-    const voidButtons = screen.getAllByRole('button', { name: 'Void Invoice' })
+    const voidButtons = screen.getAllByRole('button', { name: 'Void' })
     fireEvent.click(voidButtons[voidButtons.length - 1])
 
     await screen.findByText('Void and unbill linked OJ Projects items?')

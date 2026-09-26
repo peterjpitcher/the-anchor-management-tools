@@ -148,7 +148,7 @@ export default function EmployeeHolidaysTab({
         {/* Book holiday form */}
         {showBookForm && canCreateLeave && (
           <CardBody className="space-y-4 border-b border-border">
-            <SubHeading>Book Approved Holiday</SubHeading>
+            <SubHeading>Book Holiday</SubHeading>
             {bookError && <Alert tone="danger" size="sm">{bookError}</Alert>}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Start date" required>
@@ -180,8 +180,8 @@ export default function EmployeeHolidaysTab({
               <Button type="button" variant="secondary" onClick={() => { setShowBookForm(false); setBookError(''); }}>
                 Cancel
               </Button>
-              <Button type="button" variant="primary" onClick={handleBook} disabled={bookIsPending}>
-                {bookIsPending ? 'Saving…' : 'Confirm Booking'}
+              <Button type="button" variant="primary" onClick={handleBook} loading={bookIsPending}>
+                Book Holiday
               </Button>
             </FormFooter>
           </CardBody>
@@ -220,7 +220,7 @@ export default function EmployeeHolidaysTab({
           <Empty
             size="sm"
             icon={<Icon name="calendar" size={32} />}
-            title={`No leave requests for ${yearLabel(selectedYear)}`}
+            title={`No holiday requests for ${yearLabel(selectedYear)}`}
           />
         ) : (
           <ul className="divide-y divide-border">

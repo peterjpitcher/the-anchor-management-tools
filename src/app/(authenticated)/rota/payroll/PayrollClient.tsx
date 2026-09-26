@@ -360,12 +360,6 @@ export default function PayrollClient({
       {...layout}
       headerActions={
         <>
-          <Badge
-            tone={PAYROLL_APPROVAL_TONE[approvalState]}
-            icon={approval ? <Icon name="checkCircle" size={12} /> : undefined}
-          >
-            {approvalLabel}
-          </Badge>
           {canExport && approval && (
             <LinkButton
               href={`/api/rota/export?year=${year}&month=${month}`}
@@ -374,17 +368,17 @@ export default function PayrollClient({
               variant="secondary"
               icon={<Icon name="download" size={16} />}
             >
-              Download Excel
+              Export Excel
             </LinkButton>
           )}
           {canSend && approval && !approval.email_sent_at && (
-            <Button type="button" size="sm" variant="secondary" icon={<Icon name="mail" size={14} />} onClick={handleSend} disabled={sendPending}>
-              {sendPending ? 'Sending…' : 'Email Accountant'}
+            <Button type="button" size="sm" variant="secondary" icon={<Icon name="mail" size={14} />} onClick={handleSend} loading={sendPending}>
+              Email Accountant
             </Button>
           )}
           {canApprove && !approval && (
-            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approvePending || initialRows.length === 0}>
-              {approvePending ? 'Approving…' : 'Approve Payroll'}
+            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={initialRows.length === 0} loading={approvePending}>
+              Approve Payroll
             </Button>
           )}
         </>
@@ -419,8 +413,8 @@ export default function PayrollClient({
             <Button type="button" variant="secondary" onClick={() => { setPeriodStart(initialPeriod.period_start); setPeriodEnd(initialPeriod.period_end); setEditingPeriod(false); }}>
               Cancel
             </Button>
-            <Button type="button" variant="primary" onClick={handleSavePeriod} disabled={periodPending || Boolean(periodError)}>
-              {periodPending ? 'Saving…' : 'Save'}
+            <Button type="button" variant="primary" onClick={handleSavePeriod} disabled={Boolean(periodError)} loading={periodPending}>
+              Save Changes
             </Button>
           </>
         ) : (
@@ -441,6 +435,15 @@ export default function PayrollClient({
             )}
           </div>
         )}
+        {/* The month's approval status, beside the period it covers rather than in the header. */}
+        <div className="flex h-input-h items-center">
+          <Badge
+            tone={PAYROLL_APPROVAL_TONE[approvalState]}
+            icon={approval ? <Icon name="checkCircle" size={12} /> : undefined}
+          >
+            {approvalLabel}
+          </Badge>
+        </div>
       </div>
 
       {/* Cycle stats: planned against actual to date, and earned */}
@@ -449,7 +452,7 @@ export default function PayrollClient({
       {/* Pivot table: dates, then employees */}
       <Section
         title="Daily Breakdown"
-        description="Review planned against actual hours per employee. Salaried staff are excluded. Approve to lock the snapshot, then download the Excel or email the accountant."
+        description="Review planned against actual hours per employee. Salaried staff are excluded. Approve to lock the snapshot, then export the Excel or email the accountant."
         actions={
           initialRows.length > 0 ? (
             <div className="flex gap-1">
@@ -467,7 +470,7 @@ export default function PayrollClient({
           <Card padding="none">
             <Empty
               size="sm"
-              title="No hourly shifts found for this month"
+              title="No hourly shifts for this period"
               description="Salaried employees are excluded from payroll calculations."
             />
           </Card>
@@ -583,8 +586,8 @@ export default function PayrollClient({
                                 size="sm"
                                 onClick={() => startEdit(row)}
                                 className="text-text-subtle hover:text-text"
-                                title="Edit times"
-                                label="Edit times"
+                                title="Edit worked times"
+                                label="Edit worked times"
                                 icon={<Icon name="edit" size={14} />}
                               />
                               {row.shiftId && (
@@ -718,7 +721,7 @@ export default function PayrollClient({
       <Modal
         open={noteRow !== null}
         onClose={() => { if (!notePending) setNoteRow(null); }}
-        title={noteRow?.note ? 'Edit Payroll Note' : 'Add Payroll Note'}
+        title={noteRow?.note ? 'Edit Note' : 'Add Note'}
         description={noteRow ? `${noteRow.employeeName}, ${formatDate(noteRow.date)}` : undefined}
         width="md"
         footer={
@@ -732,7 +735,7 @@ export default function PayrollClient({
               onClick={() => { if (noteRow?.shiftId) handleSaveNote(noteRow.shiftId); }}
               loading={notePending}
             >
-              Save Note
+              {noteRow?.note ? 'Save Changes' : 'Add Note'}
             </Button>
           </>
         }
@@ -757,10 +760,10 @@ export default function PayrollClient({
         open={confirmDeleteRow !== null}
         onClose={() => setConfirmDeleteRow(null)}
         onConfirm={async () => { if (confirmDeleteRow) await handleDelete(confirmDeleteRow); }}
-        title="Delete Payroll Row?"
+        title="Delete Payroll Row"
         message={
           confirmDeleteRow
-            ? `Delete ${confirmDeleteRow.employeeName}'s row for ${formatDate(confirmDeleteRow.date)}?${approval ? ` ${AFTER_APPROVAL_WARNING}` : ''}`
+            ? `This removes ${confirmDeleteRow.employeeName}'s row for ${formatDate(confirmDeleteRow.date)}.${approval ? ` ${AFTER_APPROVAL_WARNING}` : ''}`
             : undefined
         }
         confirmLabel="Delete"

@@ -83,7 +83,7 @@ export function CommunicationsTab({
             <Empty
               size="sm"
               icon={<Icon name="message" size={40} />}
-              title="No messages sent yet"
+              title="No messages yet"
               description="Once a message is queued or sent, it will appear here."
             />
           ) : (
@@ -137,7 +137,7 @@ export function CommunicationsTab({
             <Empty
               size="sm"
               icon={<Icon name="mail" size={40} />}
-              title="No emails sent yet"
+              title="No emails yet"
               description="Emails about this booking will appear here."
             />
           ) : (
@@ -182,7 +182,7 @@ export function CommunicationsTab({
               title={
                 isDateTbd
                   ? 'No date-based reminders scheduled'
-                  : 'Nothing scheduled'
+                  : 'No reminders scheduled'
               }
               description={
                 isDateTbd

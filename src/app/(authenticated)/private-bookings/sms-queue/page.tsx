@@ -177,7 +177,7 @@ export default async function SmsQueuePage() {
             <Empty
               size="sm"
               icon={<Icon name="message" size={48} />}
-              title="No messages pending approval"
+              title="No messages to approve"
             />
           </Card>
         ) : (
@@ -228,7 +228,9 @@ export default async function SmsQueuePage() {
                     <SmsQueueActionForm
                       action={handleApproveSms}
                       smsId={sms.id}
+                      confirmTitle="Approve Message"
                       confirmMessage="Approve this SMS for sending?"
+                      confirmLabel="Approve"
                       leftIcon={<Icon name="check" size={16} />}
                       variant="primary"
                       successMessage="SMS approved"
@@ -240,7 +242,9 @@ export default async function SmsQueuePage() {
                     <SmsQueueActionForm
                       action={handleRejectSms}
                       smsId={sms.id}
-                      confirmMessage="Reject this SMS?"
+                      confirmTitle="Reject Message"
+                      confirmMessage="Reject this SMS? It will not be sent."
+                      confirmLabel="Reject"
                       leftIcon={<Icon name="x" size={16} />}
                       variant="danger"
                       successMessage="SMS rejected"
@@ -267,7 +271,7 @@ export default async function SmsQueuePage() {
             <Empty
               size="sm"
               icon={<Icon name="send" size={48} />}
-              title="No approved messages ready to send"
+              title="No messages to send"
             />
           </Card>
         ) : (
@@ -297,6 +301,8 @@ export default async function SmsQueuePage() {
                   <SmsQueueActionForm
                     action={handleSendSms}
                     smsId={sms.id}
+                    confirmTitle="Send Message"
+                    confirmLabel="Send Now"
                     confirmMessage={
                       emailFirst
                         ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'

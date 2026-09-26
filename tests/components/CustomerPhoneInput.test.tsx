@@ -68,7 +68,7 @@ describe('Customer phone handling', () => {
       expect(screen.getByText('Preview Import')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Import 1 Customers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 Customer' }))
 
     await waitFor(() => {
       expect(onImportComplete).toHaveBeenCalledWith([

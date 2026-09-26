@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { Alert, ConfirmDialog, Modal, Button, Field, Fieldset, FormFooter, Input, Textarea, toast, Icon } from '@/ds'
+import { Alert, ConfirmDialog, Modal, Button, Field, Fieldset, Input, Textarea, toast, Icon } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -797,8 +797,41 @@ export function VenueCalendar({
                 : // The start date can be cleared while typing; never format an empty date.
                   'Adding a note'
           }
+          footer={
+            <>
+              {noteEditor.mode === 'edit' && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="text-danger-fg hover:bg-danger-soft hover:text-danger-fg sm:mr-auto"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={isSavingNote || isDeletingNote}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={closeNoteModal}
+                disabled={isSavingNote || isDeletingNote}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="calendar-note-form"
+                variant="primary"
+                loading={isSavingNote}
+                disabled={isDeletingNote}
+                icon={<Icon name="calendar" size={16} />}
+              >
+                {noteEditor.mode === 'edit' ? 'Save Changes' : 'Add Note'}
+              </Button>
+            </>
+          }
         >
-          <form onSubmit={handleNoteSubmit} className="space-y-4">
+          <form id="calendar-note-form" onSubmit={handleNoteSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Start date" required>
                 <Input
@@ -882,40 +915,6 @@ export function VenueCalendar({
                 maxLength={4000}
               />
             </Field>
-
-            <FormFooter
-              start={
-                noteEditor.mode === 'edit' ? (
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    className="text-danger-fg"
-                    onClick={() => setConfirmingDelete(true)}
-                    disabled={isSavingNote || isDeletingNote}
-                  >
-                    Delete
-                  </Button>
-                ) : undefined
-              }
-            >
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={closeNoteModal}
-                disabled={isSavingNote || isDeletingNote}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={isSavingNote}
-                disabled={isDeletingNote}
-                icon={<Icon name="calendar" size={16} />}
-              >
-                {noteEditor.mode === 'edit' ? 'Save Changes' : 'Add Note'}
-              </Button>
-            </FormFooter>
           </form>
 
           {/* Rendered inside the note dialog so it stacks above it as a nested dialog. It stays
@@ -926,8 +925,7 @@ export function VenueCalendar({
             onConfirm={handleNoteDelete}
             title="Delete Calendar Note"
             message="This cannot be undone, and it also removes the entry from the shared Pub Ops calendar."
-            confirmLabel="Delete Permanently"
-            cancelLabel="Keep It"
+            confirmLabel="Delete"
             tone="danger"
             closeOnConfirm={false}
             loading={isDeletingNote}

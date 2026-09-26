@@ -435,8 +435,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           <Empty
             size="sm"
             icon={<Icon name="clock" size={40} />}
-            title="Nothing to review with your current filters"
-            description="Adjust the filters above or import more transactions."
+            title="No transactions match these filters"
+            description="Change the filters above or import more transactions."
           />
         </Card>
       ) : (
@@ -588,7 +588,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                     onClick={() => setActiveRuleGroup((current) => current === group.details ? null : group.details)}
                     disabled={!canManageReceipts}
                   >
-                    Configure Rule
+                    New Rule
                   </Button>
                   {createdRule && (
                     <Badge tone="success">Rule created: {createdRule.name}</Badge>
@@ -610,7 +610,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   <div className="space-y-4">
                     <SubHeading className="flex items-center gap-2">
                       <Icon name="rocket" size={20} className="text-success" />
-                      Create Automation Rule
+                      New Rule
                     </SubHeading>
                     <div className="grid gap-4 md:grid-cols-2">
                       <Input
@@ -660,7 +660,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         loading={isCreatingForGroup}
                         disabled={!canManageReceipts}
                       >
-                        Save Rule
+                        Create Rule
                       </Button>
                     </FormFooter>
                   </div>

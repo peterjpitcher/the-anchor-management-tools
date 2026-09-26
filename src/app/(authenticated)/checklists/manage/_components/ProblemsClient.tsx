@@ -14,8 +14,11 @@ import {
   TableCell,
 } from '@/ds'
 import type { ProblemsData } from '@/app/actions/checklists-spotcheck'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { DateRangeControl } from './DateRangeControl'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('problems')
 
 interface ProblemsClientProps {
   data?: ProblemsData
@@ -28,7 +31,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
     // error is a failed load, which the page reports as one rather than as a permission note.
     const refused = !error || error === 'Insufficient permissions'
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         {refused ? (
           <Alert tone="warning" title="Super admins only">
             Problems are only available to super admins.
@@ -43,7 +46,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
   }
 
   return (
-    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+    <PageLayout {...LAYOUT}>
       {/* The filter and the window it resolved to, directly above the tables they drive. */}
       <div className="space-y-2">
         <DateRangeControl from={data.from} to={data.to} />
@@ -55,7 +58,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
       <Card>
         <CardHeader title="Missed, by Closer" subtitle="Floating misses are shown against the venue." />
         {data.missesByCloser.length === 0 ? (
-          <Empty size="sm" title="No misses" />
+          <Empty size="sm" title="No misses for this period" />
         ) : (
           <Table>
             <TableHeader>
@@ -79,7 +82,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
       <Card>
         <CardHeader title="Value Breaches" />
         {data.breaches.length === 0 ? (
-          <Empty size="sm" title="No value breaches" />
+          <Empty size="sm" title="No value breaches for this period" />
         ) : (
           <Table>
             <TableHeader>
@@ -111,7 +114,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
       <Card>
         <CardHeader title="Hours Mismatches" />
         {data.mismatches.length === 0 ? (
-          <Empty size="sm" title="No hours mismatches" />
+          <Empty size="sm" title="No hours mismatches for this period" />
         ) : (
           <Table>
             <TableHeader>
@@ -137,7 +140,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
       <Card>
         <CardHeader title="Failed Spot Checks" />
         {data.failedSpotChecks.length === 0 ? (
-          <Empty size="sm" title="No failed spot checks" />
+          <Empty size="sm" title="No failed spot checks for this period" />
         ) : (
           <Table>
             <TableHeader>
@@ -172,7 +175,7 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
           subtitle="Drawn checks Billy never recorded a result for."
         />
         {data.drawnUnrecorded.length === 0 ? (
-          <Empty size="sm" title="No unrecorded spot checks" />
+          <Empty size="sm" title="No unrecorded spot checks for this period" />
         ) : (
           <Table>
             <TableHeader>

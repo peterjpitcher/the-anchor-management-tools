@@ -357,7 +357,7 @@ export function BusinessHoursManager({
       <CardFooter>
         <FormFooter>
           <Button type="submit" variant="primary" loading={isSaving} disabled={!editable || isSaving}>
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            Save Opening Hours
           </Button>
         </FormFooter>
       </CardFooter>

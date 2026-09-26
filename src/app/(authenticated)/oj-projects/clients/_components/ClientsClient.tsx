@@ -63,8 +63,11 @@ import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
-import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
+import { ojProjectsLayout } from '../../_shared/nav'
 import { OJ_MONEY_TEXT, ojActive, ojBalanceText, ojBalanceTone } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('clients')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -622,7 +625,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
 
   if (loadError) {
     return (
-      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load clients">
           {loadError}
         </Alert>
@@ -632,7 +635,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
 
   return (
     <PageLayout
-      {...OJ_PROJECTS_LAYOUT}
+      {...LAYOUT}
       headerActions={
         canCreateClients ? (
           <Button
@@ -659,7 +662,11 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
 
       <Card padding="none">
         {filtered.length === 0 ? (
-          <Empty size="sm" title="No clients" description="No clients found." />
+          clients.length > 0 ? (
+            <Empty size="sm" title="No clients match these filters" description="Try another client name." />
+          ) : (
+            <Empty size="sm" title="No clients yet" description="Clients you create show here." />
+          )
         ) : (
           <>
             <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -995,7 +1002,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                     icon={<Icon name="plus" size={14} />}
                     onClick={openCreateCharge}
                   >
-                    Add
+                    Add Recurring Charge
                   </Button>
                 ) : undefined
               }
@@ -1007,7 +1014,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                   {chargesError}
                 </Alert>
               ) : recurringCharges.length === 0 ? (
-                <Empty size="sm" title="No recurring charges set up" />
+                <Empty size="sm" title="No recurring charges yet" />
               ) : (
                 <div className="flex flex-col gap-2">
                   {recurringCharges.map((charge) => {
@@ -1183,7 +1190,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                     <span className="font-medium">{formatCurrency(statement.openingBalance)}</span>
                   </div>
                   {statement.transactions.length === 0 ? (
-                    <Empty size="sm" title="No transactions in this period" />
+                    <Empty size="sm" title="No transactions for this period" />
                   ) : (
                     <div className="max-h-[200px] overflow-auto">
                       <Table>
@@ -1414,7 +1421,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
               variant="primary"
               loading={chargeSaving}
             >
-              {chargeForm.id ? 'Save Changes' : 'Add Charge'}
+              {chargeForm.id ? 'Save Changes' : 'Add Recurring Charge'}
             </Button>
           </>
         }
@@ -1492,7 +1499,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
         onClose={() => setDisableChargeId(null)}
         onConfirm={handleDisableCharge}
         title="Disable Recurring Charge"
-        message="This recurring charge will stop being included in future billing runs."
+        message="Disable this recurring charge? It stops being included in future billing runs, and any unbilled months are removed and can no longer be invoiced."
         confirmLabel="Disable"
         tone="danger"
       />
@@ -1502,7 +1509,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
         onClose={() => setDeleteClientId(null)}
         onConfirm={handleDeleteClient}
         title="Delete Client"
-        message="Clients with projects or invoices will be deactivated instead of permanently deleted."
+        message="Delete this client? A client with projects or invoices is deactivated instead of permanently deleted."
         confirmLabel="Delete"
         tone="danger"
       />

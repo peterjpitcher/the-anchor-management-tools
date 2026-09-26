@@ -276,10 +276,10 @@ export function CustomerAttach({
               variant="primary"
               size="lg"
               onClick={handleQuickAdd}
-              disabled={busy}
+              loading={busy}
               className="min-h-touch text-base"
             >
-              {busy ? 'Adding...' : 'Add Customer'}
+              Add Customer
             </Button>
           </FormFooter>
           </div>

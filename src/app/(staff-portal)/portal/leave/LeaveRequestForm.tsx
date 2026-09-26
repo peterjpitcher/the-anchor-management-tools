@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Field, FormFooter, Input, toast } from '@/ds';
+import { Alert, Button, Field, FormFooter, Input, LinkButton, toast } from '@/ds';
 import { submitLeaveRequest } from '@/app/actions/leave';
 
 interface LeaveRequestFormProps {
@@ -85,11 +85,11 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
       </Field>
 
       <FormFooter>
-        <Button type="button" variant="secondary" onClick={() => router.push('/portal/leave')}>
+        <LinkButton href="/portal/leave" variant="secondary">
           Cancel
-        </Button>
-        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-          {isPending ? 'Submitting…' : 'Submit Request'}
+        </LinkButton>
+        <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+          Request Holiday
         </Button>
       </FormFooter>
     </div>

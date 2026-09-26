@@ -404,7 +404,7 @@ export default function ReassignQueueClient({
       >
         {queue.covered.length === 0 ? (
           <Card padding="none">
-            <Empty size="sm" title="No shifts have been turned down in the last 90 days" />
+            <Empty size="sm" title="No turned-down shifts for this period" description="Nobody has turned down a shift in the last 90 days." />
           </Card>
         ) : showHistory ? (
           <Card padding="none">

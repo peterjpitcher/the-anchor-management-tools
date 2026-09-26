@@ -10,9 +10,8 @@ import { Badge } from '@/ds';
 import { TablePagination } from '@/ds';
 import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
-import { Dropdown, DropdownItem } from '@/ds';
+import { Dropdown, DropdownItem, DropdownLabel } from '@/ds';
 import { toast } from '@/ds';
-import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
 import { useTablePipeline } from '../_components/useTablePipeline';
@@ -625,27 +624,37 @@ export default function MenuIngredientsPage(): React.ReactElement {
             icon={<Icon name="download" size={14} />}
             iconRight={<Icon name="chevronDown" size={14} />}
           >
-            Download Allergens
+            Download PDF
           </Button>
         }
       >
+        <DropdownLabel>Allergen Report</DropdownLabel>
         {ALLERGEN_REPORT_DEPARTMENT_OPTIONS.map((option) => (
           <DropdownItem key={option.value} onClick={() => handleDownloadAllergenPdf(option.value)}>
             {option.label}
           </DropdownItem>
         ))}
       </Dropdown>
-      {canManage && (
-        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
-          Menu Target
-        </LinkButton>
-      )}
+      {/* Four header actions are more than three, so Menu Target and Smart Import share one
+          "More" menu. */}
       {canManage && (
         <>
-          <Button variant="secondary" size="sm" onClick={() => setShowImportModal(true)}>
-            Smart Import
-          </Button>
-          <Button variant="primary" size="sm" onClick={openCreate}>Add Ingredient</Button>
+          <Dropdown
+            width="auto"
+            trigger={
+              <Button variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+                More
+              </Button>
+            }
+          >
+            <DropdownItem icon={<Icon name="cog" size={14} />} onClick={() => router.push('/settings/menu-target')}>
+              Menu Target
+            </DropdownItem>
+            <DropdownItem icon={<Icon name="upload" size={14} />} onClick={() => setShowImportModal(true)}>
+              Smart Import
+            </DropdownItem>
+          </Dropdown>
+          <Button variant="primary" size="sm" onClick={openCreate}>New Ingredient</Button>
         </>
       )}
     </>
@@ -685,7 +694,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
           <Empty
             size="sm"
             title="No ingredients yet"
-            description="Add your first ingredient or use Smart Import to bulk-add from a supplier list."
+            description="Create your first ingredient, or use Smart Import to bulk-add from a supplier list."
             icon="inbox"
             action={
               canManage ? (
@@ -693,7 +702,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
                   <Button variant="secondary" size="sm" onClick={() => setShowImportModal(true)}>
                     Smart Import
                   </Button>
-                  <Button variant="primary" size="sm" onClick={openCreate}>Add Ingredient</Button>
+                  <Button variant="primary" size="sm" onClick={openCreate}>New Ingredient</Button>
                 </div>
               ) : undefined
             }
@@ -709,8 +718,8 @@ export default function MenuIngredientsPage(): React.ReactElement {
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                ? 'No ingredients match your filters'
-                : 'No ingredients configured yet'
+                ? 'No ingredients match these filters'
+                : 'No ingredients yet'
             }
             expandable
             renderExpandedContent={(row) => (
@@ -746,7 +755,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(ingredientToDelete)}
-        title="Delete Ingredient?"
+        title="Delete Ingredient"
         message={`Are you sure you want to delete ${ingredientToDelete?.name}? This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"

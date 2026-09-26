@@ -112,7 +112,13 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
 
   return (
     <ReceiptsPageChrome
-      subtitle="Upload statements, tick off receipts and download quarterly packs"
+      subtitle={
+        missingVendorOnly
+          ? 'Needs Vendor: transactions still waiting for a vendor'
+          : missingExpenseOnly
+            ? 'Needs Expense: transactions still waiting for an expense category'
+            : 'Receipts: upload statements, tick off receipts and download quarterly packs'
+      }
       navState={{ view: 'workspace', missingVendorOnly, missingExpenseOnly }}
       canManage={canManage}
       headerActions={<ReceiptReclassify />}

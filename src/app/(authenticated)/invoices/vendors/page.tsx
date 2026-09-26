@@ -20,7 +20,6 @@ import {
   Empty,
   DataTable,
   ConfirmDialog,
-  FormFooter,
 } from '@/ds'
 import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
@@ -370,7 +369,7 @@ export default function VendorsPage() {
 
   const layoutProps = {
     title: 'Invoices',
-    subtitle: 'Vendors who receive invoices and quotes',
+    subtitle: 'Vendors: who we send invoices and quotes to',
     navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
@@ -419,7 +418,7 @@ export default function VendorsPage() {
             onClick={() => openForm()}
             leftIcon={<Icon name="plus" size={16} />}
           >
-            Add Vendor
+            New Vendor
           </Button>
         ) : undefined
       }
@@ -439,8 +438,8 @@ export default function VendorsPage() {
             data={vendors}
             getRowKey={(v) => v.id}
             bordered={false}
-            emptyMessage="No vendors found"
-            emptyDescription="Add your first vendor to get started."
+            emptyMessage="No vendors yet"
+            emptyDescription="Use New Vendor to add the first one."
             columns={[
               { key: 'name', header: 'Name', cell: (v: InvoiceVendor) => (
                 <div>
@@ -500,7 +499,7 @@ export default function VendorsPage() {
       <Modal
         open={showForm}
         onClose={closeForm}
-        title={editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
+        title={editingVendor ? 'Edit Vendor' : 'New Vendor'}
         width="lg"
         footer={
           <>
@@ -521,7 +520,7 @@ export default function VendorsPage() {
               }
               loading={formLoading}
             >
-              {editingVendor ? 'Update' : 'Create'} Vendor
+              {editingVendor ? 'Save Changes' : 'Create Vendor'}
             </Button>
           </>
         }
@@ -607,6 +606,18 @@ export default function VendorsPage() {
         onClose={closeContacts}
         title={contactsModalVendor ? `Contacts for ${contactsModalVendor.name}` : 'Contacts'}
         width="lg"
+        footer={
+          contactsLoading ? undefined : (
+            <Button variant="primary"
+              type="submit"
+              form="vendor-contact-form"
+              loading={contactSaving}
+              disabled={!canEdit || contactSaving}
+            >
+              {contactForm.id ? 'Save Changes' : 'Add Contact'}
+            </Button>
+          )
+        }
       >
         {contactsLoading ? (
           <PageLoading inline label="Loading contacts" />
@@ -618,7 +629,7 @@ export default function VendorsPage() {
             ) : (
               <Card padding="none">
                 {contacts.length === 0 ? (
-                  <Empty size="sm" title="No contacts yet" />
+                  <Empty size="sm" title="No contacts yet" description="Add the first contact below." />
                 ) : (
                   <div className="divide-y divide-border">
                     {contacts.map(c => (
@@ -685,7 +696,7 @@ export default function VendorsPage() {
                 You have read-only access to contacts. Editing and adding contacts is disabled.
               </Alert>
             )}
-            <form onSubmit={saveContact} className="space-y-4">
+            <form id="vendor-contact-form" onSubmit={saveContact} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Name">
                   <Input
@@ -734,15 +745,6 @@ export default function VendorsPage() {
                   />
                 </div>
               </div>
-              <FormFooter>
-                <Button variant="primary"
-                  type="submit"
-                  loading={contactSaving}
-                  disabled={!canEdit || contactSaving}
-                >
-                  {contactForm.id ? 'Update Contact' : 'Add Contact'}
-                </Button>
-              </FormFooter>
             </form>
           </div>
         )}

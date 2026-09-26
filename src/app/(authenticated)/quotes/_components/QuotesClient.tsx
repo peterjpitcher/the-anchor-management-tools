@@ -155,7 +155,7 @@ export default function QuotesClient({
   return (
     <PageLayout
       title="Quotes"
-      subtitle="Pre-invoice proposals for OJ consultancy work"
+      subtitle="Quotes: pre-invoice proposals for OJ consultancy work"
       navItems={financeNav({ canExport: resolvedPermissions.canExport })}
       headerActions={
         resolvedPermissions.canCreate ? (
@@ -207,8 +207,12 @@ export default function QuotesClient({
             ) : (
               <Empty
                 size="sm"
-                title={searchTerm ? 'No quotes match your search' : 'No quotes found'}
-                description="Try a different filter or create a new quote."
+                title={searchTerm || statusFilter !== 'all' ? 'No quotes match these filters' : 'No quotes yet'}
+                description={
+                  searchTerm || statusFilter !== 'all'
+                    ? 'Change or clear the filters to see more quotes.'
+                    : 'Quotes you create show here.'
+                }
               />
             )
           ) : (
@@ -258,7 +262,7 @@ export default function QuotesClient({
                                 onClick={() => router.push(`/quotes/${q.id}/convert`)}
                                 disabled={!canConvert}
                               >
-                                Convert
+                                Convert to Invoice
                               </Button>
                             ) : null}
                             {q.converted_to_invoice_id && (
@@ -315,7 +319,7 @@ export default function QuotesClient({
                       <div onClick={(e) => e.stopPropagation()}>
                         {q.status === 'accepted' && !q.converted_to_invoice_id ? (
                           <Button size="sm" onClick={() => router.push(`/quotes/${q.id}/convert`)} disabled={!canConvert}>
-                            Convert
+                            Convert to Invoice
                           </Button>
                         ) : null}
                         {q.converted_to_invoice_id && (

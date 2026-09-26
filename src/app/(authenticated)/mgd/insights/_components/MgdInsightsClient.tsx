@@ -102,7 +102,7 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
               ariaLabel="Net takings over time"
             />
           ) : (
-            <Empty size="sm" title="No collection data available" />
+            <Empty size="sm" title="No collections for this period" description="No machine game collections were recorded in this period." />
           )}
         </CardBody>
       </Card>

@@ -14,6 +14,7 @@ import {
   CardBody,
   Button,
   IconButton,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -466,12 +467,12 @@ export default function EditRecurringInvoicePage() {
                   {lineItems.length > 1 && (
                     <IconButton
                       type="button"
-                      variant="secondary"
+                      variant="ghost"
                       size="sm"
                       onClick={() => removeLineItem(index)}
                       className="sm:mt-6"
                       label="Remove line item"
-                      icon={<Icon name="trash" size={16} />}
+                      icon={<Icon name="trash" size={16} className="text-danger" />}
                     />
                   )}
                 </CardBody>
@@ -526,19 +527,15 @@ export default function EditRecurringInvoicePage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push(backHref)}
-          >
+          <LinkButton href={backHref} variant="secondary">
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             loading={submitting}
             disabled={!vendorId || lineItems.length === 0}
           >
-            Update Recurring Invoice
+            Save Changes
           </Button>
         </FormFooter>
       </form>

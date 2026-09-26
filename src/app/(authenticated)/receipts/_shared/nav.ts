@@ -37,7 +37,7 @@ const RECEIPTS_TAB_HREF: Record<ReceiptsTabId, string> = {
 }
 
 export const RECEIPTS_NAV: HeaderNavItem[] = [
-  { label: 'Workspace', href: RECEIPTS_TAB_HREF.workspace },
+  { label: 'Receipts', href: RECEIPTS_TAB_HREF.workspace },
   { label: 'Monthly', href: RECEIPTS_TAB_HREF.monthly },
   { label: 'Bank Balance', href: RECEIPTS_TAB_HREF['bank-balance'] },
   { label: 'Vendors', href: RECEIPTS_TAB_HREF.vendors },

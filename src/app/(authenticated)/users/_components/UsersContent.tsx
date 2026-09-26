@@ -101,11 +101,19 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
 
       {filteredUsers.length === 0 ? (
         <Card>
-          <Empty
-            size="sm"
-            title="No users found"
-            description={searchQuery ? 'Try adjusting your search query.' : 'Start by inviting users to your application.'}
-          />
+          {searchQuery.trim() || roleFilter !== 'all' ? (
+            <Empty
+              size="sm"
+              title="No users match these filters"
+              description="Try a different search or role."
+            />
+          ) : (
+            <Empty
+              size="sm"
+              title="No users yet"
+              description="Start by inviting users to the app."
+            />
+          )}
         </Card>
       ) : (
         <Card padding="none">

@@ -79,6 +79,9 @@ export function ProjectDetailClient({
 
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null)
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  // The tagged contact waiting on the Remove confirm. There is no way to tag a contact back from
+  // this page, so removing one is confirmed first, as every danger action is.
+  const [removeContact, setRemoveContact] = useState<{ id: string; name: string } | null>(null)
 
   const totals = useMemo(() => {
     const t = { hours: 0, totalExVat: 0, unbilled: 0, billed: 0, paid: 0 }
@@ -194,7 +197,7 @@ export function ProjectDetailClient({
                 size="sm"
                 onClick={() => router.push(`/oj-projects/projects?edit=${project.id}`)}
               >
-                Edit Project
+                Edit
               </Button>
             )}
             {canDelete && (
@@ -259,7 +262,7 @@ export function ProjectDetailClient({
                 </Alert>
               </CardBody>
             ) : entries.length === 0 ? (
-              <Empty size="sm" title="No entries" description="No entries recorded yet." />
+              <Empty size="sm" title="No entries yet" description="Entries logged against this project show here." />
             ) : (
               <>
                 <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -425,7 +428,7 @@ export function ProjectDetailClient({
                               label: 'Remove',
                               icon: <Icon name="trash" size={16} />,
                               tone: 'danger',
-                              onSelect: () => handleRemoveContact(tc.id),
+                              onSelect: () => setRemoveContact({ id: tc.id, name: tc.contact?.name || 'this contact' }),
                             },
                           ]}
                         />
@@ -498,7 +501,7 @@ export function ProjectDetailClient({
         onClose={() => setDeleteEntryId(null)}
         onConfirm={handleDeleteEntry}
         title="Delete Entry"
-        message="Are you sure you want to delete this entry? This cannot be undone."
+        message="Delete this entry? This cannot be undone."
         confirmLabel="Delete"
         tone="danger"
       />
@@ -507,8 +510,19 @@ export function ProjectDetailClient({
         onClose={() => setDeleteProjectOpen(false)}
         onConfirm={handleDeleteProject}
         title="Delete Project"
-        message="Are you sure? You can only delete projects with no entries."
+        message="Delete this project? Only a project with no entries can be deleted."
         confirmLabel="Delete"
+        tone="danger"
+      />
+      <ConfirmDialog
+        open={removeContact !== null}
+        onClose={() => setRemoveContact(null)}
+        onConfirm={async () => {
+          if (removeContact) await handleRemoveContact(removeContact.id)
+        }}
+        title="Remove Contact"
+        message={`Remove ${removeContact?.name ?? 'this contact'} from this project?`}
+        confirmLabel="Remove"
         tone="danger"
       />
     </PageLayout>

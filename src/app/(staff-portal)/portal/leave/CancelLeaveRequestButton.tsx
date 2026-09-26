@@ -35,14 +35,14 @@ export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButton
           {error}
         </Alert>
       )}
-      <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmOpen(true)}>
+      <Button type="button" variant="danger" size="sm" onClick={() => setConfirmOpen(true)}>
         Cancel Request
       </Button>
       <ConfirmDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleConfirm}
-        title="Cancel Holiday Request?"
+        title="Cancel Request"
         message="Your request is withdrawn and your manager will no longer see it. To take this time off, send a new request."
         confirmLabel="Cancel Request"
         cancelLabel="Keep Request"

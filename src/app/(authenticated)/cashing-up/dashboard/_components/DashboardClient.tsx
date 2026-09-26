@@ -124,7 +124,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
     )
   }, [sessionSearch, varianceRows])
 
-  const layoutProps = cashingUpLayout('Takings, targets and variance by year')
+  const layoutProps = cashingUpLayout('Overview: takings, targets and variance by year')
 
   if (error) {
     return (
@@ -138,7 +138,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
     return (
       <PageLayout {...layoutProps}>
         <Card>
-          <Empty size="sm" title="No dashboard data available" />
+          <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in the selected year." />
         </Card>
       </PageLayout>
     )
@@ -246,7 +246,15 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
             {visibleVarianceRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8}>
-                  <Empty size="sm" title={sessionSearch ? 'No sessions match your search' : 'No records found'} />
+                  <Empty
+                    size="sm"
+                    title={sessionSearch ? 'No sessions match this search' : 'No sessions for this period'}
+                    description={
+                      sessionSearch
+                        ? 'Change or clear the search to see more sessions.'
+                        : 'No cash-ups were recorded in the selected year.'
+                    }
+                  />
                 </TableCell>
               </TableRow>
             ) : (

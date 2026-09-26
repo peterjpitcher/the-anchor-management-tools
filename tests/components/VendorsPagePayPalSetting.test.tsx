@@ -74,7 +74,7 @@ describe('VendorsPage PayPal setting', () => {
   it('starts a new vendor with PayPal payments off', async () => {
     render(<VendorsPage />)
 
-    const [addVendorButton] = await screen.findAllByRole('button', { name: 'Add Vendor' })
+    const [addVendorButton] = await screen.findAllByRole('button', { name: 'New Vendor' })
     fireEvent.click(addVendorButton)
 
     expect(screen.getByRole('checkbox', { name: 'Offer PayPal/card payment' })).not.toBeChecked()
@@ -89,7 +89,7 @@ describe('VendorsPage PayPal setting', () => {
     expect(checkbox).toBeChecked()
 
     fireEvent.click(checkbox)
-    fireEvent.click(screen.getByRole('button', { name: 'Update Vendor' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(actionMocks.updateVendor).toHaveBeenCalledTimes(1))
     const submittedForm = actionMocks.updateVendor.mock.calls[0][0] as FormData

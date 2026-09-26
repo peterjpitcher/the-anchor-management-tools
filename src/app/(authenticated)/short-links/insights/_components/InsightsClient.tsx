@@ -151,12 +151,12 @@ export function InsightsClient() {
   return (
     <PageLayout
       title={SHORT_LINKS_TITLE}
-      subtitle="Analytics and insights for l.the-anchor.pub"
+      subtitle="Insights: clicks and campaigns on l.the-anchor.pub"
       navItems={SHORT_LINKS_NAV}
       headerActions={
         <>
-          <Segmented aria-label="View" options={VIEW_OPTIONS} value={activeTab} onChange={setActiveTab} />
-          <Segmented aria-label="Time window" options={TIME_OPTIONS} value={days} onChange={setDays} />
+          <Segmented aria-label="View" size="sm" options={VIEW_OPTIONS} value={activeTab} onChange={setActiveTab} />
+          <Segmented aria-label="Time window" size="sm" options={TIME_OPTIONS} value={days} onChange={setDays} />
           <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
             Refresh
           </Button>
@@ -191,7 +191,7 @@ export function InsightsClient() {
                   ariaLabel={`Human clicks per day, last ${days} days`}
                 />
               ) : (
-                <Empty size="sm" icon="chart" title="No data for this period" />
+                <Empty size="sm" icon="chart" title="No clicks for this period" />
               )}
             </CardBody>
           </Card>
@@ -201,7 +201,7 @@ export function InsightsClient() {
             <CardHeader title="Top Performing Links" />
             {topLinks.length === 0 ? (
               <CardBody>
-                <Empty size="sm" title="No clicks on any link in this period" />
+                <Empty size="sm" title="No link clicks for this period" />
               </CardBody>
             ) : (
               linkTable(topLinks)
@@ -229,7 +229,11 @@ export function InsightsClient() {
             <CardHeader title="Campaign Performance" />
             {grouped.campaigns.length === 0 ? (
               <CardBody>
-                <Empty size="sm" title="No campaigns found" />
+                <Empty
+                  size="sm"
+                  title="No campaign clicks for this period"
+                  description="Links with campaign variants show here once they are clicked."
+                />
               </CardBody>
             ) : (
               <Table>

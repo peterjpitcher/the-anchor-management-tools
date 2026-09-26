@@ -320,6 +320,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
             <Button
               type="button"
               variant="secondary"
+              size="sm"
               onClick={() => eventId && load(eventId)}
               className="min-h-touch"
             >
@@ -513,7 +514,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     icon={<Icon name="download" size={16} />}
                     className="min-h-touch min-w-touch px-2"
                   >
-                    <span className="sr-only">Download {config.label}</span>
+                    <span className="sr-only">Download {config.label.toLowerCase()}</span>
                   </LinkButton>
                 )}
 
@@ -526,7 +527,8 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     onClick={() => setPendingDelete(variant)}
                     disabled={tile.uploading}
                     icon={<Icon name="trash" size={16} />}
-                    label={`Delete ${config.label}`}
+                    // Icon-only buttons are named in sentence case ("Delete square").
+                    label={`Delete ${config.label.toLowerCase()}`}
                     className="min-h-touch min-w-touch text-danger-fg hover:bg-danger-soft"
                   />
                 )}

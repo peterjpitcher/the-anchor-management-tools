@@ -41,6 +41,9 @@ import { ExpenseForm, type ExpenseFormData, type ExistingFile } from './ExpenseF
 import { ExpenseFileViewer } from './ExpenseFileViewer'
 import { EXPENSES_LIST_LAYOUT } from '../_shared/nav'
 
+/** The Modal footer's submit button names the expense form by this id. */
+const EXPENSE_FORM_ID = 'expense-form'
+
 // ---------------------------------------------------------------------------
 // Formatters
 // ---------------------------------------------------------------------------
@@ -99,6 +102,8 @@ export function ExpensesClient({
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [editingFiles, setEditingFiles] = useState<ExistingFile[]>([])
   const [createdExpenseId, setCreatedExpenseId] = useState<string | null>(null)
+  // The form saves and uploads itself; the Modal footer's buttons show that it is busy.
+  const [formBusy, setFormBusy] = useState(false)
 
   // File viewer state
   const [viewerFiles, setViewerFiles] = useState<ExpenseFile[]>([])
@@ -230,6 +235,7 @@ export function ExpensesClient({
     [refreshData]
   )
 
+  const hasActiveFilters = Boolean(filters.dateFrom || filters.dateTo || filters.companySearch)
   const highestSupplierSpend = Math.max(...stats.supplierSpend.map((row) => row.amount), 0)
 
   // The list opens newest first, as it always has. DataTable sorts from there when a header is
@@ -387,8 +393,12 @@ export function ExpensesClient({
               ) : (
                 <Empty
                   size="sm"
-                  title="No expenses found"
-                  description='Use "New Expense" to add one.'
+                  title={hasActiveFilters ? 'No expenses match these filters' : 'No expenses yet'}
+                  description={
+                    hasActiveFilters
+                      ? 'Change or clear the filters to see more expenses.'
+                      : 'Use New Expense to add one.'
+                  }
                 />
               )
             ) : (
@@ -410,7 +420,7 @@ export function ExpensesClient({
             <CardHeader title="Supplier Spend" subtitle="This quarter" />
             <CardBody>
               {stats.supplierSpend.length === 0 ? (
-                <Empty size="sm" title="No supplier spend" description="Quarterly supplier totals will appear here." />
+                <Empty size="sm" title="No supplier spend for this period" description="No expenses were recorded this quarter." />
               ) : (
                 <div className="space-y-4">
                   {stats.supplierSpend.map((row) => {
@@ -441,6 +451,16 @@ export function ExpensesClient({
           onClose={() => setShowForm(false)}
           title={editingExpense ? 'Edit Expense' : 'New Expense'}
           width="lg"
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setShowForm(false)} disabled={formBusy}>
+                Cancel
+              </Button>
+              <Button type="submit" form={EXPENSE_FORM_ID} variant="primary" loading={formBusy}>
+                {editingExpense ? 'Save Changes' : 'Create Expense'}
+              </Button>
+            </>
+          }
         >
           <ExpenseForm
             initialData={
@@ -461,8 +481,8 @@ export function ExpensesClient({
             onSubmit={handleSubmit}
             onUploadFiles={handleUploadFiles}
             onDeleteFile={handleDeleteFile}
-            onCancel={() => setShowForm(false)}
-            isEditing={!!editingExpense}
+            formId={EXPENSE_FORM_ID}
+            onBusyChange={setFormBusy}
           />
         </Modal>
       )}

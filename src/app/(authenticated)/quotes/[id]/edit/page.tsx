@@ -13,6 +13,7 @@ import {
   CardBody,
   Button,
   IconButton,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -23,6 +24,7 @@ import {
 } from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+import { quotePageTitle } from '@/app/(authenticated)/invoices/_shared/nav'
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
@@ -249,10 +251,12 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   const { subtotal, quoteDiscountAmount, totalVat, total } = calculateTotals()
 
+  const backHref = quoteId ? `/quotes/${quoteId}` : '/quotes'
   const layoutProps = {
     title: 'Edit Quote',
     subtitle: 'Update quote details',
-    backButton: { label: 'Back to Quote', href: quoteId ? `/quotes/${quoteId}` : '/quotes' },
+    // Back to the quote page, named as that page is titled ("Quote Q-001").
+    backButton: { label: `Back to ${quotePageTitle(quote?.quote_number)}`, href: backHref },
   }
 
   if (permissionsLoading) {
@@ -332,7 +336,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
             title="Line Items"
             action={
               <Button variant="secondary" type="button" onClick={addLineItem} size="sm" leftIcon={<Icon name="plus" size={16} />}>
-                Add Item
+                Add Line Item
               </Button>
             }
           />
@@ -407,11 +411,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                     <div className="flex items-end">
                       <IconButton
                         type="button"
-                        variant="danger"
+                        variant="ghost"
                         size="sm"
                         onClick={() => removeLineItem(index)}
                         label="Remove line item"
-                        icon={<Icon name="trash" size={16} />}
+                        icon={<Icon name="trash" size={16} className="text-danger" />}
                       />
                     </div>
                   )}
@@ -490,21 +494,16 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push(`/quotes/${quoteId}`)}
-            disabled={submitting}
-          >
+          <LinkButton href={backHref} variant="secondary" disabled={submitting}>
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             loading={submitting}
             disabled={submitting || !canEdit}
             title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
           >
-            Update Quote
+            Save Changes
           </Button>
         </FormFooter>
       </form>

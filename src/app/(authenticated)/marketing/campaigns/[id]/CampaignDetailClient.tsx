@@ -171,53 +171,50 @@ export function CampaignDetailClient({
       title={campaign.name}
       subtitle={campaign.subject}
       backButton={MARKETING_BACK}
+      // Only the actions this campaign can take right now, so the header never holds more than
+      // three: Test Send, then Cancel Campaign (destructive, before the primary), then the next
+      // step (Schedule Campaign for a draft, Resume for a paused campaign). Pause is secondary.
       headerActions={
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setTestSendOpen(true)}
-            disabled={!canSend || busy}
-          >
-            Test Send
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setScheduleOpen(true)}
-            disabled={!canSchedule || busy}
-          >
-            Schedule
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => runAction('Campaign paused.', () => pauseMarketingCampaign(campaign.id))}
-            disabled={!canPause || busy}
-          >
-            Pause
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              runAction('Campaign resumed.', () => resumeMarketingCampaign(campaign.id))
-            }
-            disabled={!canResume || busy}
-          >
-            Resume
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => setCancelOpen(true)}
-            disabled={!canCancel || busy}
-          >
-            Cancel
-          </Button>
-        </>
+        canSend ? (
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setTestSendOpen(true)} disabled={busy}>
+              Test Send
+            </Button>
+            {canPause && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => runAction('Campaign paused.', () => pauseMarketingCampaign(campaign.id))}
+                disabled={busy}
+              >
+                Pause
+              </Button>
+            )}
+            {canCancel && (
+              <Button variant="danger" size="sm" onClick={() => setCancelOpen(true)} disabled={busy}>
+                Cancel Campaign
+              </Button>
+            )}
+            {canSchedule && (
+              <Button variant="primary" size="sm" onClick={() => setScheduleOpen(true)} disabled={busy}>
+                Schedule Campaign
+              </Button>
+            )}
+            {canResume && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  runAction('Campaign resumed.', () => resumeMarketingCampaign(campaign.id))
+                }
+                disabled={busy}
+              >
+                Resume
+              </Button>
+            )}
+          </>
+        ) : undefined
       }
-      showHeaderActionsOnMobile
     >
         <Card>
           <CardBody>
@@ -466,7 +463,12 @@ export function CampaignDetailClient({
                 className="h-[600px] w-full border border-border"
               />
             ) : (
-              <Empty size="sm" icon="document" title="No preview available" />
+              <Empty
+                size="sm"
+                icon="document"
+                title="No preview yet"
+                description="The email preview shows here once the campaign has content."
+              />
             )}
           </CardBody>
         </Card>
@@ -597,7 +599,7 @@ export function CampaignDetailClient({
       <Modal
         open={scheduleOpen}
         onClose={() => setScheduleOpen(false)}
-        title="Schedule This Campaign"
+        title="Schedule Campaign"
         width="md"
         footer={
           <>
@@ -605,7 +607,7 @@ export function CampaignDetailClient({
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSchedule} loading={busy}>
-              Schedule It
+              Schedule Campaign
             </Button>
           </>
         }
@@ -635,49 +637,41 @@ export function CampaignDetailClient({
           setCancelOpen(false)
           await runAction('Campaign cancelled.', () => cancelMarketingCampaign(campaign.id))
         }}
-        title="Cancel This Campaign?"
+        title="Cancel Campaign"
         message="Anything not yet sent will be stopped. Emails already sent cannot be pulled back, and a cancelled campaign cannot be restarted."
-        confirmLabel="Cancel the Campaign"
+        confirmLabel="Cancel Campaign"
+        cancelLabel="Keep Campaign"
         tone="danger"
       />
 
-      <Modal
+      {/* No fields, so a ConfirmDialog. It stays open when the send fails, so it can be retried. */}
+      <ConfirmDialog
         open={testSendOpen}
         onClose={() => setTestSendOpen(false)}
+        onConfirm={async () => {
+          const sent = await runAction('Test email sent to you.', () =>
+            sendMarketingTestEmail(campaign.id),
+          )
+          if (sent) setTestSendOpen(false)
+        }}
+        closeOnConfirm={false}
         title="Test Send"
-        width="md"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setTestSendOpen(false)} disabled={busy}>
-              Close
-            </Button>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={async () => {
-                const sent = await runAction('Test email sent to you.', () =>
-                  sendMarketingTestEmail(campaign.id),
-                )
-                if (sent) setTestSendOpen(false)
-              }}
-            >
-              Send It to Me
-            </Button>
-          </>
+        message={
+          <div className="space-y-3">
+            <p>
+              This sends the campaign to your own email address so you can see it as a recipient
+              will. Nothing is recorded against any contact, so it does not affect the audience,
+              the frequency cap or the campaign figures.
+            </p>
+            <p className="text-text-muted">
+              Worth checking in Outlook on Windows, Gmail, and Apple Mail in dark mode. Those are
+              the three that render email differently enough to matter.
+            </p>
+          </div>
         }
-      >
-        <div className="space-y-3">
-          <p>
-            This sends the campaign to your own email address so you can see it as a recipient
-            will. Nothing is recorded against any contact, so it does not affect the audience,
-            the frequency cap or the campaign figures.
-          </p>
-          <p className="text-sm text-text-muted">
-            Worth checking in Outlook on Windows, Gmail, and Apple Mail in dark mode. Those are
-            the three that render email differently enough to matter.
-          </p>
-        </div>
-      </Modal>
+        confirmLabel="Send It to Me"
+        tone="primary"
+      />
     </PageLayout>
   )
 }

@@ -14,9 +14,15 @@ interface CustomerFormProps {
    * with the footer below it. Left out, the form sits bare, as it does inside a Modal.
    */
   framed?: boolean
+  /**
+   * Inside a Modal the dialog's `footer` carries Cancel and Save, linked to this form with
+   * `form={formId}`, so the form draws no footer of its own. Left out, the form ends with its
+   * own FormFooter, as a form on a page does.
+   */
+  formId?: string
 }
 
-export function CustomerForm({ customer, onSubmit, onCancel, framed = false }: CustomerFormProps) {
+export function CustomerForm({ customer, onSubmit, onCancel, framed = false, formId }: CustomerFormProps) {
   const [firstName, setFirstName] = useState(customer?.first_name ?? '')
   const [lastName, setLastName] = useState(customer?.last_name ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
@@ -111,23 +117,19 @@ export function CustomerForm({ customer, onSubmit, onCancel, framed = false }: C
     </>
   )
 
-  const footer = (
+  const footer = formId ? null : (
     <FormFooter>
       <Button type="button" variant="secondary" onClick={onCancel}>
         Cancel
       </Button>
-      <Button type="submit" variant="primary" disabled={isSubmitting}>
-        {isSubmitting
-          ? 'Saving...'
-          : customer
-            ? 'Update Customer'
-            : 'Create Customer'}
+      <Button type="submit" variant="primary" loading={isSubmitting}>
+        {customer ? 'Save Changes' : 'Create Customer'}
       </Button>
     </FormFooter>
   )
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-6">
       {framed ? (
         <Card>
           <CardHeader title="Customer Details" />

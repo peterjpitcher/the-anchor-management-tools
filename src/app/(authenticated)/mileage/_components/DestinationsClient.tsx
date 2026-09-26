@@ -463,7 +463,7 @@ export function DestinationsClient({
             icon={<Icon name="plus" size={16} />}
             onClick={openCreate}
           >
-            Add Destination
+            New Destination
           </Button>
         ) : undefined
       }
@@ -495,8 +495,8 @@ export function DestinationsClient({
           <Empty
             size="sm"
             icon={<Icon name="mapPin" size={48} />}
-            title="No destinations saved yet"
-            description={canManage ? 'Use Add Destination to save your first one.' : undefined}
+            title="No destinations yet"
+            description={canManage ? 'Use New Destination to save the first one.' : 'Saved places show here.'}
           />
         </Card>
       ) : (
@@ -629,7 +629,7 @@ export function DestinationsClient({
                   onClick={saveRouteDistance}
                   loading={routeSaving && isPending}
                 >
-                  Save
+                  Save Distance
                 </Button>
               </CardBody>
             </Card>
@@ -637,7 +637,7 @@ export function DestinationsClient({
 
           {locationDistances.length === 0 ? (
             <Card>
-              <Empty size="sm" title="No location-to-location distances saved yet" />
+              <Empty size="sm" title="No distances yet" description="Saved distances between two places show here." />
             </Card>
           ) : (
             <>
@@ -694,7 +694,7 @@ export function DestinationsClient({
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
-        title={editingDest ? 'Edit Destination' : 'Add Destination'}
+        title={editingDest ? 'Edit Destination' : 'New Destination'}
         width="sm"
         footer={
           <>
@@ -710,7 +710,7 @@ export function DestinationsClient({
               onClick={handleSubmit}
               loading={isPending}
             >
-              {editingDest ? 'Save Changes' : 'Add Destination'}
+              {editingDest ? 'Save Changes' : 'Create Destination'}
             </Button>
           </>
         }

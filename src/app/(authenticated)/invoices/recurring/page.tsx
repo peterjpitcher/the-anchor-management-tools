@@ -198,7 +198,7 @@ export default function RecurringInvoicesPage() {
 
   const layoutProps = {
     title: 'Invoices',
-    subtitle: 'Recurring invoices raised automatically on a schedule',
+    subtitle: 'Recurring: invoices raised automatically on a schedule',
     navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
@@ -388,8 +388,8 @@ export default function RecurringInvoicesPage() {
                 </div>
               </div>
             )}
-            emptyMessage="No recurring invoices"
-            emptyDescription="Create recurring invoices to automate your billing"
+            emptyMessage="No recurring invoices yet"
+            emptyDescription="Use New Recurring Invoice to bill a client on a schedule."
           />
         </Card>
       )}

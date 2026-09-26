@@ -27,7 +27,7 @@ export function EventArtworkDownloadsCard({ event }: { event: Event }) {
       />
       <CardBody>
         {assets.length === 0 ? (
-          <Empty size="sm" title="No Artwork Yet" description="No artwork has been added yet." />
+          <Empty size="sm" title="No artwork yet" description="Artwork added to this event shows here, ready to download." />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {assets.map(({ variant, config, url }) => {

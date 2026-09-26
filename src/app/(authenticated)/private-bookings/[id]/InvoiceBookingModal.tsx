@@ -99,7 +99,8 @@ export function InvoiceBookingModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={preview ? `Invoice ${preview.customerName}` : 'Invoice This Booking'}
+      title="Generate and Send Invoice"
+      description={preview ? preview.customerName : undefined}
       width="xl"
       footer={
         <>
@@ -115,13 +116,10 @@ export function InvoiceBookingModal({
           <Button
             variant="primary"
             onClick={handleConfirm}
-            disabled={!preview || loading || sending || blockedByOverpayment || blocked}
+            disabled={!preview || loading || blockedByOverpayment || blocked}
+            loading={sending}
           >
-            {sending
-              ? 'Sending…'
-              : preview
-                ? `Send Invoice to ${preview.customerName.split(' ')[0]}`
-                : 'Send Invoice'}
+            Send Invoice
           </Button>
         </>
       }

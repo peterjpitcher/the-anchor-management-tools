@@ -21,7 +21,7 @@ export default async function HandoutModePage({
   // A top-level tab: no back button. One form and no table, so the narrow form width.
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'Hand-out mode: set the context once, then log each card as you hand it over',
+    subtitle: 'Hand-Out Mode: set the context once, then log each card as you hand it over',
     navItems: VOUCHERS_NAV,
     containerSize: 'md' as const,
   }

@@ -369,7 +369,7 @@ export default function MenuManagementClient(): React.ReactElement {
           onClick={handleDesignerExport}
           icon={<Icon name="download" size={14} />}
         >
-          Export Menu
+          Export CSV
         </Button>
         <Button variant="secondary" size="sm" onClick={loadDishes}>Refresh</Button>
       </>
@@ -560,7 +560,7 @@ export default function MenuManagementClient(): React.ReactElement {
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDishes.length === 0 ? (
-                <div className="col-span-full"><Empty title="No dishes" description="No dishes found for the current filters." /></div>
+                <div className="col-span-full"><Empty title="No dishes match these filters" description="Change or clear the filters to see more dishes." /></div>
               ) : filteredDishes.map((dish) => {
                 const dishGp = hasMeaningfulGp(dish) ? `${Math.round((dish.gp_pct as number) * 100)}%` : '--'
                 // A clickable card, not a DS Button: the card holds its own active Switch, and a

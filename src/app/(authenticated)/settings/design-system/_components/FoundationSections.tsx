@@ -100,6 +100,53 @@ focus:border-border-focus focus:shadow-ring`}
             </div>
           </Example>
         </ReferenceCard>
+        <ReferenceCard title="Wording" subtitle="The same action has the same words and the same look on every page">
+          <ul className="list-disc space-y-2 pl-5 text-sm text-text">
+            <li>
+              &quot;New X&quot; starts a record and opens a page or dialog titled &quot;New X&quot;. Its submit is
+              &quot;Create X&quot;, or &quot;Add X&quot; for something added to the record on screen (a line item, a
+              note).
+            </li>
+            <li>
+              An edit form saves with &quot;Save Changes&quot;; a form in sections names the section (&quot;Save
+              Opening Hours&quot;). Never &quot;Update X&quot;. A detail page&apos;s edit action is &quot;Edit&quot;,
+              secondary.
+            </li>
+            <li>
+              &quot;Delete&quot; is danger and opens &quot;Delete &lt;Thing&gt;&quot;, which confirms with
+              &quot;Delete&quot;. Cancelling a booking is &quot;Cancel Booking&quot;, kept with &quot;Keep
+              Booking&quot;.
+            </li>
+            <li>
+              Retry is &quot;Try Again&quot; (secondary, sm). &quot;Export CSV&quot;, &quot;Download PDF&quot;,
+              &quot;Email Invoice&quot;. A working button keeps its label and shows its spinner.
+            </li>
+            <li>
+              Empty titles are short and sentence case (&quot;No X yet&quot;, &quot;No X match these
+              filters&quot;, &quot;No X for this period&quot;); icon-only buttons are named in sentence case.
+            </li>
+          </ul>
+        </ReferenceCard>
+        <ReferenceCard title="Headers and Dialogs">
+          <ul className="list-disc space-y-2 pl-5 text-sm text-text">
+            <li>
+              A tab page&apos;s subtitle reads &quot;&lt;Tab&gt;: &lt;what this page is for&gt;&quot;. A record&apos;s
+              status is a Badge in its first card, never in the header.
+            </li>
+            <li>
+              Filters sit above the data they filter, never in the header. Destructive actions on a detail page go in
+              the header, not a danger-zone card. More than three header actions: the extras go in a labelled
+              &quot;More&quot; Dropdown.
+            </li>
+            <li>
+              A Modal&apos;s buttons go in its <Code>footer</Code> (a form in the body links its submit button with{' '}
+              <Code>form</Code>); <Code>FormFooter</Code> never sits in a Modal.
+            </li>
+            <li>
+              A yes/no question is a <Code>ConfirmDialog</Code>, and a dialog title never ends in a question mark.
+            </li>
+          </ul>
+        </ReferenceCard>
       </div>
     </Section>
   )

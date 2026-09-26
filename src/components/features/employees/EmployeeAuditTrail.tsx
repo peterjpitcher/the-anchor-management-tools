@@ -63,8 +63,8 @@ export function EmployeeAuditTrail({
         <CardHeader title="Audit Trail" />
         <Empty
           size="sm"
-          title="No audit history"
-          description={`No audit history available${employeeName ? ` for ${employeeName}` : ''}.`}
+          title="No audit history yet"
+          description={`Changes to ${employeeName || 'this employee'} will appear here.`}
         />
       </Card>
     )
@@ -232,7 +232,7 @@ export function EmployeeAuditTrail({
       }
 
       if (note) {
-        details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '...' : ''}`)
+        details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '…' : ''}`)
       }
     }
 

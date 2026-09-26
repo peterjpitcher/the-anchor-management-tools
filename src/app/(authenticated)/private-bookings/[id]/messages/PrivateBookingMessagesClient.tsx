@@ -287,13 +287,13 @@ export default function PrivateBookingMessagesClient({
   // One header for every state. Every tab of the booking shows the customer's name.
   const layoutProps = {
     title: booking ? booking.customer_full_name || booking.customer_name : 'Private Booking',
-    subtitle: 'Send and review messages to the customer',
+    subtitle: 'Messages: send and review messages to the customer',
     backButton: PB_BACK_TO_LIST,
     navItems: PB_DETAIL_NAV(bookingId),
   }
 
   if (loading) {
-    return <PageLayout {...layoutProps} loading loadingLabel="Loading messages..." />
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading messages…" />
   }
 
   if (!booking) {
@@ -434,12 +434,13 @@ export default function PrivateBookingMessagesClient({
               subtitle="Recent SMS messages related to this booking."
             />
             {loading ? (
-              <PageLoading inline label="Loading messages..." />
+              <PageLoading inline label="Loading messages…" />
             ) : sentMessages.length === 0 ? (
               <Empty
                 size="sm"
                 icon={<Icon name="message" size={48} />}
-                title="No messages have been sent for this booking yet"
+                title="No messages yet"
+                description="Messages sent to the customer about this booking will appear here."
               />
             ) : (
               <CardBody>

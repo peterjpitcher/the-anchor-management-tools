@@ -26,8 +26,8 @@ interface AddEmployeeAttachmentFormProps {
 
 function SubmitAttachmentButton({ disabled, pending }: { disabled?: boolean; pending: boolean }) {
   return (
-    <Button type="submit" variant="primary" disabled={pending || disabled}>
-      {pending ? 'Uploading…' : 'Upload Attachment'}
+    <Button type="submit" variant="primary" disabled={disabled} loading={pending}>
+      Upload Attachment
     </Button>
   )
 }

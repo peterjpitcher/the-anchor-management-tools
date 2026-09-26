@@ -8,7 +8,7 @@ interface EmployeeNotesListProps {
 
 export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
   if (!notes || notes.length === 0) {
-    return <Empty size="sm" title="No notes yet" description="No notes recorded for this employee yet." />
+    return <Empty size="sm" title="No notes yet" description="Notes about this employee will appear here." />
   }
 
   return (

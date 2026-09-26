@@ -48,7 +48,7 @@ describe('QuotesClient', () => {
 
     expect(await screen.findByText('Database unavailable')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
-    expect(screen.queryByText('No quotes found')).not.toBeInTheDocument()
+    expect(screen.queryByText('No quotes yet')).not.toBeInTheDocument()
     expect(container.querySelector('table')).toBeNull()
     // Nothing after the filter row: an empty framed card under the error reads as an empty list.
     const filterRow = screen.getByPlaceholderText('Search quotes...').closest('.flex-wrap') as HTMLElement
@@ -68,9 +68,9 @@ describe('QuotesClient', () => {
       />,
     )
 
-    expect(await screen.findByText('No quotes found')).toBeInTheDocument()
+    expect(await screen.findByText('No quotes yet')).toBeInTheDocument()
     const filterRow = screen.getByPlaceholderText('Search quotes...').closest('.flex-wrap') as HTMLElement
-    expect(filterRow.nextElementSibling).toContainElement(screen.getByText('No quotes found'))
+    expect(filterRow.nextElementSibling).toContainElement(screen.getByText('No quotes yet'))
   })
 
   it('opens a quote from its phone row with the keyboard, but not from the Convert button inside it', async () => {
@@ -106,7 +106,7 @@ describe('QuotesClient', () => {
     expect(routerPush).toHaveBeenCalledWith('/quotes/quote-1')
 
     routerPush.mockClear()
-    const convertInRow = Array.from(row.querySelectorAll('button')).find((button) => button.textContent === 'Convert')
+    const convertInRow = Array.from(row.querySelectorAll('button')).find((button) => button.textContent === 'Convert to Invoice')
     expect(convertInRow).toBeDefined()
     fireEvent.keyDown(convertInRow as HTMLElement, { key: 'Enter' })
     expect(routerPush).not.toHaveBeenCalledWith('/quotes/quote-1')

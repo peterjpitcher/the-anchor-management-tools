@@ -37,7 +37,7 @@ function reviewHref(vendorLabel: string): string {
   return `/receipts?needsExpense=1${vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(vendorLabel)}` : ''}`
 }
 
-const ALL_CATEGORISED = 'All transactions have an expense category assigned'
+const ALL_CATEGORISED = 'No expense gaps'
 
 export const runtime = 'nodejs'
 
@@ -57,7 +57,7 @@ export default async function ReceiptsMissingExpensePage() {
 
   return (
     <ReceiptsPageChrome
-      subtitle="Vendors whose transactions still need an expense category"
+      subtitle="Expense Gaps: vendors whose transactions still need an expense category"
       navState={{ view: 'missing-expense' }}
       canManage={canManage}
     >
@@ -85,7 +85,7 @@ export default async function ReceiptsMissingExpensePage() {
 
       {summary.length === 0 ? (
         <Card>
-          <Empty size="sm" title={ALL_CATEGORISED} />
+          <Empty size="sm" title={ALL_CATEGORISED} description="Every transaction has an expense category." />
         </Card>
       ) : (
         <>

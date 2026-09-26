@@ -187,7 +187,7 @@ export default function LineItemCatalogPage() {
 
   const layoutProps = {
     title: 'Invoices',
-    subtitle: 'Catalog of reusable line items for invoices and quotes',
+    subtitle: 'Catalog: reusable line items for invoices and quotes',
     navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
   }
 
@@ -232,7 +232,7 @@ export default function LineItemCatalogPage() {
             onClick={() => openForm()}
             leftIcon={<Icon name="plus" size={16} />}
           >
-            Add Item
+            New Catalog Item
           </Button>
         ) : undefined
       }
@@ -259,8 +259,8 @@ export default function LineItemCatalogPage() {
               { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
               { key: 'actions', header: 'Actions', align: 'right', cell: itemActions },
             ]}
-            emptyMessage="No catalog items found"
-            emptyDescription="Add common line items for quick reuse."
+            emptyMessage="No catalog items yet"
+            emptyDescription="Use New Catalog Item to save a line item you use often."
             renderMobileCard={(i: LineItemCatalogItem) => (
               <div className="border-b border-border p-pad-card">
                 <div className="mb-2 flex items-start justify-between">
@@ -284,7 +284,7 @@ export default function LineItemCatalogPage() {
       <Modal
         open={showForm}
         onClose={closeForm}
-        title={editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
+        title={editingItem ? 'Edit Catalog Item' : 'New Catalog Item'}
         width="sm"
         footer={
           <>
@@ -302,7 +302,7 @@ export default function LineItemCatalogPage() {
               disabled={formLoading || !canManage}
               loading={formLoading}
             >
-              {editingItem ? 'Save Changes' : 'Add Item'}
+              {editingItem ? 'Save Changes' : 'Create Catalog Item'}
             </Button>
           </>
         }

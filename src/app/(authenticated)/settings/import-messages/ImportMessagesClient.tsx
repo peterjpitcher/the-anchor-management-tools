@@ -123,7 +123,7 @@ export default function ImportMessagesClient({
               loading={loading}
               variant="primary"
             >
-              {loading ? 'Importing...' : 'Import Messages'}
+              Import Messages
             </Button>
           </FormFooter>
         </CardBody>

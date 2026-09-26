@@ -44,7 +44,7 @@ describe('ShortLinksClient when the list cannot be read', () => {
 
     expect(screen.getByText('Could not load short links')).toBeInTheDocument()
     expect(screen.getByText('Database unavailable')).toBeInTheDocument()
-    expect(screen.queryByText('No short links found')).not.toBeInTheDocument()
+    expect(screen.queryByText('No short links yet')).not.toBeInTheDocument()
   })
 
   it('shows the list again once a retry succeeds', async () => {
@@ -53,13 +53,13 @@ describe('ShortLinksClient when the list cannot be read', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Try Again' }))
 
-    await waitFor(() => expect(screen.getByText('No short links found')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('No short links yet')).toBeInTheDocument())
     expect(screen.queryByText('Could not load short links')).not.toBeInTheDocument()
     expect(getShortLinks).toHaveBeenCalledWith(1, 25, false, undefined)
   })
 
   it('shows the empty state when the read worked and there is nothing to list', () => {
     renderClient(null)
-    expect(screen.getByText('No short links found')).toBeInTheDocument()
+    expect(screen.getByText('No short links yet')).toBeInTheDocument()
   })
 })

@@ -219,8 +219,8 @@ function RateHistory({
                             <Button type="button" size="sm" variant="secondary" onClick={() => setEditingRateId(null)}>
                               Cancel
                             </Button>
-                            <Button type="button" size="sm" variant="primary" onClick={handleUpdateRate} disabled={isPending}>
-                              Save
+                            <Button type="button" size="sm" variant="primary" onClick={handleUpdateRate} loading={isPending}>
+                              Save Changes
                             </Button>
                           </div>
                         ) : r.effective_from > today ? (
@@ -242,7 +242,7 @@ function RateHistory({
 
       {showForm && canManage && (
         <Card>
-          <CardHeader title="Add New Effective-Dated Rate" />
+          <CardHeader title="Add Rate" subtitle="A new effective-dated rate for this band" />
           <CardBody className="space-y-4">
             {error && <Alert tone="danger">{error}</Alert>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -270,8 +270,8 @@ function RateHistory({
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
-              <Button type="button" variant="primary" onClick={handleAddRate} disabled={isPending}>
-                {isPending ? 'Saving…' : 'Save Rate'}
+              <Button type="button" variant="primary" onClick={handleAddRate} loading={isPending}>
+                Add Rate
               </Button>
             </FormFooter>
           </CardBody>
@@ -356,8 +356,8 @@ function BandDetails({
                 <Button type="button" variant="secondary" onClick={() => setEditingBand(false)}>
                   Cancel
                 </Button>
-                <Button type="button" variant="primary" onClick={() => saveBand()} disabled={isPending}>
-                  Save Band
+                <Button type="button" variant="primary" onClick={() => saveBand()} loading={isPending}>
+                  Save Changes
                 </Button>
               </FormFooter>
             </CardBody>
@@ -489,7 +489,7 @@ export default function PayBandsManager({
 
       {showNewBandForm && canManage && (
         <Card>
-          <CardHeader title="New Age Band" />
+          <CardHeader title="New Band" />
           <CardBody className="space-y-4">
             {formError && <Alert tone="danger">{formError}</Alert>}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -530,8 +530,8 @@ export default function PayBandsManager({
               <Button type="button" variant="secondary" onClick={() => { setShowNewBandForm(false); setFormError(''); }}>
                 Cancel
               </Button>
-              <Button type="button" variant="primary" onClick={handleCreateBand} disabled={isPending}>
-                {isPending ? 'Creating…' : 'Create Band'}
+              <Button type="button" variant="primary" onClick={handleCreateBand} loading={isPending}>
+                Create Band
               </Button>
             </FormFooter>
           </CardBody>
@@ -552,7 +552,7 @@ export default function PayBandsManager({
             <Card>
               <Empty
                 size="sm"
-                title="No age bands configured yet"
+                title="No bands yet"
                 description={canManage ? 'Create your first band with New Band.' : undefined}
               />
             </Card>

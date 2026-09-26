@@ -27,6 +27,7 @@ import {
   LinkButton,
   Spinner,
   SearchInput,
+  ConfirmDialog,
   Drawer,
   Modal,
   Select,
@@ -164,7 +165,6 @@ export default function PrivateBookingsClient({
   // than asking staff to confirm something they cannot see.
   const [cancelPreview, setCancelPreview] = useState<CancellationPreview | null>(null)
   const [cancelPreviewLoading, setCancelPreviewLoading] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
   const cancelPreviewRequestRef = useRef<string | null>(null)
   const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
   // Extending a hold requires a recorded reason (SOP), collected in a modal
@@ -291,7 +291,21 @@ export default function PrivateBookingsClient({
     setCancelPreviewLoading(true)
     cancelPreviewRequestRef.current = bookingId
 
-    const preview = await getCancellationPreview(bookingId)
+    let preview: CancellationPreview
+    try {
+      preview = await getCancellationPreview(bookingId)
+    } catch {
+      // A failed request says so in the dialog rather than leaving it waiting forever.
+      preview = {
+        outcome: null,
+        refund_amount: 0,
+        retained_amount: 0,
+        deposit_deduction: 0,
+        max_retainable: 0,
+        preview_body: null,
+        error: 'The cancellation could not be worked out. Close this and try again.',
+      }
+    }
     // Ignore a preview that arrives after the dialog moved on to another booking
     if (cancelPreviewRequestRef.current !== bookingId) return
     setCancelPreview(preview)
@@ -299,28 +313,16 @@ export default function PrivateBookingsClient({
   }
 
   const closeCancelDialog = () => {
-    if (cancelling) return
     cancelPreviewRequestRef.current = null
     setCancelConfirmBookingId(null)
     setCancelPreview(null)
     setCancelPreviewLoading(false)
   }
 
-  const handleCancelBookingConfirm = async () => {
-    if (!cancelConfirmBookingId || cancelling) return
-    setCancelling(true)
-    try {
-      const result = await cancelPrivateBooking(cancelConfirmBookingId, 'Cancelled from list view')
-      if ('error' in result && result.error) { toast.error(result.error ?? 'Failed to cancel booking.'); return }
-      toast.success('Booking cancelled and customer notified')
-      cancelPreviewRequestRef.current = null
-      setCancelConfirmBookingId(null)
-      setCancelPreview(null)
-      fetchWithState({ page: currentPage })
-    } finally {
-      setCancelling(false)
-    }
-  }
+  // Some outcomes need a decision on the booking itself, so the list sends staff there instead.
+  const cancelNeedsBookingPage = Boolean(
+    cancelPreview?.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome),
+  )
 
   const handleExtendHoldRequest = (bookingId: string, days: 7 | 14 | 30) => {
     setExtendHoldReason('')
@@ -396,7 +398,7 @@ export default function PrivateBookingsClient({
   return (
     <PageLayout
       title="Private Bookings"
-      subtitle="Manage private venue bookings and events"
+      subtitle="Bookings: venue hire and events"
       navItems={privateBookingsNav({ canViewSmsQueue, canViewReports })}
       headerActions={
         permissions.hasCreatePermission ? (
@@ -406,83 +408,78 @@ export default function PrivateBookingsClient({
         ) : undefined
       }
     >
-      {/* Cancel booking: same preview the booking page shows before committing */}
-      <Modal
+      {/* Cancel booking: same preview the booking page shows before committing. A yes/no
+          confirmation, so the DS ConfirmDialog: a refused cancellation shows in place and the
+          dialog stays open. When the outcome needs a decision on the booking itself, the confirm
+          button opens the booking instead. */}
+      <ConfirmDialog
         open={cancelConfirmBookingId !== null}
         onClose={closeCancelDialog}
-        title="Cancel This Booking?"
-        footer={
-          <>
-            <Button type="button" variant="secondary" onClick={closeCancelDialog} disabled={cancelling}>
-              Keep Booking
-            </Button>
-            {cancelPreview?.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) ? (
-              <LinkButton
-                href={cancelConfirmBookingId ? `/private-bookings/${cancelConfirmBookingId}` : '/private-bookings'}
-                variant="primary"
-              >
-                Open the Booking
-              </LinkButton>
-            ) : (
-              <Button
-                type="button"
-                variant="danger"
-                onClick={handleCancelBookingConfirm}
-                loading={cancelling}
-                disabled={cancelling || cancelPreviewLoading}
-              >
-                Cancel Booking and Text the Customer
-              </Button>
+        onConfirm={async () => {
+          if (!cancelConfirmBookingId) return
+          if (cancelNeedsBookingPage) {
+            router.push(`/private-bookings/${cancelConfirmBookingId}`)
+            return
+          }
+          const result = await cancelPrivateBooking(cancelConfirmBookingId, 'Cancelled from list view')
+          if ('error' in result && result.error) throw new Error(result.error)
+          toast.success('Booking cancelled and customer notified')
+          fetchWithState({ page: currentPage })
+        }}
+        title="Cancel Booking"
+        confirmLabel={cancelNeedsBookingPage ? 'Open the Booking' : 'Cancel Booking'}
+        cancelLabel="Keep Booking"
+        tone={cancelNeedsBookingPage ? 'primary' : 'danger'}
+        // While the outcome is being worked out there is nothing to confirm yet.
+        loading={cancelPreviewLoading}
+        message={
+          <div className="space-y-4">
+            {cancelPreviewLoading && (
+              <div className="flex items-center gap-2 text-sm text-text-muted">
+                <Spinner size="sm" />
+                Working out what the customer will be told…
+              </div>
             )}
-          </>
+
+            {cancelPreview?.error && (
+              <Alert tone="danger" size="sm">{cancelPreview.error}</Alert>
+            )}
+
+            {cancelPreview && !cancelPreview.error && (
+              <div className="space-y-3">
+                {(cancelPreview.refund_amount > 0 || cancelPreview.retained_amount > 0) && (
+                  <div className="text-sm text-text">
+                    {cancelPreview.refund_amount > 0 && (
+                      <div>Refund due: <span className="font-medium">{formatCurrency(cancelPreview.refund_amount)}</span></div>
+                    )}
+                    {cancelPreview.retained_amount > 0 && (
+                      <div>Retained from the deposit: <span className="font-medium">{formatCurrency(cancelPreview.retained_amount)}</span></div>
+                    )}
+                  </div>
+                )}
+
+                {cancelPreview.preview_body && (
+                  <div>
+                    <div className="text-xs font-medium text-text-muted mb-1">The customer will be texted:</div>
+                    <p className="text-sm text-text bg-surface-2 border border-border rounded-default p-3 whitespace-pre-wrap">
+                      {cancelPreview.preview_body}
+                    </p>
+                  </div>
+                )}
+
+                {cancelNeedsBookingPage && (
+                  <Alert tone="warning" size="sm">
+                    This one needs a decision on the booking itself (how much of the deposit is
+                    kept, or a payment dispute to review). Open the booking to cancel it.
+                  </Alert>
+                )}
+              </div>
+            )}
+
+            <p className="text-sm text-text-muted">This cannot be undone.</p>
+          </div>
         }
-      >
-        <div className="space-y-4">
-          {cancelPreviewLoading && (
-            <div className="flex items-center gap-2 text-sm text-text-muted">
-              <Spinner size="sm" />
-              Working out what the customer will be told...
-            </div>
-          )}
-
-          {cancelPreview?.error && (
-            <Alert tone="danger" size="sm">{cancelPreview.error}</Alert>
-          )}
-
-          {cancelPreview && !cancelPreview.error && (
-            <div className="space-y-3">
-              {(cancelPreview.refund_amount > 0 || cancelPreview.retained_amount > 0) && (
-                <div className="text-sm text-text">
-                  {cancelPreview.refund_amount > 0 && (
-                    <div>Refund due: <span className="font-medium">{formatCurrency(cancelPreview.refund_amount)}</span></div>
-                  )}
-                  {cancelPreview.retained_amount > 0 && (
-                    <div>Retained from the deposit: <span className="font-medium">{formatCurrency(cancelPreview.retained_amount)}</span></div>
-                  )}
-                </div>
-              )}
-
-              {cancelPreview.preview_body && (
-                <div>
-                  <div className="text-xs font-medium text-text-muted mb-1">The customer will be texted:</div>
-                  <p className="text-sm text-text bg-surface-2 border border-border rounded-default p-3 whitespace-pre-wrap">
-                    {cancelPreview.preview_body}
-                  </p>
-                </div>
-              )}
-
-              {cancelPreview.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) && (
-                <Alert tone="warning" size="sm">
-                  This one needs a decision on the booking itself (how much of the deposit is
-                  kept, or a payment dispute to review). Open the booking to cancel it.
-                </Alert>
-              )}
-            </div>
-          )}
-
-          <p className="text-sm text-text-muted">This cannot be undone.</p>
-        </div>
-      </Modal>
+      />
 
       {/* Extend hold: a reason is required (recorded in the audit trail) */}
       <Modal
@@ -535,7 +532,7 @@ export default function PrivateBookingsClient({
               size="sm"
               onClick={() => runFetch({ status: statusFilter, dateFilter, search: searchTerm, page: currentPage, includeCancelled })}
             >
-              Retry
+              Try Again
             </Button>
           </div>
         </Alert>
@@ -650,8 +647,12 @@ export default function PrivateBookingsClient({
         {visibleBookings.length === 0 ? (
           <Empty
             size="sm"
-            title="No bookings found"
-            description={searchDraft ? `No results for "${searchDraft}"` : 'Create your first private booking.'}
+            title={statusFilter !== 'all' || dateFilter !== 'all' || searchDraft ? 'No bookings match these filters' : 'No bookings yet'}
+            description={
+              statusFilter !== 'all' || dateFilter !== 'all' || searchDraft
+                ? 'Try another search, status or date.'
+                : 'Create your first private booking with New Booking.'
+            }
           />
         ) : (
           <>
@@ -774,8 +775,8 @@ export default function PrivateBookingsClient({
                           )}
 
                           {booking.status === 'confirmed' && (
-                            <Button variant="secondary" size="sm" onClick={() => handleCancelRequest(booking.id)}>
-                              Cancel
+                            <Button variant="danger" size="sm" onClick={() => handleCancelRequest(booking.id)}>
+                              Cancel Booking
                             </Button>
                           )}
 

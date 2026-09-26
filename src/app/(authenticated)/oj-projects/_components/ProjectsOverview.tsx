@@ -10,7 +10,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  FormFooter,
   PageLayout,
   PageLoading,
   Table,
@@ -51,8 +50,11 @@ import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-pr
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { clearPendingNavigation, rememberPendingNavigation } from '@/lib/navigation-recovery'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
-import { OJ_PROJECTS_LAYOUT } from '../_shared/nav'
+import { ojProjectsLayout } from '../_shared/nav'
 import { ojBillable, ojBudgetTone, ojEntryStatus, ojEntryType, ojProjectStatus } from '../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('overview')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -429,7 +431,7 @@ export function ProjectsOverview({
 
   if (loadError) {
     return (
-      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load OJ Projects">
           {loadError}
         </Alert>
@@ -438,7 +440,7 @@ export function ProjectsOverview({
   }
 
   return (
-    <PageLayout {...OJ_PROJECTS_LAYOUT} headerActions={newEntryButton}>
+    <PageLayout {...LAYOUT} headerActions={newEntryButton}>
       {/* The client filter drives every figure, chart and list below it. */}
       <div className="flex flex-wrap items-end gap-3">
         <Select
@@ -515,7 +517,7 @@ export function ProjectsOverview({
               ) : (
                 <Empty
                   icon="chart"
-                  title="No hours logged"
+                  title="No hours for this period"
                   description={`There are no time entries for this view in the last ${workHistoryRange.label}.`}
                   size="sm"
                   variant="minimal"
@@ -653,7 +655,7 @@ export function ProjectsOverview({
         ) : entries.length === 0 ? (
           <Empty
             size="sm"
-            title="No entries"
+            title="No entries for this period"
             description={
               selectedVendorId
                 ? 'No entries recorded for this client this month.'
@@ -820,8 +822,22 @@ export function ProjectsOverview({
       </Card>
 
       {/* Create Entry Modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="New Entry">
-        <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-overview-entry-create-form" variant="primary" loading={saving}>
+              Create Entry
+            </Button>
+          </>
+        }
+      >
+        <form id="oj-overview-entry-create-form" onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
           <Segmented
             options={[
               { id: 'time', label: 'Time' },
@@ -951,20 +967,30 @@ export function ProjectsOverview({
             checked={createForm.billable}
             onChange={(checked) => setCreateForm({ ...createForm, billable: checked })}
           />
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              Create Entry
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
 
       {/* Edit Entry Modal */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Entry">
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-overview-entry-edit-form" variant="primary" loading={saving}>
+              {editForm.linked_invoice_number
+                ? editForm.linked_invoice_status === 'draft'
+                  ? 'Save and Recalculate Draft'
+                  : 'Save and Create Replacement Draft'
+                : 'Save Changes'}
+            </Button>
+          </>
+        }
+      >
+        <form id="oj-overview-entry-edit-form" onSubmit={handleEditSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Entry Type">
               <Input value={editForm.entry_type} disabled />
@@ -1094,19 +1120,6 @@ export function ProjectsOverview({
             checked={editForm.billable}
             onChange={(checked) => setEditForm({ ...editForm, billable: checked })}
           />
-
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              {editForm.linked_invoice_number
-                ? editForm.linked_invoice_status === 'draft'
-                  ? 'Save and Recalculate Draft'
-                  : 'Save and Create Replacement Draft'
-                : 'Save Changes'}
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
       <ConfirmDialog
@@ -1117,7 +1130,7 @@ export function ProjectsOverview({
         message={
           deleteEntryTarget?.invoice?.invoice_number
             ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
-            : 'Are you sure you want to delete this entry? This cannot be undone.'
+            : 'Delete this entry? This cannot be undone.'
         }
         confirmLabel="Delete"
         tone="danger"

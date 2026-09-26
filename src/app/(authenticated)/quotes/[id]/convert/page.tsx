@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardBody,
   Button,
+  LinkButton,
   Alert,
   DescriptionList,
   FormFooter,
@@ -17,6 +18,7 @@ import {
 } from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+import { quotePageTitle } from '@/app/(authenticated)/invoices/_shared/nav'
 
 function formatCurrency(value: number | null | undefined): string {
   const amount = Number(value ?? 0)
@@ -116,10 +118,12 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const backHref = quoteId ? `/quotes/${quoteId}` : '/quotes'
   const layoutProps = {
-    title: 'Convert Quote to Invoice',
+    title: 'Convert to Invoice',
     subtitle: 'Review the quote details before converting',
-    backButton: { label: 'Back to Quote', href: quoteId ? `/quotes/${quoteId}` : '/quotes' },
+    // Back to the quote page, named as that page is titled ("Quote Q-001").
+    backButton: { label: `Back to ${quotePageTitle(quote?.quote_number)}`, href: backHref },
     containerSize: 'md' as const,
   }
 
@@ -177,13 +181,9 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       </Alert>
 
       <FormFooter>
-        <Button
-          variant="secondary"
-          onClick={() => router.push(`/quotes/${quoteId}`)}
-          disabled={converting}
-        >
+        <LinkButton href={backHref} variant="secondary" disabled={converting}>
           Cancel
-        </Button>
+        </LinkButton>
         <Button variant="primary"
           onClick={handleConvert}
           loading={converting}

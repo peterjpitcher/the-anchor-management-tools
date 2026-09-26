@@ -115,9 +115,10 @@ export default function ChangePasswordPage() {
           </LinkButton>
           <Button
             type="submit"
+            variant="primary"
             loading={loading}
           >
-            Update Password
+            Change Password
           </Button>
         </FormFooter>
       </form>

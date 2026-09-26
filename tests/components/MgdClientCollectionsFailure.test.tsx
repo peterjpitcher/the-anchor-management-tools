@@ -51,7 +51,7 @@ describe('MgdClient collections', () => {
     const failure = screen.getByText('Database unavailable').closest('[role="alert"]')
     expect(failure).not.toBeNull()
     expect(within(failure as HTMLElement).getByText("Couldn't load collections")).toBeInTheDocument()
-    expect(screen.queryByText('No collections')).not.toBeInTheDocument()
+    expect(screen.queryByText('No collections for this period')).not.toBeInTheDocument()
     // Exporting would download a stale or empty list, so it is off until the collections load.
     const collectionsCard = screen.getByRole('heading', { name: 'Collections' }).closest('div.bg-surface') as HTMLElement
     expect(within(collectionsCard).getByRole('button', { name: 'Export CSV' })).toBeDisabled()
@@ -66,7 +66,7 @@ describe('MgdClient collections', () => {
       />,
     )
 
-    expect(screen.getByText('No collections')).toBeInTheDocument()
+    expect(screen.getByText('No collections for this period')).toBeInTheDocument()
     expect(screen.queryByText("Couldn't load collections")).not.toBeInTheDocument()
   })
 })

@@ -196,7 +196,7 @@ export function useEmployeeStatusActions({
   if (status === 'Onboarding') {
     actions.push({
       key: 'resend-invite',
-      label: loading ? 'Sending...' : 'Resend Invite',
+      label: 'Resend Invite',
       onSelect: handleResendInvite,
       loading,
     });
@@ -212,7 +212,7 @@ export function useEmployeeStatusActions({
   if (status === 'Started Separation') {
     actions.push({
       key: 'mark-former',
-      label: loading ? 'Processing...' : 'Mark as Former',
+      label: 'Mark as Former',
       onSelect: () => setShowConfirm('revoke'),
       loading,
       tone: 'danger',
@@ -234,8 +234,14 @@ export function useEmployeeStatusActions({
             <Button type="button" variant="secondary" onClick={closeSeparation} disabled={loading}>
               Cancel
             </Button>
-            <Button type="button" variant="primary" onClick={handleBeginSeparation} disabled={confirmDisabled}>
-              {loading ? 'Starting...' : 'Confirm Separation'}
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleBeginSeparation}
+              disabled={confirmDisabled}
+              loading={loading}
+            >
+              Begin Separation
             </Button>
           </>
         }
@@ -292,7 +298,7 @@ export function useEmployeeStatusActions({
               )}
             </div>
 
-            {previewLoading && <PageLoading inline label="Loading scheduled shifts..." className="py-6" />}
+            {previewLoading && <PageLoading inline label="Loading scheduled shifts…" className="py-6" />}
             {previewError && (
               <Alert tone="danger" size="sm">
                 {previewError}
@@ -374,9 +380,9 @@ export function useEmployeeStatusActions({
         open={showConfirm === 'revoke'}
         onClose={() => setShowConfirm(null)}
         onConfirm={handleRevokeAccess}
-        title="Mark as Former and Revoke Access"
-        message={'This will set the employee status to "Former", set their employment end date to today, and remove all their system permissions. This cannot be undone automatically. Continue?'}
-        confirmLabel="Confirm"
+        title="Mark as Former"
+        message={'This sets the employee status to "Former", sets their employment end date to today and revokes all their system permissions. This cannot be undone automatically.'}
+        confirmLabel="Mark as Former"
         tone="danger"
       />
     </>

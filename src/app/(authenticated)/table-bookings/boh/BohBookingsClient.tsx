@@ -9,6 +9,8 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Dropdown,
+  DropdownItem,
   Empty,
   Icon,
   Input,
@@ -874,6 +876,11 @@ export function BohBookingsClient({
   // wait for it rather than opening one late.
   const initialLoading = loading && !lastLoadedAt && !error
 
+  // More than three header actions collapse the extras (Message Guests, Table Setup) into one
+  // "More" menu. Refresh, Download PDF and Book Table stay one tap away.
+  const extraActionCount = (canSendMessages ? 1 : 0) + (canManageSettings ? 1 : 0)
+  const extrasInMenu = 2 + extraActionCount + (canEdit ? 1 : 0) > 3
+
   const headerActions = (
     // display: contents keeps the buttons as items of the header's own row; the attribute gives
     // them the same 44px touch floor on the iPad as the page body below.
@@ -904,21 +911,49 @@ export function BohBookingsClient({
       >
         Download PDF
       </Button>
-      {canSendMessages && (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Icon name="message" size={16} />}
-          onClick={() => setIsMessageModalOpen(true)}
-          disabled={initialLoading}
+      {extrasInMenu ? (
+        <Dropdown
+          width="auto"
+          trigger={
+            <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
+          }
         >
-          Message Guests
-        </Button>
-      )}
-      {canManageSettings && (
-        <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
-          Table Setup
-        </LinkButton>
+          {canSendMessages && (
+            <DropdownItem
+              icon={<Icon name="message" size={16} />}
+              onClick={() => setIsMessageModalOpen(true)}
+              disabled={initialLoading}
+            >
+              Message Guests
+            </DropdownItem>
+          )}
+          {canManageSettings && (
+            <DropdownItem icon={<Icon name="cog" size={16} />} onClick={() => router.push('/settings/table-bookings')}>
+              Table Setup
+            </DropdownItem>
+          )}
+        </Dropdown>
+      ) : (
+        <>
+          {canSendMessages && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Icon name="message" size={16} />}
+              onClick={() => setIsMessageModalOpen(true)}
+              disabled={initialLoading}
+            >
+              Message Guests
+            </Button>
+          )}
+          {canManageSettings && (
+            <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
+              Table Setup
+            </LinkButton>
+          )}
+        </>
       )}
       {canEdit && (
         <Button
@@ -937,7 +972,7 @@ export function BohBookingsClient({
   return (
     <PageLayout
       title="Table Bookings"
-      subtitle="Back of House"
+      subtitle="Back of House: every booking by day, week or month"
       navItems={tableBookingsNav({ canViewReports })}
       headerActions={headerActions}
       loading={initialLoading}
@@ -1138,8 +1173,12 @@ export function BohBookingsClient({
             ) : sortedBookings.length === 0 ? (
               <Empty
                 icon="calendar"
-                title="No bookings"
-                description={searchTerm || statusFilter !== 'all' ? 'No bookings match the selected filters.' : 'There are no bookings for this period.'}
+                title={searchTerm || statusFilter !== 'all' ? 'No bookings match these filters' : 'No bookings for this period'}
+                description={
+                  searchTerm || statusFilter !== 'all'
+                    ? 'Clear the search or the status filter to see every booking in view.'
+                    : 'Use Previous and Next to look at another period.'
+                }
                 size="sm"
                 variant="minimal"
               />

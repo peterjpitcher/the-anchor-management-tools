@@ -93,7 +93,7 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
 
   return (
     <PageLayout
-      {...cashingUpLayout('Takings for one week against target')}
+      {...cashingUpLayout('Weekly: takings for one week against target')}
       headerActions={
         <>
           <IconButton
@@ -154,7 +154,7 @@ export function WeeklyClient({ siteId, weekStart: initialWeekStart, initialData,
                 {data.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7}>
-                      <Empty size="sm" title="No data for this week" />
+                      <Empty size="sm" title="No takings for this week" description="No cash-ups were recorded this week." />
                     </TableCell>
                   </TableRow>
                 ) : (
