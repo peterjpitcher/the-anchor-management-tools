@@ -114,7 +114,7 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
       <Card>
         <CardHeader title="Reliability Events" />
         {reliability.events.length === 0 ? (
-          <Empty size="sm" title="No reliability events recorded" />
+          <Empty size="sm" title="No reliability events yet" />
         ) : (
           <ul className="divide-y divide-border">
             {reliability.events.map(event => (

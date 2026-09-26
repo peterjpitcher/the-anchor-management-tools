@@ -1,11 +1,10 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
-import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, FormFooter, Icon, IconButton, Modal, SubHeading } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Icon, IconButton, Modal, SubHeading } from '@/ds'
 import { contactPriorityTone } from '@/app/(authenticated)/employees/_shared/status-ui'
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 import EditEmergencyContactModal from '@/components/modals/EditEmergencyContactModal'
@@ -16,15 +15,6 @@ interface EmergencyContactsTabProps {
   canEdit: boolean
 }
 
-function ConfirmDeleteButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" variant="danger" disabled={pending}>
-      {pending ? 'Deleting…' : 'Delete'}
-    </Button>
-  )
-}
-
 function DeleteContactButton({
   contact,
   onDeleted,
@@ -33,7 +23,8 @@ function DeleteContactButton({
   onDeleted: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [state, formAction] = useActionState(deleteEmergencyContact, null)
+  const [state, formAction, pending] = useActionState(deleteEmergencyContact, null)
+  const formId = `delete-emergency-contact-${contact.id}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -54,10 +45,25 @@ function DeleteContactButton({
         icon={<Icon name="trash" size={16} />}
       />
 
-      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
-          buttons stay inside it so the submit button can read the form's pending state. */}
-      <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete Contact" width="sm">
-        <form action={formAction} className="space-y-4">
+      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form. Its footer
+          mirrors ConfirmDialog, and the submit button reaches the form through form=. */}
+      <Modal
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="Delete Contact"
+        width="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form={formId} variant="danger" loading={pending}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} action={formAction} className="space-y-4">
           <input type="hidden" name="contact_id" value={contact.id} />
           <input type="hidden" name="employee_id" value={contact.employee_id} />
           <p className="text-sm text-text-muted">
@@ -66,12 +72,6 @@ function DeleteContactButton({
           {state?.type === 'error' && (
             <Alert tone="danger" size="sm">{state.message}</Alert>
           )}
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
-              Cancel
-            </Button>
-            <ConfirmDeleteButton />
-          </FormFooter>
         </form>
       </Modal>
     </>
@@ -121,7 +121,7 @@ export default function EmergencyContactsTab({
 
       <CardBody>
         {contacts.length === 0 ? (
-          <Empty size="sm" title="No emergency contacts found" />
+          <Empty size="sm" title="No emergency contacts yet" />
         ) : (
           <ul className="-my-4 divide-y divide-border">
             {contacts.map((contact) => (

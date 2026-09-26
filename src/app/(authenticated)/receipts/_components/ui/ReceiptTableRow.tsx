@@ -321,7 +321,7 @@ export function ReceiptTableRow({
         ) : (
           <div className="flex flex-col gap-1">
             {/* `||` not `??`: a blank vendor string still needs the prompt, and
-                those are exactly the rows the "Missing vendor" filter surfaces. */}
+                those are exactly the rows the Needs Vendor tab surfaces. */}
             <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
               {transaction.vendor_name || <span className="font-normal text-text-soft">Add vendor</span>}
             </Button>
@@ -382,7 +382,7 @@ export function ReceiptTableRow({
             </Button>
             <IconButton
               size="sm"
-              label={`Remove ${f.file_name || 'receipt file'}`}
+              label={`Delete ${f.file_name || 'receipt file'}`}
               icon={<Icon name="x" size={14} className="text-danger" />}
               onClick={() => setDeleteFileId(f.id)}
               disabled={isPending}
@@ -397,7 +397,7 @@ export function ReceiptTableRow({
           onClose={() => setDeleteFileId(null)}
           onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
           title="Delete Receipt File"
-          message="Remove this receipt file from the transaction?"
+          message="Delete this receipt file from the transaction? This cannot be undone."
           confirmLabel="Delete"
           tone="danger"
         />

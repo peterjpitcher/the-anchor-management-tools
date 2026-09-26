@@ -306,7 +306,11 @@ export default function CalendarView({ bookings, layoutProps }: CalendarViewProp
         /* Agenda View - Mobile Only */
         <div className="divide-y divide-border">
           {monthBookings.length === 0 ? (
-            <Empty size="sm" icon="calendar" title="No bookings for this month" />
+            <Empty
+              size="sm"
+              icon="calendar"
+              title={statusFilter !== 'all' || timeFilter !== 'all' ? 'No bookings match these filters' : 'No bookings for this period'}
+            />
           ) : (
             monthBookings.map((booking) => {
               const bookingDate = new Date(booking.event_date)

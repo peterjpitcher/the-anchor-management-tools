@@ -14,6 +14,7 @@ import {
   CardBody,
   Button,
   IconButton,
+  LinkButton,
   Input,
   Select,
   Textarea,
@@ -318,7 +319,7 @@ export default function NewQuotePage() {
                     }))}
                   />
                 )}
-                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
+                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plus" size={16} />} size="sm">
                   Add Line Item
                 </Button>
               </div>
@@ -326,7 +327,7 @@ export default function NewQuotePage() {
           />
           <CardBody>
             {lineItems.length === 0 ? (
-              <Empty size="sm" title="No line items added yet" />
+              <Empty size="sm" title="No line items yet" description='Click "Add Line Item" to begin.' />
             ) : (
               <div className="space-y-4">
                 {lineItems.map((item) => (
@@ -400,10 +401,10 @@ export default function NewQuotePage() {
                           <IconButton
                             type="button"
                             onClick={() => removeLineItem(item.id)}
-                            variant="danger"
+                            variant="ghost"
                             size="sm"
                             label="Remove line item"
-                            icon={<Icon name="trash" size={16} />}
+                            icon={<Icon name="trash" size={16} className="text-danger" />}
                           />
                         </div>
                       </div>
@@ -482,13 +483,9 @@ export default function NewQuotePage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/quotes')}
-          >
+          <LinkButton href={BACK_TO_QUOTES.href} variant="secondary">
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             disabled={lineItems.length === 0}

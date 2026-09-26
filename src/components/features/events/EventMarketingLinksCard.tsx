@@ -352,7 +352,7 @@ export function EventMarketingLinksCard({
               </div>
             </div>
             {readyQrPlacementChannels.length === 0 ? (
-              <Empty size="sm" variant="dashed" title="No QR Placement Links Yet" />
+              <Empty size="sm" variant="dashed" title="No QR placement links yet" />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {readyQrPlacementChannels.map(renderQrPlacementCard)}
@@ -418,7 +418,7 @@ export function EventMarketingLinksCard({
             <SubHeading className="mb-3">Optional Digital Channels</SubHeading>
             <div className="space-y-3">
               {onDemandDigitalLinks.length === 0 ? (
-                <Empty size="sm" variant="dashed" title="No Optional Digital Links Yet" />
+                <Empty size="sm" variant="dashed" title="No optional digital links yet" />
               ) : onDemandDigitalLinks.map((link) => (
                 <div key={link.id} className="rounded-default border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">

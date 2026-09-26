@@ -11,7 +11,7 @@ import { Badge } from '@/ds';
 import { TablePagination } from '@/ds';
 import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
-import { Dropdown, DropdownItem } from '@/ds';
+import { Dropdown, DropdownItem, DropdownLabel } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -592,7 +592,8 @@ export default function MenuDishesPage(): React.ReactElement {
 
   // ---- Header ----
 
-  const addDishLabel = selectedMenu ? `Add ${selectedMenu.name} Dish` : 'Add Dish';
+  // The same words as the drawer it opens ("New Dish"). A menu filter still pre-selects that menu.
+  const addDishLabel = 'New Dish';
 
   function handleDownloadDishAllergenPdf(category: 'all' | 'food' | 'drinks') {
     const params = new URLSearchParams({ download: '1' });
@@ -617,10 +618,11 @@ export default function MenuDishesPage(): React.ReactElement {
             icon={<Icon name="download" size={14} />}
             iconRight={<Icon name="chevronDown" size={14} />}
           >
-            Download Allergens
+            Download PDF
           </Button>
         }
       >
+        <DropdownLabel>Allergen Report</DropdownLabel>
         <DropdownItem onClick={() => handleDownloadDishAllergenPdf('all')}>All Dishes</DropdownItem>
         <DropdownItem onClick={() => handleDownloadDishAllergenPdf('food')}>Food</DropdownItem>
         <DropdownItem onClick={() => handleDownloadDishAllergenPdf('drinks')}>Drinks</DropdownItem>
@@ -734,7 +736,7 @@ export default function MenuDishesPage(): React.ReactElement {
           <Empty
             size="sm"
             title="No dishes yet"
-            description="Add a dish to start tracking costs and GP%."
+            description="Create a dish to start tracking costs and GP%."
             icon="inbox"
             action={
               canManage ? (
@@ -753,8 +755,8 @@ export default function MenuDishesPage(): React.ReactElement {
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                ? 'No dishes match your filters'
-                : 'No dishes configured yet'
+                ? 'No dishes match these filters'
+                : 'No dishes yet'
             }
             expandable
             renderExpandedContent={(row) => (
@@ -799,7 +801,7 @@ export default function MenuDishesPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(dishToDelete)}
-        title="Delete Dish?"
+        title="Delete Dish"
         message={`Are you sure you want to delete ${dishToDelete?.name}? This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"

@@ -457,7 +457,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
           <CardBody className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-text">{selected.size} selected</span>
             <Button variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
-              Cancel Selected
+              Cancel Vouchers
             </Button>
             <Button variant="secondary" size="sm" onClick={handleExport}>
               Export CSV
@@ -570,11 +570,11 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
       <Modal
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
-        title={`Cancel ${selected.size} Voucher${selected.size === 1 ? '' : 's'}`}
+        title="Cancel Vouchers"
         footer={
           <>
             <Button variant="secondary" onClick={() => setCancelOpen(false)}>
-              Keep Them
+              Keep Vouchers
             </Button>
             <Button variant="danger" onClick={() => void handleBulkCancel()} loading={cancelBusy}>
               Cancel Vouchers
@@ -584,7 +584,8 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
       >
         <div className="space-y-3">
           <p className="text-sm text-text-muted">
-            Cancelling is permanent. Cancelled cards can never be reinstated or reprinted.
+            Cancel {selected.size} voucher{selected.size === 1 ? '' : 's'}? Cancelling is permanent.
+            Cancelled cards can never be reinstated or reprinted.
           </p>
           <Textarea
             label="Reason (required)"
@@ -600,8 +601,8 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
         open={reprintConfirmOpen}
         onClose={() => setReprintConfirmOpen(false)}
         onConfirm={() => void runReprint()}
-        title="Reprint Issued Cards?"
-        message="Reprinting an issued card is only allowed when the original is destroyed or unusable. Confirm that applies to every issued card selected."
+        title="Reprint Issued Cards"
+        message="Reprint the issued cards selected? That is only allowed when the original is destroyed or unusable, so confirm that applies to every one of them."
         confirmLabel="Original Destroyed or Unusable, Reprint"
         tone="primary"
       />

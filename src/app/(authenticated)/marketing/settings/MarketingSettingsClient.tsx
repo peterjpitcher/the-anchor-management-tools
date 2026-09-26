@@ -271,7 +271,7 @@ export function MarketingSettingsClient({
         <Card>
           <CardHeader
             title="Configuration"
-            subtitle="Read-only. These come from the environment and need a deploy to change"
+            subtitle="Read-only: these come from the environment and need a deploy to change"
           />
           <CardBody>
             {readiness.ok ? (
@@ -324,7 +324,7 @@ export function MarketingSettingsClient({
           await applySendsEnabled(true)
           setConfirmEnable(false)
         }}
-        title="Turn Campaign Sending On?"
+        title="Turn Campaign Sending On"
         message="Any campaign already scheduled for a time that has passed will start going out at the next send window. Check the campaign list first if you are not sure what is queued."
         confirmLabel="Turn Sending On"
         tone="primary"

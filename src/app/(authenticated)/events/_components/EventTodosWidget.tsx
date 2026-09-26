@@ -68,7 +68,7 @@ export default function EventTodosWidget({
               Outstanding todos could not be loaded.
             </Alert>
           ) : todos.length === 0 ? (
-            <Empty size="sm" title="All Caught Up" description="No outstanding todos." />
+            <Empty size="sm" title="All caught up" description="No outstanding todos." />
           ) : (
             <ul className={cn('flex flex-col gap-1', isPending && 'opacity-50')}>
               {todos.map((item) => (

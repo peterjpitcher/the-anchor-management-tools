@@ -340,7 +340,7 @@ export function ReceiptMobileCard({
                      </Button>
                      <IconButton
                        size="sm"
-                       label={`Remove ${f.file_name || 'receipt file'}`}
+                       label={`Delete ${f.file_name || 'receipt file'}`}
                        icon={<Icon name="x" size={14} className="text-danger" />}
                        onClick={() => setDeleteFileId(f.id)}
                      />
@@ -362,7 +362,7 @@ export function ReceiptMobileCard({
           onClose={() => setDeleteFileId(null)}
           onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
           title="Delete Receipt File"
-          message="Remove this receipt file from the transaction?"
+          message="Delete this receipt file from the transaction? This cannot be undone."
           confirmLabel="Delete"
           tone="danger"
         />

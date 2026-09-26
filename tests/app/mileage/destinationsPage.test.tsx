@@ -81,7 +81,7 @@ describe('DestinationsClient', () => {
   it('tells staff to add a new destination when a place has moved, only when editing', () => {
     render(<DestinationsClient initialDestinations={[HOME, SHOP]} initialDistances={[]} canManage />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Destination' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'New Destination' })[0])
     expect(screen.queryByText(MOVE_HINT)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 

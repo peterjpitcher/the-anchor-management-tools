@@ -27,7 +27,7 @@ export default async function PrivateBookingGrowthReportPage() {
   const canViewSmsQueue = actions.has('view_sms_queue') || actions.has('manage')
   const layoutProps = {
     title: 'Private Bookings',
-    subtitle: 'Growth report: customer private events by the date they happened',
+    subtitle: 'Reports: customer private events by the date they happened',
     navItems: privateBookingsNav({ canViewSmsQueue, canViewReports }),
   }
 

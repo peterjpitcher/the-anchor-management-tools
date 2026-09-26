@@ -456,7 +456,7 @@ export default function BulkMessagesClient({
           action={
             <div className="flex items-center gap-2">
               <Badge tone="info" size="sm">
-                {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
+                {loading ? '…' : `${recipients.length} of ${recipientTotal}`}
               </Badge>
               {selectedKeys.size > 0 && (
                 <Badge tone="success" size="sm">
@@ -490,8 +490,8 @@ export default function BulkMessagesClient({
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
-            emptyMessage="No recipients found"
-            emptyDescription="Try adjusting your filters to find customers."
+            emptyMessage="No recipients match these filters"
+            emptyDescription="Change the filters to find customers."
             size="sm"
             bordered={false}
             className="max-shell:p-4"
@@ -589,9 +589,7 @@ export default function BulkMessagesClient({
               disabled={!canSend}
               loading={sending}
             >
-              {sending
-                ? 'Sending...'
-                : `Send to ${selectedKeys.size} Recipient${selectedKeys.size !== 1 ? 's' : ''}`}
+              {`Send to ${selectedKeys.size} Recipient${selectedKeys.size !== 1 ? 's' : ''}`}
             </Button>
           </FormFooter>
         </CardBody>
@@ -619,7 +617,6 @@ export default function BulkMessagesClient({
         }
         tone="primary"
         confirmLabel="Send Messages"
-        loadingText="Sending..."
       />
     </PageLayout>
   )

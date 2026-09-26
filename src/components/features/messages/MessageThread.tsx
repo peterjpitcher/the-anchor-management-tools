@@ -138,7 +138,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <Empty size="sm" icon="inbox" title="No messages yet" description="Start a conversation" />
+            <Empty size="sm" icon="inbox" title="No messages yet" description="Texts and emails with this customer show here." />
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dateMessages]) => (

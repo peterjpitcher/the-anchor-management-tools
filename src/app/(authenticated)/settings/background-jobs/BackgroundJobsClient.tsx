@@ -16,6 +16,8 @@ import {
   ConfirmDialog,
   DataTable,
   DescriptionList,
+  Dropdown,
+  DropdownItem,
   Empty,
   Field,
   Icon,
@@ -330,51 +332,48 @@ export default function BackgroundJobsClient({
     },
   ]
 
+  // Four actions, so the three occasional runs sit in a labelled More menu and Process Jobs,
+  // the page's main action, stays a button (UI_UX.md, Wording and small patterns).
   const headerActions = canManage ? (
     <>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processCommunicationsMonitor}
-        disabled={!canManage || isProcessingCommsMonitor}
-        loading={isProcessingCommsMonitor}
-        leftIcon={!isProcessingCommsMonitor && <Icon name="play" size={16} />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+      <Dropdown
+        width="auto"
+        trigger={
+          <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
+            More
+          </Button>
+        }
       >
-        {isProcessingCommsMonitor ? 'Running Monitor...' : 'Run Comms Monitor'}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processCommunicationsRetention}
-        disabled={!canManage || isProcessingCommsRetention}
-        loading={isProcessingCommsRetention}
-        leftIcon={!isProcessingCommsRetention && <Icon name="play" size={16} />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
-      >
-        {isProcessingCommsRetention ? 'Running Retention...' : 'Run Comms Retention'}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processEventGuestEngagement}
-        disabled={!canManage || isProcessingEngagement}
-        loading={isProcessingEngagement}
-        leftIcon={!isProcessingEngagement && <Icon name="play" size={16} />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
-      >
-        {isProcessingEngagement ? 'Running Event Messaging...' : 'Run Event Messaging'}
-      </Button>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processCommunicationsMonitor}
+          disabled={isProcessingCommsMonitor}
+        >
+          Run Comms Monitor
+        </DropdownItem>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processCommunicationsRetention}
+          disabled={isProcessingCommsRetention}
+        >
+          Run Comms Retention
+        </DropdownItem>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processEventGuestEngagement}
+          disabled={isProcessingEngagement}
+        >
+          Run Event Messaging
+        </DropdownItem>
+      </Dropdown>
       <Button
         variant="primary"
         size="sm"
         onClick={processJobs}
-        disabled={!canManage || isProcessing}
         loading={isProcessing}
         leftIcon={!isProcessing && <Icon name="play" size={16} />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
-        {isProcessing ? 'Processing...' : 'Process Jobs'}
+        Process Jobs
       </Button>
     </>
   ) : undefined
@@ -436,13 +435,13 @@ export default function BackgroundJobsClient({
         ) : pagedJobs.length === 0 ? (
           // A failed load is reported by the error above, never shown as an empty list.
           error ? null : (
-            <Empty
-              size="sm"
-              icon={<Icon name="alertCircle" size={48} />}
-              title="No jobs found"
-              description="No background jobs match your current filters."
-              action={
-                (filters.status || filters.type) && (
+            filters.status || filters.type ? (
+              <Empty
+                size="sm"
+                icon={<Icon name="alertCircle" size={48} />}
+                title="No jobs match these filters"
+                description="Clear the filters to see every job."
+                action={
                   <Button
                     variant="secondary"
                     onClick={() => handleFilterChange({})}
@@ -450,9 +449,16 @@ export default function BackgroundJobsClient({
                   >
                     Clear Filters
                   </Button>
-                )
-              }
-            />
+                }
+              />
+            ) : (
+              <Empty
+                size="sm"
+                icon={<Icon name="alertCircle" size={48} />}
+                title="No jobs yet"
+                description="Jobs appear here when the app queues work to run in the background."
+              />
+            )
           )
         ) : (
           <DataTable data={pagedJobs} columns={columns} getRowKey={(job) => job.id} bordered={false} />

@@ -65,10 +65,10 @@ export function NumberSearch({
           type="submit"
           variant="primary"
           size="lg"
-          disabled={searching}
+          loading={searching}
           className="h-14 shrink-0 px-5 text-base"
         >
-          {searching ? 'Finding...' : 'Find'}
+          Find
         </Button>
       </form>
 

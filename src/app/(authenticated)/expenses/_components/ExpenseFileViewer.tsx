@@ -170,8 +170,8 @@ export function ExpenseFileViewer({
 
       <ConfirmDialog
         open={confirmingDelete}
-        title="Delete File"
-        message={`Delete "${currentFile.file_name}"?`}
+        title="Delete Receipt File"
+        message={`Delete "${currentFile.file_name}" from the expense? This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"
         onConfirm={handleDelete}

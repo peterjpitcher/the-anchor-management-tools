@@ -23,18 +23,20 @@ export default function ErrorClient({ title, message, code }: ErrorClientProps) 
         </p>
       )}
 
+      {/* The way forward first, as on the Access Denied screen. Try Again is the app's one retry
+          button: secondary and small, wherever it appears. */}
       <div className="flex flex-col gap-2">
+        <LinkButton href="/dashboard" variant="primary" size="lg" className="w-full">
+          Go to Dashboard
+        </LinkButton>
         <Button
-          variant="primary"
-          size="lg"
-          className="w-full"
+          variant="secondary"
+          size="sm"
+          className="self-center"
           onClick={() => window.location.reload()}
         >
           Try Again
         </Button>
-        <LinkButton href="/dashboard" variant="secondary" size="lg" className="w-full">
-          Go to Dashboard
-        </LinkButton>
       </div>
     </AuthCard>
   )

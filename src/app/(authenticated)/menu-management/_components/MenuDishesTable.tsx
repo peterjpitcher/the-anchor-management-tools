@@ -378,14 +378,14 @@ export function MenuDishesTable({
 
   const sorted = pipeline.pageData as unknown as CombinationRow[];
 
-  const emptyTitle =
+  const empty =
     filter === 'below-target'
-      ? 'No dishes are below the GP target. Great work!'
+      ? { title: 'No dishes below target', description: 'Every dish meets its GP target.' }
       : filter === 'missing-costing'
-        ? 'All dishes have costing data. Nice!'
+        ? { title: 'No dishes missing costing', description: 'Every dish has costing data.' }
         : pipeline.searchQuery
-          ? 'No dishes match your search.'
-          : 'No dishes found. Create a dish to start tracking GP%.';
+          ? { title: 'No dishes match these filters', description: 'Try another dish or menu name.' }
+          : { title: 'No dishes yet', description: 'Dishes added on the Dishes tab show here with their GP%.' };
 
   return (
     <>
@@ -432,7 +432,7 @@ export function MenuDishesTable({
 
       {/* Table */}
       {loadError ? null : sorted.length === 0 && pipeline.totalItems === 0 ? (
-        <Empty size="sm" title={emptyTitle} />
+        <Empty size="sm" title={empty.title} description={empty.description} />
       ) : (
         <Table className="border-t border-border">
           <TableHeader>

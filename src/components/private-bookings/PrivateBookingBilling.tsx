@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Fieldset, Input, Modal, PageLoading, Select } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, Fieldset, Input, Modal, PageLoading, Select } from '@/ds'
 import {
   cancelPrivateBookingExtraInvoice, deletePrivateBookingExtras, getPrivateBookingBilling,
   issuePrivateBookingExtras, previewPrivateBookingExtras, recordPrivateBookingInvoicePayment,
@@ -137,7 +137,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
               <p className="text-xs text-text-muted">{invoice.deliveryState === 'sending' ? 'Sending or awaiting delivery check' : invoice.deliveryState === 'failed' ? 'Email failed' : invoice.sent_at ? `Sent ${formatDateFull(invoice.sent_at)}` : 'Not sent'}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a className="text-sm text-primary underline" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Download invoice</a>
+              <a className="text-sm text-primary underline" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Download PDF</a>
               {canIssue && invoice.paymentUrl && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(async () => {
                 await navigator.clipboard.writeText(invoice.paymentUrl!); setNotice('Payment link copied.')
               })}>Copy Payment Link</Button>}
@@ -146,27 +146,27 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
                   const result = await resendPrivateBookingExtraInvoice(bookingId, invoice.id)
                   if (result.error || !result.sent) throw new Error(result.error || result.warning || 'The invoice was not sent.')
                   await changed(); setNotice(result.warning || 'Additional invoice sent.')
-                })}>{invoice.sent_at ? 'Resend Invoice' : 'Retry Sending'}</Button>
-                {invoice.paid_amount === 0 && <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setCancelInvoiceId(invoice.id); setCancelReason(''); setError(null) }}>Cancel Invoice</Button>}
+                })}>Email Invoice</Button>
+                {invoice.paid_amount === 0 && <Button size="sm" variant="danger" disabled={busy} onClick={() => { setCancelInvoiceId(invoice.id); setCancelReason(''); setError(null) }}>Cancel Invoice</Button>}
               </>}
             </div>
           </div>)}
           {billing.batches.filter(draft => draft.status === 'draft').map(draft => <div key={draft.id} className="flex flex-wrap justify-between gap-2 rounded-default border border-border p-3">
             <div><p className="text-sm font-medium">Draft extras: {money(calculateExtraChargeTotals(draft.lines).totalAmount)}</p><p className="text-sm text-text-muted">{draft.lines.map(line => line.description).join(', ')}</p></div>
-            {canIssue && <div className="flex gap-2"><Button size="sm" variant="secondary" disabled={busy} onClick={() => openEditor(draft)}>Edit Draft</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => { setDiscardBatch(draft); setError(null) }}>Discard Draft</Button></div>}
+            {canIssue && <div className="flex gap-2"><Button size="sm" variant="secondary" disabled={busy} onClick={() => openEditor(draft)}>Edit Draft</Button><Button size="sm" variant="danger" disabled={busy} onClick={() => { setDiscardBatch(draft); setError(null) }}>Discard Draft</Button></div>}
           </div>)}
         </div>}
         </CardBody>
       </Card>
 
-      <Modal open={editor} onClose={() => { if (!busy) setEditor(false) }} title={preview ? 'Review Additional Invoice' : 'Extra Booking Charges'} width="xl" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => preview ? setPreview(null) : setEditor(false)}>{preview ? 'Edit Draft' : 'Close'}</Button>
-        {!preview ? <><Button variant="secondary" disabled={busy} onClick={() => void act(() => save(false))}>Save Draft</Button><Button variant="primary" disabled={busy} onClick={() => void act(() => save(true))}>Preview Invoice</Button></> : <Button variant="primary" disabled={busy || (!preview.paypalEnabled && !allowWithoutOnlinePayment)} onClick={() => void act(async () => {
+      <Modal open={editor} onClose={() => { if (!busy) setEditor(false) }} title={preview ? 'Review Additional Invoice' : batch ? 'Edit Draft' : 'Add Extra Charges'} width="xl" footer={<>
+        <Button variant="secondary" disabled={busy} onClick={() => preview ? setPreview(null) : setEditor(false)}>{preview ? 'Edit Draft' : 'Cancel'}</Button>
+        {!preview ? <><Button variant="secondary" disabled={busy} onClick={() => void act(() => save(false))}>Save Draft</Button><Button variant="primary" disabled={busy} onClick={() => void act(() => save(true))}>Preview Invoice</Button></> : <Button variant="primary" loading={busy} disabled={!preview.paypalEnabled && !allowWithoutOnlinePayment} onClick={() => void act(async () => {
           const result = await issuePrivateBookingExtras({ bookingId, batchId: preview.batch.id, expectedRevision: preview.batch.revision, sourceHash: preview.sourceHash, allowWithoutOnlinePayment })
           if (result.error) throw new Error(result.error)
           setEditor(false); setPreview(null); await changed()
-          setNotice(result.warning || (result.sent ? `Invoice ${result.invoiceNumber} sent.` : 'Invoice created. Email was not sent; use Retry sending.'))
-        })}>{busy ? 'Issuing…' : 'Issue and Send Additional Invoice'}</Button>}
+          setNotice(result.warning || (result.sent ? `Invoice ${result.invoiceNumber} sent.` : 'Invoice created. Email was not sent; use Email Invoice.'))
+        })}>Issue and Send Additional Invoice</Button>}
       </>}>
         <div className="space-y-4">
           {error && <Alert tone="danger">{error}</Alert>}
@@ -226,7 +226,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
         </div>
       </Modal>
 
-      <Modal open={Boolean(cancelInvoiceId)} onClose={() => { if (!busy) setCancelInvoiceId(null) }} title="Cancel Additional Invoice" footer={<>
+      <Modal open={Boolean(cancelInvoiceId)} onClose={() => { if (!busy) setCancelInvoiceId(null) }} title="Cancel Invoice" footer={<>
         <Button variant="secondary" disabled={busy} onClick={() => setCancelInvoiceId(null)}>Keep Invoice</Button><Button variant="danger" disabled={busy || !cancelReason.trim()} onClick={() => void act(async () => {
           const result = await cancelPrivateBookingExtraInvoice(bookingId, cancelInvoiceId!, cancelReason)
           if (result.error) throw new Error(result.error)
@@ -234,13 +234,23 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
         })}>Cancel Invoice</Button>
       </>}><div className="space-y-3">{error && <Alert tone="danger">{error}</Alert>}<p className="text-sm">This withdraws this unpaid additional invoice and its charge. It does not change the original invoice or send a customer message.</p><Input label="Reason for cancellation" value={cancelReason} onChange={event => setCancelReason(event.target.value)} /></div></Modal>
 
-      <Modal open={Boolean(discardBatch)} onClose={() => { if (!busy) setDiscardBatch(null) }} title="Discard Draft Extras" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => setDiscardBatch(null)}>Keep Draft</Button><Button variant="danger" disabled={busy} onClick={() => void act(async () => {
-          const result = await deletePrivateBookingExtras(bookingId, discardBatch!.id, discardBatch!.revision)
+      {/* A yes/no confirmation with no fields: the DS ConfirmDialog, which shows a failure in place. */}
+      <ConfirmDialog
+        open={Boolean(discardBatch)}
+        onClose={() => setDiscardBatch(null)}
+        onConfirm={async () => {
+          if (!discardBatch) return
+          const result = await deletePrivateBookingExtras(bookingId, discardBatch.id, discardBatch.revision)
           if (result.error) throw new Error(result.error)
-          setDiscardBatch(null); await changed(); setNotice('Draft discarded.')
-        })}>Discard Draft</Button>
-      </>}><div className="space-y-3">{error && <Alert tone="danger">{error}</Alert>}<p>Discard these unissued extras? No invoice or payment will be changed.</p></div></Modal>
+          await changed()
+          setNotice('Draft discarded.')
+        }}
+        title="Discard Draft"
+        message="Discard these unissued extras? No invoice or payment will be changed."
+        confirmLabel="Discard Draft"
+        cancelLabel="Keep Draft"
+        tone="danger"
+      />
     </div>
   )
 }

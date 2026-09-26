@@ -83,8 +83,8 @@ function PortalInviteButton({ employeeId }: { employeeId: string }) {
 
   if (sent) return <span className="text-xs text-success-fg">Invite sent</span>
   return (
-    <Button type="button" variant="link" size="sm" onClick={handleClick} disabled={pending}>
-      {pending ? 'Sending...' : 'Send Portal Invite'}
+    <Button type="button" variant="link" size="sm" onClick={handleClick} loading={pending}>
+      Send Portal Invite
     </Button>
   )
 }
@@ -138,23 +138,41 @@ export default function EmployeesClient({ initialData, initialError, permissions
     } catch { toast.error('Failed to export.') }
   }, [permissions.canExport, roster.employees.length, selectedStatus])
 
+  // Pay Bands and the two exports are the extras: with Invite and New Employee they would make
+  // more than three header actions, so they sit in one labelled "More" menu.
+  const hasMoreMenu = canManageSettings || permissions.canExport
   const headerActions = (
     <>
-      {canManageSettings && (
-        <LinkButton href="/settings/pay-bands" variant="secondary" size="sm">Pay Bands</LinkButton>
-      )}
-      {permissions.canExport && (
+      {hasMoreMenu && (
         <Dropdown
-          trigger={<Button variant="secondary" size="sm" icon={<Icon name="download" size={15} />}>Export</Button>}
+          width="auto"
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
+          }
         >
-          <DropdownItem onClick={() => handleExport('csv')}>Export as CSV</DropdownItem>
-          <DropdownItem onClick={() => handleExport('json')}>Export as JSON</DropdownItem>
+          {canManageSettings && (
+            <DropdownItem icon={<Icon name="pound" size={16} />} onClick={() => router.push('/settings/pay-bands')}>
+              Pay Bands
+            </DropdownItem>
+          )}
+          {permissions.canExport && (
+            <>
+              <DropdownItem icon={<Icon name="download" size={16} />} onClick={() => handleExport('csv')}>
+                Export CSV
+              </DropdownItem>
+              <DropdownItem icon={<Icon name="download" size={16} />} onClick={() => handleExport('json')}>
+                Export JSON
+              </DropdownItem>
+            </>
+          )}
         </Dropdown>
       )}
       {permissions.canCreate && (
         <>
           <Button variant="secondary" size="sm" icon={<Icon name="mail" size={15} />} onClick={() => setShowInviteModal(true)}>
-            Invite
+            Invite Employee
           </Button>
           <LinkButton href="/employees/new" variant="primary" size="sm" icon={<Icon name="plus" size={15} />}>
             New Employee
@@ -168,7 +186,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
     <>
       <PageLayout
         title="Employees"
-        subtitle="The team roster"
+        subtitle="Employees: the team roster"
         navItems={EMPLOYEES_NAV}
         headerActions={headerActions}
         // A failed load keeps the header and says so, rather than showing an empty roster.
@@ -215,8 +233,12 @@ export default function EmployeesClient({ initialData, initialError, permissions
           {currentEmployees.length === 0 ? (
             <Empty
               size="sm"
-              title="No employees found"
-              description={searchTerm ? `No results for "${searchTerm}"` : 'Add your first employee.'}
+              title={roster.statusCounts.all > 0 ? 'No employees match these filters' : 'No employees yet'}
+              description={
+                roster.statusCounts.all > 0
+                  ? 'Try another search or status.'
+                  : 'Add your first employee with New Employee.'
+              }
             />
           ) : (
             <>

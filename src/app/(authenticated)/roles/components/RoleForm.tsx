@@ -64,8 +64,8 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
         <LinkButton href="/roles" variant="secondary">
           Cancel
         </LinkButton>
-        <Button type="submit" variant="primary" disabled={isPending}>
-          {isPending ? 'Saving...' : initialData?.id ? 'Update Role' : 'Create Role'}
+        <Button type="submit" variant="primary" loading={isPending}>
+          {initialData?.id ? 'Save Changes' : 'Create Role'}
         </Button>
       </FormFooter>
     </form>

@@ -54,7 +54,7 @@ describe('staff portal A-044 controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel Request' }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('Cancel Holiday Request?')).toBeInTheDocument()
+    expect(dialog).toHaveAccessibleName('Cancel Request')
     expect(within(dialog).getByRole('button', { name: 'Cancel Request' })).toHaveClass('bg-danger')
     expect(cancelOwnLeaveRequest).not.toHaveBeenCalled()
 

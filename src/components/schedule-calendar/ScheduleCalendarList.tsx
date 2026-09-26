@@ -106,7 +106,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             )
                         })()}
                         {group.entries.length === 0 && isTodayGroup && (
-                            <Empty size="sm" title="No Entries Today" />
+                            <Empty size="sm" title="No entries today" />
                         )}
                         {group.entries.length > 0 && (
                             <ul className="space-y-1 p-1">

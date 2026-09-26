@@ -15,12 +15,33 @@ export const OJ_PROJECTS_NAV: HeaderNavItem[] = [
   { label: 'Work Types', href: '/oj-projects/work-types' },
 ]
 
-/** The chrome every OJ Projects tab shares: the section title, its subtitle and the tabs. */
-export const OJ_PROJECTS_LAYOUT = {
-  title: 'OJ Projects',
-  subtitle: 'Project management and time tracking',
-  navItems: OJ_PROJECTS_NAV,
-} as const
+/** One key per OJ Projects tab, for the page chrome below. */
+export type OjProjectsTab = 'overview' | 'projects' | 'entries' | 'clients' | 'work-types'
+
+/** Each tab's subtitle: "<Tab>: <what this page is for>", one per tab. */
+const OJ_PROJECTS_SUBTITLES: Record<OjProjectsTab, string> = {
+  overview: "Overview: this month's time, money and work history",
+  projects: 'Projects: every client project and its budget',
+  entries: 'Entries: time and mileage logged against projects',
+  clients: 'Clients: billing settings, recurring charges and statements',
+  'work-types': 'Work Types: the kinds of work entries are logged against',
+}
+
+/**
+ * The chrome of one OJ Projects tab: the section title, the tab's own subtitle and the tab row.
+ * Every state of the page (loading, error, loaded) spreads the same object.
+ */
+export function ojProjectsLayout(tab: OjProjectsTab): {
+  title: string
+  subtitle: string
+  navItems: HeaderNavItem[]
+} {
+  return {
+    title: 'OJ Projects',
+    subtitle: OJ_PROJECTS_SUBTITLES[tab],
+    navItems: OJ_PROJECTS_NAV,
+  }
+}
 
 /**
  * The chrome of a project's detail page, shared by the loaded page and its error state. A child

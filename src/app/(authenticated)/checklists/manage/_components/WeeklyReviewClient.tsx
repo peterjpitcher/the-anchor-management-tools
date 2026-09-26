@@ -26,11 +26,14 @@ import type {
   ReviewRow,
   WeeklyReview,
 } from '@/types/checklists-review'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import {
   CHECKLIST_REVIEW_CELL_CLASSES,
   type ChecklistReviewDisplayState,
 } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('review')
 
 interface WeeklyReviewClientProps {
   data?: WeeklyReview
@@ -236,13 +239,13 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
   if (error) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert
           tone="danger"
           title="Could not load the weekly review"
           actions={
-            <Button type="button" variant="secondary" onClick={() => router.refresh()}>
-              Retry
+            <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
+              Try Again
             </Button>
           }
         >
@@ -254,7 +257,7 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
   if (!data) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="warning" title="Super admins only">
           The weekly review is only available to super admins.
         </Alert>
@@ -292,7 +295,7 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
   return (
     <PageLayout
-      {...CHECKLISTS_MANAGE_LAYOUT}
+      {...LAYOUT}
       headerActions={
         <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
           Refresh
@@ -380,7 +383,11 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
       {groups.length === 0 ? (
         <Card>
-          <Empty title="Nothing to show" description="No checklist data was generated for this week." />
+          {departmentFilter !== 'all' || dayPartFilter !== 'all' ? (
+            <Empty title="No tasks match these filters" description="Pick another department or day-part to see its tasks." />
+          ) : (
+            <Empty title="No tasks for this week" description="No checklist data was generated for this week." />
+          )}
         </Card>
       ) : (
         <Card padding="none">

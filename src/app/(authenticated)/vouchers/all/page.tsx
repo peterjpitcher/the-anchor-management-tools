@@ -79,7 +79,7 @@ export default async function AllVouchersPage({
 
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'All vouchers, with filters, bulk actions and CSV export',
+    subtitle: 'All Vouchers: every voucher, with filters, bulk actions and CSV export',
     navItems: VOUCHERS_NAV,
   }
 

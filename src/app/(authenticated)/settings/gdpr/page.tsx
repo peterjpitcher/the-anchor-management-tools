@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
-import { Alert, Button, Card, CardBody, CardHeader, FormFooter, Icon, Input, PageLayout, toast } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Icon, Input, Modal, PageLayout, toast } from '@/ds'
 
 export default function GDPRSettingsPage() {
   const [isExporting, setIsExporting] = useState(false)
@@ -39,6 +39,12 @@ export default function GDPRSettingsPage() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const closeDeleteConfirm = () => {
+    if (isDeleting) return
+    setShowDeleteConfirm(false)
+    setDeleteEmail('')
   }
 
   const handleDeleteData = async () => {
@@ -87,7 +93,7 @@ export default function GDPRSettingsPage() {
             loading={isExporting}
             icon={<Icon name="download" size={16} />}
           >
-            {isExporting ? 'Exporting...' : 'Export My Data'}
+            Export My Data
           </Button>
         </CardBody>
       </Card>
@@ -100,50 +106,50 @@ export default function GDPRSettingsPage() {
             Permanently delete all your personal data from our system.
             This action cannot be undone.
           </p>
-          {!showDeleteConfirm ? (
-            <Button
-              variant="danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              icon={<Icon name="trash" size={16} />}
-            >
-              Request Data Deletion
-            </Button>
-          ) : (
-            <Alert
-              tone="danger"
-              title="Confirm Data Deletion"
-            >
-              <div className="mt-4 space-y-4">
-                <Input
-                  type="email"
-                  label="Your email address"
-                  value={deleteEmail}
-                  onChange={(e) => setDeleteEmail(e.target.value)}
-                  placeholder="your@email.com"
-                />
-                <FormFooter>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setShowDeleteConfirm(false)
-                      setDeleteEmail('')
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteData}
-                    loading={isDeleting}
-                  >
-                    {isDeleting ? 'Processing...' : 'Confirm Deletion'}
-                  </Button>
-                </FormFooter>
-              </div>
-            </Alert>
-          )}
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            icon={<Icon name="trash" size={16} />}
+          >
+            Request Data Deletion
+          </Button>
         </CardBody>
       </Card>
+
+      {/* A confirmation with a field, so a Modal whose footer mirrors ConfirmDialog. */}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={closeDeleteConfirm}
+        title="Request Data Deletion"
+        description="Enter your email address to confirm. This cannot be undone."
+        width="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button type="submit" form="gdpr-delete-form" variant="danger" loading={isDeleting}>
+              Request Deletion
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="gdpr-delete-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleDeleteData()
+          }}
+        >
+          <Input
+            type="email"
+            label="Your email address"
+            value={deleteEmail}
+            onChange={(e) => setDeleteEmail(e.target.value)}
+            placeholder="your@email.com"
+          />
+        </form>
+      </Modal>
 
       {/* Privacy Rights Information */}
       <Alert tone="info" title="Your Privacy Rights">

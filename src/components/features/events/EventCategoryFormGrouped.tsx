@@ -672,7 +672,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           Cancel
         </Button>
         <Button type="submit" variant="primary" loading={isSubmitting}>
-          {category ? 'Update Category' : 'Create Category'}
+          {category ? 'Save Changes' : 'Create Category'}
         </Button>
       </FormFooter>
     </form>

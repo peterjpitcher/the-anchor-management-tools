@@ -14,7 +14,11 @@ export type SmsQueueActionState = {
 type SmsQueueActionFormProps = {
   action: (state: SmsQueueActionState, formData: FormData) => Promise<SmsQueueActionState>
   smsId: string
+  /** The confirmation dialog's title, named for the action ("Approve Message"). */
+  confirmTitle: string
   confirmMessage: string
+  /** The dialog's confirm button, the same words as the action ("Approve"). */
+  confirmLabel: string
   children: ReactNode
   variant?: ComponentProps<typeof Button>['variant']
   leftIcon?: ReactNode
@@ -33,7 +37,9 @@ const useFormStateCompat = ((React as any).useActionState ??
 export function SmsQueueActionForm({
   action,
   smsId,
+  confirmTitle,
   confirmMessage,
+  confirmLabel,
   children,
   variant = 'primary',
   leftIcon,
@@ -98,9 +104,9 @@ export function SmsQueueActionForm({
           confirmedRef.current = true
           formRef.current?.requestSubmit()
         }}
-        title="Please Confirm"
+        title={confirmTitle}
         message={confirmMessage}
-        confirmLabel="Confirm"
+        confirmLabel={confirmLabel}
         // Rejecting cancels the message, so it is red; approving and sending are primary.
         tone={variant === 'danger' ? 'danger' : 'primary'}
       />

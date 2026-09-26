@@ -359,7 +359,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
 
             <div className="mt-3 max-h-72 overflow-y-auto pr-1">
               {filteredEmployees.length === 0 ? (
-                <Empty size="sm" title="No employees match this search" />
+                <Empty size="sm" title="No employees match these filters" />
               ) : (
                 <div className="space-y-1">
                   {filteredEmployees.map(employee => {
@@ -525,7 +525,7 @@ export default function HoursByEmployeeClient({
             subtitle={`${rangeLabel} · ${weekCount} week${weekCount === 1 ? '' : 's'} · ${series.length} employee${series.length === 1 ? '' : 's'}`}
           />
           {!hasChart ? (
-            <Empty size="sm" icon="users" title="Select at least one employee to show hours" />
+            <Empty size="sm" icon="users" title="No employees selected" description="Select at least one employee to show their hours." />
           ) : (
             <CardBody>
               <ComboChart
@@ -578,7 +578,7 @@ export default function HoursByEmployeeClient({
           subtitle={`${formatHolidayDays(totalHolidayDays)} from ${rangeLabel}`}
         />
         {holidayRows.length === 0 ? (
-          <Empty size="sm" icon="calendar" title="No approved holidays booked for the selected employees in this date range" />
+          <Empty size="sm" icon="calendar" title="No holidays for this period" description="The selected employees have no approved holidays in this date range." />
         ) : (
           <Table className="max-h-[420px] overflow-y-auto">
             <TableHeader className="sticky top-0 z-10">
@@ -610,7 +610,7 @@ export default function HoursByEmployeeClient({
           subtitle={`${formatSickDays(totalSickDays)} from ${rangeLabel}`}
         />
         {sickRows.length === 0 ? (
-          <Empty size="sm" icon="calendar" title="No Couldn't Work days recorded for the selected employees in this date range" />
+          <Empty size="sm" icon="calendar" title="No Couldn't Work days for this period" description="The selected employees have no Couldn't Work days in this date range." />
         ) : (
           <Table className="max-h-[420px] overflow-y-auto">
             <TableHeader className="sticky top-0 z-10">

@@ -25,7 +25,7 @@ function SubmitButton() {
       loading={pending}
       variant="primary"
     >
-      {pending ? 'Saving...' : 'Save Changes'}
+      Save Financial Details
     </Button>
   );
 }

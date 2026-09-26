@@ -24,11 +24,15 @@ interface DocumentLink {
   href: string
 }
 
+/** More than this many header actions collapse the extras into the "More" menu. */
+const MAX_HEADER_ACTIONS = 3
+
 /**
- * Employee page header actions. Desktop shows every action in one row, secondary first and Edit
- * Employee last. Phones show one "More" menu (the DS Dropdown) and Edit Employee, so the header
- * is one tidy row instead of a block of full-size buttons. The menu is portalled and anchored to
- * its trigger, and moves and flips to stay on screen, so the same menu works at every phone width.
+ * Employee page header actions, one row at every width: the secondary actions, then Edit
+ * (secondary), then Delete (danger). When there are more than three actions in all, the documents
+ * and the status actions collapse into one labelled "More" menu (the DS Dropdown), so Edit and
+ * Delete stay one tap away. The menu is portalled and anchored to its trigger, and moves and flips
+ * to stay on screen, so the same menu works at every phone width.
  *
  * The status and delete actions open dialogs. A menu unmounts its items when it closes, which is
  * the same click that chose the item, so the dialogs live here, outside the menu, and the menu
@@ -53,21 +57,19 @@ export function EmployeeHeaderActions({
         { key: 'contract', label: 'Casual Worker Agreement', href: `/api/employees/${employeeId}/employment-contract` },
       ]
 
-  const actions: EmployeeHeaderAction[] = [
-    ...statusActions.actions,
-    ...(canDelete ? [deleteAction.action] : []),
-  ]
+  const actionCount =
+    documents.length + statusActions.actions.length + (canEdit ? 1 : 0) + (canDelete ? 1 : 0)
+  const useMenu = actionCount > MAX_HEADER_ACTIONS
 
   const editLink = canEdit ? (
-    <LinkButton href={`/employees/${employeeId}/edit`} size="sm" variant="primary">
-      Edit Employee
+    <LinkButton href={`/employees/${employeeId}/edit`} size="sm" variant="secondary">
+      Edit
     </LinkButton>
   ) : null
 
-  const hasMenu = documents.length > 0 || actions.length > 0
-
   const menu = (
     <Dropdown
+      width="auto"
       trigger={
         <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
           More
@@ -83,7 +85,7 @@ export function EmployeeHeaderActions({
           {document.label}
         </DropdownItem>
       ))}
-      {actions.map((action) => (
+      {statusActions.actions.map((action: EmployeeHeaderAction) => (
         <DropdownItem
           key={action.key}
           icon={action.icon}
@@ -99,33 +101,33 @@ export function EmployeeHeaderActions({
 
   return (
     <>
-      {/* Phones: More, then Edit Employee. */}
-      <div className="flex items-center gap-2 shell:hidden">
-        {hasMenu && menu}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {useMenu ? (
+          menu
+        ) : (
+          <>
+            {documents.map((document) => (
+              <LinkButton
+                key={document.key}
+                href={document.href}
+                size="sm"
+                variant="secondary"
+                target="_blank"
+                icon={<Icon name="download" size={16} />}
+              >
+                {document.label}
+              </LinkButton>
+            ))}
+            {statusActions.actions.map((action) => (
+              <EmployeeActionButton key={action.key} action={action} />
+            ))}
+          </>
+        )}
         {editLink}
+        {canDelete && <EmployeeActionButton action={deleteAction.action} />}
       </div>
 
-      {/* Desktop: the full row */}
-      <div className="hidden flex-wrap items-center justify-end gap-2 shell:flex">
-        {documents.map((document) => (
-          <LinkButton
-            key={document.key}
-            href={document.href}
-            size="sm"
-            variant="secondary"
-            target="_blank"
-            icon={<Icon name="download" size={16} />}
-          >
-            {document.label}
-          </LinkButton>
-        ))}
-        {actions.map((action) => (
-          <EmployeeActionButton key={action.key} action={action} />
-        ))}
-        {editLink}
-      </div>
-
-      {/* Rendered once, outside both the menu and the rows, so a dialog opened from a menu item
+      {/* Rendered once, outside both the menu and the row, so a dialog opened from a menu item
           outlives the menu closing. DS Modals render on the body. */}
       {statusActions.dialogs}
       {canDelete && deleteAction.dialog}

@@ -145,8 +145,8 @@ export default function PersonalStep({ token, initialData, onSuccess, onBack }: 
       {error && <Alert tone="danger">{error}</Alert>}
 
       <StepFooter onBack={onBack}>
-        <Button type="submit" variant="primary" disabled={loading}>
-          {loading ? 'Saving...' : 'Save & Continue'}
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
         </Button>
       </StepFooter>
     </form>

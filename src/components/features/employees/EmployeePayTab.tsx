@@ -249,8 +249,8 @@ export default function EmployeePayTab({
                 <Button type="button" variant="secondary" onClick={cancelSettings}>
                   Cancel
                 </Button>
-                <Button type="button" variant="primary" onClick={handleSaveSettings} disabled={settingsIsPending}>
-                  {settingsIsPending ? 'Saving…' : 'Save Settings'}
+                <Button type="button" variant="primary" onClick={handleSaveSettings} loading={settingsIsPending}>
+                  Save Pay Settings
                 </Button>
               </FormFooter>
             </>
@@ -292,7 +292,7 @@ export default function EmployeePayTab({
 
           {showOverrideForm && canEdit && (
             <CardBody className="space-y-4 border-b border-border">
-              <SubHeading>New Rate Override</SubHeading>
+              <SubHeading>Add Override</SubHeading>
               {overrideError && <Alert tone="danger" size="sm">{overrideError}</Alert>}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Hourly rate (£)">
@@ -319,8 +319,8 @@ export default function EmployeePayTab({
                 <Button type="button" variant="secondary" onClick={() => { setShowOverrideForm(false); setOverrideError(''); }}>
                   Cancel
                 </Button>
-                <Button type="button" variant="primary" onClick={handleAddOverride} disabled={overrideIsPending}>
-                  {overrideIsPending ? 'Saving…' : 'Save Override'}
+                <Button type="button" variant="primary" onClick={handleAddOverride} loading={overrideIsPending}>
+                  Add Override
                 </Button>
               </FormFooter>
             </CardBody>
@@ -336,8 +336,8 @@ export default function EmployeePayTab({
           {overrides.length === 0 ? (
             <Empty
               size="sm"
-              title="No individual overrides set"
-              description="Rate is calculated from age band."
+              title="No overrides yet"
+              description="The rate comes from the employee's age band."
             />
           ) : (
             <Table>
@@ -388,11 +388,11 @@ export default function EmployeePayTab({
                         <TableCell align="right">
                           {editingOverrideId === ov.id ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingOverrideId(null); setEditOverrideError(''); }}>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => { setEditingOverrideId(null); setEditOverrideError(''); }}>
                                 Cancel
                               </Button>
-                              <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} disabled={overrideIsPending}>
-                                Save
+                              <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} loading={overrideIsPending}>
+                                Save Changes
                               </Button>
                             </div>
                           ) : isUpcoming ? (

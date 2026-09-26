@@ -51,13 +51,13 @@ describe('CommunicationsTab', () => {
 
   it('shows history empty state when no messages sent', () => {
     render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} />)
-    expect(screen.getByText('No messages sent yet')).toBeInTheDocument()
+    expect(screen.getByText('No messages yet')).toBeInTheDocument()
   })
 
   it('shows a failed history read as an error, never as no messages', () => {
     render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} historyError="permission denied" />)
     expect(screen.getByText('Messages could not be loaded: permission denied')).toBeInTheDocument()
-    expect(screen.queryByText('No messages sent yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('No messages yet')).not.toBeInTheDocument()
   })
 
   it('renders scheduled list with resolved preview bodies', () => {
@@ -116,7 +116,7 @@ describe('CommunicationsTab', () => {
   it('shows generic empty state for scheduled when date is not TBD', () => {
     render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} />)
 
-    expect(screen.getByText('Nothing scheduled')).toBeInTheDocument()
+    expect(screen.getByText('No reminders scheduled')).toBeInTheDocument()
   })
 
   it('shows twilio SID on sent history rows only', () => {

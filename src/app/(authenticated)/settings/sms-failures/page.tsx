@@ -212,7 +212,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
         <Card padding="none">
           {rows.length === 0 ? (
             // A failed load is reported above, never shown as an empty log.
-            error ? null : <Empty size="sm" title="No failed SMS messages found for this window" />
+            error ? null : <Empty size="sm" title="No failed SMS messages for this period" />
           ) : (
             <>
               {/* Mobile: one row per failed message */}

@@ -275,7 +275,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   return (
     <PageLayout
       title={SHORT_LINKS_TITLE}
-      subtitle="URL shortener and analytics"
+      subtitle="Short Links: create short links and see their clicks"
       navItems={SHORT_LINKS_NAV}
       headerActions={
         canManage ? (
@@ -288,12 +288,12 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
       <StatGrid columns={4}>
         <Stat label="Total links" value={linkTotal.toLocaleString('en-GB')} />
         <Stat
-          label="Clicks 30d"
+          label="Clicks, 30 days"
           value={totalClicks.toLocaleString('en-GB')}
           delta={clicksTrend.delta}
           hint={clicksTrend.hint}
         />
-        <Stat label="Unique 30d" value={uniqueVisitors.toLocaleString('en-GB')} />
+        <Stat label="Unique visitors, 30 days" value={uniqueVisitors.toLocaleString('en-GB')} />
         <Stat
           label="Top destination"
           value={shortenForStat(topDestination.label)}
@@ -327,7 +327,19 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
       <Card padding="none">
         {displayLinks.length === 0 ? (
           <CardBody>
-            <Empty size="sm" title="No short links found" />
+            {debouncedSearch.trim() ? (
+              <Empty
+                size="sm"
+                title="No short links match this search"
+                description="Try a different word, or clear the search to see every link."
+              />
+            ) : (
+              <Empty
+                size="sm"
+                title="No short links yet"
+                description="Short links you create show here with their clicks."
+              />
+            )}
           </CardBody>
         ) : (
         <div className={cn('transition-opacity', isRefreshing && 'pointer-events-none opacity-50')} aria-busy={isRefreshing}>

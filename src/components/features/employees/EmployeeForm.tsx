@@ -53,7 +53,7 @@ type FormField = {
   checkboxLabel?: string;
 }
 
-function SubmitButton({ text = 'Save Employee' }: { text?: string }) {
+function SubmitButton({ text = 'Save Personal Details' }: { text?: string }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" loading={pending} variant="primary">
@@ -67,7 +67,7 @@ export default function EmployeeForm({
   formAction,
   initialFormState,
   cancelHref,
-  submitButtonText = 'Save Employee',
+  submitButtonText = 'Save Personal Details',
   draftMode = false,
 }: EmployeeFormProps) {
   const router = useRouter();

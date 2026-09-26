@@ -142,13 +142,13 @@ function TemplateFormModal({ initial, employees, departments, onSave, onCancel }
     <Modal
       open
       onClose={onCancel}
-      title={initial ? 'Edit Shift Template' : 'New Shift Template'}
+      title={initial ? 'Edit Template' : 'New Template'}
       width="xl"
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Saving…' : initial ? 'Save Changes' : 'Create Template'}
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+            {initial ? 'Save Changes' : 'Create Template'}
           </Button>
         </>
       }
@@ -391,10 +391,10 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               type="button"
               size="sm"
               onClick={() => setConfirmDeactivate(true)}
-              className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
+              className="text-text-subtle hover:text-text"
               title="Deactivate template"
               label="Deactivate template"
-              icon={<Icon name="trash" size={16} />}
+              icon={<Icon name="ban" size={16} />}
             />
           </>
         )}
@@ -414,9 +414,10 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
         open={confirmDeactivate}
         onClose={() => setConfirmDeactivate(false)}
         onConfirm={handleDeactivate}
-        title="Deactivate Template?"
-        message={`Deactivate "${current.name}"? It will no longer appear in the template palette.`}
+        title="Deactivate Template"
+        message={`"${current.name}" will no longer appear in the template palette. Nothing on this screen can bring it back.`}
         confirmLabel="Deactivate"
+        // No screen can reactivate a template, so this cannot be undone here and confirms in red.
         tone="danger"
       />
     </li>

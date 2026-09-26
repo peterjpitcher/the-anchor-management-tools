@@ -802,7 +802,7 @@ export function ReceiptRules({
                   description="Start by adding keywords for things like card settlements."
                 />
               ) : filteredRules.length === 0 ? (
-                <Empty size="sm" title={`No rules match "${ruleSearch.trim()}"`} />
+                <Empty size="sm" title="No rules match this search" description="Change or clear the search to see more rules." />
               ) : (
                 <Accordion
                   multiple

@@ -90,7 +90,7 @@ describe('ScheduleCalendarList', () => {
   it('should keep the Today group header and empty state when hidePast is true and today has no entries', () => {
     render(<ScheduleCalendarList entries={pastAndFutureEntries} hidePast />)
     expect(screen.getByText('Today')).toBeInTheDocument()
-    expect(screen.getByText('No Entries Today')).toBeInTheDocument()
+    expect(screen.getByText('No entries today')).toBeInTheDocument()
   })
 
   it('should keep entries dated today when hidePast is true', () => {

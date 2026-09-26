@@ -95,7 +95,7 @@ function MetricCard({ row, invertVariance = false }: { row: PnlReportRow; invert
   )
 }
 
-const PNL_SUBTITLE = 'Cash-up sales and receipt expenses against the Greene King Shadow P&L'
+const PNL_SUBTITLE = 'Business Health: cash-up sales and receipt expenses against the Greene King Shadow P&L'
 
 export default function PnlClient({ initialData, canExport = false, canManage = false }: Props) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<PnlTimeframeKey>('12m')
@@ -308,7 +308,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                 onClick={() => downloadReport('pdf')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=pdf`}
               >
-                PDF
+                Download PDF
               </Button>
               <Button
                 variant="secondary"
@@ -317,7 +317,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                 onClick={() => downloadReport('xlsx')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=xlsx`}
               >
-                Spreadsheet
+                Export Spreadsheet
               </Button>
             </>
           )}

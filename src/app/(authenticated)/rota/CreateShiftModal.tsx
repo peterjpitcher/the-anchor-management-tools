@@ -77,8 +77,8 @@ export default function CreateShiftModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Creating…' : 'Create Shift'}
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+            Create Shift
           </Button>
         </>
       }

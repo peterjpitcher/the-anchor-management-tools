@@ -17,7 +17,7 @@ export default async function VoucherTypesPage() {
   // A top-level tab: no back button.
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'Voucher types and terms, a read-only reference',
+    subtitle: 'Types & Terms: voucher types and terms, a read-only reference',
     navItems: VOUCHERS_NAV,
   }
 
@@ -46,7 +46,7 @@ export default async function VoucherTypesPage() {
           <Card>
             <Empty
               size="sm"
-              title="No voucher types found"
+              title="No voucher types yet"
               description="The seed migration has not been applied."
             />
           </Card>

@@ -9,7 +9,6 @@ import {
     ConfirmDialog,
     Field,
     Fieldset,
-    FormFooter,
     Icon,
     Input,
     Modal,
@@ -37,6 +36,7 @@ export function CateringPackageModal({
     const [confirmingDelete, setConfirmingDelete] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [selectedPricingModel, setSelectedPricingModel] = useState<string>('per_head')
+    const formId = 'catering-package-form'
 
     // Reset state when opening/closing
     useEffect(() => {
@@ -175,10 +175,33 @@ export function CateringPackageModal({
         <Modal
             open={open}
             onClose={onClose}
-            title={isEditing ? 'Edit Package' : 'Add New Package'}
+            title={isEditing ? 'Edit Package' : 'New Package'}
             size="lg"
+            footer={
+                <>
+                    {/* Left on desktop: the destructive action, confirmed in its own dialog. */}
+                    {isEditing && (
+                        <Button
+                            type="button"
+                            variant="danger"
+                            onClick={() => setConfirmingDelete(true)}
+                            disabled={isSubmitting || isDeleting}
+                            icon={<Icon name="trash" size={16} />}
+                            className="sm:mr-auto"
+                        >
+                            Delete
+                        </Button>
+                    )}
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting || isDeleting}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" form={formId} variant="primary" loading={isSubmitting} disabled={isDeleting}>
+                        {isEditing ? 'Save Changes' : 'Create Package'}
+                    </Button>
+                </>
+            }
         >
-            <form action={handleSubmit} className="space-y-6">
+            <form id={formId} action={handleSubmit} className="space-y-6">
                 {error && (
                     <Alert tone="danger" size="sm">
                         {error}
@@ -355,37 +378,15 @@ export function CateringPackageModal({
                     </Field>
                 </div>
 
-                <FormFooter
-                    start={
-                        isEditing ? (
-                            <Button
-                                type="button"
-                                variant="danger"
-                                onClick={() => setConfirmingDelete(true)}
-                                disabled={isSubmitting || isDeleting}
-                                icon={<Icon name="trash" size={16} />}
-                            >
-                                Delete
-                            </Button>
-                        ) : undefined
-                    }
-                >
-                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting || isDeleting}>
-                        Cancel
-                    </Button>
-                    <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting || isDeleting}>
-                        {isEditing ? 'Save Changes' : 'Create Package'}
-                    </Button>
-                </FormFooter>
             </form>
 
             <ConfirmDialog
                 open={confirmingDelete}
                 onClose={() => setConfirmingDelete(false)}
                 onConfirm={handleDelete}
-                title="Delete Package?"
-                message="Are you sure you want to delete this package? This cannot be undone."
-                confirmLabel="Delete Package"
+                title="Delete Package"
+                message="This removes the package from the catering list. This cannot be undone."
+                confirmLabel="Delete"
                 tone="danger"
             />
         </Modal>

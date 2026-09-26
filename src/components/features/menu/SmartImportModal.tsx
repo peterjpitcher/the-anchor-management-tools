@@ -7,7 +7,6 @@ import { Textarea } from '@/ds';
 import { Alert } from '@/ds';
 import { toast } from '@/ds';
 import { Badge } from '@/ds';
-import { FormFooter } from '@/ds';
 import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface AiParsedIngredient {
@@ -83,14 +82,14 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
       title="Smart Ingredient Import"
       size="lg"
       footer={
-        <FormFooter className="w-full">
+        <>
           <Button variant="secondary" onClick={onClose} disabled={parsing}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleParse} disabled={parsing || !input.trim()}>
-            {parsing ? 'Analyzing...' : 'Analyze & Import'}
+          <Button variant="primary" onClick={handleParse} disabled={!input.trim()} loading={parsing}>
+            Analyze & Import
           </Button>
-        </FormFooter>
+        </>
       }
     >
       <div className="space-y-4">

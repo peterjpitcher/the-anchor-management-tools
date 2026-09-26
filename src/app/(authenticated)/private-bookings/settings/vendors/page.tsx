@@ -116,7 +116,7 @@ export default async function VendorsPage({
 
   const layoutProps = {
     title: PB_SETTINGS_TITLE,
-    subtitle: 'Preferred vendors and service providers',
+    subtitle: 'Vendors: preferred vendors and service providers',
     backButton: PB_BACK_TO_LIST,
     navItems: privateBookingSettingsNav(actions),
   }
@@ -176,9 +176,9 @@ export default async function VendorsPage({
         <Alert tone="danger" title="Error">{errorMessage}</Alert>
       )}
 
-      {/* Add New Vendor Form */}
+      {/* New vendor form */}
       <Card>
-        <CardHeader title="Add New Vendor" />
+        <CardHeader title="New Vendor" />
         <CardBody>
           <form action={handleCreateVendor} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -274,7 +274,7 @@ export default async function VendorsPage({
 
             <FormFooter>
               <Button type="submit" variant="primary">
-                Add Vendor
+                Create Vendor
               </Button>
             </FormFooter>
           </form>
@@ -287,8 +287,8 @@ export default async function VendorsPage({
           <Empty
             size="sm"
             icon={<Icon name="users" size={48} />}
-            title="No vendors configured yet"
-            description="Add your first vendor using the form above."
+            title="No vendors yet"
+            description="Create your first vendor with the form above."
           />
         </Card>
       ) : (
@@ -403,7 +403,7 @@ export default async function VendorsPage({
                     </form>
 
                     {/* The delete button submits its own form, so this footer sits outside the edit
-                        form and Update reaches that form through the form attribute. */}
+                        form and Save Changes reaches that form through the form attribute. */}
                     <FormFooter>
                       <VendorDeleteButton
                         vendorName={vendor.name}
@@ -416,7 +416,7 @@ export default async function VendorsPage({
                         variant="primary"
                         icon={<Icon name="check" size={16} />}
                       >
-                        Update Vendor
+                        Save Changes
                       </Button>
                     </FormFooter>
                   </div>

@@ -571,8 +571,9 @@ export function ContactsClient({
                                   Set Eligibility
                                 </Button>
                                 {contact.marketingStatus === 'subscribed' ? (
+                                  // Secondary, not danger: Resubscribe undoes it from this screen.
                                   <Button
-                                    variant="danger"
+                                    variant="secondary"
                                     size="sm"
                                     onClick={() => setUnsubscribeTarget(contact)}
                                   >
@@ -665,15 +666,16 @@ export function ContactsClient({
           if (unsubscribeTarget) await handleUnsubscribe(unsubscribeTarget)
           setUnsubscribeTarget(null)
         }}
-        title="Stop Marketing Email to This Contact?"
+        title="Unsubscribe Contact"
         message={
           <span>
-            {unsubscribeTarget?.email} will be added to the do-not-contact list. That record
-            outlives the contact, so a future import cannot bring them back by accident.
+            Stop marketing email to {unsubscribeTarget?.email}? They will be added to the
+            do-not-contact list. That record outlives the contact, so a future import cannot bring
+            them back by accident.
           </span>
         }
         confirmLabel="Unsubscribe"
-        tone="danger"
+        tone="primary"
       />
 
       <ConfirmDialog
@@ -683,11 +685,12 @@ export function ContactsClient({
           if (resubscribeTarget) await handleResubscribe(resubscribeTarget)
           setResubscribeTarget(null)
         }}
-        title="Add This Contact Back to Marketing Email?"
+        title="Resubscribe Contact"
         message={
           <span>
-            Only do this if {resubscribeTarget?.email} has asked to hear from us again. Their
-            objection will be removed from the do-not-contact list.
+            Add {resubscribeTarget?.email} back to marketing email? Only do this if they have
+            asked to hear from us again. Their objection will be removed from the do-not-contact
+            list.
           </span>
         }
         confirmLabel="Resubscribe"

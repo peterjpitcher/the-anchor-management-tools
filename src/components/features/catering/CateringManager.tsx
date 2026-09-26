@@ -46,7 +46,7 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
     const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id)
     const layoutProps = {
         title: PB_SETTINGS_TITLE,
-        subtitle: 'Catering packages for private events',
+        subtitle: 'Catering: packages for private events',
         backButton: PB_BACK_TO_LIST,
         navItems,
     }
@@ -131,7 +131,6 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
     const categoryLabels: Record<string, string> = {
         food: 'Food',
         drink: 'Drinks',
-        // Title Case: these name the Empty state's "Add ... Package" button.
         addon: 'Add-On',
         self_catering: 'Self-Catering',
         other: 'Other'
@@ -148,12 +147,7 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
                         size="sm"
                         icon={<Icon name="sparkles" size={48} />}
                         title={`No ${categoryLabel.toLowerCase()} packages yet`}
-                        description="Get started by creating your first package."
-                        action={
-                            <Button onClick={handleAdd} icon={<Icon name="plus" size={16} />}>
-                                Add {categoryLabel} Package
-                            </Button>
-                        }
+                        description="Create your first package with New Package."
                     />
                 </Card>
             )
@@ -182,7 +176,7 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
             {...layoutProps}
             headerActions={
                 <Button size="sm" variant="primary" onClick={handleAdd} icon={<Icon name="plus" size={16} />}>
-                    Add Package
+                    New Package
                 </Button>
             }
         >

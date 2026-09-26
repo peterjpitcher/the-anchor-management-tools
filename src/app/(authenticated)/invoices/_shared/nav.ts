@@ -43,3 +43,13 @@ export const BACK_TO_RECURRING = { label: 'Back to Invoices', href: '/invoices/r
 export function invoicePageTitle(invoiceNumber?: string | null): string {
   return invoiceNumber ? `Invoice ${invoiceNumber}` : 'Invoice'
 }
+
+/**
+ * A quote page's title ("Quote Q-001"), and so the "Back to ..." label on the pages below it
+ * (edit, convert). The quote page loads the quote on the server, so its title is the same in
+ * every state; the pages below load it themselves, so until it arrives their label reads
+ * "Back to Quote".
+ */
+export function quotePageTitle(quoteNumber?: string | null): string {
+  return quoteNumber ? `Quote ${quoteNumber}` : 'Quote'
+}

@@ -14,7 +14,7 @@ export function CustomerName({ customer, showMobile = false, className = '' }: C
       {fullName || customer.first_name}
       {showMobile && customer.mobile_number ? ` (${customer.mobile_number})` : ''}
       {customer.isLoyal && (
-        <Icon name="star" size={16} className="inline-block ml-1 text-cat-6 fill-current" label="Loyal Customer" />
+        <Icon name="star" size={16} className="inline-block ml-1 text-cat-6 fill-current" label="Loyal customer" />
       )}
     </span>
   )

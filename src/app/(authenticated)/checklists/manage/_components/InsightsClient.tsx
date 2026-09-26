@@ -18,10 +18,13 @@ import {
   TableCell,
 } from '@/ds'
 import type { InsightsData } from '@/app/actions/checklists-insights'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { checklistBandTone } from '../../_shared/status-ui'
 import { DateRangeControl } from './DateRangeControl'
 import { formatPercent } from './format'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('insights')
 
 interface InsightsClientProps {
   data?: InsightsData
@@ -34,7 +37,7 @@ export function InsightsClient({ data, error }: InsightsClientProps) {
     // error is a failed load, which the page reports as one rather than as a permission note.
     const refused = !error || error === 'Insufficient permissions'
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         {refused ? (
           <Alert tone="warning" title="Super admins only">
             Insights are only available to super admins.
@@ -49,7 +52,7 @@ export function InsightsClient({ data, error }: InsightsClientProps) {
   }
 
   return (
-    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+    <PageLayout {...LAYOUT}>
       {/* The filter and the window it resolved to, directly above the figures they drive. */}
       <div className="space-y-2">
         <DateRangeControl from={data.from} to={data.to} />
@@ -83,7 +86,7 @@ export function InsightsClient({ data, error }: InsightsClientProps) {
           subtitle="Score out of 10 over completed ticks. Suppressed below 30 ticks."
         />
         {data.perPerson.length === 0 ? (
-          <Empty size="sm" title="No completed ticks in this window" />
+          <Empty size="sm" title="No completed ticks for this period" />
         ) : (
           <Table>
             <TableHeader>

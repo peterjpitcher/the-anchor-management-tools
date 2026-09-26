@@ -169,7 +169,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
     }
   }, [])
 
-  const layoutProps = cashingUpLayout('Trends in takings, sales mix and payment methods')
+  const layoutProps = cashingUpLayout('Insights: trends in takings, sales mix and payment methods')
 
   // The period picker stays above every state, so a failed period can be swapped for another.
   const periodPicker = (
@@ -195,7 +195,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
           <Alert tone="danger">{loadError}</Alert>
         ) : (
           <Card>
-            <Empty size="sm" title="No insights data available" />
+            <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
           </Card>
         )}
       </PageLayout>
@@ -227,7 +227,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
           {chartData.length > 0 ? (
             <RevenueChart data={chartData} />
           ) : (
-            <Empty size="sm" title="No data available" />
+            <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
           )}
         </CardBody>
       </Card>
@@ -259,7 +259,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
               </div>
             </div>
           ) : (
-            <Empty size="sm" title="No sales mix data available" />
+            <Empty size="sm" title="No sales mix for this period" description="No sales split was recorded in this period." />
           )}
         </CardBody>
       </Card>
@@ -279,7 +279,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
                 ariaLabel="Average takings by day of the week"
               />
             ) : (
-              <Empty size="sm" title="No data available" />
+              <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
             )}
           </CardBody>
         </Card>

@@ -100,7 +100,7 @@ export function SpecialHoursClientWrapper({
             <Alert tone="danger">{specialHoursError}</Alert>
           </CardBody>
         ) : initialSpecialHours.length === 0 ? (
-          <Empty size="sm" title="No special hours configured" />
+          <Empty size="sm" title="No exceptions yet" description="Dates with different hours appear here once they are added." />
         ) : (
           <div className="divide-y divide-border">
             {initialSpecialHours.map((exception) => (

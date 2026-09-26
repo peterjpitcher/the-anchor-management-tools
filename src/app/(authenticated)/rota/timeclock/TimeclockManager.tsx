@@ -339,7 +339,7 @@ export default function TimeclockManager({
           icon={<Icon name="plus" size={16} />}
           onClick={() => { setAddDate(periodStart); setShowAddForm(true); }}
         >
-          Add Entry
+          New Entry
         </Button>
       }
     >
@@ -374,7 +374,7 @@ export default function TimeclockManager({
             <Empty
               size="sm"
               icon="clock"
-              title={sessions.length === 0 ? 'No timeclock sessions for this pay cycle' : 'All sessions approved'}
+              title={sessions.length === 0 ? 'No sessions for this period' : 'All sessions approved'}
               description={sessions.length === 0 ? undefined : 'Tick "Show approved" to view them.'}
             />
           ) : (
@@ -529,7 +529,7 @@ export default function TimeclockManager({
       <Modal
         open={showAddForm}
         onClose={() => { if (!addPending) setShowAddForm(false); }}
-        title="Add Timeclock Entry"
+        title="New Entry"
         description={`A manual entry in the ${formatPeriodRange(periodStart, periodEnd)} pay cycle`}
         width="lg"
         footer={
@@ -538,7 +538,7 @@ export default function TimeclockManager({
               Cancel
             </Button>
             <Button type="button" variant="primary" onClick={handleAdd} loading={addPending}>
-              Save Entry
+              Create Entry
             </Button>
           </>
         }
@@ -593,7 +593,7 @@ export default function TimeclockManager({
       <Modal
         open={editingSession !== null}
         onClose={() => { if (!savePending) cancelEdit(); }}
-        title="Edit Timeclock Entry"
+        title="Edit Entry"
         description={editingSession ? `${editingSession.employee_name}, ${formatDayHeader(editingSession.work_date)}` : undefined}
         width="lg"
         footer={
@@ -722,7 +722,7 @@ export default function TimeclockManager({
         open={deletingSession !== null}
         onClose={() => setDeletingId(null)}
         onConfirm={handleDelete}
-        title="Delete Timeclock Entry?"
+        title="Delete Entry"
         message={
           deletingSession
             ? `Delete ${deletingSession.employee_name}'s timeclock entry for ${formatDayHeader(deletingSession.work_date)}? This cannot be undone.`

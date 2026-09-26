@@ -148,7 +148,7 @@ export default function PaymentHistoryTable({
       )}
 
       {payments.length === 0 ? (
-        <Empty size="sm" title="No payments recorded yet" />
+        <Empty size="sm" title="No payments yet" />
       ) : (
         <div className="space-y-2">
           {payments.map((entry) => {
@@ -282,9 +282,9 @@ export default function PaymentHistoryTable({
         open={confirmDeleteId !== null}
         onClose={() => setConfirmDeleteId(null)}
         onConfirm={handleDeleteConfirm}
-        title="Delete Payment?"
-        message="Are you sure you want to delete this payment? This cannot be undone."
-        confirmLabel="Delete Payment"
+        title="Delete Payment"
+        message="This removes the payment from the booking's record. This cannot be undone."
+        confirmLabel="Delete"
         tone="danger"
       />
     </>

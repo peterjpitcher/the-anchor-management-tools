@@ -154,9 +154,9 @@ describe('BookingDetailClient party size changes', () => {
 
     // The larger table is auto-selected, so Save is enabled with no manual pick required.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
     })
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     // Single-step grow+move: one party-size call carrying the auto-picked
     // setup — the server performs the move and reverts it if the size fails.
@@ -177,9 +177,9 @@ describe('BookingDetailClient party size changes', () => {
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), size)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
     })
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalled()
     })
@@ -201,9 +201,9 @@ describe('BookingDetailClient party size changes', () => {
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), '9')
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
     })
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(requestTableBookingActionMock).toHaveBeenCalledWith(
@@ -268,8 +268,9 @@ describe('BookingDetailClient party size changes', () => {
     const user = userEvent.setup()
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
 
-    // The Danger Zone button and the dialog's confirm button share the label "Cancel Booking".
-    await user.click(screen.getByRole('button', { name: 'Cancel Booking' }))
+    // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
+    // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
+    await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
@@ -288,8 +289,9 @@ describe('BookingDetailClient party size changes', () => {
     const user = userEvent.setup()
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
 
-    // The Danger Zone button and the dialog's confirm button share the label "Cancel Booking".
-    await user.click(screen.getByRole('button', { name: 'Cancel Booking' }))
+    // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
+    // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
+    await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
@@ -332,9 +334,9 @@ describe('BookingDetailClient party size changes', () => {
     await user.type(screen.getByLabelText('New party size'), '9')
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
     })
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     // Only the party-size call is made; the server handles (or rejects) the move.
     await waitFor(() => {

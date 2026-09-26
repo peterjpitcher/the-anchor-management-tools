@@ -179,14 +179,6 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
     applyFilters({ ...localFilters, groupByVendor: checked })
   }
 
-  function handleMissingVendorToggle(checked: boolean) {
-    applyFilters({ ...localFilters, missingVendorOnly: checked })
-  }
-
-  function handleMissingExpenseToggle(checked: boolean) {
-    applyFilters({ ...localFilters, missingExpenseOnly: checked })
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -254,16 +246,8 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
             checked={localFilters.groupByVendor}
             onChange={handleGroupByVendorToggle}
           />
-          <Checkbox
-            label="Missing vendor"
-            checked={localFilters.missingVendorOnly}
-            onChange={handleMissingVendorToggle}
-          />
-          <Checkbox
-            label="Missing expense"
-            checked={localFilters.missingExpenseOnly}
-            onChange={handleMissingExpenseToggle}
-          />
+          {/* Missing vendor and missing expense are the Needs Vendor and Needs Expense tabs, not
+              filters here: the filters keep whichever of them is on while the others change. */}
         </div>
       </div>
     </div>

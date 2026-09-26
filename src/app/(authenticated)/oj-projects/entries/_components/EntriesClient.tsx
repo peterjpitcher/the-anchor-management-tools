@@ -7,7 +7,6 @@ import Link from 'next/link'
 import {
   Alert,
   Card,
-  FormFooter,
   PageLayout,
   Table,
   TableHeader,
@@ -39,8 +38,11 @@ import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
-import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
+import { ojProjectsLayout } from '../../_shared/nav'
 import { ojBillable, ojEntryStatus, ojEntryType } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('entries')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -429,7 +431,7 @@ export function EntriesClient({
 
   if (loadError) {
     return (
-      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load entries">
           {loadError}
         </Alert>
@@ -439,7 +441,7 @@ export function EntriesClient({
 
   return (
     <PageLayout
-      {...OJ_PROJECTS_LAYOUT}
+      {...LAYOUT}
       headerActions={
         canCreate ? (
           <Button
@@ -522,7 +524,13 @@ export function EntriesClient({
 
       <Card padding="none">
         {entries.length === 0 ? (
-          <Empty size="sm" title="No entries" description="No entries match your filters." />
+          search.trim() ||
+          invoiceFilter.trim() ||
+          [clientFilter, projectFilter, statusFilter, typeFilter, billingFilter].some((value) => value !== 'all') ? (
+            <Empty size="sm" title="No entries match these filters" description="Clear a filter or the search to see more entries." />
+          ) : (
+            <Empty size="sm" title="No entries yet" description="Time, mileage and one-off entries show here once logged." />
+          )
         ) : (
           <>
             {/* While another page loads, the current rows stay and dim. */}
@@ -699,8 +707,18 @@ export function EntriesClient({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="New Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-entry-create-form" variant="primary" loading={saving}>
+              Create Entry
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+        <form id="oj-entry-create-form" onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
           <Segmented
             options={[
               { id: 'time', label: 'Time' },
@@ -837,15 +855,6 @@ export function EntriesClient({
             checked={createForm.billable}
             onChange={(checked) => setCreateForm({ ...createForm, billable: checked })}
           />
-
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              Create Entry
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
 
@@ -854,8 +863,22 @@ export function EntriesClient({
         open={editOpen}
         onClose={() => setEditOpen(false)}
         title="Edit Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-entry-edit-form" variant="primary" loading={saving}>
+              {editForm.linked_invoice_number
+                ? editForm.linked_invoice_status === 'draft'
+                  ? 'Save and Recalculate Draft'
+                  : 'Save and Create Replacement Draft'
+                : 'Save Changes'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+        <form id="oj-entry-edit-form" onSubmit={handleEditSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Entry Type">
               <Input value={editForm.entry_type} disabled />
@@ -986,19 +1009,6 @@ export function EntriesClient({
             checked={editForm.billable}
             onChange={(checked) => setEditForm({ ...editForm, billable: checked })}
           />
-
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              {editForm.linked_invoice_number
-                ? editForm.linked_invoice_status === 'draft'
-                  ? 'Save and Recalculate Draft'
-                  : 'Save and Create Replacement Draft'
-                : 'Save Changes'}
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
 
@@ -1011,7 +1021,7 @@ export function EntriesClient({
         message={
           deleteEntryTarget?.invoice?.invoice_number
             ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
-            : 'Are you sure you want to delete this entry? This cannot be undone.'
+            : 'Delete this entry? This cannot be undone.'
         }
         confirmLabel="Delete"
         tone="danger"

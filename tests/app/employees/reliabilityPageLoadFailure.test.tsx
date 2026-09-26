@@ -69,11 +69,11 @@ function expectFailureShown(): void {
   // The header and the Employees tab row stay, exactly as on a good load: the page is titled
   // with the sidebar entry that owns the row, and the subtitle names the tab.
   expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
-  expect(screen.getAllByText('Reliability over the last 90 days').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Reliability: shift reliability over the last 90 days').length).toBeGreaterThan(0)
   expect(screen.getAllByRole('tab', { name: 'Reliability' }).length).toBeGreaterThan(0)
   expect(screen.getAllByRole('link', { name: 'Include Former' }).length).toBeGreaterThan(0)
   // Never shown as an empty list, and never as a table of zero scores.
-  expect(screen.queryByText('No employees found for this view')).not.toBeInTheDocument()
+  expect(screen.queryByText('No employees match these filters')).not.toBeInTheDocument()
   expect(screen.queryByText('Ranked')).not.toBeInTheDocument()
   expect(screen.queryByText('Sam R')).not.toBeInTheDocument()
 }
@@ -90,7 +90,7 @@ describe('/employees/reliability when the leaderboard cannot be read', () => {
     consoleError.mockRestore()
   })
 
-  it('shows a danger alert, not "No employees found", when the employees read fails', async () => {
+  it('shows a danger alert, not an empty leaderboard, when the employees read fails', async () => {
     tables({ employees: { data: null, error: { message: 'connection refused' } } })
 
     await renderPage()
@@ -123,7 +123,7 @@ describe('/employees/reliability when the leaderboard cannot be read', () => {
 
     await renderPage()
 
-    expect(screen.getByText('No employees found for this view')).toBeInTheDocument()
+    expect(screen.getByText('No employees match these filters')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

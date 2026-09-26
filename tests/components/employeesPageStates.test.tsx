@@ -81,26 +81,26 @@ describe('employees pages on the page contract', () => {
     }
     const { unmount } = render(<EmployeesClient initialData={data} permissions={{ canCreate: true, canExport: true, canEdit: true }} />)
     expect(screen.getAllByText('Employees').length).toBeGreaterThan(0)
-    expect(screen.getByText('No employees found')).toBeInTheDocument()
+    expect(screen.getByText('No employees yet')).toBeInTheDocument()
     unmount()
     render(<EmployeesClient initialData={data} initialError="Boom" permissions={{ canCreate: true, canExport: true, canEdit: true }} />)
     expect(screen.getByText('Boom')).toBeInTheDocument()
-    expect(screen.queryByText('No employees found')).not.toBeInTheDocument()
+    expect(screen.queryByText('No employees yet')).not.toBeInTheDocument()
   })
 
   it('says the birthdays failed to load rather than showing an empty list', async () => {
     render(await BirthdaysPage())
     // Titled with the sidebar entry that owns the tab row; the subtitle names the tab.
     expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Birthdays through the year').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Birthdays: every employee birthday, month by month').length).toBeGreaterThan(0)
     expect(screen.getByText('Could not load birthdays')).toBeInTheDocument()
-    expect(screen.queryByText('No birthdays found')).not.toBeInTheDocument()
+    expect(screen.queryByText('No birthdays yet')).not.toBeInTheDocument()
   })
 
   it('shows an empty reliability leaderboard with Empty', async () => {
     render(await ReliabilityPage({ searchParams: Promise.resolve({}) }))
     expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
-    expect(screen.getByText('No employees found for this view')).toBeInTheDocument()
+    expect(screen.getByText('No employees match these filters')).toBeInTheDocument()
   })
 
   it('renders the detail tabs as cards with Empty states', async () => {
@@ -108,8 +108,8 @@ describe('employees pages on the page contract', () => {
     render(<HealthRecordsTab employeeId="e1" healthRecord={null} canEdit />)
     render(<EmergencyContactsTab employeeId="e1" contacts={[]} canEdit />)
     render(<EmployeeRecentChanges employeeId="e1" />)
-    expect(await screen.findByText('No recent changes recorded')).toBeInTheDocument()
-    expect(screen.getByText('No emergency contacts found')).toBeInTheDocument()
+    expect(await screen.findByText('No changes yet')).toBeInTheDocument()
+    expect(screen.getByText('No emergency contacts yet')).toBeInTheDocument()
   })
 
   it('renders the edit forms on DS fields', () => {
@@ -132,7 +132,9 @@ describe('employees pages on the page contract', () => {
     render(
       <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments />,
     )
-    expect(screen.getAllByText('Edit Sam').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Edit Employee' }).length).toBeGreaterThan(0)
+    // The employee's name is the subtitle, as their page is titled.
+    expect(screen.getAllByText('Sam Rowe').length).toBeGreaterThan(0)
     // Back to the employee's page, labelled with that page's title (the legal name here).
     expect(screen.getAllByRole('button', { name: 'Back to Sam Rowe' }).length).toBeGreaterThan(0)
   })
@@ -146,7 +148,7 @@ describe('employees pages on the page contract', () => {
     const { unmount } = render(
       <EmployeePayTab employeeId="e1" canEdit initialPaySettings={null} initialOverrides={[]} currentRate={null} />,
     )
-    expect(screen.getByText('No individual overrides set')).toBeInTheDocument()
+    expect(screen.getByText('No overrides yet')).toBeInTheDocument()
     unmount()
 
     render(
@@ -161,7 +163,7 @@ describe('employees pages on the page contract', () => {
     )
     expect(screen.getByText('Could not load pay details')).toBeInTheDocument()
     expect(screen.getByText('relation does not exist')).toBeInTheDocument()
-    expect(screen.queryByText('No individual overrides set')).not.toBeInTheDocument()
+    expect(screen.queryByText('No overrides yet')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
   })
 
@@ -177,7 +179,7 @@ describe('employees pages on the page contract', () => {
         rotaSettings={rotaSettings}
       />,
     )
-    expect(screen.getByText(/No leave requests for/)).toBeInTheDocument()
+    expect(screen.getByText(/No holiday requests for/)).toBeInTheDocument()
     unmount()
 
     render(
@@ -193,7 +195,7 @@ describe('employees pages on the page contract', () => {
     )
     expect(screen.getByText('Could not load holidays')).toBeInTheDocument()
     expect(screen.getByText('Permission denied')).toBeInTheDocument()
-    expect(screen.queryByText(/No leave requests for/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No holiday requests for/)).not.toBeInTheDocument()
     expect(screen.queryByText(/days remaining/)).not.toBeInTheDocument()
   })
 
@@ -251,15 +253,15 @@ describe('employees pages on the page contract', () => {
     const row = within(screen.getByText('£14.00/hr').closest('tr') as HTMLElement)
     await user.click(row.getByRole('button', { name: 'Edit' }))
     await user.clear(row.getByRole('spinbutton', { name: 'Hourly rate (£)' }))
-    await user.click(row.getByRole('button', { name: 'Save' }))
+    await user.click(row.getByRole('button', { name: 'Save Changes' }))
 
     // One message, and not in the add form, which has nothing wrong with it.
     expect(screen.getAllByText('Enter a valid hourly rate')).toHaveLength(1)
-    const addForm = screen.getByRole('heading', { name: 'New Rate Override' }).parentElement as HTMLElement
+    const addForm = screen.getByRole('heading', { name: 'Add Override' }).parentElement as HTMLElement
     expect(addForm).not.toHaveTextContent('Enter a valid hourly rate')
 
     // The add form's own mistake shows in the add form, even while a row is being edited.
-    await user.click(screen.getByRole('button', { name: 'Save Override' }))
+    await user.click(within(addForm).getByRole('button', { name: 'Add Override' }))
     expect(addForm).toHaveTextContent('Enter a valid hourly rate')
     expect(screen.getAllByText('Enter a valid hourly rate')).toHaveLength(2)
 

@@ -101,7 +101,7 @@ export function EventTicketSettings({ event, canManage }: Props) {
               <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any allergies or dietary requirements?')}>Add Allergy Question</Button>
               <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any accessibility needs we should be aware of?')}>Add Accessibility Question</Button>
             </div>
-            {questions.length === 0 && <Empty size="sm" title="No Extra Questions" description={mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'} />}
+            {questions.length === 0 && <Empty size="sm" title="No extra questions" description={mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'} />}
             {questions.map((question, index) => <div key={question.id} className="space-y-3 rounded-default border border-border p-4">
               <div className="flex items-center justify-between gap-2"><SubHeading>Guest Question {index + 1}</SubHeading>
                 <div className="flex gap-1">

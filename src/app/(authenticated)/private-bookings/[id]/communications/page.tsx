@@ -53,7 +53,7 @@ export default async function PrivateBookingCommunicationsPage({ params }: PageP
   // One header for every state. Every tab of the booking shows the customer's name.
   const layoutProps = {
     title: booking?.customer_full_name || booking?.customer_name || 'Private Booking',
-    subtitle: 'Messages and emails sent, and reminders still to come',
+    subtitle: 'Communications: messages and emails sent, and reminders still to come',
     backButton: PB_BACK_TO_LIST,
     navItems: PB_DETAIL_NAV(bookingId),
   }

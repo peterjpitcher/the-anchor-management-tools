@@ -185,8 +185,8 @@ export default function HealthStep({ token, initialData, onSuccess, onBack }: He
       {error && <Alert tone="danger">{error}</Alert>}
 
       <StepFooter onBack={onBack}>
-        <Button type="submit" variant="primary" disabled={loading}>
-          {loading ? 'Saving...' : 'Save & Continue'}
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
         </Button>
       </StepFooter>
     </form>

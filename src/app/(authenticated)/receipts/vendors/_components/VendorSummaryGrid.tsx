@@ -283,7 +283,7 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
   // figure on the page) can sit in the header.
   return (
     <ReceiptsPageChrome
-      subtitle="Which suppliers are rising in cost and where spend is stable"
+      subtitle="Vendors: which suppliers are rising in cost and where spend is stable"
       navState={{ view: 'vendors' }}
       canManage={canManage}
       headerActions={
@@ -362,7 +362,7 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
     .slice(0, 10)
 
   if (!rows.length) {
-    return <Empty size="sm" title="No movement is available for this comparison" />
+    return <Empty size="sm" title="No movement for this period" description="No vendor’s spend changed between the periods compared." />
   }
 
   return (
@@ -559,7 +559,7 @@ function VendorMovementPanel({
           </StatGrid>
         ) : (
           <Card>
-            <Empty size="sm" title="No vendor movement found for this view" />
+            <Empty size="sm" title="No vendor movement for this period" description="No vendor’s spend changed between the periods compared." />
           </Card>
         )}
       </Section>
@@ -634,7 +634,8 @@ function VendorMovementPanel({
                 <Empty
                   size="sm"
                   icon={view === 'attention' ? <Icon name="checkCircle" size={32} /> : <Icon name="alertTriangle" size={32} />}
-                  title="No vendors in this view"
+                  title="No vendors match this view"
+                  description="Choose another view to see more vendors."
                 />
               )}
             </CardBody>
@@ -831,7 +832,7 @@ function VendorDetailDrawer({
                 </Table>
               </Card>
             ) : (
-              <Empty size="sm" title="No outgoing expense categories found for this vendor" />
+              <Empty size="sm" title="No expense categories yet" description="None of this vendor’s outgoing transactions has an expense category." />
             )}
           </Section>
 
@@ -855,7 +856,7 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
   const rows = [...months].reverse()
 
   if (!rows.length) {
-    return <Empty size="sm" title="No monthly movement found" />
+    return <Empty size="sm" title="No monthly movement yet" description="Each complete month with transactions for this vendor shows here." />
   }
 
   return (
@@ -906,7 +907,7 @@ function TransactionTable({
   includeYear?: boolean
 }) {
   if (!transactions.length) {
-    return <Empty size="sm" title="No individual transactions matched this vendor" />
+    return <Empty size="sm" title="No transactions yet" description="Transactions matched to this vendor show here." />
   }
 
   return (

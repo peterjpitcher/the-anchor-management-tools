@@ -599,7 +599,7 @@ export async function generatePrivateBookingInvoice(
     const invoice = await loadInvoiceForSending(invoiceId)
     if (!invoice) {
       return {
-        error: `Invoice ${invoiceNumber} was created but could not be loaded to send. Retry sending from the booking.`,
+        error: `Invoice ${invoiceNumber} was created but could not be loaded to send. Use Email Invoice on the booking to send it.`,
       }
     }
 

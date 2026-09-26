@@ -173,7 +173,7 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     expectMenuChrome(/^Overview: /)
-    expect(screen.getAllByRole('button', { name: /export menu/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Export CSV' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Refresh' }).length).toBeGreaterThan(0)
     expect(screen.getByText('Total Dishes')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Active status' })).toBeInTheDocument()
@@ -223,8 +223,8 @@ describe('Menu tabs follow the page contract', () => {
     expect(screen.getByLabelText('Menu')).toBeInTheDocument()
     expect(screen.getByLabelText('Status')).toBeInTheDocument()
     expect(screen.queryByLabelText('Allergen report category')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /download allergens/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Add Dish' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Download PDF' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'New Dish' }).length).toBeGreaterThan(0)
   })
 
   it('Dishes: the costing figures carry their colour', async () => {
@@ -301,7 +301,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuDishesPage />)
 
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
-    fireEvent.click(screen.getAllByRole('button', { name: /download allergens/i })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Download PDF' })[0])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Food' }))
     expect(clicked).toHaveLength(1)
     expect(clicked[0]).toContain('/api/menu-management/dishes/allergens/pdf?download=1&category=food')
@@ -319,7 +319,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuIngredientsPage />)
 
     expect(await screen.findAllByText('Cod fillet')).not.toHaveLength(0)
-    fireEvent.click(screen.getAllByRole('button', { name: /download allergens/i })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Download PDF' })[0])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Bar' }))
     expect(clicked).toHaveLength(1)
     expect(clicked[0]).toContain('/api/menu-management/ingredients/allergens/pdf?download=1&department=bar')
@@ -371,7 +371,7 @@ describe('Menu tabs follow the page contract', () => {
       target: { value: 'lasagne' },
     })
     expect(screen.queryByText('Fish and Chips')).not.toBeInTheDocument()
-    expect(screen.getByText('No dishes match your filters')).toBeInTheDocument()
+    expect(screen.getByText('No dishes match these filters')).toBeInTheDocument()
   })
 
   it('Ingredients: allergen and dietary filters are real choices, not free text', async () => {
@@ -394,15 +394,15 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findAllByText('Tartare sauce')).not.toHaveLength(0)
     expectMenuChrome(/^Recipes: /)
-    const addRecipe = screen.getAllByRole('button', { name: 'Add Recipe' })[0]
-    expect(addRecipe.className).toContain('h-btn-h-sm')
+    const newRecipe = screen.getAllByRole('button', { name: 'New Recipe' })[0]
+    expect(newRecipe.className).toContain('h-btn-h-sm')
   })
 
   it('Dishes: the dish drawer opens on its Overview tab with DS form blocks', async () => {
     pathnameMock.current = '/menu-management/dishes'
     render(<MenuDishesPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Add Dish' }))[0])
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New Dish' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription(
       'Cost a dish from its recipes and ingredients, then place it on menus',
@@ -416,7 +416,7 @@ describe('Menu tabs follow the page contract', () => {
     pathnameMock.current = '/menu-management/ingredients'
     render(<MenuIngredientsPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Add Ingredient' }))[0])
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New Ingredient' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription('Add a new ingredient to the catalogue')
     // The allergen and dietary ticks are groups named by their legend, not a label on nothing.
@@ -428,7 +428,7 @@ describe('Menu tabs follow the page contract', () => {
     pathnameMock.current = '/menu-management/recipes'
     render(<MenuRecipesPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Add Recipe' }))[0])
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New Recipe' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription('Create a reusable prep recipe from ingredients')
   })

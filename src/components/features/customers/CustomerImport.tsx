@@ -280,7 +280,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
           title={isPreviewMode ? 'Preview Import' : 'CSV File'}
           subtitle={
             isPreviewMode
-              ? 'Review the data before importing. Invalid records will be skipped'
+              ? 'Review the data before importing: invalid rows are skipped'
               : 'Columns: first_name, last_name, email, mobile_number'
           }
           action={
@@ -351,7 +351,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             disabled={validCount === 0 || isImporting}
             loading={isImporting}
           >
-            {isImporting ? 'Importing...' : `Import ${validCount} Customers`}
+            {`Import ${validCount} ${validCount === 1 ? 'Customer' : 'Customers'}`}
           </Button>
         </FormFooter>
       )}

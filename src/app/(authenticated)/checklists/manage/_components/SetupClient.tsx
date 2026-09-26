@@ -24,10 +24,13 @@ import {
   setTemplateActive,
 } from '@/app/actions/checklists-admin'
 import type { AdminChecklist, AdminTemplate } from '@/app/actions/checklists-admin'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { ChecklistModal } from './ChecklistModal'
 import { TemplateModal } from './TemplateModal'
 import { departmentLabel } from './format'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('setup')
 
 function anchorSummary(t: AdminTemplate): string {
   switch (t.anchor) {
@@ -105,7 +108,7 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
 
   if (error) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load checklists">
           {error}
         </Alert>
@@ -115,7 +118,7 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
 
   return (
     <PageLayout
-      {...CHECKLISTS_MANAGE_LAYOUT}
+      {...LAYOUT}
       headerActions={
         <Button
           type="button"

@@ -33,7 +33,7 @@ export function UndeliveredGuestMessagesSection({
             <Alert tone="danger">Failed to load undelivered guest messages: {error}</Alert>
           </CardBody>
         ) : rows.length === 0 ? (
-          <Empty size="sm" title="No undelivered guest messages for this window" />
+          <Empty size="sm" title="No undelivered guest messages for this period" />
         ) : (
           <ul className="divide-y divide-border" aria-label="Undelivered guest messages">
             {rows.map((row) => (

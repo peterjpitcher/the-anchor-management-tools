@@ -334,18 +334,24 @@ export default function AuditLogsClient({
         ) : logs.length === 0 ? (
           // A failed load is reported by the error above, never shown as an empty list.
           error ? null : (
-            <Empty
-              size="sm"
-              title="No audit logs found"
-              description="No audit logs match your current filters."
-              action={
-                hasActiveFilters && (
+            hasActiveFilters ? (
+              <Empty
+                size="sm"
+                title="No audit logs match these filters"
+                description="Clear the filters to see every entry."
+                action={
                   <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
                     Clear Filters
                   </Button>
-                )
-              }
-            />
+                }
+              />
+            ) : (
+              <Empty
+                size="sm"
+                title="No audit logs yet"
+                description="Activity is recorded here as people use the app."
+              />
+            )
           )
         ) : (
           <DataTable

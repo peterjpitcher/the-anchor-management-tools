@@ -281,8 +281,8 @@ export default function ShiftDetailModal({
             <Button type="button" variant="secondary" onClick={cancelEdit} disabled={isPending}>
               Cancel
             </Button>
-            <Button type="button" variant="primary" onClick={handleSaveEdit} disabled={isPending}>
-              {isPending ? 'Saving…' : 'Save Changes'}
+            <Button type="button" variant="primary" onClick={handleSaveEdit} loading={isPending}>
+              Save Changes
             </Button>
           </>
         ) : (
@@ -290,10 +290,10 @@ export default function ShiftDetailModal({
             {canEdit && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="danger"
                 onClick={() => setConfirmDelete(true)}
                 disabled={isPending}
-                className="text-danger-fg hover:bg-danger-soft hover:text-danger-fg sm:mr-auto"
+                className="sm:mr-auto"
               >
                 Delete
               </Button>
@@ -305,7 +305,7 @@ export default function ShiftDetailModal({
                 onClick={() => setShowSickModal(true)}
                 disabled={isPending}
               >
-                Mark Couldn&apos;t Work
+                Mark as Couldn&apos;t Work
               </Button>
             )}
             <Button type="button" variant="secondary" onClick={onClose}>
@@ -386,7 +386,7 @@ export default function ShiftDetailModal({
             <Card>
               <CardHeader title="Shift Audit Trail" />
               {auditTrail.length === 0 ? (
-                <Empty size="sm" title="No recorded changes for this shift" />
+                <Empty size="sm" title="No changes yet" />
               ) : (
                 <CardBody className="space-y-3">
                   {auditTrail.map(entry => {
@@ -475,7 +475,7 @@ export default function ShiftDetailModal({
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="Delete Shift?"
+        title="Delete Shift"
         message={isUnassignedOpenShift
           ? `Delete the open shift on ${formatDate(shift.shift_date)}?`
           : `Delete ${empName}'s shift on ${formatDate(shift.shift_date)}?`}

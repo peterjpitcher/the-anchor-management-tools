@@ -646,13 +646,18 @@ function SubmitButton({
   children,
   variant = 'primary',
   disabled = false,
+  form,
+  loading,
 }: {
   children: React.ReactNode
   variant?: 'primary' | 'secondary' | 'danger'
   disabled?: boolean
+  /** The id of the form it submits, when it sits outside it (a Modal footer). */
+  form?: string
+  loading?: boolean
 }) {
   return (
-    <Button type="submit" size="sm" variant={variant} disabled={disabled}>
+    <Button type="submit" size="sm" variant={variant} disabled={disabled} form={form} loading={loading}>
       {children}
     </Button>
   )
@@ -665,28 +670,45 @@ function ActionFeedbackForm({
   action,
   children,
   className,
+  id,
   confirmTitle,
   confirmMessage,
+  confirmLabel = 'Confirm',
+  cancelLabel,
   confirmTone = 'primary',
   successMessage = 'Done.',
   onSuccess,
+  onPendingChange,
 }: {
   action: RecruitmentFormAction
   children: React.ReactNode
   className?: string
+  /** Lets a submit button outside the form (a Modal footer) submit it with `form={id}`. */
+  id?: string
   confirmTitle?: string
   confirmMessage?: string
+  /** The confirm button's words: "Delete" for a delete, "Cancel <Thing>" for a cancellation. */
+  confirmLabel?: string
+  /** The dismiss button's words, "Keep <Thing>" beside a "Cancel <Thing>" confirm. */
+  cancelLabel?: string
   /** The confirm button's colour: danger only for destructive actions (cancel, delete, erase). */
   confirmTone?: 'primary' | 'danger'
   successMessage?: string
   onSuccess?: () => void
+  /** For a submit button outside the form, which the form's disabled fieldset cannot reach. */
+  onPendingChange?: (pending: boolean) => void
 }) {
   const [pending, setPending] = useState(false)
   const [state, setState] = useState<{ success?: string; error?: string } | null>(null)
   const [confirmData, setConfirmData] = useState<FormData | null>(null)
 
+  function changePending(next: boolean): void {
+    setPending(next)
+    onPendingChange?.(next)
+  }
+
   async function run(formData: FormData): Promise<void> {
-    setPending(true)
+    changePending(true)
     setState(null)
     try {
       const result = await action(formData)
@@ -699,12 +721,15 @@ function ActionFeedbackForm({
     } catch (error) {
       setState({ error: error instanceof Error ? error.message : 'Action failed.' })
     } finally {
-      setPending(false)
+      changePending(false)
     }
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    // A submit button outside the form is not disabled by the fieldset, so a second press
+    // while the first is still running is ignored here.
+    if (pending) return
     const formData = new FormData(event.currentTarget)
     if (confirmMessage) {
       setConfirmData(formData)
@@ -715,14 +740,14 @@ function ActionFeedbackForm({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className={className}>
+      <form id={id} onSubmit={handleSubmit} className={className}>
         {/* Disable all controls while the action is in flight to prevent double-submit.
             display:contents keeps the fieldset out of the layout so the form's own
             flex/grid classes still apply to the children. */}
         <fieldset disabled={pending} className="contents">
           {children}
         </fieldset>
-        {pending && <p className="flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working...</p>}
+        {pending && <p className="flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working…</p>}
         {state?.error && <p className="text-xs text-danger-fg">{state.error}</p>}
         {state?.success && <p className="text-xs text-success-fg">{state.success}</p>}
       </form>
@@ -736,7 +761,8 @@ function ActionFeedbackForm({
         }}
         title={confirmTitle ?? 'Confirm Action'}
         message={confirmMessage}
-        confirmLabel="Confirm"
+        confirmLabel={confirmLabel}
+        cancelLabel={cancelLabel}
         tone={confirmTone}
       />
     </>
@@ -762,12 +788,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [decisionEmail, setDecisionEmail] = useState<{ subject: string; body: string }>({ subject: '', body: '' })
   const [decisionSendEmail, setDecisionSendEmail] = useState(true)
   const [decisionLoadingPreview, setDecisionLoadingPreview] = useState(false)
-  const [decisionState, decisionFormAction] = useActionState(decideRecruitmentApplicationAction, null)
+  const [decisionState, decisionFormAction, decisionPending] = useActionState(decideRecruitmentApplicationAction, null)
   const [hireDialogOpen, setHireDialogOpen] = useState(false)
   const [stageDialogOpen, setStageDialogOpen] = useState(false)
   // Overflow-menu items are plain buttons, not forms, so they share one confirm
   // dialog and one result banner rather than each carrying their own.
-  const [pendingBarAction, setPendingBarAction] = useState<null | { title: string; message: string; run: () => Promise<unknown> }>(null)
+  const [pendingBarAction, setPendingBarAction] = useState<null | { title: string; message: string; confirmLabel: string; run: () => Promise<unknown> }>(null)
+  const [hirePending, setHirePending] = useState(false)
+  const [stagePending, setStagePending] = useState(false)
   const [barActionState, setBarActionState] = useState<null | { success?: string; error?: string }>(null)
   const [barActionPending, setBarActionPending] = useState(false)
   const [candidateTrail, setCandidateTrail] = useState<{ notes: any[]; systemChanges: any[] }>({ notes: [], systemChanges: [] })
@@ -1073,6 +1101,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setPendingBarAction({
       title: titleCase(status),
       message: `Move ${candidateName(selectedApplication.candidate)} to "${statusLabel(status)}"?`,
+      confirmLabel: 'Move',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1090,6 +1119,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setPendingBarAction({
       title: `Send ${titleCase(label)} Booking Link`,
       message: `Email ${candidateName(selectedApplication.candidate)} a ${label} booking link?`,
+      confirmLabel: 'Send',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1105,6 +1135,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setPendingBarAction({
       title: 'Re-score AI Fit',
       message: 'Queue this application for a fresh AI score against the current posting?',
+      confirmLabel: 'Re-score',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1120,6 +1151,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setPendingBarAction({
       title: archived ? 'Restore Application' : 'Archive Application',
       message: archived ? 'Restore this application?' : 'Archive this application?',
+      confirmLabel: archived ? 'Restore' : 'Archive',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1163,6 +1195,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             successMessage="Booking link sent."
             confirmTitle={action.label}
             confirmMessage={`Email ${candidateName(selectedApplication.candidate)} a booking link?`}
+            confirmLabel="Send"
             onSuccess={() => router.refresh()}
           >
             <input type="hidden" name="application_id" value={selectedApplication.id} />
@@ -1434,7 +1467,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           {/* Irreversible: anonymises candidates and deletes their CVs, so it asks first. */}
           <ActionFeedbackForm
             action={() => runRecruitmentRetentionAction()}
-            confirmTitle="Run Retention?"
+            confirmTitle="Run Retention"
+            confirmLabel="Run"
             confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details, notes and the text of messages sent to them are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
             confirmTone="danger"
             successMessage="Recruitment retention cleanup completed."
@@ -1575,6 +1609,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-pad-card py-3"
                     confirmTitle="Apply Bulk Action"
                     confirmMessage="Apply this change to the selected applications?"
+                    confirmLabel="Apply"
                     successMessage="Bulk action applied."
                   >
                     {selectedBulkIds.map(id => <input key={id} type="hidden" name="ids" value={id} />)}
@@ -1673,7 +1708,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 {filteredApplications.length === 0 && (
                   <Empty
                     size="sm"
-                    title={showArchived ? 'No archived applications match' : 'No active applications match'}
+                    title={
+                      search.trim() || statusFilter
+                        ? 'No applications match these filters'
+                        : showArchived ? 'No archived applications yet' : 'No applications yet'
+                    }
                   />
                 )}
                 {filteredApplications.length > APPLICATION_PAGE_SIZE && (
@@ -1724,7 +1763,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {secondaryStageAction && renderStageAction(secondaryStageAction, 'secondary')}
                       <Dropdown
                         trigger={
-                          <Button type="button" size="sm" variant="secondary" icon={<Icon name="moreHorizontal" size={16} />} aria-label="More actions">
+                          <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
                             More
                           </Button>
                         }
@@ -1751,7 +1790,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       </Dropdown>
                     </div>
                     {nextActionHint && <p className="mt-2 text-xs text-text-muted">{nextActionHint}</p>}
-                    {barActionPending && <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working...</p>}
+                    {barActionPending && <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working…</p>}
                     {barActionState?.error && <p className="mt-1 text-xs text-danger-fg">{barActionState.error}</p>}
                     {barActionState?.success && <p className="mt-1 text-xs text-success-fg">{barActionState.success}</p>}
 
@@ -1816,7 +1855,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <ActionFeedbackForm action={cvRetryFormAction} className="mt-2 flex flex-wrap items-center gap-2" successMessage="CV extraction retry queued.">
                               <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                               <Button type="submit" size="xs" variant="secondary" icon={<Icon name="refresh" size={16} />}>
-                                Retry Extraction
+                                Retry CV
                               </Button>
                             </ActionFeedbackForm>
                           )}
@@ -1962,7 +2001,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 <Checkbox name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} label="Future recruitment consent" />
                               </div>
                               <FormFooter start={<ActionStateMessage state={candidateUpdateState} />}>
-                                <SubmitButton>Save Candidate</SubmitButton>
+                                <SubmitButton>Save Changes</SubmitButton>
                               </FormFooter>
                             </form>
                           </details>
@@ -2078,12 +2117,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                         confirmTitle="Cancel Appointment"
                                         confirmTone="danger"
                                         confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                                        confirmLabel="Cancel Appointment"
+                                        cancelLabel="Keep Appointment"
                                         successMessage="Appointment cancelled."
                                         onSuccess={() => router.refresh()}
                                       >
                                         <input type="hidden" name="appointment_id" value={apt.id} />
                                         <Input name="reason" placeholder="Cancel reason" aria-label="Cancel reason" className="w-40" />
-                                        <SubmitButton variant="secondary">Cancel</SubmitButton>
+                                        <SubmitButton variant="secondary">Cancel Appointment</SubmitButton>
                                       </ActionFeedbackForm>
                                     </div>
                                   </div>
@@ -2105,8 +2146,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <ActionFeedbackForm
                               action={bookingInviteFormAction}
                               successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
-                              confirmTitle={interviewInviteSent ? 'Resend Interview Link' : undefined}
+                              confirmTitle={interviewInviteSent ? 'Resend Interview Booking Link' : undefined}
                               confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                              confirmLabel="Resend"
                               onSuccess={() => router.refresh()}
                             >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
@@ -2134,6 +2176,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             className="flex flex-wrap items-center gap-2"
                             successMessage="Interview scheduled."
                             confirmTitle="Schedule Interview"
+                            confirmLabel="Schedule"
                             confirmMessage={`Schedule an interview for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                             onSuccess={() => router.refresh()}
                           >
@@ -2172,6 +2215,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             className="flex flex-wrap items-center gap-2"
                             successMessage="Trial shift scheduled."
                             confirmTitle="Schedule Trial Shift"
+                            confirmLabel="Schedule"
                             confirmMessage={`Schedule a trial shift for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                             onSuccess={() => router.refresh()}
                           >
@@ -2319,6 +2363,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 className="mt-2"
                                 confirmTitle="Retry Send"
                                 confirmMessage="Try sending this message again?"
+                                confirmLabel="Retry"
                                 successMessage="Communication retry queued."
                                 onSuccess={() => router.refresh()}
                               >
@@ -2377,8 +2422,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </div>
                   )}
                   {/* DS Modals rendered inside the drawer, so Headless UI stacks them as nested
-                      dialogs (like the ConfirmDialog below). The buttons stay inside each form so
-                      the submit buttons can read the form's pending state. */}
+                      dialogs (like the ConfirmDialog below). Their buttons sit in the footer and
+                      submit the form in the body through its id; the form reports its pending
+                      state so the footer button shows it. */}
                   {hireDialogOpen && selectedApplication && (
                     <Modal
                       open
@@ -2386,21 +2432,25 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       title="Create Employee Invite"
                       description={`Creates an employee invite for ${candidateName(selectedApplication.candidate)} and links it to this application.`}
                       width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)} disabled={hirePending}>Cancel</Button>
+                          <SubmitButton form="recruitment-hire-form" loading={hirePending}>Create Employee Invite</SubmitButton>
+                        </>
+                      }
                     >
                       <ActionFeedbackForm
+                        id="recruitment-hire-form"
                         action={hireFormAction}
                         className="space-y-3"
                         successMessage="Employee invite created."
                         onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
+                        onPendingChange={setHirePending}
                       >
                         <input type="hidden" name="application_id" value={selectedApplication.id} />
                         <Field label="Job title for the employee invite">
                           <Input name="job_title" placeholder="e.g. Bar and floor team member" />
                         </Field>
-                        <FormFooter>
-                          <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)}>Cancel</Button>
-                          <SubmitButton>Create Employee Invite</SubmitButton>
-                        </FormFooter>
                       </ActionFeedbackForm>
                     </Modal>
                   )}
@@ -2412,12 +2462,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       title="Change Stage Manually"
                       description="Use this only when the normal actions do not fit. It records a status change with no email to the candidate."
                       width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)} disabled={stagePending}>Cancel</Button>
+                          <SubmitButton form="recruitment-stage-form" loading={stagePending}>Change Stage</SubmitButton>
+                        </>
+                      }
                     >
                       <ActionFeedbackForm
+                        id="recruitment-stage-form"
                         action={statusFormAction}
                         className="space-y-3"
                         successMessage="Stage saved."
                         onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
+                        onPendingChange={setStagePending}
                       >
                         <input type="hidden" name="application_id" value={selectedApplication.id} />
                         <input type="hidden" name="note" value="Status changed manually" />
@@ -2428,10 +2486,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             ))}
                           </Select>
                         </Field>
-                        <FormFooter>
-                          <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)}>Cancel</Button>
-                          <SubmitButton>Save Stage</SubmitButton>
-                        </FormFooter>
                       </ActionFeedbackForm>
                     </Modal>
                   )}
@@ -2442,15 +2496,32 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     onConfirm={runPendingBarAction}
                     title={pendingBarAction?.title ?? 'Confirm Action'}
                     message={pendingBarAction?.message ?? ''}
-                    confirmLabel="Confirm"
+                    confirmLabel={pendingBarAction?.confirmLabel ?? 'Confirm'}
                     // Status moves, booking links, a re-score and archive (which Restore undoes):
                     // none is destructive.
                     tone="primary"
                   />
 
                   {decisionDialog && selectedApplication && (
-                    <Modal open onClose={() => setDecisionDialog(null)} title={DECISION_CONFIG[decisionDialog.decision].confirm} width="md">
-                        <form action={decisionFormAction} className="space-y-3">
+                    <Modal
+                      open
+                      onClose={() => setDecisionDialog(null)}
+                      title={DECISION_CONFIG[decisionDialog.decision].confirm}
+                      width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setDecisionDialog(null)} disabled={decisionPending}>Cancel</Button>
+                          <SubmitButton
+                            form="recruitment-decision-form"
+                            variant={DECISION_CONFIG[decisionDialog.decision].danger ? 'danger' : 'primary'}
+                            loading={decisionPending}
+                          >
+                            {DECISION_CONFIG[decisionDialog.decision].confirm}
+                          </SubmitButton>
+                        </>
+                      }
+                    >
+                        <form id="recruitment-decision-form" action={decisionFormAction} className="space-y-3">
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
                           <input type="hidden" name="decision" value={decisionDialog.decision} />
                           <Textarea name="reason" rows={2} label="Internal reason" placeholder="Why? (internal only, saved as a note)" />
@@ -2482,10 +2553,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               </CardBody>
                             </Card>
                           )}
-                          <FormFooter>
-                            <Button type="button" variant="secondary" onClick={() => setDecisionDialog(null)}>Cancel</Button>
-                            <SubmitButton variant={DECISION_CONFIG[decisionDialog.decision].danger ? 'danger' : 'primary'}>{DECISION_CONFIG[decisionDialog.decision].confirm}</SubmitButton>
-                          </FormFooter>
                           <ActionStateMessage state={decisionState} />
                         </form>
                     </Modal>
@@ -2496,7 +2563,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
             {activeTab === 'applications' && permissions.canCreate && (
               <Card>
-                <CardHeader title="Add Application" />
+                <CardHeader title="New Application" />
                 <CardBody>
                   <form action={applicationAction} className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     <Input name="first_name" label="First name" placeholder="First name" />
@@ -2521,7 +2588,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Checkbox name="future_recruitment_consent" defaultChecked label="Future recruitment consent" />
                     <input type="hidden" name="future_recruitment_consent" value="false" />
                     <FormFooter className="md:col-span-4" start={<ActionStateMessage state={applicationState} />}>
-                      <Button type="submit" variant="primary" icon={<Icon name="plus" size={16} />}>Add Application</Button>
+                      <Button type="submit" variant="primary">Create Application</Button>
                     </FormFooter>
                   </form>
                 </CardBody>
@@ -2669,7 +2736,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <Checkbox name="is_public" defaultChecked={selectedPosting.is_public === true} label="Public on website" />
                       <input type="hidden" name="is_public" value="false" />
                       <FormFooter start={<ActionStateMessage state={postingUpdateState} />}>
-                        <SubmitButton>Save Posting</SubmitButton>
+                        <SubmitButton>Save Changes</SubmitButton>
                       </FormFooter>
                     </form>
                   ) : (
@@ -2809,6 +2876,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                     confirmTitle="Delete Slot"
                                     confirmTone="danger"
                                     confirmMessage="Delete this slot? It will no longer be available for booking."
+                                    confirmLabel="Delete"
                                     successMessage="Slot deleted."
                                     onSuccess={() => router.refresh()}
                                   >
@@ -2827,6 +2895,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                   action={restoreSlotFormAction}
                                   confirmTitle="Restore Slot"
                                   confirmMessage="Restore this slot?"
+                                  confirmLabel="Restore"
                                   successMessage="Slot restored."
                                   onSuccess={() => router.refresh()}
                                 >
@@ -2957,7 +3026,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Input name="location" defaultValue={selectedSlot.location} />
                   </Field>
                   <FormFooter start={<ActionStateMessage state={slotUpdateState} />}>
-                    <SubmitButton>Save Slot</SubmitButton>
+                    <SubmitButton>Save Changes</SubmitButton>
                   </FormFooter>
                 </form>
               )}
@@ -2988,6 +3057,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     confirmTitle="Delete Slot"
                     confirmTone="danger"
                     confirmMessage="Delete this slot? It will no longer be available for booking."
+                    confirmLabel="Delete"
                     successMessage="Slot deleted."
                     onSuccess={() => {
                       setSlotDrawerOpen(false)
@@ -2995,7 +3065,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     }}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="danger">Delete Slot</SubmitButton>
+                    <SubmitButton variant="danger">Delete</SubmitButton>
                   </ActionFeedbackForm>
                 </div>
               )}
@@ -3005,11 +3075,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     action={restoreSlotFormAction}
                     confirmTitle="Restore Slot"
                     confirmMessage="Restore this slot?"
+                    confirmLabel="Restore"
                     successMessage="Slot restored."
                     onSuccess={() => router.refresh()}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="secondary">Restore Slot</SubmitButton>
+                    <SubmitButton variant="secondary">Restore</SubmitButton>
                   </ActionFeedbackForm>
                 </div>
               )}
@@ -3157,16 +3228,19 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     confirmTitle="Cancel Appointment"
                     confirmTone="danger"
                     confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                    confirmLabel="Cancel Appointment"
+                    cancelLabel="Keep Appointment"
                     successMessage="Appointment cancelled."
                   >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
                     <Input name="reason" placeholder="Cancel reason" aria-label="Cancel reason" className="w-44" />
-                    <SubmitButton variant="secondary">Cancel</SubmitButton>
+                    <SubmitButton variant="secondary">Cancel Appointment</SubmitButton>
                   </ActionFeedbackForm>
                   <ActionFeedbackForm
                     action={selectedAppointment.archived_at ? restoreAppointmentFormAction : archiveAppointmentFormAction}
                     confirmTitle={selectedAppointment.archived_at ? 'Restore Appointment' : 'Archive Appointment'}
                     confirmMessage={selectedAppointment.archived_at ? 'Restore this appointment?' : 'Archive this appointment?'}
+                    confirmLabel={selectedAppointment.archived_at ? 'Restore' : 'Archive'}
                     successMessage={selectedAppointment.archived_at ? 'Appointment restored.' : 'Appointment archived.'}
                   >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
@@ -3258,7 +3332,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               <ActionFeedbackForm action={cvRetryFormAction} successMessage="CV retry queued.">
                                 <input type="hidden" name="candidate_id" value={candidate.id} />
                                 <Button type="submit" size="xs" variant="secondary">
-                                  Retry
+                                  Retry CV
                                 </Button>
                               </ActionFeedbackForm>
                             )}
@@ -3284,7 +3358,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                   <option key={posting.id} value={posting.id}>{posting.title}</option>
                                 ))}
                               </Select>
-                              <SubmitButton variant="secondary">Match</SubmitButton>
+                              <SubmitButton variant="secondary">Match to Posting</SubmitButton>
                             </ActionFeedbackForm>
                           )}
                         </TableCell>
@@ -3296,6 +3370,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               confirmTitle="Erase Candidate"
                               confirmTone="danger"
                               confirmMessage="This permanently anonymises the candidate record. Continue?"
+                              confirmLabel="Erase"
                               successMessage="Candidate erased."
                             >
                               <input type="hidden" name="candidate_id" value={candidate.id} />
@@ -3312,7 +3387,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 {talentCandidates.length === 0 && (
                   talentLoading
                     ? <PageLoading inline label="Loading candidates" />
-                    : <Empty size="sm" title="No candidates match your filters" />
+                    : <Empty size="sm" title="No candidates match these filters" />
                 )}
 
                 <TablePagination
@@ -3427,7 +3502,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Checkbox name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} label="Future recruitment consent" />
                   </div>
                   <FormFooter start={<ActionStateMessage state={candidateUpdateState} />}>
-                    <SubmitButton>Save Candidate</SubmitButton>
+                    <SubmitButton>Save Changes</SubmitButton>
                   </FormFooter>
                 </form>
               </div>
@@ -3439,11 +3514,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   confirmTitle="Erase Candidate"
                   confirmTone="danger"
                   confirmMessage="This permanently anonymises the candidate record. Continue?"
+                  confirmLabel="Erase"
                   successMessage="Candidate erased."
                 >
                   <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
                   <Input name="reason" placeholder="Erasure reason" aria-label="Erasure reason" className="w-64" />
-                  <SubmitButton variant="danger">Erase Candidate Data</SubmitButton>
+                  <SubmitButton variant="danger">Erase</SubmitButton>
                 </ActionFeedbackForm>
               )}
             </div>
@@ -3455,7 +3531,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               <CardHeader title="Email Templates" />
               <CardBody className="space-y-4">
                 {templates.length === 0 && (
-                  <Empty size="sm" title="No templates found" />
+                  <Empty size="sm" title="No templates yet" />
                 )}
                 {templates.map((template: any) => (
                   <Card key={template.id} variant="secondary">
@@ -3495,7 +3571,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </span>
                         }
                       >
-                        {permissions.canManage && <SubmitButton>Save Template</SubmitButton>}
+                        {permissions.canManage && <SubmitButton>Save Changes</SubmitButton>}
                       </FormFooter>
                     </div>
                   </form>
@@ -3617,7 +3693,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               {permissions.canSend && (
                 <ActionFeedbackForm action={retryCommunicationFormAction} successMessage="Communication retry queued.">
                   <input type="hidden" name="communication_id" value={selectedCommunication.id} />
-                  <SubmitButton variant="secondary">Retry / Resend</SubmitButton>
+                  <SubmitButton variant="secondary">Retry Send</SubmitButton>
                 </ActionFeedbackForm>
               )}
             </div>

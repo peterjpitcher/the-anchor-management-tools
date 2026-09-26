@@ -24,7 +24,7 @@ import {
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout, PageLoading, toast, Icon } from '@/ds'
-import { Card, CardBody, CardHeader } from '@/ds'
+import { Card, CardBody, CardHeader, FormFooter } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
 import { Button } from '@/ds'
@@ -45,6 +45,10 @@ import { CUSTOMERS_BACK_LABEL } from '../_shared/nav'
 import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
+
+/** Links the Edit Customer dialog's footer buttons to the form in its body. */
+const EDIT_CUSTOMER_FORM_ID = 'edit-customer-form'
+
 const CUSTOMER_DETAIL_SELECT = `
   id,
   first_name,
@@ -300,6 +304,7 @@ export default function CustomerViewPage() {
   const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
   const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
   const [isEditingCustomer, setIsEditingCustomer] = useState(false)
+  const [savingCustomer, setSavingCustomer] = useState(false)
   const [isEmailingCustomer, setIsEmailingCustomer] = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
@@ -673,6 +678,7 @@ export default function CustomerViewPage() {
   const handleUpdateCustomer = async (data: Omit<Customer, 'id' | 'created_at'>) => {
     if (!customer) return
 
+    setSavingCustomer(true)
     try {
       const formData = new FormData()
       formData.append('first_name', data.first_name)
@@ -696,6 +702,8 @@ export default function CustomerViewPage() {
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
+    } finally {
+      setSavingCustomer(false)
     }
   }
 
@@ -1172,7 +1180,7 @@ export default function CustomerViewPage() {
   }
 
   if (loading) {
-    return <PageLayout {...layoutProps} loading loadingLabel="Loading customer..." />
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading customer" />
   }
 
   if (!customer) {
@@ -1212,7 +1220,7 @@ export default function CustomerViewPage() {
                 type="button"
                 onClick={() => setIsEditingCustomer(true)}
               >
-                Edit Details
+                Edit
               </Button>
             )}
           </>
@@ -1228,9 +1236,9 @@ export default function CustomerViewPage() {
                   variant="secondary"
                   size="sm"
                   onClick={loadMessages}
-                  disabled={messagesLoading}
+                  loading={messagesLoading}
                 >
-                  {messagesLoading ? 'Refreshing…' : 'Refresh'}
+                  Refresh
                 </Button>
               }
             />
@@ -1326,13 +1334,11 @@ export default function CustomerViewPage() {
                         placeholder="Add internal notes about this customer..."
                         aria-label="Internal notes"
                       />
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="primary" onClick={handleSaveNotes} disabled={isSavingNotes}>
-                          {isSavingNotes ? 'Saving...' : 'Save'}
-                        </Button>
+                      <FormFooter>
                         <Button
                           size="sm"
                           variant="secondary"
+                          disabled={isSavingNotes}
                           onClick={() => {
                             setNotesValue(customer.internal_notes ?? '')
                             setIsEditingNotes(false)
@@ -1340,7 +1346,10 @@ export default function CustomerViewPage() {
                         >
                           Cancel
                         </Button>
-                      </div>
+                        <Button size="sm" variant="primary" onClick={handleSaveNotes} loading={isSavingNotes}>
+                          Save Notes
+                        </Button>
+                      </FormFooter>
                     </div>
                   ) : (
                     <p className="text-sm text-text whitespace-pre-wrap">
@@ -1387,15 +1396,11 @@ export default function CustomerViewPage() {
                   canManageContactPreferences ? (
                     <Button
                       onClick={handleToggleSms}
-                      disabled={togglingSmsSetting}
+                      loading={togglingSmsSetting}
                       variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
                       size="sm"
                     >
-                      {togglingSmsSetting
-                        ? 'Updating...'
-                        : customer.sms_opt_in !== false
-                          ? 'Deactivate SMS'
-                          : 'Activate SMS'}
+                      {customer.sms_opt_in !== false ? 'Deactivate SMS' : 'Activate SMS'}
                     </Button>
                   ) : undefined
                 }
@@ -1445,15 +1450,11 @@ export default function CustomerViewPage() {
                   canManageWhatsAppOptIn ? (
                     <Button
                       onClick={handleToggleWhatsApp}
-                      disabled={togglingWhatsAppSetting}
+                      loading={togglingWhatsAppSetting}
                       variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
                       size="sm"
                     >
-                      {togglingWhatsAppSetting
-                        ? 'Updating...'
-                        : customer.whatsapp_opt_in === true
-                          ? 'Deactivate'
-                          : 'Activate'}
+                      {customer.whatsapp_opt_in === true ? 'Deactivate WhatsApp' : 'Activate WhatsApp'}
                     </Button>
                   ) : undefined
                 }
@@ -1497,14 +1498,14 @@ export default function CustomerViewPage() {
                   action={
                     canExportConsentAudit ? (
                       <Button size="sm" variant="secondary" onClick={handleExportConsentAudit}>
-                        Export
+                        Export CSV
                       </Button>
                     ) : undefined
                   }
                 />
                 {consentAudit.length === 0 ? (
                   <CardBody>
-                    <Empty size="sm" title="No consent audit rows yet" />
+                    <Empty size="sm" title="No consent records yet" />
                   </CardBody>
                 ) : (
                   <ul className="divide-y divide-border">
@@ -1602,7 +1603,7 @@ export default function CustomerViewPage() {
                 <CardHeader title="Event Category Preferences" />
                 <CardBody>
                   {topCategoryPreferences.length === 0 ? (
-                    <Empty size="sm" title="No event attendance preferences available yet" />
+                    <Empty size="sm" title="No event preferences yet" />
                   ) : (
                     <div className="space-y-3">
                       {topCategoryPreferences.map((preference) => (
@@ -1630,7 +1631,7 @@ export default function CustomerViewPage() {
                 <CardHeader title="Booking Status Mix" />
                 <CardBody>
                   {bookingInsights.statusMix.length === 0 ? (
-                    <Empty size="sm" title="No booking statuses available yet" />
+                    <Empty size="sm" title="No booking statuses yet" />
                   ) : (
                     <div className="space-y-2">
                       {bookingInsights.statusMix.map(([status, count]) => (
@@ -1726,21 +1727,40 @@ export default function CustomerViewPage() {
             getRowKey={(booking) => booking.key}
             bordered={false}
             className="max-shell:p-4"
-            emptyMessage={unifiedBookings.length === 0 ? 'No bookings found' : 'No bookings match your filters'}
+            emptyMessage={unifiedBookings.length === 0 ? 'No bookings yet' : 'No bookings match these filters'}
             emptyDescription={
               unifiedBookings.length === 0
                 ? 'This customer has not made a booking yet.'
-                : 'Try clearing one or more filters.'
+                : 'Clear one or more filters to see more bookings.'
             }
           />
         </Card>
 
         <Modal
           open={isEditingCustomer}
-          onClose={() => setIsEditingCustomer(false)}
-          title="Edit Customer Details"
+          onClose={() => {
+            if (savingCustomer) return
+            setIsEditingCustomer(false)
+          }}
+          title="Edit Customer"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEditingCustomer(false)}
+                disabled={savingCustomer}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" form={EDIT_CUSTOMER_FORM_ID} loading={savingCustomer}>
+                Save Changes
+              </Button>
+            </>
+          }
         >
           <CustomerForm
+            formId={EDIT_CUSTOMER_FORM_ID}
             customer={customer}
             onSubmit={handleUpdateCustomer}
             onCancel={() => setIsEditingCustomer(false)}
@@ -1768,9 +1788,10 @@ export default function CustomerViewPage() {
                 variant="primary"
                 type="button"
                 onClick={handleSendCustomerEmail}
-                disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+                loading={sendingEmail}
+                disabled={!emailSubject.trim() || !emailBody.trim()}
               >
-                {sendingEmail ? 'Sending…' : 'Send Email'}
+                Send Email
               </Button>
             </>
           }
@@ -1847,9 +1868,10 @@ export default function CustomerViewPage() {
                           size="sm"
                           type="button"
                           onClick={handleClearEmailBlock}
-                          disabled={clearingEmailBlock || sendingEmail}
+                          loading={clearingEmailBlock}
+                          disabled={sendingEmail}
                         >
-                          {clearingEmailBlock ? 'Clearing…' : 'Clear the Block and Try This Address Again'}
+                          Clear the Block and Try This Address Again
                         </Button>
                       </div>
                     )}

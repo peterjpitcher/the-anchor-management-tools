@@ -183,7 +183,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                   ariaLabel="Miles over time"
                 />
               ) : (
-                <Empty size="sm" title="No mileage data available" />
+                <Empty size="sm" title="No trips for this period" description="No trips were recorded in this period." />
               )}
             </CardBody>
           </Card>

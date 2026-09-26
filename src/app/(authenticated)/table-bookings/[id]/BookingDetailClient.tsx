@@ -19,6 +19,7 @@ import {
   FormFooter,
   Input,
   Modal,
+  PageLayout,
   Radio,
   Select,
   Stat,
@@ -461,7 +462,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     }
   }, [partySizeEditOpen, partySizeNeedsLargerTable, partySizeMoveTableOptions, partySizeMoveTableId])
 
-  const guestName = [booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || 'Unknown guest'
+  const customerName = [booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ')
+  const guestName = customerName || 'Unknown guest'
   const depositState = getTableBookingDepositState(booking)
   const canonicalDepositAmount = getCanonicalDeposit(
     {
@@ -908,828 +910,843 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     }
   }, [booking.id, canEdit])
 
+  // The destructive actions sit in the page header, as on every other detail page. Mark No-Show
+  // is secondary: Mark Confirmed puts it back, so it is not destructive.
+  // data-touch-targets: the page is reached from BOH on a tablet, so these buttons get the 44px
+  // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
+  const headerActions = canManage ? (
+    <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => setNoShowConfirmOpen(true)}
+        disabled={Boolean(actionLoadingKey)}
+      >
+        Mark No-Show
+      </Button>
+      <Button
+        size="sm"
+        variant="danger"
+        onClick={() => setCancelConfirmOpen(true)}
+        disabled={Boolean(actionLoadingKey)}
+      >
+        Cancel Booking
+      </Button>
+      <Button
+        size="sm"
+        variant="danger"
+        onClick={() => setDeleteConfirmOpen(true)}
+        disabled={Boolean(actionLoadingKey)}
+      >
+        Delete
+      </Button>
+    </div>
+  ) : undefined
+
+  // A child page: the back button, not the section's tab row. Its parent, Back of House, is
+  // titled "Table Bookings".
   return (
-    // data-touch-targets: reached from BOH on a tablet, and its Danger Zone buttons are the
-    // smallest destructive controls in the section. See the note in FohScheduleClient. The
-    // wrapper carries that attribute and keeps the page's own 24px rhythm between blocks.
-    <div className="space-y-6" data-touch-targets>
-      {/* The guest's name is the page title, so this card carries the status and the when. */}
-      <Card>
-        <CardBody className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge booking={booking} />
-            {depositState.kind !== 'none' && (
-              <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
-                {depositState.label}
-                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-              </Badge>
-            )}
-            {booking.booking_type && (
-              <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
-            )}
-            {booking.requires_accessible_table && (
-              <Badge tone="warning">Step-free table</Badge>
-            )}
-            {(booking.high_chair_count ?? 0) > 0 && (
-              <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
-            )}
-          </div>
-          <p className="text-sm text-text-muted">
-            {formatBookingDate(booking.booking_date)}
-            {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
-            {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
-            {booking.is_outside_seating ? ' · Outside' : assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
-          </p>
-        </CardBody>
-      </Card>
-
-      <StatGrid columns={4}>
-        <Stat label="Covers" value={booking.party_size ?? '-'} />
-        <Stat label="Tables" value={booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'} />
-        <Stat label="Capacity" value={booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'} />
-        <Stat label="Audit" value={auditTrail.length} />
-      </StatGrid>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader title="Booking Details" />
-            <CardBody>
-              <DescriptionList
-                columns={3}
-                items={[
-                  { key: 'reference', label: 'Reference', value: orDash(booking.booking_reference) },
-                  { key: 'guest', label: 'Guest', value: guestName },
-                  {
-                    key: 'mobile',
-                    label: 'Mobile',
-                    value: booking.customer?.mobile_number ? (
-                      <a
-                        href={`tel:${booking.customer.mobile_number}`}
-                        className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
-                      >
-                        {booking.customer.mobile_number}
-                      </a>
-                    ) : '-',
-                  },
-                  { key: 'date', label: 'Date', value: formatBookingDate(booking.booking_date) },
-                  { key: 'time', label: 'Time', value: booking.booking_time ? booking.booking_time.slice(0, 5) : '-' },
-                  { key: 'duration', label: 'Duration', value: formatDuration(booking.duration_minutes) },
-                  { key: 'party-size', label: 'Party size', value: orDash(booking.party_size) },
-                  { key: 'committed-size', label: 'Committed size', value: orDash(booking.committed_party_size) },
-                  {
-                    key: 'assigned-tables',
-                    label: 'Assigned tables',
-                    value: booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-',
-                  },
-                  { key: 'seating', label: 'Seating', value: booking.is_outside_seating ? 'Outside' : 'Indoor' },
-                  {
-                    key: 'step-free',
-                    label: 'Step-free table',
-                    value: booking.requires_accessible_table ? 'Requested' : 'Not requested',
-                  },
-                  { key: 'high-chairs', label: 'High chairs', value: String(booking.high_chair_count ?? 0) },
-                  { key: 'booking-type', label: 'Booking type', value: formatLabel(booking.booking_type) },
-                  { key: 'purpose', label: 'Purpose', value: formatLabel(booking.booking_purpose) },
-                  { key: 'source', label: 'Source', value: formatLabel(booking.source) },
-                ]}
-              />
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader title="Notes and Requirements" />
-            {notes.length > 0 ? (
-              <CardBody>
-                <DescriptionList
-                  columns={1}
-                  items={notes.map((note) => ({
-                    key: note.label,
-                    label: note.label,
-                    // Notes keep the line breaks staff typed.
-                    value: <span className="whitespace-pre-wrap">{note.value}</span>,
-                  }))}
-                />
-              </CardBody>
-            ) : (
-              <Empty size="sm" title="No notes, dietary requirements, allergies, or internal notes recorded" />
-            )}
-          </Card>
-
-          {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
-          {seasonalPreorder}
-
-          <Card>
-            <CardHeader
-              title="Sunday Pre-Order"
-              action={
-                canEditPreorder ? (
-                  <Button size="sm" variant="secondary" onClick={openPreorderEdit}>
-                    Edit Pre-Order
-                  </Button>
-                ) : undefined
-              }
-            />
-            {preorderItems.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Guest</TableHead>
-                    <TableHead>Requests</TableHead>
-                    <TableHead align="right">Price</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {preorderItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="whitespace-normal font-medium">
-                        {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
-                        {item.item_type ? <span className="ml-2 text-xs font-normal text-text-muted">{formatLabel(item.item_type)}</span> : null}
-                      </TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell className="whitespace-normal">{item.guest_name || '-'}</TableCell>
-                      <TableCell className="whitespace-normal">{item.special_requests || '-'}</TableCell>
-                      <TableCell align="right">
-                        {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Empty size="sm" title="No saved pre-order items" />
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Lifecycle" />
-            {lifecycleEvents.length > 0 ? (
-              <CardBody>
-                <DescriptionList
-                  items={lifecycleEvents.map((event) => ({
-                    key: `${event.label}-${event.at}`,
-                    label: event.label,
-                    value: formatLondonDateTime(event.at),
-                  }))}
-                />
-              </CardBody>
-            ) : (
-              <Empty size="sm" title="No lifecycle timestamps recorded yet" />
-            )}
-          </Card>
-        </div>
-
-        <aside className="space-y-6">
-          {canEdit && (
-            <Card>
-              <CardHeader title="Actions" />
-              <CardBody className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => void handleStatusAction('seated')}
-                    loading={actionLoadingKey === 'status:seated'}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Seat Guests
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void handleStatusAction('left')}
-                    loading={actionLoadingKey === 'status:left'}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Mark Left
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void handleStatusAction('confirmed')}
-                    loading={actionLoadingKey === 'status:confirmed'}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Mark Confirmed
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void handleStatusAction('completed')}
-                    loading={actionLoadingKey === 'status:completed'}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Mark Completed
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={openBookingEdit}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Edit Booking
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={openPartySizeEdit}
-                    disabled={Boolean(actionLoadingKey)}
-                  >
-                    Edit Party Size
-                  </Button>
-                  {booking.status === 'pending_payment' && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleCopyDepositLink()}
-                      loading={actionLoadingKey === 'deposit-link'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Copy Deposit Link
-                    </Button>
-                  )}
-                </div>
-
-                {/* Pin. Shown next to Move table because the two are the same decision from
-                    opposite ends: move it deliberately, then stop anything else moving it. */}
-                {!booking.is_outside_seating && (
-                  // A Fieldset, so its legend matches the Move table label below and names the
-                  // Pin button's group for a screen reader. The rule sits on a wrapper: a legend
-                  // is drawn across its fieldset's own top border.
-                  <div className="border-t border-border pt-4">
-                    <Fieldset legend="Pin to this table">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm text-text-muted">
-                          {booking.table_pinned
-                            ? 'Pinned. Nothing automatic will move this booking.'
-                            : 'Not pinned. This booking may be moved to make room for another.'}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant={booking.table_pinned ? 'secondary' : 'primary'}
-                          onClick={() => void handleTogglePin(!booking.table_pinned)}
-                          loading={actionLoadingKey === 'pin'}
-                          disabled={Boolean(actionLoadingKey)}
-                        >
-                          {booking.table_pinned ? 'Unpin' : 'Pin'}
-                        </Button>
-                      </div>
-                    </Fieldset>
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end xl:flex-col xl:items-stretch 2xl:flex-row 2xl:items-end">
-                  <div className="min-w-0 grow">
-                    <Select
-                      id="move-table-select"
-                      label="Move table"
-                      value={moveTableId}
-                      onChange={(e) => setMoveTableId(e.target.value)}
-                      disabled={loadingMoveTables || availableMoveTables.length === 0}
-                    >
-                      <option value="">
-                        {loadingMoveTables
-                          ? 'Loading available tables...'
-                          : availableMoveTables.length === 0
-                            ? 'No available tables'
-                            : 'Select table to move booking'}
-                      </option>
-                      {availableMoveTables.map((table) => (
-                        <option key={table.id} value={table.id}>
-                          {table.name}
-                          {table.table_number ? ` (${table.table_number})` : ''}
-                          {table.capacity ? ` - cap ${table.capacity}` : ''}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    loading={actionLoadingKey === 'move-table'}
-                    disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
-                    onClick={() => void handleMoveTable()}
-                  >
-                    Move
-                  </Button>
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader title="Payment and Deposit" />
-            <CardBody className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {depositState.kind !== 'none' ? (
-                  <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
-                    {depositState.label}
-                    {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral">No deposit required</Badge>
-                )}
-                {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
-              </div>
-
-              {/* One column at xl, where this card sits in the 420px side column. */}
-              <DescriptionList
-                columns={2}
-                className="xl:grid-cols-1 2xl:grid-cols-2"
-                items={[
-                  { key: 'method', label: 'Method', value: formatLabel(booking.payment_method) },
-                  {
-                    key: 'refundable',
-                    label: 'Refundable',
-                    value: refundableDepositAmount > 0 ? formatGbp(refundableDepositAmount) : '-',
-                  },
-                  {
-                    key: 'locked-amount',
-                    label: 'Locked amount',
-                    value: booking.deposit_amount_locked != null ? formatGbp(Number(booking.deposit_amount_locked)) : '-',
-                  },
-                  { key: 'captured', label: 'Captured', value: formatLondonDateTime(booking.card_capture_completed_at) },
-                ]}
-              />
-
-              {booking.paypal_deposit_capture_id && (
-                <p className="break-all text-xs text-text-muted">Capture ID: {booking.paypal_deposit_capture_id}</p>
-              )}
-
-              {refundTotals.totalRefunded > 0 && (
-                <Badge
-                  tone={refundTotals.totalRefunded >= refundableDepositAmount ? REFUND_PROGRESS_TONE.refunded : REFUND_PROGRESS_TONE.partial}
-                  size="sm"
-                >
-                  {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially refunded'}
+    <PageLayout
+      title={customerName || booking.booking_reference || 'Booking'}
+      subtitle={`${booking.booking_reference ?? ''} · ${booking.booking_date} · ${booking.booking_time ?? ''}`}
+      backButton={{ label: 'Back to Table Bookings', href: '/table-bookings/boh' }}
+      headerActions={headerActions}
+    >
+      {/* data-touch-targets: reached from BOH on a tablet. The wrapper carries that attribute and
+          keeps the page's own 24px rhythm between blocks. */}
+      <div className="space-y-6" data-touch-targets>
+        {/* The guest's name is the page title, so this card carries the status and the when. */}
+        <Card>
+          <CardBody className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge booking={booking} />
+              {depositState.kind !== 'none' && (
+                <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                  {depositState.label}
+                  {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                 </Badge>
               )}
-
-              {canRefund && booking.payment_status === 'completed' && refundTotals.totalRefunded < refundableDepositAmount && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowRefundDialog(true)}
-                >
-                  Process Refund
-                </Button>
+              {booking.booking_type && (
+                <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
               )}
-            </CardBody>
-          </Card>
+              {booking.requires_accessible_table && (
+                <Badge tone="warning">Step-free table</Badge>
+              )}
+              {(booking.high_chair_count ?? 0) > 0 && (
+                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+              )}
+            </div>
+            <p className="text-sm text-text-muted">
+              {formatBookingDate(booking.booking_date)}
+              {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
+              {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
+              {booking.is_outside_seating ? ' · Outside' : assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
+            </p>
+          </CardBody>
+        </Card>
 
-          {/* Its own card, titled Refund History, beside the payment card rather than nested in it. */}
-          {booking.payment_status === 'completed' && (
-            <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
-          )}
+        <StatGrid columns={4}>
+          <Stat label="Covers" value={booking.party_size ?? '-'} />
+          <Stat label="Tables" value={booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'} />
+          <Stat label="Capacity" value={booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'} />
+          <Stat label="Audit" value={auditTrail.length} />
+        </StatGrid>
 
-          <Card>
-            <CardHeader title={emailOption?.enabled ? 'Message Guest' : 'Send SMS'} />
-            <CardBody>
-              {canEdit ? (
-                <div className="space-y-3">
-                  {emailOption?.enabled && (
-                    <Fieldset legend="Send by">
-                      <Radio
-                        name="guest-message-channel"
-                        value="email"
-                        label="Email"
-                        description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
-                        checked={messageChannel === 'email'}
-                        onChange={() => setMessageChannel('email')}
-                        disabled={!emailOption.usable || Boolean(actionLoadingKey)}
-                      />
-                      <Radio
-                        name="guest-message-channel"
-                        value="sms"
-                        label="Text"
-                        checked={messageChannel === 'sms'}
-                        onChange={() => setMessageChannel('sms')}
-                        disabled={Boolean(actionLoadingKey)}
-                      />
-                    </Fieldset>
-                  )}
-                  {emailChosen && (
-                    <Input
-                      label="Subject"
-                      value={emailSubject}
-                      maxLength={200}
-                      onChange={(e) => setEmailSubject(e.target.value)}
-                    />
-                  )}
-                  <Textarea
-                    label="Message"
-                    value={smsBody}
-                    onChange={(e) => setSmsBody(e.target.value)}
-                    rows={5}
-                    maxLength={emailChosen ? 2000 : 640}
-                    placeholder="Type message..."
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader title="Booking Details" />
+              <CardBody>
+                <DescriptionList
+                  columns={3}
+                  items={[
+                    { key: 'reference', label: 'Reference', value: orDash(booking.booking_reference) },
+                    { key: 'guest', label: 'Guest', value: guestName },
+                    {
+                      key: 'mobile',
+                      label: 'Mobile',
+                      value: booking.customer?.mobile_number ? (
+                        <a
+                          href={`tel:${booking.customer.mobile_number}`}
+                          className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
+                        >
+                          {booking.customer.mobile_number}
+                        </a>
+                      ) : '-',
+                    },
+                    { key: 'date', label: 'Date', value: formatBookingDate(booking.booking_date) },
+                    { key: 'time', label: 'Time', value: booking.booking_time ? booking.booking_time.slice(0, 5) : '-' },
+                    { key: 'duration', label: 'Duration', value: formatDuration(booking.duration_minutes) },
+                    { key: 'party-size', label: 'Party size', value: orDash(booking.party_size) },
+                    { key: 'committed-size', label: 'Committed size', value: orDash(booking.committed_party_size) },
+                    {
+                      key: 'assigned-tables',
+                      label: 'Assigned tables',
+                      value: booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-',
+                    },
+                    { key: 'seating', label: 'Seating', value: booking.is_outside_seating ? 'Outside' : 'Indoor' },
+                    {
+                      key: 'step-free',
+                      label: 'Step-free table',
+                      value: booking.requires_accessible_table ? 'Requested' : 'Not requested',
+                    },
+                    { key: 'high-chairs', label: 'High chairs', value: String(booking.high_chair_count ?? 0) },
+                    { key: 'booking-type', label: 'Booking type', value: formatLabel(booking.booking_type) },
+                    { key: 'purpose', label: 'Purpose', value: formatLabel(booking.booking_purpose) },
+                    { key: 'source', label: 'Source', value: formatLabel(booking.source) },
+                  ]}
+                />
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Notes and Requirements" />
+              {notes.length > 0 ? (
+                <CardBody>
+                  <DescriptionList
+                    columns={1}
+                    items={notes.map((note) => ({
+                      key: note.label,
+                      label: note.label,
+                      // Notes keep the line breaks staff typed.
+                      value: <span className="whitespace-pre-wrap">{note.value}</span>,
+                    }))}
                   />
-                  <FormFooter start={<span className="text-xs">{smsBody.length}/{emailChosen ? 2000 : 640}</span>}>
+                </CardBody>
+              ) : (
+                <Empty
+                  size="sm"
+                  title="No notes yet"
+                  description="Special requirements, dietary needs, allergies and internal notes show here once added."
+                />
+              )}
+            </Card>
+
+            {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
+            {seasonalPreorder}
+
+            <Card>
+              <CardHeader
+                title="Sunday Pre-Order"
+                action={
+                  canEditPreorder ? (
+                    <Button size="sm" variant="secondary" onClick={openPreorderEdit}>
+                      Edit Pre-Order
+                    </Button>
+                  ) : undefined
+                }
+              />
+              {preorderItems.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Qty</TableHead>
+                      <TableHead>Guest</TableHead>
+                      <TableHead>Requests</TableHead>
+                      <TableHead align="right">Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {preorderItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="whitespace-normal font-medium">
+                          {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
+                          {item.item_type ? <span className="ml-2 text-xs font-normal text-text-muted">{formatLabel(item.item_type)}</span> : null}
+                        </TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                        <TableCell className="whitespace-normal">{item.guest_name || '-'}</TableCell>
+                        <TableCell className="whitespace-normal">{item.special_requests || '-'}</TableCell>
+                        <TableCell align="right">
+                          {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <Empty size="sm" title="No saved pre-order items" />
+              )}
+            </Card>
+
+            <Card>
+              <CardHeader title="Lifecycle" />
+              {lifecycleEvents.length > 0 ? (
+                <CardBody>
+                  <DescriptionList
+                    items={lifecycleEvents.map((event) => ({
+                      key: `${event.label}-${event.at}`,
+                      label: event.label,
+                      value: formatLondonDateTime(event.at),
+                    }))}
+                  />
+                </CardBody>
+              ) : (
+                <Empty size="sm" title="No lifecycle timestamps recorded yet" />
+              )}
+            </Card>
+          </div>
+
+          <aside className="space-y-6">
+            {canEdit && (
+              <Card>
+                <CardHeader title="Actions" />
+                <CardBody className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void handleStatusAction('seated')}
+                      loading={actionLoadingKey === 'status:seated'}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Seat Guests
+                    </Button>
                     <Button
                       size="sm"
                       variant="secondary"
-                      loading={actionLoadingKey === 'send-sms'}
+                      onClick={() => void handleStatusAction('left')}
+                      loading={actionLoadingKey === 'status:left'}
                       disabled={Boolean(actionLoadingKey)}
-                      onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
                     >
-                      {emailChosen ? 'Send Email' : 'Send SMS'}
+                      Mark Left
                     </Button>
-                  </FormFooter>
-                </div>
-              ) : (
-                <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
-              )}
-            </CardBody>
-          </Card>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleStatusAction('confirmed')}
+                      loading={actionLoadingKey === 'status:confirmed'}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Mark Confirmed
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleStatusAction('completed')}
+                      loading={actionLoadingKey === 'status:completed'}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Mark Completed
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={openBookingEdit}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Edit Booking
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={openPartySizeEdit}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Edit Party Size
+                    </Button>
+                    {booking.status === 'pending_payment' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleCopyDepositLink()}
+                        loading={actionLoadingKey === 'deposit-link'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Copy Deposit Link
+                      </Button>
+                    )}
+                  </div>
 
-          <Card>
-            <CardHeader title="Operational Flags" />
-            {operationalFlags.length > 0 ? (
-              <CardBody>
-                <ul className="space-y-2">
-                  {operationalFlags.map((flag) => (
-                    <li key={flag}>
-                      <Alert tone="warning" size="sm" role="status">
-                        {flag}
-                      </Alert>
-                    </li>
-                  ))}
-                </ul>
-              </CardBody>
-            ) : (
-              <Empty size="sm" title="No operational flags for this booking" />
+                  {/* Pin. Shown next to Move table because the two are the same decision from
+                      opposite ends: move it deliberately, then stop anything else moving it. */}
+                  {!booking.is_outside_seating && (
+                    // A Fieldset, so its legend matches the Move table label below and names the
+                    // Pin button's group for a screen reader. The rule sits on a wrapper: a legend
+                    // is drawn across its fieldset's own top border.
+                    <div className="border-t border-border pt-4">
+                      <Fieldset legend="Pin to this table">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm text-text-muted">
+                            {booking.table_pinned
+                              ? 'Pinned. Nothing automatic will move this booking.'
+                              : 'Not pinned. This booking may be moved to make room for another.'}
+                          </p>
+                          <Button
+                            size="sm"
+                            variant={booking.table_pinned ? 'secondary' : 'primary'}
+                            onClick={() => void handleTogglePin(!booking.table_pinned)}
+                            loading={actionLoadingKey === 'pin'}
+                            disabled={Boolean(actionLoadingKey)}
+                          >
+                            {booking.table_pinned ? 'Unpin' : 'Pin'}
+                          </Button>
+                        </div>
+                      </Fieldset>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end xl:flex-col xl:items-stretch 2xl:flex-row 2xl:items-end">
+                    <div className="min-w-0 grow">
+                      <Select
+                        id="move-table-select"
+                        label="Move table"
+                        value={moveTableId}
+                        onChange={(e) => setMoveTableId(e.target.value)}
+                        disabled={loadingMoveTables || availableMoveTables.length === 0}
+                      >
+                        <option value="">
+                          {loadingMoveTables
+                            ? 'Loading available tables…'
+                            : availableMoveTables.length === 0
+                              ? 'No available tables'
+                              : 'Select table to move booking'}
+                        </option>
+                        {availableMoveTables.map((table) => (
+                          <option key={table.id} value={table.id}>
+                            {table.name}
+                            {table.table_number ? ` (${table.table_number})` : ''}
+                            {table.capacity ? ` - cap ${table.capacity}` : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={actionLoadingKey === 'move-table'}
+                      disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
+                      onClick={() => void handleMoveTable()}
+                    >
+                      Move
+                    </Button>
+                  </div>
+                </CardBody>
+              </Card>
             )}
-          </Card>
 
-          {canManage && (
-            <Card className="border-danger-border">
-              <CardHeader title="Danger Zone" />
-              <CardBody className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => setNoShowConfirmOpen(true)}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Mark No-Show
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => setCancelConfirmOpen(true)}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Cancel Booking
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Delete Booking
-                </Button>
+            <Card>
+              <CardHeader title="Payment and Deposit" />
+              <CardBody className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  {depositState.kind !== 'none' ? (
+                    <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                      {depositState.label}
+                      {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                    </Badge>
+                  ) : (
+                    <Badge tone="neutral">No deposit required</Badge>
+                  )}
+                  {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
+                </div>
+
+                {/* One column at xl, where this card sits in the 420px side column. */}
+                <DescriptionList
+                  columns={2}
+                  className="xl:grid-cols-1 2xl:grid-cols-2"
+                  items={[
+                    { key: 'method', label: 'Method', value: formatLabel(booking.payment_method) },
+                    {
+                      key: 'refundable',
+                      label: 'Refundable',
+                      value: refundableDepositAmount > 0 ? formatGbp(refundableDepositAmount) : '-',
+                    },
+                    {
+                      key: 'locked-amount',
+                      label: 'Locked amount',
+                      value: booking.deposit_amount_locked != null ? formatGbp(Number(booking.deposit_amount_locked)) : '-',
+                    },
+                    { key: 'captured', label: 'Captured', value: formatLondonDateTime(booking.card_capture_completed_at) },
+                  ]}
+                />
+
+                {booking.paypal_deposit_capture_id && (
+                  <p className="break-all text-xs text-text-muted">Capture ID: {booking.paypal_deposit_capture_id}</p>
+                )}
+
+                {refundTotals.totalRefunded > 0 && (
+                  <Badge
+                    tone={refundTotals.totalRefunded >= refundableDepositAmount ? REFUND_PROGRESS_TONE.refunded : REFUND_PROGRESS_TONE.partial}
+                    size="sm"
+                  >
+                    {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially refunded'}
+                  </Badge>
+                )}
+
+                {canRefund && booking.payment_status === 'completed' && refundTotals.totalRefunded < refundableDepositAmount && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowRefundDialog(true)}
+                  >
+                    Process Refund
+                  </Button>
+                )}
               </CardBody>
             </Card>
+
+            {/* Its own card, titled Refund History, beside the payment card rather than nested in it. */}
+            {booking.payment_status === 'completed' && (
+              <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
+            )}
+
+            <Card>
+              <CardHeader title={emailOption?.enabled ? 'Message Guest' : 'Send SMS'} />
+              <CardBody>
+                {canEdit ? (
+                  <div className="space-y-3">
+                    {emailOption?.enabled && (
+                      <Fieldset legend="Send by">
+                        <Radio
+                          name="guest-message-channel"
+                          value="email"
+                          label="Email"
+                          description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
+                          checked={messageChannel === 'email'}
+                          onChange={() => setMessageChannel('email')}
+                          disabled={!emailOption.usable || Boolean(actionLoadingKey)}
+                        />
+                        <Radio
+                          name="guest-message-channel"
+                          value="sms"
+                          label="Text"
+                          checked={messageChannel === 'sms'}
+                          onChange={() => setMessageChannel('sms')}
+                          disabled={Boolean(actionLoadingKey)}
+                        />
+                      </Fieldset>
+                    )}
+                    {emailChosen && (
+                      <Input
+                        label="Subject"
+                        value={emailSubject}
+                        maxLength={200}
+                        onChange={(e) => setEmailSubject(e.target.value)}
+                      />
+                    )}
+                    <Textarea
+                      label="Message"
+                      value={smsBody}
+                      onChange={(e) => setSmsBody(e.target.value)}
+                      rows={5}
+                      maxLength={emailChosen ? 2000 : 640}
+                      placeholder="Type message..."
+                    />
+                    <FormFooter start={<span className="text-xs">{smsBody.length}/{emailChosen ? 2000 : 640}</span>}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={actionLoadingKey === 'send-sms'}
+                        disabled={Boolean(actionLoadingKey)}
+                        onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
+                      >
+                        {emailChosen ? 'Send Email' : 'Send SMS'}
+                      </Button>
+                    </FormFooter>
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
+                )}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Operational Flags" />
+              {operationalFlags.length > 0 ? (
+                <CardBody>
+                  <ul className="space-y-2">
+                    {operationalFlags.map((flag) => (
+                      <li key={flag}>
+                        <Alert tone="warning" size="sm" role="status">
+                          {flag}
+                        </Alert>
+                      </li>
+                    ))}
+                  </ul>
+                </CardBody>
+              ) : (
+                <Empty size="sm" title="No operational flags for this booking" />
+              )}
+            </Card>
+
+          </aside>
+        </div>
+
+        <Card>
+          <CardHeader title="Audit Trail" subtitle="Every recorded booking audit event, newest first" />
+          {auditTrail.length === 0 ? (
+            <Empty size="sm" title="No audit events yet" />
+          ) : (
+            <CardBody>
+              <ol className="divide-y divide-border">
+                {auditTrail.map((entry) => {
+                  const details = getAuditDetails(entry)
+                  return (
+                    <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 first:pt-0 last:pb-0 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
+                      <div>
+                        <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
+                        <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
+                        {details.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {details.map((detail) => (
+                              <li key={detail} className="whitespace-pre-wrap text-sm text-text-muted">
+                                {detail}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div className="lg:text-right">
+                        {entry.new_status ? (
+                          // The booking status colour map, as on every other status badge.
+                          <Badge className={getTableBookingStatusBadgeClasses(entry.new_status)}>
+                            {formatLabel(entry.new_status)}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-text-soft">No status change</span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </CardBody>
           )}
-        </aside>
-      </div>
+        </Card>
 
-      <Card>
-        <CardHeader title="Audit Trail" subtitle="Every recorded booking audit event, newest first" />
-        {auditTrail.length === 0 ? (
-          <Empty size="sm" title="No audit events have been recorded for this booking yet" />
-        ) : (
-          <CardBody>
-            <ol className="divide-y divide-border">
-              {auditTrail.map((entry) => {
-                const details = getAuditDetails(entry)
-                return (
-                  <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 first:pt-0 last:pb-0 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
-                    <div>
-                      <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
-                      <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
-                      {details.length > 0 && (
-                        <ul className="mt-2 space-y-1">
-                          {details.map((detail) => (
-                            <li key={detail} className="whitespace-pre-wrap text-sm text-text-muted">
-                              {detail}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="lg:text-right">
-                      {entry.new_status ? (
-                        // The booking status colour map, as on every other status badge.
-                        <Badge className={getTableBookingStatusBadgeClasses(entry.new_status)}>
-                          {formatLabel(entry.new_status)}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-text-soft">No status change</span>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
-          </CardBody>
-        )}
-      </Card>
+        <ConfirmDialog
+          open={noShowConfirmOpen}
+          onClose={() => setNoShowConfirmOpen(false)}
+          onConfirm={async () => {
+            setNoShowConfirmOpen(false)
+            await handleStatusAction('no_show')
+          }}
+          // Primary: a no-show can be put back with Mark Confirmed, so it is not destructive.
+          tone="primary"
+          title="Mark as No-Show"
+          message="Mark this booking as a no-show? It comes off the active covers. Mark Confirmed puts it back."
+          confirmLabel="Mark No-Show"
+          closeOnConfirm={false}
+        />
 
-      <ConfirmDialog
-        open={noShowConfirmOpen}
-        onClose={() => setNoShowConfirmOpen(false)}
-        onConfirm={async () => {
-          setNoShowConfirmOpen(false)
-          await handleStatusAction('no_show')
-        }}
-        // Primary: a no-show can be put back with Mark Confirmed, so it is not destructive.
-        tone="primary"
-        title="Mark as No-Show?"
-        message="This will mark the booking as no-show and remove it from active covers."
-        confirmLabel="Mark No-Show"
-        closeOnConfirm={false}
-      />
+        <ConfirmDialog
+          open={cancelConfirmOpen}
+          onClose={() => setCancelConfirmOpen(false)}
+          onConfirm={async () => {
+            setCancelConfirmOpen(false)
+            await handleStatusAction('cancelled')
+          }}
+          tone="danger"
+          title="Cancel Booking"
+          message="Cancel this booking? The customer will be notified."
+          confirmLabel="Cancel Booking"
+          cancelLabel="Keep Booking"
+          closeOnConfirm={false}
+        />
 
-      <ConfirmDialog
-        open={cancelConfirmOpen}
-        onClose={() => setCancelConfirmOpen(false)}
-        onConfirm={async () => {
-          setCancelConfirmOpen(false)
-          await handleStatusAction('cancelled')
-        }}
-        tone="danger"
-        title="Cancel This Booking?"
-        message="The customer will be notified."
-        confirmLabel="Cancel Booking"
-        closeOnConfirm={false}
-      />
+        <ConfirmDialog
+          open={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={() => void handleDeleteBooking()}
+          tone="danger"
+          title="Delete Booking"
+          message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
+          confirmLabel="Delete"
+        />
 
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={() => void handleDeleteBooking()}
-        tone="danger"
-        title="Delete This Booking?"
-        message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
-        confirmLabel="Delete"
-      />
-
-      {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)
-          each dialog's controls get the 44px floor (D6). */}
-      <Modal
-        open={bookingEditOpen}
-        onClose={() => setBookingEditOpen(false)}
-        title="Edit Booking"
-        width="xl"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setBookingEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void handleSubmitBookingEdit()}
-              loading={actionLoadingKey === 'booking-edit'}
-              disabled={Boolean(actionLoadingKey) || !bookingEdit}
-            >
-              Save
-            </Button>
-          </>
-        }
-      >
-        {bookingEdit && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Input
-                label="Date"
-                type="date"
-                value={bookingEdit.booking_date}
-                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_date: event.target.value } : prev)}
-              />
-              <Input
-                label="Time"
-                type="time"
-                value={bookingEdit.booking_time}
-                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_time: event.target.value } : prev)}
-              />
-              <Input
-                label="Duration"
-                type="number"
-                min={30}
-                max={360}
-                step={15}
-                value={bookingEdit.duration_minutes}
-                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, duration_minutes: event.target.value } : prev)}
-              />
-            </div>
-
-            <Field label="Customer">
-              <CustomerSearchInput
-                selectedCustomerId={bookingEdit.customer_id}
-                placeholder="Search customers..."
-                onCustomerSelect={(customer) =>
-                  setBookingEdit((prev) => prev ? { ...prev, customer_id: customer?.id ?? null } : prev)
-                }
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Textarea
-                label="Dietary requirements"
-                value={bookingEdit.dietary_requirements}
-                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, dietary_requirements: event.target.value } : prev)}
-                rows={3}
-              />
-              <Textarea
-                label="Allergies"
-                value={bookingEdit.allergies}
-                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, allergies: event.target.value } : prev)}
-                rows={3}
-              />
-            </div>
-
-            <Input
-              label="Celebration"
-              value={bookingEdit.celebration_type}
-              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, celebration_type: event.target.value } : prev)}
-            />
-            <Textarea
-              label="Special requirements"
-              value={bookingEdit.special_requirements}
-              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, special_requirements: event.target.value } : prev)}
-              rows={3}
-            />
-            <Textarea
-              label="Internal notes"
-              value={bookingEdit.internal_notes}
-              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, internal_notes: event.target.value } : prev)}
-              rows={4}
-            />
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        open={preorderEditOpen}
-        onClose={() => setPreorderEditOpen(false)}
-        title="Edit Pre-Order"
-        width="lg"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setPreorderEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void handleSubmitPreorderEdit()}
-              loading={actionLoadingKey === 'preorder-edit'}
-              disabled={Boolean(actionLoadingKey)}
-            >
-              Save
-            </Button>
-          </>
-        }
-      >
-        <ul className="divide-y divide-border">
-          {preorderItems.map((item) => (
-            <li key={item.id} className="py-4 first:pt-0 last:pb-0">
-              <p className="text-sm font-medium text-text">
-                {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
-              </p>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
+        {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)
+            each dialog's controls get the 44px floor (D6). */}
+        <Modal
+          open={bookingEditOpen}
+          onClose={() => setBookingEditOpen(false)}
+          title="Edit Booking"
+          width="xl"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setBookingEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void handleSubmitBookingEdit()}
+                loading={actionLoadingKey === 'booking-edit'}
+                disabled={Boolean(actionLoadingKey) || !bookingEdit}
+              >
+                Save Changes
+              </Button>
+            </>
+          }
+        >
+          {bookingEdit && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Input
-                  label="Qty"
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={preorderEdit[item.id]?.quantity ?? String(item.quantity ?? 1)}
-                  onChange={(event) =>
-                    setPreorderEdit((prev) => ({
-                      ...prev,
-                      [item.id]: {
-                        quantity: event.target.value,
-                        special_requests: prev[item.id]?.special_requests ?? item.special_requests ?? '',
-                      },
-                    }))
-                  }
+                  label="Date"
+                  type="date"
+                  value={bookingEdit.booking_date}
+                  onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_date: event.target.value } : prev)}
                 />
                 <Input
-                  label="Requests"
-                  value={preorderEdit[item.id]?.special_requests ?? item.special_requests ?? ''}
-                  onChange={(event) =>
-                    setPreorderEdit((prev) => ({
-                      ...prev,
-                      [item.id]: {
-                        quantity: prev[item.id]?.quantity ?? String(item.quantity ?? 1),
-                        special_requests: event.target.value,
-                      },
-                    }))
-                  }
+                  label="Time"
+                  type="time"
+                  value={bookingEdit.booking_time}
+                  onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_time: event.target.value } : prev)}
+                />
+                <Input
+                  label="Duration"
+                  type="number"
+                  min={30}
+                  max={360}
+                  step={15}
+                  value={bookingEdit.duration_minutes}
+                  onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, duration_minutes: event.target.value } : prev)}
                 />
               </div>
-            </li>
-          ))}
-        </ul>
-      </Modal>
 
-      <Modal
-        open={partySizeEditOpen}
-        onClose={() => setPartySizeEditOpen(false)}
-        title="Edit Party Size"
-        width="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setPartySizeEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void handleSubmitPartySize()}
-              loading={actionLoadingKey === 'party-size'}
-              disabled={
-                Boolean(actionLoadingKey) ||
-                !partySizeEditValue ||
-                Number.parseInt(partySizeEditValue, 10) < 1
-              }
-            >
-              Save
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Input
-            id="party-size-input"
-            label="New party size"
-            type="number"
-            min={1}
-            max={20}
-            value={partySizeEditValue}
-            onChange={(e) => setPartySizeEditValue(e.target.value)}
-          />
-          <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
-          {partySizeNeedsLargerTable && (
-            <>
-              <Alert tone="warning" role="status">
-                This party is larger than the current {assignedCapacity} seats. Saving will move it
-                to a larger table setup automatically. Pick specific tables below if you&rsquo;d prefer.
-              </Alert>
-              <Select
-                id="party-size-move-table"
-                label="Larger table"
-                value={partySizeMoveTableId}
-                onChange={(event) => setPartySizeMoveTableId(event.target.value)}
-                disabled={loadingMoveTables || partySizeMoveTableOptions.length === 0}
-              >
-                <option value="">
-                  {loadingMoveTables
-                    ? 'Loading tables...'
-                    : partySizeMoveTableOptions.length === 0
-                      ? 'No larger table available'
-                      : 'Select larger table'}
-                </option>
-                {partySizeMoveTableOptions.map((table) => (
-                  <option key={table.id} value={table.id}>
-                    {table.name}
-                    {table.table_number ? ` (${table.table_number})` : ''}
-                    {table.capacity ? ` - cap ${table.capacity}` : ''}
-                  </option>
-                ))}
-              </Select>
-            </>
+              <Field label="Customer">
+                <CustomerSearchInput
+                  selectedCustomerId={bookingEdit.customer_id}
+                  placeholder="Search customers..."
+                  onCustomerSelect={(customer) =>
+                    setBookingEdit((prev) => prev ? { ...prev, customer_id: customer?.id ?? null } : prev)
+                  }
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Textarea
+                  label="Dietary requirements"
+                  value={bookingEdit.dietary_requirements}
+                  onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, dietary_requirements: event.target.value } : prev)}
+                  rows={3}
+                />
+                <Textarea
+                  label="Allergies"
+                  value={bookingEdit.allergies}
+                  onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, allergies: event.target.value } : prev)}
+                  rows={3}
+                />
+              </div>
+
+              <Input
+                label="Celebration"
+                value={bookingEdit.celebration_type}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, celebration_type: event.target.value } : prev)}
+              />
+              <Textarea
+                label="Special requirements"
+                value={bookingEdit.special_requirements}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, special_requirements: event.target.value } : prev)}
+                rows={3}
+              />
+              <Textarea
+                label="Internal notes"
+                value={bookingEdit.internal_notes}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, internal_notes: event.target.value } : prev)}
+                rows={4}
+              />
+            </div>
           )}
-          {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
-          <Checkbox
-            label="Notify guest"
-            checked={partySizeEditSendSms}
-            onChange={(checked) => setPartySizeEditSendSms(checked)}
-          />
-        </div>
-      </Modal>
+        </Modal>
 
-      {canRefund && booking.payment_status === 'completed' && (
-        <RefundDialog
-          open={showRefundDialog}
-          onOpenChange={setShowRefundDialog}
-          sourceType="table_booking"
-          sourceId={booking.id}
-          originalAmount={refundableDepositAmount}
-          totalRefunded={refundTotals.totalRefunded}
-          totalPending={refundTotals.totalPending}
-          hasPayPalCapture={!!booking.paypal_deposit_capture_id}
-          captureExpired={
-            booking.card_capture_completed_at
-              ? (new Date().getTime() - new Date(booking.card_capture_completed_at).getTime()) / (1000 * 60 * 60 * 24) > 180
-              : false
+        <Modal
+          open={preorderEditOpen}
+          onClose={() => setPreorderEditOpen(false)}
+          title="Edit Pre-Order"
+          width="lg"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPreorderEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void handleSubmitPreorderEdit()}
+                loading={actionLoadingKey === 'preorder-edit'}
+                disabled={Boolean(actionLoadingKey)}
+              >
+                Save Changes
+              </Button>
+            </>
           }
-        />
-      )}
-    </div>
+        >
+          <ul className="divide-y divide-border">
+            {preorderItems.map((item) => (
+              <li key={item.id} className="py-4 first:pt-0 last:pb-0">
+                <p className="text-sm font-medium text-text">
+                  {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
+                  <Input
+                    label="Qty"
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={preorderEdit[item.id]?.quantity ?? String(item.quantity ?? 1)}
+                    onChange={(event) =>
+                      setPreorderEdit((prev) => ({
+                        ...prev,
+                        [item.id]: {
+                          quantity: event.target.value,
+                          special_requests: prev[item.id]?.special_requests ?? item.special_requests ?? '',
+                        },
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Requests"
+                    value={preorderEdit[item.id]?.special_requests ?? item.special_requests ?? ''}
+                    onChange={(event) =>
+                      setPreorderEdit((prev) => ({
+                        ...prev,
+                        [item.id]: {
+                          quantity: prev[item.id]?.quantity ?? String(item.quantity ?? 1),
+                          special_requests: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+
+        <Modal
+          open={partySizeEditOpen}
+          onClose={() => setPartySizeEditOpen(false)}
+          title="Edit Party Size"
+          width="sm"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPartySizeEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void handleSubmitPartySize()}
+                loading={actionLoadingKey === 'party-size'}
+                disabled={
+                  Boolean(actionLoadingKey) ||
+                  !partySizeEditValue ||
+                  Number.parseInt(partySizeEditValue, 10) < 1
+                }
+              >
+                Save Changes
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <Input
+              id="party-size-input"
+              label="New party size"
+              type="number"
+              min={1}
+              max={20}
+              value={partySizeEditValue}
+              onChange={(e) => setPartySizeEditValue(e.target.value)}
+            />
+            <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
+            {partySizeNeedsLargerTable && (
+              <>
+                <Alert tone="warning" role="status">
+                  This party is larger than the current {assignedCapacity} seats. Saving will move it
+                  to a larger table setup automatically. Pick specific tables below if you&rsquo;d prefer.
+                </Alert>
+                <Select
+                  id="party-size-move-table"
+                  label="Larger table"
+                  value={partySizeMoveTableId}
+                  onChange={(event) => setPartySizeMoveTableId(event.target.value)}
+                  disabled={loadingMoveTables || partySizeMoveTableOptions.length === 0}
+                >
+                  <option value="">
+                    {loadingMoveTables
+                      ? 'Loading tables…'
+                      : partySizeMoveTableOptions.length === 0
+                        ? 'No larger table available'
+                        : 'Select larger table'}
+                  </option>
+                  {partySizeMoveTableOptions.map((table) => (
+                    <option key={table.id} value={table.id}>
+                      {table.name}
+                      {table.table_number ? ` (${table.table_number})` : ''}
+                      {table.capacity ? ` - cap ${table.capacity}` : ''}
+                    </option>
+                  ))}
+                </Select>
+              </>
+            )}
+            {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
+            <Checkbox
+              label="Notify guest"
+              checked={partySizeEditSendSms}
+              onChange={(checked) => setPartySizeEditSendSms(checked)}
+            />
+          </div>
+        </Modal>
+
+        {canRefund && booking.payment_status === 'completed' && (
+          <RefundDialog
+            open={showRefundDialog}
+            onOpenChange={setShowRefundDialog}
+            sourceType="table_booking"
+            sourceId={booking.id}
+            originalAmount={refundableDepositAmount}
+            totalRefunded={refundTotals.totalRefunded}
+            totalPending={refundTotals.totalPending}
+            hasPayPalCapture={!!booking.paypal_deposit_capture_id}
+            captureExpired={
+              booking.card_capture_completed_at
+                ? (new Date().getTime() - new Date(booking.card_capture_completed_at).getTime()) / (1000 * 60 * 60 * 24) > 180
+                : false
+            }
+          />
+        )}
+      </div>
+    </PageLayout>
   )
 }

@@ -177,8 +177,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
 
         {canManage && (
           <FormFooter>
-            <Button type="button" variant="primary" onClick={handleSave} disabled={isPending}>
-              {isPending ? 'Saving…' : 'Save Settings'}
+            <Button type="button" variant="primary" onClick={handleSave} loading={isPending}>
+              Save Changes
             </Button>
           </FormFooter>
         )}

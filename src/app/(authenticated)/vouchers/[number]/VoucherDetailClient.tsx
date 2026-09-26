@@ -7,8 +7,11 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Dropdown,
+  DropdownItem,
   Empty,
   Button,
+  Icon,
   LinkButton,
   Input,
   Select,
@@ -180,7 +183,8 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
   const sweepPending = status === 'expired' && voucher.status !== 'expired'
   const canAttachCustomer = ['issued', 'redeemed', 'expired'].includes(status)
 
-  // The record's actions, in the page header: secondary first, the primary action last.
+  // The record's actions, in the page header: secondary first, then the destructive one, then the
+  // primary action last. More than three collapse the extras into one labelled "More" menu.
   const headerActions =
     status === 'generated' ? (
       <>
@@ -200,15 +204,24 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
       </>
     ) : status === 'issued' ? (
       <>
-        <Button variant="secondary" size="sm" onClick={() => openDialog('edit')}>
-          Edit Hand-Out Details
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => openDialog('replace')}>
-          Replace
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => setReprintConfirmOpen(true)}>
-          Reprint
-        </Button>
+        <Dropdown
+          width="auto"
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
+          }
+        >
+          <DropdownItem icon={<Icon name="edit" size={14} />} onClick={() => openDialog('edit')}>
+            Edit Hand-Out Details
+          </DropdownItem>
+          <DropdownItem icon={<Icon name="refresh" size={14} />} onClick={() => openDialog('replace')}>
+            Replace
+          </DropdownItem>
+          <DropdownItem icon={<Icon name="printer" size={14} />} onClick={() => setReprintConfirmOpen(true)}>
+            Reprint
+          </DropdownItem>
+        </Dropdown>
         <Button variant="danger" size="sm" onClick={() => openDialog('cancel')}>
           Cancel Voucher
         </Button>
@@ -512,7 +525,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -570,7 +583,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -641,7 +654,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -682,11 +695,11 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
       <Modal
         open={dialog === 'cancel'}
         onClose={() => setDialog(null)}
-        title={`Cancel ${voucher.voucherNumber}`}
+        title="Cancel Voucher"
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Keep It
+              Keep Voucher
             </Button>
             <Button
               variant="danger"
@@ -711,7 +724,8 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
       >
         <div className="space-y-3">
           <p className="text-sm text-text-muted">
-            Cancelling is permanent: no reinstatement and no reprint afterwards.
+            Cancel voucher {voucher.voucherNumber}? Cancelling is permanent: no reinstatement and no
+            reprint afterwards.
           </p>
           <Textarea
             label="Reason (required)"
@@ -730,7 +744,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -786,7 +800,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
         footer={
           <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -922,8 +936,8 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
             'Customer removed from the voucher'
           )
         }
-        title="Remove the Customer?"
-        message="Pending SMS reminders for this voucher will be cancelled."
+        title="Remove the Customer"
+        message="Remove the customer from this voucher? Pending SMS reminders for it will be cancelled."
         confirmLabel="Remove Customer"
         tone="primary"
       />
@@ -935,8 +949,8 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
           setReprintConfirmOpen(false)
           void handleReprint()
         }}
-        title="Reprint an Issued Card?"
-        message="Reprinting an issued card is only allowed when the original is destroyed or unusable."
+        title="Reprint an Issued Card"
+        message="Reprint this issued card? That is only allowed when the original is destroyed or unusable."
         confirmLabel="Original Destroyed or Unusable, Reprint"
         tone="primary"
       />

@@ -80,7 +80,7 @@ export function EditAttendeeNamesModal({ booking, onClose, onSaved }: EditAttend
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} loading={saving}>
-            Save Names
+            Save Changes
           </Button>
         </>
       }

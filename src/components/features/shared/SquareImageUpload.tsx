@@ -162,7 +162,7 @@ export function SquareImageUpload({
               variant="danger"
               size="sm"
               label="Delete image"
-              title="Delete Image"
+              title="Delete image"
               icon={<Icon name="trash" size={16} />}
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
@@ -173,7 +173,7 @@ export function SquareImageUpload({
       )}
 
       <p className="text-sm text-text-soft" aria-live="polite">
-        {isUploading ? 'Uploading...' : 'The image uploads as soon as you choose it.'}
+        {isUploading ? 'Uploading…' : 'The image uploads as soon as you choose it.'}
       </p>
 
       <ConfirmDialog
@@ -181,7 +181,7 @@ export function SquareImageUpload({
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
         title="Delete Image"
-        message="Are you sure you want to delete this image?"
+        message={`Delete this image? It is removed from the ${entityType}, and you can upload another at any time.`}
         confirmLabel="Delete"
         tone="danger"
         closeOnConfirm={false}

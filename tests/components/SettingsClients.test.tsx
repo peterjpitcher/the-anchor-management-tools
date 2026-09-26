@@ -46,7 +46,7 @@ describe('Settings client components', () => {
     expect(
       screen.getByText('You have read-only access to attachment categories.'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add Category' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Create Category' })).toBeDisabled()
     expect(screen.getByPlaceholderText('New category name')).toBeDisabled()
   })
 

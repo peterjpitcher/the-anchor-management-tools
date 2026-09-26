@@ -128,7 +128,7 @@ beforeEach(() => {
 })
 
 describe('BohBookingsClient figures and sorting', () => {
-  it('is titled Table Bookings with Back of House as the subtitle', async () => {
+  it('is titled Table Bookings with the Back of House tab named in the subtitle', async () => {
     installFetch()
     render(<BohBookingsClient canEdit canManage />)
 
@@ -136,31 +136,39 @@ describe('BohBookingsClient figures and sorting', () => {
     const titles = screen.getAllByRole('heading', { level: 1 })
     expect(titles.length).toBeGreaterThan(0)
     titles.forEach((title) => expect(title).toHaveTextContent(/^Table Bookings$/))
-    // The subtitle is a paragraph; the tab of the same name is a link.
-    expect(screen.getAllByText('Back of House', { selector: 'p' }).length).toBeGreaterThan(0)
+    // The subtitle is a paragraph ("<Tab>: <purpose>"); the tab of the same name is a link.
+    expect(
+      screen.getAllByText('Back of House: every booking by day, week or month', { selector: 'p' }).length,
+    ).toBeGreaterThan(0)
     await screen.findByText('Total bookings')
   })
 
-  it('shows one loading state, not a row of zeros, before the first load finishes', () => {
+  it('shows one loading state, not a row of zeros, before the first load finishes', async () => {
     installFetch({ hold: true })
+    const user = userEvent.setup()
     render(<BohBookingsClient canEdit canManage canSendMessages />)
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading bookings')
     expect(screen.queryByText('Total bookings')).not.toBeInTheDocument()
-    expect(screen.queryByText('No bookings')).not.toBeInTheDocument()
-    // The dialogs live in the page body, which is not mounted yet, so the buttons that open them
-    // wait for the first load instead of opening a dialog late.
+    expect(screen.queryByText('No bookings for this period')).not.toBeInTheDocument()
+    expect(screen.queryByText('No bookings match these filters')).not.toBeInTheDocument()
+    // The dialogs live in the page body, which is not mounted yet, so the actions that open them
+    // wait for the first load instead of opening a dialog late. Four header actions are more than
+    // three, so Message Guests sits in the "More" menu.
     expect(screen.getAllByRole('button', { name: 'Book Table' })[0]).toBeDisabled()
-    expect(screen.getAllByRole('button', { name: 'Message Guests' })[0]).toBeDisabled()
+    await user.click(screen.getAllByRole('button', { name: 'More' })[0])
+    expect(await screen.findByRole('menuitem', { name: 'Message Guests' })).toBeDisabled()
   })
 
   it('enables Book Table once the first load has settled', async () => {
     installFetch()
+    const user = userEvent.setup()
     render(<BohBookingsClient canEdit canManage canSendMessages />)
 
     await screen.findByText('Total bookings')
     expect(screen.getAllByRole('button', { name: 'Book Table' })[0]).toBeEnabled()
-    expect(screen.getAllByRole('button', { name: 'Message Guests' })[0]).toBeEnabled()
+    await user.click(screen.getAllByRole('button', { name: 'More' })[0])
+    expect(await screen.findByRole('menuitem', { name: 'Message Guests' })).toBeEnabled()
   })
 
   it('shows a change too small for the figure as no change, not a coloured rise', async () => {

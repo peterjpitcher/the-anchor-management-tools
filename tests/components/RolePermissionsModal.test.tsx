@@ -52,7 +52,7 @@ describe('RolePermissionsModal', () => {
     expect(dialog).toHaveAccessibleDescription('System roles cannot be modified')
     expect(screen.getAllByText('System roles cannot be modified')).toHaveLength(1)
     expect(await screen.findByRole('checkbox', { name: 'View private bookings' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Save Permissions' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   })
 
   it('tells someone without the permission that they cannot change it', async () => {
@@ -60,7 +60,7 @@ describe('RolePermissionsModal', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Manage Permissions: Supervisor' })
     expect(dialog).toHaveAccessibleDescription('You do not have permission to change role permissions')
-    expect(screen.getByRole('button', { name: 'Save Permissions' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   })
 
   it('adds no description when the role can be edited', async () => {

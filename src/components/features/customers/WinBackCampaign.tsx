@@ -185,7 +185,7 @@ export function WinBackCampaign() {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleSendConfirmed}
-        title="Send Win-Back Campaign?"
+        title="Send Win-Back Campaign"
         message={
           previewCount !== null
             ? `This will send an SMS to ${previewCount} opted-in customer${previewCount === 1 ? '' : 's'} who have not booked in the last ${inactiveMonths} months. This action cannot be undone.`

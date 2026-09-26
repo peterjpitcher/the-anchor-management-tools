@@ -11,7 +11,6 @@ interface CreateAccountStepProps {
   onSuccess: () => void;
   description?: string;
   buttonLabel?: string;
-  loadingLabel?: string;
   onBack?: () => void;
 }
 
@@ -21,7 +20,6 @@ export default function CreateAccountStep({
   onSuccess,
   description,
   buttonLabel = 'Create Account & Continue',
-  loadingLabel = 'Creating account...',
   onBack,
 }: CreateAccountStepProps) {
   const [password, setPassword] = useState('');
@@ -93,8 +91,8 @@ export default function CreateAccountStep({
       {error && <Alert tone="danger">{error}</Alert>}
 
       <StepFooter onBack={onBack}>
-        <Button type="submit" variant="primary" disabled={loading}>
-          {loading ? loadingLabel : buttonLabel}
+        <Button type="submit" variant="primary" loading={loading}>
+          {buttonLabel}
         </Button>
       </StepFooter>
     </form>

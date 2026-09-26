@@ -17,6 +17,7 @@ import {
   PageLayout,
   Section,
   Segmented,
+  SubHeading,
   toast,
 } from '@/ds';
 import { upsertDepartmentBudget, addDepartment, deleteDepartment, type DepartmentBudget, type Department } from '@/app/actions/budgets';
@@ -128,8 +129,8 @@ function BudgetRow({
               <Button type="button" size="sm" variant="secondary" onClick={() => { setEditing(false); setError(''); }}>
                 Cancel
               </Button>
-              <Button type="button" size="sm" variant="primary" onClick={handleSave} disabled={isPending}>
-                {isPending ? 'Saving…' : 'Save'}
+              <Button type="button" size="sm" variant="primary" onClick={handleSave} loading={isPending}>
+                Save Budget
               </Button>
             </div>
           </div>
@@ -207,8 +208,10 @@ function AddDepartmentForm({
 
   return (
     <div className="space-y-4">
+      {/* The card has no CardHeader, so the form's heading is an h3. */}
+      <SubHeading as="h3">New Department</SubHeading>
       <Field
-        label="New department name"
+        label="Department name"
         htmlFor="new-dept"
         error={error || undefined}
         hint="The name will be used as-is in department dropdowns across the rota."
@@ -226,8 +229,8 @@ function AddDepartmentForm({
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" variant="primary" onClick={handleAdd} disabled={isPending} icon={<Icon name="plus" size={16} />}>
-          {isPending ? 'Adding…' : 'Add Department'}
+        <Button type="button" variant="primary" onClick={handleAdd} loading={isPending}>
+          Create Department
         </Button>
       </FormFooter>
     </div>
@@ -260,6 +263,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
       headerActions={
         <>
           <Segmented
+            size="sm"
             aria-label="Budget year"
             options={years.map(y => ({ id: String(y), label: String(y) }))}
             value={String(year)}

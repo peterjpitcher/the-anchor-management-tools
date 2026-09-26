@@ -96,8 +96,8 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
         <CardHeader title="Onboarding Checklist" />
         <Empty
           size="sm"
-          title="No onboarding tasks found"
-          description="The checklist will appear here once configured."
+          title="No onboarding tasks yet"
+          description="The checklist appears here once it is set up."
         />
       </Card>
     )

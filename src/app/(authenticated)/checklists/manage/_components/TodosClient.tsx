@@ -21,8 +21,11 @@ import {
 } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { listTodos, createTodo, completeTodo, cancelTodo, type TodoView } from '@/app/actions/checklists-todos'
-import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistsManageLayout } from '../../_shared/nav'
 import { CHECKLIST_TODO_STATUS } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('todos')
 
 const DEPARTMENT_OPTIONS = [
   { value: '', label: 'No department' },
@@ -130,7 +133,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
 
   if (error) {
     return (
-      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load todos">
           {error}
         </Alert>
@@ -140,7 +143,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
 
   return (
     <PageLayout
-      {...CHECKLISTS_MANAGE_LAYOUT}
+      {...LAYOUT}
       headerActions={
         <Button variant="primary" size="sm" onClick={() => setModalOpen(true)}>
           New Todo
@@ -195,7 +198,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
                         Mark Done
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setCancelId(todo.id)}>
-                        Cancel
+                        Cancel Todo
                       </Button>
                     </div>
                   )}
@@ -212,11 +215,11 @@ export function TodosClient({ initial, error }: TodosClientProps) {
         title="New Todo"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={submitting}>
+            <Button variant="secondary" onClick={() => setModalOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleCreate} loading={submitting} disabled={submitting}>
-              Add Todo
+            <Button variant="primary" onClick={handleCreate} loading={submitting}>
+              Create Todo
             </Button>
           </>
         }
@@ -266,7 +269,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
         title="Cancel Todo"
         message="Cancel this todo?"
         confirmLabel="Cancel Todo"
-        cancelLabel="Keep It"
+        cancelLabel="Keep Todo"
         tone="danger"
       />
     </PageLayout>

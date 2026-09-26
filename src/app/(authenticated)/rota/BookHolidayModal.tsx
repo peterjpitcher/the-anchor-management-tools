@@ -71,8 +71,8 @@ export default function BookHolidayModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending || days === 0}>
-            {isPending ? 'Booking…' : 'Book Holiday'}
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={days === 0} loading={isPending}>
+            Book Holiday
           </Button>
         </>
       }

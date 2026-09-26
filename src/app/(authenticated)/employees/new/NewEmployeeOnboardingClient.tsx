@@ -1054,7 +1054,7 @@ export default function NewEmployeeOnboardingClient() {
           loading={isPending}
           icon={<Icon name="save" size={16} />}
         >
-          {isPending ? 'Saving…' : 'Create Employee'}
+          Create Employee
         </Button>
       </FormFooter>
     </PageLayout>

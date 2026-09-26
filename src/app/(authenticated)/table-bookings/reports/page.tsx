@@ -102,7 +102,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
   return (
     <PageLayout
       title="Table Bookings"
-      subtitle="Reports"
+      subtitle="Reports: covers, event conversion and guest engagement"
       navItems={tableBookingsNav({ canViewReports })}
       headerActions={
         <ReportsWindowSwitch options={WINDOW_OPTIONS} value={snapshot.selected_window.key} />

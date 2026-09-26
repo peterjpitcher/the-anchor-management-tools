@@ -43,7 +43,7 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
               ? <Icon name="check" size={14} className="text-success" />
               : <Icon name="copy" size={14} />}
           >
-            {copied ? <span className="text-success-fg">Copied!</span> : 'Copy Link'}
+            {copied ? <span className="text-success-fg">Copied</span> : 'Copy Link'}
           </Button>
         </div>
       </CardBody>

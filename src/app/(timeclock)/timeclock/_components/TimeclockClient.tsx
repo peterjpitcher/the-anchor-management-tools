@@ -299,9 +299,9 @@ export default function TimeclockClient({
                   size="lg"
                   className="min-h-touch sm:flex-1"
                   onClick={() => submitPin('in')}
-                  disabled={isPending}
+                  loading={isPending}
                 >
-                  {isPending ? 'Saving...' : 'Clock In'}
+                  Clock In
                 </Button>
               </>
             ) : (
@@ -311,9 +311,9 @@ export default function TimeclockClient({
                 variant="primary"
                 size="lg"
                 className="min-h-touch sm:flex-1"
-                disabled={isPending}
+                loading={isPending}
               >
-                {isPending ? 'Saving...' : 'Confirm'}
+                Confirm
               </Button>
             )}
           </>

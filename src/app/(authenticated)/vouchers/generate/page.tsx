@@ -21,7 +21,7 @@ export default async function GenerateVouchersPage({
   // One form and no table, so the narrow form width. A top-level tab: no back button.
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'Generate a print batch of physical voucher cards',
+    subtitle: 'Generate: a print batch of physical voucher cards',
     navItems: VOUCHERS_NAV,
     containerSize: 'md' as const,
   }

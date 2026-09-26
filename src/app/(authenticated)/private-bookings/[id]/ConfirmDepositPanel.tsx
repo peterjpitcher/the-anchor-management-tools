@@ -107,7 +107,7 @@ export function ConfirmDepositPanel({
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title="Confirm the Deposit"
+        title="Confirm Deposit"
         footer={
           <>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>

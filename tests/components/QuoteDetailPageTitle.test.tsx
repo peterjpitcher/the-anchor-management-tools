@@ -1,19 +1,29 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import QuoteDetailPage from '@/app/(authenticated)/quotes/[id]/page'
 import type { QuoteWithDetails } from '@/types/invoices'
 
 /**
- * The quote number is only known once the quote has loaded, so the page title stays "Quote" in
- * every state and the number sits in the subtitle.
+ * The quote page loads the quote on the server, as the invoice page does, so it is titled with the
+ * quote number ("Quote Q-001") from its first render and never shows a different title.
  */
+
+const notFound = vi.hoisted(() => vi.fn(() => {
+  throw new Error('NEXT_NOT_FOUND')
+}))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  notFound,
+  redirect: vi.fn(),
 }))
 
 vi.mock('@/contexts/PermissionContext', () => ({
   usePermissions: () => ({ loading: false, hasPermission: () => true }),
+}))
+
+vi.mock('@/app/actions/rbac', () => ({
+  checkUserPermission: vi.fn().mockResolvedValue(true),
 }))
 
 const mockGetQuote = vi.fn()
@@ -56,26 +66,24 @@ function pageTitles(): string[] {
 }
 
 describe('Quote detail page title', () => {
-  it('is "Quote" while loading and once loaded, with the number in the subtitle', async () => {
-    let resolveQuote: (value: { quote: QuoteWithDetails }) => void = () => {}
-    mockGetQuote.mockReturnValue(new Promise((resolve) => { resolveQuote = resolve }))
-
-    render(<QuoteDetailPage params={Promise.resolve({ id: 'quote-1' })} />)
-
-    expect(pageTitles().every((title) => title === 'Quote')).toBe(true)
-
-    resolveQuote({ quote })
-
-    expect((await screen.findAllByText('Q-001 · Reference: PO-7')).length).toBeGreaterThan(0)
-    expect(pageTitles().every((title) => title === 'Quote')).toBe(true)
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('keeps the same title when the quote fails to load', async () => {
-    mockGetQuote.mockResolvedValue({ error: 'Quote not found' })
+  it('is "Quote <number>" from the first render, with the reference in the first card', async () => {
+    mockGetQuote.mockResolvedValue({ quote })
 
-    render(<QuoteDetailPage params={Promise.resolve({ id: 'quote-1' })} />)
+    render(await QuoteDetailPage({ params: Promise.resolve({ id: 'quote-1' }) }))
 
-    await waitFor(() => expect(screen.getAllByText('Quote not found').length).toBeGreaterThan(0))
-    expect(pageTitles().every((title) => title === 'Quote')).toBe(true)
+    expect(pageTitles().length).toBeGreaterThan(0)
+    expect(pageTitles().every((title) => title === 'Quote Q-001')).toBe(true)
+    expect(screen.getByText('PO-7')).toBeInTheDocument()
+  })
+
+  it('shows the not-found page when the quote fails to load', async () => {
+    mockGetQuote.mockResolvedValue({ error: 'Failed to fetch quote' })
+
+    await expect(QuoteDetailPage({ params: Promise.resolve({ id: 'quote-1' }) })).rejects.toThrow('NEXT_NOT_FOUND')
+    expect(notFound).toHaveBeenCalledTimes(1)
   })
 })

@@ -499,9 +499,10 @@ export function IngredientDrawer({
                   variant="secondary"
                   size="sm"
                   onClick={handleReview}
-                  disabled={reviewing || saving}
+                  disabled={saving}
+                  loading={reviewing}
                 >
-                  {reviewing ? 'Reviewing...' : 'AI Review'}
+                  AI Review
                 </Button>
               </div>
             }
@@ -513,9 +514,10 @@ export function IngredientDrawer({
               type="button"
               variant="primary"
               onClick={() => void handleSave()}
-              disabled={saving || reviewing}
+              disabled={reviewing}
+              loading={saving}
             >
-              {saving ? 'Saving...' : isEditing ? 'Update' : 'Add Ingredient'}
+              {isEditing ? 'Save Changes' : 'Create Ingredient'}
             </Button>
           </FormFooter>
         }
@@ -887,6 +889,7 @@ export function IngredientDrawer({
         title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
         confirmLabel="Discard"
+        cancelLabel="Keep Editing"
         tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {

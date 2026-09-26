@@ -70,7 +70,7 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
 
       {/* Empty state */}
       {faqs.length === 0 && (
-        <Empty size="sm" title="No FAQs Yet" description="Generate with AI or add manually." />
+        <Empty size="sm" title="No FAQs yet" description="Generate with AI or add manually." />
       )}
 
       {/* FAQ cards */}

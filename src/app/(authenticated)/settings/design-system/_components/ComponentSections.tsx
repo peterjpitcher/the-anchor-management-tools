@@ -98,13 +98,18 @@ export function ButtonsSection(): React.JSX.Element {
             <Button size="md">Medium</Button>
             <Button size="lg">Large</Button>
           </Example>
-          <Example title="Icons and States">
+          <Example
+            title="Icons and States"
+            note="While it works, a button shows its spinner and keeps its label. A label that must change ends in one ellipsis character: Saving…"
+          >
             <Button variant="primary" icon={<Icon name="plus" size={14} />}>
               New Booking
             </Button>
-            <Button iconRight={<Icon name="chevronDown" size={14} />}>Options</Button>
+            <Button variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
             <Button variant="primary" loading>
-              Saving
+              Save Changes
             </Button>
             <Button disabled>Disabled</Button>
           </Example>
@@ -112,9 +117,39 @@ export function ButtonsSection(): React.JSX.Element {
             title="FormSubmitButton"
             note="The submit button of a form: it shows the spinner and blocks repeat presses while the form is pending"
           >
-            <FormSubmitButton pending pendingLabel="Saving">
+            <FormSubmitButton pending>Save Changes</FormSubmitButton>
+          </Example>
+          <Example title="Standard Labels" note="The same action has the same words on every page">
+            <Button size="sm" variant="primary" icon={<Icon name="plus" size={14} />}>
+              New Invoice
+            </Button>
+            <Button size="sm" variant="primary">
+              Create Invoice
+            </Button>
+            <Button size="sm" variant="primary">
               Save Changes
-            </FormSubmitButton>
+            </Button>
+            <Button size="sm" variant="secondary">
+              Edit
+            </Button>
+            <Button size="sm" variant="danger">
+              Delete
+            </Button>
+            <Button size="sm" variant="danger">
+              Cancel Booking
+            </Button>
+            <Button size="sm" variant="secondary">
+              Try Again
+            </Button>
+            <Button size="sm" variant="secondary">
+              Export CSV
+            </Button>
+            <Button size="sm" variant="secondary">
+              Download PDF
+            </Button>
+            <Button size="sm" variant="secondary">
+              Email Invoice
+            </Button>
           </Example>
         </ReferenceCard>
 
@@ -311,8 +346,13 @@ export function FormsSection(): React.JSX.Element {
             Right-aligned on desktop. On a phone the buttons go full width with the primary on top, where the thumb is.
             <Code>start</Code> holds a note or a total.
           </p>
+          <p className="text-sm text-text">
+            Cancel is a <Code>LinkButton</Code> to the same place as the back button. A tab page has no Cancel.
+          </p>
           <FormFooter start="Total £120.00">
-            <Button variant="secondary">Cancel</Button>
+            <LinkButton href="#forms" variant="secondary">
+              Cancel
+            </LinkButton>
             <Button variant="primary">Save Changes</Button>
           </FormFooter>
         </ReferenceCard>
@@ -401,11 +441,15 @@ export function StatusSection(): React.JSX.Element {
         <ReferenceCard title="Empty">
           <Empty
             icon="search"
-            title="No bookings match"
+            title="No bookings match these filters"
             description="Try another date or clear the filters."
             action={<Button size="sm">Clear Filters</Button>}
           />
-          <Empty size="sm" variant="dashed" icon="inbox" title="No messages yet" />
+          <Empty size="sm" variant="dashed" icon="inbox" title="No messages yet" description="Messages appear here once they are sent." />
+          <p className="text-xs text-text-muted">
+            A short sentence-case title by cause: &quot;No X yet&quot;, &quot;No X match these filters&quot; or
+            &quot;No X for this period&quot;. The description is a full sentence with a full stop.
+          </p>
         </ReferenceCard>
 
         <ReferenceCard title="Spinner and PageLoading">
@@ -531,7 +575,9 @@ export function LayoutSection(): React.JSX.Element {
             subtitle="CardHeader: title, subtitle and action. On a narrow card the action drops under the title"
             action={
               <>
-                <Button size="sm">Export</Button>
+                <Button size="sm" variant="secondary">
+                  Export CSV
+                </Button>
                 <Button size="sm" variant="primary">
                   Add Item
                 </Button>
@@ -559,7 +605,7 @@ export function LayoutSection(): React.JSX.Element {
             <Code>actions</Code>. A default Section adds no padding, so its cards line up with every other card.
           </p>
           <CodeBlock
-            code={`<Section title="Upcoming" description="The next 14 days" actions={<Button size="sm">Export</Button>}>
+            code={`<Section title="Upcoming" description="The next 14 days" actions={<Button size="sm">Export CSV</Button>}>
   <Card padding="none">...</Card>
 </Section>`}
           />

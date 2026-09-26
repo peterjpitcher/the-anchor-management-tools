@@ -124,14 +124,14 @@ describe('PnlClient currency detail formatting', () => {
     const data = createInitialDashboardData()
     const { rerender } = render(<PnlClient initialData={data} canExport={false} />)
 
-    expect(screen.queryByRole('button', { name: 'PDF' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Spreadsheet' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download PDF' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Export Spreadsheet' })).toBeNull()
 
     rerender(<PnlClient initialData={data} canExport />)
 
     // Header actions: PageLayout renders them in the desktop header and the phone nav row.
-    expect(screen.getAllByRole('button', { name: 'PDF' })[0]).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Spreadsheet' })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Download PDF' })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Export Spreadsheet' })[0]).toBeInTheDocument()
   })
 
   it('uses the selected timeframe when triggering PDF export', () => {
@@ -140,7 +140,7 @@ describe('PnlClient currency detail formatting', () => {
     // The timeframe switch and the exports are header actions (the switch is a DS Segmented,
     // so each timeframe is a radio). PageLayout renders header actions twice, desktop and phone.
     const chooseTimeframe = (label: string) => fireEvent.click(screen.getAllByRole('radio', { name: label })[0])
-    const exportButton = screen.getAllByRole('button', { name: 'PDF' })[0]
+    const exportButton = screen.getAllByRole('button', { name: 'Download PDF' })[0]
 
     chooseTimeframe('Last 30 days')
     expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=1m&format=pdf')

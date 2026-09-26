@@ -15,8 +15,8 @@ export default async function NewMaintenanceItemPage(): Promise<React.JSX.Elemen
 
   // One header for every state. A single form, so the page is medium width.
   const layoutProps = {
-    title: 'Log an Issue or Improvement',
-    subtitle: 'Four fields is enough, photos and the rest come afterwards',
+    title: 'Log an Issue',
+    subtitle: 'Something to fix or improve: four fields is enough, photos and the rest come afterwards',
     backButton: { label: 'Back to Maintenance', href: '/maintenance' },
     containerSize: 'md',
   } as const

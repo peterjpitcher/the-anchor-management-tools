@@ -475,11 +475,7 @@ export default function EventDetailClient({
   }
 
   if (!event) {
-    return (
-      <PageLayout {...layoutProps}>
-        <Empty title="Not Found" description="Event not found." />
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} error="Event not found" />
   }
 
   /* ================================================================ */
@@ -491,14 +487,6 @@ export default function EventDetailClient({
       {...layoutProps}
       headerActions={
         <>
-          <Badge tone={eventStatusTone(event.event_status)} dot>
-            {eventStatusLabel(event.event_status)}
-          </Badge>
-          {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
-            <Badge tone="info">Free</Badge>
-          ) : resolvedEventPrice > 0 ? (
-            <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
-          ) : null}
           {permissions.canEdit && (
             <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
               Edit
@@ -541,7 +529,22 @@ export default function EventDetailClient({
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
-              <OverviewTab event={event} />
+              <OverviewTab
+                event={event}
+                statusBadges={
+                  // The event's status (and its price) shows in the first card, not the page header.
+                  <>
+                    <Badge tone={eventStatusTone(event.event_status)} dot>
+                      {eventStatusLabel(event.event_status)}
+                    </Badge>
+                    {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
+                      <Badge tone="info">Free</Badge>
+                    ) : resolvedEventPrice > 0 ? (
+                      <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
+                    ) : null}
+                  </>
+                }
+              />
               <AttendeesTab
                 event={event}
                 visibleBookings={visibleBookings}
@@ -702,6 +705,7 @@ export default function EventDetailClient({
           </div>
         }
         confirmLabel="Cancel Booking"
+        cancelLabel="Keep Booking"
         tone="danger"
         loading={cancelRefundLoading || isPending}
       />
@@ -766,7 +770,7 @@ export default function EventDetailClient({
 /*  Overview Tab                                                       */
 /* ================================================================== */
 
-function OverviewTab({ event }: { event: Event }) {
+function OverviewTab({ event, statusBadges }: { event: Event; statusBadges: React.ReactNode }) {
   // One row per fact, in the order the page has always shown them; rows that do not apply to
   // this event are left out.
   const items: DescriptionListItem[] = [
@@ -854,7 +858,7 @@ function OverviewTab({ event }: { event: Event }) {
 
   return (
     <Card>
-      <CardHeader title="Event Details" />
+      <CardHeader title="Event Details" action={<div className="flex flex-wrap items-center gap-2">{statusBadges}</div>} />
       <CardBody>
         <div className="flex flex-col gap-6 lg:flex-row">
           {event.hero_image_url && (
@@ -894,7 +898,7 @@ function ShortLinksTab({ links, totalClicks }: { links: EventMarketingLink[]; to
       <Card>
         <CardHeader title="Click Breakdown by Channel" />
         {sortedLinks.length === 0 ? (
-          <Empty size="sm" title="No Links" description="No marketing links have been generated for this event yet." />
+          <Empty size="sm" title="No links yet" description="No marketing links have been generated for this event yet." />
         ) : (
           <Table>
             <TableHeader>
@@ -1187,7 +1191,7 @@ function AttendeesTab({
           onClick={() => onCancelBooking(booking.id)}
           className="text-danger-fg hover:text-danger-fg"
         >
-          Cancel
+          Cancel Booking
         </Button>
       </div>
     )
@@ -1261,7 +1265,7 @@ function AttendeesTab({
           }
         />
         {visibleBookings.length === 0 ? (
-          <Empty size="sm" title="No Bookings" description="No bookings yet for this event." />
+          <Empty size="sm" title="No bookings yet" description="Bookings for this event show here once they are made." />
         ) : (
           <>
             {/* Desktop table */}
@@ -1483,7 +1487,7 @@ function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[]
         {sortedMessages.length === 0 ? (
           <Empty
             size="sm"
-            title="No Marketing Messages Sent"
+            title="No marketing messages yet"
             description="No event marketing SMS messages have been logged for this event yet."
           />
         ) : (
@@ -1587,7 +1591,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       size="sm"
       onClick={() => copyToClipboard(text, label)}
       icon={<Icon name="copy" size={14} />}
-      label={`Copy ${label}`}
+      // Icon-only buttons are named in sentence case ("Copy booking URL").
+      label={`Copy ${label.replace(/^\w/, (first) => first.toLowerCase())}`}
       className="text-text-muted hover:text-text"
     />
   )

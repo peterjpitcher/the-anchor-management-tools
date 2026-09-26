@@ -156,7 +156,7 @@ export function ImportClient() {
   }
 
   return (
-    <PageLayout {...cashingUpLayout('Import past cash-ups from a spreadsheet')}>
+    <PageLayout {...cashingUpLayout('Import: past cash-ups from a spreadsheet')}>
       {/* Instructions */}
       <Card>
         <CardHeader title="Import Historic Cashing Up" subtitle="Upload CSV files with historic cash-up data" />
@@ -190,7 +190,7 @@ export function ImportClient() {
           {progress && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm text-text-muted">
-                <span>Importing...</span>
+                <span>Importing…</span>
                 <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
               </div>
               <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" label="Import progress" />

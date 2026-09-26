@@ -86,7 +86,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
     />
     <CardBody className="space-y-4">
       <p className="text-sm text-text-muted">Online discounts are applied below. Existing bookings keep their agreed price.</p>
-      {!types.length && <Empty size="sm" title="No Ticket Prices Yet" description="Add your first ticket to set the entry price." />}
+      {!types.length && <Empty size="sm" title="No ticket prices yet" description="Add your first ticket to set the entry price." />}
       {types.map(row => <div key={row.id} className="space-y-4 rounded-default border border-border p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><SubHeading>{row.name}</SubHeading><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>
@@ -104,14 +104,14 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
           </>}
         </div>}
       </div>)}
-      {editing && <div className="rounded-default border border-border p-4"><Fieldset legend={editing === 'new' ? 'New Ticket Type' : 'Edit Ticket'} disabled={pending}><div className="space-y-4">
+      {editing && <div className="rounded-default border border-border p-4"><Fieldset legend={editing === 'new' ? 'Add Ticket Type' : 'Edit Ticket Type'} disabled={pending}><div className="space-y-4">
         <Input label="Ticket name" maxLength={80} value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
         <Checkbox label="Free ticket" checked={draft.free} onChange={checked => setDraft(current => ({ ...current, free: checked }))} />
         {!draft.free && <Input label="Full ticket price (£)" type="number" min="0.01" step="0.01" value={draft.base_price} onChange={event => setDraft(current => ({ ...current, base_price: event.target.value }))} />}
         {allowMultiple && <Input label="Ticket capacity (blank to share the event capacity)" type="number" min="0" step="1" value={draft.capacity} onChange={event => setDraft(current => ({ ...current, capacity: event.target.value }))} />}
         <FormFooter>
           <Button type="button" variant="secondary" onClick={() => { setEditing(null); setError(null) }}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={save} loading={pending}>Save Ticket</Button>
+          <Button type="button" variant="primary" onClick={save} loading={pending}>{editing === 'new' ? 'Add Ticket Type' : 'Save Changes'}</Button>
         </FormFooter>
       </div></Fieldset></div>}
       {error && <Alert tone="danger" size="sm">{error}</Alert>}

@@ -84,7 +84,7 @@ describe('InvoiceDetailClient vendor PayPal setting', () => {
   it('hides payment-link actions for a disabled vendor', () => {
     render(<InvoiceDetailClient initialInvoice={invoice(false)} emailConfigured={true} />)
 
-    expect(screen.getAllByRole('button', { name: 'Email' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Email Invoice' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Email Payment Link' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy Payment Link' })).not.toBeInTheDocument()
   })

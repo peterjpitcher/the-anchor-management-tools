@@ -397,12 +397,13 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={confirmIssue}
-        title="Hand Out This Voucher?"
+        title="Hand Out This Voucher"
         confirmLabel="Yes, Hand It Out"
         tone="primary"
         message={
           selected && expiryDate ? (
             <>
+              <span className="block">Hand out this voucher?</span>
               <span className="block">
                 <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
               </span>

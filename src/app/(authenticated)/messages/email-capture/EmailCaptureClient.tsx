@@ -105,7 +105,7 @@ export default function EmailCaptureClient() {
       title="Ask for Email Addresses"
       backButton={{ label: 'Back to Messages', href: '/messages' }}
       headerActions={
-        <Button variant="secondary" size="sm" onClick={() => void load()} disabled={sending || loading}>
+        <Button variant="secondary" size="sm" onClick={() => void load()} loading={loading} disabled={sending}>
           Refresh
         </Button>
       }
@@ -180,9 +180,10 @@ export default function EmailCaptureClient() {
                 <Button
                   variant="primary"
                   onClick={() => setConfirmOpen(true)}
-                  disabled={sending || preview.thisRunCount === 0}
+                  disabled={preview.thisRunCount === 0}
+                  loading={sending}
                 >
-                  {sending ? 'Sending...' : `Send to ${preview.thisRunCount}`}
+                  {`Send to ${preview.thisRunCount}`}
                 </Button>
               </FormFooter>
             </div>
@@ -197,7 +198,7 @@ export default function EmailCaptureClient() {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleSend}
-        title={`Text ${preview?.thisRunCount ?? 0} Guests?`}
+        title={`Text ${preview?.thisRunCount ?? 0} Guests`}
         message="This sends real text messages and cannot be undone. Each guest is asked only once, so there is no way to re-send to them later."
         confirmLabel="Send Now"
         tone="primary"

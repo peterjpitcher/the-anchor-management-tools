@@ -74,7 +74,7 @@ describe('PayrollClient row dialogs', () => {
   it('corrects worked times in a dialog that shows the planned times', async () => {
     renderPayroll()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit times' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit worked times' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit Worked Times' })
     expect(within(dialog).getByText('Planned 4pm')).toBeInTheDocument()
@@ -91,9 +91,9 @@ describe('PayrollClient row dialogs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Add Payroll Note' })
+    const dialog = await screen.findByRole('dialog', { name: 'Add Note' })
     fireEvent.change(within(dialog).getByLabelText('Note'), { target: { value: 'Stayed late for a delivery' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Note' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Note' }))
 
     await waitFor(() => {
       expect(upsertShiftNote).toHaveBeenCalledWith('shift-1', 'Stayed late for a delivery', 2026, 7)
@@ -112,7 +112,7 @@ describe('PayrollClient row dialogs', () => {
       email_sent_to: null,
     } as unknown as PayrollMonthApproval)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit times' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit worked times' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit Worked Times' })
     expect(within(dialog).getByText(/re-approve after this change/)).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('PayrollClient row dialogs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
     expect(deletePayrollRow).not.toHaveBeenCalled()
 
-    const dialog = await screen.findByRole('dialog', { name: 'Delete Payroll Row?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Payroll Row' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(deletePayrollRow).toHaveBeenCalledWith('session-1', 'shift-1', 2026, 7))

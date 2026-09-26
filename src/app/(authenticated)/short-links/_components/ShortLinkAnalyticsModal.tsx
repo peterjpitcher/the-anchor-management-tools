@@ -160,7 +160,12 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
           )}
         </div>
       ) : (
-        <Empty size="sm" icon="chart" title="No analytics data available" />
+        <Empty
+          size="sm"
+          icon="chart"
+          title="No analytics yet"
+          description="Analytics show here once the link has been clicked."
+        />
       )}
     </Modal>
   )

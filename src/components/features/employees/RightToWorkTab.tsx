@@ -32,8 +32,8 @@ interface RightToWorkTabProps {
 
 function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
-    <Button type="submit" variant="primary" disabled={pending || disabled}>
-      {pending ? 'Saving…' : 'Save Right to Work'}
+    <Button type="submit" variant="primary" disabled={disabled} loading={pending}>
+      Save Right to Work
     </Button>
   )
 }
@@ -373,7 +373,7 @@ export default function RightToWorkTab({
                       View Current Document
                     </LinkButton>
                     <LinkButton href={photoUrl} download size="sm" icon={<Icon name="download" size={16} />}>
-                      Download
+                      Download Document
                     </LinkButton>
                   </>
                 ) : (
@@ -382,14 +382,13 @@ export default function RightToWorkTab({
                 {canEdit && (
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="danger"
                     size="sm"
-                    className="text-danger-fg border-danger-border hover:bg-danger-soft"
                     onClick={() => setDeletePhotoOpen(true)}
-                    disabled={deletingPhoto}
+                    loading={deletingPhoto}
                     icon={<Icon name="trash" size={16} />}
                   >
-                    {deletingPhoto ? 'Deleting…' : 'Delete'}
+                    Delete
                   </Button>
                 )}
               </div>
@@ -421,10 +420,9 @@ export default function RightToWorkTab({
         open={deletePhotoOpen}
         onClose={() => setDeletePhotoOpen(false)}
         onConfirm={handleDeletePhoto}
-        title="Delete Right to Work Document?"
+        title="Delete Right to Work Document"
         message="This removes the stored document from the employee record. This cannot be undone."
         confirmLabel="Delete"
-        loadingText="Deleting..."
         tone="danger"
         closeOnConfirm={false}
       />

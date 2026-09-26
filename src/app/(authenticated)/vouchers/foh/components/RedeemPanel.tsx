@@ -188,10 +188,11 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                   variant="secondary"
                   size="lg"
                   onClick={handleUndo}
-                  disabled={undoBusy || !staffId}
+                  disabled={!staffId}
+                  loading={undoBusy}
                   className="h-14 flex-1 border-2 border-warning text-lg text-warning-fg hover:bg-warning-soft"
                 >
-                  {undoBusy ? 'Undoing...' : `Undo (${undoSecondsLeft}s left)`}
+                  {`Undo (${undoSecondsLeft}s left)`}
                 </Button>
               ) : (
                 <p className="flex min-h-14 flex-1 items-center rounded-default border border-border-strong bg-surface px-4 text-base text-text">
@@ -287,12 +288,13 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={confirmRedeem}
-        title="Mark This Voucher as Used?"
+        title="Mark This Voucher as Used"
         confirmLabel="Yes, Mark as Used"
         tone="primary"
         message={
           selected ? (
             <>
+              Mark this voucher as used?{' '}
               <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
               {bookingRef.trim() ? `, booking ref ${bookingRef.trim()}` : ''}. This can be undone for{' '}
               {UNDO_WINDOW_SECONDS} seconds.

@@ -15,20 +15,20 @@ export const MILEAGE_NAV: HeaderNavItem[] = [
 /** The chrome of the trips page, shared by its loaded and failed states. */
 export const MILEAGE_TRIPS_LAYOUT = {
   title: 'Mileage',
-  subtitle: 'Business trip log with HMRC-rate reimbursement',
+  subtitle: 'Trips: business trip log with HMRC-rate reimbursement',
   navItems: MILEAGE_NAV,
 }
 
 /** The chrome of the destinations page, shared by its loaded and failed states. */
 export const MILEAGE_DESTINATIONS_LAYOUT = {
   title: 'Mileage',
-  subtitle: 'Saved places and the miles between them',
+  subtitle: 'Destinations: saved places and the miles between them',
   navItems: MILEAGE_NAV,
 }
 
 /** The chrome of the insights page, shared by its loaded and failed states. */
 export const MILEAGE_INSIGHTS_LAYOUT = {
   title: 'Mileage',
-  subtitle: 'Miles and claims over time',
+  subtitle: 'Insights: miles and claims over time',
   navItems: MILEAGE_NAV,
 }

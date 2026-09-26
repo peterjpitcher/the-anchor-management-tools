@@ -363,7 +363,7 @@ export default function MenuRecipesPage(): React.ReactElement {
       <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
         Menu Target
       </LinkButton>
-      <Button variant="primary" size="sm" onClick={openCreate}>Add Recipe</Button>
+      <Button variant="primary" size="sm" onClick={openCreate}>New Recipe</Button>
     </>
   ) : undefined;
 
@@ -419,7 +419,7 @@ export default function MenuRecipesPage(): React.ReactElement {
             icon="inbox"
             action={
               canManage ? (
-                <Button variant="primary" size="sm" onClick={openCreate}>Add Recipe</Button>
+                <Button variant="primary" size="sm" onClick={openCreate}>New Recipe</Button>
               ) : undefined
             }
           />
@@ -434,8 +434,8 @@ export default function MenuRecipesPage(): React.ReactElement {
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                ? 'No recipes match your filters'
-                : 'No recipes configured yet'
+                ? 'No recipes match these filters'
+                : 'No recipes yet'
             }
             expandable
             renderExpandedContent={(row) => (
@@ -470,7 +470,7 @@ export default function MenuRecipesPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(recipeToDelete)}
-        title="Delete Recipe?"
+        title="Delete Recipe"
         message={
           recipeToDelete
             ? `This removes ${recipeToDelete.name} from every dish that uses it.`

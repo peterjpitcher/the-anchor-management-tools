@@ -28,7 +28,7 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
   const destinations = destinationsResult.data ?? []
   const distances = distancesResult.data ?? []
 
-  // DestinationsClient renders the PageLayout, so Add Destination can sit in the header.
+  // DestinationsClient renders the PageLayout, so New Destination can sit in the header.
   return (
     <DestinationsClient
       initialDestinations={destinations}

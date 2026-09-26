@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
-import { formatDateFull } from '@/lib/dateUtils'
 import { 
   getPrivateBooking, 
   addBookingItem, 
@@ -24,7 +23,6 @@ import {
   Empty,
   Field,
   Fieldset,
-  FormFooter,
   Icon,
   IconButton,
   Input,
@@ -358,10 +356,29 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     <Modal
       open={isOpen}
       onClose={onClose}
-      title="Add Booking Item"
+      title="Add Item"
       size="lg"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="pb-items-add-form"
+            variant="primary"
+            loading={isSubmitting}
+          >
+            Add Item
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id="pb-items-add-form" onSubmit={handleSubmit} className="space-y-4">
         {/* Item Type Selection */}
         <Fieldset legend="Item Type">
           <Segmented
@@ -531,24 +548,6 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
           </div>
         )}
 
-        {/* Actions */}
-        <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={isSubmitting}
-            loading={isSubmitting}
-          >
-            Add Item
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   )
@@ -606,8 +605,27 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
       onClose={onClose}
       title="Edit Item"
       size="md"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="pb-items-edit-form"
+            variant="primary"
+            loading={isSubmitting}
+          >
+            Save Changes
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id="pb-items-edit-form" onSubmit={handleSubmit} className="space-y-4">
         <Input label="Item" value={item.description} readOnly />
 
         <div className="grid grid-cols-2 gap-4">
@@ -664,23 +682,6 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           />
         </Field>
 
-        <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={isSubmitting}
-            loading={isSubmitting}
-          >
-            Save Changes
-          </Button>
-        </FormFooter>
       </form>
     </Modal>
   )
@@ -766,15 +767,13 @@ export default function ItemsPage() {
 
   const layoutProps = {
     title: customerLabel,
-    subtitle: booking
-      ? `Items for ${booking.event_date ? formatDateFull(booking.event_date) : 'a date to be confirmed'}`
-      : 'Booking items',
+    subtitle: 'Items: what the booking includes and what it costs',
     backButton: PB_BACK_TO_LIST,
     navItems: PB_DETAIL_NAV(bookingId),
   }
 
   if (loading) {
-    return <PageLayout {...layoutProps} loading loadingLabel="Loading items..." />
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading items…" />
   }
 
   if (loadError) {
@@ -812,17 +811,8 @@ export default function ItemsPage() {
           <Empty
             size="sm"
             icon={<Icon name="clipboardList" size={48} />}
-            title="No items added yet"
-            description="Click 'Add Item' to get started."
-            action={
-              <Button
-                variant="primary"
-                onClick={() => setShowAddModal(true)}
-                icon={<Icon name="plus" size={16} />}
-              >
-                Add Item
-              </Button>
-            }
+            title="No items yet"
+            description="Build this booking with Add Item."
           />
         ) : (
           <CardBody className="space-y-4">
@@ -930,9 +920,9 @@ export default function ItemsPage() {
         open={!!deletingItemId}
         onClose={() => setDeletingItemId(null)}
         onConfirm={() => deletingItemId && handleDeleteItem(deletingItemId)}
-        title="Delete Item?"
-        message="Are you sure you want to delete this item? This action cannot be undone."
-        confirmLabel="Delete Item"
+        title="Delete Item"
+        message="This removes the item and its price from the booking. This cannot be undone."
+        confirmLabel="Delete"
         tone="danger"
       />
     </PageLayout>

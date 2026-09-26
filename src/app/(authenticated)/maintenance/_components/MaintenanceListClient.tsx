@@ -261,7 +261,7 @@ export function MaintenanceListClient({
         <Alert tone="danger" title="Something went wrong">
           <p>{error}</p>
           <p className="mt-2">
-            <Button size="sm" onClick={() => void load(filters)}>
+            <Button variant="secondary" size="sm" onClick={() => void load(filters)}>
               Try Again
             </Button>
           </p>
@@ -449,7 +449,7 @@ export function MaintenanceListClient({
           {narrowed ? (
             <Empty
               size="sm"
-              title="Nothing matches those filters"
+              title="No items match these filters"
               description="Try widening the status, area or search."
               action={
                 <Button size="sm" onClick={clearFilters}>
@@ -460,7 +460,7 @@ export function MaintenanceListClient({
           ) : (
             <Empty
               size="sm"
-              title="Nothing logged yet"
+              title="No items yet"
               description="Log the first issue or improvement and it will appear here."
               action={
                 <LinkButton href="/maintenance/new" variant="primary" size="sm">

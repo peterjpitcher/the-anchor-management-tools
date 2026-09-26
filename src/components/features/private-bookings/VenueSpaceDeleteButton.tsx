@@ -27,9 +27,9 @@ export function VenueSpaceDeleteButton({ spaceName, spaceId, deleteAction }: Ven
         open={confirming}
         onClose={() => setConfirming(false)}
         onConfirm={() => formRef.current?.requestSubmit()}
-        title="Delete Space?"
-        message={`Are you sure you want to delete "${spaceName}"? This action cannot be undone.`}
-        confirmLabel="Delete Space"
+        title="Delete Space"
+        message={`This removes "${spaceName}" from the spaces available for private hire. This cannot be undone.`}
+        confirmLabel="Delete"
         tone="danger"
       />
     </form>

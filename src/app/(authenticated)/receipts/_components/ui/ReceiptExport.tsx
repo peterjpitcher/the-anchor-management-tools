@@ -25,7 +25,7 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
 
   return (
     <Card>
-      <CardHeader title="Quarterly Export" subtitle="Download PDF summary and receipts as ZIP" />
+      <CardHeader title="Quarterly Export" subtitle="A ZIP of the PDF summary and the receipts for one quarter" />
       <CardBody>
         <form onSubmit={handleExportSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -56,7 +56,7 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
           </div>
           <FormFooter>
             <Button type="submit" icon={<Icon name="download" size={16} />}>
-              Download Bundle
+              Export ZIP
             </Button>
           </FormFooter>
         </form>

@@ -1,10 +1,9 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
-import { useFormStatus } from 'react-dom'
 import { updateEmergencyContact } from '@/app/actions/employeeActions'
 import type { EmployeeEmergencyContact } from '@/types/database'
-import { Alert, Button, Field, FormFooter, Input, Modal, Select, Textarea } from '@/ds'
+import { Alert, Button, Field, Input, Modal, Select, Textarea } from '@/ds'
 
 interface EditEmergencyContactModalProps {
   contact: EmployeeEmergencyContact
@@ -13,22 +12,14 @@ interface EditEmergencyContactModalProps {
   onSuccess?: () => void
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save Changes'}
-    </Button>
-  )
-}
-
 export default function EditEmergencyContactModal({
   contact,
   isOpen,
   onClose,
   onSuccess,
 }: EditEmergencyContactModalProps) {
-  const [state, formAction] = useActionState(updateEmergencyContact, null)
+  const [state, formAction, pending] = useActionState(updateEmergencyContact, null)
+  const formId = `edit-emergency-contact-${contact.id}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -48,11 +39,24 @@ export default function EditEmergencyContactModal({
     { name: 'address', label: 'Address', type: 'textarea', defaultValue: contact.address ?? '' },
   ]
 
-  // The actions stay inside the form rather than in the Modal footer: SubmitButton reads the
-  // form's pending state, which only works for a button rendered within the form.
+  // The actions sit in the Modal footer; the submit button reaches the form through form=.
   return (
-    <Modal open={isOpen} onClose={onClose} title="Edit Emergency Contact">
-      <form action={formAction} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Edit Contact"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" loading={pending}>
+            Save Changes
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} action={formAction} className="space-y-4">
         <input type="hidden" name="contact_id" value={contact.id} />
         <input type="hidden" name="employee_id" value={contact.employee_id} />
         {formFields.map((field) => {
@@ -96,12 +100,6 @@ export default function EditEmergencyContactModal({
           <Alert tone="danger" size="sm">{state.message}</Alert>
         )}
 
-        <FormFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <SubmitButton />
-        </FormFooter>
       </form>
     </Modal>
   )

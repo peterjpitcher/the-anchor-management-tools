@@ -67,7 +67,7 @@ export default async function VouchersOverviewPage() {
   // Hand-Out Mode and Generate are tabs in the row above, so the header repeats neither.
   const layoutProps = {
     title: 'Vouchers',
-    subtitle: 'Overview of prize voucher stock, hand-outs and redemptions',
+    subtitle: 'Overview: prize voucher stock, hand-outs and redemptions',
     navItems: VOUCHERS_NAV,
   }
 

@@ -181,11 +181,15 @@ export default function EventCategoriesPage() {
   }
 
   if (showForm) {
-    const formTitle = editingCategory ? 'Edit Event Category' : 'New Event Category'
+    const formTitle = editingCategory ? 'Edit Category' : 'New Category'
+    const formSubtitle = editingCategory
+      ? "This category's details and the defaults its new events start with"
+      : 'A category and the defaults its new events start with'
 
     return (
       <PageLayout
         title={formTitle}
+        subtitle={formSubtitle}
         backButton={{ label: 'Back to Event Categories', onBack: handleCloseForm }}
         containerSize="md"
       >
@@ -299,14 +303,14 @@ export default function EventCategoriesPage() {
         <div className="flex items-center space-x-2">
           <IconButton
             type="button"
-            label="Edit"
+            label="Edit category"
             onClick={() => handleOpenForm(category)}
             icon={<Icon name="edit" size={20} />}
             className="text-primary hover:text-primary-hover"
           />
           <IconButton
             type="button"
-            label="Delete"
+            label="Delete category"
             onClick={() => setDeleteConfirm(category)}
             icon={<Icon name="trash" size={20} />}
             className="text-danger hover:text-danger-fg"
@@ -322,10 +326,9 @@ export default function EventCategoriesPage() {
         variant="secondary"
         size="sm"
         onClick={() => setAnalyzeConfirm(true)}
-        disabled={isAnalyzing}
         loading={isAnalyzing}
       >
-        {isAnalyzing ? 'Analysing...' : 'Analyse History'}
+        Analyse History
       </Button>
       <Button
         variant="primary"
@@ -348,7 +351,7 @@ export default function EventCategoriesPage() {
         onClose={() => setDeleteConfirm(null)}
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         title="Delete Category"
-        message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+        message={`Delete "${deleteConfirm?.name}"? This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"
       />
@@ -357,7 +360,7 @@ export default function EventCategoriesPage() {
         open={analyzeConfirm}
         onClose={() => setAnalyzeConfirm(false)}
         onConfirm={handleAnalyzeHistory}
-        title="Analyse Historical Data"
+        title="Analyse History"
         message="This will analyse all historical events and categorise them based on their names. Continue?"
         confirmLabel="Analyse"
         tone="primary"
@@ -370,8 +373,8 @@ export default function EventCategoriesPage() {
           {categories.length === 0 ? (
             <Empty
               size="sm"
-              title="No categories found"
-              description="Click 'New Category' to create your first one."
+              title="No categories yet"
+              description="Create the first one with New Category."
               action={
                 <Button variant="primary" onClick={() => handleOpenForm()} icon={<Icon name="plus" size={16} />}>
                   New Category

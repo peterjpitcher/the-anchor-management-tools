@@ -170,7 +170,7 @@ export default function MaintenanceAreasClient({
       {error ? <Alert tone="danger" title="That did not work">{error}</Alert> : null}
 
       <Card>
-        <CardHeader title="Add an Area" />
+        <CardHeader title="New Area" />
         <CardBody>
           <form onSubmit={handleAdd} className="space-y-4">
             <Input
@@ -184,7 +184,7 @@ export default function MaintenanceAreasClient({
             />
             <FormFooter>
               <Button type="submit" variant="primary" disabled={isPending} loading={isPending}>
-                Add Area
+                Create Area
               </Button>
             </FormFooter>
           </form>
@@ -198,7 +198,7 @@ export default function MaintenanceAreasClient({
             <Empty
               size="sm"
               title="No areas yet"
-              description="Add the first area above before logging any maintenance."
+              description="Create the first area above before logging any maintenance."
             />
           )
         ) : (
@@ -232,7 +232,7 @@ export default function MaintenanceAreasClient({
                         onClick={() => handleRename(area)}
                         disabled={isPending}
                       >
-                        Save
+                        Save Changes
                       </Button>
                     </div>
                   </div>

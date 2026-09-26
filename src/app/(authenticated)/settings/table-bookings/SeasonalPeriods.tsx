@@ -600,7 +600,7 @@ export function SeasonalPeriods() {
                               })
                             }
                           >
-                            Add a Dish
+                            Add Dish
                           </Button>
                         )}
                       </div>
@@ -734,7 +734,7 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
 
   return (
     <Card>
-      <CardHeader title={draft.id ? `Edit ${draft.name || 'Period'}` : 'New Period'} />
+      <CardHeader title={draft.id ? 'Edit Period' : 'New Period'} />
       <CardBody className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Name shown to guests" value={draft.name} onChange={(e) => set('name', e.target.value)} />
@@ -870,12 +870,12 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
           </Alert>
         )}
 
-        <FormFooter>
+        <FormFooter start={draft.id ? undefined : 'A new period starts switched off.'}>
           <Button variant="secondary" onClick={() => setDraft(null)}>
             Cancel
           </Button>
           <Button variant="primary" onClick={() => void onSave()} loading={busy}>
-            {draft.id ? 'Save Changes' : 'Create, Switched Off'}
+            {draft.id ? 'Save Changes' : 'Create Period'}
           </Button>
         </FormFooter>
       </CardBody>

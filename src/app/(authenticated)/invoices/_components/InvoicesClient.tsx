@@ -259,17 +259,37 @@ export default function InvoicesClient({
 
   // Pagination
   const totalPages = Math.ceil(initialTotal / initialLimit)
+  const hasActiveFilters = Boolean(
+    searchTerm || vendorSearchTerm || statusFilter !== 'all' || exportStartDate || exportEndDate,
+  )
 
   return (
     <PageLayout
       title="Invoices"
-      subtitle={`${formatNumber(initialTotal)} invoices · ${formatCurrency(initialSummary.total_outstanding)} outstanding`}
+      subtitle="Invoices: money owed to Orange Jelly"
       navItems={financeNav({ canExport: resolvedPermissions.canExport })}
       headerActions={
-        resolvedPermissions.canCreate ? (
-          <LinkButton href="/invoices/new" variant="primary" size="sm">
-            New Invoice
-          </LinkButton>
+        resolvedPermissions.canExport || resolvedPermissions.canCreate ? (
+          <>
+            {/* Exports the invoices the filters below select, for their date range. */}
+            {resolvedPermissions.canExport && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExport}
+                loading={exportLoading}
+                disabled={exportLoading || !exportStartDate || !exportEndDate}
+                leftIcon={<Icon name="download" size={16} />}
+              >
+                Export ZIP
+              </Button>
+            )}
+            {resolvedPermissions.canCreate && (
+              <LinkButton href="/invoices/new" variant="primary" size="sm">
+                New Invoice
+              </LinkButton>
+            )}
+          </>
         ) : undefined
       }
     >
@@ -342,11 +362,6 @@ export default function InvoicesClient({
           className="sm:w-40"
         />
         <Button variant="secondary" size="sm" onClick={setExportToCurrentQuarter}>This Quarter</Button>
-        {resolvedPermissions.canExport && (
-          <Button size="sm" onClick={handleExport} loading={exportLoading} disabled={exportLoading || !exportStartDate || !exportEndDate}>
-            Download
-          </Button>
-        )}
       </div>
 
       {exportError && <Alert tone="danger">{exportError}</Alert>}
@@ -357,8 +372,12 @@ export default function InvoicesClient({
           {initialInvoices.length === 0 ? (
             <Empty
               size="sm"
-              title={searchTerm || vendorSearchTerm ? 'No invoices match your filters' : 'No invoices found'}
-              description="Try adjusting your filters or create a new invoice."
+              title={hasActiveFilters ? 'No invoices match these filters' : 'No invoices yet'}
+              description={
+                hasActiveFilters
+                  ? 'Change or clear the filters to see more invoices.'
+                  : 'Invoices you create show here.'
+              }
             />
           ) : (
             <>

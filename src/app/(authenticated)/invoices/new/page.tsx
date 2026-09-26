@@ -9,6 +9,7 @@ import {
   Icon,
   Button,
   IconButton,
+  LinkButton,
   Field,
   Input,
   Select,
@@ -311,9 +312,8 @@ export default function NewInvoicePage() {
                     Add from Catalog
                   </Button>
                 )}
-                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
-                  <span className="hidden sm:inline">Add Line Item</span>
-                  <span className="sm:hidden">Add Item</span>
+                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plus" size={16} />} size="sm">
+                  Add Line Item
                 </Button>
               </div>
             }
@@ -397,9 +397,9 @@ export default function NewInvoicePage() {
                             <IconButton
                               type="button"
                               onClick={() => removeLineItem(item.id)}
-                              variant="danger"
+                              variant="ghost"
                               label="Remove line item"
-                              icon={<Icon name="trash" size={16} />}
+                              icon={<Icon name="trash" size={16} className="text-danger" />}
                             />
                           </div>
                         </div>
@@ -482,13 +482,9 @@ export default function NewInvoicePage() {
         </Card>
 
         <FormFooter>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/invoices')}
-          >
+          <LinkButton href={BACK_TO_INVOICES.href} variant="secondary">
             Cancel
-          </Button>
+          </LinkButton>
           <Button variant="primary"
             type="submit"
             disabled={loading || lineItems.length === 0 || !canCreate}
@@ -536,7 +532,7 @@ export default function NewInvoicePage() {
             </div>
           </Card>
         ) : (
-          <Empty size="sm" title="No catalog items available" />
+          <Empty size="sm" title="No catalog items yet" description="Add items on the Catalog tab to pick them here." />
         )}
       </Modal>
     </PageLayout>

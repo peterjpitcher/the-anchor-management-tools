@@ -72,8 +72,8 @@ export function MenuTargetForm({ initialTarget }: Props) {
       )}
 
       <FormFooter>
-        <Button type="submit" variant="primary" disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save Target'}
+        <Button type="submit" variant="primary" loading={isPending}>
+          Save Changes
         </Button>
       </FormFooter>
     </form>

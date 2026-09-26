@@ -241,8 +241,8 @@ export function MileageClient({
               <Empty
                 size="sm"
                 icon={<Icon name="mapPin" size={48} />}
-                title={filtered ? 'No trips match these filters' : 'No trips recorded'}
-                description={filtered ? 'Change or clear the filters to see more trips.' : 'Add your first trip to start tracking mileage.'}
+                title={filtered ? 'No trips match these filters' : 'No trips yet'}
+                description={filtered ? 'Change or clear the filters to see more trips.' : 'Use New Trip to record the first one.'}
               />
             </Card>
           ) : (

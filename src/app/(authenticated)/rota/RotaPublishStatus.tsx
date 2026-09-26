@@ -2,16 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { Badge, Button, toast, Icon } from '@/ds';
+import { Button, toast } from '@/ds';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
-import {
-  ROTA_WEEK_PUBLISH_ICON,
-  ROTA_WEEK_PUBLISH_LABEL,
-  ROTA_WEEK_PUBLISH_TONE,
-  type RotaWeekPublishState,
-} from './_shared/status-ui';
 
 export default function RotaPublishStatus({
   week,
@@ -32,14 +26,7 @@ export default function RotaPublishStatus({
   // Deletions leave no live tile to flag, so also count shifts removed since publish.
   const removedShifts = getRemovedPublishedShifts(shifts, week, publishedShifts);
   const hasAnyUnpublished = unpublishedShifts.length > 0 || removedShifts.length > 0;
-  const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
   const isPublished = week.status === 'published' && !hasAnyUnpublished;
-  const isDraft = !isPublished && !hasAnyPublished;
-  const state: RotaWeekPublishState = isPublished
-    ? 'published'
-    : isDraft
-      ? 'draft'
-      : 'unpublished_changes';
 
   const handlePublish = () => {
     startPublishTransition(async () => {
@@ -53,27 +40,18 @@ export default function RotaPublishStatus({
     });
   };
 
-  // Rendered in the page's header actions: the status badge, then the primary Publish button,
-  // which is last in the row.
+  // Rendered last in the page's header actions: the primary Publish button, while the week has
+  // anything unpublished. The week's status shows as the Badge on the Schedule card, not here.
+  if (isPublished || !canPublish) return null;
   return (
-    <>
-      <Badge
-        tone={ROTA_WEEK_PUBLISH_TONE[state]}
-        icon={<Icon name={ROTA_WEEK_PUBLISH_ICON[state]} size={12} />}
-      >
-        {ROTA_WEEK_PUBLISH_LABEL[state]}
-      </Badge>
-      {!isPublished && canPublish && (
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          onClick={handlePublish}
-          loading={publishPending}
-        >
-          {publishPending ? 'Publishing...' : 'Publish'}
-        </Button>
-      )}
-    </>
+    <Button
+      type="button"
+      variant="primary"
+      size="sm"
+      onClick={handlePublish}
+      loading={publishPending}
+    >
+      Publish
+    </Button>
   );
 }

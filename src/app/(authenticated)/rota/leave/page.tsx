@@ -77,7 +77,7 @@ export default async function LeaveManagementPage() {
           </Alert>
         ) : requests.length === 0 ? (
           <Card padding="none">
-            <Empty size="sm" icon="calendar" title="No leave requests submitted yet" />
+            <Empty size="sm" icon="calendar" title="No holiday requests yet" />
           </Card>
         ) : (
           <LeaveManagerClient

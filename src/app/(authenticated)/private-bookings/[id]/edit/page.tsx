@@ -222,7 +222,7 @@ export default function EditPrivateBookingPage({
   }
 
   if (loading) {
-    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking..." />
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking…" />
   }
 
   if (error || !booking) {
@@ -645,9 +645,9 @@ export default function EditPrivateBookingPage({
           cancelConfirmedRef.current = true
           formRef.current?.requestSubmit()
         }}
-        title="Cancel This Booking?"
+        title="Cancel Booking"
         message="Saving with the status set to Cancelled cancels the booking: the customer is sent a cancellation text, the diary entry is removed and any messages still queued for them are dropped. This cannot be undone from here."
-        confirmLabel="Cancel Booking and Text the Customer"
+        confirmLabel="Cancel Booking"
         cancelLabel="Keep Booking"
         tone="danger"
       />

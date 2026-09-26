@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useTransition } from 'react'
-import { Alert, Button, CardBody, ConfirmDialog, Field, FormFooter, Input, Modal, Tabs, toast } from '@/ds'
+import { Alert, Button, CardBody, ConfirmDialog, Field, Input, Modal, Tabs, toast } from '@/ds'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   createScheduledHoursVersion,
@@ -189,7 +189,21 @@ export function HoursVersionStrip({
         </Alert>
       )}
 
-      <Modal open={creating} onClose={() => setCreating(false)} title="Schedule a Change">
+      <Modal
+        open={creating}
+        onClose={() => setCreating(false)}
+        title="Schedule a Change"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={handleCreate} disabled={!newDate} loading={pending}>
+              Create Draft
+            </Button>
+          </>
+        }
+      >
         <div className="space-y-4">
           <p className="text-sm text-text-muted">
             This copies the hours that apply the day before your chosen date, so you only change what
@@ -206,14 +220,6 @@ export function HoursVersionStrip({
           <Field label="Name (optional)" hint="Something to recognise it by, for example: autumn hours">
             <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} maxLength={80} />
           </Field>
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
-              Cancel
-            </Button>
-            <Button type="button" variant="primary" onClick={handleCreate} disabled={!newDate || pending}>
-              Create Draft
-            </Button>
-          </FormFooter>
         </div>
       </Modal>
 

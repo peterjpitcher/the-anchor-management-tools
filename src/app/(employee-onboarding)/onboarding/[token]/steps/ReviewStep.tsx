@@ -96,9 +96,10 @@ export default function ReviewStep({ token, savedSections, onBack }: ReviewStepP
           type="button"
           variant="primary"
           onClick={handleSubmit}
-          disabled={loading || !allComplete}
+          disabled={!allComplete}
+          loading={loading}
         >
-          {loading ? 'Submitting...' : 'Complete Profile'}
+          Complete Profile
         </Button>
       </StepFooter>
     </div>

@@ -93,7 +93,7 @@ describe('Receipts A-040', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove receipt.pdf' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete receipt.pdf' }))
 
     expect(screen.getByRole('dialog', { name: 'Delete Receipt File' })).toBeInTheDocument()
     expect(deleteReceiptFile).not.toHaveBeenCalled()

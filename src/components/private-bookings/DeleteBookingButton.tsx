@@ -132,7 +132,7 @@ export default function DeleteBookingButton({
         onClose={() => {
           if (!submitting) setModalOpen(false)
         }}
-        title="Permanently Delete Booking?"
+        title="Delete Booking"
         size="sm"
         footer={
           <>
@@ -153,7 +153,7 @@ export default function DeleteBookingButton({
               disabled={confirmDisabled}
               loading={submitting}
             >
-              Permanently Delete
+              Delete
             </Button>
           </>
         }

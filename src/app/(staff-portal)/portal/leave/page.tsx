@@ -39,7 +39,7 @@ export default async function MyLeavePage() {
   if (!employee) {
     return (
       <>
-        <StandalonePageHeader title="My Holiday" />
+        <StandalonePageHeader title="My Holiday" subtitle="My holiday: your holiday requests and allowance" />
         <Alert tone="warning">
           Your account is not linked to an employee profile. Please contact your manager.
         </Alert>
@@ -66,6 +66,7 @@ export default async function MyLeavePage() {
     <>
       <StandalonePageHeader
         title="My Holiday"
+        subtitle="My holiday: your holiday requests and allowance"
         actions={
           <LinkButton href="/portal/leave/new" variant="primary" size="sm">
             Request Holiday
@@ -93,7 +94,7 @@ export default async function MyLeavePage() {
             <Empty
               size="sm"
               title="No holiday requests yet"
-              description="Use the button above to request time off."
+              description="Ask for time off with Request Holiday."
             />
           ) : (
             <ul className="divide-y divide-border">

@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmDialog,
   Modal,
   PageLoading,
   SubHeading,
@@ -99,13 +100,24 @@ export function PrivateBookingReceiptPanel({ bookingId, canGenerate }: Props): R
           </Table>
           {model.refunds.length > 0 && <div><SubHeading as="h3">Refunds</SubHeading>{model.refunds.map(refund => <p key={refund.id} className="text-sm">{refund.date ? formatDateFull(refund.date) : 'Awaiting completion'} · {refund.purpose} · {money(refund.amount)} · {refund.status}</p>)}</div>}
         </>}
-        {documents.length > 0 && <div className="space-y-2 border-t border-border pt-3"><SubHeading as="h3">Stored Documents</SubHeading>{documents.map(document => <div className="flex flex-wrap items-center justify-between gap-2" key={document.id}><a className="text-sm text-primary underline" href={document.url} target="_blank" rel="noreferrer">{document.kind === 'final_receipt' ? 'Final receipt' : 'Statement'} v{document.version} · {formatDateFull(document.generatedAt)}{document.superseded ? ' (superseded)' : ''}</a>{canGenerate && !document.superseded && <Button size="sm" variant="secondary" disabled={busy} onClick={() => setSendDocument(document)}>Send Document</Button>}</div>)}</div>}
-        {sendDocument && <div className="space-y-3 rounded-default border border-border p-3"><p className="text-sm">Send {sendDocument.kind === 'final_receipt' ? 'final receipt' : 'statement'} v{sendDocument.version} to the booking contact?</p><div className="flex gap-2"><Button variant="secondary" disabled={busy} onClick={() => setSendDocument(null)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={() => void act(async () => {
+        {documents.length > 0 && <div className="space-y-2 border-t border-border pt-3"><SubHeading as="h3">Stored Documents</SubHeading>{documents.map(document => <div className="flex flex-wrap items-center justify-between gap-2" key={document.id}><a className="text-sm text-primary underline" href={document.url} target="_blank" rel="noreferrer">{document.kind === 'final_receipt' ? 'Final receipt' : 'Statement'} v{document.version} · {formatDateFull(document.generatedAt)}{document.superseded ? ' (superseded)' : ''}</a>{canGenerate && !document.superseded && <Button size="sm" variant="secondary" disabled={busy} onClick={() => setSendDocument(document)}>Email Document</Button>}</div>)}</div>}
+      </div>
+      {/* A yes/no confirmation: the DS ConfirmDialog, stacked on this dialog, which shows a
+          failed send in place. */}
+      <ConfirmDialog
+        open={sendDocument !== null}
+        onClose={() => setSendDocument(null)}
+        onConfirm={async () => {
+          if (!sendDocument) return
           const result = await sendPrivateBookingReceipt(bookingId, sendDocument.id)
           if (result.error) throw new Error(result.error)
-          setSendDocument(null); setNotice('Document sent to the booking contact.')
-        })}>Send to Booking Contact</Button></div></div>}
-      </div>
+          setNotice('Document sent to the booking contact.')
+        }}
+        title="Email Document"
+        message={sendDocument ? `Send ${sendDocument.kind === 'final_receipt' ? 'final receipt' : 'statement'} v${sendDocument.version} to the booking contact?` : undefined}
+        confirmLabel="Email Document"
+        tone="primary"
+      />
     </Modal>
   </Card>
 }

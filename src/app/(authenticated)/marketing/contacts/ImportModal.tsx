@@ -245,7 +245,7 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
               disabled={importable.length === 0 || parsing}
             >
               {importable.length > 0
-                ? `Import ${importable.length} Contacts`
+                ? `Import ${importable.length} ${importable.length === 1 ? 'Contact' : 'Contacts'}`
                 : 'Import Contacts'}
             </Button>
           )}

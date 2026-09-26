@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addEmployeeNote } from '@/app/actions/employeeActions'
 import type { NoteFormState } from '@/types/actions'
-import { Button, FormFooter, Icon, Modal, Textarea, toast } from '@/ds'
+import { Button, Icon, Modal, Textarea, toast } from '@/ds'
 
 interface QuickAddNoteSheetProps {
   employeeId: string
@@ -22,6 +22,7 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
   const initialState: NoteFormState = null
   const [state, dispatch, isPending] = useActionState(addEmployeeNote, initialState)
   const formRef = useRef<HTMLFormElement>(null)
+  const formId = `quick-add-note-${employeeId}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -46,8 +47,22 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
         Add Note
       </Button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Note">
-        <form ref={formRef} action={dispatch} className="space-y-4">
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Add Note"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" form={formId} variant="primary" loading={isPending}>
+              Add Note
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} ref={formRef} action={dispatch} className="space-y-4">
           <input type="hidden" name="employee_id" value={employeeId} />
           <Textarea
             id="quick-note-text"
@@ -58,14 +73,6 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
             error={state?.errors?.note_text?.join(' ') || undefined}
             autoFocus
           />
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={isPending}>
-              Save Note
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
     </>

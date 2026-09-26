@@ -6,7 +6,6 @@ import Link from 'next/link'
 import {
   Alert,
   Card,
-  FormFooter,
   PageLayout,
   Table,
   TableHeader,
@@ -38,8 +37,11 @@ import {
 } from '@/app/actions/oj-projects/projects'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
-import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
+import { ojProjectsLayout } from '../../_shared/nav'
 import { ojBudgetTone, ojProjectStatus } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('projects')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -217,7 +219,7 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
 
   if (loadError) {
     return (
-      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+      <PageLayout {...LAYOUT}>
         <Alert tone="danger" title="Could not load projects">
           {loadError}
         </Alert>
@@ -227,7 +229,7 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
 
   return (
     <PageLayout
-      {...OJ_PROJECTS_LAYOUT}
+      {...LAYOUT}
       headerActions={
         canCreate ? (
           <Button variant="primary" onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
@@ -256,7 +258,11 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
 
       <Card padding="none">
         {filtered.length === 0 ? (
-          <Empty size="sm" title="No projects" description="No projects match your filters." />
+          projects.length > 0 ? (
+            <Empty size="sm" title="No projects match these filters" description="Clear the search or pick another status to see more projects." />
+          ) : (
+            <Empty size="sm" title="No projects yet" description="Projects you create show here." />
+          )
         ) : (
           <>
             <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -422,8 +428,18 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={isEditing ? 'Edit Project' : 'New Project'}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-project-form" variant="primary" loading={saving}>
+              {isEditing ? 'Save Changes' : 'Create Project'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form id="oj-project-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Field label="Project Name" required>
             <Input
               value={form.project_name}
@@ -492,14 +508,6 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
               placeholder="Project overview..."
             />
           </Field>
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              {isEditing ? 'Save Changes' : 'Create Project'}
-            </Button>
-          </FormFooter>
         </form>
       </Modal>
 
@@ -509,7 +517,7 @@ export function ProjectsClient({ initialProjects, clients, loadError }: Projects
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
         title="Delete Project"
-        message="Are you sure? You can only delete projects with no entries."
+        message="Delete this project? Only a project with no entries can be deleted."
         confirmLabel="Delete"
         tone="danger"
       />

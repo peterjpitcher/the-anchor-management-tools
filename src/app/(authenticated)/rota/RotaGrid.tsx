@@ -70,6 +70,7 @@ import {
   ROTA_OPEN_SHIFTS_TONE,
   ROTA_STAT_TONE,
   ROTA_WAGES_COSTING_TONE,
+  ROTA_WEEK_PUBLISH_ICON,
   ROTA_WEEK_PUBLISH_LABEL,
   ROTA_WEEK_PUBLISH_TONE,
   rotaCapacityState,
@@ -1078,7 +1079,11 @@ export default function RotaGrid({
             <CardHeader
               title="Schedule"
               subtitle="Weekly assignments grouped by employee and day"
-              action={<Badge tone={weekStatusTone}>{weekStatusLabel}</Badge>}
+              action={
+                <Badge tone={weekStatusTone} icon={<Icon name={ROTA_WEEK_PUBLISH_ICON[weekPublishState]} size={12} />}>
+                  {weekStatusLabel}
+                </Badge>
+              }
             />
             <CardBody className="space-y-4 border-b border-border">
               {/* Week navigation filters the grid below, so it sits directly above it. */}
@@ -1355,7 +1360,7 @@ export default function RotaGrid({
 
               {/* Employee rows */}
               {employees.length === 0 ? (
-                <Empty size="sm" icon="users" title="No active employees found" />
+                <Empty size="sm" icon="users" title="No active employees yet" />
               ) : (
                 <>
                   {employeeGroups.map(group => {

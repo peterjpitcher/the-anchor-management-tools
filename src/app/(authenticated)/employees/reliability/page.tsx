@@ -47,20 +47,22 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
   // The same title and subtitle whether or not the leaderboard loads.
   const layoutProps = {
     title: 'Employees',
-    subtitle: 'Reliability over the last 90 days',
+    subtitle: 'Reliability: shift reliability over the last 90 days',
     navItems: EMPLOYEES_NAV,
-    headerActions: (
-      <LinkButton
-        href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
-        variant="secondary"
-        size="sm"
-      >
-        {includeFormer ? 'Active Only' : 'Include Former'}
-      </LinkButton>
-    ),
   };
 
-  // A failed read keeps the header and says so; it is never shown as "No employees found".
+  // The Include Former filter sits directly above the leaderboard it filters, never in the header.
+  const scopeFilter = (
+    <LinkButton
+      href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
+      variant="secondary"
+      size="sm"
+    >
+      {includeFormer ? 'Active Only' : 'Include Former'}
+    </LinkButton>
+  );
+
+  // A failed read keeps the header and says so; it is never shown as an empty leaderboard.
   let rows: TeamReliabilityRow[];
   try {
     rows = await getTeamReliabilityLeaderboard({ includeFormer, sortBy });
@@ -71,6 +73,7 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
     }
     return (
       <PageLayout {...layoutProps}>
+        <div className="flex flex-wrap items-end gap-3">{scopeFilter}</div>
         <Alert tone="danger" title="Could not load the leaderboard">
           {RELIABILITY_LEADERBOARD_LOAD_ERROR}
         </Alert>
@@ -94,16 +97,31 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
         />
       </StatGrid>
 
+      {/* Filters directly above the list they filter. Phones also get the sort order here, as
+          they have no table headers to sort from. */}
+      <div className="flex flex-wrap items-end gap-3">
+        {rows.length > 0 && (
+          <div className="shell:hidden">
+            <ReliabilitySortSelect activeSort={sortBy} includeFormer={includeFormer} />
+          </div>
+        )}
+        {scopeFilter}
+      </div>
+
       {rows.length === 0 ? (
         <Card>
-          <Empty size="sm" title="No employees found for this view" />
+          <Empty
+            size="sm"
+            title={includeFormer ? 'No employees yet' : 'No employees match these filters'}
+            description={
+              includeFormer
+                ? 'Employees appear here once they are added.'
+                : 'Include former employees to see everyone.'
+            }
+          />
         </Card>
       ) : (
         <>
-          {/* Phones: the sort order, directly above the list it orders */}
-          <div className="flex flex-wrap items-end gap-3 shell:hidden">
-            <ReliabilitySortSelect activeSort={sortBy} includeFormer={includeFormer} />
-          </div>
 
           <Card padding="none" className="shell:hidden">
             <ul className="divide-y divide-border">

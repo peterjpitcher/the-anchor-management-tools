@@ -83,7 +83,7 @@ export function ChecklistModal({ open, checklist, onClose }: ChecklistModalProps
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={saving}>
-            {isEdit ? 'Save Checklist' : 'Create Checklist'}
+            {isEdit ? 'Save Changes' : 'Create Checklist'}
           </Button>
         </>
       }

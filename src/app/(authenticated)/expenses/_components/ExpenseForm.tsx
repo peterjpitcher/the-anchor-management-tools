@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback, type FormEvent, type DragEvent } from 'react'
+import { useState, useCallback, useEffect, type FormEvent, type DragEvent } from 'react'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Alert, Button, Checkbox, ConfirmDialog, Field, Fieldset, FileButton, FormFooter, IconButton, Input, Textarea, Icon } from '@/ds'
+import { Alert, Checkbox, ConfirmDialog, Field, Fieldset, FileButton, IconButton, Input, Textarea, Icon } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,10 +37,13 @@ interface ExpenseFormProps {
   onUploadFiles?: (files: File[], expenseId?: string) => Promise<{ success?: boolean; error?: string }>
   /** Called when an existing file should be deleted */
   onDeleteFile?: (fileId: string) => Promise<{ success?: boolean; error?: string }>
-  /** Called when the form should close/cancel */
-  onCancel: () => void
-  /** Whether the form is in edit mode */
-  isEditing?: boolean
+  /**
+   * The form's id. The form sits in a Modal whose footer holds Cancel and the submit button, and
+   * that submit button names the form with `form={formId}`.
+   */
+  formId: string
+  /** Told when saving or uploading starts and stops, so the footer buttons can show it. */
+  onBusyChange?: (busy: boolean) => void
 }
 
 const ACCEPTED_TYPES = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf'
@@ -58,8 +61,8 @@ export function ExpenseForm({
   onSubmit,
   onUploadFiles,
   onDeleteFile,
-  onCancel,
-  isEditing = false,
+  formId,
+  onBusyChange,
 }: ExpenseFormProps): React.JSX.Element {
   // Form state
   const [expenseDate, setExpenseDate] = useState(initialData?.expense_date ?? '')
@@ -210,8 +213,12 @@ export function ExpenseForm({
 
   const isLoading = submitting || uploading
 
+  useEffect(() => {
+    onBusyChange?.(isLoading)
+  }, [isLoading, onBusyChange])
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
       {/* Date + Company */}
@@ -402,25 +409,10 @@ export function ExpenseForm({
         </div>
       </Fieldset>
 
-      <FormFooter>
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isLoading}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" disabled={isLoading}>
-          {isLoading
-            ? uploading
-              ? 'Uploading files...'
-              : 'Saving...'
-            : isEditing
-              ? 'Update Expense'
-              : 'Create Expense'}
-        </Button>
-      </FormFooter>
-
       <ConfirmDialog
         open={filePendingDelete !== null}
         title="Delete Receipt File"
-        message="Delete this receipt file?"
+        message="Delete this receipt file from the expense? This cannot be undone."
         confirmLabel="Delete"
         tone="danger"
         onConfirm={async () => {

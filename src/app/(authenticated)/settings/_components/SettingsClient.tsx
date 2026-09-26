@@ -307,7 +307,7 @@ function GeneralSettings({
         {canEdit && (
           <FormFooter>
             <Button type="submit" variant="primary" loading={saving}>
-              Save All Settings
+              Save Changes
             </Button>
           </FormFooter>
         )}

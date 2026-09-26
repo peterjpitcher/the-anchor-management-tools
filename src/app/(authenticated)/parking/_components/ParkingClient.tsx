@@ -193,6 +193,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   })
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
+  // Which detail-card action started the running mutation, so only that button shows it is busy.
+  const [mutatingAction, setMutatingAction] = useState<'payment-link' | 'mark-paid' | null>(null)
   const pageError = initialError ?? null
 
   // Refund state
@@ -659,7 +661,11 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                 </Alert>
               </CardBody>
             ) : bookings.length === 0 ? (
-              <Empty size="sm" title="No bookings" description="No bookings found for the current filters." />
+              search || statusFilter !== 'all' || paymentFilter !== 'all' ? (
+                <Empty size="sm" title="No bookings match these filters" description="Clear the search or the filters to see every booking." />
+              ) : (
+                <Empty size="sm" title="No bookings yet" description="Bookings show here once they are made." />
+              )
             ) : (
               <>
                 {/* Desktop: full table */}
@@ -824,17 +830,28 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                         </Button>
                         {selectedBooking.payment_status === 'pending' && (
                           <>
-                            <Button size="sm" disabled={isMutating} onClick={() => handleGeneratePaymentLink(selectedBooking.id)}>
-                              {isMutating ? 'Generating...' : 'Payment Link'}
+                            <Button
+                              size="sm"
+                              disabled={isMutating}
+                              loading={isMutating && mutatingAction === 'payment-link'}
+                              onClick={() => { setMutatingAction('payment-link'); handleGeneratePaymentLink(selectedBooking.id) }}
+                            >
+                              Payment Link
                             </Button>
-                            <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => handleMarkPaid(selectedBooking.id)}>
-                              {isMutating ? 'Updating...' : 'Mark Paid'}
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={isMutating}
+                              loading={isMutating && mutatingAction === 'mark-paid'}
+                              onClick={() => { setMutatingAction('mark-paid'); handleMarkPaid(selectedBooking.id) }}
+                            >
+                              Mark Paid
                             </Button>
                           </>
                         )}
                         {selectedBooking.status !== 'cancelled' && selectedBooking.status !== 'completed' && (
-                          <Button variant="ghost" size="sm" disabled={isMutating} onClick={() => setCancelTarget(selectedBooking)}>
-                            Cancel
+                          <Button variant="danger" size="sm" disabled={isMutating} onClick={() => setCancelTarget(selectedBooking)}>
+                            Cancel Booking
                           </Button>
                         )}
                         {selectedBooking.status === 'confirmed' && new Date(selectedBooking.end_at) < new Date() && (
@@ -871,8 +888,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       {activeSection === 'notifications' && (
         <Card>
           <CardHeader title="Notification History" action={
-            <Button variant="secondary" size="sm" onClick={() => selectedBooking && void loadNotifications(selectedBooking.id)} disabled={loadingNotifications || !selectedBooking}>
-              {loadingNotifications ? 'Refreshing...' : 'Refresh'}
+            <Button variant="secondary" size="sm" onClick={() => selectedBooking && void loadNotifications(selectedBooking.id)} loading={loadingNotifications} disabled={!selectedBooking}>
+              Refresh
             </Button>
           } />
           {loadingNotifications ? (
@@ -882,7 +899,11 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <Alert tone="danger" title="Notifications could not be loaded">{notificationsError}</Alert>
             </CardBody>
           ) : notifications.length === 0 ? (
-            <Empty size="sm" title="No notifications" description={selectedBooking ? 'No notification history yet.' : 'Select a booking first to view notifications.'} />
+            selectedBooking ? (
+              <Empty size="sm" title="No notifications yet" description="Texts and emails about this booking show here once sent." />
+            ) : (
+              <Empty size="sm" title="No booking selected" description="Select a booking on the Bookings tab to see its notifications." />
+            )
           ) : (
             <Table>
               <TableHeader>
@@ -973,8 +994,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                 />
               </div>
               <FormFooter>
-                <Button type="submit" variant="primary" disabled={isMutating}>
-                  {isMutating ? 'Saving...' : 'Save Rates'}
+                <Button type="submit" variant="primary" loading={isMutating}>
+                  Save Rates
                 </Button>
               </FormFooter>
             </form>
@@ -983,8 +1004,18 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       )}
 
       {/* Create Booking Modal */}
-      <Modal open={showCreateModal} onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }} title="Create Parking Booking">
-        <form onSubmit={handleCreateBooking} className="flex flex-col gap-5">
+      <Modal
+        open={showCreateModal}
+        onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}
+        title="New Booking"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}>Cancel</Button>
+            <Button type="submit" form="parking-create-form" variant="primary" loading={isPending}>Create Booking</Button>
+          </>
+        }
+      >
+        <form id="parking-create-form" onSubmit={handleCreateBooking} className="flex flex-col gap-5">
           {/* Each group keeps its fieldset, and its legend is a real sub-heading (h3 under the
               dialog's h2 title), so both the group and the heading reach a screen reader. */}
           <fieldset className="space-y-3">
@@ -1039,16 +1070,21 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             <Textarea label="Internal notes" value={createForm.notes} onChange={(e) => handleInputChange('notes', e.target.value)} />
             <Switch label="Send payment link now" checked={createForm.send_payment_link} onChange={(v) => handleInputChange('send_payment_link', v)} />
           </fieldset>
-
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={isPending}>{isPending ? 'Creating...' : 'Create Booking'}</Button>
-          </FormFooter>
         </form>
       </Modal>
 
-      <Modal open={showEditModal} onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }} title="Edit Parking Booking">
-        <form onSubmit={handleEditBooking} className="flex flex-col gap-5">
+      <Modal
+        open={showEditModal}
+        onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}
+        title="Edit Parking Booking"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}>Cancel</Button>
+            <Button type="submit" form="parking-edit-form" variant="primary" loading={isMutating}>Save Changes</Button>
+          </>
+        }
+      >
+        <form id="parking-edit-form" onSubmit={handleEditBooking} className="flex flex-col gap-5">
           <fieldset className="space-y-3">
             <legend><SubHeading as="h3">Customer</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1089,11 +1125,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             )}
             <Textarea label="Internal notes" value={editForm.notes} onChange={(e) => handleEditInputChange('notes', e.target.value)} />
           </fieldset>
-
-          <FormFooter>
-            <Button type="button" variant="secondary" onClick={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={isMutating}>{isMutating ? 'Saving...' : 'Save Booking'}</Button>
-          </FormFooter>
         </form>
       </Modal>
 
@@ -1102,9 +1133,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         onClose={() => setCancelTarget(null)}
         onConfirm={handleConfirmCancelBooking}
         tone="danger"
-        title="Cancel Parking Booking?"
-        message={cancelTarget ? `Cancel booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
+        title="Cancel Booking"
+        message={cancelTarget ? `Cancel parking booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
         confirmLabel="Cancel Booking"
+        cancelLabel="Keep Booking"
       />
 
       {/* Refund Dialog */}

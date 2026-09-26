@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button, Card, Checkbox, ConfirmDialog, FormFooter, Icon, Input, Modal, SubHeading, toast } from '@/ds'
+import { Button, Card, Checkbox, ConfirmDialog, Icon, Input, Modal, SubHeading, toast } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
@@ -344,41 +344,38 @@ export function SpecialHoursModal({
       open={showDeleteConfirm}
       onClose={() => setShowDeleteConfirm(false)}
       onConfirm={handleDeleteConfirmed}
-      title="Revert to Regular Hours"
-      message="Remove this exception and revert to regular hours for this date?"
-      confirmLabel="Remove Exception"
+      title="Delete Exception"
+      message="This date goes back to the regular weekly hours. This cannot be undone."
+      confirmLabel="Delete"
       tone="danger"
       loading={loading}
     />
     <Modal
       open={isOpen}
       onClose={onClose}
-      title={`Edit Hours: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
+      title={`${initialData ? 'Edit Exception' : 'New Exception'}: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
       width="lg"
       footer={
-        <FormFooter
-          className="w-full"
-          start={
-            initialData ? (
-              <Button
-                type="button"
-                variant="danger"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={loading || !canManage}
-                icon={<Icon name="trash" size={16} />}
-              >
-                Revert to Regular
-              </Button>
-            ) : undefined
-          }
-        >
+        <>
+          {initialData ? (
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={loading || !canManage}
+              icon={<Icon name="trash" size={16} />}
+              className="sm:mr-auto"
+            >
+              Delete
+            </Button>
+          ) : null}
           <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
-            Save Changes
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
+            {initialData ? 'Save Changes' : 'Create Exception'}
           </Button>
-        </FormFooter>
+        </>
       }
     >
       <div className="space-y-6">
