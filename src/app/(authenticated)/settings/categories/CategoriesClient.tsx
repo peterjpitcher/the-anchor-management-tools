@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import type { AttachmentCategory } from '@/app/actions/attachmentCategories'
 import { createAttachmentCategory, deleteAttachmentCategory, listAttachmentCategories, updateAttachmentCategory } from '@/app/actions/attachmentCategories'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
@@ -252,7 +253,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                         <div>
                           <p className="font-medium">{category.category_name}</p>
                           <p className="text-xs text-text-muted">
-                            Updated {new Date(category.updated_at).toLocaleString('en-GB')}
+                            Updated {formatDateTimeInLondon(category.updated_at)}
                           </p>
                           {!canManage && (
                             <p className="text-xs text-text-muted">

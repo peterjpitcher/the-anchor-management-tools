@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 import { Alert, Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
 import { loadUndeliveredGuestMessages } from '@/lib/notifications/undelivered'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
@@ -232,7 +233,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                           {getCustomerName(row)}
                         </Link>
                         <span className="shrink-0 text-xs text-text-muted">
-                          {new Date(row.created_at).toLocaleString('en-GB')}
+                          {formatDateTimeInLondon(row.created_at)}
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -303,7 +304,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                       return (
                         <tr key={row.id} className="align-top">
                           <td className="whitespace-nowrap px-4 py-3 text-text-muted">
-                            {new Date(row.created_at).toLocaleString('en-GB')}
+                            {formatDateTimeInLondon(row.created_at)}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3">
                             <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">

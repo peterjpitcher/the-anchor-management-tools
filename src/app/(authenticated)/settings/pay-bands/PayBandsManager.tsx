@@ -17,6 +17,7 @@ import {
   type PayAgeBand,
   type PayBandRate,
 } from '@/app/actions/pay-bands';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 interface PayBandsManagerProps {
   canManage: boolean;
@@ -104,7 +105,7 @@ function RateHistory({
     });
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayIsoDate();
   const current = rates.find(r => r.effective_from <= today) ?? null;
 
   return (
@@ -254,7 +255,7 @@ function BandCard({
   const [editSortOrder, setEditSortOrder] = useState(String(band.sort_order));
   const [editError, setEditError] = useState('');
   const [isPending, startTransition] = useTransition();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayIsoDate();
   const currentRate = rates.find(r => r.effective_from <= today) ?? null;
 
   const saveBand = (isActive = band.is_active) => {

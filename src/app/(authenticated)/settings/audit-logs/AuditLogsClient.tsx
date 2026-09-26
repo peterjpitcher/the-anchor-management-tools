@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import type { AuditLog } from '@/types/database'
 import type { AuditLogUser } from '@/app/actions/auditLogs'
 import { listAuditLogs } from '@/app/actions/auditLogs'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { PageLayout } from '@/ds'
 import { Section } from '@/ds'
 import { Card } from '@/ds'
@@ -127,7 +127,7 @@ function downloadCsv(logs: AuditLog[]): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`
+  link.download = `audit-logs-${getTodayIsoDate()}.csv`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -366,7 +366,7 @@ export default function AuditLogsClient({
                       <div>
                         <div className="text-sm text-text">{formatDate(log.created_at)}</div>
                         <div className="text-xs text-text-muted">
-                          {new Date(log.created_at).toLocaleTimeString()}
+                          {formatDateTimeInLondon(log.created_at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </div>
                       </div>
                     ),
@@ -450,7 +450,7 @@ export default function AuditLogsClient({
           )
           const detailItems: DescriptionListItem[] = [
             { key: 'id', label: 'Log ID', value: log.id },
-            { key: 'timestamp', label: 'Timestamp', value: new Date(log.created_at).toLocaleString() },
+            { key: 'timestamp', label: 'Timestamp', value: formatDateTimeInLondon(log.created_at) },
           ]
           if (log.old_values) {
             detailItems.push({ key: 'old_values', label: 'Old Values', value: jsonBlock(log.old_values), span: 2 })
