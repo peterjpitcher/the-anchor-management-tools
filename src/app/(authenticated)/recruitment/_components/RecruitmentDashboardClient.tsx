@@ -44,6 +44,7 @@ import {
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import { displayName } from '@/lib/employees/display-name'
 import { formatAvailabilityAnswer } from '@/lib/recruitment/answers'
+import { formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
@@ -210,10 +211,10 @@ function formatDateTime(value: string | null | undefined) {
   if (!value) return 'Not set'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Not set'
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(date, {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(date)
+  })
 }
 
 function formatSlotDateTime(value: string | null | undefined) {
@@ -535,7 +536,7 @@ function formatDateOnly(value: string | null | undefined) {
 
 function isPastClosingDate(value: string | null | undefined) {
   if (!value) return false
-  return value.slice(0, 10) < new Date().toISOString().slice(0, 10)
+  return value.slice(0, 10) < getTodayIsoDate()
 }
 
 function postingVisibilityText(posting: any) {

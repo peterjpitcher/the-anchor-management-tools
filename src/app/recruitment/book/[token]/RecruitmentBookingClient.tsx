@@ -12,6 +12,7 @@ import {
   GUEST_KICKER_CLASS,
   GUEST_LEAD_CLASS,
 } from '@/components/features/guest'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type Props = {
   token: string
@@ -39,10 +40,10 @@ function formatDateTime(value: string | null | undefined) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(date, {
     dateStyle: 'full',
     timeStyle: 'short',
-  }).format(date)
+  })
 }
 
 function appointmentStarted(appointment: any) {

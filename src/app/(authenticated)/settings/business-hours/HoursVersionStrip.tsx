@@ -3,7 +3,7 @@
 import { useCallback, useState, useTransition } from 'react'
 import toast from 'react-hot-toast'
 import { Alert, Button, Field, Input, Modal } from '@/ds'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
 import {
   createScheduledHoursVersion,
@@ -46,7 +46,7 @@ export function HoursVersionStrip({
   const [showPast, setShowPast] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getTodayIsoDate()
   const future = versions.filter(v => v.effectiveFrom > today && v.status !== 'withdrawn')
   const current = versions.filter(v => v.isActive)
   const past = versions.filter(v => !v.isActive && v.effectiveFrom <= today)
@@ -220,7 +220,7 @@ export function HoursVersionStrip({
             <Input
               type="date"
               value={newDate}
-              min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
+              min={getLocalIsoDateDaysAhead(1)}
               onChange={e => setNewDate(e.target.value)}
             />
           </Field>

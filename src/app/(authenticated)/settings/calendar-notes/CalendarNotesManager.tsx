@@ -22,6 +22,7 @@ import {
   type CalendarNote,
 } from '@/app/actions/calendar-notes'
 import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
+import { shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 
 type CalendarNoteFormState = {
   note_date: string
@@ -37,17 +38,13 @@ type CalendarGeneratorState = {
   guidance: string
 }
 
+// London dates, not the host's: this renders on the UTC server first.
 function getLocalIsoDate(date = new Date()): string {
-  const copy = new Date(date)
-  const offsetMinutes = copy.getTimezoneOffset()
-  copy.setMinutes(copy.getMinutes() - offsetMinutes)
-  return copy.toISOString().slice(0, 10)
+  return toLocalIsoDate(date)
 }
 
 function addDaysIsoDate(baseDateIso: string, days: number): string {
-  const date = new Date(`${baseDateIso}T00:00:00`)
-  date.setDate(date.getDate() + days)
-  return getLocalIsoDate(date)
+  return shiftIsoDate(baseDateIso, days) ?? baseDateIso
 }
 
 // A colour staff pick and store on each note: data, not a styling token. One constant, so the
