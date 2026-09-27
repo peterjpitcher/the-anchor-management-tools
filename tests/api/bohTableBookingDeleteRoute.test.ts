@@ -192,4 +192,47 @@ describe('BOH table-booking DELETE behavior', () => {
       },
     })
   })
+
+  it('explains the refusal when the database guard finds money the route check cannot see', async () => {
+    // An older booking paid through a legacy ledger: nothing on the booking row says so.
+    const loadMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: '00000000-0000-4000-8000-000000000001',
+        booking_reference: 'TB-1',
+        booking_date: '2026-02-23',
+        customer_id: 'customer-1',
+        status: 'cancelled',
+        payment_status: null,
+        paypal_deposit_capture_id: null,
+      },
+      error: null,
+    })
+    const loadEq = vi.fn().mockReturnValue({ maybeSingle: loadMaybeSingle })
+    const loadSelect = vi.fn().mockReturnValue({ eq: loadEq })
+
+    const hardDeleteMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: '23503', message: 'Table booking TB-1 holds a payment, so it cannot be deleted' },
+    })
+    const hardDeleteSelect = vi.fn().mockReturnValue({ maybeSingle: hardDeleteMaybeSingle })
+    const hardDeleteEq = vi.fn().mockReturnValue({ select: hardDeleteSelect })
+    const hardDelete = vi.fn().mockReturnValue({ eq: hardDeleteEq })
+
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
+      ok: true,
+      supabase: {
+        from: vi.fn().mockReturnValue({ select: loadSelect, update: vi.fn(), delete: hardDelete }),
+      },
+      userId: 'user-1',
+    })
+
+    const response = await deleteBohTableBooking({} as any, {
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
+    })
+    const payload = await response.json()
+
+    expect(hardDelete).toHaveBeenCalled()
+    expect(response.status).toBe(409)
+    expect(payload.error).toContain('still holds a paid deposit')
+  })
 })

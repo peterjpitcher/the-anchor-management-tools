@@ -185,4 +185,79 @@ describe('processEventRefund', () => {
     // The webhook raised the analytics event when it recorded the refund.
     expect(recordAnalyticsEvent).not.toHaveBeenCalled()
   })
+
+  it('adopts the webhook row when it lands between the look and the insert, which the unique index refuses', async () => {
+    const db = createFakeSupabase(
+      {
+        payments: [{
+          id: 'payment-1',
+          event_booking_id: 'booking-1',
+          charge_type: 'prepaid_event',
+          payment_provider: 'paypal',
+          amount: 20,
+          currency: 'GBP',
+          status: 'succeeded',
+          paypal_capture_id: 'CAPTURE-123',
+          metadata: {},
+          created_at: '2026-09-01T10:00:00.000Z',
+        }],
+      },
+      {
+        // payments_paypal_refund_id_unique
+        unique: {
+          payments: (row) => (row.charge_type === 'refund' ? row.metadata?.paypal_refund_id : undefined),
+        },
+      }
+    )
+    ;(refundPayPalPayment as unknown as Mock).mockResolvedValue({
+      refundId: 'RFD-888',
+      status: 'COMPLETED',
+      amount: '10.00',
+    })
+
+    // The webhook records the refund after the staff path looked for it and before it inserts.
+    const from = db.from
+    db.from = (name: string) => {
+      const query = from(name)
+      if (name !== 'payments') return query
+      const insert = query.insert
+      query.insert = (payload: Record<string, unknown>) => {
+        if (payload?.charge_type === 'refund') {
+          db.tables.payments.push({
+            id: 'webhook-row',
+            event_booking_id: 'booking-1',
+            charge_type: 'refund',
+            payment_provider: 'paypal',
+            amount: 10,
+            currency: 'GBP',
+            status: 'refunded',
+            metadata: { source_payment_id: 'payment-1', paypal_refund_id: 'RFD-888', initiated_by_type: 'system' },
+          })
+        }
+        return insert(payload)
+      }
+      return query
+    }
+
+    const result = await processEventRefund(db as any, {
+      bookingId: 'booking-1',
+      customerId: 'customer-1',
+      eventId: 'event-1',
+      amount: 10,
+      reason: 'staff_manual_refund',
+    })
+
+    const refundRows = db.tables.payments.filter((row) => row.charge_type === 'refund')
+    expect(result).toMatchObject({ status: 'succeeded', amount: 10, paypalRefundId: 'RFD-888' })
+    expect(refundRows).toHaveLength(1)
+    expect(refundRows[0]).toMatchObject({
+      id: 'webhook-row',
+      metadata: expect.objectContaining({
+        reason: 'staff_manual_refund',
+        initiated_by_type: 'staff',
+        recorded_first_by: 'paypal_webhook',
+      }),
+    })
+    expect(recordAnalyticsEvent).not.toHaveBeenCalled()
+  })
 })

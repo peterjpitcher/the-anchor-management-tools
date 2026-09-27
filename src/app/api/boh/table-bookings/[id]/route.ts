@@ -439,6 +439,17 @@ export async function DELETE(
       .maybeSingle()
 
     if (deleteError) {
+      // The database guard (migration 20260927120100) also counts money in the older ledgers,
+      // which the check above does not see.
+      if (deleteError.code === '23503') {
+        return NextResponse.json(
+          {
+            error:
+              'This booking still holds a paid deposit. Refund it first, then delete. Deleting now would destroy the payment record.',
+          },
+          { status: 409 },
+        )
+      }
       return NextResponse.json({ error: 'Failed to delete booking' }, { status: 500 })
     }
 

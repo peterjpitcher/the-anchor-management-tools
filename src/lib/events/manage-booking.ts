@@ -504,23 +504,9 @@ export async function processEventRefund(
         throw webhookRowError
       }
 
-      if (webhookRow) {
-        const { error: adoptError } = await supabase
-          .from('payments')
-          .update({
-            metadata: {
-              ...((webhookRow.metadata as Record<string, unknown> | null) ?? {}),
-              ...refundMetadata,
-              initiated_by_type: 'staff',
-              recorded_first_by: 'paypal_webhook'
-            }
-          })
-          .eq('id', webhookRow.id)
+      let adoptedRow = webhookRow
 
-        if (adoptError) {
-          throw adoptError
-        }
-      } else {
+      if (!adoptedRow) {
         const { error: refundInsertError } = await supabase
           .from('payments')
           .insert({
@@ -534,8 +520,41 @@ export async function processEventRefund(
             metadata: refundMetadata
           })
 
-        if (refundInsertError) {
+        if (refundInsertError?.code === '23505') {
+          // The webhook recorded this refund id between the look above and this insert (the
+          // unique index payments_paypal_refund_id_unique refused the second row): adopt its row.
+          const { data: racedRow, error: racedRowError } = await supabase
+            .from('payments')
+            .select('id, metadata')
+            .eq('charge_type', 'refund')
+            .contains('metadata', { paypal_refund_id: paypalRefund.refundId })
+            .limit(1)
+            .maybeSingle()
+
+          if (racedRowError || !racedRow) {
+            throw racedRowError ?? refundInsertError
+          }
+          adoptedRow = racedRow
+        } else if (refundInsertError) {
           throw refundInsertError
+        }
+      }
+
+      if (adoptedRow) {
+        const { error: adoptError } = await supabase
+          .from('payments')
+          .update({
+            metadata: {
+              ...((adoptedRow.metadata as Record<string, unknown> | null) ?? {}),
+              ...refundMetadata,
+              initiated_by_type: 'staff',
+              recorded_first_by: 'paypal_webhook'
+            }
+          })
+          .eq('id', adoptedRow.id)
+
+        if (adoptError) {
+          throw adoptError
         }
       }
 
@@ -559,7 +578,7 @@ export async function processEventRefund(
       }
 
       // An adopted webhook row already raised its analytics event.
-      if (!webhookRow && (mappedStatus === 'refunded' || mappedStatus === 'pending')) {
+      if (!adoptedRow && (mappedStatus === 'refunded' || mappedStatus === 'pending')) {
         try {
           await recordAnalyticsEvent(supabase, {
             customerId: input.customerId,
