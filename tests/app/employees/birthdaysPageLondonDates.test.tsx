@@ -86,8 +86,8 @@ describe('EmployeeBirthdaysPage', () => {
 
     expect(pageOutline(container)).toEqual(['October', 'Alex', 'September', 'Sam'])
     expect(screen.getByText('Today! 🎉')).toBeInTheDocument()
-    expect(screen.getByText('Oct 1')).toBeInTheDocument()
-    expect(screen.getByText('Sep 30')).toBeInTheDocument()
+    expect(screen.getByText('1 Oct')).toBeInTheDocument()
+    expect(screen.getByText('30 Sept')).toBeInTheDocument()
     expect(screen.getByText('Turning 36')).toBeInTheDocument()
     expect(screen.getByText('Turning 37')).toBeInTheDocument()
   })
@@ -107,7 +107,7 @@ describe('EmployeeBirthdaysPage', () => {
     ])
 
     expect(pageOutline(container)).toEqual(['February', 'Kim', 'January', 'Jo'])
-    expect(screen.getByText('Feb 1')).toBeInTheDocument()
-    expect(screen.getByText('Jan 31')).toBeInTheDocument()
+    expect(screen.getByText('1 Feb')).toBeInTheDocument()
+    expect(screen.getByText('31 Jan')).toBeInTheDocument()
   })
 })

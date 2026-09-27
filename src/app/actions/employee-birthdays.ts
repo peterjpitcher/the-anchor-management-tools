@@ -274,13 +274,13 @@ export async function getAllBirthdays() {
 }
 
 /**
- * The day the employee's next birthday falls on, as "Friday, September 25". Counted from today's
+ * The day the employee's next birthday falls on, as "Friday 25 September". Counted from today's
  * London date with the same day count that picked them for the reminder, so the email names the
  * day it was sent for (a 29 February birthday falls on 1 March in other years).
  */
 function formatUpcomingBirthday(emp: EmployeeWithBirthday): string {
   const birthdayIso = shiftIsoDate(getTodayIsoDate(), emp.days_until_birthday) ?? getTodayIsoDate();
-  return formatDateInLondon(birthdayIso, { weekday: 'long', month: 'long', day: 'numeric' }, 'en-US');
+  return formatDateInLondon(birthdayIso, { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
 function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): string {

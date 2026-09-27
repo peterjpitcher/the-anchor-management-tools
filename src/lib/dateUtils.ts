@@ -66,8 +66,9 @@ export function formatDateTimeInLondon(
 
 export function formatDate(date: string | Date): string {
   const d = toDate(date)
-  // Format as "January 15, 2024" (US format for legacy UI sections)
-  return d.toLocaleDateString('en-US', {
+  // British order, "15 January 2024", like every other date in the app (owner decision,
+  // 27 September 2026; it was "January 15, 2024" before).
+  return d.toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

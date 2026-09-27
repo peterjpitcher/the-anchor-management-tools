@@ -81,7 +81,7 @@ describe('calculateLengthOfService', () => {
     at(JUST_AFTER_MIDNIGHT_BST)
     expect(calculateLengthOfService('2026-09-18')).toBe('Started today')
     expect(calculateLengthOfService('2026-09-17')).toBe('1 day')
-    expect(calculateLengthOfService('2026-09-19')).toBe('Starts Sep 19, 2026')
+    expect(calculateLengthOfService('2026-09-19')).toBe('Starts 19 Sept 2026')
   })
 
   it('counts whole London days, months and years in the first hour of the day', () => {
@@ -95,7 +95,7 @@ describe('calculateLengthOfService', () => {
 
   it('still reads tomorrow as a future start just before midnight', () => {
     at(JUST_BEFORE_MIDNIGHT_BST)
-    expect(calculateLengthOfService('2026-09-18')).toBe('Starts Sep 18, 2026')
+    expect(calculateLengthOfService('2026-09-18')).toBe('Starts 18 Sept 2026')
     expect(calculateLengthOfService('2026-09-17')).toBe('Started today')
     // Day 30 of a month that has 31 days has always read "0 months"; this fix leaves that alone.
     expect(calculateLengthOfService('2026-08-18')).toBe('0 months')
@@ -107,7 +107,7 @@ describe('calculateLengthOfService', () => {
     expect(calculateLengthOfService('2026-01-15')).toBe('Started today')
     expect(calculateLengthOfService('2025-01-15')).toBe('1 year')
     at(JUST_BEFORE_MIDNIGHT_GMT)
-    expect(calculateLengthOfService('2026-01-15')).toBe('Starts Jan 15, 2026')
+    expect(calculateLengthOfService('2026-01-15')).toBe('Starts 15 Jan 2026')
     expect(calculateLengthOfService('2025-01-15')).toBe('11 months')
   })
 
@@ -175,7 +175,8 @@ describe('getUpcomingBirthday', () => {
 function legacyLengthOfService(startDate: string): string {
   const start = new Date(startDate)
   const now = new Date()
-  if (start > now) return `Starts ${format(start, 'MMM d, yyyy')}`
+  // The wording is British order since 27 September 2026; the date logic is what this oracle pins.
+  if (start > now) return `Starts ${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' })}`
   const years = differenceInYears(now, start)
   const months = differenceInMonths(now, start) % 12
   const days = differenceInDays(now, start)

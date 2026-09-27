@@ -38,7 +38,7 @@ export function calculateLengthOfService(startDate: string | Date | null): strin
 
   // Check if start date is in the future
   if (startIso > todayIso) {
-    return `Starts ${formatDateInLondon(startIso, { month: 'short', day: 'numeric', year: 'numeric' }, 'en-US')}`;
+    return `Starts ${formatDateInLondon(startIso, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   }
 
   const start = hostMidnight(startIso);
