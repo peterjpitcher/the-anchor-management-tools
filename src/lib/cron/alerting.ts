@@ -40,6 +40,63 @@ export function redactPii(input: string): string {
 }
 
 /**
+ * Emails staff (CRON_ALERT_EMAIL, the same inbox that hears about failed crons) about a payment
+ * event that needs a person: PayPal taking money back, or a refund the app could not record by
+ * itself. Staff only, never a customer.
+ *
+ * Unlike a cron failure, the context here is ids and amounts, not free text, so it is escaped but
+ * not run through `redactPii` (which reads a booking UUID as a phone number). Callers must not put
+ * customer names, emails or phone numbers in it.
+ *
+ * Never throws: the webhook that raised the alert has already done its work. Returns whether the
+ * email was accepted, so the caller can log a missed alert loudly.
+ */
+export async function reportPaymentAlert(input: {
+  title: string
+  summary: string
+  context?: Record<string, unknown>
+}): Promise<{ sent: boolean; reason?: string }> {
+  const alertEmail = process.env.CRON_ALERT_EMAIL
+  if (!alertEmail) {
+    console.error(`[payment-alert] CRON_ALERT_EMAIL not configured; staff were NOT told: ${input.title}`)
+    return { sent: false, reason: 'not_configured' }
+  }
+
+  const environment = process.env.NODE_ENV ?? 'unknown'
+  const rows = Object.entries(input.context ?? {})
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => {
+      const rawValue = typeof value === 'string' ? value : JSON.stringify(value)
+      return `<tr><td style="padding:4px 8px;font-weight:bold;vertical-align:top;">${escapeHtml(key)}</td><td style="padding:4px 8px;">${escapeHtml(rawValue)}</td></tr>`
+    })
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;">
+      <h2 style="color:${STAFF.danger};">${escapeHtml(input.title)}</h2>
+      <p style="font-size:14px;line-height:1.5;">${escapeHtml(input.summary)}</p>
+      <table style="border-collapse:collapse;font-family:monospace;font-size:13px;">
+        ${rows.join('\n        ')}
+      </table>
+    </div>`.trim()
+
+  try {
+    const result = await sendEmail({
+      to: alertEmail,
+      subject: `[PAYPAL ACTION NEEDED] ${input.title} - ${environment}`,
+      html,
+    })
+    if (!result.success) {
+      console.error(`[payment-alert] Failed to send alert "${input.title}":`, result.error)
+      return { sent: false, reason: 'send_failed' }
+    }
+    return { sent: true }
+  } catch (sendError) {
+    console.error(`[payment-alert] Exception sending alert "${input.title}":`, sendError)
+    return { sent: false, reason: 'send_threw' }
+  }
+}
+
+/**
  * Reports a cron job failure by sending an alert email to the configured
  * CRON_ALERT_EMAIL address. Fails silently (logs to console) if the email
  * cannot be sent, to avoid masking the original error.

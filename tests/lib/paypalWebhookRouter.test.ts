@@ -211,6 +211,45 @@ describe('routing a refund', () => {
     expect(decision).toMatchObject({ domain: 'table_bookings', key: TABLE_UUID, via: 'refund_lookup' })
   })
 
+  it('finds the event booking that owns a refunded ticket capture', async () => {
+    // An event ticket refund made in PayPal used to fall through to `unrouted` and was never recorded.
+    const supabase = makeSupabase({
+      payment_refunds: [],
+      payments: [{ event_booking_id: 'booking-5', charge_type: 'prepaid_event', paypal_capture_id: 'CAPTURE-8' }],
+      private_bookings: [],
+      table_bookings: [],
+      parking_booking_payments: [],
+    })
+
+    const decision = await routePayPalEvent(supabase.client, refund('REF-5', 'CAPTURE-8'))
+
+    expect(decision).toMatchObject({ domain: 'event_bookings', key: 'booking-5', via: 'refund_lookup' })
+  })
+
+  it('does not claim a payments row that is not a ticket charge', async () => {
+    const supabase = makeSupabase({
+      payment_refunds: [],
+      payments: [{ event_booking_id: null, charge_type: 'table_deposit', paypal_capture_id: 'CAPTURE-9' }],
+      invoice_payments: [],
+    })
+
+    const decision = await routePayPalEvent(supabase.client, refund('REF-6', 'CAPTURE-9'))
+
+    expect(decision.domain).toBeNull()
+  })
+
+  it('finds the invoice whose PayPal payment was refunded', async () => {
+    const supabase = makeSupabase({
+      payment_refunds: [],
+      payments: [],
+      invoice_payments: [{ invoice_id: 'inv-3', reference: 'CAPTURE-10', source_kind: 'paypal' }],
+    })
+
+    const decision = await routePayPalEvent(supabase.client, refund('REF-7', 'CAPTURE-10'))
+
+    expect(decision).toMatchObject({ domain: 'invoices', key: 'inv-3', via: 'refund_lookup' })
+  })
+
   it('reports a refund for a capture no booking of ours owns', async () => {
     const supabase = makeSupabase({
       payment_refunds: [], payments: [], private_bookings: [], table_bookings: [], parking_booking_payments: [],
@@ -219,5 +258,43 @@ describe('routing a refund', () => {
     const decision = await routePayPalEvent(supabase.client, refund('REF-4', 'CAPTURE-UNKNOWN'))
 
     expect(decision.domain).toBeNull()
+  })
+})
+
+describe('routing a reversal (PAYMENT.CAPTURE.REVERSED)', () => {
+  function reversal(refundId: string, captureId: string) {
+    return { ...refund(refundId, captureId), event_type: 'PAYMENT.CAPTURE.REVERSED' }
+  }
+
+  it('places a reversal by the capture it came out of, like a refund', async () => {
+    const supabase = makeSupabase({
+      payment_refunds: [],
+      payments: [],
+      private_bookings: [{ id: 'pb-7', paypal_deposit_capture_id: 'CAPTURE-11' }],
+    })
+
+    const decision = await routePayPalEvent(supabase.client, reversal('REV-1', 'CAPTURE-11'))
+
+    expect(decision).toMatchObject({ domain: 'private_bookings', key: 'pb-7', via: 'refund_lookup' })
+  })
+
+  it('falls back to the custom_id for a reversal shaped as the capture itself', async () => {
+    const supabase = makeSupabase({ payment_refunds: [], payments: [] })
+
+    const decision = await routePayPalEvent(supabase.client, {
+      id: 'WH-REV',
+      event_type: 'PAYMENT.CAPTURE.REVERSED',
+      resource: { id: 'CAPTURE-12', custom_id: 'pb-deposit-pb-8', status: 'REVERSED' },
+    })
+
+    expect(decision).toMatchObject({ domain: 'private_bookings', key: 'pb-8', via: 'custom_id_prefix' })
+  })
+
+  it('reports a reversal on a capture nobody owns', async () => {
+    const supabase = makeSupabase({})
+
+    const decision = await routePayPalEvent(supabase.client, reversal('REV-2', 'CAPTURE-UNKNOWN'))
+
+    expect(decision).toMatchObject({ domain: null, via: 'unrouted' })
   })
 })

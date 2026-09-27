@@ -139,6 +139,7 @@ describe('GET /api/cron/paypal-webhook-health', () => {
     expect(body.registrations[0].missingRequiredEvents).toEqual([
       'PAYMENT.CAPTURE.DENIED',
       'PAYMENT.CAPTURE.REFUNDED',
+      'PAYMENT.CAPTURE.REVERSED',
     ])
   })
 

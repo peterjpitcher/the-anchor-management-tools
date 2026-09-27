@@ -1,7 +1,30 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { SYSTEM_USER_ID } from '@/lib/system-user'
+import { readPayPalRefundResource, type PayPalRefundResource } from '@/lib/paypal-refund-resource'
 
 type SourceType = 'private_booking' | 'table_booking' | 'parking'
+
+/** A refund someone made in PayPal, or PayPal taking the money back (chargeback or reversal). */
+export type RefundWebhookKind = 'refund' | 'reversal'
+
+export type RefundWebhookOutcome = {
+  /**
+   * recorded: a new refund row. attached: a row we already had, now carrying PayPal's id.
+   * updated / already_recorded: the refund was ours already. manual_review: nothing written, a
+   * person has to decide.
+   */
+  state: 'recorded' | 'attached' | 'updated' | 'already_recorded' | 'manual_review'
+  manualReview?: boolean
+  reason?: string
+  sourceId?: string | null
+}
+
+const DASHBOARD_REASON = 'Refund initiated via PayPal dashboard'
+const REVERSAL_REASON = 'PayPal reversal or chargeback: PayPal took this payment back'
+
+/** Half a penny: amounts are pounds to two places, compared without float noise. */
+const PENNY_TOLERANCE = 0.005
 
 /**
  * Column used to store the deposit refund status on the source booking/payment table.
@@ -32,28 +55,74 @@ const CAPTURE_ID_COLUMN: Record<SourceType, string> = {
   parking: 'transaction_id',
 }
 
+type RefundRow = {
+  id: string
+  source_type: string
+  source_id: string
+  status: string
+  paypal_status: string | null
+  original_amount: number
+  amount?: number
+}
+
+const REFUND_ROW_COLUMNS = 'id, source_type, source_id, status, paypal_status, original_amount'
+
+function manualReview(reason: string, sourceId: string | null = null): RefundWebhookOutcome {
+  return { state: 'manual_review', manualReview: true, reason, sourceId }
+}
+
+async function findRefundByPayPalId(
+  supabase: ReturnType<typeof createAdminClient>,
+  paypalRefundId: string,
+): Promise<RefundRow | null> {
+  const { data, error } = await supabase
+    .from('payment_refunds')
+    .select(REFUND_ROW_COLUMNS)
+    .eq('paypal_refund_id', paypalRefundId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Failed to look up refund by paypal_refund_id: ${error.message}`)
+  }
+  return (data as RefundRow | null) ?? null
+}
+
 /**
- * Shared refund webhook handler. Called from each PayPal webhook route for
- * PAYMENT.CAPTURE.REFUNDED, PAYMENT.REFUND.PENDING, and PAYMENT.REFUND.FAILED events.
+ * Shared refund webhook handler for private bookings, table bookings and parking. Called for
+ * PAYMENT.CAPTURE.REFUNDED and PAYMENT.REFUND.*, and with `kind: 'reversal'` for
+ * PAYMENT.CAPTURE.REVERSED.
  *
- * Handles two scenarios:
- * 1. Refund already exists in `payment_refunds` (initiated via our UI) — update its status.
- * 2. Refund not found (initiated via PayPal dashboard) — create a system-originated row.
+ * One PayPal refund id is one `payment_refunds` row, ever (the column has a unique index). In order:
+ * 1. A row already carries the refund id (a staff refund, or an earlier delivery): update its status.
+ * 2. A refund only (never a reversal): a PayPal row on the same capture for the same amount that has
+ *    no refund id yet is taken to be this refund, and the id is attached to it rather than a second
+ *    row inserted. That is a staff refund whose PayPal call has not come back yet, or one whose local
+ *    update failed after PayPal took it (the fallback in refundActions leaves it with no id).
+ * 3. Otherwise it was made outside the app: record a system row the way the staff path records a
+ *    refund, unless that would refund more than was paid, in which case a person decides.
+ *
+ * Every write that fails throws, so the webhook answers 500 and PayPal retries; each step is found
+ * again by refund id on the retry, so retries converge instead of repeating.
  */
 export async function handleRefundEvent(
   supabase: ReturnType<typeof createAdminClient>,
-  event: any,
-  sourceType: SourceType
-): Promise<void> {
-  const resource = event.resource
-  const paypalRefundId: string = resource?.id ?? ''
-  const paypalStatus: string = resource?.status ?? '' // COMPLETED, PENDING, FAILED, CANCELLED
-  const statusDetails: string | null = resource?.status_details?.reason ?? null
-  const amount: string | null = resource?.amount?.value ?? null
+  event: any, // PayPal webhook event payload is not typed in this project
+  sourceType: SourceType,
+  options: { kind?: RefundWebhookKind } = {},
+): Promise<RefundWebhookOutcome> {
+  const kind: RefundWebhookKind = options.kind ?? 'refund'
+  const refund = readPayPalRefundResource(event)
+  const paypalRefundId = refund.refundId ?? ''
+  const paypalStatus = refund.rawStatus ?? ''
+  const paypalCaptureId = refund.captureId
 
-  // Extract capture ID from the HATEOAS "up" link
-  const captureLink = resource?.links?.find((link: any) => link.rel === 'up')?.href
-  const paypalCaptureId = captureLink ? captureLink.split('/').pop() ?? null : null
+  // A reversal we cannot tie to a capture (not shaped as a refund) is never guessed at.
+  if (kind === 'reversal' && (!paypalRefundId || !paypalCaptureId)) {
+    logger.error('PayPal reversal did not carry a refund id and capture link; not recorded', {
+      metadata: { sourceType, eventId: event?.id, paypalRefundId },
+    })
+    return manualReview('not_a_refund_resource')
+  }
 
   if (!paypalRefundId) {
     throw new Error(`Refund webhook missing refund ID (resource.id) for ${sourceType}`)
@@ -62,66 +131,111 @@ export async function handleRefundEvent(
   logger.info('Processing refund webhook event', {
     metadata: {
       sourceType,
+      kind,
       paypalRefundId,
       paypalCaptureId,
       paypalStatus,
-      eventId: event.id,
+      eventId: event?.id,
     },
   })
 
-  // ----- Step 1: Try to match by paypal_refund_id -----
-  const { data: existingRefund, error: lookupError } = await supabase
-    .from('payment_refunds')
-    .select('id, source_type, source_id, status, paypal_status, original_amount')
-    .eq('paypal_refund_id', paypalRefundId)
-    .maybeSingle()
-
-  if (lookupError) {
-    throw new Error(`Failed to look up refund by paypal_refund_id: ${lookupError.message}`)
-  }
-
+  // ----- Step 1: this refund id is already ours -----
+  const existingRefund = await findRefundByPayPalId(supabase, paypalRefundId)
   if (existingRefund) {
-    // Already exists — update status if needed; use stored source_type, not route-supplied
-    return await handleExistingRefund(supabase, existingRefund, paypalStatus, statusDetails, existingRefund.source_type as SourceType)
+    // Use the stored source_type, not the route-supplied one.
+    return handleExistingRefund(supabase, existingRefund, paypalStatus, refund.statusDetails, existingRefund.source_type as SourceType)
   }
 
-  // ----- Step 1b: Fallback — match pending row by (source_type, paypal_capture_id, status='pending') -----
-  if (paypalCaptureId) {
-    const { data: pendingRefund, error: pendingLookupError } = await supabase
-      .from('payment_refunds')
-      .select('id, source_type, source_id, status, paypal_status, original_amount')
-      .eq('source_type', sourceType)
-      .eq('paypal_capture_id', paypalCaptureId)
-      .eq('status', 'pending')
-      .maybeSingle()
+  // ----- Step 2: a row of ours for this capture and amount is still waiting for its id -----
+  if (kind === 'refund' && paypalCaptureId) {
+    const attached = await attachToUnidentifiedRefund(supabase, sourceType, refund, paypalRefundId, paypalCaptureId)
+    if (attached) return attached
+  }
 
-    if (pendingLookupError) {
-      logger.error('Failed to look up pending refund by capture ID', {
-        error: new Error(pendingLookupError.message),
-        metadata: { paypalRefundId, paypalCaptureId, sourceType },
+  // ----- Step 3: made outside the app (dashboard refund, or a reversal) -----
+  return handleDashboardRefund(supabase, event, sourceType, kind, refund, paypalRefundId)
+}
+
+/**
+ * Step 2. Returns null when there is nothing to attach to, so a new row is recorded.
+ */
+async function attachToUnidentifiedRefund(
+  supabase: ReturnType<typeof createAdminClient>,
+  sourceType: SourceType,
+  refund: PayPalRefundResource,
+  paypalRefundId: string,
+  paypalCaptureId: string,
+): Promise<RefundWebhookOutcome | null> {
+  const { data: candidates, error: candidatesError } = await supabase
+    .from('payment_refunds')
+    .select(`${REFUND_ROW_COLUMNS}, amount, created_at`)
+    .eq('source_type', sourceType)
+    .eq('paypal_capture_id', paypalCaptureId)
+    .eq('refund_method', 'paypal')
+    .is('paypal_refund_id', null)
+    .in('status', ['pending', 'completed'])
+    .order('created_at', { ascending: true })
+
+  if (candidatesError) {
+    // Fail closed. Falling through here is how a staff refund gets recorded twice.
+    throw new Error(`Failed to look up refunds awaiting a PayPal id: ${candidatesError.message}`)
+  }
+
+  const rows = (candidates ?? []) as RefundRow[]
+  if (rows.length === 0) return null
+
+  const sameAmount = (row: RefundRow) =>
+    refund.amount !== null && Math.abs(Number(row.amount) - refund.amount) < PENNY_TOLERANCE
+  // A pending row is a staff refund in flight, the likeliest owner; a completed one is a staff
+  // refund whose local update failed after PayPal took it. Oldest first within each.
+  const match = rows.find((row) => row.status === 'pending' && sameAmount(row))
+    ?? rows.find((row) => row.status === 'completed' && sameAmount(row))
+
+  if (!match) {
+    if (rows.some((row) => row.status === 'pending')) {
+      // A staff refund on this payment is in flight for a different amount. Recording this one
+      // beside it could count the same money twice; attaching could record the wrong amount.
+      logger.error('PayPal refund does not match the staff refund pending on the same capture', {
+        metadata: { paypalRefundId, paypalCaptureId, sourceType, amount: refund.amount },
       })
+      return manualReview('unmatched_pending_staff_refund', rows[0]?.source_id ?? null)
     }
-
-    if (pendingRefund) {
-      // Update the pending row with the PayPal refund ID, then handle as existing
-      const { error: patchError } = await supabase
-        .from('payment_refunds')
-        .update({ paypal_refund_id: paypalRefundId })
-        .eq('id', pendingRefund.id)
-
-      if (patchError) {
-        logger.error('Failed to patch pending refund with PayPal refund ID', {
-          error: new Error(patchError.message),
-          metadata: { refundId: pendingRefund.id, paypalRefundId },
-        })
-      }
-
-      return await handleExistingRefund(supabase, pendingRefund, paypalStatus, statusDetails, pendingRefund.source_type as SourceType)
-    }
+    return null
   }
 
-  // ----- Step 2: Dashboard reconciliation — refund not in our system -----
-  await handleDashboardRefund(supabase, event, sourceType, paypalRefundId, paypalCaptureId, paypalStatus, statusDetails, amount)
+  const { data: attachedRows, error: attachError } = await supabase
+    .from('payment_refunds')
+    .update({ paypal_refund_id: paypalRefundId })
+    .eq('id', match.id)
+    .is('paypal_refund_id', null)
+    .select('id')
+
+  if (attachError) {
+    if ((attachError as { code?: string }).code === '23505') {
+      // Another delivery of this refund attached or recorded it first.
+      const winner = await findRefundByPayPalId(supabase, paypalRefundId)
+      if (winner) {
+        return handleExistingRefund(supabase, winner, refund.rawStatus ?? '', refund.statusDetails, winner.source_type as SourceType)
+      }
+    }
+    throw new Error(`Failed to attach PayPal refund id to refund row: ${attachError.message}`)
+  }
+
+  if (!attachedRows || attachedRows.length === 0) {
+    // The row gained an id between our read and our write. Whoever won, retry from the top.
+    const winner = await findRefundByPayPalId(supabase, paypalRefundId)
+    if (winner) {
+      return handleExistingRefund(supabase, winner, refund.rawStatus ?? '', refund.statusDetails, winner.source_type as SourceType)
+    }
+    throw new Error('Refund row changed while attaching its PayPal id; retrying')
+  }
+
+  logger.info('Attached PayPal refund id to an existing refund row', {
+    metadata: { refundRowId: match.id, paypalRefundId, paypalCaptureId, sourceType },
+  })
+
+  const outcome = await handleExistingRefund(supabase, match, refund.rawStatus ?? '', refund.statusDetails, match.source_type as SourceType)
+  return { ...outcome, state: 'attached' }
 }
 
 /**
@@ -129,18 +243,11 @@ export async function handleRefundEvent(
  */
 async function handleExistingRefund(
   supabase: ReturnType<typeof createAdminClient>,
-  existingRefund: {
-    id: string
-    source_type: string
-    source_id: string
-    status: string
-    paypal_status: string | null
-    original_amount: number
-  },
+  existingRefund: RefundRow,
   paypalStatus: string,
   statusDetails: string | null,
   sourceType: SourceType
-): Promise<void> {
+): Promise<RefundWebhookOutcome> {
   // Already completed. This is NOT a no-op: the refund row and the booking summary are two
   // separate writes, the row goes first, and if the booking write failed the retry used to
   // land here and skip the repair forever, leaving staff a refund that still reads as unpaid.
@@ -156,7 +263,7 @@ async function handleExistingRefund(
       existingRefund.source_id,
       existingRefund.original_amount
     )
-    return
+    return { state: 'already_recorded', sourceId: existingRefund.source_id }
   }
 
   const normalizedStatus = paypalStatus.toUpperCase()
@@ -210,25 +317,27 @@ async function handleExistingRefund(
       throw new Error(`Failed to update refund paypal_status to PENDING: ${updateError.message}`)
     }
   }
+
+  return { state: 'updated', sourceId: existingRefund.source_id }
 }
 
 /**
- * Handle a refund that was initiated via the PayPal dashboard (not in our system).
- * Creates a system-originated refund row and updates booking status.
+ * Record money that left through PayPal without the app asking: a refund made in the PayPal
+ * dashboard, or a reversal. Creates a system-originated refund row and updates booking status,
+ * exactly as a staff refund would.
  */
 async function handleDashboardRefund(
   supabase: ReturnType<typeof createAdminClient>,
   event: any,
   sourceType: SourceType,
+  kind: RefundWebhookKind,
+  refund: PayPalRefundResource,
   paypalRefundId: string,
-  paypalCaptureId: string | null,
-  paypalStatus: string,
-  statusDetails: string | null,
-  amount: string | null
-): Promise<void> {
+): Promise<RefundWebhookOutcome> {
+  const paypalCaptureId = refund.captureId
   if (!paypalCaptureId) {
-    logger.error('Dashboard refund webhook missing capture ID — cannot reconcile', {
-      metadata: { paypalRefundId, sourceType, eventId: event.id },
+    logger.error('Dashboard refund webhook missing capture ID; cannot reconcile', {
+      metadata: { paypalRefundId, sourceType, eventId: event?.id },
     })
     throw new Error(`Refund webhook missing capture ID for dashboard reconciliation (${sourceType})`)
   }
@@ -248,19 +357,38 @@ async function handleDashboardRefund(
   }
 
   if (!sourceRow) {
-    logger.warn('No source booking found for dashboard refund — cannot reconcile', {
-      metadata: { paypalRefundId, paypalCaptureId, sourceType, eventId: event.id },
+    // The router placed it here by this capture, so the booking went between the two reads.
+    logger.error('No source booking found for PayPal refund; not recorded', {
+      metadata: { paypalRefundId, paypalCaptureId, sourceType, eventId: event?.id },
     })
-    return
+    return manualReview('source_not_found')
   }
 
   const sourceId: string = sourceRow.id
-  const normalizedStatus = paypalStatus.toUpperCase()
-  const refundAmount = amount ? parseFloat(amount) : 0
 
-  if (refundAmount <= 0) {
-    throw new Error(`Dashboard refund has invalid amount: ${amount} for ${sourceType}`)
+  // Nothing below records a figure we had to guess. PayPal retrying would not change the
+  // payload, so an unreadable one goes to a person rather than round a retry loop.
+  if (!refund.status) {
+    logger.error('PayPal refund carried a status we do not record; not recorded', {
+      metadata: { paypalRefundId, sourceId, sourceType, rawStatus: refund.rawStatus },
+    })
+    return manualReview('unknown_status', sourceId)
   }
+  if (refund.amount === null) {
+    logger.error('PayPal refund carried no exact amount; not recorded', {
+      metadata: { paypalRefundId, sourceId, sourceType, eventId: event?.id },
+    })
+    return manualReview('unreadable_amount', sourceId)
+  }
+  if (refund.currency && refund.currency !== 'GBP') {
+    logger.error('PayPal refund was not in pounds; not recorded', {
+      metadata: { paypalRefundId, sourceId, sourceType, currency: refund.currency },
+    })
+    return manualReview('wrong_currency', sourceId)
+  }
+
+  const normalizedStatus = refund.status
+  const refundAmount = refund.amount
 
   // Fetch original amount from the source for the refund row
   const originalAmount = await getOriginalAmount(supabase, sourceType, sourceId)
@@ -269,6 +397,48 @@ async function handleDashboardRefund(
     : (normalizedStatus === 'FAILED' || normalizedStatus === 'CANCELLED') ? 'failed'
     : 'pending'
 
+  // Never record more coming back than went in. PayPal will not refund past a capture, so a
+  // total that would go over means our ledger is already wrong somewhere (a manual refund also
+  // recorded, say), and that needs a person, not another row.
+  if (refundStatus !== 'failed') {
+    const { data: reservedRows, error: reservedError } = await supabase
+      .from('payment_refunds')
+      .select('amount')
+      .eq('source_type', sourceType)
+      .eq('source_id', sourceId)
+      .in('status', ['completed', 'pending'])
+
+    if (reservedError) {
+      throw new Error(`Failed to sum existing refunds for ${sourceType}: ${reservedError.message}`)
+    }
+
+    const alreadyReserved = (reservedRows ?? []).reduce(
+      (sum: number, row: { amount: number }) => sum + Number(row.amount),
+      0,
+    )
+    if (alreadyReserved + refundAmount > originalAmount + PENNY_TOLERANCE) {
+      // PayPal sends every refund as two events. If the other one recorded this very refund after
+      // step 1 looked, its row is in the sum above and this one looks like a second refund of the
+      // same money. That is not over-capture: settle the row it wrote instead of asking staff to
+      // record by hand a refund that is already recorded.
+      const recordedMeanwhile = await findRefundByPayPalId(supabase, paypalRefundId)
+      if (recordedMeanwhile) {
+        return handleExistingRefund(
+          supabase,
+          recordedMeanwhile,
+          refund.rawStatus ?? '',
+          refund.statusDetails,
+          recordedMeanwhile.source_type as SourceType,
+        )
+      }
+
+      logger.error('PayPal refund would take refunds past the amount paid; not recorded', {
+        metadata: { paypalRefundId, sourceId, sourceType, alreadyReserved, refundAmount, originalAmount },
+      })
+      return manualReview('exceeds_captured_amount', sourceId)
+    }
+  }
+
   const { error: insertError } = await supabase
     .from('payment_refunds')
     .insert({
@@ -276,21 +446,29 @@ async function handleDashboardRefund(
       source_id: sourceId,
       paypal_capture_id: paypalCaptureId,
       paypal_refund_id: paypalRefundId,
-      paypal_status: normalizedStatus as any,
-      paypal_status_details: statusDetails,
+      paypal_status: normalizedStatus,
+      paypal_status_details: refund.statusDetails,
       refund_method: 'paypal',
       amount: refundAmount,
       original_amount: originalAmount,
-      reason: 'Refund initiated via PayPal dashboard',
+      reason: kind === 'reversal' ? REVERSAL_REASON : DASHBOARD_REASON,
       status: refundStatus,
+      // initiated_by references auth.users, so the system user cannot go there; the type says who.
       initiated_by: null,
       initiated_by_type: 'system',
       completed_at: refundStatus === 'completed' ? new Date().toISOString() : null,
       failed_at: refundStatus === 'failed' ? new Date().toISOString() : null,
-      failure_message: refundStatus === 'failed' ? (statusDetails ?? `PayPal status: ${normalizedStatus}`) : null,
+      failure_message: refundStatus === 'failed' ? (refund.statusDetails ?? `PayPal status: ${normalizedStatus}`) : null,
     })
 
   if (insertError) {
+    if ((insertError as { code?: string }).code === '23505') {
+      // The other event PayPal sends for the same refund got here first. Not a failure.
+      const winner = await findRefundByPayPalId(supabase, paypalRefundId)
+      if (winner) {
+        return handleExistingRefund(supabase, winner, refund.rawStatus ?? '', refund.statusDetails, winner.source_type as SourceType)
+      }
+    }
     throw new Error(`Failed to create system refund row for dashboard reconciliation: ${insertError.message}`)
   }
 
@@ -303,7 +481,7 @@ async function handleDashboardRefund(
   const { error: auditError } = await supabase
     .from('audit_logs')
     .insert({
-      operation_type: 'paypal_dashboard_refund_reconciled',
+      operation_type: kind === 'reversal' ? 'paypal_capture_reversal_recorded' : 'paypal_dashboard_refund_reconciled',
       resource_type: sourceType,
       resource_id: sourceId,
       operation_status: 'success',
@@ -312,12 +490,15 @@ async function handleDashboardRefund(
         paypal_capture_id: paypalCaptureId,
         amount: refundAmount,
         paypal_status: normalizedStatus,
-        event_id: event.id,
+        event_id: event?.id,
+        event_type: event?.event_type,
+        initiated_by_type: 'system',
+        actor_user_id: SYSTEM_USER_ID,
       },
     })
 
   if (auditError) {
-    // Log but don't throw — the refund row was already created
+    // Log but don't throw: the refund row was already created, and a retry would not rewrite this.
     logger.error('Failed to write dashboard refund reconciliation audit log', {
       error: new Error(auditError.message),
       metadata: { paypalRefundId, sourceId, sourceType },
@@ -325,12 +506,14 @@ async function handleDashboardRefund(
   }
 
   logger.info('Dashboard refund reconciled successfully', {
-    metadata: { paypalRefundId, paypalCaptureId, sourceId, sourceType, refundStatus },
+    metadata: { paypalRefundId, paypalCaptureId, sourceId, sourceType, refundStatus, kind },
   })
+
+  return { state: 'recorded', sourceId }
 }
 
 /**
- * Get the original payment amount for a source booking.
+ * The amount that was paid, the same figure the staff refund path uses as the refund ceiling.
  */
 async function getOriginalAmount(
   supabase: ReturnType<typeof createAdminClient>,
@@ -348,9 +531,21 @@ async function getOriginalAmount(
     return data?.amount ? parseFloat(String(data.amount)) : 0
   }
 
-  // For private_bookings and table_bookings, use deposit_amount
-  const table = SOURCE_TABLE[sourceType]
-  const { data, error } = await (supabase.from(table) as any)
+  if (sourceType === 'table_booking') {
+    // The locked amount is what PayPal actually captured; deposit_amount can move after capture
+    // (a party size change). The staff refund path reads it the same way.
+    const { data, error } = await supabase
+      .from('table_bookings')
+      .select('deposit_amount, deposit_amount_locked')
+      .eq('id', sourceId)
+      .maybeSingle()
+
+    if (error) throw new Error(`Failed to get table_booking deposit amount: ${error.message}`)
+    return Number(data?.deposit_amount_locked ?? data?.deposit_amount) || 0
+  }
+
+  const { data, error } = await supabase
+    .from('private_bookings')
     .select('deposit_amount')
     .eq('id', sourceId)
     .maybeSingle()
@@ -363,6 +558,9 @@ async function getOriginalAmount(
  * Recalculate and update the refund status on the source booking/payment.
  * Sums all completed refunds for this source and compares to original amount.
  * Sets 'refunded' if total >= original, else 'partially_refunded'.
+ *
+ * Every write here throws on failure. The refund row is already in, so the retry lands on the
+ * "already completed" branch above and runs this again until it sticks.
  */
 async function updateBookingRefundStatus(
   supabase: ReturnType<typeof createAdminClient>,
@@ -412,20 +610,23 @@ async function updateBookingRefundStatus(
       .eq('id', sourceId)
 
     if (paymentStatusError) {
-      logger.error('Failed to reconcile table_bookings.payment_status after a refund', {
-        error: new Error(paymentStatusError.message),
-        metadata: { sourceId, refundStatusValue },
-      })
+      throw new Error(`Failed to reconcile table_bookings.payment_status after a refund: ${paymentStatusError.message}`)
     }
   }
 
-  // Also update the parent parking_bookings.payment_status when fully refunded
+  // Also update the parent parking_bookings.payment_status when fully refunded. Unlike the staff
+  // path this does not cancel the booking: a refund made outside the app is not a decision to
+  // cancel, and the original design keeps booking status out of the webhook.
   if (sourceType === 'parking' && refundStatusValue === 'refunded') {
-    const { data: paymentRow } = await supabase
+    const { data: paymentRow, error: paymentRowError } = await supabase
       .from('parking_booking_payments')
       .select('booking_id')
       .eq('id', sourceId)
       .maybeSingle()
+
+    if (paymentRowError) {
+      throw new Error(`Failed to look up the parking booking for a refund: ${paymentRowError.message}`)
+    }
 
     if (paymentRow?.booking_id) {
       const { error: bookingUpdateError } = await supabase
@@ -434,10 +635,7 @@ async function updateBookingRefundStatus(
         .eq('id', paymentRow.booking_id)
 
       if (bookingUpdateError) {
-        logger.error('Failed to update parking_bookings.payment_status to refunded', {
-          error: new Error(bookingUpdateError.message),
-          metadata: { sourceId, bookingId: paymentRow.booking_id },
-        })
+        throw new Error(`Failed to update parking_bookings.payment_status to refunded: ${bookingUpdateError.message}`)
       }
     }
   }

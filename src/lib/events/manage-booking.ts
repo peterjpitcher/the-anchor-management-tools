@@ -479,29 +479,64 @@ export async function processEventRefund(
             ? 'pending'
             : 'failed'
 
-      const { error: refundInsertError } = await supabase
-        .from('payments')
-        .insert({
-          event_booking_id: input.bookingId,
-          charge_type: 'refund',
-          payment_provider: 'paypal',
-          payment_method: 'paypal',
-          amount: amountForPayment,
-          currency: (payment.currency || 'GBP').toUpperCase(),
-          status: paymentStatus,
-          metadata: {
-            source_payment_id: payment.id,
-            source_paypal_capture_id: payment.paypal_capture_id,
-            paypal_refund_id: paypalRefund.refundId,
-            paypal_refund_status: paypalRefund.status,
-            paypal_refund_status_details: paypalRefund.statusDetails,
-            reason: input.reason,
-            ...(input.metadata || {})
-          }
-        })
+      const refundMetadata = {
+        source_payment_id: payment.id,
+        source_paypal_capture_id: payment.paypal_capture_id,
+        paypal_refund_id: paypalRefund.refundId,
+        paypal_refund_status: paypalRefund.status,
+        paypal_refund_status_details: paypalRefund.statusDetails,
+        reason: input.reason,
+        ...(input.metadata || {})
+      }
 
-      if (refundInsertError) {
-        throw refundInsertError
+      // PayPal tells the webhook about this refund too. If that delivery landed between PayPal
+      // answering and this write, it has already recorded the refund, so adopt its row (with
+      // this refund's reason and idempotency key) instead of recording the money twice.
+      const { data: webhookRow, error: webhookRowError } = await supabase
+        .from('payments')
+        .select('id, metadata')
+        .eq('charge_type', 'refund')
+        .contains('metadata', { paypal_refund_id: paypalRefund.refundId })
+        .limit(1)
+        .maybeSingle()
+
+      if (webhookRowError) {
+        throw webhookRowError
+      }
+
+      if (webhookRow) {
+        const { error: adoptError } = await supabase
+          .from('payments')
+          .update({
+            metadata: {
+              ...((webhookRow.metadata as Record<string, unknown> | null) ?? {}),
+              ...refundMetadata,
+              initiated_by_type: 'staff',
+              recorded_first_by: 'paypal_webhook'
+            }
+          })
+          .eq('id', webhookRow.id)
+
+        if (adoptError) {
+          throw adoptError
+        }
+      } else {
+        const { error: refundInsertError } = await supabase
+          .from('payments')
+          .insert({
+            event_booking_id: input.bookingId,
+            charge_type: 'refund',
+            payment_provider: 'paypal',
+            payment_method: 'paypal',
+            amount: amountForPayment,
+            currency: (payment.currency || 'GBP').toUpperCase(),
+            status: paymentStatus,
+            metadata: refundMetadata
+          })
+
+        if (refundInsertError) {
+          throw refundInsertError
+        }
       }
 
       paypalRefundIds.push(paypalRefund.refundId)
@@ -523,7 +558,8 @@ export async function processEventRefund(
           .eq('id', payment.id)
       }
 
-      if (mappedStatus === 'refunded' || mappedStatus === 'pending') {
+      // An adopted webhook row already raised its analytics event.
+      if (!webhookRow && (mappedStatus === 'refunded' || mappedStatus === 'pending')) {
         try {
           await recordAnalyticsEvent(supabase, {
             customerId: input.customerId,

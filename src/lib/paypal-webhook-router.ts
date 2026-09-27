@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { INVOICE_PAYMENT_CUSTOM_ID_PREFIX } from '@/lib/invoices/paypal-custom-id'
+import { readCaptureIdFromRefundResource } from '@/lib/paypal-refund-resource'
 
 /**
  * Decides which part of the business owns a PayPal event.
@@ -40,6 +41,15 @@ export const PAYPAL_REFUND_EVENT_TYPES = new Set([
   'PAYMENT.REFUND.CANCELLED',
 ])
 
+/**
+ * PayPal taking money back: a chargeback it has decided against us, or a reversal. It arrives as
+ * a refund resource pointing at the capture, so it routes the way a refund does.
+ */
+export const PAYPAL_REVERSAL_EVENT_TYPE = 'PAYMENT.CAPTURE.REVERSED'
+
+/** Event ticket charges. A `payments` row with any other charge type is not a ticket capture. */
+const EVENT_CAPTURE_CHARGE_TYPES = new Set(['prepaid_event', 'seat_increase'])
+
 function readCustomId(event: any): string {
   const raw = event?.resource?.custom_id
   return typeof raw === 'string' ? raw.trim() : ''
@@ -52,9 +62,7 @@ function readOrderId(event: any): string {
 
 function readCaptureIdFromRefund(event: any): string {
   // A refund resource carries its capture on the HATEOAS "up" link, not in a field.
-  const link = event?.resource?.links?.find((candidate: any) => candidate?.rel === 'up')?.href
-  if (typeof link !== 'string') return ''
-  return link.split('/').pop()?.trim() ?? ''
+  return readCaptureIdFromRefundResource(event?.resource)
 }
 
 /**
@@ -185,8 +193,8 @@ async function routeRefund(
     }
   }
 
-  // Refund raised in the PayPal dashboard: nothing of ours references it yet, so find whoever
-  // owns the capture being refunded.
+  // Refund raised in the PayPal dashboard, or a reversal: nothing of ours references it yet, so
+  // find whoever owns the capture the money came out of.
   const captureId = readCaptureIdFromRefund(event)
   if (captureId) {
     const owners: Array<{ table: string; column: string; domain: PayPalDomain }> = [
@@ -202,6 +210,32 @@ async function routeRefund(
         .maybeSingle()
       if (error) throw new Error(`Routing lookup failed on ${owner.table}: ${error.message}`)
       if (data) return { domain: owner.domain, key: data.id, via: 'refund_lookup' }
+    }
+
+    // Event tickets keep their capture on the `payments` row (unique per capture), keyed by the
+    // booking. The charge type is checked here rather than filtered on, so only ticket charges
+    // are ever claimed as an event booking's.
+    const { data: ticketPayment, error: ticketError } = await supabase
+      .from('payments')
+      .select('event_booking_id, charge_type')
+      .eq('paypal_capture_id', captureId)
+      .maybeSingle()
+    if (ticketError) throw new Error(`Routing lookup failed on payments capture id: ${ticketError.message}`)
+    if (ticketPayment?.event_booking_id && EVENT_CAPTURE_CHARGE_TYPES.has(String(ticketPayment.charge_type))) {
+      return { domain: 'event_bookings', key: ticketPayment.event_booking_id, via: 'refund_lookup' }
+    }
+
+    // Invoices record a PayPal capture as an `invoice_payments` row whose reference is the
+    // capture id (unique among PayPal rows).
+    const { data: invoicePayment, error: invoiceError } = await supabase
+      .from('invoice_payments')
+      .select('invoice_id')
+      .eq('reference', captureId)
+      .eq('source_kind', 'paypal')
+      .maybeSingle()
+    if (invoiceError) throw new Error(`Routing lookup failed on invoice_payments: ${invoiceError.message}`)
+    if (invoicePayment?.invoice_id) {
+      return { domain: 'invoices', key: invoicePayment.invoice_id, via: 'refund_lookup' }
     }
   }
 
@@ -221,6 +255,17 @@ export async function routePayPalEvent(
 
   if (PAYPAL_REFUND_EVENT_TYPES.has(eventType)) {
     return routeRefund(supabase, event)
+  }
+
+  if (eventType === PAYPAL_REVERSAL_EVENT_TYPE) {
+    const decision = await routeRefund(supabase, event)
+    // PayPal documents a reversal as a refund resource. If one ever arrives shaped as the
+    // capture itself (no `up` link), it can still be placed by its custom_id; the domain handler
+    // then refuses to record an amount it cannot read exactly and sends it to a human.
+    if (decision.domain === null && !readCaptureIdFromRefund(event)) {
+      return routeCapture(supabase, event)
+    }
+    return decision
   }
 
   if (eventType === 'PAYMENT.CAPTURE.COMPLETED' || eventType === 'PAYMENT.CAPTURE.DENIED') {
