@@ -930,7 +930,7 @@ export class EventService {
         return { error: 'Cannot delete this event — it has active bookings. Cancel the event first, then delete.' };
       }
 
-      // The paid-booking delete guard (migration 20260927120100) refuses a booking that still holds money.
+      // The paid-booking delete guard (migration 20260927155048) refuses a booking that still holds money.
       if (message.toLowerCase().includes('holds a payment')) {
         return { error: 'Cannot delete this event: some of its bookings still hold a payment. Refund them first, or keep the event.' };
       }
