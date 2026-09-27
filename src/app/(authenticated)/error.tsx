@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Button, Empty } from '@/ds';
 import {
   isChunkLoadFailure,
   recoverFromChunkFailure,
@@ -23,42 +24,36 @@ export default function AuthenticatedError({
     }
   }, [chunkErrorMessage, isChunkError]);
 
+  // min-h-[50vh] centres the message in the page area, as the route loading state does.
   if (isChunkError) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <h2 className="text-xl font-semibold text-text-strong">Page update available</h2>
-        <p className="text-text-muted">
-          A new version of this page has been deployed. Please reload to continue.
-        </p>
-        <button
-          type="button"
-          onClick={retryPendingNavigation}
-          className="px-4 py-2 bg-primary text-primary-fg rounded-md hover:bg-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring"
-        >
-          Reload page
-        </button>
-      </div>
+      <Empty
+        className="min-h-[50vh]"
+        title="Page update available"
+        description="A new version of this page has been deployed. Please reload to continue."
+        action={
+          <Button type="button" onClick={retryPendingNavigation}>
+            Reload Page
+          </Button>
+        }
+      />
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-      <h2 className="text-xl font-semibold text-text-strong">Something went wrong</h2>
-      <p className="text-text-muted">
-        An error occurred while loading this page. Please try again.
-      </p>
+    <Empty
+      className="min-h-[50vh]"
+      title="Something went wrong"
+      description="An error occurred while loading this page. Please try again."
+      action={
+        <Button type="button" variant="secondary" size="sm" onClick={reset}>
+          Try Again
+        </Button>
+      }
+    >
       {error.digest && (
-        <p className="text-xs text-text-muted">
-          Error ID: {error.digest}
-        </p>
+        <p className="mt-3 text-xs text-text-muted">Error ID: {error.digest}</p>
       )}
-      <button
-        type="button"
-        onClick={reset}
-        className="px-4 py-2 bg-primary text-primary-fg rounded-md hover:bg-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring"
-      >
-        Try again
-      </button>
-    </div>
+    </Empty>
   );
 }

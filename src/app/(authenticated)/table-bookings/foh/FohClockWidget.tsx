@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { Button, Modal, ModalActions, ConfirmDialog, Select } from '@/ds';
+import { Button, Modal, ConfirmDialog, Select } from '@/ds';
+import { ModalActions } from '@/ds/compat';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { OpenSessionSummary } from '@/app/actions/timeclock';
 import { displayName } from '@/lib/employees/display-name';

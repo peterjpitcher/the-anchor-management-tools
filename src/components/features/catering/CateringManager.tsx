@@ -2,18 +2,30 @@
 
 import { useState } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
-import { Tabs } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
-import { DataTable, Column } from '@/ds'
-import { EmptyState } from '@/ds'
-import { PlusIcon, SparklesIcon, PencilIcon } from '@heroicons/react/24/outline'
+import { Alert, Badge, Button, Card, DataTable, Empty, Icon, PageLayout, Segmented, type Column, type HeaderNavItem } from '@/ds'
 import { CateringPackageModal } from './CateringPackageModal'
 import { useRouter } from 'next/navigation'
+import { PB_BACK_TO_LIST, PB_SETTINGS_TITLE } from '@/app/(authenticated)/private-bookings/_shared/nav'
+import { settingsActiveLabel, settingsActiveTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 interface CateringManagerProps {
     initialPackages: CateringPackage[]
+    /** A failed load of the packages: the page shows the error, never an empty list. */
+    loadError?: string | null
+    /** The error a create, update or delete redirected back with (?error=). */
+    errorMessage?: string | null
+    /** The settings tab row, already filtered by permission (privateBookingSettingsNav). */
+    navItems: HeaderNavItem[]
 }
+
+// The settings tab row is this page's one tab row, so the categories switch with a Segmented.
+const CATEGORY_OPTIONS = [
+    { id: 'food', label: 'Food' },
+    { id: 'drink', label: 'Drinks' },
+    { id: 'addon', label: 'Add-Ons' },
+    { id: 'self_catering', label: 'Self-Catering' },
+    { id: 'other', label: 'Other' },
+]
 
 const formatPrice = (pkg: CateringPackage): string => {
     const amount = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pkg.cost_per_head)
@@ -29,8 +41,15 @@ const formatPrice = (pkg: CateringPackage): string => {
     }
 }
 
-export function CateringManager({ initialPackages }: CateringManagerProps) {
+export function CateringManager({ initialPackages, loadError = null, errorMessage = null, navItems }: CateringManagerProps) {
     const router = useRouter()
+    const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id)
+    const layoutProps = {
+        title: PB_SETTINGS_TITLE,
+        subtitle: 'Catering: packages for private events',
+        backButton: PB_BACK_TO_LIST,
+        navItems,
+    }
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingPackage, setEditingPackage] = useState<CateringPackage | null>(null)
 
@@ -79,7 +98,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             align: 'center',
             hideOnMobile: true,
             cell: (pkg: CateringPackage) => (
-                <span className="text-text">{pkg.minimum_guests ?? '—'}</span>
+                <span className="text-text">{pkg.minimum_guests ?? 'None'}</span>
             )
         },
         {
@@ -87,8 +106,8 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             header: 'Status',
             align: 'center',
             cell: (pkg: CateringPackage) => (
-                <Badge variant={pkg.active ? 'success' : 'secondary'} size="sm">
-                    {pkg.active ? 'Active' : 'Inactive'}
+                <Badge tone={settingsActiveTone(pkg.active)} size="sm">
+                    {settingsActiveLabel(pkg.active)}
                 </Badge>
             )
         },
@@ -101,7 +120,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleEdit(pkg)}
-                    leftIcon={<PencilIcon className="h-3.5 w-3.5" />}
+                    icon={<Icon name="edit" size={14} />}
                 >
                     Edit
                 </Button>
@@ -112,8 +131,8 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
     const categoryLabels: Record<string, string> = {
         food: 'Food',
         drink: 'Drinks',
-        addon: 'Add-on',
-        self_catering: 'Self-catering',
+        addon: 'Add-On',
+        self_catering: 'Self-Catering',
         other: 'Other'
     }
 
@@ -123,70 +142,61 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
 
         if (packages.length === 0) {
             return (
-                <div className="py-12">
-                    <EmptyState
-                        icon={<SparklesIcon className="h-12 w-12 text-text-subtle" />}
+                <Card>
+                    <Empty
+                        size="sm"
+                        icon={<Icon name="sparkles" size={48} />}
                         title={`No ${categoryLabel.toLowerCase()} packages yet`}
-                        description="Get started by creating your first package."
-                        action={
-                            <Button onClick={handleAdd} leftIcon={<PlusIcon className="h-4 w-4" />}>
-                                Add {categoryLabel} Package
-                            </Button>
-                        }
+                        description="Create your first package with New Package."
                     />
-                </div>
+                </Card>
             )
         }
 
         return (
-            <DataTable
-                columns={columns}
-                data={packages}
-                onRowClick={(pkg) => handleEdit(pkg)}
-                clickableRows
-                getRowKey={(pkg) => pkg.id}
-            />
+            <Card padding="none">
+                <DataTable
+                    columns={columns}
+                    data={packages}
+                    onRowClick={(pkg) => handleEdit(pkg)}
+                    clickableRows
+                    bordered={false}
+                    getRowKey={(pkg) => pkg.id}
+                />
+            </Card>
         )
     }
 
+    if (loadError) {
+        return <PageLayout {...layoutProps} error={loadError} />
+    }
+
     return (
-        <div className="space-y-6">
-            <div className="flex justify-end">
-                <Button onClick={handleAdd} leftIcon={<PlusIcon className="h-4 w-4" />}>
-                    Add Package
+        <PageLayout
+            {...layoutProps}
+            headerActions={
+                <Button size="sm" variant="primary" onClick={handleAdd} icon={<Icon name="plus" size={16} />}>
+                    New Package
                 </Button>
+            }
+        >
+            {errorMessage && (
+                <Alert tone="danger" title="Error">
+                    {errorMessage}
+                </Alert>
+            )}
+
+            <div className="flex flex-wrap items-end gap-3">
+                <Segmented
+                    aria-label="Package category"
+                    options={CATEGORY_OPTIONS}
+                    value={category}
+                    onChange={setCategory}
+                    className="max-w-full overflow-x-auto"
+                />
             </div>
 
-            <Tabs
-                variant="underline"
-                items={[
-                    {
-                        key: 'food',
-                        label: 'Food',
-                        content: <div className="pt-4">{renderTable('food')}</div>
-                    },
-                    {
-                        key: 'drink',
-                        label: 'Drinks',
-                        content: <div className="pt-4">{renderTable('drink')}</div>
-                    },
-                    {
-                        key: 'addon',
-                        label: 'Add-ons',
-                        content: <div className="pt-4">{renderTable('addon')}</div>
-                    },
-                    {
-                        key: 'self_catering',
-                        label: 'Self-catering',
-                        content: <div className="pt-4">{renderTable('self_catering')}</div>
-                    },
-                    {
-                        key: 'other',
-                        label: 'Other',
-                        content: <div className="pt-4">{renderTable('other')}</div>
-                    }
-                ]}
-            />
+            {renderTable(category)}
 
             <CateringPackageModal
                 open={isModalOpen}
@@ -194,6 +204,6 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
                 packageToEdit={editingPackage}
                 onSuccess={handleSuccess}
             />
-        </div>
+        </PageLayout>
     )
 }

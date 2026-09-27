@@ -3,8 +3,10 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, format } from 'date-fns'
+import { Badge } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
+import { CALENDAR_CLOSURE_BADGE, CALENDAR_CLOSURE_CELL_CLASSES } from './status-ui'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 import { CALENDAR_BLACK, CALENDAR_WHITE, calendarColourNeedsLightText } from './appearance'
@@ -100,7 +102,7 @@ export function ScheduleCalendarMonth({
     }, [firstDayOfWeek])
 
     return (
-        <div className="flex flex-col border border-border-strong rounded-md overflow-hidden bg-surface">
+        <div className="flex flex-col border border-border-strong rounded-lg overflow-hidden bg-surface">
             <div className="grid grid-cols-7 border-b border-border-strong bg-surface-hover">
                 {weekDayNames.map((name, i) => (
                     <div
@@ -152,6 +154,8 @@ export function ScheduleCalendarMonth({
                                     // A multi-day entry renders ONLY as a band here, so leaving the
                                     // band inert made a multi-day note unopenable in the month grid
                                     // even once single-day notes could be clicked.
+                                    // A raw button: a band laid across the week grid at its
+                                    // own offset and width, which a DS Button cannot be.
                                     return onEntryClick ? (
                                         <button
                                             key={entry.id}
@@ -198,21 +202,21 @@ export function ScheduleCalendarMonth({
                                         !inMonth && 'bg-surface-2 text-text-soft',
                                         // Being shut is a property of the DAY, not one more
                                         // chip queued behind the events on it.
-                                        closure === 'closed' && 'bg-border',
-                                        closure === 'kitchen' && 'bg-warning-soft',
+                                        closure && CALENDAR_CLOSURE_CELL_CLASSES[closure],
                                         onEmptyDayClick && 'cursor-pointer'
                                     )}
                                     onClick={
                                         onEmptyDayClick
                                             ? (ev) => {
                                                   // Only a click on the empty part of the cell adds a
-                                                  // note — clicks on entries or buttons handle themselves.
+                                                  // note; clicks on entries or buttons handle themselves.
                                                   if (ev.target === ev.currentTarget) onEmptyDayClick(day)
                                               }
                                             : undefined
                                     }
                                 >
                                     <div className="flex items-center justify-between">
+                                        {/* A raw button: the day number in a calendar cell. */}
                                         <button
                                             type="button"
                                             aria-label={
@@ -239,15 +243,10 @@ export function ScheduleCalendarMonth({
                                         {/* Text as well as colour: a colour-only
                                             treatment says nothing to a screen reader
                                             or in high contrast. */}
-                                        {closure === 'closed' && (
-                                            <span className="rounded-sm bg-text-strong px-1 text-2xs font-semibold uppercase tracking-wide text-on-dark">
-                                                Closed
-                                            </span>
-                                        )}
-                                        {closure === 'kitchen' && (
-                                            <span className="rounded-sm bg-warning-border px-1 text-2xs font-semibold uppercase tracking-wide text-warning-fg">
-                                                No kitchen
-                                            </span>
+                                        {closure && (
+                                            <Badge size="sm" tone={CALENDAR_CLOSURE_BADGE[closure].tone}>
+                                                {CALENDAR_CLOSURE_BADGE[closure].label}
+                                            </Badge>
                                         )}
                                     </div>
                                     {(covers > 0 || staff.length > 0) && (
@@ -266,6 +265,7 @@ export function ScheduleCalendarMonth({
                                         />
                                     ))}
                                     {onEmptyDayClick && (
+                                        // A raw button: the quiet add-a-note control in a calendar cell.
                                         <button
                                             type="button"
                                             aria-label={`Add note for ${format(day, 'EEE d MMM')}`}
@@ -318,7 +318,8 @@ interface EntryBlockProps {
 function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const isCancelled = entry.status === 'cancelled'
     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'text-black/70'
+    // Secondary text on the entry's own colour: the light or dark text colour, softened.
+    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'opacity-70'
 
     const content = (
         <>
@@ -351,19 +352,16 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                         <span
                             className={cn(
                                 'rounded-sm px-1 py-px text-2xs font-semibold uppercase leading-tight tracking-wide',
-                                lightText ? 'bg-on-dark-active text-on-dark' : 'bg-black/10 text-text-strong',
+                                lightText ? 'bg-on-dark-active text-on-dark' : 'bg-text-strong/10 text-text-strong',
                             )}
                         >
                             {entry.statusLabel}
                         </span>
                     )}
                     {entryGaps(entry).map((gap) => (
-                        <span
-                            key={gap}
-                            className="rounded-sm border border-black/20 bg-surface px-1 py-px text-2xs font-medium leading-tight text-text-strong"
-                        >
+                        <Badge key={gap} size="sm">
                             {CONTENT_GAP_LABELS[gap]}
-                        </span>
+                        </Badge>
                     ))}
                 </div>
             )}
@@ -404,6 +402,8 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
             {content}
         </a>
     ) : (
+        // A raw button: an entry block in a calendar cell, several lines of detail on the
+        // entry's own colour, which a DS Button cannot hold.
         <button
             type="button"
             onClick={() => onClick?.(entry)}

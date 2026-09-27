@@ -2,8 +2,8 @@ import { getAllRoles, checkUserPermission, getAllUsers } from '@/app/actions/rba
 import { redirect } from 'next/navigation'
 import type { Role } from '@/types/rbac'
 import { UsersClient } from './_components/UsersClient'
-import { Card } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { USERS_LAYOUT } from './_shared/layout'
 
 export default async function UsersPage() {
   const [canViewUsers, canManageRoles] = await Promise.all([
@@ -24,11 +24,11 @@ export default async function UsersPage() {
 
   if (usersResult.error) {
     return (
-      <Card>
+      <PageLayout {...USERS_LAYOUT}>
         <Alert tone="danger" title="Error loading users">
           {usersResult.error || 'Failed to load users'}
         </Alert>
-      </Card>
+      </PageLayout>
     )
   }
 

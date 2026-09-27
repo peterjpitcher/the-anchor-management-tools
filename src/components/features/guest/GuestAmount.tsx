@@ -1,51 +1,44 @@
 import { cn } from '@/lib/utils'
+import { GUEST_LABEL_CLASS } from './styles'
+
+type GuestAmountSize = 'page' | 'title' | 'inline'
 
 type GuestAmountProps = {
   label: string
-  value: string
+  value: React.ReactNode
   /** Optional line under the figure, e.g. what the amount covers. */
-  sub?: string
+  sub?: React.ReactNode
   /**
-   * `page` is the large money statement (48px, 60px at 640px), the page's
-   * primary trust signal. `inline` is the booking portal's right-aligned 22px
-   * row figure.
+   * `page` is the large statement (48px, 60px from 640px): the money due, or the
+   * seats being held, the page's primary trust signal. `title` names the record
+   * a card is about (a booking reference, an event). `inline` is the booking
+   * portal's right-aligned row figure.
    */
-  size?: 'page' | 'inline'
-  className?: string
+  size?: GuestAmountSize
 }
 
-/** The money statement. DM Serif Display is weight 400 only: never embolden it. */
-export function GuestAmount({
-  label,
-  value,
-  sub,
-  size = 'page',
-  className,
-}: GuestAmountProps): React.JSX.Element {
+const VALUE_CLASS: Record<GuestAmountSize, string> = {
+  page: 'text-guest-amount sm:text-guest-amount-wide',
+  title: 'break-words text-guest-figure',
+  inline: 'text-guest-h2 leading-guest-flat',
+}
+
+/**
+ * A labelled statement figure. DM Serif Display is weight 400 only: never
+ * embolden it.
+ */
+export function GuestAmount({ label, value, sub, size = 'page' }: GuestAmountProps): React.JSX.Element {
   const inline = size === 'inline'
 
   return (
-    <div
-      className={cn('flex flex-col gap-[5px]', inline && 'items-end text-right', className)}
-    >
-      <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
-        {label}
-      </span>
+    <div className={cn('flex min-w-0 flex-col gap-guest-2xs', inline && 'items-end text-right')}>
+      <span className={GUEST_LABEL_CLASS}>{label}</span>
 
-      <span
-        className={cn(
-          'font-anchor-display font-normal tracking-[-0.02em] text-guest-text-strong',
-          inline ? 'text-[22px] leading-none' : 'text-[48px] leading-[0.95] sm:text-[60px]'
-        )}
-      >
+      <span className={cn('font-anchor-display font-normal text-guest-text-strong', VALUE_CLASS[size])}>
         {value}
       </span>
 
-      {sub ? (
-        <span className="font-anchor-body text-guest-lead leading-[1.55] text-guest-text-muted">
-          {sub}
-        </span>
-      ) : null}
+      {sub ? <span className="font-anchor-body text-guest-lead text-guest-text-muted">{sub}</span> : null}
     </div>
   )
 }

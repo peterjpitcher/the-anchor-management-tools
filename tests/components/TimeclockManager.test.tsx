@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeclockManager from '@/app/(authenticated)/rota/timeclock/TimeclockManager'
 import type { TimeclockSessionWithEmployee } from '@/app/actions/timeclock'
+import type { RotaEmployee } from '@/app/actions/rota'
 
 const actionMocks = vi.hoisted(() => ({
   createTimeclockSession: vi.fn(),
@@ -12,11 +13,8 @@ const actionMocks = vi.hoisted(() => ({
 
 vi.mock('@/app/actions/timeclock', () => actionMocks)
 
-vi.mock('react-hot-toast', () => ({
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 const session: TimeclockSessionWithEmployee = {
@@ -53,25 +51,91 @@ const session: TimeclockSessionWithEmployee = {
   updated_at: '2026-07-27T14:52:00.000Z',
 }
 
+const employee = {
+  employee_id: 'employee-2',
+  first_name: 'Ben',
+  last_name: 'Cole',
+  preferred_name: null,
+} as unknown as RotaEmployee
+
+function renderManager() {
+  return render(
+    <TimeclockManager
+      layout={{ title: 'Rota', navItems: [] }}
+      sessions={[session]}
+      employees={[employee]}
+      periodStart="2026-07-25"
+      periodEnd="2026-08-24"
+      year={2026}
+      month={8}
+      monthOptions={[{ label: 'August 2026', value: '?year=2026&month=8' }]}
+      allowPayrollApprove={false}
+    />,
+  )
+}
+
 describe('TimeclockManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     actionMocks.deleteTimeclockSession.mockResolvedValue({ success: true })
   })
 
+  it('adds a manual entry from a dialog opened by the header action', async () => {
+    actionMocks.createTimeclockSession.mockResolvedValue({
+      success: true,
+      data: { ...session, id: 'session-2', employee_id: 'employee-2', employee_name: 'Ben Cole' },
+    })
+    renderManager()
+
+    // PageLayout renders header actions twice (desktop and phone).
+    fireEvent.click(screen.getAllByRole('button', { name: 'New Entry' })[0])
+
+    const dialog = await screen.findByRole('dialog', { name: 'New Entry' })
+    fireEvent.change(within(dialog).getByLabelText('Employee'), { target: { value: 'employee-2' } })
+    fireEvent.change(within(dialog).getByLabelText('Clock in'), { target: { value: '09:00' } })
+    fireEvent.change(within(dialog).getByLabelText('Clock out (optional)'), { target: { value: '17:00' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Entry' }))
+
+    await waitFor(() => {
+      expect(actionMocks.createTimeclockSession).toHaveBeenCalledWith(
+        'employee-2',
+        '2026-07-25',
+        '09:00',
+        '17:00',
+        null,
+        { allowPayrollApprove: false },
+      )
+    })
+  })
+
+  it('edits a session in a dialog and saves the corrected times', async () => {
+    actionMocks.updateTimeclockSession.mockResolvedValue({
+      success: true,
+      data: { rate_multiplier: null, rate_override: null, premium_reason: null, premium_start_at: null, premium_end_at: null },
+    })
+    renderManager()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Entry' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Use Planned (4pm)' }))
+    fireEvent.change(within(dialog).getByLabelText('Clock out'), { target: { value: '22:00' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => {
+      expect(actionMocks.updateTimeclockSession).toHaveBeenCalledWith(
+        'session-1',
+        '2026-07-27',
+        '16:00',
+        '22:00',
+        null,
+        { premium: undefined, allowPayrollApprove: false },
+      )
+    })
+  })
+
   it('asks for confirmation before deleting a session', async () => {
-    render(
-      <TimeclockManager
-        sessions={[session]}
-        employees={[]}
-        periodStart="2026-07-25"
-        periodEnd="2026-08-24"
-        year={2026}
-        month={8}
-        monthOptions={[{ label: 'August 2026', value: '?year=2026&month=8' }]}
-        allowPayrollApprove={false}
-      />,
-    )
+    renderManager()
 
     fireEvent.click(screen.getByTitle('Delete'))
 

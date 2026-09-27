@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 // Orange Jelly invoices use the neutral staff components, not the Anchor guest ones.
-import { Button } from '@/ds'
-import { StatusNote } from './StatusNote'
+import { Alert, Button } from '@/ds'
 import { createInvoicePaymentOrderByToken } from '@/app/actions/invoicePayPalActions'
 
 /**
@@ -45,9 +44,9 @@ export function InvoicePayClient({ token, amountDue }: { token: string; amountDu
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <StatusNote tone="problem" role="alert">
+        <Alert tone="danger">
           {error}
-        </StatusNote>
+        </Alert>
       )}
 
       <Button

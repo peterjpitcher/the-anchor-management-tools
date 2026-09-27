@@ -31,9 +31,12 @@ import {
   shiftStartInstant,
 } from '@/lib/rota/acceptance-cutoff';
 import { format, parseISO } from 'date-fns';
-import { Badge } from '@/ds';
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, LinkButton, Section } from '@/ds';
+import { StandalonePageHeader } from '@/components/shells/StandaloneShell';
+import { cn } from '@/lib/utils';
 // Department colours are the rota's own, so staff see the same colours as managers.
 import { ROTA_SHIFT_STATUS_CLASSES, rotaDepartmentClasses } from '@/lib/rota/status-ui';
+import { shiftPremiumTone } from '../_shared/status-ui';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 import PaySummaryCard from './PaySummaryCard';
 import type { PeriodSummary } from './PaySummaryCard';
@@ -122,6 +125,12 @@ function formatFullDate(iso: string): string {
     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
   });
 }
+
+/** Today's heading is the soft primary highlight so it stands out in the list of days. */
+const DAY_HEADER_CLASSES = {
+  today: 'bg-primary-soft',
+  other: 'bg-surface-2',
+} as const;
 
 function isToday(iso: string): boolean {
   return iso === getTodayIsoDate();
@@ -332,7 +341,7 @@ type PlannedShiftRow = {
   status: string;
   is_open_shift: boolean;
   acceptance_status: string | null;
-  // numeric columns arrive from PostgREST as STRINGS — coerce before use.
+  // numeric columns arrive from PostgREST as STRINGS; coerce before use.
   rate_multiplier: number | string | null;
   rate_override: number | string | null;
   premium_reason: string | null;
@@ -345,7 +354,7 @@ type SessionRow = {
   clock_in_at: string;
   clock_out_at: string | null;
   linked_shift_id: string | null;
-  // numeric columns arrive from PostgREST as STRINGS — coerce before use.
+  // numeric columns arrive from PostgREST as STRINGS; coerce before use.
   rate_multiplier: number | string | null;
   rate_override: number | string | null;
   premium_reason: string | null;
@@ -424,7 +433,7 @@ async function buildPeriodSummary(
   let actualPremiumPay = 0;
 
   for (const session of sessions ?? []) {
-    // Break intentionally not deducted here — matches payroll's actual-session
+    // Break intentionally not deducted here: matches payroll's actual-session
     // maths (calculateActualPaidHours called with no break arg in payroll.ts).
     const hours = calculateActualPaidHours(session.clock_in_at, session.clock_out_at);
     if (hours === null || session.clock_out_at === null) continue;
@@ -482,7 +491,7 @@ async function buildPeriodSummary(
     : null;
 
   // Premium UPLIFT (the extra above base) shown to staff = actual where it
-  // exists, else planned. This is the uplift only — NOT the full premium-portion
+  // exists, else planned. This is the uplift only, NOT the full premium-portion
   // pay that payroll's PayrollRow.premiumPay represents.
   const premiumUpliftPay = actualPay !== null
     ? Math.round(actualPremiumPay * 100) / 100
@@ -517,12 +526,12 @@ export default async function MyShiftsPage({
 
   if (!employee) {
     return (
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-text-strong">My Shifts</h2>
-        <p className="text-sm text-text-muted">
+      <>
+        <StandalonePageHeader title="My Shifts" subtitle="My shifts: your published shifts for this pay period" />
+        <Alert tone="warning">
           Your account is not linked to an employee profile. Please contact your manager.
-        </p>
-      </div>
+        </Alert>
+      </>
     );
   }
 
@@ -639,6 +648,10 @@ export default async function MyShiftsPage({
     .filter(shift => shift.acceptance_status !== 'rejected');
   const openShifts = (openShiftsResult.data ?? []) as PortalShift[];
   const couldntWorkRecords = (couldntWorkResult.data ?? []) as CouldntWorkRecord[];
+  // A list that failed to load says so instead of looking empty.
+  const shiftsFailed = Boolean(shiftsResult.error);
+  const openShiftsFailed = Boolean(openShiftsResult.error);
+  const couldntWorkFailed = Boolean(couldntWorkResult.error);
 
   const openShiftIds = openShifts.map(shift => shift.id);
   const { data: openShiftRequests } = openShiftIds.length > 0
@@ -667,27 +680,24 @@ export default async function MyShiftsPage({
 
   // A greeting, so use the name they go by. 'there' keeps "Hi there" readable
   // when an employee record somehow carries no name at all.
-  const empName = displayName(employee, 'there');
   const calToken = generateCalendarToken(employee.employee_id);
   const feedUrl = `${getAppUrl()}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold text-text-strong">My Shifts</h2>
-        <p className="text-sm text-text-muted mt-0.5">
-          Hi {empName} - here are {isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period.
-        </p>
-      </div>
+    <>
+      <StandalonePageHeader
+        title="My Shifts"
+        subtitle={`My shifts: ${isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period`}
+      />
 
-      <div className="rounded-lg border border-border bg-surface p-3">
-        <div className="flex items-center justify-between gap-3">
+      <Card>
+        <CardBody className="flex items-center justify-between gap-3">
           {previousPeriod ? (
-            <a href={periodHref(previousPeriod)} className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-hover">
+            <LinkButton href={periodHref(previousPeriod)} variant="secondary" size="sm">
               Previous
-            </a>
+            </LinkButton>
           ) : (
-            <span className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text opacity-50">Previous</span>
+            <Button type="button" variant="secondary" size="sm" disabled>Previous</Button>
           )}
 
           <div className="text-center">
@@ -700,34 +710,38 @@ export default async function MyShiftsPage({
           </div>
 
           {nextPeriod ? (
-            <a href={periodHref(nextPeriod)} className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-hover">
+            <LinkButton href={periodHref(nextPeriod)} variant="secondary" size="sm">
               Next
-            </a>
+            </LinkButton>
           ) : (
-            <span className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text opacity-50">Next</span>
+            <Button type="button" variant="secondary" size="sm" disabled>Next</Button>
           )}
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
       {currentSummary && <PaySummaryCard current={currentSummary} />}
 
-      {dates.length === 0 ? (
-        <div className="bg-surface rounded-lg border border-border p-6 text-center">
-          <p className="text-sm text-text-muted">No published shifts in this pay period.</p>
-          <p className="text-xs text-text-soft mt-1">Check another period or wait for your manager to publish the rota.</p>
-        </div>
+      {shiftsFailed ? (
+        <Alert tone="danger">Your shifts could not be loaded. Refresh the page to try again.</Alert>
+      ) : dates.length === 0 ? (
+        <Card padding="none">
+          <Empty
+            size="sm"
+            icon="calendar"
+            title="No shifts for this period"
+            description="Check another period or wait for your manager to publish the rota."
+          />
+        </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {dates.map(date => (
-            <div key={date} className="bg-surface rounded-lg border border-border overflow-hidden">
-              <div className={`px-4 py-2 border-b ${isToday(date) ? 'bg-primary-soft border-primary/20' : 'bg-surface-2 border-border'}`}>
-                <p className={`text-sm font-semibold ${isToday(date) ? 'text-primary-soft-fg' : 'text-text'}`}>
-                  {dateLabel(date)}
-                  {isToday(date) ? '' : ` · ${formatDate(date).split(',')[0]}`}
-                </p>
-                {!isToday(date) && <p className="text-xs text-text-muted">{formatDate(date)}</p>}
-              </div>
-              <div className="divide-y divide-border">
+            <Card key={date}>
+              <CardHeader
+                title={`${dateLabel(date)}${isToday(date) ? '' : ` · ${formatDate(date).split(',')[0]}`}`}
+                subtitle={isToday(date) ? undefined : formatDate(date)}
+                className={DAY_HEADER_CLASSES[isToday(date) ? 'today' : 'other']}
+              />
+              <ul className="divide-y divide-border">
                 {byDate[date].map(shift => {
                   const isOwnShift = shift.employee_id === employee.employee_id;
                   const isOtherStaffShift = isPortalShiftManager && !isOwnShift;
@@ -737,10 +751,11 @@ export default async function MyShiftsPage({
                     shift.unpaid_break_minutes,
                     shift.is_overnight,
                   );
+                  const premiumBadge = premiumBadgeLabel(shift);
                   return (
-                    <div
+                    <li
                       key={shift.id}
-                      className={`px-4 py-3 ${isOtherStaffShift ? 'bg-surface-2/80 text-text-muted' : ''}`}
+                      className={cn('px-pad-card py-3', isOtherStaffShift && 'bg-surface-2 text-text-muted')}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -770,14 +785,11 @@ export default async function MyShiftsPage({
                                 {shift.unpaid_break_minutes} min break
                               </span>
                             )}
-                            {(() => {
-                              const badge = premiumBadgeLabel(shift);
-                              return badge ? (
-                                <Badge tone={isOtherStaffShift ? 'neutral' : 'warning'} size="sm">
-                                  {badge}
-                                </Badge>
-                              ) : null;
-                            })()}
+                            {premiumBadge ? (
+                              <Badge tone={shiftPremiumTone(isOtherStaffShift)} size="sm">
+                                {premiumBadge}
+                              </Badge>
+                            ) : null}
                           </div>
                           {shift.notes && (
                             <p className={`mt-1 text-xs ${isOtherStaffShift ? 'text-text-soft' : 'text-text-muted'}`}>
@@ -795,90 +807,96 @@ export default async function MyShiftsPage({
                           autoAcceptDeadline={autoAcceptDeadlineLabel(shift, now)}
                         />
                       )}
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            </Card>
           ))}
         </div>
       )}
 
-      <div className="space-y-2">
-        <div>
-          <h3 className="text-base font-semibold text-text-strong">Open shifts this pay period</h3>
-          <p className="text-xs text-text-muted mt-0.5">You can ask to work these shifts. A manager still needs to approve it.</p>
-        </div>
-        {openShifts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-text-soft">
-            No open shifts in this pay period.
-          </div>
+      <Section
+        title="Open Shifts This Pay Period"
+        description="You can ask to work these shifts. A manager still needs to approve it."
+      >
+        {openShiftsFailed ? (
+          <Alert tone="danger">Open shifts could not be loaded. Refresh the page to try again.</Alert>
         ) : (
-          openShifts.map(shift => {
-            const paidHours = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
-            return (
-              <div key={shift.id} className="bg-warning-soft rounded-lg border border-warning-border px-4 py-3">
-                {/* Wraps so the request form drops below the shift details on a phone. */}
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-text">
-                      {formatFullDate(shift.shift_date)} · {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
-                      {shift.is_overnight ? ' (+1)' : ''}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <Badge size="sm" className={rotaDepartmentClasses(shift.department)}>
-                        {shift.department}
-                      </Badge>
-                      <span className="text-xs text-text-muted">{paidHours.toFixed(1)}h paid</span>
-                      {(() => {
-                        const badge = premiumBadgeLabel(shift);
-                        return badge ? (
-                          <Badge tone="warning" size="sm">
-                            {badge}
-                          </Badge>
-                        ) : null;
-                      })()}
-                    </div>
-                  </div>
-                  <OpenShiftRequestButton shiftId={shift.id} alreadyRequested={requestedOpenShiftIds.has(shift.id)} />
-                </div>
-              </div>
-            );
-          })
+          <Card padding="none">
+            {openShifts.length === 0 ? (
+              <Empty size="sm" title="No open shifts for this period" />
+            ) : (
+              <ul className="divide-y divide-border">
+                {openShifts.map(shift => {
+                  const paidHours = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+                  const premiumBadge = premiumBadgeLabel(shift);
+                  return (
+                    <li key={shift.id} className="px-pad-card py-3">
+                      {/* Wraps so the request form drops below the shift details on a phone. */}
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-text">
+                            {formatFullDate(shift.shift_date)} · {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
+                            {shift.is_overnight ? ' (+1)' : ''}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <Badge size="sm" className={rotaDepartmentClasses(shift.department)}>
+                              {shift.department}
+                            </Badge>
+                            <span className="text-xs text-text-muted">{paidHours.toFixed(1)}h paid</span>
+                            {premiumBadge ? (
+                              <Badge tone={shiftPremiumTone(false)} size="sm">
+                                {premiumBadge}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                        <OpenShiftRequestButton shiftId={shift.id} alreadyRequested={requestedOpenShiftIds.has(shift.id)} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
         )}
-      </div>
+      </Section>
 
-      <div className="space-y-2">
-        <div>
-          <h3 className="text-base font-semibold text-text-strong">Couldn&apos;t Work</h3>
-          <p className="text-xs text-text-muted mt-0.5">Records for this pay period, added by your manager in the rota.</p>
-        </div>
-        {couldntWorkRecords.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-text-soft">
-            No Couldn&apos;t Work records.
-          </div>
+      <Section
+        title="Couldn't Work"
+        description="Records for this pay period, added by your manager in the rota."
+      >
+        {couldntWorkFailed ? (
+          <Alert tone="danger">Couldn&apos;t Work records could not be loaded. Refresh the page to try again.</Alert>
         ) : (
-          <div className="space-y-2">
-            {couldntWorkRecords.map(record => (
-              <div key={record.id} className={`rounded-lg border px-4 py-3 ${ROTA_SHIFT_STATUS_CLASSES.sick}`}>
-                <p className="text-sm font-medium">{formatFullDate(record.shift_date)}</p>
-                <p className="mt-0.5 text-xs">{record.sick_reason || 'No reason recorded'}</p>
-              </div>
-            ))}
-          </div>
+          <Card padding="none">
+            {couldntWorkRecords.length === 0 ? (
+              <Empty size="sm" title="No Couldn't Work days for this period" />
+            ) : (
+              <ul className="divide-y divide-border">
+                {couldntWorkRecords.map(record => (
+                  <li key={record.id} className={cn('px-pad-card py-3', ROTA_SHIFT_STATUS_CLASSES.sick)}>
+                    <p className="text-sm font-medium">{formatFullDate(record.shift_date)}</p>
+                    <p className="mt-0.5 text-xs">{record.sick_reason || 'No reason recorded'}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         )}
-      </div>
+      </Section>
 
       <CalendarSubscribeButton feedUrl={feedUrl} />
 
       {currentSummary && (
-        <p id="pay-disclaimer" className="text-xs text-text-soft mt-8 leading-relaxed">
+        <p id="pay-disclaimer" className="text-xs text-text-soft leading-relaxed">
           These figures are provided for guidance only. Your actual pay may differ due to required
           statutory deductions including PAYE income tax, National Insurance contributions, student
           loan repayments, and any other applicable deductions. Please refer to your payslip for
           confirmed net pay.
         </p>
       )}
-    </div>
+    </>
   );
 }

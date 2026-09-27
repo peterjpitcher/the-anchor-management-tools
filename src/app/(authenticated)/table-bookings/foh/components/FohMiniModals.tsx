@@ -2,7 +2,8 @@
 
 import React from 'react'
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
-import { Button, Input, Modal, ModalActions } from '@/ds'
+import { Button, Input, Modal } from '@/ds'
+import { ModalActions } from '@/ds/compat'
 
 type FohPartySizeModalProps = {
   bookingId?: string | null
@@ -61,7 +62,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
         className="min-h-touch"
         autoFocus
       />
-      {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} /> : null}
+      {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} appearance="foh" /> : null}
     </Modal>
   )
 })

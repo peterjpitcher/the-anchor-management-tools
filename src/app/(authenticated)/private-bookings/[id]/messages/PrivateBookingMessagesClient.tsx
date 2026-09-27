@@ -1,35 +1,37 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  ChatBubbleLeftRightIcon,
-  PaperAirplaneIcon,
-  ClockIcon,
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  XCircleIcon,
-  DevicePhoneMobileIcon
-} from '@heroicons/react/24/outline'
 import { getPrivateBooking, sendPrivateBookingEmail, sendPrivateBookingSms } from '@/app/actions/privateBookingActions'
 import {
   STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
   defaultStaffMessageChannel,
   type StaffMessageChannel,
 } from '@/lib/messaging/staff-email-defaults'
-import { Input, Radio } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  DescriptionList,
+  Empty,
+  Field,
+  Fieldset,
+  FormFooter,
+  Icon,
+  Input,
+  PageLayout,
+  PageLoading,
+  Radio,
+  Textarea,
+  toast,
+} from '@/ds'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Alert } from '@/ds'
-import { Spinner } from '@/ds'
-import { Badge } from '@/ds'
-import { toast } from '@/ds'
 import { useRouter } from 'next/navigation'
+import { PB_BACK_TO_LIST, PB_DETAIL_NAV } from '../../_shared/nav'
+import { SENT_MESSAGE_TRIGGER_TONE } from '../../_shared/status-ui'
 
 interface SmsTemplate {
   id: string
@@ -39,7 +41,7 @@ interface SmsTemplate {
 }
 
 // Template suggestions for the manual-send UI. Copy style mirrors the
-// automated builders in src/lib/private-bookings/messages.ts — no
+// automated builders in src/lib/private-bookings/messages.ts: no
 // "The Anchor:" opener, first-name-first, em-dash rhythm. These are only
 // prefills: staff can edit before sending.
 const smsTemplates: SmsTemplate[] = [
@@ -282,59 +284,39 @@ export default function PrivateBookingMessagesClient({
     refreshBooking()
   }
 
+  // One header for every state. Every tab of the booking shows the customer's name.
+  const layoutProps = {
+    title: booking ? booking.customer_full_name || booking.customer_name : 'Private Booking',
+    subtitle: 'Messages: send and review messages to the customer',
+    backButton: PB_BACK_TO_LIST,
+    navItems: PB_DETAIL_NAV(bookingId),
+  }
+
   if (loading) {
-    return (
-      <PageLayout
-        title="Private Booking Messages"
-        subtitle="Fetching booking information..."
-        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        loading
-        loadingLabel="Loading messages..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading messages…" />
   }
 
   if (!booking) {
-    return (
-      <PageLayout
-        title="Private Booking Messages"
-        subtitle="Unable to load booking information"
-        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        error={initialError ?? 'Booking not found.'}
-      />
-    )
+    return <PageLayout {...layoutProps} error={initialError ?? 'Booking not found.'} />
   }
 
   const isDraft = booking.status === 'draft'
   const canSend = emailChosen ? canSendSms && Boolean(emailOption?.usable) : canSendSms && booking.contact_phone
 
-  const navItems = [
-    { label: 'Overview', href: `/private-bookings/${bookingId}` },
-    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
-    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
-    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
-    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
-  ];
-
   return (
-    <PageLayout
-      title="Private Booking Messages"
-      subtitle={`Manage SMS communication for ${booking.customer_full_name || booking.customer_name}`}
-      backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      navItems={navItems}
-    >
+    <PageLayout {...layoutProps}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Section
-            title="Send a Message"
-            description="Choose a template or compose a custom message to send to the customer."
-          >
-            <Card>
+          <Card>
+            <CardHeader
+              title="Send a Message"
+              subtitle="Choose a template or compose a custom message to send to the customer."
+            />
+            <CardBody className="space-y-4">
               {!canSendSms && (
                 <Alert
-                  variant="warning"
+                  tone="warning"
                   title="SMS sending disabled"
-                  className="mb-4"
                 >
                   You do not have permission to send SMS messages. Contact an administrator if you believe this is an error.
                 </Alert>
@@ -342,148 +324,140 @@ export default function PrivateBookingMessagesClient({
 
               {isDraft && (
                 <Alert
-                  variant="warning"
+                  tone="warning"
                   title="Booking still in draft"
-                  className="mb-4"
                 >
                   SMS updates are typically sent after the booking is confirmed. Review the booking status before messaging the customer.
                 </Alert>
               )}
 
-              <div className="space-y-6">
-                <FormGroup label="Choose a template">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {smsTemplates.map((template) => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        onClick={() => handleTemplateSelect(template.id)}
-                        aria-pressed={selectedTemplate === template.id}
-                        className={`border rounded-lg p-4 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                          selectedTemplate === template.id
-                            ? 'border-primary bg-primary-soft'
-                            : 'border-border hover:border-border-strong'
-                        }`}
-                      >
-                        <h3 className="font-medium text-text flex items-center gap-2">
-                          <DevicePhoneMobileIcon className="h-5 w-5 text-primary" />
-                          {template.name}
-                        </h3>
-                        <p className="mt-1 text-sm text-text-muted">{template.message}</p>
-                      </button>
-                    ))}
+              <Fieldset legend="Choose a Template">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {smsTemplates.map((template) => (
+                    <Radio
+                      key={template.id}
+                      name="private-booking-sms-template"
+                      value={template.id}
+                      label={template.name}
+                      description={template.message}
+                      checked={selectedTemplate === template.id}
+                      onChange={handleTemplateSelect}
+                      className="rounded-default border border-border p-4"
+                    />
+                  ))}
+                </div>
+              </Fieldset>
+
+              {emailOption?.enabled && (
+                <Fieldset legend="Send By">
+                  <div className="space-y-2">
+                    <Radio
+                      name="private-booking-message-channel"
+                      value="email"
+                      label="Email"
+                      description={emailOption.usable ? undefined : 'No usable email address for this booking.'}
+                      checked={channel === 'email'}
+                      onChange={() => setChannel('email')}
+                      disabled={!emailOption.usable || !canSendSms}
+                    />
+                    <Radio
+                      name="private-booking-message-channel"
+                      value="sms"
+                      label="Text"
+                      checked={channel === 'sms'}
+                      onChange={() => setChannel('sms')}
+                      disabled={!canSendSms}
+                    />
                   </div>
-                </FormGroup>
+                </Fieldset>
+              )}
 
-                {emailOption?.enabled && (
-                  <FormGroup label="Send by">
-                    <div className="space-y-2">
-                      <Radio
-                        name="private-booking-message-channel"
-                        value="email"
-                        label="Email"
-                        description={emailOption.usable ? undefined : 'No usable email address for this booking.'}
-                        checked={channel === 'email'}
-                        onChange={() => setChannel('email')}
-                        disabled={!emailOption.usable || !canSendSms}
-                      />
-                      <Radio
-                        name="private-booking-message-channel"
-                        value="sms"
-                        label="Text"
-                        checked={channel === 'sms'}
-                        onChange={() => setChannel('sms')}
-                        disabled={!canSendSms}
-                      />
-                    </div>
-                  </FormGroup>
-                )}
+              {emailChosen && (
+                <Input
+                  label="Email subject"
+                  value={emailSubject}
+                  maxLength={200}
+                  onChange={(event) => setEmailSubject(event.target.value)}
+                  disabled={!canSendSms}
+                />
+              )}
 
-                {emailChosen && (
-                  <Input
-                    label="Email subject"
-                    value={emailSubject}
-                    maxLength={200}
-                    onChange={(event) => setEmailSubject(event.target.value)}
-                    disabled={!canSendSms}
-                  />
-                )}
+              <Field
+                label="Custom message"
+                hint={
+                  emailChosen
+                    ? "Sent by email from The Anchor, with the venue's address, phone number and email added at the end."
+                    : 'Messages are sent via the venue SMS number. Reply instructions are added automatically.'
+                }
+              >
+                <Textarea
+                  value={messageToSend || customMessage}
+                  onChange={(event) => {
+                    setSelectedTemplate('')
+                    setCustomMessage(event.target.value)
+                    setMessageToSend(event.target.value)
+                  }}
+                  rows={6}
+                  placeholder="Type your message here..."
+                  disabled={!canSendSms}
+                />
+              </Field>
 
-                <FormGroup label="Custom message">
-                  <Textarea
-                    value={messageToSend || customMessage}
-                    onChange={(event) => {
-                      setSelectedTemplate('')
-                      setCustomMessage(event.target.value)
-                      setMessageToSend(event.target.value)
-                    }}
-                    rows={6}
-                    placeholder="Type your message here..."
-                    disabled={!canSendSms}
-                  />
-                  <p className="mt-2 text-xs text-text-muted">
-                    {emailChosen
-                      ? "Sent by email from The Anchor, with the venue's address, phone number and email added at the end."
-                      : 'Messages are sent via the venue SMS number. Reply instructions are added automatically.'}
-                  </p>
-                </FormGroup>
+              <FormFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSelectedTemplate('')
+                    setCustomMessage('')
+                    setMessageToSend('')
+                  }}
+                  disabled={!canSendSms}
+                >
+                  Clear
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleSendMessage}
+                  loading={sending}
+                  disabled={!canSend || sending}
+                  icon={<Icon name="send" size={16} />}
+                >
+                  Send Message
+                </Button>
+              </FormFooter>
+            </CardBody>
+          </Card>
 
-                <div className="flex items-center justify-end gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSelectedTemplate('')
-                      setCustomMessage('')
-                      setMessageToSend('')
-                    }}
-                    disabled={!canSendSms}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    onClick={handleSendMessage}
-                    loading={sending}
-                    disabled={!canSend || sending}
-                  >
-                    <PaperAirplaneIcon className="h-4 w-4 mr-2" />
-                    Send Message
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </Section>
-
-          <Section
-            title="Message History"
-            description="Recent SMS messages related to this booking."
-          >
-            <Card>
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Spinner size="sm" />
-                </div>
-              ) : sentMessages.length === 0 ? (
-                <div className="text-center py-12">
-                  <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-text-subtle" />
-                  <p className="mt-3 text-sm text-text-muted">
-                    No messages have been sent for this booking yet.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
+          <Card>
+            <CardHeader
+              title="Message History"
+              subtitle="Recent SMS messages related to this booking."
+            />
+            {loading ? (
+              <PageLoading inline label="Loading messages…" />
+            ) : sentMessages.length === 0 ? (
+              <Empty
+                size="sm"
+                icon={<Icon name="message" size={48} />}
+                title="No messages yet"
+                description="Messages sent to the customer about this booking will appear here."
+              />
+            ) : (
+              <CardBody>
+                <div className="divide-y divide-border">
                   {sentMessages
                     .sort((a, b) => new Date(b.sent_at ?? b.created_at ?? '').getTime() - new Date(a.sent_at ?? a.created_at ?? '').getTime())
                     .map((message) => {
                       const messageKey = message.id ?? message.twilio_sid ?? `${message.booking_id}-${message.created_at}`
 
                       return (
-                        <div key={messageKey} className="border border-border rounded-lg p-4 bg-surface-2">
+                        <div key={messageKey} className="py-4 first:pt-0 last:pb-0">
                           <div className="flex items-center justify-between text-sm text-text-muted">
                             <span className="flex items-center gap-2">
-                              <ClockIcon className="h-4 w-4" />
+                              <Icon name="clock" size={16} />
                               Sent {formatDateTime12Hour(message.sent_at ?? message.created_at ?? '')}
                             </span>
-                            <Badge size="sm" variant="info">
+                            <Badge size="sm" tone={SENT_MESSAGE_TRIGGER_TONE}>
                               {message.trigger_type?.replace(/_/g, ' ') || 'Manual message'}
                             </Badge>
                           </div>
@@ -494,72 +468,80 @@ export default function PrivateBookingMessagesClient({
                       )
                     })}
                 </div>
-              )}
-            </Card>
-          </Section>
+              </CardBody>
+            )}
+          </Card>
         </div>
 
         <div className="space-y-6">
-          <Section title="Booking Summary">
-            <Card>
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-medium text-text-muted">Customer</h3>
-                  <p className="text-sm text-text">
-                    {booking.customer_full_name || booking.customer_name}
-                  </p>
-                  {booking.contact_phone && (
-                    <p className="text-xs text-text-muted flex items-center gap-1">
-                      <DevicePhoneMobileIcon className="h-4 w-4" />
-                      {booking.contact_phone}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-text-muted">Event Details</h3>
-                  <p className="text-sm text-text">
-                    {booking.event_type || 'Private event'}{' '}
-                    {booking.event_date ? `on ${formatDateFull(booking.event_date)}` : ''}
-                  </p>
-                  {booking.start_time && (
-                    <p className="text-xs text-text-muted">Starts at {formatTime12Hour(booking.start_time)}</p>
-                  )}
-                </div>
-                {booking.guest_count && (
-                  <div>
-                    <h3 className="text-sm font-medium text-text-muted">Guest Count</h3>
-                    <p className="text-sm text-text">{booking.guest_count} guests</p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </Section>
+          <Card>
+            <CardHeader title="Booking Summary" />
+            <CardBody>
+              <DescriptionList
+                columns={1}
+                items={[
+                  {
+                    key: 'customer',
+                    label: 'Customer',
+                    value: (
+                      <>
+                        {booking.customer_full_name || booking.customer_name}
+                        {booking.contact_phone && (
+                          <span className="flex items-center gap-1 text-xs text-text-muted">
+                            <Icon name="smartphone" size={16} />
+                            {booking.contact_phone}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'event',
+                    label: 'Event Details',
+                    value: (
+                      <>
+                        {booking.event_type || 'Private event'}{' '}
+                        {booking.event_date ? `on ${formatDateFull(booking.event_date)}` : ''}
+                        {booking.start_time && (
+                          <span className="block text-xs text-text-muted">Starts at {formatTime12Hour(booking.start_time)}</span>
+                        )}
+                      </>
+                    ),
+                  },
+                  ...(booking.guest_count
+                    ? [{ key: 'guests', label: 'Guest Count', value: `${booking.guest_count} guests` }]
+                    : []),
+                ]}
+              />
+            </CardBody>
+          </Card>
 
-          <Section title="SMS Delivery Status">
-            <Card className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <CheckCircleIcon className="h-5 w-5 text-success" />
+          <Card>
+            <CardHeader title="SMS Delivery Status" />
+            <CardBody className="space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-default">
+                <Icon name="checkCircle" size={20} className="text-success" />
                 <div>
                   <p className="text-sm font-medium text-text">Delivered</p>
                   <p className="text-xs text-text-muted">Messages confirmed by Twilio.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <ExclamationCircleIcon className="h-5 w-5 text-info" />
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-default">
+                <Icon name="alertCircle" size={20} className="text-info" />
                 <div>
                   <p className="text-sm font-medium text-text">Queued</p>
                   <p className="text-xs text-text-muted">Awaiting automatic send.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <XCircleIcon className="h-5 w-5 text-danger" />
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-default">
+                <Icon name="xCircle" size={20} className="text-danger" />
                 <div>
                   <p className="text-sm font-medium text-text">Failed</p>
                   <p className="text-xs text-text-muted">Requires manual attention.</p>
                 </div>
               </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
         </div>
       </div>
     </PageLayout>

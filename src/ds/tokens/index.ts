@@ -60,6 +60,7 @@ const colors = {
   primaryHover: 'var(--color-primary-hover)',
   primarySoft: 'var(--color-primary-soft)',
   primarySoftFg: 'var(--color-primary-soft-fg)',
+  primaryBorder: 'var(--color-primary-border)',
   primaryFg: 'var(--color-primary-fg)',
   onDark: 'var(--color-on-dark)',
   onDarkMuted: 'var(--color-on-dark-muted)',
@@ -137,3 +138,10 @@ const easing = {
 } as const
 
 export const tokens = { colors, spacing, shadows, radii, easing } as const
+
+/**
+ * The phone shell, as a media query for JavaScript width checks (`useMediaQuery`). It matches
+ * `--breakpoint-shell` (821px) in globals.css, so code switches where the `shell:` and
+ * `max-shell:` classes switch. Never hard-code 768px or 640px for a phone/desktop decision.
+ */
+export const SHELL_MEDIA_QUERY = '(max-width: 820px)'

@@ -1,13 +1,9 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getCollections, getReturns, getCurrentReturn } from '@/app/actions/mgd'
-import { PageHeader, SectionNav, Alert, Card, CardBody } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { MGD_COLLECTIONS_LAYOUT } from './_shared/nav'
 import { MgdClient } from './_components/MgdClient'
-
-const MGD_SECTION_NAV = [
-  { id: 'collections', label: 'Collections', href: '/mgd' },
-  { id: 'insights', label: 'Insights', href: '/mgd/insights' },
-]
 
 export default async function MgdPage(): Promise<React.ReactElement> {
   const canView = await checkUserPermission('mgd', 'view')
@@ -25,22 +21,11 @@ export default async function MgdPage(): Promise<React.ReactElement> {
       ('error' in currentReturnResult ? currentReturnResult.error : '') ||
       ('error' in returnsResult ? returnsResult.error : '')
     return (
-      <div className="space-y-6">
-        <PageHeader
-          breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
-          title="Machine Games Duty"
-          subtitle="Track collections and quarterly MGD returns"
-          className="mb-0"
-        />
-        <SectionNav items={MGD_SECTION_NAV} activeId="collections" />
-        <Card>
-          <CardBody>
-            <Alert tone="danger" title="Error loading MGD data">
-              {errorMsg || 'An unexpected error occurred.'}
-            </Alert>
-          </CardBody>
-        </Card>
-      </div>
+      <PageLayout {...MGD_COLLECTIONS_LAYOUT}>
+        <Alert tone="danger" title="Error loading MGD data">
+          {errorMsg || 'An unexpected error occurred.'}
+        </Alert>
+      </PageLayout>
     )
   }
 
@@ -53,30 +38,27 @@ export default async function MgdPage(): Promise<React.ReactElement> {
     | { error: string }
     ? NonNullable<D>
     : never = []
+  // A failed read is shown as a failure in the Collections card, never as "No collections".
+  let initialCollectionsError: string | null = null
   if (currentReturn) {
     const colResult = await getCollections(
       currentReturn.period_start,
       currentReturn.period_end
     )
-    if (!('error' in colResult)) {
+    if ('error' in colResult) {
+      initialCollectionsError = colResult.error
+    } else {
       initialCollections = colResult.data ?? []
     }
   }
 
+  // MgdClient renders the PageLayout, so Record Collection can sit in the header.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
-        title="Machine Games Duty"
-        subtitle="Track collections and quarterly MGD returns"
-        className="mb-0"
-      />
-      <SectionNav items={MGD_SECTION_NAV} activeId="collections" />
-      <MgdClient
-        initialReturn={currentReturn}
-        initialCollections={initialCollections}
-        initialReturns={allReturns}
-      />
-    </div>
+    <MgdClient
+      initialReturn={currentReturn}
+      initialCollections={initialCollections}
+      initialCollectionsError={initialCollectionsError}
+      initialReturns={allReturns}
+    />
   )
 }

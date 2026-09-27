@@ -44,6 +44,9 @@
   --color-primary-hover: var(--color-brand-700);
   --color-primary-soft: var(--color-brand-50);
   --color-primary-soft-fg: var(--color-brand-800);
+  /* The edge of a primary-soft block, one tint darker than its fill, as the status -border
+     tokens are (success, warning, danger, info). */
+  --color-primary-border: var(--color-brand-200);
   --color-primary-fg: #ffffff;
 
   /* On dark surfaces (sidebar, kiosk, FOH header) */
@@ -243,15 +246,110 @@
   --color-guest-text-strong: #005131;
   --color-guest-text-muted: #6f6a61;
   --color-guest-accent-text: #8b6914;
+  /* Text on the gold primary and the solid danger button (GUEST.buttonText in palette.ts). */
+  --color-guest-button-text: #ffffff;
 
-  /* The guest lead line (handoff: 15px on 1.6). Guest pages otherwise share the
-     staff type scale: 11 meta, 12 xs, 13 ui, 14 sm, 16 base. Display sizes above
-     16px stay as the handoff specifies them. */
+  /* Status tints. color-mix with transparent is exactly what an opacity modifier
+     compiles to, so a tint still lets the cream body show through. `soft` fills an
+     alert or a panel, `tint` a badge or an icon disc, `border` their edge, and
+     `outline` the edge of a danger button. */
+  --color-guest-success-soft: color-mix(in oklab, var(--color-anchor-success) 7%, transparent);
+  --color-guest-success-tint: color-mix(in oklab, var(--color-anchor-success) 12%, transparent);
+  --color-guest-success-border: color-mix(in oklab, var(--color-anchor-success) 28%, transparent);
+  --color-guest-notice-soft: color-mix(in oklab, var(--color-anchor-gold) 10%, transparent);
+  --color-guest-notice-tint: color-mix(in oklab, var(--color-anchor-gold) 14%, transparent);
+  --color-guest-notice-border: color-mix(in oklab, var(--color-anchor-gold) 35%, transparent);
+  --color-guest-danger-soft: color-mix(in oklab, var(--color-anchor-danger) 6%, transparent);
+  --color-guest-danger-tint: color-mix(in oklab, var(--color-anchor-danger) 12%, transparent);
+  --color-guest-danger-border: color-mix(in oklab, var(--color-anchor-danger) 30%, transparent);
+  --color-guest-danger-outline: color-mix(in oklab, var(--color-anchor-danger) 45%, transparent);
+  --color-guest-danger-hover: color-mix(in oklab, var(--color-anchor-danger) 88%, transparent);
+  /* Brand-green icon discs, and the ghost button's hover wash. */
+  --color-guest-brand-tint: color-mix(in oklab, var(--color-anchor-green) 10%, transparent);
+  --color-guest-hover: color-mix(in oklab, var(--color-anchor-charcoal) 6%, transparent);
+  /* Text and rules on the dark green footer. */
+  --color-guest-on-dark-soft: color-mix(in oklab, var(--color-anchor-cream-text) 82%, transparent);
+  --color-guest-on-dark-muted: color-mix(in oklab, var(--color-anchor-cream-text) 70%, transparent);
+  --color-guest-on-dark-rule: color-mix(in oklab, var(--color-anchor-gold-bright) 25%, transparent);
+
+  /* Guest rhythm. One spacing scale for every gap, padding and margin on a guest
+     page, so no page hard-codes a pixel value. `lg` (18px) is the page rhythm: the
+     gap between blocks and the phone gutter. `md` (14px) spaces things inside a
+     card, `xs` (7px) the kicker, title and lead of the intro block. */
+  --spacing-guest-3xs: 3px;
+  --spacing-guest-2xs: 5px;
+  --spacing-guest-xs: 7px;
+  --spacing-guest-sm: 11px;
+  --spacing-guest-md: 14px;
+  --spacing-guest-lg: 18px;
+  --spacing-guest-xl: 22px;
+  --spacing-guest-2xl: 26px;
+  --spacing-guest-3xl: 30px;
+  /* Touch floor, form control and large button heights, and the wordmark width. */
+  --spacing-guest-touch: 44px;
+  --spacing-guest-control: 48px;
+  --spacing-guest-control-lg: 56px;
+  --spacing-guest-logo: 116px;
+
+  /* Line heights and letter spacing, referenced by the type scale below. */
+  --leading-guest-flat: 1;
+  --leading-guest-snug: 1.4;
+  --leading-guest-body: 1.6;
+  --tracking-guest-display: -0.02em;
+  --tracking-guest-label: 0.16em;
+  --tracking-guest-kicker: 0.18em;
+
+  /* Guest type scale. Each size carries its own line height (and, for labels and
+     display type, its letter spacing), so one utility sets the whole style. Guest
+     pages use these, not the staff `text-ui` and `text-meta`. DM Serif Display
+     (h2 and up) is weight 400 only: never add a bold utility to it. */
+  --text-guest-label: 11px;
+  --text-guest-label--line-height: var(--leading-guest-flat);
+  --text-guest-label--letter-spacing: var(--tracking-guest-label);
+  --text-guest-kicker: 12px;
+  --text-guest-kicker--line-height: var(--leading-guest-flat);
+  --text-guest-kicker--letter-spacing: var(--tracking-guest-kicker);
+  --text-guest-note: 12px;
+  --text-guest-note--line-height: 1.55;
+  --text-guest-small: 13px;
+  --text-guest-small--line-height: 1.55;
+  --text-guest-body: 14px;
+  --text-guest-body--line-height: var(--leading-guest-body);
   --text-guest-lead: 15px;
-  --text-guest-lead--line-height: 1.6;
+  --text-guest-lead--line-height: var(--leading-guest-body);
+  /* 16px on purpose: anything smaller makes iOS Safari zoom the page on focus. */
+  --text-guest-control: 16px;
+  --text-guest-control--line-height: var(--leading-guest-snug);
+  --text-guest-large: 18px;
+  --text-guest-large--line-height: 1.3;
+  --text-guest-h2: 22px;
+  --text-guest-h2--line-height: 1.25;
+  --text-guest-h2--letter-spacing: var(--tracking-guest-display);
+  --text-guest-figure: 26px;
+  --text-guest-figure--line-height: 1.15;
+  --text-guest-figure--letter-spacing: var(--tracking-guest-display);
+  --text-guest-h1: 29px;
+  --text-guest-h1--line-height: 1.2;
+  --text-guest-h1--letter-spacing: var(--tracking-guest-display);
+  --text-guest-h1-wide: 40px;
+  --text-guest-h1-wide--line-height: 1.2;
+  --text-guest-h1-wide--letter-spacing: var(--tracking-guest-display);
+  --text-guest-script: 30px;
+  --text-guest-script--line-height: 1.3;
+  --text-guest-amount: 48px;
+  --text-guest-amount--line-height: 0.95;
+  --text-guest-amount--letter-spacing: var(--tracking-guest-display);
+  --text-guest-amount-wide: 60px;
+  --text-guest-amount-wide--line-height: 0.95;
+  --text-guest-amount-wide--letter-spacing: var(--tracking-guest-display);
 
-  /* The guest pages' reading column (max-w-guest). */
+  /* The guest pages' two reading columns: `max-w-guest` by default, and
+     `max-w-guest-wide` for pages with forms or long prose (GuestShell width="wide"). */
   --container-guest: 560px;
+  --container-guest-wide: 672px;
+
+  /* Below this width DetailGrid drops to one column (`guest-narrow:`). */
+  --breakpoint-guest-narrow: 380px;
 
   /* Radii. The theme above has 6/8/10/14/20px and no 12px, so `rounded-md`
      would silently give 10px on every guest card. These are unconditional. */
@@ -316,8 +414,7 @@ nav[aria-label="Mobile navigation"] {
 
 /* Truncated text stays inside its container on phones */
 @media (max-width: 640px) {
-  .truncate,
-  .text-ellipsis {
+  .truncate {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -387,7 +484,6 @@ nav[aria-label="Mobile navigation"] {
   gap: 8px;
 }
 .ds-nav-icon { display: grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0; }
-.ds-brand-icon { display: grid; place-items: center; width: var(--spacing-sidebar-collapsed); flex-shrink: 0; }
 .ds-sidebar .ds-label { display: none; }
 .ds-sidebar[data-expanded="true"] .ds-label { display: revert; }
 /* Badge layout must retain flex centring when collapsed labels become visible. */
@@ -417,353 +513,6 @@ nav[aria-label="Mobile navigation"] {
 @media (prefers-reduced-motion: reduce) { .ds-sidebar { transition: none; } }
 
 /* ================================================
-   STANDALONE LAYOUT CLASSES: screens outside the app chrome
-   Full-bleed layouts for auth, the timeclock kiosk and
-   employee onboarding.
-   ================================================ */
-
-/* Shared full-bleed frame for standalone screens. None of them render inside the app shell
-   (sign-in, error and unauthorised pages, the timeclock kiosk, employee onboarding), so they
-   fill the viewport directly. They used to carry negative margins meant to cancel the shell's
-   padding, which instead pushed every one of them 28px off the left of the screen and made the
-   sign-in page scroll sideways on a desktop (found 18 Sep 2026). */
-.kiosk, .onboard, .auth {
-  margin: 0;
-  min-height: 100vh;
-}
-
-/* ===== Auth / Login ===== */
-.auth {
-  background: var(--color-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  padding: 40px;
-}
-.auth__card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 36px;
-  width: 100%;
-  max-width: 380px;
-  box-shadow: var(--shadow-lg);
-}
-.auth__brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 24px;
-}
-.auth__logo {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-primary-fg);
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-}
-.auth__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-text-strong);
-}
-.auth__sub {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-.auth__h1 {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 4px;
-  letter-spacing: -0.015em;
-  color: var(--color-text-strong);
-}
-.auth__lead {
-  font-size: var(--text-ui);
-  color: var(--color-text-muted);
-  margin: 0 0 20px;
-}
-.auth__link {
-  color: var(--color-primary);
-  text-decoration: none;
-  font-weight: 500;
-}
-.auth__link:hover {
-  text-decoration: underline;
-}
-.auth__divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 16px 0;
-  color: var(--color-text-muted);
-  font-size: var(--text-meta);
-}
-.auth__divider::before,
-.auth__divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
-}
-.auth__footer {
-  margin-top: 28px;
-  font-size: 12px;
-  text-align: center;
-}
-
-/* ===== Timeclock Kiosk ===== */
-.kiosk {
-  background: var(--color-brand-700);
-  color: var(--color-on-dark);
-  padding: 40px 56px;
-  display: flex;
-  flex-direction: column;
-}
-.kiosk__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 32px;
-}
-.kiosk__brand {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.kiosk__sub {
-  font-size: 14px;
-  opacity: 0.7;
-  margin-top: 4px;
-}
-.kiosk__clock {
-  text-align: right;
-}
-.kiosk__time {
-  font-family: var(--font-mono);
-  font-size: 64px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-.kiosk__date {
-  font-size: 14px;
-  opacity: 0.8;
-  margin-top: 8px;
-}
-.kiosk__stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 32px;
-}
-.kstat {
-  background: var(--color-on-dark-hover);
-  border: 1px solid var(--color-on-dark-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-}
-.kstat__label {
-  font-size: 12px;
-  opacity: 0.7;
-}
-.kstat__value {
-  font-size: 32px;
-  font-weight: 700;
-  margin-top: 6px;
-  letter-spacing: -0.02em;
-}
-.kstat__suffix {
-  font-size: 18px;
-  opacity: 0.6;
-  font-weight: 600;
-}
-.kstat--success .kstat__value {
-  color: var(--color-brand-300);
-}
-.kiosk__title {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 20px;
-  opacity: 0.9;
-}
-.kiosk__grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-.kiosk__card {
-  background: color-mix(in oklch, var(--color-on-dark) 6%, transparent);
-  border: 2px solid color-mix(in oklch, var(--color-on-dark) 10%, transparent);
-  border-radius: var(--radius-lg);
-  padding: 24px 16px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: background 120ms, transform 120ms, border-color 120ms;
-  color: var(--color-on-dark);
-}
-.kiosk__card:hover {
-  background: var(--color-on-dark-border);
-  border-color: color-mix(in oklch, var(--color-on-dark) 22%, transparent);
-  transform: translateY(-2px);
-}
-.kiosk__card--in {
-  border-color: var(--color-brand-300);
-  background: color-mix(in oklch, var(--color-brand-500) 18%, transparent);
-}
-.kiosk__card--out {
-  opacity: 0.7;
-}
-.kiosk__name {
-  font-size: 14px;
-  font-weight: 600;
-  margin-top: 6px;
-}
-.kiosk__role {
-  font-size: var(--text-meta);
-  opacity: 0.7;
-}
-.kiosk__state {
-  font-size: var(--text-meta);
-  margin-top: 8px;
-  opacity: 0.85;
-}
-.kiosk__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.kiosk__dot--in {
-  background: var(--color-brand-300);
-}
-.kiosk__dot--out {
-  background: var(--color-on-dark-subtle);
-}
-.kiosk__off {
-  font-size: var(--text-meta);
-  opacity: 0.6;
-}
-.kiosk__footer {
-  margin-top: 32px;
-  font-size: 12px;
-  opacity: 0.6;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ===== Onboarding ===== */
-.onboard {
-  background: var(--color-bg);
-  display: flex;
-  flex-direction: column;
-}
-.onboard__topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 32px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-}
-.onboard__brand {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-text-strong);
-}
-.onboard__body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  max-width: 1100px;
-  margin: 0 auto;
-  width: 100%;
-  padding: 32px;
-  gap: 32px;
-}
-.onboard__rail {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.onboard__step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: var(--radius-default);
-  cursor: pointer;
-  transition: background 120ms;
-}
-.onboard__step:hover {
-  background: var(--color-surface-hover);
-}
-.onboard__step.active {
-  background: var(--color-primary-soft);
-}
-.onboard__step.done .onboard__step-bullet {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: var(--color-primary-fg);
-}
-.onboard__step.active .onboard__step-bullet {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-primary-fg);
-}
-.onboard__step-bullet {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border-strong);
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-.onboard__step-label {
-  font-size: var(--text-ui);
-  font-weight: 600;
-  color: var(--color-text);
-}
-.onboard__main {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.onboard__h1 {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.015em;
-  color: var(--color-text-strong);
-}
-.onboard__nav {
-  display: flex;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--color-border);
-  margin-top: 8px;
-}
-
-/* ================================================
    AMS RESPONSIVE MOBILE LAYER
    Mirrors the design handoff at a single phone/tablet breakpoint.
    Keep desktop behavior additive and scoped below 820px.
@@ -788,9 +537,9 @@ nav[aria-label="Mobile navigation"] {
     font-size: 16px !important;
   }
 
-  /* `.guest-btn` is excluded for the same reason as the rule higher up: GuestButton sets its
-     own 44/48/56px heights, all already at or above the 44px minimum, and this rule's
-     specificity would otherwise flatten every md and lg guest button on mobile. */
+  /* `.guest-btn` is excluded because GuestButton sets its own 44/48/56px heights, all already
+     at or above the 44px minimum, and this rule's specificity would otherwise flatten every md
+     and lg guest button on mobile. */
   button:not(.ds-sidebar button):not([role="switch"]):not(.guest-btn),
   a[role="button"],
   [role="button"],
@@ -817,17 +566,6 @@ nav[aria-label="Mobile navigation"] {
     min-width: 0;
   }
 
-  .ds-stat-group,
-  .kiosk__stats,
-  .kiosk__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .staff-portal-shell [class*="grid-cols"],
-  .onboard__body {
-    grid-template-columns: 1fr !important;
-  }
-
   /* Tabs, segmented controls, and secondary nav scroll instead of wrapping. */
   [role="tablist"],
   nav[aria-label="Progress"],
@@ -839,17 +577,13 @@ nav[aria-label="Mobile navigation"] {
     -webkit-overflow-scrolling: touch;
   }
 
-  [role="tablist"],
-  .section-nav,
-  .tabs {
+  [role="tablist"] {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  [role="tablist"]::-webkit-scrollbar,
-  .section-nav::-webkit-scrollbar,
-  .tabs::-webkit-scrollbar {
+  [role="tablist"]::-webkit-scrollbar {
     display: none;
   }
 
@@ -860,128 +594,6 @@ nav[aria-label="Mobile navigation"] {
 
   .overflow-x-auto {
     scrollbar-width: thin;
-  }
-
-  /* Shared standalone screens. */
-  .auth,
-  .onboard,
-  .kiosk {
-    margin: 0;
-    min-height: 100dvh;
-    width: 100%;
-  }
-
-  /* Auth/login/error screens. */
-  .auth {
-    justify-content: flex-start;
-    padding: 24px 18px;
-  }
-
-  .auth__card {
-    max-width: 100%;
-    border: 0;
-    border-radius: var(--radius-lg);
-    box-shadow: none;
-    padding: 24px;
-  }
-
-  /* Staff portal. */
-  .staff-portal-shell h2 {
-    font-size: 20px;
-  }
-
-  /* Onboarding wizard. */
-  .onboard__topbar {
-    padding: 12px 16px;
-  }
-
-  .onboard__body {
-    gap: 16px;
-    padding: 16px;
-  }
-
-  .onboard__rail {
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-
-  .onboard__rail::-webkit-scrollbar {
-    display: none;
-  }
-
-  .onboard__rail ol {
-    flex-direction: row;
-    gap: 6px;
-  }
-
-  .onboard__rail li {
-    flex-direction: column;
-    min-width: 92px;
-    gap: 6px;
-    text-align: center;
-  }
-
-  .onboard__rail li span:last-child {
-    font-size: var(--text-meta);
-    line-height: 1.2;
-  }
-
-  .onboard__main {
-    padding: 20px;
-  }
-
-  .onboard__nav {
-    flex-direction: column-reverse;
-  }
-
-  /* Timeclock kiosk. */
-  .kiosk {
-    padding: 24px 18px;
-  }
-
-  .kiosk__header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .kiosk__clock {
-    text-align: left;
-  }
-
-  .kiosk__time {
-    font-size: 48px;
-  }
-
-  .kiosk__stats,
-  .kiosk__grid {
-    gap: 12px;
-  }
-
-  .kiosk__card {
-    padding: 18px 12px;
-  }
-
-  .kstat {
-    padding: 13px;
-  }
-
-  .kstat__value {
-    font-size: 26px;
-  }
-
-}
-
-@media (max-width: 380px) {
-  .ds-stat-group,
-  .kiosk__stats,
-  .kiosk__grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .kiosk__time {
-    font-size: 40px;
   }
 }
 

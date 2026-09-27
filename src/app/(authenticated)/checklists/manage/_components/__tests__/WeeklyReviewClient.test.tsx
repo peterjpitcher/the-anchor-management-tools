@@ -171,7 +171,7 @@ describe('WeeklyReviewClient', () => {
     render(<WeeklyReviewClient error="Insufficient permissions" />)
 
     expect(screen.getByText('Insufficient permissions')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
   })
 
   it('shows an empty state when the week generated no rows', () => {

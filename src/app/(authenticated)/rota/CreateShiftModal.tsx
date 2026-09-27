@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Button, Checkbox, FormGroup, Input, Modal, Select } from '@/ds';
+import { Alert, Button, Card, Checkbox, Field, Input, Modal, Select, toast } from '@/ds';
 import { createShift } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
@@ -18,9 +17,10 @@ interface CreateShiftModalProps {
   onCreated: (shift: RotaShift) => void;
 }
 
+// A shift date is a plain day: read as a UTC midnight and formatted in UTC, so it never moves.
 function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long',
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
   });
 }
 
@@ -63,56 +63,56 @@ export default function CreateShiftModal({
   };
   // usePremiumControl + PremiumControl are defined at the bottom of this file
   // (kept co-located here and mirrored in ShiftDetailModal to respect the
-  // rota write-path ownership boundary — no shared component file added).
+  // rota write-path ownership boundary: no shared component file added).
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={employeeName}
+      title={isOpenShift ? 'New Open Shift' : 'New Shift'}
+      description={isOpenShift ? formatDate(shiftDate) : `${employeeName}, ${formatDate(shiftDate)}`}
       width="md"
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Creating…' : 'Create shift'}
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+            Create Shift
           </Button>
         </>
       }
     >
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">{formatDate(shiftDate)}</p>
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-        <FormGroup label="Shift name (optional)" htmlFor="cs-name">
+        <Field label="Shift name (optional)" htmlFor="cs-name">
           <Input
             id="cs-name"
             placeholder='e.g. "Evening Bar"'
             value={name}
             onChange={e => setName(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormGroup label="Start time" htmlFor="cs-start" required>
+          <Field label="Start time" htmlFor="cs-start" required>
             <Input id="cs-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
-          </FormGroup>
-          <FormGroup label="End time" htmlFor="cs-end" required>
+          </Field>
+          <Field label="End time" htmlFor="cs-end" required>
             <Input id="cs-end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-          </FormGroup>
-          <FormGroup label="Break (mins)" htmlFor="cs-break">
+          </Field>
+          <Field label="Break (mins)" htmlFor="cs-break">
             <Input id="cs-break" type="number" min="0" max="120" value={breakMins} onChange={e => setBreakMins(e.target.value)} />
-          </FormGroup>
-          <FormGroup label="Department" htmlFor="cs-dept">
+          </Field>
+          <Field label="Department" htmlFor="cs-dept">
             <Select
               id="cs-dept"
               value={department}
               onChange={e => setDepartment(e.target.value)}
               options={departments.map(d => ({ value: d.name, label: d.label }))}
             />
-          </FormGroup>
+          </Field>
         </div>
 
         <Checkbox
@@ -124,14 +124,14 @@ export default function CreateShiftModal({
 
         <PremiumControl state={premium} idPrefix="cs" />
 
-        <FormGroup label="Notes (optional)" htmlFor="cs-notes">
+        <Field label="Notes (optional)" htmlFor="cs-notes">
           <Input
             id="cs-notes"
             placeholder="Optional notes"
             value={notes}
             onChange={e => setNotes(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
         {startTime && endTime && (
           <p className="text-sm text-text-muted">
@@ -264,67 +264,69 @@ interface PremiumControlProps {
 /**
  * A calm, subtle premium-rate control: a rate select, a custom £/hr input when
  * "Custom" is chosen, an optional reason, and an optional "applies from–to"
- * window (default = whole shift). No warning blocks — house style.
+ * window (default = whole shift). No warning blocks: house style.
  */
 export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
   const showPremiumDetail = state.mode !== 'none';
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-3">
-      <FormGroup label="Pay rate" htmlFor={`${idPrefix}-rate`}>
-        <Select
-          id={`${idPrefix}-rate`}
-          value={state.mode}
-          onChange={e => state.setMode(e.target.value as PremiumMode)}
-          options={RATE_OPTIONS}
-        />
-      </FormGroup>
-
-      {state.mode === 'custom' && (
-        <FormGroup label="Custom rate (£/hr)" htmlFor={`${idPrefix}-custom`}>
-          <Input
-            id={`${idPrefix}-custom`}
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            placeholder="e.g. 18.50"
-            value={state.customRate}
-            onChange={e => state.setCustomRate(e.target.value)}
+    <Card variant="secondary" padding="sm">
+      <div className="space-y-3">
+        <Field label="Pay rate" htmlFor={`${idPrefix}-rate`}>
+          <Select
+            id={`${idPrefix}-rate`}
+            value={state.mode}
+            onChange={e => state.setMode(e.target.value as PremiumMode)}
+            options={RATE_OPTIONS}
           />
-        </FormGroup>
-      )}
+        </Field>
 
-      {showPremiumDetail && (
-        <>
-          <FormGroup label="Reason (optional)" htmlFor={`${idPrefix}-reason`}>
+        {state.mode === 'custom' && (
+          <Field label="Custom rate (£/hr)" htmlFor={`${idPrefix}-custom`}>
             <Input
-              id={`${idPrefix}-reason`}
-              placeholder='e.g. "Bank holiday"'
-              value={state.reason}
-              onChange={e => state.setReason(e.target.value)}
+              id={`${idPrefix}-custom`}
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="e.g. 18.50"
+              value={state.customRate}
+              onChange={e => state.setCustomRate(e.target.value)}
             />
-          </FormGroup>
+          </Field>
+        )}
 
-          <Checkbox
-            id={`${idPrefix}-window`}
-            label="Applies to part of the shift only"
-            checked={state.useWindow}
-            onChange={checked => state.setUseWindow(checked)}
-          />
+        {showPremiumDetail && (
+          <>
+            <Field label="Reason (optional)" htmlFor={`${idPrefix}-reason`}>
+              <Input
+                id={`${idPrefix}-reason`}
+                placeholder='e.g. "Bank holiday"'
+                value={state.reason}
+                onChange={e => state.setReason(e.target.value)}
+              />
+            </Field>
 
-          {state.useWindow && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormGroup label="From" htmlFor={`${idPrefix}-win-start`}>
-                <Input id={`${idPrefix}-win-start`} type="time" value={state.windowStart} onChange={e => state.setWindowStart(e.target.value)} />
-              </FormGroup>
-              <FormGroup label="To" htmlFor={`${idPrefix}-win-end`}>
-                <Input id={`${idPrefix}-win-end`} type="time" value={state.windowEnd} onChange={e => state.setWindowEnd(e.target.value)} />
-              </FormGroup>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+            <Checkbox
+              id={`${idPrefix}-window`}
+              label="Applies to part of the shift only"
+              checked={state.useWindow}
+              onChange={checked => state.setUseWindow(checked)}
+            />
+
+            {state.useWindow && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="From" htmlFor={`${idPrefix}-win-start`}>
+                  <Input id={`${idPrefix}-win-start`} type="time" value={state.windowStart} onChange={e => state.setWindowStart(e.target.value)} />
+                </Field>
+                <Field label="To" htmlFor={`${idPrefix}-win-end`}>
+                  <Input id={`${idPrefix}-win-end`} type="time" value={state.windowEnd} onChange={e => state.setWindowEnd(e.target.value)} />
+                </Field>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Card>
   );
 }

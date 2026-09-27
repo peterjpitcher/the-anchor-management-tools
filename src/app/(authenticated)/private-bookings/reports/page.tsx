@@ -1,8 +1,12 @@
 import { redirect } from 'next/navigation'
-import { LinkButton, PageHeader } from '@/ds'
+import { PageLayout } from '@/ds'
 import { getCurrentUserModuleActions, checkUserPermission } from '@/app/actions/rbac'
-import { loadPrivateBookingGrowthSnapshot } from '@/lib/analytics/private-booking-growth'
+import {
+  loadPrivateBookingGrowthSnapshot,
+  type PrivateBookingGrowthSnapshot,
+} from '@/lib/analytics/private-booking-growth'
 import PrivateBookingGrowthReportClient from './_components/PrivateBookingGrowthReportClient'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 
 export default async function PrivateBookingGrowthReportPage() {
   const [permissionsResult, canViewReports] = await Promise.all([
@@ -20,23 +24,26 @@ export default async function PrivateBookingGrowthReportPage() {
     redirect('/unauthorized')
   }
 
-  const snapshot = await loadPrivateBookingGrowthSnapshot()
+  const canViewSmsQueue = actions.has('view_sms_queue') || actions.has('manage')
+  const layoutProps = {
+    title: 'Private Bookings',
+    subtitle: 'Reports: customer private events by the date they happened',
+    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) }),
+  }
+
+  // A failed load keeps the page header and tab row and says so, rather than dropping to the
+  // app's error screen.
+  let snapshot: PrivateBookingGrowthSnapshot
+  try {
+    snapshot = await loadPrivateBookingGrowthSnapshot()
+  } catch (error) {
+    console.error('[private-bookings/reports] Failed to load the growth snapshot', error)
+    return <PageLayout {...layoutProps} error="We could not load the growth report. Refresh the page to try again." />
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        breadcrumbs={[
-          { label: 'Private Bookings', href: '/private-bookings' },
-          { label: 'Growth report' },
-        ]}
-        title="Private booking growth"
-        subtitle="Customer private events by the date they happened"
-        className="mb-0"
-        actions={
-          <LinkButton href="/private-bookings" variant="secondary" size="sm">Back to bookings</LinkButton>
-        }
-      />
+    <PageLayout {...layoutProps}>
       <PrivateBookingGrowthReportClient snapshot={snapshot} />
-    </div>
+    </PageLayout>
   )
 }

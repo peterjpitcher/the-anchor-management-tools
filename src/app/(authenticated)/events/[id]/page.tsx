@@ -79,6 +79,9 @@ export default async function EventDetailPage({ params }: PageProps) {
     eventData = eventResult.data ?? null
   }
 
+  // Each of these is non-fatal: the page still renders without it. A failure is reported in
+  // the page's error banner, though, so an empty section is never a failed load in disguise.
+
   // Fetch bookings (non-fatal)
   let bookings: EventBookingRow[] = []
   if (eventData) {
@@ -86,9 +89,11 @@ export default async function EventDetailPage({ params }: PageProps) {
       const bookingsResult = await getEventBookings(eventId)
       if (bookingsResult.data) {
         bookings = bookingsResult.data
+      } else {
+        errors.push('Bookings could not be loaded, so the attendee list may be incomplete.')
       }
     } catch {
-      // Non-fatal: page still renders, bookings table will be empty
+      errors.push('Bookings could not be loaded, so the attendee list may be incomplete.')
     }
   }
 
@@ -99,9 +104,11 @@ export default async function EventDetailPage({ params }: PageProps) {
       const linksResult = await getEventMarketingLinks(eventId)
       if (linksResult.links) {
         marketingLinks = linksResult.links
+      } else {
+        errors.push('Marketing links could not be loaded.')
       }
     } catch {
-      // Non-fatal: page still renders, marketing section will be empty
+      errors.push('Marketing links could not be loaded.')
     }
   }
 
@@ -112,9 +119,11 @@ export default async function EventDetailPage({ params }: PageProps) {
       const messagesResult = await getEventMarketingMessages(eventId)
       if (messagesResult.messages) {
         marketingMessages = messagesResult.messages
+      } else {
+        errors.push('Sent marketing messages could not be loaded.')
       }
     } catch {
-      // Non-fatal: page still renders, marketing messages section will be empty
+      errors.push('Sent marketing messages could not be loaded.')
     }
   }
 

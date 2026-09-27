@@ -5,6 +5,11 @@ vi.mock('@/app/actions/cashing-up', () => ({
   getInsightsDataAction: vi.fn(),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/cashing-up/insights',
+}))
+
 import { InsightsClient } from '@/app/(authenticated)/cashing-up/insights/_components/InsightsClient'
 import type { CashupInsightsData } from '@/types/cashing-up'
 
@@ -56,5 +61,14 @@ describe('InsightsClient', () => {
     expect(screen.getByText('£150')).toBeInTheDocument()
     expect(screen.getAllByText('£100').length).toBeGreaterThan(0)
     expect(screen.getByText('£50')).toBeInTheDocument()
+  })
+
+  it('draws the sales mix and the day-of-week takings as named DS charts', () => {
+    render(<InsightsClient initialData={insightData} />)
+
+    expect(
+      screen.getByRole('figure', { name: "Monthly drinks, food and other sales, with each one's share of sales" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('figure', { name: 'Average takings by day of the week' })).toBeInTheDocument()
   })
 })

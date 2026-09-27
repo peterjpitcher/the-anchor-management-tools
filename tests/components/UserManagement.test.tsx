@@ -24,9 +24,8 @@ vi.mock('@/app/actions/rbac', () => ({
   assignRolesToUser: (...args: unknown[]) => mockAssignRolesToUser(...args),
 }))
 
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: toast,
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: toast,
 }))
 
 describe('User management UI gating', () => {
@@ -62,7 +61,7 @@ describe('User management UI gating', () => {
   it('shows the manage roles action when permitted', () => {
     render(<UsersContent users={[sampleUser]} roles={sampleRoles} canManageRoles />)
 
-    expect(screen.getByRole('button', { name: 'Manage roles' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Manage Roles' })).toBeInTheDocument()
   })
 
   it('renders the modal in read-only mode without fetching roles', async () => {
@@ -80,7 +79,24 @@ describe('User management UI gating', () => {
       expect(screen.getByText('Read-only access')).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('button', { name: 'Save Roles' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
     expect(mockGetUserRoles).not.toHaveBeenCalled()
+  })
+
+  it('names the user under the dialog title, as its description, once', async () => {
+    render(
+      <UserRolesModal
+        isOpen
+        onClose={() => {}}
+        user={sampleUser}
+        allRoles={sampleRoles}
+        canManageRoles={false}
+      />,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Manage Roles' })
+    expect(dialog).toHaveAccessibleDescription('user@example.com')
+    // The Modal renders its description, so the body no longer repeats the address.
+    expect(screen.getAllByText('user@example.com')).toHaveLength(1)
   })
 })

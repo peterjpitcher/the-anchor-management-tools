@@ -90,19 +90,31 @@ interface CardHeaderProps {
   className?: string
 }
 
+/**
+ * On a wide card the action sits to the right of the title. On a narrow one (a phone, a
+ * sidebar card) the row wraps: the action drops below the title instead of being clipped,
+ * and the action's own buttons wrap too. The title and subtitle wrap rather than truncate,
+ * so nothing is cut off.
+ *
+ * When the row wraps: the title block asks for its text's natural width, but never more
+ * than 12rem (`max-w-[12rem]` caps what the heading and subtitle ask for, and
+ * `min-w-full` still lets them fill the block). So a short title keeps its action beside it
+ * whenever both fit, as before, and a long title keeps 12rem beside the action, wrapping
+ * onto a second line, before the action drops below.
+ */
 export function CardHeader({ title, subtitle, action, children, className }: CardHeaderProps) {
   return (
     <div
       className={cn(
-        'px-pad-card py-3 border-b border-border flex items-center justify-between',
+        'px-pad-card py-3 border-b border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-2',
         className,
       )}
     >
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-text-strong truncate">{title}</h3>
-        {subtitle && <p className="text-xs text-text-muted mt-0.5 truncate">{subtitle}</p>}
+      <div className="min-w-0 flex-auto">
+        <h3 className="min-w-full max-w-[12rem] text-sm font-semibold text-text-strong break-words">{title}</h3>
+        {subtitle && <p className="min-w-full max-w-[12rem] text-xs text-text-muted mt-0.5 break-words">{subtitle}</p>}
       </div>
-      {action && <div className="ml-3 flex-shrink-0">{action}</div>}
+      {action && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{action}</div>}
       {children}
     </div>
   )

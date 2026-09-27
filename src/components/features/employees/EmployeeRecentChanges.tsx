@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getEmployeeChangesSummary } from '@/app/actions/employee-history'
 import { formatDateTime } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { Alert, Card, CardBody, CardHeader, Empty, PageLoading } from '@/ds'
 
 interface ChangeRecord {
   change_date: string
@@ -17,7 +18,7 @@ interface EmployeeRecentChangesProps {
   employeeId: string
 }
 
-export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps) {
+export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps): React.JSX.Element {
   const { hasPermission } = usePermissions()
   const [changes, setChanges] = useState<ChangeRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -76,37 +77,42 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
     }
   }, [employeeId, canViewHistory])
 
-  if (isLoading) {
+  const body = (() => {
+    if (!canViewHistory) {
+      return <p className="text-sm text-text-muted">You do not have permission to view recent changes.</p>
+    }
+
+    if (isLoading) {
+      return <PageLoading inline label="Loading recent changes" className="py-6" />
+    }
+
+    // A failed load says so; it is never shown as "no changes".
+    if (error) {
+      return <Alert tone="danger" size="sm">{error}</Alert>
+    }
+
+    if (changes.length === 0) {
+      return <Empty size="sm" title="No changes yet" />
+    }
+
     return (
-      <div className="flex items-center justify-center py-6">
-        <span className="text-sm text-text-muted">Loading recent changes…</span>
-      </div>
+      <ul className="divide-y divide-border">
+        {changes.map((change, index) => (
+          <li key={`${change.change_date}-${index}`} className="py-3 text-sm first:pt-0 last:pb-0">
+            <p className="text-text">{change.summary || 'Employee record updated'}</p>
+            <p className="mt-1 text-xs text-text-muted">
+              by {change.changed_by || 'System'} • {formatDateTime(change.change_date)}
+            </p>
+          </li>
+        ))}
+      </ul>
     )
-  }
-
-  if (error) {
-    return <p className="text-sm text-text-muted">{error}</p>
-  }
-
-  if (changes.length === 0) {
-    return <p className="text-sm text-text-muted">No recent changes recorded.</p>
-  }
+  })()
 
   return (
-    <div className="space-y-3">
-      {changes.map((change, index) => (
-        <div key={`${change.change_date}-${index}`} className="text-sm">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-text">{change.summary || 'Employee record updated'}</p>
-              <p className="text-text-muted text-xs mt-1">
-                by {change.changed_by || 'System'} • {formatDateTime(change.change_date)}
-              </p>
-            </div>
-          </div>
-          {index < changes.length - 1 && <div className="border-t border-border mt-3" />}
-        </div>
-      ))}
-    </div>
+    <Card>
+      <CardHeader title="Recent Changes" />
+      <CardBody>{body}</CardBody>
+    </Card>
   )
 }

@@ -11,12 +11,8 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock('@/components/ui-v2/feedback/Toast', () => ({
@@ -127,7 +123,7 @@ describe('Settings read-only behaviour', () => {
       expect(checkbox).toBeDisabled()
     })
 
-    expect(screen.getByRole('button', { name: /Save Changes/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Save Opening Hours/i })).toBeDisabled()
   })
 
   it('renders customer labels read-only state without manage permission', () => {

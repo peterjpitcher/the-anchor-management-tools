@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Button, Card, CardHeader, CardBody } from '@/ds'
+import { Alert, Button, Card, CardHeader, CardBody, Stat, StatGrid } from '@/ds'
 import {
   hourLabel,
   londonClockLabel,
@@ -214,21 +214,21 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
 
   if (error) {
     return (
-      <Alert variant="danger" title="Could not load the checklist">
+      <Alert tone="danger" title="Could not load the checklist">
         {error}. Please use the paper list and tell Peter.
       </Alert>
     )
   }
   if (!initial) {
     return (
-      <Alert variant="danger" title="Could not load the checklist">
+      <Alert tone="danger" title="Could not load the checklist">
         Please use the paper list and tell Peter.
       </Alert>
     )
   }
   if (!initial.moduleEnabled) {
     return (
-      <Alert variant="info" title="Checklists are not switched on yet.">
+      <Alert tone="info" title="Checklists are not switched on yet.">
         There is nothing to do here for now.
       </Alert>
     )
@@ -261,9 +261,9 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       : `Nothing else is due before ${dayEndsLabel}.`
 
   return (
-    // Same shell as the FOH vouchers screen: centred, capped at max-w-3xl, with
-    // a row of count tiles at the top. Both are iPad screens used mid-shift.
-    <div className="mx-auto w-full max-w-3xl space-y-4">
+    // Blocks go straight to PageLayout, which spaces them. Same shape as the FOH vouchers
+    // screen: a row of counts at the top. Both are iPad screens used mid-shift.
+    <>
       {/* Announced rather than shown as a toast: the screen may have been
           unattended for hours, so whoever picks it up next needs to see that the
           list moved on rather than wonder where last night's tasks went. */}
@@ -272,62 +272,51 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
         {notice === 'window' ? 'New tasks have just appeared.' : ''}
       </div>
       {notice === 'boundary' && (
-        <Alert variant="info" title="Moved on to today&rsquo;s checklist">
+        <Alert tone="info" title="Moved on to today&rsquo;s checklist">
           Last night&rsquo;s list has closed. This is today&rsquo;s.
         </Alert>
       )}
       {notice === 'window' && (
-        <Alert variant="info" title="New tasks have just appeared">
+        <Alert tone="info" title="New tasks have just appeared">
           They have been added to the list below.
         </Alert>
       )}
       {allTasks.length > 0 && (
-        <>
-          <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-              <dd className="text-3xl font-extrabold text-text">{toDoCount}</dd>
-              <dt className="mt-1 text-sm font-medium text-text-muted">To do</dt>
-            </div>
-            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-              <dd className="text-3xl font-extrabold text-text">{doneCount}</dd>
-              <dt className="mt-1 text-sm font-medium text-text-muted">Done</dt>
-            </div>
-            {/* Deliberately not labelled "Total": this counts what is showing, and more
-                tasks arrive later in the day. It read "Total 28" on a 50 task day. */}
-            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-              <dd className="text-3xl font-extrabold text-text">{allTasks.length}</dd>
-              <dt className="mt-1 text-sm font-medium text-text-muted">Showing</dt>
-            </div>
-          </dl>
-          {/* Suppressed when everything is ticked, because the all-done alert below says
-              the same thing more fully. */}
-          {hiddenCount > 0 && nextWindowLabel && !allDone && (
-            <p className="text-center text-sm text-text-muted">
-              {hiddenCount === 1 ? 'One more task appears' : `${hiddenCount} more tasks appear`} at{' '}
-              {nextWindowLabel}.
-            </p>
-          )}
-        </>
+        <StatGrid columns={3}>
+          <Stat label="To do" value={toDoCount} />
+          <Stat label="Done" value={doneCount} />
+          {/* Deliberately not labelled "Total": this counts what is showing, and more
+              tasks arrive later in the day. It read "Total 28" on a 50 task day. */}
+          <Stat label="Showing" value={allTasks.length} />
+        </StatGrid>
+      )}
+      {/* Suppressed when everything is ticked, because the all-done alert below says
+          the same thing more fully. */}
+      {allTasks.length > 0 && hiddenCount > 0 && nextWindowLabel && !allDone && (
+        <p className="text-sm text-text-muted">
+          {hiddenCount === 1 ? 'One more task appears' : `${hiddenCount} more tasks appear`} at{' '}
+          {nextWindowLabel}.
+        </p>
       )}
 
       {unavailable && (
-        <Alert variant="warning" title="Today's checklist is not available">
+        <Alert tone="warning" title="Today's checklist is not available">
           Please use the paper list and tell Peter.
         </Alert>
       )}
       {generationStatus === 'skipped_closed' && (
-        <Alert variant="info" title="Closed today, no checklist.">
+        <Alert tone="info" title="Closed today, no checklist.">
           There is nothing to complete today.
         </Alert>
       )}
       {generationStatus === 'running' && (
-        <Alert variant="info" title="Today's checklist is being prepared.">
+        <Alert tone="info" title="Today's checklist is being prepared.">
           Refresh in a moment if a task is missing.
         </Alert>
       )}
 
       {groups.length > 0 && (
-        <div className="sticky top-0 z-20 rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
+        <Card padding="sm" className="sticky top-0 z-20">
           <AttributionPicker
             identity={identity}
             candidates={candidates}
@@ -348,15 +337,15 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
                 aria-pressed={showDone}
                 className="min-h-touch text-primary"
               >
-                {showDone ? 'Hide done' : `Show done (${doneCount})`}
+                {showDone ? 'Hide Done' : `Show Done (${doneCount})`}
               </Button>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {allDone && (
-        <Alert variant="success" title="All done for now.">
+        <Alert tone="success" title="All done for now.">
           Everything due so far is ticked off. {comingLater}
         </Alert>
       )}
@@ -380,12 +369,12 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       ))}
 
       {groups.length === 0 && !unavailable && generationStatus !== 'skipped_closed' && (
-        <Alert variant="info" title="Nothing needs doing right now.">
+        <Alert tone="info" title="Nothing needs doing right now.">
           {nextWindowLabel && hiddenCount > 0
             ? `The first tasks appear at ${nextWindowLabel}. Leave this screen open and it will update on its own.`
             : `There is nothing else due before ${dayEndsLabel}.`}
         </Alert>
       )}
-    </div>
+    </>
   )
 }

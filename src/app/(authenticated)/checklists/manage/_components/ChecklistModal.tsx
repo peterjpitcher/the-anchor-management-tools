@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
-import { Button, Field, Input, Textarea, Select, Modal, ModalActions } from '@/ds'
+import { Alert, Button, Field, Input, Textarea, Select, Modal, toast } from '@/ds'
 import { createChecklist, updateChecklist } from '@/app/actions/checklists-admin'
 import type { AdminChecklist } from '@/app/actions/checklists-admin'
 import { DEPARTMENT_OPTIONS } from './format'
@@ -77,24 +76,20 @@ export function ChecklistModal({ open, checklist, onClose }: ChecklistModalProps
       open={open}
       onClose={onClose}
       width="md"
-      title={isEdit ? 'Edit checklist' : 'New checklist'}
+      title={isEdit ? 'Edit Checklist' : 'New Checklist'}
       footer={
-        <ModalActions>
+        <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={saving}>
-            {isEdit ? 'Save checklist' : 'Create checklist'}
+            {isEdit ? 'Save Changes' : 'Create Checklist'}
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-4">
-        {error && (
-          <p className="rounded-default border-l-4 border-l-danger bg-danger-soft px-3 py-2 text-sm text-danger-fg" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <Alert tone="danger">{error}</Alert>}
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bar Opening" />
         </Field>

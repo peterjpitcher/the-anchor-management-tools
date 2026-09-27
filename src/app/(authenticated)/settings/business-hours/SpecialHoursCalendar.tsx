@@ -15,14 +15,15 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { Badge, Button, IconButton } from '@/ds'
-import { Card } from '@/ds'
+import { Badge, Button, Card, CardBody, CardHeader, Icon, IconButton, PageLoading, SubHeading, toast } from '@/ds'
 import { cn } from '@/lib/utils'
-import { getTodayIsoDate } from '@/lib/dateUtils'
-import { Section } from '@/ds'
-import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { SpecialHoursModal } from './SpecialHoursModal'
-import toast from 'react-hot-toast'
+import {
+  SPECIAL_HOURS_BADGE,
+  SPECIAL_HOURS_DAY_CLASSES,
+  type SpecialHoursDayState,
+} from '../_shared/status-ui'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface SpecialHoursCalendarProps {
   canManage: boolean
@@ -161,27 +162,21 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
   }, [currentMonth, specialHours, overrides])
 
   return (
-    <Section
-      title="Exceptions & Holidays Calendar"
-      description="Click any date to close the venue or change hours."
-    >
-      <Card padding="lg">
-        {/* Card pads an inner wrapper, so the spacing has to sit inside it: space-y-4 on the Card
-            itself only spaced that one wrapper and left the month header touching the grid. */}
-        <div className="space-y-4">
+    <Card>
+      <CardHeader
+        title="Exceptions & Holidays Calendar"
+        subtitle="Click any date to close the venue or change hours"
+      />
+      <CardBody className="space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-text">
-              {format(currentMonth, 'MMMM yyyy')}
-            </h3>
-          </div>
+          <SubHeading>{format(currentMonth, 'MMMM yyyy')}</SubHeading>
           <div className="flex items-center gap-2">
             <IconButton
               type="button"
               variant="secondary"
               label="Previous month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))}
-              icon={<ArrowLeftIcon className="h-4 w-4" />}
+              icon={<Icon name="arrowLeft" size={16} />}
             />
             <Button
               type="button"
@@ -195,7 +190,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
               variant="secondary"
               label="Next month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
-              icon={<ArrowRightIcon className="h-4 w-4" />}
+              icon={<Icon name="arrowRight" size={16} />}
             />
           </div>
         </div>
@@ -204,96 +199,101 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             its own horizontal-scroll container so no cell/badge is clipped;
             at md+ it reverts to full-width with no scroll. */}
         <div className="overflow-x-auto">
-        <div className="min-w-[640px] space-y-4 md:min-w-0">
-        <div className="grid grid-cols-7 gap-2 text-sm font-medium text-text-muted">
-          {WEEKDAY_LABELS.map((label) => (
-            <div key={label} className="text-center uppercase tracking-wide">
-              {label}
+          <div className="min-w-[640px] space-y-4 md:min-w-0">
+            <div className="grid grid-cols-7 gap-2 text-sm font-medium text-text-muted">
+              {WEEKDAY_LABELS.map((label) => (
+                <div key={label} className="text-center uppercase tracking-wide">
+                  {label}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {loading ? (
-          <div className="py-10 text-center text-sm text-text-muted">
-            Loading calendar…
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-2 text-sm">
-            {calendarDays.map((day) => {
-              const hasSpecial = Boolean(day.special)
-              const isClosed = hasSpecial && day.special?.is_closed
-              const kitchenClosed =
-                hasSpecial && !isClosed && day.special?.is_kitchen_closed
-              const closingOverride = day.overrides.find((override) => override.is_enabled === false)
-              const enablingOverride = day.overrides.find((override) => override.is_enabled === true)
-              // One state decides the tint and border. The old override system is still shown and
-              // wins over a special-hours entry, as it did when these classes were pushed in order.
-              // cn() puts the state last, so its border and tint beat the neutral ones: joining the
-              // classes as plain strings let Tailwind's emission order pick, and the grey border
-              // and the out-of-month grey hid the state colours.
-              const stateClasses = closingOverride
-                ? 'border-danger-border bg-danger-soft text-danger-fg'
-                : enablingOverride
-                  ? 'border-success-border bg-success-soft text-success-fg'
-                  : isClosed
-                    ? 'border-danger-border bg-danger-soft'
+            {loading ? (
+              <PageLoading inline label="Loading calendar" />
+            ) : (
+              <div className="grid grid-cols-7 gap-2 text-sm">
+                {calendarDays.map((day) => {
+                  const hasSpecial = Boolean(day.special)
+                  const isClosed = hasSpecial && day.special?.is_closed
+                  const kitchenClosed =
+                    hasSpecial && !isClosed && day.special?.is_kitchen_closed
+                  const closingOverride = day.overrides.find((override) => override.is_enabled === false)
+                  const enablingOverride = day.overrides.find((override) => override.is_enabled === true)
+                  // One state decides the tint and border. The old override system is still shown and
+                  // wins over a special-hours entry, as it did when these classes were pushed in order.
+                  // cn() puts the state last, so its border and tint beat the neutral ones: joining the
+                  // classes as plain strings let Tailwind's emission order pick, and the grey border
+                  // and the out-of-month grey hid the state colours.
+                  const dayState: SpecialHoursDayState = closingOverride
+                    ? 'overrideClosed'
+                    : enablingOverride
+                      ? 'overrideOpen'
+                      : isClosed
+                        ? 'closed'
+                        : kitchenClosed
+                          ? 'kitchenClosed'
+                          : hasSpecial
+                            ? 'modified'
+                            : 'normal'
+                  const badge = isClosed
+                    ? SPECIAL_HOURS_BADGE.closed
                     : kitchenClosed
-                      ? 'border-warning-border bg-warning-soft'
+                      ? SPECIAL_HOURS_BADGE.kitchenClosed
                       : hasSpecial
-                        ? 'border-info-border bg-info-soft'
-                        : 'border-border'
+                        ? SPECIAL_HOURS_BADGE.modified
+                        : null
 
-              return (
-                <button
-                  key={day.iso}
-                  type="button"
-                  className={cn(
-                    'relative min-h-[88px] rounded-lg border px-2 py-2 text-left transition',
-                    'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
-                    !day.inCurrentMonth && 'bg-surface-2 text-text-soft',
-                    day.isToday && 'ring-2 ring-primary ring-offset-2',
-                    canManage ? 'cursor-pointer hover:border-primary hover:shadow-default' : 'cursor-default',
-                    stateClasses,
-                  )}
-                  onClick={() => handleDateClick(day)}
-                  disabled={!canManage}
-                >
-                  <span className="text-sm font-semibold block mb-1">{format(day.date, 'd')}</span>
-                  
-                  {/* Status Badges */}
-                  <div className="space-y-1 text-xs">
-                     {isClosed && <Badge tone="danger" size="sm">Closed</Badge>}
-                     {!isClosed && kitchenClosed && <Badge tone="warning" size="sm">Kitchen Closed</Badge>}
-                     {!isClosed && hasSpecial && !kitchenClosed && <Badge tone="info" size="sm">Modified</Badge>}
-                  </div>
+                  return (
+                    // A raw button: this is a cell of the month grid, holding the date, a badge and
+                    // the hours, which a DS Button cannot lay out.
+                    <button
+                      key={day.iso}
+                      type="button"
+                      className={cn(
+                        'relative min-h-[88px] rounded-default border px-2 py-2 text-left transition',
+                        'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+                        !day.inCurrentMonth && 'bg-surface-2 text-text-soft',
+                        // Today: an inset ring, so it never needs an offset against the page colour.
+                        day.isToday && 'ring-2 ring-inset ring-primary',
+                        canManage ? 'cursor-pointer hover:border-primary hover:shadow-default' : 'cursor-default',
+                        SPECIAL_HOURS_DAY_CLASSES[dayState],
+                      )}
+                      onClick={() => handleDateClick(day)}
+                      disabled={!canManage}
+                    >
+                      <span className="text-sm font-semibold block mb-1">{format(day.date, 'd')}</span>
 
-                  {hasSpecial && (
-                    <div className="mt-2 space-y-1 text-xs leading-snug">
-                      {!isClosed && day.special?.opens && (
-                        <p className="text-text">
-                          {day.special.opens?.slice(0, 5)} – {day.special.closes?.slice(0, 5) || 'Closed'}
-                        </p>
+                      {/* Status Badges */}
+                      <div className="space-y-1 text-xs">
+                        {badge && <Badge tone={badge.tone} size="sm">{badge.label}</Badge>}
+                      </div>
+
+                      {hasSpecial && (
+                        <div className="mt-2 space-y-1 text-xs leading-snug">
+                          {!isClosed && day.special?.opens && (
+                            <p className="text-text">
+                              {day.special.opens?.slice(0, 5)} – {day.special.closes?.slice(0, 5) || 'Closed'}
+                            </p>
+                          )}
+                          {day.special?.note && (
+                            <p className="text-text-muted line-clamp-2 italic">{day.special.note}</p>
+                          )}
+                        </div>
                       )}
-                      {day.special?.note && (
-                        <p className="text-text-muted line-clamp-2 italic">{day.special.note}</p>
+                      {day.overrides.length > 0 && (
+                        <div className="mt-2 space-y-1 text-xs leading-snug opacity-75">
+                          {/* Legacy override display */}
+                          <p className="text-xs text-text-muted font-medium">Legacy Override Active</p>
+                        </div>
                       )}
-                    </div>
-                  )}
-                  {day.overrides.length > 0 && (
-                    <div className="mt-2 space-y-1 text-xs leading-snug opacity-75">
-                       {/* Legacy override display */}
-                       <p className="text-xs text-text-muted font-medium">Legacy Override Active</p>
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        )}
         </div>
-        </div>
-        </div>
-      </Card>
+      </CardBody>
 
       {selectedDate && (
         <SpecialHoursModal
@@ -305,6 +305,6 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
           onSave={handleModalSave}
         />
       )}
-    </Section>
+    </Card>
   )
 }

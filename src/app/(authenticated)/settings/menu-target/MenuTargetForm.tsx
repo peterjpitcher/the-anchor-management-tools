@@ -1,10 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Button } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Input } from '@/ds';
-import { Alert } from '@/ds';
+import { Alert, Button, Field, FormFooter, Input, toast } from '@/ds';
 import { updateMenuTargetGp } from '@/app/actions/menu-settings';
 
 type Props = {
@@ -18,7 +15,8 @@ const formatPercentage = (value: number) => {
 
 export function MenuTargetForm({ initialTarget }: Props) {
   const [value, setValue] = useState<string>(formatPercentage(initialTarget));
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Only failures stay on the form. A successful save is a transient confirmation: a toast.
+  const [message, setMessage] = useState<{ type: 'error'; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -39,15 +37,16 @@ export function MenuTargetForm({ initialTarget }: Props) {
       if (result?.target) {
         setValue(formatPercentage(result.target));
       }
-      setMessage({ type: 'success', text: `GP target updated to ${formatPercentage(result?.target ?? numeric / 100)}%.` });
+      setMessage(null);
+      toast.success(`GP target updated to ${formatPercentage(result?.target ?? numeric / 100)}%.`);
     });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <FormGroup
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field
         label="Standard GP% target"
-        help="This percentage is applied to every dish. Enter a value between 1 and 95."
+        hint="This percentage is applied to every dish. Enter a value between 1 and 95."
         required
       >
         <Input
@@ -64,19 +63,19 @@ export function MenuTargetForm({ initialTarget }: Props) {
           }}
           rightElement="%"
         />
-      </FormGroup>
+      </Field>
 
       {message && (
-        <Alert variant={message.type === 'success' ? 'success' : 'error'}>
+        <Alert tone="danger">
           {message.text}
         </Alert>
       )}
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save Target'}
+      <FormFooter>
+        <Button type="submit" variant="primary" loading={isPending}>
+          Save Changes
         </Button>
-      </div>
+      </FormFooter>
     </form>
   );
 }

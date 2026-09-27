@@ -2,14 +2,8 @@ import { Alert, PageLayout } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getDestinations, getDistanceEntries } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
+import { MILEAGE_DESTINATIONS_LAYOUT } from '../_shared/nav'
 import { DestinationsClient } from '../_components/DestinationsClient'
-import type { HeaderNavItem } from '@/ds'
-
-const navItems: HeaderNavItem[] = [
-  { label: 'Trips', href: '/mileage' },
-  { label: 'Destinations', href: '/mileage/destinations' },
-  { label: 'Insights', href: '/mileage/insights' },
-]
 
 export default async function MileageDestinationsPage(): Promise<React.JSX.Element> {
   const canView = await checkUserPermission('mileage', 'view')
@@ -25,8 +19,8 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
   const loadError = destinationsResult.error ?? distancesResult.error
   if (loadError) {
     return (
-      <PageLayout title="Mileage" subtitle="Destinations" navItems={navItems}>
-        <Alert variant="error" title="Couldn't load destinations" description={loadError} />
+      <PageLayout {...MILEAGE_DESTINATIONS_LAYOUT}>
+        <Alert tone="danger" title="Couldn't load destinations">{loadError}</Alert>
       </PageLayout>
     )
   }
@@ -34,17 +28,12 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
   const destinations = destinationsResult.data ?? []
   const distances = distancesResult.data ?? []
 
+  // DestinationsClient renders the PageLayout, so New Destination can sit in the header.
   return (
-    <PageLayout
-      title="Mileage"
-      subtitle="Destinations"
-      navItems={navItems}
-    >
-      <DestinationsClient
-        initialDestinations={destinations}
-        initialDistances={distances}
-        canManage={canManage}
-      />
-    </PageLayout>
+    <DestinationsClient
+      initialDestinations={destinations}
+      initialDistances={distances}
+      canManage={canManage}
+    />
   )
 }

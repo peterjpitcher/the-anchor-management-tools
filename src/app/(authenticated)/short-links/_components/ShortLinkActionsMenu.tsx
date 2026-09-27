@@ -1,29 +1,12 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
-import {
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Download,
-  Edit3,
-  Link2,
-  Loader2,
-  MoreHorizontal,
-  Printer,
-  QrCode,
-  Share2,
-  Trash2,
-} from 'lucide-react'
-import toast from 'react-hot-toast'
-import { IconButton } from '@/ds'
+import { useEffect, useRef, useState } from 'react'
+import { Dropdown, DropdownItem, DropdownLabel, IconButton, Spinner, toast, Icon } from '@/ds'
 import { getOrCreateUtmVariant } from '@/app/actions/short-links'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { DIGITAL_CHANNELS, QR_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
 import type { ShortLink } from '@/types/short-links'
 import { downloadQrPng, safeQrFilename } from './qr-download'
-import { PortalMenu, type PortalMenuEntry } from './PortalMenu'
 
 type VariantMode = 'copy' | 'qr'
 type ExpandedSection = 'digital' | 'qr' | null
@@ -48,7 +31,6 @@ async function copyText(value: string, successMessage: string) {
 
 export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onDelete, onVariantReady }: Props) {
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
-  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const isParent = !link.parent_link_id
   const shortUrl = buildShortLinkUrl(link.short_code)
 
@@ -136,142 +118,208 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     }
   }
 
-  const channelEntries = (channels: ShortLinkChannel[], mode: VariantMode): PortalMenuEntry[] =>
+  return (
+    <Dropdown
+      align="right"
+      // md: "Post-event Book Next Screen" and the other channel names fit on one line.
+      width="md"
+      trigger={
+        <IconButton
+          variant="secondary"
+          size="sm"
+          icon={loadingKey ? <Spinner size="sm" /> : <Icon name="moreHorizontal" size={14} />}
+          label="Short link actions"
+          disabled={Boolean(loadingKey)}
+        />
+      }
+    >
+      <ShortLinkMenuEntries
+        canManage={canManage}
+        isParent={isParent}
+        loadingKey={loadingKey}
+        onAnalytics={() => onAnalytics(link)}
+        onEdit={() => onEdit(link)}
+        onDelete={() => onDelete(link)}
+        onCopyShort={() => copyText(shortUrl, 'Short URL copied')}
+        onCopyDestination={() => copyText(link.destination_url, 'Destination URL copied')}
+        onBaseQr={() => void handleBaseQr()}
+        onChannelSelect={(channel, mode) => void handleChannelSelect(channel, mode)}
+        onAllQrs={() => void handleAllQrs()}
+      />
+    </Dropdown>
+  )
+}
+
+interface ShortLinkMenuEntriesProps {
+  canManage: boolean
+  isParent: boolean
+  loadingKey: string | null
+  onAnalytics: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onCopyShort: () => void
+  onCopyDestination: () => void
+  onBaseQr: () => void
+  onChannelSelect: (channel: ShortLinkChannel, mode: VariantMode) => void
+  onAllQrs: () => void
+}
+
+/**
+ * The menu's contents. It lives inside the open menu, so the sub-list it shows (the UTM links
+ * or the QR codes) resets to the top level each time the menu closes and reopens. Opening a
+ * sub-list, and Back, keep the menu open; everything else closes it.
+ */
+function ShortLinkMenuEntries({
+  canManage,
+  isParent,
+  loadingKey,
+  onAnalytics,
+  onEdit,
+  onDelete,
+  onCopyShort,
+  onCopyDestination,
+  onBaseQr,
+  onChannelSelect,
+  onAllQrs,
+}: ShortLinkMenuEntriesProps) {
+  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
+  const busy = Boolean(loadingKey)
+
+  // Switching list removes the item that had focus, which would drop focus to the page and
+  // leave Escape and the arrow keys with nothing to act on. Hand it back to the menu instead.
+  const focusAnchorRef = useRef<HTMLSpanElement>(null)
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    focusAnchorRef.current?.closest<HTMLElement>('[role="menu"]')?.focus()
+  }, [expandedSection])
+  // Last, so it never counts as a DropdownLabel's first sibling.
+  const focusAnchor = <span ref={focusAnchorRef} hidden />
+
+  const channelItems = (channels: ShortLinkChannel[], mode: VariantMode) =>
     channels.map((channel) => {
       const itemKey = `${mode}:${channel.key}`
-      const loading = loadingKey === itemKey
-      return {
-        key: itemKey,
-        label: channel.label,
-        icon: loading ? <Loader2 className="animate-spin" /> : mode === 'qr' ? <QrCode /> : <Share2 />,
-        disabled: Boolean(loadingKey),
-        onClick: () => handleChannelSelect(channel, mode),
-      }
+      return (
+        <DropdownItem
+          key={itemKey}
+          icon={
+            loadingKey === itemKey ? (
+              <Spinner size="sm" />
+            ) : mode === 'qr' ? (
+              <Icon name="qrCode" size={16} />
+            ) : (
+              <Icon name="share" size={16} />
+            )
+          }
+          disabled={busy}
+          onClick={() => onChannelSelect(channel, mode)}
+        >
+          {channel.label}
+        </DropdownItem>
+      )
     })
 
-  const backEntry: PortalMenuEntry = {
-    key: 'back',
-    label: 'Back',
-    icon: <ChevronLeft />,
-    keepOpen: true,
-    onClick: () => setExpandedSection(null),
-  }
-
-  const expandableEntry = (section: Exclude<ExpandedSection, null>, label: string, icon: ReactNode): PortalMenuEntry => ({
-    key: `expand-${section}`,
-    label: (
-      <span className="flex items-center gap-2">
-        <span>{label}</span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
-      </span>
-    ),
-    icon,
-    keepOpen: true,
-    onClick: () => setExpandedSection(section),
-  })
-
-  let entries: PortalMenuEntry[]
+  const backItem = (
+    <DropdownItem
+      icon={<Icon name="chevronLeft" size={16} />}
+      closeOnSelect={false}
+      onClick={() => setExpandedSection(null)}
+    >
+      Back
+    </DropdownItem>
+  )
 
   if (expandedSection === 'digital') {
-    entries = [
-      backEntry,
-      { type: 'section', key: 'digital-section', label: 'Digital UTM links' },
-      ...channelEntries(DIGITAL_CHANNELS, 'copy'),
-    ]
-  } else if (expandedSection === 'qr') {
-    entries = [
-      backEntry,
-      { type: 'section', key: 'qr-section', label: 'QR codes' },
-      {
-        key: 'qr:all',
-        label: 'Download all QRs',
-        icon: loadingKey === 'qr:all' ? <Loader2 className="animate-spin" /> : <Printer />,
-        disabled: Boolean(loadingKey),
-        onClick: handleAllQrs,
-      },
-      ...channelEntries(QR_CHANNELS, 'qr'),
-    ]
-  } else {
-    entries = [
-      {
-        key: 'analytics',
-        label: 'Analytics',
-        icon: <BarChart3 />,
-        onClick: () => onAnalytics(link),
-      },
-    ]
-
-    if (canManage) {
-      entries.push(
-        { type: 'section', key: 'manage-section', label: 'Manage' },
-        {
-          key: 'edit',
-          label: 'Edit',
-          icon: <Edit3 />,
-          onClick: () => onEdit(link),
-        },
-        {
-          key: 'delete',
-          label: 'Delete',
-          icon: <Trash2 />,
-          danger: true,
-          onClick: () => onDelete(link),
-        }
-      )
-    }
-
-    entries.push(
-      { type: 'section', key: 'link-section', label: 'Link' },
-      {
-        key: 'copy-short',
-        label: 'Copy short URL',
-        icon: <Copy />,
-        onClick: () => copyText(shortUrl, 'Short URL copied'),
-      },
-      {
-        key: 'copy-destination',
-        label: 'Copy destination URL',
-        icon: <Link2 />,
-        onClick: () => copyText(link.destination_url, 'Destination URL copied'),
-      },
-      {
-        key: 'download-qr',
-        label: 'Download QR',
-        icon: loadingKey === 'base-qr' ? <Loader2 className="animate-spin" /> : <Download />,
-        disabled: Boolean(loadingKey),
-        onClick: handleBaseQr,
-      }
+    return (
+      <>
+        {backItem}
+        <DropdownLabel>Digital UTM links</DropdownLabel>
+        {channelItems(DIGITAL_CHANNELS, 'copy')}
+        {focusAnchor}
+      </>
     )
+  }
 
-    if (canManage && isParent) {
-      entries.push(
-        { type: 'section', key: 'campaign-section', label: 'Campaign links' },
-        expandableEntry('digital', `Digital UTM links (${DIGITAL_CHANNELS.length})`, <Share2 />),
-        expandableEntry('qr', `QR codes (${QR_CHANNELS.length})`, <QrCode />)
-      )
-    }
+  if (expandedSection === 'qr') {
+    return (
+      <>
+        {backItem}
+        <DropdownLabel>QR codes</DropdownLabel>
+        <DropdownItem
+          icon={loadingKey === 'qr:all' ? <Spinner size="sm" /> : <Icon name="printer" size={16} />}
+          disabled={busy}
+          onClick={onAllQrs}
+        >
+          Download All QRs
+        </DropdownItem>
+        {channelItems(QR_CHANNELS, 'qr')}
+        {focusAnchor}
+      </>
+    )
   }
 
   return (
-    <PortalMenu
-      entries={entries}
-      width={260}
-      maxHeight={560}
-      disabled={Boolean(loadingKey)}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) setExpandedSection(null)
-      }}
-      trigger={({ ref, onClick, 'aria-expanded': expanded }) => (
-        <IconButton
-          ref={ref}
-          variant="secondary"
-          size="sm"
-          icon={loadingKey ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={14} />}
-          label="Short link actions"
-          onClick={onClick}
-          aria-expanded={expanded}
-        />
+    <>
+      <DropdownItem icon={<Icon name="barChart" size={16} />} onClick={onAnalytics}>
+        Analytics
+      </DropdownItem>
+
+      {canManage && (
+        <>
+          <DropdownLabel>Manage</DropdownLabel>
+          <DropdownItem icon={<Icon name="edit" size={16} />} onClick={onEdit}>
+            Edit
+          </DropdownItem>
+          <DropdownItem icon={<Icon name="trash" size={16} />} danger onClick={onDelete}>
+            Delete
+          </DropdownItem>
+        </>
       )}
-    />
+
+      <DropdownLabel>Link</DropdownLabel>
+      <DropdownItem icon={<Icon name="copy" size={16} />} onClick={onCopyShort}>
+        Copy Short URL
+      </DropdownItem>
+      <DropdownItem icon={<Icon name="link" size={16} />} onClick={onCopyDestination}>
+        Copy Destination URL
+      </DropdownItem>
+      <DropdownItem
+        icon={loadingKey === 'base-qr' ? <Spinner size="sm" /> : <Icon name="download" size={16} />}
+        disabled={busy}
+        onClick={onBaseQr}
+      >
+        Download QR
+      </DropdownItem>
+
+      {canManage && isParent && (
+        <>
+          <DropdownLabel>Campaign links</DropdownLabel>
+          <DropdownItem
+            icon={<Icon name="share" size={16} />}
+            closeOnSelect={false}
+            onClick={() => setExpandedSection('digital')}
+          >
+            <span className="flex flex-1 items-center justify-between gap-2">
+              <span>Digital UTM Links ({DIGITAL_CHANNELS.length})</span>
+              <Icon name="chevronRight" size={16} className="shrink-0 text-text-muted" />
+            </span>
+          </DropdownItem>
+          <DropdownItem
+            icon={<Icon name="qrCode" size={16} />}
+            closeOnSelect={false}
+            onClick={() => setExpandedSection('qr')}
+          >
+            <span className="flex flex-1 items-center justify-between gap-2">
+              <span>QR Codes ({QR_CHANNELS.length})</span>
+              <Icon name="chevronRight" size={16} className="shrink-0 text-text-muted" />
+            </span>
+          </DropdownItem>
+        </>
+      )}
+      {focusAnchor}
+    </>
   )
 }

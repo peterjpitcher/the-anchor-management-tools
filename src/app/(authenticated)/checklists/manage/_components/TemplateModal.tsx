@@ -1,17 +1,18 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import {
   Button,
   Field,
+  Fieldset,
   Input,
   Textarea,
   Select,
   Switch,
   Modal,
-  ModalActions,
+  Alert,
+  toast,
 } from '@/ds'
 import { createTemplate, updateTemplate } from '@/app/actions/checklists-admin'
 import type { AdminTemplate } from '@/app/actions/checklists-admin'
@@ -247,24 +248,20 @@ export function TemplateModal({
       open={open}
       onClose={onClose}
       width="xl"
-      title={isEdit ? `Edit task: ${checklistName}` : `New task: ${checklistName}`}
+      title={isEdit ? `Edit Task: ${checklistName}` : `New Task: ${checklistName}`}
       footer={
-        <ModalActions>
+        <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={saving}>
-            {isEdit ? 'Save task' : 'Create task'}
+            {isEdit ? 'Save Changes' : 'Create Task'}
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-5">
-        {error && (
-          <p className="rounded-default border-l-4 border-l-danger bg-danger-soft px-3 py-2 text-sm text-danger-fg" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         {/* Basics */}
         <div className="space-y-4">
@@ -340,7 +337,7 @@ export function TemplateModal({
               </div>
 
               {form.freq === 'weekly' && (
-                <Field label="On weekdays" hint="Pick one or more days.">
+                <Fieldset legend="On weekdays" hint="Pick one or more days.">
                   <div className="flex flex-wrap gap-1.5">
                     {WEEKDAYS.map((d) => (
                       <Button
@@ -355,7 +352,7 @@ export function TemplateModal({
                       </Button>
                     ))}
                   </div>
-                </Field>
+                </Fieldset>
               )}
 
               {showAnchorDate && (

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { Alert, LinkButton, PageHeader } from '@/ds'
+import { Alert, LinkButton, PageLayout } from '@/ds'
 import {
   currentUserCanUseMaintenance,
   getMaintenanceAreas,
@@ -40,36 +40,31 @@ export default async function MaintenancePage({
     getMaintenanceCosts(filterInput),
   ])
 
-  const header = (
-    <PageHeader
-      breadcrumbs={[{ label: 'Maintenance' }]}
-      title="Maintenance and improvements"
-      subtitle="Everything that needs fixing or improving around the pub, and who owns it."
-      actions={
-        <LinkButton href="/maintenance/new" variant="primary">
-          Log an issue
-        </LinkButton>
-      }
-      className="mb-0"
-    />
-  )
+  // One header for every state, so the title never moves between a failure and the list.
+  const layoutProps = {
+    title: 'Maintenance',
+    subtitle: 'Everything that needs fixing or improving around the pub, and who owns it',
+    headerActions: (
+      <LinkButton href="/maintenance/new" variant="primary" size="sm">
+        Log an Issue
+      </LinkButton>
+    ),
+  }
 
   // The list failing is different from the list being empty, so it is never drawn
   // as an empty list.
   if (!itemsResult.success || !itemsResult.data) {
     return (
-      <div className="space-y-6">
-        {header}
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Could not load the maintenance list">
           {itemsResult.error ?? 'Please reload the page and try again.'}
         </Alert>
-      </div>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {header}
+    <PageLayout {...layoutProps}>
       {!areasResult.success && (
         <Alert tone="warning" title="Areas are unavailable">
           The area filter is empty because the areas could not be loaded. Everything else on this
@@ -85,6 +80,6 @@ export default async function MaintenancePage({
         initialCosts={costsResult.success ? (costsResult.data ?? null) : null}
         todayIsoDate={getTodayIsoDate()}
       />
-    </div>
+    </PageLayout>
   )
 }

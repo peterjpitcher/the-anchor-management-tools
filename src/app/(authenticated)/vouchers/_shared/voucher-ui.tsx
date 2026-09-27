@@ -68,12 +68,28 @@ export const REMINDER_CHANNEL_LABELS: Record<ReminderChannel, string> = {
   sms: 'text message',
 }
 
+export const REMINDER_STATUS_LABELS: Record<ReminderStatus, string> = {
+  pending: 'Pending',
+  sent: 'Sent',
+  skipped: 'Skipped',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+}
+
 export const REMINDER_STATUS_TONES: Record<ReminderStatus, BadgeTone> = {
   pending: 'info',
   sent: 'success',
   skipped: 'neutral',
   failed: 'danger',
   cancelled: 'neutral',
+}
+
+/**
+ * The overview's "Expiring within 14 days" figure: amber while any issued voucher is about to
+ * lapse, plain at zero.
+ */
+export function voucherExpiringSoonTone(count: number): 'warning' | 'default' {
+  return count > 0 ? 'warning' : 'default'
 }
 
 export function formatPence(pence: number | null | undefined): string {
@@ -88,19 +104,6 @@ export function newIdempotencyKey(): string {
   }
   return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
 }
-
-export interface VoucherNavItem {
-  label: string
-  href: string
-}
-
-export const VOUCHER_SECTION_NAV: VoucherNavItem[] = [
-  { label: 'Overview', href: '/vouchers' },
-  { label: 'Hand-out mode', href: '/vouchers/handout' },
-  { label: 'All vouchers', href: '/vouchers/all' },
-  { label: 'Generate', href: '/vouchers/generate' },
-  { label: 'Types & terms', href: '/vouchers/types' },
-]
 
 // Builds an /vouchers/all href with the exact filters that reproduce a metric
 // (spec 3.1, F40: every overview number deep-links to its ledger definition).

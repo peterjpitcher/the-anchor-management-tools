@@ -72,7 +72,7 @@ function checkPreflightRequirements(input: PreflightInput): PreflightIssue[] {
   }
 
   if (!input.time) {
-    issues.push({ type: 'warning', message: 'No event time — timing details will be omitted' })
+    issues.push({ type: 'warning', message: 'No event time, so timing details will be omitted' })
   }
 
   return issues
@@ -224,7 +224,8 @@ describe('EventDrawer validation feedback', () => {
     const field = screen.getByRole('textbox', { name: 'Accessibility Notes' })
     await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'))
     expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveTextContent(message)
-    const summary = screen.getByText('Please correct the following fields and save again:').parentElement
+    // The focusable wrapper around the danger Alert that lists the fields.
+    const summary = screen.getByText('Please correct the following fields and save again:').closest('[tabindex="-1"]')
     // The drawer focuses the summary in an effect that runs after the error render commits. On a
     // busy runner React's scheduler can yield between the two, so wait for focus to settle.
     await waitFor(() => expect(summary).toHaveFocus())

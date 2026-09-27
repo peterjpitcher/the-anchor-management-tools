@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EmployeeHeaderActions } from '@/app/(authenticated)/employees/[employee_id]/_components/EmployeeHeaderActions'
-import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
-import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
 
-// At phone width the employee page tucks its status and delete actions into a "More" menu.
-// Those actions own their dialogs, so the menu closing on the same click must not take the
-// dialog with it. These tests drive the real action components through the real menu, the
+// At phone width the employee page tucks its status and delete actions into a "More" menu (the
+// DS Dropdown). The menu closes on the same click that chooses an item and unmounts its items, so
+// the dialogs must live outside it. These tests drive the real actions through the real menu, the
 // way the page composes them, and only stub the server actions.
 
 const previewMock = vi.hoisted(() => vi.fn())
@@ -53,26 +51,22 @@ const preview = {
 function renderHeader(status: 'Active' | 'Started Separation') {
   return render(
     <EmployeeHeaderActions
-      primary={<a href={`/employees/${EMPLOYEE_ID}/edit`}>Edit Employee</a>}
-      secondary={[
-        <EmployeeStatusActions
-          key="status"
-          employeeId={EMPLOYEE_ID}
-          status={status}
-          canEdit
-          employmentStartDate="2026-01-01"
-        />,
-        <DeleteEmployeeButton key="delete" employeeId={EMPLOYEE_ID} employeeName="Sam Example" />,
-      ]}
+      employeeId={EMPLOYEE_ID}
+      employeeName="Sam Example"
+      status={status}
+      employmentStartDate="2026-01-01"
+      canEdit
+      canDelete
     />,
   )
 }
 
 async function chooseFromMobileMenu(user: ReturnType<typeof userEvent.setup>, label: string) {
+  // The phone row has the one More menu; the desktop row repeats the actions as buttons, so scope
+  // the click to the open menu.
   const more = screen.getByRole('button', { name: 'More' })
   await user.click(more)
-  // The desktop row renders the same actions, so scope the click to the menu.
-  await user.click(within(screen.getByRole('menu')).getByRole('button', { name: label }))
+  await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: label }))
   expect(more).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 }
@@ -84,6 +78,32 @@ describe('employee header "More" menu on a phone', () => {
     beginMock.mockResolvedValue({ success: true, retainedShiftCount: 0, releasedShiftCount: 1 })
     revokeMock.mockResolvedValue({ success: true })
     deleteMock.mockResolvedValue({ type: 'error', message: 'Insufficient permissions to delete employees.' })
+  })
+
+  it('has one More menu at 375px, holding the PDFs and the status actions', async () => {
+    const originalWidth = window.innerWidth
+    window.innerWidth = 375
+    window.dispatchEvent(new Event('resize'))
+    try {
+      const user = userEvent.setup()
+      renderHeader('Active')
+
+      // One trigger: the menu is portalled and flips, so no second copy is needed for the
+      // narrowest phones.
+      const triggers = screen.getAllByRole('button', { name: 'More' })
+      expect(triggers).toHaveLength(1)
+      // Edit and Delete stay in the header row beside the menu.
+      expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', `/employees/${EMPLOYEE_ID}/edit`)
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+
+      await user.click(triggers[0])
+      const menu = screen.getByRole('menu')
+      const items = within(menu).getAllByRole('menuitem').map((item) => item.textContent)
+      expect(items).toEqual(['New Starter PDF', 'Casual Worker Agreement', 'Begin Separation'])
+    } finally {
+      window.innerWidth = originalWidth
+      window.dispatchEvent(new Event('resize'))
+    }
   })
 
   // findByRole only returns accessible elements, so each dialog found below is also proved to be
@@ -101,7 +121,7 @@ describe('employee header "More" menu on a phone', () => {
 
     fireEvent.change(within(dialog).getByLabelText('Last working day'), { target: { value: '2026-09-19' } })
     await user.click(within(dialog).getByRole('radio', { name: /Release all remaining shifts/ }))
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm separation' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Begin Separation' }))
 
     await waitFor(() => {
       expect(beginMock).toHaveBeenCalledWith(EMPLOYEE_ID, {
@@ -119,19 +139,19 @@ describe('employee header "More" menu on a phone', () => {
 
     await chooseFromMobileMenu(user, 'Mark as Former')
 
-    const dialog = await screen.findByRole('dialog', { name: 'Mark as Former and Revoke Access' })
+    const dialog = await screen.findByRole('dialog', { name: 'Mark as Former' })
     expect(revokeMock).not.toHaveBeenCalled()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as Former' }))
 
     await waitFor(() => expect(revokeMock).toHaveBeenCalledWith(EMPLOYEE_ID))
   })
 
-  it('opens the Delete Employee dialog and still submits the delete form', async () => {
+  it('opens the Delete Employee dialog from the header and still submits the delete form', async () => {
     const user = userEvent.setup()
     renderHeader('Active')
 
-    await chooseFromMobileMenu(user, 'Delete Employee')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Delete Employee' })
     expect(within(dialog).getByText(/Are you sure you want to delete Sam Example\?/)).toBeInTheDocument()

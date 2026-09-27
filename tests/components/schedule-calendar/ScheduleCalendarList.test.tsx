@@ -23,13 +23,13 @@ describe('ScheduleCalendarList', () => {
 
     it('groups entries by date with a Today header', () => {
         render(<ScheduleCalendarList entries={[e({ id: 'a' })]} />)
-        expect(screen.getByRole('heading', { name: /Today/ })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
     })
 
     it('renders a synthetic Today header even when there are no entries today', () => {
         const entries = [e({ id: 'future', start: new Date(2026, 3, 24, 19) })]
         render(<ScheduleCalendarList entries={entries} />)
-        expect(screen.getByRole('heading', { name: /Today/ })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
     })
 
     // Each row now carries its kind's palette colour as an inline background with

@@ -23,6 +23,7 @@ vi.mock('next/navigation', () => ({
     push: routerPushMock,
     refresh: routerRefreshMock,
   }),
+  usePathname: () => '/cashing-up/daily',
 }))
 
 vi.mock('@/app/actions/cashing-up', () => ({
@@ -43,8 +44,8 @@ vi.mock('@/app/actions/missing-cashups', () => ({
   getMissingCashupDatesAction: getMissingCashupDatesActionMock,
 }))
 
-vi.mock('react-hot-toast', () => ({
-  default: toastMock,
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: toastMock,
 }))
 
 const baseProps = {
@@ -144,6 +145,26 @@ describe('DailyClient', () => {
     expect(routerPushMock).toHaveBeenCalledWith('/cashing-up/daily?date=2026-05-25&siteId=site-1')
   })
 
+  it('colours the balance banner by the one cash variance map: short red, over amber, balanced green', () => {
+    const { container } = render(<DailyClient {...baseProps} />)
+    const cash50 = getInput(container, '#input-denom-50')
+    const cashExpected = getInput(container, '#input-cash-expected')
+    const banner = () => screen.getByText(/Cash variance: review before approving|Cash balanced/).closest('[role="alert"]') as HTMLElement
+
+    fireEvent.change(cash50, { target: { value: '50' } })
+    fireEvent.change(cashExpected, { target: { value: '60' } })
+    expect(banner()).toHaveClass('bg-danger-soft')
+    expect(within(banner()).getByText('£-10.00')).toHaveClass('text-danger-fg')
+
+    fireEvent.change(cashExpected, { target: { value: '45' } })
+    expect(banner()).toHaveClass('bg-warning-soft')
+    expect(within(banner()).getByText('£5.00')).toHaveClass('text-warning-fg')
+
+    fireEvent.change(cashExpected, { target: { value: '50' } })
+    expect(banner()).toHaveClass('bg-success-soft')
+    expect(banner()).toHaveTextContent('Cash balanced')
+  })
+
   it('clears stale values when moving to a different empty cash-up date', async () => {
     const { container, rerender } = render(<DailyClient {...baseProps} />)
     const cardTotal = getInput(container, '#input-card-total')
@@ -185,6 +206,15 @@ describe('DailyClient', () => {
     expect(row.queryByText('£3,670.76')).not.toBeInTheDocument()
   })
 
+  it('shows a failed week at a glance as a failure, not as a week with no takings', () => {
+    render(<DailyClient {...baseProps} weeklyError="Database unavailable" />)
+
+    const failure = screen.getByText('Database unavailable').closest('[role="alert"]')
+    expect(failure).not.toBeNull()
+    expect(within(failure as HTMLElement).getByText("Couldn't load this week")).toBeInTheDocument()
+    expect(screen.queryByText('No takings for this week')).not.toBeInTheDocument()
+  })
+
   it('wires approve action for submitted sessions', async () => {
     render(
       <DailyClient
@@ -211,7 +241,8 @@ describe('DailyClient', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    // Approve is a header action: PageLayout renders it in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0])
 
     await waitFor(() => {
       expect(approveSessionActionMock).toHaveBeenCalledWith('session-1')
@@ -258,7 +289,8 @@ describe('DailyClient', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    // Delete is a header action: PageLayout renders it in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
     const deleteButtons = screen.getAllByRole('button', { name: 'Delete' })
     fireEvent.click(deleteButtons[deleteButtons.length - 1])
 

@@ -1,8 +1,16 @@
 'use client'
 
 import { useState } from 'react'
+import { cn } from '@/lib/utils'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
-import { GuestAlert, TrustLine } from '@/components/features/guest'
+// Imported file by file rather than through '@/components/features/guest': the
+// barrel re-exports GuestShell, which loads the guest webfonts, and a client
+// module has no need of them.
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GuestButton } from '@/components/features/guest/GuestButton'
+import { GuestLink } from '@/components/features/guest/GuestLink'
+import { TrustLine } from '@/components/features/guest/TrustLine'
+import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
 
 type PaymentState = 'idle' | 'creating' | 'paying' | 'success' | 'manual_review' | 'error'
 
@@ -53,22 +61,29 @@ export function EventPayPalPaymentClient({
     // The pointer-events guard stays: it stops a second tap reaching PayPal
     // while an order is being created or captured.
     <div
-      className="flex flex-col gap-3"
-      style={{ pointerEvents: paymentState === 'creating' || paymentState === 'paying' ? 'none' : 'auto' }}
+      className={cn(
+        'flex flex-col gap-3',
+        (paymentState === 'creating' || paymentState === 'paying') && 'pointer-events-none'
+      )}
     >
       {paymentState === 'error' && (
-        <GuestAlert tone="problem" role="alert">
+        <GuestAlert
+          tone="problem"
+          role="alert"
+          action={
+            <GuestButton
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setErrorMessage(null)
+                setPaymentState('idle')
+              }}
+            >
+              Try again
+            </GuestButton>
+          }
+        >
           {errorMessage || 'Payment failed. Please try again.'}
-          <button
-            type="button"
-            className="ml-2 font-semibold underline underline-offset-[3px]"
-            onClick={() => {
-              setErrorMessage(null)
-              setPaymentState('idle')
-            }}
-          >
-            Try again
-          </button>
         </GuestAlert>
       )}
 
@@ -145,23 +160,13 @@ export function EventPayPalPaymentClient({
       </PayPalScriptProvider>
 
       {(paymentState === 'creating' || paymentState === 'paying') && (
-        <p className="text-center font-anchor-body text-xs leading-[1.5] text-guest-text-muted">
-          Processing payment, please wait.
-        </p>
+        <p className={cn('text-center', GUEST_NOTE_CLASS)}>Processing payment, please wait.</p>
       )}
 
       <TrustLine />
 
-      <p className="text-center font-anchor-body text-xs leading-[1.5] text-guest-text-muted">
-        If PayPal does not load,{' '}
-        <a
-          className="font-medium text-guest-accent-text underline underline-offset-[3px]"
-          href={fallbackUrl}
-          referrerPolicy="no-referrer"
-        >
-          refresh this payment page
-        </a>
-        .
+      <p className={cn('text-center', GUEST_NOTE_CLASS)}>
+        If PayPal does not load, <GuestLink href={fallbackUrl}>refresh this payment page</GuestLink>.
       </p>
     </div>
   )

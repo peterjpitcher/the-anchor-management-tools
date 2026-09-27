@@ -14,8 +14,7 @@ import { ReceiptExport } from './ui/ReceiptExport'
 import { ReceiptFilters } from './ui/ReceiptFilters'
 import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
-import { ReceiptReclassify } from './ui/ReceiptReclassify'
-import { Button, Card, CardBody } from '@/ds'
+import { Card, CardBody } from '@/ds'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -151,27 +150,16 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
   }
 
   const totalPages = Math.ceil(pagination.total / pagination.pageSize)
-  const hasNextPage = pagination.page < totalPages
-  const hasPrevPage = pagination.page > 1
 
+  // The page renders this inside the Receipts chrome, whose header carries "Re-classify Untagged".
+  // Each block is a direct child of PageLayout's 24px stack.
   return (
-    <div className="space-y-6">
+    <>
       <ReceiptStats summary={summary} />
 
-      <div className="hidden md:block space-y-3">
-        <div className="grid grid-cols-2 gap-4">
-          <ReceiptUpload lastImport={summary.lastImport} />
-          <ReceiptExport canExport={canExport} />
-        </div>
-        <div>
-          <ReceiptReclassify />
-        </div>
-      </div>
-
-      <div className="space-y-3 md:hidden">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <ReceiptUpload lastImport={summary.lastImport} />
         <ReceiptExport canExport={canExport} />
-        <ReceiptReclassify />
       </div>
 
       <Card>
@@ -201,37 +189,18 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         onTransactionChange={handleTransactionChange}
         onTransactionRemove={handleTransactionRemove}
         onRuleSuggestion={setPendingRuleSuggestion}
+        pagination={
+          totalPages > 1
+            ? {
+                page: pagination.page,
+                totalPages,
+                pageSize: pagination.pageSize,
+                totalItems: pagination.total,
+                onPageChange: handlePageChange,
+              }
+            : undefined
+        }
       />
-
-      {totalPages > 1 && (
-        <Card>
-          <CardBody>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-text-muted">
-                Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={!hasPrevPage}
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={!hasNextPage}
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
 
       <ReceiptRules
         rules={rules}
@@ -243,6 +212,6 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         onApplySuggestion={() => setPendingRuleSuggestion(null)}
         onDismissSuggestion={() => setPendingRuleSuggestion(null)}
       />
-    </div>
+    </>
   )
 }

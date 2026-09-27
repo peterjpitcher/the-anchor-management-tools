@@ -47,6 +47,15 @@ export default async function OJProjectsOverviewPage({
     granularity: workHistoryRange.granularity,
   })
 
+  // A failed load says so on the page rather than showing empty lists and zero figures.
+  const loadError =
+    projectsRes.error ??
+    entriesRes.error ??
+    workTypesRes.error ??
+    clientsRes.error ??
+    hoursRes.error ??
+    unbilledRes.error
+
   return (
     <ProjectsOverview
       projects={projectsRes.projects ?? []}
@@ -57,6 +66,7 @@ export default async function OJProjectsOverviewPage({
       workHistory={workHistory}
       workHistoryDays={workHistoryDays}
       billableUnbilledCount={unbilledRes.count ?? 0}
+      loadError={loadError}
     />
   )
 }

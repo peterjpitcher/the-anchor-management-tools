@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Button, Input, SearchInput, Select } from '@/ds'
+import { Button, Card, CardBody, Field, Input, SearchInput, Select } from '@/ds'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import { DEFAULT_MILEAGE_LIST_QUERY, hasActiveFilters, type MileageListQuery } from '@/lib/mileage/list-query'
 import { CUSTOM_PRESET_VALUE, presetValueFor, type PeriodPresetGroup } from '@/lib/mileage/period-presets'
@@ -60,77 +60,77 @@ export function MileageFilters({ query, presets, places, drivers, onChange }: Mi
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Select
-          label="Period"
-          value={isCustom ? CUSTOM_PRESET_VALUE : matchedPreset}
-          onChange={(event) => handlePeriodChange(event.target.value)}
-        >
-          {presets.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.presets.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {preset.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </Select>
-        {/* SearchInput takes no label, so the label wraps it. */}
-        <label className="flex min-w-0 flex-col text-ui font-medium text-text">
-          <span className="mb-1">Search</span>
-          <SearchInput value={query.q} onChange={handleSearch} debounceDelay={500} placeholder="Reason or place" />
-        </label>
-        <Select
-          label="Place"
-          value={query.placeId ?? ''}
-          onChange={(event) => update({ placeId: event.target.value || null })}
-          options={[{ value: '', label: 'All places' }, ...places.map((place) => ({ value: place.id, label: place.name }))]}
-        />
-        <Select
-          label="Source"
-          value={query.source ?? ''}
-          onChange={(event) => {
-            const value = event.target.value
-            update({ source: value === 'manual' || value === 'oj_projects' ? value : null })
-          }}
-          options={[
-            { value: '', label: 'All sources' },
-            { value: 'manual', label: 'Logged' },
-            { value: 'oj_projects', label: 'OJ Projects' },
-          ]}
-        />
-        <Select
-          label="Driver"
-          value={query.driverId ?? ''}
-          onChange={(event) => update({ driverId: event.target.value || null })}
-          options={[{ value: '', label: 'All drivers' }, ...drivers.map((driver) => ({ value: driver.id, label: driver.displayName }))]}
-        />
-      </div>
-
-      {isCustom && (
-        <div className="flex flex-wrap items-end gap-3">
-          <Input label="From" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
-          <Input label="To" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
-          <Button variant="secondary" size="sm" onClick={() => update({ from: customFrom || null, to: customTo || null })}>
-            Apply dates
-          </Button>
+    <Card>
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Select
+            label="Period"
+            value={isCustom ? CUSTOM_PRESET_VALUE : matchedPreset}
+            onChange={(event) => handlePeriodChange(event.target.value)}
+          >
+            {presets.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.presets.map((preset) => (
+                  <option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+          <Field label="Search" className="min-w-0">
+            <SearchInput value={query.q} onChange={handleSearch} debounceDelay={500} placeholder="Reason or place" />
+          </Field>
+          <Select
+            label="Place"
+            value={query.placeId ?? ''}
+            onChange={(event) => update({ placeId: event.target.value || null })}
+            options={[{ value: '', label: 'All places' }, ...places.map((place) => ({ value: place.id, label: place.name }))]}
+          />
+          <Select
+            label="Source"
+            value={query.source ?? ''}
+            onChange={(event) => {
+              const value = event.target.value
+              update({ source: value === 'manual' || value === 'oj_projects' ? value : null })
+            }}
+            options={[
+              { value: '', label: 'All sources' },
+              { value: 'manual', label: 'Logged' },
+              { value: 'oj_projects', label: 'OJ Projects' },
+            ]}
+          />
+          <Select
+            label="Driver"
+            value={query.driverId ?? ''}
+            onChange={(event) => update({ driverId: event.target.value || null })}
+            options={[{ value: '', label: 'All drivers' }, ...drivers.map((driver) => ({ value: driver.id, label: driver.displayName }))]}
+          />
         </div>
-      )}
 
-      {hasActiveFilters(query) && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setChoseCustom(false)
-            onChange({ ...DEFAULT_MILEAGE_LIST_QUERY, sort: query.sort, dir: query.dir })
-          }}
-        >
-          Clear filters
-        </Button>
-      )}
-    </div>
+        {isCustom && (
+          <div className="flex flex-wrap items-end gap-3">
+            <Input label="From" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+            <Input label="To" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+            <Button variant="secondary" size="sm" onClick={() => update({ from: customFrom || null, to: customTo || null })}>
+              Apply Dates
+            </Button>
+          </div>
+        )}
+
+        {hasActiveFilters(query) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setChoseCustom(false)
+              onChange({ ...DEFAULT_MILEAGE_LIST_QUERY, sort: query.sort, dir: query.dir })
+            }}
+          >
+            Clear Filters
+          </Button>
+        )}
+      </CardBody>
+    </Card>
   )
 }

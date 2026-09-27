@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Stepper } from '@/ds'
+import { Card, CardBody, Stepper } from '@/ds'
+import { StandalonePageHeader, StandaloneShell } from '@/components/shells/StandaloneShell'
 import CreateAccountStep from '../steps/CreateAccountStep'
 import PersonalStep from '../steps/PersonalStep'
 import EmergencyContactsStep from '../steps/EmergencyContactsStep'
@@ -65,24 +66,20 @@ function PortalAccessSetup({ token, email }: { token: string; email: string }) {
   const router = useRouter()
 
   return (
-    <div className="onboard">
-      <div className="onboard__topbar">
-        <span className="onboard__brand">The Anchor - Staff Portal Setup</span>
-      </div>
-      <div className="onboard__body" style={{ gridTemplateColumns: '1fr' }}>
-        <div className="onboard__main">
-          <h1 className="onboard__h1">Set Up Staff Portal Access</h1>
+    <StandaloneShell label="Staff Portal Setup">
+      <StandalonePageHeader title="Set Up Staff Portal Access" />
+      <Card>
+        <CardBody>
           <CreateAccountStep
             token={token}
             email={email}
             description="Create a password for your staff portal account. Your existing employee details will not be changed."
             buttonLabel="Set Up Portal Access"
-            loadingLabel="Setting up access..."
             onSuccess={() => router.push('/onboarding/success?type=portal_access')}
           />
-        </div>
-      </div>
-    </div>
+        </CardBody>
+      </Card>
+    </StandaloneShell>
   )
 }
 
@@ -134,6 +131,9 @@ function OnboardingFlow({
     status: (i < currentStepIndex ? 'done' : i === currentStepIndex ? 'active' : 'upcoming') as 'done' | 'active' | 'upcoming',
   }))
 
+  // Back sits in each step's form footer, beside that step's own submit button.
+  const onBack = currentStepIndex > 0 ? goToPrevStep : undefined
+
   const renderStepContent = () => {
     switch (currentStep?.key) {
       case 'create_account':
@@ -141,6 +141,7 @@ function OnboardingFlow({
           <CreateAccountStep
             token={token}
             email={email}
+            onBack={onBack}
             onSuccess={() => {
               setAccountCreated(true)
               setCurrentStepIndex(0)
@@ -151,6 +152,7 @@ function OnboardingFlow({
         return (
           <PersonalStep
             token={token}
+            onBack={onBack}
             initialData={initialData?.personal}
             onSuccess={() => {
               markSectionComplete('personal')
@@ -162,6 +164,7 @@ function OnboardingFlow({
         return (
           <TimeOffStep
             token={token}
+            onBack={onBack}
             initialAnswer={initialData?.time_off?.answer ?? null}
             initialBlocks={initialData?.time_off?.blocks ?? []}
             initialSubmissionVersion={initialData?.time_off?.submissionVersion ?? 0}
@@ -175,6 +178,7 @@ function OnboardingFlow({
         return (
           <EmergencyContactsStep
             token={token}
+            onBack={onBack}
             initialData={initialData?.emergency_contacts}
             onSuccess={() => {
               markSectionComplete('emergency_contacts')
@@ -186,6 +190,7 @@ function OnboardingFlow({
         return (
           <FinancialStep
             token={token}
+            onBack={onBack}
             initialData={initialData?.financial}
             onSuccess={() => {
               markSectionComplete('financial')
@@ -197,6 +202,7 @@ function OnboardingFlow({
         return (
           <HealthStep
             token={token}
+            onBack={onBack}
             initialData={initialData?.health}
             onSuccess={() => {
               markSectionComplete('health')
@@ -208,6 +214,7 @@ function OnboardingFlow({
         return (
           <RightToWorkNoticeStep
             token={token}
+            onBack={onBack}
             initialAcknowledged={initialData?.right_to_work_notice?.acknowledged ?? false}
             onSuccess={() => {
               markSectionComplete('right_to_work_notice')
@@ -220,6 +227,7 @@ function OnboardingFlow({
           <ReviewStep
             token={token}
             savedSections={savedSections}
+            onBack={onBack}
           />
         )
       default:
@@ -228,33 +236,19 @@ function OnboardingFlow({
   }
 
   return (
-    <div className="onboard">
-      <div className="onboard__topbar">
-        <span className="onboard__brand">The Anchor - Employee Onboarding</span>
-        <span className="text-xs text-text-muted">
-          Step {currentStepIndex + 1} of {visibleSteps.length}
-        </span>
+    <StandaloneShell label="Employee Onboarding" width="wide">
+      <StandalonePageHeader title={currentStep?.title ?? ''} />
+
+      {/* The Stepper is the rail of every step beside the form on a wide screen, and one line
+          ("Step 2 of 8" with a bar) above the form on a phone, so it carries the step count at
+          every width and the header does not repeat it. */}
+      <div className="grid gap-6 shell:grid-cols-[16rem_minmax(0,1fr)]">
+        <Stepper steps={stepperSteps} />
+
+        <Card>
+          <CardBody>{renderStepContent()}</CardBody>
+        </Card>
       </div>
-
-      <div className="onboard__body">
-        <nav className="onboard__rail">
-          <Stepper steps={stepperSteps} />
-        </nav>
-
-        <div className="onboard__main">
-          <h1 className="onboard__h1">{currentStep?.title}</h1>
-
-          {renderStepContent()}
-
-          <div className="onboard__nav">
-            {currentStepIndex > 0 && (
-              <Button variant="secondary" onClick={goToPrevStep}>
-                Back
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    </StandaloneShell>
   )
 }

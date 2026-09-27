@@ -1,23 +1,25 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/ds'
 import {
-  PageHeader, Card, CardHeader, CardBody, CardFooter, Segmented, SectionNav,
+  PageLayout, Card, CardHeader, CardBody, Segmented, StatGrid,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
 import {
-  Button, Badge, Select, Stat, Switch, Spinner, Empty, SearchInput,
+  Button, Badge, Select, Stat, Switch, Empty,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
+import { cn } from '@/lib/utils'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { listMenuDishes, listMenuIngredients, toggleDishActive } from '@/app/actions/menu-management'
 import { MenuDishesTable, type MenuDishesFilter } from '../_components/MenuDishesTable'
 import { DishDrawer } from '../dishes/_components/DishDrawer'
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from '../dishes/_components/DishExpandedRow'
 import { exportDesignerMenuCsv } from '../_lib/menuDesignerExport'
+import { MENU_NAV, MENU_TITLE } from '../_shared/nav'
+import { DISH_COSTING_STATUS_UI, GP_TARGET_UI, MENU_ALLERGEN_TONE, dishCostingCountTone, menuGpTone } from '../_shared/status-ui'
 
 /* ------------------------------------------------------------------ */
 /*  Data mapping (same as dishes page)                                 */
@@ -112,23 +114,6 @@ function computeAvgGp(items: DishListItem[]): number | null {
   if (withGp.length === 0) return null
   return withGp.reduce((sum, d) => sum + (d.gp_pct as number), 0) / withGp.length
 }
-
-function gpColour(gp: number | null, target: number): 'success' | 'warning' | 'danger' | undefined {
-  if (gp === null) return undefined
-  if (gp >= target) return 'success'
-  if (gp >= target - 0.05) return 'warning'
-  return 'danger'
-}
-
-/* ------------------------------------------------------------------ */
-/*  Navigation cards                                                   */
-/* ------------------------------------------------------------------ */
-
-const navigationCards = [
-  { title: 'Ingredients', description: 'Manage packs, costs, allergens, and suppliers.', href: '/menu-management/ingredients', badge: 'Costs' },
-  { title: 'Recipes', description: 'Build prep recipes from ingredients for reuse.', href: '/menu-management/recipes', badge: 'Prep' },
-  { title: 'Dishes', description: 'Set selling prices and assign to menus.', href: '/menu-management/dishes', badge: 'GP%' },
-]
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -361,242 +346,231 @@ export default function MenuManagementClient(): React.ReactElement {
 
   // ---- Render ----
 
+  // One set of header props for every state, so the title, tabs and actions never move.
+  const layoutProps = {
+    title: MENU_TITLE,
+    subtitle: 'Overview: GP, costing and menu health',
+    navItems: MENU_NAV,
+    headerActions: (
+      <>
+        <Segmented
+          aria-label="Dish view"
+          options={[
+            { id: 'table', label: 'Table' },
+            { id: 'cards', label: 'Cards' },
+          ]}
+          value={viewMode}
+          onChange={setViewMode}
+          size="sm"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleDesignerExport}
+          icon={<Icon name="download" size={14} />}
+        >
+          Export CSV
+        </Button>
+        <Button variant="secondary" size="sm" onClick={loadDishes}>Refresh</Button>
+      </>
+    ),
+  }
+
   if (loading && dishes.length === 0) {
-    return <div className="flex items-center justify-center py-20"><Spinner size="lg" /></div>
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading dishes" />
+  }
+
+  // A first load that failed has nothing to show, so it is an error, never an empty menu. A
+  // refresh that fails keeps the figures and menus already on screen; the Menu Health card swaps
+  // its table for an error saying the GP% data could not be loaded.
+  if (error && dishes.length === 0) {
+    return <PageLayout {...layoutProps} error={error} onRetry={loadDishes} />
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        breadcrumbs={[{ label: 'Menu' }]}
-        title="Menu Management"
-        className="mb-0"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleDesignerExport}
-              icon={<Icon name="download" size={14} />}
-            >
-              Export Menu
-            </Button>
-            <Button variant="secondary" size="sm" onClick={loadDishes}>Refresh</Button>
-          </div>
-        }
-      />
-
-      <SectionNav
-        items={[
-          { id: 'overview', label: 'Overview', href: '/menu-management' },
-          { id: 'dishes', label: 'Dishes', href: '/menu-management/dishes' },
-          { id: 'recipes', label: 'Recipes', href: '/menu-management/recipes' },
-          { id: 'ingredients', label: 'Ingredients', href: '/menu-management/ingredients' },
-        ]}
-        activeId="overview"
-      />
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card><CardBody><Stat label="Total Dishes" value={stats.totalDishes} hint={showActive === 'active' ? `${stats.activeDishes} active` : undefined} /></CardBody></Card>
-        <Card><CardBody><Stat label="Below GP Target" value={stats.belowTargetCount} hint={stats.belowTargetCount > 0 ? 'Needs attention' : 'On track'} /></CardBody></Card>
-        <Card><CardBody><Stat label="Missing Costing" value={stats.missingCostingCount} hint={stats.missingCostingCount > 0 ? 'Needs costing data' : 'All costed'} /></CardBody></Card>
-        <Card><CardBody><Stat label="Avg GP%" value={stats.avgGp !== null ? `${Math.round(stats.avgGp * 100)}%` : '--'} hint={`Target: ${Math.round(targetGpPct * 100)}%`} /></CardBody></Card>
-      </div>
+    <PageLayout {...layoutProps}>
+      <StatGrid columns={4}>
+        <Stat label="Total Dishes" value={stats.totalDishes} hint={showActive === 'active' ? `${stats.activeDishes} active` : undefined} />
+        <Stat label="Below GP Target" value={stats.belowTargetCount} tone={dishCostingCountTone('alert', stats.belowTargetCount)} hint={stats.belowTargetCount > 0 ? 'Needs attention' : 'On track'} />
+        <Stat label="Missing Costing" value={stats.missingCostingCount} tone={dishCostingCountTone('missing', stats.missingCostingCount)} hint={stats.missingCostingCount > 0 ? 'Needs costing data' : 'All costed'} />
+        <Stat label="Avg GP%" value={stats.avgGp !== null ? `${Math.round(stats.avgGp * 100)}%` : '--'} hint={`Target: ${Math.round(targetGpPct * 100)}%`} />
+      </StatGrid>
 
       {/* Main content: sidebar + table */}
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
-        {/* Left sidebar: menu sections */}
-        <div className="space-y-4">
+        {/* Left sidebar: the menus. Its own column wrapper keeps the card to its content height. */}
+        <div>
           <Card>
             <CardHeader title="Menus" />
-            <CardBody className="p-0">
-              <div className="divide-y divide-border">
-                <button
-                  type="button"
+            <div className="divide-y divide-border">
+              {/* Each button sits in its own row so the dividers show: a DS button draws its own border. */}
+              <div>
+                <Button
+                  variant="ghost"
+                  aria-pressed={selectedMenu === 'all'}
                   onClick={() => { setSelectedMenu('all'); setGpStatusFilter('all') }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset ${selectedMenu === 'all' ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
+                  className={cn(
+                    'h-auto w-full justify-between rounded-none px-3 py-2 text-sm font-normal',
+                    selectedMenu === 'all' ? 'bg-primary-soft text-primary-soft-fg hover:bg-primary-soft' : 'text-text-muted',
+                  )}
                 >
                   <span>All Menus</span>
                   <Badge tone="neutral">{dishes.filter((d) => d.is_active).length}</Badge>
-                </button>
-                {menuBreakdown.map((menu) => {
-                  const isSelected = selectedMenu === menu.code
-                  const gpDisplay = menu.avgGp !== null ? `${Math.round(menu.avgGp * 100)}%` : '--'
-                  return (
-                    <button
-                      key={menu.code}
-                      type="button"
+                </Button>
+              </div>
+              {menuBreakdown.map((menu) => {
+                const isSelected = selectedMenu === menu.code
+                const gpDisplay = menu.avgGp !== null ? `${Math.round(menu.avgGp * 100)}%` : '--'
+                return (
+                  <div key={menu.code}>
+                    <Button
+                      variant="ghost"
+                      aria-pressed={isSelected}
                       onClick={() => handleMenuBreakdownClick(menu.code)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset ${isSelected ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
+                      className={cn(
+                        'h-auto w-full justify-between rounded-none px-3 py-2 text-sm font-normal',
+                        isSelected ? 'bg-primary-soft text-primary-soft-fg hover:bg-primary-soft' : 'text-text-muted',
+                      )}
                     >
                       <span className="truncate">{menu.name}</span>
-                      <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-2">
                         <span className="text-xs">{gpDisplay}</span>
                         <Badge tone="neutral">{menu.total}</Badge>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Quick links */}
-          <div className="space-y-2">
-            {navigationCards.map((card) => (
-              <Link
-                key={card.title}
-                href={card.href}
-                className="block rounded-lg focus-visible:outline-hidden focus-visible:shadow-ring"
-              >
-                <Card padding="sm" className="hover:bg-surface-hover transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-text-strong">{card.title}</p>
-                      <p className="text-xs text-text-muted">{card.description}</p>
-                    </div>
-                    <Badge tone="neutral">{card.badge}</Badge>
+                      </span>
+                    </Button>
                   </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          </Card>
         </div>
 
         {/* Right content */}
         <div className="space-y-4">
-          {/* Filter bar + view toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              {selectedMenu !== 'all' && availableCategories.length > 0 && (
-                <Select
-                  options={[{ value: 'all', label: 'All Categories' }, ...availableCategories.map((c) => ({ value: c.code, label: c.name }))]}
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                />
-              )}
+          {/* Filters sit directly above the data they filter */}
+          <div className="flex flex-wrap items-end gap-3">
+            {selectedMenu !== 'all' && availableCategories.length > 0 && (
               <Select
-                options={[
-                  { value: 'all', label: 'All GP Status' },
-                  { value: 'below-target', label: 'Below Target' },
-                  { value: 'at-target', label: 'At Target' },
-                  { value: 'missing-costing', label: 'Missing Costing' },
-                ]}
-                value={gpStatusFilter}
-                onChange={(e) => setGpStatusFilter(e.target.value)}
+                label="Category"
+                options={[{ value: 'all', label: 'All Categories' }, ...availableCategories.map((c) => ({ value: c.code, label: c.name }))]}
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
               />
-              <Select
-                options={[
-                  { value: 'active', label: 'Active Only' },
-                  { value: 'all', label: 'All (incl. inactive)' },
-                ]}
-                value={showActive}
-                onChange={(e) => setShowActive(e.target.value)}
-              />
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>
-              )}
-            </div>
-            <Segmented
+            )}
+            <Select
+              label="GP Status"
               options={[
-                { id: 'table', label: 'Table' },
-                { id: 'cards', label: 'Cards' },
+                { value: 'all', label: 'All GP Status' },
+                { value: 'below-target', label: 'Below Target' },
+                { value: 'at-target', label: 'At Target' },
+                { value: 'missing-costing', label: 'Missing Costing' },
               ]}
-              value={viewMode}
-              onChange={setViewMode}
-              size="sm"
+              value={gpStatusFilter}
+              onChange={(e) => setGpStatusFilter(e.target.value)}
             />
+            <Select
+              label="Dishes"
+              options={[
+                { value: 'active', label: 'Active Only' },
+                { value: 'all', label: 'All (incl. inactive)' },
+              ]}
+              value={showActive}
+              onChange={(e) => setShowActive(e.target.value)}
+            />
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>Clear Filters</Button>
+            )}
           </div>
 
           {/* Category breakdown */}
           {categoryBreakdown.length > 0 && (
             <Card>
               <CardHeader title="GP% by Category" />
-              <CardBody className="p-0">
-                <div className="divide-y divide-border">
-                  {categoryBreakdown.map((cat) => {
-                    const isExpanded = expandedCategories.has(cat.code)
-                    const gpDisplay = cat.avgGp !== null ? `${Math.round(cat.avgGp * 100)}%` : '--'
-                    const tone = gpColour(cat.avgGp, targetGpPct)
-                    return (
-                      <div key={cat.code}>
-                        <button type="button" onClick={() => toggleCategory(cat.code)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset">
-                          <div className="flex items-center gap-2">
-                            <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} className="text-text-muted" />
-                            <span className="text-sm font-medium text-text">{cat.name}</span>
-                            <span className="text-xs text-text-muted">{cat.dishes.length} items</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {cat.belowTarget > 0 && <Badge tone="danger">{cat.belowTarget} alert{cat.belowTarget !== 1 ? 's' : ''}</Badge>}
-                            <Badge tone={tone ?? 'neutral'}>{gpDisplay}</Badge>
-                          </div>
-                        </button>
-                        {isExpanded && (
-                          <div className="border-t border-border">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Dish</TableHead>
-                                  <TableHead className="text-right">Price</TableHead>
-                                  <TableHead className="text-right">Cost</TableHead>
-                                  <TableHead className="text-right">GP%</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {cat.dishes.sort((a, b) => (a.gp_pct ?? Infinity) - (b.gp_pct ?? Infinity)).map((dish) => {
-                                  const dishGp = hasMeaningfulGp(dish) ? `${Math.round((dish.gp_pct as number) * 100)}%` : '--'
-                                  return (
-                                    <TableRow key={dish.id} className="cursor-pointer" onClick={() => handleDishClick(dish)}>
-                                      <TableCell>{dish.name}</TableCell>
-                                      <TableCell className="text-right">{'£'}{dish.selling_price.toFixed(2)}</TableCell>
-                                      <TableCell className="text-right">{dish.portion_cost > 0 ? `${'£'}${dish.portion_cost.toFixed(2)}` : '--'}</TableCell>
-                                      <TableCell className={`text-right ${dish.is_gp_alert ? 'text-danger font-semibold' : ''}`}>{dishGp}</TableCell>
-                                    </TableRow>
-                                  )
-                                })}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </CardBody>
+              <div className="divide-y divide-border">
+                {categoryBreakdown.map((cat) => {
+                  const isExpanded = expandedCategories.has(cat.code)
+                  const gpDisplay = cat.avgGp !== null ? `${Math.round(cat.avgGp * 100)}%` : '--'
+                  return (
+                    <div key={cat.code}>
+                      <Button
+                        variant="ghost"
+                        aria-expanded={isExpanded}
+                        onClick={() => toggleCategory(cat.code)}
+                        className="h-auto w-full justify-between rounded-none px-4 py-3 font-normal"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} className="text-text-muted" />
+                          <span className="text-sm font-medium text-text">{cat.name}</span>
+                          <span className="text-xs text-text-muted">{cat.dishes.length} items</span>
+                        </span>
+                        <span className="flex items-center gap-3">
+                          {cat.belowTarget > 0 && <Badge tone={DISH_COSTING_STATUS_UI.alert.tone}>{cat.belowTarget} alert{cat.belowTarget !== 1 ? 's' : ''}</Badge>}
+                          <Badge tone={menuGpTone(cat.avgGp, targetGpPct)}>{gpDisplay}</Badge>
+                        </span>
+                      </Button>
+                      {isExpanded && (
+                        <div className="border-t border-border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Dish</TableHead>
+                                <TableHead align="right">Price</TableHead>
+                                <TableHead align="right">Cost</TableHead>
+                                <TableHead align="right">GP%</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {cat.dishes.sort((a, b) => (a.gp_pct ?? Infinity) - (b.gp_pct ?? Infinity)).map((dish) => {
+                                const dishGp = hasMeaningfulGp(dish) ? `${Math.round((dish.gp_pct as number) * 100)}%` : '--'
+                                return (
+                                  <TableRow key={dish.id} onClick={() => handleDishClick(dish)}>
+                                    <TableCell>{dish.name}</TableCell>
+                                    <TableCell align="right">{'£'}{dish.selling_price.toFixed(2)}</TableCell>
+                                    <TableCell align="right">{dish.portion_cost > 0 ? `${'£'}${dish.portion_cost.toFixed(2)}` : '--'}</TableCell>
+                                    <TableCell align="right" className={cn(dish.is_gp_alert && GP_TARGET_UI.below.text, dish.is_gp_alert && 'font-semibold')}>{dishGp}</TableCell>
+                                  </TableRow>
+                                )
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </Card>
           )}
 
           {/* Menu Health table or Card view */}
           {viewMode === 'table' ? (
-            <Card>
+            <Card padding="none">
               <CardHeader
                 title="Menu Health"
                 subtitle={hasActiveFilters ? `${filteredDishes.length} dishes (filtered)` : `Target: ${Math.round(targetGpPct * 100)}%`}
               />
-              <CardBody className="p-0">
-                <MenuDishesTable
-                  dishes={filteredDishes}
-                  loadError={error}
-                  standardTarget={targetGpPct}
-                  filter={effectiveTableFilter}
-                  onDishClick={handleDishClick}
-                />
-              </CardBody>
+              <MenuDishesTable
+                dishes={filteredDishes}
+                loadError={error}
+                standardTarget={targetGpPct}
+                filter={effectiveTableFilter}
+                onDishClick={handleDishClick}
+              />
             </Card>
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDishes.length === 0 ? (
-                <div className="col-span-full"><Empty title="No dishes" description="No dishes found for the current filters." /></div>
+                <div className="col-span-full"><Empty title="No dishes match these filters" description="Change or clear the filters to see more dishes." /></div>
               ) : filteredDishes.map((dish) => {
                 const dishGp = hasMeaningfulGp(dish) ? `${Math.round((dish.gp_pct as number) * 100)}%` : '--'
-                const tone = gpColour(dish.gp_pct, targetGpPct)
+                // A clickable card, not a DS Button: the card holds its own active Switch, and a
+                // button cannot contain another control.
                 return (
                   <div
                     key={dish.id}
                     role="button"
                     tabIndex={0}
-                    className="cursor-pointer"
+                    className="cursor-pointer rounded-lg focus-visible:outline-hidden focus-visible:shadow-ring"
                     onClick={(event) => {
                       if ((event.target as HTMLElement).closest('[role="switch"]')) return
                       handleDishClick(dish)
@@ -606,24 +580,26 @@ export default function MenuManagementClient(): React.ReactElement {
                       if (event.key === 'Enter') handleDishClick(dish)
                     }}
                   ><Card className="hover:shadow-default transition-shadow">
-                    <CardBody className="space-y-2">
-                      <div className="flex items-start justify-between">
-                        <h4 className="text-sm font-semibold text-text-strong">{dish.name}</h4>
+                    <CardHeader
+                      title={dish.name}
+                      action={
                         <Switch
                           label={dish.is_active ? 'Active' : 'Inactive'}
                           checked={dish.is_active}
                           onChange={() => void handleToggleDishActive(dish)}
                           size="sm"
                         />
-                      </div>
+                      }
+                    />
+                    <CardBody className="space-y-2">
                       {dish.description && <p className="text-xs text-text-muted line-clamp-2">{dish.description}</p>}
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{'£'}{dish.selling_price.toFixed(2)}</span>
-                        <Badge tone={tone ?? 'neutral'}>{dishGp}</Badge>
+                        <Badge tone={menuGpTone(dish.gp_pct, targetGpPct)}>{dishGp}</Badge>
                       </div>
                       {dish.allergen_flags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
-                          {dish.allergen_flags.map((a) => <Badge key={a} tone="warning">{a}</Badge>)}
+                          {dish.allergen_flags.map((a) => <Badge key={a} tone={MENU_ALLERGEN_TONE}>{a}</Badge>)}
                         </div>
                       )}
                     </CardBody>
@@ -647,6 +623,6 @@ export default function MenuManagementClient(): React.ReactElement {
         selectedMenuCode={null}
         onSaved={handleSaved}
       />
-    </div>
+    </PageLayout>
   )
 }

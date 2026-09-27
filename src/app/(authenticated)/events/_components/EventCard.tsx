@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge } from '@/ds'
+import { Badge, Card } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
@@ -9,45 +9,19 @@ import { eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
 interface EventCardProps {
   event: Event
   onClick?: () => void
-  compact?: boolean
 }
 
-export function EventCard({ event, onClick, compact = false }: EventCardProps) {
-  if (compact) {
-    // Compact mode for calendar cells: single line
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick?.()
-        }}
-        className="w-full text-left px-1.5 py-0.5 rounded-sm text-meta bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity focus-visible:outline-hidden focus-visible:shadow-ring"
-      >
-        <span className="font-medium">{event.time || ''}</span>
-        {event.time && ' '}
-        <span>{event.name}</span>
-      </button>
-    )
-  }
+/** The board query embeds the event's category, which the Event row type does not carry. */
+type BoardEvent = Event & { category?: { name?: string | null } | null }
 
-  // Normal mode for board columns
-  return (
-    <div
-      className={cn(
-        'rounded-default border border-border bg-surface p-3 shadow-sm',
-        onClick && 'cursor-pointer hover:shadow-default hover:border-border-strong transition-all focus-visible:outline-hidden focus-visible:shadow-ring'
-      )}
-      onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={(e) => {
-        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault()
-          onClick()
-        }
-      }}
-    >
+/**
+ * One event on the board view: a DS Card tile in a stage column. With onClick the whole tile
+ * is the control (click, Enter or Space), and its focus ring sits inside the card, which clips.
+ */
+export function EventCard({ event, onClick }: EventCardProps) {
+  const categoryName = (event as BoardEvent).category?.name
+  const body = (
+    <>
       <div className="font-medium text-sm text-text-strong mb-1 line-clamp-2">
         {event.name}
       </div>
@@ -55,13 +29,40 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
         {formatDateInLondon(event.date)} {event.time ? `at ${event.time}` : ''}
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
-        {(event as any).category?.name && (
-          <Badge tone="info">{(event as any).category.name}</Badge>
-        )}
+        {categoryName && <Badge tone="info">{categoryName}</Badge>}
         <Badge tone={eventStatusTone(event.event_status)} dot>
           {eventStatusLabel(event.event_status)}
         </Badge>
       </div>
-    </div>
+    </>
+  )
+
+  if (!onClick) {
+    return <Card padding="sm">{body}</Card>
+  }
+
+  return (
+    <Card
+      padding="none"
+      className="transition-all hover:border-border-strong hover:shadow-default"
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
+        className={cn(
+          'block cursor-pointer p-3 rounded-lg',
+          'focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+        )}
+      >
+        {body}
+      </div>
+    </Card>
   )
 }

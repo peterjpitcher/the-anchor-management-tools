@@ -2,15 +2,16 @@
 
 import { Suspense } from 'react'
 import LoginClient from './_components/LoginClient'
-import { Spinner } from '@/ds'
+import { PageLoading } from '@/ds'
+import { AuthCard } from '../_components/AuthCard'
 
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="auth">
-          <Spinner size="lg" />
-        </div>
+        <AuthCard title="Sign In">
+          <PageLoading inline />
+        </AuthCard>
       }
     >
       <LoginClient />

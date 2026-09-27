@@ -9,6 +9,12 @@ interface UseTablePipelineOptions<T extends Record<string, unknown>> {
   defaultSortDirection?: 'asc' | 'desc';
   itemsPerPage?: number;
   filterFn?: (item: T, filters: Record<string, unknown>) => boolean;
+  /**
+   * Comparators for sort keys that are not a plain field of the row (a count, a flag, a value
+   * worked out from several fields), in ascending order. A key without one compares the row's
+   * own field, with empty values last.
+   */
+  sortFns?: Record<string, (a: T, b: T) => number>;
 }
 
 interface UseTablePipelineReturn<T> {
@@ -19,6 +25,8 @@ interface UseTablePipelineReturn<T> {
   sortKey: string;
   sortDirection: 'asc' | 'desc';
   handleSort: (key: string) => void;
+  /** Sorts by `key` in `direction` (a DS DataTable's `onSortChange`), back on page 1. */
+  setSort: (key: string, direction: 'asc' | 'desc') => void;
   // Pagination
   currentPage: number;
   setCurrentPage: (page: number) => void;
@@ -46,6 +54,7 @@ export function useTablePipeline<T extends Record<string, unknown>>(
     defaultSortDirection = 'asc',
     itemsPerPage: defaultItemsPerPage = 25,
     filterFn,
+    sortFns,
   } = options;
 
   const [searchQuery, setSearchQueryRaw] = useState('');
@@ -89,6 +98,12 @@ export function useTablePipeline<T extends Record<string, unknown>>(
     [sortKey]
   );
 
+  const setSort = useCallback((key: string, direction: 'asc' | 'desc') => {
+    setSortKey(key);
+    setSortDirection(direction);
+    setCurrentPage(1);
+  }, []);
+
   const setItemsPerPage = useCallback((count: number) => {
     setPerPage(count);
     setCurrentPage(1);
@@ -118,8 +133,11 @@ export function useTablePipeline<T extends Record<string, unknown>>(
       }
     }
 
-    // 3. Sort
-    if (sortKey) {
+    // 3. Sort the whole filtered list, before it is cut into pages
+    const sortFn = sortKey ? sortFns?.[sortKey] : undefined;
+    if (sortFn) {
+      result = [...result].sort((a, b) => (sortDirection === 'asc' ? sortFn(a, b) : sortFn(b, a)));
+    } else if (sortKey) {
       result = [...result].sort((a, b) => {
         const aVal = a[sortKey];
         const bVal = b[sortKey];
@@ -142,7 +160,7 @@ export function useTablePipeline<T extends Record<string, unknown>>(
     }
 
     return result;
-  }, [data, searchQuery, searchFields, filterFn, filters, sortKey, sortDirection]);
+  }, [data, searchQuery, searchFields, filterFn, filters, sortKey, sortDirection, sortFns]);
 
   // Pagination
   const totalItems = filteredData.length;
@@ -164,6 +182,7 @@ export function useTablePipeline<T extends Record<string, unknown>>(
     sortKey,
     sortDirection,
     handleSort,
+    setSort,
     // Pagination
     currentPage: clampedPage,
     setCurrentPage,

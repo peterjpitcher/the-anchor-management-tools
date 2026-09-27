@@ -1,14 +1,31 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Alert } from '@/ds';
-import { Badge } from '@/ds';
+import {
+  Accordion,
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  PageLayout,
+  Section,
+  SubHeading,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from '@/ds';
+import { activeStateTone, PAY_RATE_STATUS_BADGE, type PayRateStatus } from '../_shared/status-ui';
 import {
   createPayAgeBand,
   addPayBandRate,
@@ -23,7 +40,21 @@ interface PayBandsManagerProps {
   canManage: boolean;
   initialBands: PayAgeBand[];
   initialRates: Record<string, PayBandRate[]>; // keyed by band_id
+  /** Set when the bands could not be loaded. The page keeps its header and shows the error. */
+  loadError?: string | null;
+  /** Set when the rates for one or more bands could not be loaded. */
+  ratesLoadError?: string | null;
+  /** The bands whose rates could not be loaded: they show that, never "no rates". */
+  ratesFailedBandIds?: string[];
 }
+
+const NO_FAILED_BANDS: string[] = [];
+
+const layoutProps = {
+  title: 'Pay Bands',
+  subtitle: 'Age-based pay band definitions and effective-dated hourly rates',
+  backButton: { label: 'Back to Settings', href: '/settings' },
+};
 
 function formatRate(rate: number) {
   return `£${rate.toFixed(2)}/hr`;
@@ -37,11 +68,14 @@ function RateHistory({
   rates,
   bandId,
   canManage,
+  ratesFailed,
   onRateUpdated,
 }: {
   rates: PayBandRate[];
   bandId: string;
   canManage: boolean;
+  /** The rates could not be loaded, so the empty list is not the truth. */
+  ratesFailed: boolean;
   onRateUpdated: (rate: PayBandRate) => void;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -108,146 +142,167 @@ function RateHistory({
   const today = getTodayIsoDate();
   const current = rates.find(r => r.effective_from <= today) ?? null;
 
+  const rateStatus = (r: PayBandRate): PayRateStatus =>
+    r.effective_from > today ? 'upcoming' : r.id === current?.id ? 'current' : 'historical';
+
   return (
-    <div className="mt-3 border-t border-border pt-3">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Rate History</p>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <SubHeading as="h3">Rate History</SubHeading>
         {canManage && (
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            leftIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            icon={<Icon name="plus" size={14} />}
             onClick={() => setShowForm(v => !v)}
           >
-            Add rate
+            Add Rate
           </Button>
         )}
       </div>
 
       {rates.length === 0 ? (
-        <p className="text-sm text-text-soft italic">No rates set yet.</p>
+        ratesFailed ? (
+          <Alert tone="danger" size="sm">The rates for this band could not be loaded.</Alert>
+        ) : (
+          // The same frame the rates table sits in once there is a rate.
+          <Card padding="none">
+            <Empty size="sm" title="No rates set yet" />
+          </Card>
+        )
       ) : (
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-text-muted border-b border-border">
-              <th scope="col" className="text-left pb-1 font-medium">Rate</th>
-              <th scope="col" className="text-left pb-1 font-medium">Effective from</th>
-              <th scope="col" className="text-left pb-1 font-medium">Status</th>
-              {canManage && <th scope="col" className="text-right pb-1 font-medium">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rates.map(r => (
-              <tr key={r.id} className="border-b border-border">
-                <td className="py-1.5 font-medium text-text">
-                  {editingRateId === r.id ? (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editRate}
-                      onChange={e => setEditRate(e.target.value)}
-                    />
-                  ) : formatRate(r.hourly_rate)}
-                </td>
-                <td className="py-1.5 text-text-muted">
-                  {editingRateId === r.id ? (
-                    <Input
-                      type="date"
-                      value={editEffectiveFrom}
-                      onChange={e => setEditEffectiveFrom(e.target.value)}
-                    />
-                  ) : formatDate(r.effective_from)}
-                </td>
-                <td className="py-1.5">
-                  {r.effective_from > today ? (
-                    <Badge variant="warning" size="sm">Upcoming</Badge>
-                  ) : r.id === current?.id ? (
-                    <Badge variant="success" size="sm">Current</Badge>
-                  ) : (
-                    <Badge tone="neutral" size="sm">Historical</Badge>
-                  )}
-                </td>
-                {canManage && (
-                  <td className="py-1.5 text-right">
-                    {editingRateId === r.id ? (
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" size="sm" onClick={handleUpdateRate} disabled={isPending}>
-                          Save
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => setEditingRateId(null)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : r.effective_from > today ? (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => startEditRate(r)}>
-                        Edit
-                      </Button>
-                    ) : null}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <Card padding="none">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Rate</TableHead>
+                <TableHead>Effective from</TableHead>
+                <TableHead>Status</TableHead>
+                {canManage && <TableHead align="right">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rates.map(r => {
+                const badge = PAY_RATE_STATUS_BADGE[rateStatus(r)];
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">
+                      {editingRateId === r.id ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          aria-label="Hourly rate"
+                          value={editRate}
+                          onChange={e => setEditRate(e.target.value)}
+                        />
+                      ) : formatRate(r.hourly_rate)}
+                    </TableCell>
+                    <TableCell className="text-text-muted">
+                      {editingRateId === r.id ? (
+                        <Input
+                          type="date"
+                          aria-label="Effective from"
+                          value={editEffectiveFrom}
+                          onChange={e => setEditEffectiveFrom(e.target.value)}
+                        />
+                      ) : formatDate(r.effective_from)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={badge.tone} size="sm">{badge.label}</Badge>
+                    </TableCell>
+                    {canManage && (
+                      <TableCell align="right">
+                        {editingRateId === r.id ? (
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" size="sm" variant="secondary" onClick={() => setEditingRateId(null)}>
+                              Cancel
+                            </Button>
+                            <Button type="button" size="sm" variant="primary" onClick={handleUpdateRate} loading={isPending}>
+                              Save Changes
+                            </Button>
+                          </div>
+                        ) : r.effective_from > today ? (
+                          <Button type="button" size="sm" variant="ghost" onClick={() => startEditRate(r)}>
+                            Edit
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
       )}
 
+      {editingRateId && error && <Alert tone="danger">{error}</Alert>}
+
       {showForm && canManage && (
-        <div className="mt-3 p-3 bg-surface-2 rounded-lg border border-border space-y-3">
-          <p className="text-xs font-medium text-text-muted">Add new effective-dated rate</p>
-          {error && <p className="text-xs text-danger">{error}</p>}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormGroup label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
-              <Input
-                id={`rate-${bandId}`}
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="e.g. 11.44"
-                value={rate}
-                onChange={e => setRate(e.target.value)}
-              />
-            </FormGroup>
-            <FormGroup label="Effective from" htmlFor={`eff-${bandId}`}>
-              <Input
-                id={`eff-${bandId}`}
-                type="date"
-                value={effectiveFrom}
-                onChange={e => setEffectiveFrom(e.target.value)}
-              />
-            </FormGroup>
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={handleAddRate} disabled={isPending}>
-              {isPending ? 'Saving…' : 'Save rate'}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setShowForm(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <Card>
+          <CardHeader title="Add Rate" subtitle="A new effective-dated rate for this band" />
+          <CardBody className="space-y-4">
+            {error && <Alert tone="danger">{error}</Alert>}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
+                <Input
+                  id={`rate-${bandId}`}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 11.44"
+                  value={rate}
+                  onChange={e => setRate(e.target.value)}
+                />
+              </Field>
+              <Field label="Effective from" htmlFor={`eff-${bandId}`}>
+                <Input
+                  id={`eff-${bandId}`}
+                  type="date"
+                  value={effectiveFrom}
+                  onChange={e => setEffectiveFrom(e.target.value)}
+                />
+              </Field>
+            </div>
+            <FormFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleAddRate} loading={isPending}>
+                Add Rate
+              </Button>
+            </FormFooter>
+          </CardBody>
+        </Card>
       )}
     </div>
   );
 }
 
-function BandCard({
+/** The current rate for a band: the latest one already in force. */
+function currentRateFor(rates: PayBandRate[]): PayBandRate | null {
+  const today = getTodayIsoDate();
+  return rates.find(r => r.effective_from <= today) ?? null;
+}
+
+/** The body of one band's accordion panel: band edits and the rate history. */
+function BandDetails({
   band,
   rates,
   canManage,
+  ratesFailed,
   onBandUpdated,
   onRateUpdated,
 }: {
   band: PayAgeBand;
   rates: PayBandRate[];
   canManage: boolean;
+  ratesFailed: boolean;
   onBandUpdated: (band: PayAgeBand) => void;
   onRateUpdated: (bandId: string, rate: PayBandRate) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [editingBand, setEditingBand] = useState(false);
   const [editLabel, setEditLabel] = useState(band.label);
   const [editMinAge, setEditMinAge] = useState(String(band.min_age));
@@ -255,8 +310,6 @@ function BandCard({
   const [editSortOrder, setEditSortOrder] = useState(String(band.sort_order));
   const [editError, setEditError] = useState('');
   const [isPending, startTransition] = useTransition();
-  const today = getTodayIsoDate();
-  const currentRate = rates.find(r => r.effective_from <= today) ?? null;
 
   const saveBand = (isActive = band.is_active) => {
     if (!editLabel.trim()) { setEditError('Band label is required'); return; }
@@ -286,87 +339,65 @@ function BandCard({
   };
 
   return (
-    <div className="border border-border rounded-lg bg-surface overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-      >
-        <div className="flex items-center gap-3">
-          {expanded
-            ? <ChevronDownIcon className="h-4 w-4 text-text-subtle" />
-            : <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
-          }
-          <div>
-            <p className="font-medium text-text">{band.label}</p>
-            <p className="text-xs text-text-muted">
-              Age {band.min_age}{band.max_age != null ? `–${band.max_age}` : '+'}
-            </p>
+    <div className="space-y-4">
+      {canManage && (
+        editingBand ? (
+          <Card>
+            <CardHeader title="Edit Band" />
+            <CardBody className="space-y-4">
+              {editError && <Alert tone="danger">{editError}</Alert>}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <Input label="Label" value={editLabel} onChange={e => setEditLabel(e.target.value)} />
+                <Input label="Min age" type="number" min="0" max="100" value={editMinAge} onChange={e => setEditMinAge(e.target.value)} />
+                <Input label="Max age" type="number" min="1" max="100" value={editMaxAge} onChange={e => setEditMaxAge(e.target.value)} />
+                <Input label="Sort" type="number" min="0" value={editSortOrder} onChange={e => setEditSortOrder(e.target.value)} />
+              </div>
+              <FormFooter>
+                <Button type="button" variant="secondary" onClick={() => setEditingBand(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="primary" onClick={() => saveBand()} loading={isPending}>
+                  Save Changes
+                </Button>
+              </FormFooter>
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setEditingBand(true)}>
+              Edit Band
+            </Button>
+            {band.is_active ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(false)} disabled={isPending}>
+                Deactivate
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(true)} disabled={isPending}>
+                Reactivate
+              </Button>
+            )}
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {currentRate ? (
-            <span className="text-sm font-semibold text-text">{formatRate(currentRate.hourly_rate)}</span>
-          ) : (
-            <span className="text-sm text-text-soft italic">No rate set</span>
-          )}
-          {!band.is_active && <Badge variant="default" size="sm">Inactive</Badge>}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4">
-          {canManage && (
-            <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
-              {editingBand ? (
-                <div className="space-y-3">
-                  {editError && <p className="text-xs text-danger">{editError}</p>}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                    <Input label="Label" value={editLabel} onChange={e => setEditLabel(e.target.value)} />
-                    <Input label="Min age" type="number" min="0" max="100" value={editMinAge} onChange={e => setEditMinAge(e.target.value)} />
-                    <Input label="Max age" type="number" min="1" max="100" value={editMaxAge} onChange={e => setEditMaxAge(e.target.value)} />
-                    <Input label="Sort" type="number" min="0" value={editSortOrder} onChange={e => setEditSortOrder(e.target.value)} />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={() => saveBand()} disabled={isPending}>
-                      Save band
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditingBand(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setEditingBand(true)}>
-                    Edit band
-                  </Button>
-                  {band.is_active ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(false)} disabled={isPending}>
-                      Deactivate
-                    </Button>
-                  ) : (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(true)} disabled={isPending}>
-                      Reactivate
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          <RateHistory
-            rates={rates}
-            bandId={band.id}
-            canManage={canManage}
-            onRateUpdated={(rate) => onRateUpdated(band.id, rate)}
-          />
-        </div>
+        )
       )}
+      <RateHistory
+        rates={rates}
+        bandId={band.id}
+        canManage={canManage}
+        ratesFailed={ratesFailed}
+        onRateUpdated={(rate) => onRateUpdated(band.id, rate)}
+      />
     </div>
   );
 }
 
-export default function PayBandsManager({ canManage, initialBands, initialRates }: PayBandsManagerProps) {
+export default function PayBandsManager({
+  canManage,
+  initialBands,
+  initialRates,
+  loadError = null,
+  ratesLoadError = null,
+  ratesFailedBandIds = NO_FAILED_BANDS,
+}: PayBandsManagerProps) {
   const [bands, setBands] = useState(initialBands);
   const [ratesByBand, setRatesByBand] = useState(initialRates);
   const [showNewBandForm, setShowNewBandForm] = useState(false);
@@ -427,92 +458,149 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
     });
   };
 
+  if (loadError) {
+    return (
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Failed to load pay bands">{loadError}</Alert>
+      </PageLayout>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-text-muted">
-          Define age bands aligned to national/living wage tiers. Add effective-dated rates as wages change each year.
-          Rates are append-only — historical rates are preserved for payroll accuracy.
-        </p>
-        {canManage && (
+    <PageLayout
+      {...layoutProps}
+      headerActions={
+        canManage ? (
           <Button
             type="button"
             size="sm"
-            leftIcon={<PlusIcon className="h-4 w-4" />}
+            variant="primary"
+            icon={<Icon name="plus" size={16} />}
             onClick={() => setShowNewBandForm(v => !v)}
           >
-            New band
+            New Band
           </Button>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
+      {ratesLoadError && (
+        <Alert tone="danger" title="Some rates could not be loaded">{ratesLoadError}</Alert>
+      )}
 
       {showNewBandForm && canManage && (
-        <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
-          <p className="text-sm font-medium text-text">New age band</p>
-          {formError && <Alert variant="error">{formError}</Alert>}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <FormGroup label="Band label" htmlFor="band-label" required>
+        <Card>
+          <CardHeader title="New Band" />
+          <CardBody className="space-y-4">
+            {formError && <Alert tone="danger">{formError}</Alert>}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="sm:col-span-2">
+                <Field label="Band label" htmlFor="band-label" required>
+                  <Input
+                    id="band-label"
+                    placeholder='e.g. "Under 18" or "23+"'
+                    value={label}
+                    onChange={e => setLabel(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Field label="Min age" htmlFor="band-min">
                 <Input
-                  id="band-label"
-                  placeholder='e.g. "Under 18" or "23+"'
-                  value={label}
-                  onChange={e => setLabel(e.target.value)}
+                  id="band-min"
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="e.g. 0"
+                  value={minAge}
+                  onChange={e => setMinAge(e.target.value)}
                 />
-              </FormGroup>
+              </Field>
+              <Field label="Max age (blank = no limit)" htmlFor="band-max">
+                <Input
+                  id="band-max"
+                  type="number"
+                  min="1"
+                  max="100"
+                  placeholder="e.g. 17"
+                  value={maxAge}
+                  onChange={e => setMaxAge(e.target.value)}
+                />
+              </Field>
             </div>
-            <FormGroup label="Min age" htmlFor="band-min">
-              <Input
-                id="band-min"
-                type="number"
-                min="0"
-                max="100"
-                placeholder="e.g. 0"
-                value={minAge}
-                onChange={e => setMinAge(e.target.value)}
-              />
-            </FormGroup>
-            <FormGroup label="Max age (blank = no limit)" htmlFor="band-max">
-              <Input
-                id="band-max"
-                type="number"
-                min="1"
-                max="100"
-                placeholder="e.g. 17"
-                value={maxAge}
-                onChange={e => setMaxAge(e.target.value)}
-              />
-            </FormGroup>
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" onClick={handleCreateBand} disabled={isPending}>
-              {isPending ? 'Creating…' : 'Create band'}
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => { setShowNewBandForm(false); setFormError(''); }}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+            <FormFooter>
+              <Button type="button" variant="secondary" onClick={() => { setShowNewBandForm(false); setFormError(''); }}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleCreateBand} loading={isPending}>
+                Create Band
+              </Button>
+            </FormFooter>
+          </CardBody>
+        </Card>
       )}
 
-      {bands.length === 0 ? (
-        <p className="text-sm text-text-soft italic py-4 text-center">
-          No age bands configured yet. Create your first band above.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {bands.map(band => (
-            <BandCard
-              key={band.id}
-              band={band}
-              rates={ratesByBand[band.id] ?? []}
-              canManage={canManage}
-              onBandUpdated={handleBandUpdated}
-              onRateUpdated={handleRateUpdated}
+      <Section
+        title="Age Bands & Rates"
+        description="Rates are append-only. Adding a new rate does not change historical payroll calculations."
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Define age bands aligned to national/living wage tiers. Add effective-dated rates as wages change each year.
+            Historical rates are preserved for payroll accuracy.
+          </p>
+
+          {bands.length === 0 ? (
+            <Card>
+              <Empty
+                size="sm"
+                title="No bands yet"
+                description={canManage ? 'Create your first band with New Band.' : undefined}
+              />
+            </Card>
+          ) : (
+            <Accordion
+              variant="separated"
+              multiple
+              items={bands.map(band => {
+                const rates = ratesByBand[band.id] ?? [];
+                const currentRate = currentRateFor(rates);
+                // Only while nothing has been added since: a rate saved here is real, whatever failed.
+                const ratesFailed = rates.length === 0 && ratesFailedBandIds.includes(band.id);
+                return {
+                  key: band.id,
+                  title: (
+                    <span className="block">
+                      <span className="block font-medium text-text">{band.label}</span>
+                      <span className="block text-xs font-normal text-text-muted">
+                        Age {band.min_age}{band.max_age != null ? `–${band.max_age}` : '+'}
+                      </span>
+                    </span>
+                  ),
+                  extra: (
+                    <>
+                      {currentRate ? (
+                        <span className="text-sm font-semibold text-text">{formatRate(currentRate.hourly_rate)}</span>
+                      ) : (
+                        <span className="text-sm text-text-soft italic">{ratesFailed ? 'Rates not loaded' : 'No rate set'}</span>
+                      )}
+                      {!band.is_active && <Badge tone={activeStateTone(false)} size="sm">Inactive</Badge>}
+                    </>
+                  ),
+                  content: (
+                    <BandDetails
+                      band={band}
+                      rates={rates}
+                      canManage={canManage}
+                      ratesFailed={ratesFailed}
+                      onBandUpdated={handleBandUpdated}
+                      onRateUpdated={handleRateUpdated}
+                    />
+                  ),
+                };
+              })}
             />
-          ))}
+          )}
         </div>
-      )}
-    </div>
+      </Section>
+    </PageLayout>
   );
 }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Button, FormGroup, Modal, Textarea } from '@/ds';
+import { Alert, Button, Field, Modal, Textarea, toast } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { markEmployeeCouldntWork, markShiftSick } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
@@ -17,12 +16,14 @@ interface MarkSickModalProps {
   onMarked: (shift: RotaShift) => void;
 }
 
+// A shift date is a plain day: read as a UTC midnight and formatted in UTC, so it never moves.
 function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -38,6 +39,7 @@ export default function MarkSickModal({
   const [reason, setReason] = useState(shift?.sick_reason ?? '');
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+  const dateIso = shift?.shift_date ?? shiftDate;
 
   const handleSubmit = () => {
     const trimmedReason = reason.trim();
@@ -72,34 +74,29 @@ export default function MarkSickModal({
       open
       onClose={onClose}
       title="Mark as Couldn't Work"
+      description={dateIso ? `${employeeName}, ${formatDate(dateIso)}` : employeeName}
       width="md"
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Saving...' : "Mark Couldn't Work"}
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={isPending}>
+            Mark as Couldn&apos;t Work
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <div>
-          <p className="text-sm text-text-muted">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
-          <p className="mt-0.5 text-sm font-medium text-text-strong">{employeeName}</p>
-          {shift ? (
-            <p className="mt-1 text-sm text-text-muted">
-              {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-text-muted">No shift scheduled</p>
-          )}
-        </div>
+        <p className="text-sm text-text-muted">
+          {shift
+            ? `Shift ${formatTime12Hour(shift.start_time)} to ${formatTime12Hour(shift.end_time)}`
+            : 'No shift scheduled'}
+        </p>
 
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-        <FormGroup label="Reason" htmlFor="sick-reason" required>
+        <Field label="Reason" htmlFor="sick-reason" required>
           <Textarea
             id="sick-reason"
             value={reason}
@@ -108,7 +105,7 @@ export default function MarkSickModal({
             rows={4}
             placeholder="e.g. Unable to work, flu symptoms"
           />
-        </FormGroup>
+        </Field>
       </div>
     </Modal>
   );

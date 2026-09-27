@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
 
@@ -96,8 +96,8 @@ describe('EmployeeStatusActions separation review', () => {
 
     await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
 
-    expect(screen.getByText('Loading scheduled shifts...')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(screen.getByText('Loading scheduled shifts…')).toBeInTheDocument()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeDisabled()
 
     resolvePreview({ success: true, data: preview })
 
@@ -105,7 +105,23 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getByText('Draft')).toBeInTheDocument()
     expect(screen.getByText('Auto accepted')).toBeInTheDocument()
     expect(screen.getByText(/Sunday, 20 September 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeDisabled()
+  })
+
+  it('shows the shift choices as unavailable when the remaining rota cannot load', async () => {
+    previewMock.mockResolvedValue({ success: false, error: 'Could not load the remaining shifts.' })
+    const user = userEvent.setup()
+    renderActions()
+
+    await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
+
+    expect(await screen.findByText('Could not load the remaining shifts.')).toBeInTheDocument()
+    for (const name of ['Work agreed shifts', 'Release all remaining shifts']) {
+      expect(screen.getByRole('radio', { name: new RegExp(name) })).toBeDisabled()
+      // The DS Radio dims its label only from its own prop, not from the disabled fieldset.
+      expect(screen.getByText(name)).toHaveClass('opacity-50')
+    }
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeDisabled()
   })
 
   it('shows the retained and released split for work agreed shifts', async () => {
@@ -121,7 +137,7 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getAllByText('Will stay assigned')).toHaveLength(1)
     expect(screen.getAllByText('Will become open')).toHaveLength(1)
     expect(screen.getByText(/1 approved leave day after the last working day/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeEnabled()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeEnabled()
   })
 
   it('blocks an end date which is not after employment started', async () => {
@@ -138,7 +154,7 @@ describe('EmployeeStatusActions separation review', () => {
     await user.click(screen.getByRole('radio', { name: /Release all remaining shifts/ }))
 
     expect(screen.getByText(/Last working day must be after Wednesday, 16 September 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeDisabled()
   })
 
   it('releases all remaining shifts and refreshes after an email warning', async () => {
@@ -157,7 +173,7 @@ describe('EmployeeStatusActions separation review', () => {
     await user.click(screen.getByRole('radio', { name: /Release all remaining shifts/ }))
 
     expect(screen.getByText('0 shifts will stay assigned. 2 shifts will become open.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Confirm separation' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' }))
 
     await waitFor(() => {
       expect(beginMock).toHaveBeenCalledWith(EMPLOYEE_ID, {

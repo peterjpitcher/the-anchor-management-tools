@@ -1,7 +1,8 @@
 import { getProject, getProjectPaymentHistory } from '@/app/actions/oj-projects/projects'
 import { getEntries } from '@/app/actions/oj-projects/entries'
 import { getProjectContacts } from '@/app/actions/oj-projects/project-contacts'
-import { Empty } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { ojProjectDetailLayout } from '../../_shared/nav'
 import { ProjectDetailClient } from './_components/ProjectDetailClient'
 
 interface PageProps {
@@ -18,12 +19,15 @@ export default async function OJProjectDetailPage({ params }: PageProps): Promis
     getProjectPaymentHistory(id),
   ])
 
+  // Without the project there is no name to show, so the header says "Project" and keeps the
+  // way back.
   if (projectRes.error || !projectRes.project) {
     return (
-      <Empty
-        title="Project not found"
-        description={projectRes.error || 'The project you are looking for does not exist.'}
-      />
+      <PageLayout {...ojProjectDetailLayout('Project')}>
+        <Alert tone="danger" title="Project not found">
+          {projectRes.error || 'The project you are looking for does not exist.'}
+        </Alert>
+      </PageLayout>
     )
   }
 
@@ -33,6 +37,8 @@ export default async function OJProjectDetailPage({ params }: PageProps): Promis
       entries={entriesRes.entries ?? []}
       contacts={contactsRes.contacts ?? []}
       payments={paymentsRes.error ? null : paymentsRes}
+      entriesError={entriesRes.error}
+      contactsError={contactsRes.error}
     />
   )
 }

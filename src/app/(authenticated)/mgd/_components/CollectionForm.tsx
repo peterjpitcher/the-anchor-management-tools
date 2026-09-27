@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Alert, Button, Input, Field, Textarea, toast } from '@/ds'
+import { useEffect, useState } from 'react'
+import { Alert, Input, Field, Textarea, toast } from '@/ds'
 import { createCollection, updateCollection } from '@/app/actions/mgd'
 import type { MgdCollection } from '@/app/actions/mgd'
 
@@ -9,13 +9,24 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
 }
 
+/** What the Modal footer needs to draw the submit button. */
+export interface CollectionFormStatus {
+  saving: boolean
+  canSubmit: boolean
+}
+
 interface CollectionFormProps {
   /** Existing collection for edit mode; omit for create mode */
   collection?: MgdCollection
   /** Called after successful create/update */
   onSuccess: () => void
-  /** Called to cancel / close */
-  onCancel: () => void
+  /**
+   * The form's id. The form sits in a Modal whose footer holds Cancel and the submit button, and
+   * that submit button names the form with `form={formId}`.
+   */
+  formId: string
+  /** Told when saving starts or stops and when the form becomes ready to submit. */
+  onStatusChange?: (status: CollectionFormStatus) => void
   /** Whether the return period is locked (submitted/paid) */
   disabled?: boolean
 }
@@ -23,7 +34,8 @@ interface CollectionFormProps {
 export function CollectionForm({
   collection,
   onSuccess,
-  onCancel,
+  formId,
+  onStatusChange,
   disabled = false,
 }: CollectionFormProps): React.ReactElement {
   const isEdit = !!collection
@@ -43,6 +55,11 @@ export function CollectionForm({
 
   const netTakeNum = parseFloat(netTake) || 0
   const mgdAmount = netTakeNum * 0.2
+  const canSubmit = !disabled && !saving && Boolean(collectionDate) && Boolean(netTake)
+
+  useEffect(() => {
+    onStatusChange?.({ saving, canSubmit })
+  }, [saving, canSubmit, onStatusChange])
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
@@ -74,7 +91,7 @@ export function CollectionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-4">
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Field label="Collection Date" required>
@@ -133,19 +150,6 @@ export function CollectionForm({
           disabled={disabled}
         />
       </Field>
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          loading={saving}
-          disabled={disabled || saving || !collectionDate || !netTake}
-        >
-          {isEdit ? 'Update Collection' : 'Record Collection'}
-        </Button>
-      </div>
     </form>
   )
 }

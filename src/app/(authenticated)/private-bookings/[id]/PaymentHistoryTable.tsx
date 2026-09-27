@@ -3,15 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { PencilIcon, TrashIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
-import { toast } from '@/ds'
-import { Button } from '@/ds'
-import { IconButton } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { ConfirmDialog } from '@/ds'
+import { Alert, Button, ConfirmDialog, Empty, Icon, IconButton, Input, Select, SubHeading, toast } from '@/ds'
 import { editPrivateBookingPayment, deletePrivateBookingPayment } from '@/app/actions/privateBookingActions'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 
@@ -32,7 +26,7 @@ export default function PaymentHistoryTable({
 }: PaymentHistoryTableProps): React.ReactElement {
   const router = useRouter()
 
-  // Spec-mandated state shape — no `date` field in editValues
+  // Spec-mandated state shape: no `date` field in editValues
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{ amount: string; method: string }>({ amount: '', method: '' })
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -82,7 +76,7 @@ export default function PaymentHistoryTable({
       formData.set('type', entry.type)
       formData.set('amount', editValues.amount)
       formData.set('method', editValues.method)
-      // No `date` field — editing the payment date is out of scope
+      // No `date` field: editing the payment date is out of scope
       const result = await editPrivateBookingPayment(formData)
       if (result.success) {
         toast.success('Payment updated')
@@ -131,8 +125,8 @@ export default function PaymentHistoryTable({
 
   return (
     <>
-      {/* Summary section — always rendered regardless of payments.length */}
-      <div className="rounded-md border border-border bg-surface-2 p-3 mb-3 text-xs">
+      {/* Summary section: always rendered regardless of payments.length */}
+      <div className="rounded-default border border-border bg-surface-2 p-3 mb-3 text-xs">
         <div className="flex justify-between text-text-muted">
           <span>Total</span>
           <span className="font-medium">{formatCurrency(totalAmount)}</span>
@@ -147,14 +141,14 @@ export default function PaymentHistoryTable({
         </div>
       </div>
 
-      <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
+      <SubHeading className="mb-2">Payment History</SubHeading>
 
       {error && (
-        <p className="text-xs text-danger mb-2">{error}</p>
+        <Alert tone="danger" size="sm" className="mb-2">{error}</Alert>
       )}
 
       {payments.length === 0 ? (
-        <p className="text-xs text-text-soft">No payments recorded yet.</p>
+        <Empty size="sm" title="No payments yet" />
       ) : (
         <div className="space-y-2">
           {payments.map((entry) => {
@@ -166,7 +160,7 @@ export default function PaymentHistoryTable({
               return (
                 <div
                   key={entry.id}
-                  className="rounded-md border border-border bg-surface-2 p-2 space-y-2"
+                  className="rounded-default border border-border bg-surface-2 p-2 space-y-2"
                 >
                   <div className="flex gap-2">
                     <div className="flex-1">
@@ -216,7 +210,7 @@ export default function PaymentHistoryTable({
                         disabled={isLocked}
                         aria-label="Save payment"
                       >
-                        <CheckIcon className="h-4 w-4" />
+                        <Icon name="check" size={16} />
                       </Button>
                       <Button
                         variant="secondary"
@@ -226,7 +220,7 @@ export default function PaymentHistoryTable({
                         type="button"
                         aria-label="Cancel edit"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <Icon name="x" size={16} />
                       </Button>
                     </div>
                   </div>
@@ -260,7 +254,7 @@ export default function PaymentHistoryTable({
                         className="text-text-muted"
                         label={`Edit ${entry.type} payment`}
                         disabled={isLocked}
-                        icon={<PencilIcon className="h-3.5 w-3.5" />}
+                        icon={<Icon name="edit" size={14} />}
                       />
                       <IconButton
                         type="button"
@@ -273,7 +267,7 @@ export default function PaymentHistoryTable({
                         className="text-text-muted hover:text-danger"
                         label={`Delete ${entry.type} payment`}
                         disabled={isLocked}
-                        icon={<TrashIcon className="h-3.5 w-3.5" />}
+                        icon={<Icon name="trash" size={14} />}
                       />
                     </div>
                   )}
@@ -288,12 +282,10 @@ export default function PaymentHistoryTable({
         open={confirmDeleteId !== null}
         onClose={() => setConfirmDeleteId(null)}
         onConfirm={handleDeleteConfirm}
-        title="Delete payment"
-        message="Are you sure you want to delete this payment? This cannot be undone."
-        type="danger"
-        destructive
-        confirmText="Delete"
-        confirmVariant="danger"
+        title="Delete Payment"
+        message="This removes the payment from the booking's record. This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
       />
     </>
   )

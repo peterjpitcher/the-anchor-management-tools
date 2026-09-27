@@ -1,7 +1,30 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Alert, Badge, Button, Input, Modal, ConfirmDialog, Select } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  ConfirmDialog,
+  Empty,
+  Field,
+  Icon,
+  IconButton,
+  Input,
+  Modal,
+  PageLayout,
+  RowActions,
+  Section,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
 import {
   createDestination,
   updateDestination,
@@ -11,13 +34,7 @@ import {
   type MileageDestination,
   type MileageDistance,
 } from '@/app/actions/mileage'
-import {
-  PlusIcon,
-  PencilSquareIcon,
-  TrashIcon,
-  MapPinIcon,
-  ArrowsRightLeftIcon,
-} from '@heroicons/react/24/outline'
+import { MILEAGE_DESTINATIONS_LAYOUT } from '../_shared/nav'
 
 interface DestinationsClientProps {
   initialDestinations: MileageDestination[]
@@ -350,441 +367,339 @@ export function DestinationsClient({
     })
   }
 
+  function destinationActions(dest: MileageDestination): React.JSX.Element {
+    return (
+      <RowActions
+        actions={[
+          {
+            key: 'edit',
+            label: `Edit ${dest.name}`,
+            icon: <Icon name="edit" size={16} />,
+            onSelect: () => openEdit(dest),
+          },
+          {
+            key: 'delete',
+            label: `Delete ${dest.name}`,
+            icon: <Icon name="trash" size={16} />,
+            tone: 'danger',
+            disabled: dest.tripCount > 0,
+            onSelect: () => setDeleteTarget(dest),
+          },
+        ]}
+      />
+    )
+  }
+
+  /** The miles-from-home editor, the same in the table and on a phone card. */
+  function anchorMilesEditor(dest: MileageDestination, home: MileageDestination): React.JSX.Element {
+    return (
+      <div className="flex items-center justify-end gap-2">
+        <Input
+          type="number"
+          min="0.1"
+          step="0.1"
+          className="flex-1"
+          value={anchorDistanceDrafts[dest.id] ?? ''}
+          onChange={(e) =>
+            setAnchorDistanceDrafts((prev) => ({
+              ...prev,
+              [dest.id]: e.target.value,
+            }))
+          }
+          aria-label={`Miles from ${home.name} to ${dest.name}`}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => saveAnchorDistance(dest)}
+          loading={anchorSavingId === dest.id && isPending}
+        >
+          Save
+        </Button>
+        {dest.milesFromAnchor != null && (
+          <IconButton
+            size="sm"
+            icon={<Icon name="trash" size={16} className="text-danger" />}
+            label={`Clear miles from ${home.name} to ${dest.name}`}
+            onClick={() =>
+              setDistanceDeleteTarget({
+                fromId: home.id,
+                toId: dest.id,
+                label: `${home.name} to ${dest.name}`,
+              })
+            }
+          />
+        )}
+      </div>
+    )
+  }
+
+  function deleteDistanceButton(distance: MileageDistance): React.JSX.Element {
+    return (
+      <IconButton
+        size="sm"
+        className="shrink-0"
+        icon={<Icon name="trash" size={16} className="text-danger" />}
+        label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
+        onClick={() =>
+          setDistanceDeleteTarget({
+            fromId: distance.fromDestinationId,
+            toId: distance.toDestinationId,
+            label: `${distance.fromDestinationName} to ${distance.toDestinationName}`,
+          })
+        }
+      />
+    )
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Header row */}
-      {canManage && (
-        <div className="flex justify-end">
+    <PageLayout
+      {...MILEAGE_DESTINATIONS_LAYOUT}
+      headerActions={
+        canManage ? (
           <Button
             variant="primary"
             size="sm"
-            icon={<PlusIcon />}
+            icon={<Icon name="plus" size={16} />}
             onClick={openCreate}
           >
-            Add Destination
+            New Destination
           </Button>
-        </div>
-      )}
-
+        ) : undefined
+      }
+    >
       {/* Error banner */}
       {(formError || distanceError) && !showForm && !deleteTarget && !distanceDeleteTarget && (
         <Alert tone="danger">{formError ?? distanceError}</Alert>
       )}
 
-      {/* Home base card */}
+      {/* Home base */}
       {homeBase && (
-        <div className="rounded-lg border border-success-border bg-success-soft p-4">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <MapPinIcon className="h-5 w-5 text-success" />
-            <span className="font-medium text-success-fg">{homeBase.name}</span>
+        <Card>
+          <CardBody className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Icon name="mapPin" size={20} className="text-success" />
+            <span className="font-medium text-text-strong">{homeBase.name}</span>
             <Badge tone="success" className="ml-2">
               Home Base
             </Badge>
             {homeBase.postcode && (
-              <span className="text-sm text-success-fg">{homeBase.postcode}</span>
+              <span className="text-sm text-text-muted">{homeBase.postcode}</span>
             )}
-          </div>
-        </div>
+          </CardBody>
+        </Card>
       )}
 
-      {/* Destinations table */}
+      {/* Destinations */}
       {nonHomeDestinations.length === 0 ? (
-        <div className="rounded-lg border border-border bg-surface p-8 text-center">
-          <MapPinIcon className="mx-auto h-12 w-12 text-text-subtle" />
-          <p className="mt-2 text-sm text-text-muted">
-            No destinations saved yet. Add your first destination above.
-          </p>
-        </div>
+        <Card>
+          <Empty
+            size="sm"
+            icon={<Icon name="mapPin" size={48} />}
+            title="No destinations yet"
+            description={canManage ? 'Use New Destination to save the first one.' : 'Saved places show here.'}
+          />
+        </Card>
       ) : (
         <>
-        {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
-        <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface shadow-sm md:block">
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-surface-2">
-              <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                  Name
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                  Postcode
-                </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
-                  Miles from Anchor
-                </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
-                  Trips
-                </th>
-                {canManage && (
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
-                    Actions
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {nonHomeDestinations.map((dest) => (
-                <tr key={dest.id} className="hover:bg-surface-hover">
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
-                    {dest.name}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-text-muted">
-                    {dest.postcode ?? '\u2014'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
+          {/* Desktop table (hidden on phones, where a card list renders below instead) */}
+          <Card padding="none" className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Postcode</TableHead>
+                  <TableHead align="right">Miles from Anchor</TableHead>
+                  <TableHead align="right">Trips</TableHead>
+                  {canManage && <TableHead align="right">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {nonHomeDestinations.map((dest) => (
+                  <TableRow key={dest.id}>
+                    <TableCell className="font-medium">{dest.name}</TableCell>
+                    <TableCell className="text-text-muted">{dest.postcode ?? '-'}</TableCell>
+                    <TableCell align="right" className="text-text-muted">
+                      {canManage && homeBase
+                        ? anchorMilesEditor(dest, homeBase)
+                        : dest.milesFromAnchor != null
+                          ? `${dest.milesFromAnchor} mi`
+                          : '-'}
+                    </TableCell>
+                    <TableCell align="right" className="text-text-muted">{dest.tripCount}</TableCell>
+                    {canManage && (
+                      <TableCell align="right">{destinationActions(dest)}</TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Phone card list */}
+          <div className="space-y-3 md:hidden">
+            {nonHomeDestinations.map((dest) => (
+              <Card key={dest.id}>
+                <CardBody className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text">{dest.name}</p>
+                      <p className="mt-0.5 text-xs text-text-muted">{dest.postcode ?? '-'}</p>
+                    </div>
+                    {canManage && destinationActions(dest)}
+                  </div>
+
+                  <div className="text-sm">
+                    <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Trips</p>
+                    <p className="mt-0.5 text-text">{dest.tripCount}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Miles from Anchor</p>
                     {canManage && homeBase ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <Input
-                          type="number"
-                          min="0.1"
-                          step="0.1"
-                          value={anchorDistanceDrafts[dest.id] ?? ''}
-                          onChange={(e) =>
-                            setAnchorDistanceDrafts((prev) => ({
-                              ...prev,
-                              [dest.id]: e.target.value,
-                            }))
-                          }
-                          aria-label={`Miles from ${homeBase.name} to ${dest.name}`}
-                        />
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => saveAnchorDistance(dest)}
-                          loading={anchorSavingId === dest.id && isPending}
-                        >
-                          Save
-                        </Button>
-                        {dest.milesFromAnchor != null && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                            aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
-                            onClick={() =>
-                              setDistanceDeleteTarget({
-                                fromId: homeBase.id,
-                                toId: dest.id,
-                                label: `${homeBase.name} to ${dest.name}`,
-                              })
-                            }
-                          />
-                        )}
-                      </div>
-                    ) : dest.milesFromAnchor != null ? (
-                      `${dest.milesFromAnchor} mi`
+                      <div className="mt-1">{anchorMilesEditor(dest, homeBase)}</div>
                     ) : (
-                      '\u2014'
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
-                    {dest.tripCount}
-                  </td>
-                  {canManage && (
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<PencilSquareIcon className="h-4 w-4" />}
-                          aria-label={`Edit ${dest.name}`}
-                          onClick={() => openEdit(dest)}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                          aria-label={`Delete ${dest.name}`}
-                          disabled={dest.tripCount > 0}
-                          onClick={() => setDeleteTarget(dest)}
-                        />
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile card list */}
-        <div className="space-y-3 md:hidden">
-          {nonHomeDestinations.map((dest) => (
-            <div key={dest.id} className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-text">{dest.name}</p>
-                  <p className="mt-0.5 text-xs text-text-muted">{dest.postcode ?? '\u2014'}</p>
-                </div>
-                {canManage && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<PencilSquareIcon className="h-4 w-4" />}
-                      aria-label={`Edit ${dest.name}`}
-                      onClick={() => openEdit(dest)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                      aria-label={`Delete ${dest.name}`}
-                      disabled={dest.tripCount > 0}
-                      onClick={() => setDeleteTarget(dest)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 text-sm">
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Trips</p>
-                <p className="mt-0.5 text-text">{dest.tripCount}</p>
-              </div>
-
-              <div className="mt-3">
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Miles from Anchor</p>
-                {canManage && homeBase ? (
-                  <div className="mt-1 flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      className="flex-1"
-                      value={anchorDistanceDrafts[dest.id] ?? ''}
-                      onChange={(e) =>
-                        setAnchorDistanceDrafts((prev) => ({
-                          ...prev,
-                          [dest.id]: e.target.value,
-                        }))
-                      }
-                      aria-label={`Miles from ${homeBase.name} to ${dest.name}`}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => saveAnchorDistance(dest)}
-                      loading={anchorSavingId === dest.id && isPending}
-                    >
-                      Save
-                    </Button>
-                    {dest.milesFromAnchor != null && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                        aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
-                        onClick={() =>
-                          setDistanceDeleteTarget({
-                            fromId: homeBase.id,
-                            toId: dest.id,
-                            label: `${homeBase.name} to ${dest.name}`,
-                          })
-                        }
-                      />
+                      <p className="mt-0.5 text-sm text-text">
+                        {dest.milesFromAnchor != null ? `${dest.milesFromAnchor} mi` : '-'}
+                      </p>
                     )}
                   </div>
-                ) : (
-                  <p className="mt-0.5 text-sm text-text">
-                    {dest.milesFromAnchor != null ? `${dest.milesFromAnchor} mi` : '\u2014'}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
         </>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <ArrowsRightLeftIcon className="h-5 w-5 text-text-muted" />
-          <h2 className="text-sm font-semibold text-text">Location-to-location distances</h2>
-        </div>
+      <Section
+        title="Location-to-Location Distances"
+        icon={<Icon name="arrowLeftRight" size={20} />}
+      >
+        <div className="space-y-4">
+          {canManage && nonHomeDestinations.length >= 2 && (
+            <Card>
+              <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
+                <Select
+                  id="route-distance-from"
+                  label="From"
+                  value={routeFromId}
+                  onChange={(e) => {
+                    setRouteFromId(e.target.value)
+                    if (routeToId === e.target.value) setRouteToId('')
+                  }}
+                  placeholder="Select location..."
+                >
+                  {nonHomeDestinations.map((destination) => (
+                    <option key={destination.id} value={destination.id}>
+                      {destination.name}
+                    </option>
+                  ))}
+                </Select>
 
-        {canManage && nonHomeDestinations.length >= 2 && (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
-            <div>
-              <label htmlFor="route-distance-from" className="mb-1 block text-xs font-medium text-text-muted">
-                From
-              </label>
-              <Select
-                id="route-distance-from"
-                value={routeFromId}
-                onChange={(e) => {
-                  setRouteFromId(e.target.value)
-                  if (routeToId === e.target.value) setRouteToId('')
-                }}
-                placeholder="Select location..."
-              >
-                {nonHomeDestinations.map((destination) => (
-                  <option key={destination.id} value={destination.id}>
-                    {destination.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+                <Select
+                  id="route-distance-to"
+                  label="To"
+                  value={routeToId}
+                  onChange={(e) => setRouteToId(e.target.value)}
+                  placeholder="Select location..."
+                >
+                  {nonHomeDestinations.map((destination) => (
+                    <option
+                      key={destination.id}
+                      value={destination.id}
+                      disabled={destination.id === routeFromId}
+                    >
+                      {destination.name}
+                    </option>
+                  ))}
+                </Select>
 
-            <div>
-              <label htmlFor="route-distance-to" className="mb-1 block text-xs font-medium text-text-muted">
-                To
-              </label>
-              <Select
-                id="route-distance-to"
-                value={routeToId}
-                onChange={(e) => setRouteToId(e.target.value)}
-                placeholder="Select location..."
-              >
-                {nonHomeDestinations.map((destination) => (
-                  <option
-                    key={destination.id}
-                    value={destination.id}
-                    disabled={destination.id === routeFromId}
-                  >
-                    {destination.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div>
-              <label htmlFor="route-distance-miles" className="mb-1 block text-xs font-medium text-text-muted">
-                Miles
-              </label>
-              <Input
-                id="route-distance-miles"
-                type="number"
-                min="0.1"
-                step="0.1"
+                <Input
+                  id="route-distance-miles"
+                  label="Miles"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
                   value={routeMiles}
-                onChange={(e) => setRouteMiles(e.target.value)}
-              />
-            </div>
+                  onChange={(e) => setRouteMiles(e.target.value)}
+                />
 
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={saveRouteDistance}
-              loading={routeSaving && isPending}
-            >
-              Save
-            </Button>
-          </div>
-        )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={saveRouteDistance}
+                  loading={routeSaving && isPending}
+                >
+                  Save Distance
+                </Button>
+              </CardBody>
+            </Card>
+          )}
 
-        {locationDistances.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface p-6 text-center">
-            <p className="text-sm text-text-muted">No location-to-location distances saved yet.</p>
-          </div>
-        ) : (
-          <>
-          {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
-          <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface shadow-sm md:block">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-surface-2">
-                <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                    From
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                    To
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
-                    Miles
-                  </th>
-                  {canManage && (
-                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+          {locationDistances.length === 0 ? (
+            <Card>
+              <Empty size="sm" title="No distances yet" description="Saved distances between two places show here." />
+            </Card>
+          ) : (
+            <>
+              {/* Desktop table (hidden on phones, where a card list renders below instead) */}
+              <Card padding="none" className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>From</TableHead>
+                      <TableHead>To</TableHead>
+                      <TableHead align="right">Miles</TableHead>
+                      {canManage && <TableHead align="right">Actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {locationDistances.map((distance) => (
+                      <TableRow key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}>
+                        <TableCell className="font-medium">{distance.fromDestinationName}</TableCell>
+                        <TableCell className="text-text-muted">{distance.toDestinationName}</TableCell>
+                        <TableCell align="right" className="text-text-muted">{distance.miles} mi</TableCell>
+                        {canManage && (
+                          <TableCell align="right">{deleteDistanceButton(distance)}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              {/* Phone card list */}
+              <div className="space-y-3 md:hidden">
                 {locationDistances.map((distance) => (
-                  <tr
-                    key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}
-                    className="hover:bg-surface-hover"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
-                      {distance.fromDestinationName}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-text-muted">
-                      {distance.toDestinationName}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
-                      {distance.miles} mi
-                    </td>
-                    {canManage && (
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                          aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
-                          onClick={() =>
-                            setDistanceDeleteTarget({
-                              fromId: distance.fromDestinationId,
-                              toId: distance.toDestinationId,
-                              label: `${distance.fromDestinationName} to ${distance.toDestinationName}`,
-                            })
-                          }
-                        />
-                      </td>
-                    )}
-                  </tr>
+                  <Card key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}>
+                    <CardBody className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text">
+                          {distance.fromDestinationName}{' '}
+                          <span className="text-text-soft" aria-hidden="true">→</span>{' '}
+                          {distance.toDestinationName}
+                        </p>
+                        <p className="mt-0.5 text-xs text-text-muted">{distance.miles} mi</p>
+                      </div>
+                      {canManage && deleteDistanceButton(distance)}
+                    </CardBody>
+                  </Card>
                 ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="space-y-3 md:hidden">
-            {locationDistances.map((distance) => (
-              <div
-                key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}
-                className="rounded-lg border border-border bg-surface p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-text">
-                      {distance.fromDestinationName} <span className="text-text-subtle">→</span> {distance.toDestinationName}
-                    </p>
-                    <p className="mt-0.5 text-xs text-text-muted">{distance.miles} mi</p>
-                  </div>
-                  {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0"
-                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
-                      aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
-                      onClick={() =>
-                        setDistanceDeleteTarget({
-                          fromId: distance.fromDestinationId,
-                          toId: distance.toDestinationId,
-                          label: `${distance.fromDestinationName} to ${distance.toDestinationName}`,
-                        })
-                      }
-                    />
-                  )}
-                </div>
               </div>
-            ))}
-          </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      </Section>
 
       {/* Create/Edit Modal */}
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
-        title={editingDest ? 'Edit Destination' : 'Add Destination'}
+        title={editingDest ? 'Edit Destination' : 'New Destination'}
         width="sm"
         footer={
-          <div className="flex justify-end gap-3 mt-6">
+          <>
             <Button
               variant="secondary"
-              size="sm"
               onClick={() => setShowForm(false)}
               disabled={isPending}
             >
@@ -792,21 +707,25 @@ export function DestinationsClient({
             </Button>
             <Button
               variant="primary"
-              size="sm"
               onClick={handleSubmit}
               loading={isPending}
             >
-              {editingDest ? 'Save Changes' : 'Add Destination'}
+              {editingDest ? 'Save Changes' : 'Create Destination'}
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-4">
           {formError && <Alert tone="danger">{formError}</Alert>}
-          <div>
-            <label htmlFor="dest-name" className="block text-sm font-medium text-text mb-1">
-              Name <span className="text-danger">*</span>
-            </label>
+          <Field
+            label="Name"
+            required
+            hint={
+              editingDest
+                ? 'If this place has moved, add it as a new destination instead, so earlier trips keep the address they used.'
+                : undefined
+            }
+          >
             <Input
               id="dest-name"
               value={name}
@@ -815,25 +734,15 @@ export function DestinationsClient({
               maxLength={200}
               autoFocus
             />
-            {editingDest && (
-              <p className="mt-1 text-xs text-text-muted">
-                If this place has moved, add it as a new destination instead, so earlier trips keep
-                the address they used.
-              </p>
-            )}
-          </div>
-          <div>
-            <label htmlFor="dest-postcode" className="block text-sm font-medium text-text mb-1">
-              Postcode
-            </label>
-            <Input
-              id="dest-postcode"
-              value={postcode}
-              onChange={(e) => setPostcode(e.target.value)}
-              placeholder="e.g. TW16 5LN"
-              maxLength={10}
-            />
-          </div>
+          </Field>
+          <Input
+            id="dest-postcode"
+            label="Postcode"
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value)}
+            placeholder="e.g. TW16 5LN"
+            maxLength={10}
+          />
         </div>
       </Modal>
 
@@ -857,6 +766,6 @@ export function DestinationsClient({
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

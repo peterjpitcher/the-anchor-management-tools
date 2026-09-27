@@ -9,12 +9,13 @@ export default async function QuotesPage() {
     redirect('/unauthorized')
   }
 
-  const [quotesResult, summaryResult, canCreate, canEdit, canDelete] = await Promise.all([
+  const [quotesResult, summaryResult, canCreate, canEdit, canDelete, canExport] = await Promise.all([
     getQuotes(),
     getQuoteSummary(),
     checkUserPermission('invoices', 'create'),
     checkUserPermission('invoices', 'edit'),
     checkUserPermission('invoices', 'delete'),
+    checkUserPermission('invoices', 'export'),
   ])
 
   const initialQuotes = quotesResult.quotes ?? []
@@ -36,6 +37,7 @@ export default async function QuotesPage() {
         canCreate,
         canEdit,
         canDelete,
+        canExport,
       }}
     />
   )

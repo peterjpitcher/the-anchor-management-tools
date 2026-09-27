@@ -1,11 +1,15 @@
 'use client'
 
 import { useState, useCallback, useTransition, useMemo, useEffect } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  Alert,
   Card, CardHeader, CardBody,
-  PageHeader,
+  Checkbox,
+  PageLayout,
+  PageLoading,
+  Stat,
+  StatGrid,
   Tabs,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
   Badge,
@@ -15,9 +19,12 @@ import {
   Select,
   ConfirmDialog,
   CustomerLink,
+  DescriptionList,
+  Empty,
+  LinkButton,
   toast,
 } from '@/ds'
-import { EmptyState } from '@/ds'
+import type { DescriptionListItem } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
@@ -53,13 +60,18 @@ import { EventChecklistCard } from '@/components/features/events/EventChecklistC
 import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
-import { eventBookingStatusTone, eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
+import {
+  eventBookingStatusTone,
+  eventLinkTypeTone,
+  eventSeatingTypeTone,
+  eventStatusLabel,
+  eventStatusTone,
+} from '../_shared/status-ui'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
 interface EventDetailClientProps {
   event: Event | null
@@ -215,7 +227,7 @@ export default function EventDetailClient({
 
   /* ---- Derived data ---- */
 
-  // Expired payment holds are dead bookings too — counting them inflates the
+  // Expired payment holds are dead bookings too: counting them inflates the
   // Overview tab count and "Active Bookings" card relative to totalSeats.
   const activeBookings = useMemo(
     () => bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'expired' && b.is_reminder_only !== true),
@@ -448,43 +460,22 @@ export default function EventDetailClient({
     })
   }, [event, router])
 
+  /* ---- Page chrome ---- */
+
+  // One set of header props for every state, so the title and the way back never jump.
+  const layoutProps = {
+    title: event?.name ?? 'Event Details',
+    backButton: { label: 'Back to Events', href: '/events' },
+  }
+
   /* ---- Error / missing event ---- */
 
   if (initialError && !event) {
-    return (
-      <div className="p-6">
-        <PageHeader
-          title="Event Details"
-          breadcrumbs={[
-            { label: 'Events', href: '/events' },
-            { label: 'Error' },
-          ]}
-        />
-        <Card>
-          <CardBody>
-            <p className="text-text-muted">{initialError}</p>
-            <Link href="/events" className="text-primary underline mt-2 inline-block">
-              Back to Events
-            </Link>
-          </CardBody>
-        </Card>
-      </div>
-    )
+    return <PageLayout {...layoutProps} error={initialError} onRetry={() => router.refresh()} />
   }
 
   if (!event) {
-    return (
-      <div className="p-6">
-        <PageHeader
-          title="Event Details"
-          breadcrumbs={[
-            { label: 'Events', href: '/events' },
-            { label: 'Not found' },
-          ]}
-        />
-        <EmptyState title="Not Found" description="Event not found." />
-      </div>
-    )
+    return <PageLayout {...layoutProps} error="Event not found" />
   }
 
   /* ================================================================ */
@@ -492,57 +483,32 @@ export default function EventDetailClient({
   /* ================================================================ */
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <PageHeader
-        title={event.name}
-        breadcrumbs={[
-          { label: 'Events', href: '/events' },
-          { label: event.name },
-        ]}
-        className="mb-0"
-        actions={
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={eventStatusTone(event.event_status)} dot>
-                {eventStatusLabel(event.event_status)}
-              </Badge>
-              {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
-                <Badge tone="info">Free</Badge>
-              ) : resolvedEventPrice > 0 ? (
-                <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
-              ) : null}
-            </div>
-            {(permissions.canEdit || canDeleteEvent) && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                {permissions.canEdit && (
-                  <Button variant="secondary" size="sm" fullWidth className="sm:w-auto" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
-                    Edit
-                  </Button>
-                )}
-                {canDeleteEvent && (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    fullWidth
-                    className="sm:w-auto"
-                    icon={<Icon name="trash" size={14} />}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    loading={isPending}
-                  >
-                    Delete
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        }
-      />
-
+    <PageLayout
+      {...layoutProps}
+      headerActions={
+        <>
+          {permissions.canEdit && (
+            <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
+              Edit
+            </Button>
+          )}
+          {canDeleteEvent && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<Icon name="trash" size={14} />}
+              onClick={() => setDeleteDialogOpen(true)}
+              loading={isPending}
+            >
+              Delete
+            </Button>
+          )}
+        </>
+      }
+    >
+      {/* Parts of the page that failed to load. Each is a failure, not an empty section. */}
       {initialError && (
-        <div className="rounded-md border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
-          {initialError}
-        </div>
+        <Alert tone="danger">{initialError}</Alert>
       )}
 
       {/* Tabs */}
@@ -559,11 +525,26 @@ export default function EventDetailClient({
 
       {/* Main content + checklist sidebar */}
       <div className="flex gap-6 items-start">
-        {/* Tab content — takes remaining space */}
+        {/* Tab content, taking the remaining space */}
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
-              <OverviewTab event={event} />
+              <OverviewTab
+                event={event}
+                statusBadges={
+                  // The event's status (and its price) shows in the first card, not the page header.
+                  <>
+                    <Badge tone={eventStatusTone(event.event_status)} dot>
+                      {eventStatusLabel(event.event_status)}
+                    </Badge>
+                    {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
+                      <Badge tone="info">Free</Badge>
+                    ) : resolvedEventPrice > 0 ? (
+                      <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
+                    ) : null}
+                  </>
+                }
+              />
               <AttendeesTab
                 event={event}
                 visibleBookings={visibleBookings}
@@ -640,7 +621,7 @@ export default function EventDetailClient({
           )}
         </div>
 
-        {/* Checklist — persistent right panel */}
+        {/* Checklist: persistent right panel */}
         <div className="hidden lg:block w-80 shrink-0 sticky top-6">
           <EventChecklistCard
             eventId={event.id}
@@ -649,7 +630,7 @@ export default function EventDetailClient({
         </div>
       </div>
 
-      {/* Checklist — mobile/tablet: shown inline below content since the sticky sidebar is hidden below lg */}
+      {/* Checklist on mobile and tablet: shown inline below content since the sticky sidebar is hidden below lg */}
       <div className="lg:hidden">
         <EventChecklistCard
           eventId={event.id}
@@ -669,22 +650,19 @@ export default function EventDetailClient({
               Are you sure you want to cancel this booking? This action cannot be undone.
             </p>
             {cancelRefundLoading ? (
-              <p className="text-sm text-text-muted">Checking payment…</p>
+              <PageLoading inline label="Checking payment" className="py-4" />
             ) : cancelRefundInfo && cancelRefundInfo.maxRefundable > 0 ? (
               cancelRefundInfo.canRefund ? (
-                <div className="space-y-2 rounded-md border border-border bg-surface-2 p-3">
-                  <label className="flex items-center gap-2 text-sm font-medium text-text">
-                    <input
-                      type="checkbox"
-                      checked={cancelRefundOn}
-                      onChange={(e) => setCancelRefundOn(e.target.checked)}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    Issue a refund (paid {formatCurrency(cancelRefundInfo.amountPaid)})
-                  </label>
+                <div className="space-y-2">
+                  <Checkbox
+                    label={`Issue a refund (paid ${formatCurrency(cancelRefundInfo.amountPaid)})`}
+                    checked={cancelRefundOn}
+                    onChange={setCancelRefundOn}
+                  />
                   {cancelRefundOn && (
-                    <div className="space-y-2 pl-6">
+                    <div className="space-y-2 pl-7">
                       <Select
+                        label="Refund"
                         value={cancelRefundMode}
                         onChange={(e) => {
                           const mode = e.target.value === 'partial' ? 'partial' : 'full'
@@ -700,13 +678,14 @@ export default function EventDetailClient({
                       />
                       {cancelRefundMode === 'partial' && (
                         <Input
+                          label="Refund amount (£)"
                           type="number"
                           min={0}
                           max={cancelRefundInfo.maxRefundable}
                           step="0.01"
                           value={cancelRefundAmount}
                           onChange={(e) => setCancelRefundAmount(e.target.value)}
-                          placeholder="Refund amount"
+                          placeholder="0.00"
                         />
                       )}
                       <p className="text-xs text-text-muted">
@@ -717,15 +696,16 @@ export default function EventDetailClient({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-warning-fg">
+                <Alert tone="warning" size="sm">
                   This booking is paid ({formatCurrency(cancelRefundInfo.amountPaid)}). Only a manager can
                   cancel a paid booking, so the refund can be decided.
-                </p>
+                </Alert>
               )
             ) : null}
           </div>
         }
         confirmLabel="Cancel Booking"
+        cancelLabel="Keep Booking"
         tone="danger"
         loading={cancelRefundLoading || isPending}
       />
@@ -742,7 +722,7 @@ export default function EventDetailClient({
         title="Comp Booking"
         message="Mark this booking as complimentary? It will be confirmed with no payment taken."
         confirmLabel="Comp Booking"
-        tone="warning"
+        tone="primary"
         loading={isPending}
       />
 
@@ -782,7 +762,7 @@ export default function EventDetailClient({
           onSave={handleDrawerSave}
         />
       )}
-    </div>
+    </PageLayout>
   )
 }
 
@@ -790,10 +770,95 @@ export default function EventDetailClient({
 /*  Overview Tab                                                       */
 /* ================================================================== */
 
-function OverviewTab({ event }: { event: Event }) {
+function OverviewTab({ event, statusBadges }: { event: Event; statusBadges: React.ReactNode }) {
+  // One row per fact, in the order the page has always shown them; rows that do not apply to
+  // this event are left out.
+  const items: DescriptionListItem[] = [
+    { key: 'date', label: 'Date', value: formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' }) },
+    { key: 'time', label: 'Time', value: formatTime12Hour(event.time) },
+  ]
+  if (event.end_time) items.push({ key: 'end-time', label: 'End Time', value: formatTime12Hour(event.end_time) })
+  if (event.doors_time) items.push({ key: 'doors', label: 'Doors', value: formatTime12Hour(event.doors_time) })
+  if (event.last_entry_time) items.push({ key: 'last-entry', label: 'Last Entry', value: formatTime12Hour(event.last_entry_time) })
+  if (event.booking_cutoff_at) {
+    items.push({
+      key: 'sales-close',
+      label: 'Online Sales Close',
+      value: (
+        <ValueWithExtra value={formatDateTime12Hour(event.booking_cutoff_at)}>
+          {new Date(event.booking_cutoff_at).getTime() < Date.now() && (
+            <Badge tone="neutral" size="sm">Online sales closed</Badge>
+          )}
+        </ValueWithExtra>
+      ),
+    })
+  }
+  if (event.capacity_unavailable) {
+    items.push({ key: 'availability', label: 'Availability', value: 'Currently unavailable' })
+  } else if (event.booking_mode === 'communal') {
+    items.push(
+      { key: 'seated-remaining', label: 'Seated Places Remaining', value: String(event.seated_remaining ?? 'Unavailable') },
+      { key: 'standing-remaining', label: 'Standing Tickets Remaining', value: String(event.standing_remaining ?? 'Unavailable') },
+      { key: 'standing-limit', label: 'Standing Ticket Limit', value: String(event.resolved_standing_capacity ?? 0) },
+    )
+    if (event.seated_capacity != null) {
+      items.push({ key: 'seating-limit', label: 'Existing Seating Limit', value: String(event.seated_capacity) })
+    }
+  } else if (event.booking_mode === 'general') {
+    items.push({ key: 'ticket-limit', label: 'Ticket Limit', value: String(event.capacity ?? 'Unlimited') })
+  } else {
+    items.push({
+      key: 'seated-remaining',
+      label: 'Seated Places Remaining',
+      value: (
+        <>
+          {String(event.seated_remaining ?? 'Unavailable')}
+          <span className="block text-sm text-text-muted">Subject to a suitable table for the party size.</span>
+        </>
+      ),
+    })
+  }
+  items.push(
+    { key: 'booking-type', label: 'Booking Type', value: formatBookingMode(event.booking_mode) },
+    { key: 'cost', label: 'Cost', value: formatEventCost(event) },
+  )
+  if (event.performer_name) {
+    items.push({
+      key: 'performer',
+      label: 'Performer',
+      value: `${event.performer_name}${event.performer_type ? ` (${event.performer_type})` : ''}`,
+    })
+  }
+  if (event.slug) {
+    items.push({
+      key: 'slug',
+      label: 'Slug',
+      value: (
+        <ValueWithExtra value={event.slug}>
+          <CopyButton text={event.slug} label="Slug" />
+        </ValueWithExtra>
+      ),
+    })
+  }
+  if (event.brief) {
+    items.push({ key: 'brief', label: 'Brief', value: <CopyButton text={event.brief} label="Brief" />, span: 2 })
+  }
+  if (event.booking_url) {
+    items.push({
+      key: 'booking-url',
+      label: 'Booking URL',
+      value: (
+        <ValueWithExtra value={event.booking_url}>
+          <CopyButton text={event.booking_url} label="Booking URL" />
+        </ValueWithExtra>
+      ),
+      span: 2,
+    })
+  }
+
   return (
     <Card>
-      <CardHeader title="Event Details" />
+      <CardHeader title="Event Details" action={<div className="flex flex-wrap items-center gap-2">{statusBadges}</div>} />
       <CardBody>
         <div className="flex flex-col gap-6 lg:flex-row">
           {event.hero_image_url && (
@@ -805,57 +870,7 @@ function OverviewTab({ event }: { event: Event }) {
               />
             </div>
           )}
-          <dl className="grid flex-1 gap-4 sm:grid-cols-2 content-start">
-            <DetailRow label="Date" value={formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' })} />
-            <DetailRow label="Time" value={formatTime12Hour(event.time)} />
-            {event.end_time && <DetailRow label="End Time" value={formatTime12Hour(event.end_time)} />}
-            {event.doors_time && <DetailRow label="Doors" value={formatTime12Hour(event.doors_time)} />}
-            {event.last_entry_time && <DetailRow label="Last Entry" value={formatTime12Hour(event.last_entry_time)} />}
-            {event.booking_cutoff_at && (
-              <DetailRow label="Online sales close" value={formatDateTime12Hour(event.booking_cutoff_at)}>
-                {new Date(event.booking_cutoff_at).getTime() < Date.now() && (
-                  <Badge tone="neutral" size="sm">Online sales closed</Badge>
-                )}
-              </DetailRow>
-            )}
-            {event.capacity_unavailable ? (
-              <DetailRow label="Availability" value="Currently unavailable" />
-            ) : event.booking_mode === 'communal' ? (
-              <>
-                <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')} />
-                <DetailRow label="Standing tickets remaining" value={String(event.standing_remaining ?? 'Unavailable')} />
-                <DetailRow label="Standing ticket limit" value={String(event.resolved_standing_capacity ?? 0)} />
-                {event.seated_capacity != null && <DetailRow label="Existing seating limit" value={String(event.seated_capacity)} />}
-              </>
-            ) : event.booking_mode === 'general' ? (
-              <DetailRow label="Ticket limit" value={String(event.capacity ?? 'Unlimited')} />
-            ) : (
-              <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')}>
-                <span className="text-sm text-text-muted">Subject to a suitable table for the party size.</span>
-              </DetailRow>
-            )}
-            <DetailRow label="Booking Type" value={formatBookingMode(event.booking_mode)} />
-            <DetailRow label="Cost" value={formatEventCost(event)} />
-            {event.performer_name && <DetailRow label="Performer" value={`${event.performer_name}${event.performer_type ? ` (${event.performer_type})` : ''}`} />}
-            {event.slug && (
-              <DetailRow label="Slug" value={event.slug}>
-                <CopyButton text={event.slug} label="Slug" />
-              </DetailRow>
-            )}
-            {event.brief && (
-              <div className="sm:col-span-2">
-                <dt className="text-xs font-medium text-text-muted">Brief</dt>
-                <dd className="mt-0.5">
-                  <CopyButton text={event.brief} label="Brief" />
-                </dd>
-              </div>
-            )}
-            {event.booking_url && (
-              <DetailRow label="Booking URL" value={event.booking_url} className="sm:col-span-2">
-                <CopyButton text={event.booking_url} label="Booking URL" />
-              </DetailRow>
-            )}
-          </dl>
+          <DescriptionList items={items} className="flex-1 content-start" />
         </div>
       </CardBody>
     </Card>
@@ -873,75 +888,60 @@ function ShortLinksTab({ links, totalClicks }: { links: EventMarketingLink[]; to
   )
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Total Clicks</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalClicks.toLocaleString()}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Active Links</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{links.length}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Avg. Clicks/Link</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">
-            {links.length > 0 ? Math.round(totalClicks / links.length) : 0}
-          </p>
-        </Card>
-      </div>
+    <div className="space-y-6">
+      <StatGrid columns={3}>
+        <Stat label="Total Clicks" value={totalClicks.toLocaleString()} />
+        <Stat label="Active Links" value={links.length} />
+        <Stat label="Avg. Clicks/Link" value={links.length > 0 ? Math.round(totalClicks / links.length) : 0} />
+      </StatGrid>
 
       <Card>
         <CardHeader title="Click Breakdown by Channel" />
-        <CardBody>
-          {sortedLinks.length === 0 ? (
-            <EmptyState title="No Links" description="No marketing links have been generated for this event yet." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Channel</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Short URL</TableHead>
-                    <TableHead align="right">Clicks</TableHead>
-                    <TableHead>Last Clicked</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedLinks.map((link) => (
-                    <TableRow key={link.id}>
-                      <TableCell>
-                        <span className="font-medium text-text-strong">{link.label}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge tone={link.type === 'digital' ? 'info' : 'neutral'} size="sm">
-                          {link.type === 'digital' ? 'Digital' : 'Print'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-text-muted font-mono">{link.shortCode}</span>
-                          <CopyButton text={link.shortUrl} label="Short URL" />
-                        </div>
-                      </TableCell>
-                      <TableCell align="right">
-                        <span className={`font-semibold ${link.clickCount > 0 ? 'text-text-strong' : 'text-text-muted'}`}>
-                          {link.clickCount.toLocaleString()}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs text-text-muted">
-                          {link.lastClickedAt ? formatDateInLondon(link.lastClickedAt) : '-'}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardBody>
+        {sortedLinks.length === 0 ? (
+          <Empty size="sm" title="No links yet" description="No marketing links have been generated for this event yet." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Channel</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Short URL</TableHead>
+                <TableHead align="right">Clicks</TableHead>
+                <TableHead>Last Clicked</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedLinks.map((link) => (
+                <TableRow key={link.id}>
+                  <TableCell>
+                    <span className="font-medium text-text-strong">{link.label}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={eventLinkTypeTone(link.type)} size="sm">
+                      {link.type === 'digital' ? 'Digital' : 'Print'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-text-muted font-mono">{link.shortCode}</span>
+                      <CopyButton text={link.shortUrl} label="Short URL" />
+                    </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <span className={`font-semibold ${link.clickCount > 0 ? 'text-text-strong' : 'text-text-muted'}`}>
+                      {link.clickCount.toLocaleString()}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-text-muted">
+                      {link.lastClickedAt ? formatDateInLondon(link.lastClickedAt) : '-'}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Card>
     </div>
   )
@@ -1031,7 +1031,7 @@ function AttendeesTab({
   )
   const transferOptions = useMemo(() => {
     // Past events are never valid transfer targets (the RPC would bounce them
-    // with event_started anyway) — only offer today-or-future events.
+    // with event_started anyway), so only offer today-or-future events.
     const todayIso = getTodayIsoDate()
     return [
       { value: '', label: 'Select event' },
@@ -1052,7 +1052,7 @@ function AttendeesTab({
     setAttendeePage((current) => Math.min(current, totalAttendeePages))
   }, [totalAttendeePages])
 
-  // Numbered attendee-name list — shared between the desktop table cell and the
+  // Numbered attendee-name list, shared between the desktop table cell and the
   // mobile card so both stay in sync.
   const renderAttendeeNames = (booking: EventBookingRow) => {
     if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} canEdit={canManage} />
@@ -1078,7 +1078,7 @@ function AttendeesTab({
     const isTransferring = transferringBookingId === booking.id
     const isCancelled = booking.status === 'cancelled'
 
-    // Paid (confirmed or cancelled) bookings can be refunded after the fact —
+    // Paid (confirmed or cancelled) bookings can be refunded after the fact:
     // cancelling with "no refund" is no longer a one-shot decision.
     const canShowRefund =
       booking.is_reminder_only !== true &&
@@ -1106,7 +1106,7 @@ function AttendeesTab({
             </Button>
           </div>
           {editSeatsError && (
-            <p className="mt-1 text-xs text-danger" role="alert">{editSeatsError}</p>
+            <p className="mt-1 text-xs text-danger-fg" role="alert">{editSeatsError}</p>
           )}
         </div>
       )
@@ -1124,6 +1124,7 @@ function AttendeesTab({
       return (
         <div className="flex flex-wrap items-center gap-1">
           <Select
+            aria-label="Transfer to event"
             value={transferTargetEventId}
             onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
             options={transferOptions}
@@ -1147,10 +1148,10 @@ function AttendeesTab({
         {booking.status === 'pending_payment' && (
           <>
             <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'cash')}>
-              Cash paid
+              Cash Paid
             </Button>
             <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'card_terminal')}>
-              Card paid
+              Card Paid
             </Button>
             <Button size="sm" variant="ghost" onClick={() => onRequestComp(booking.id)}>
               Comp
@@ -1167,7 +1168,7 @@ function AttendeesTab({
         </Button>
         {canEditNames && (
           <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-            Edit names
+            Edit Names
           </Button>
         )}
         {booking.status === 'confirmed' && (
@@ -1188,43 +1189,24 @@ function AttendeesTab({
           size="sm"
           variant="ghost"
           onClick={() => onCancelBooking(booking.id)}
-          className="text-danger hover:text-danger"
+          className="text-danger-fg hover:text-danger-fg"
         >
-          Cancel
+          Cancel Booking
         </Button>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalSeats}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Active Bookings</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{activeBookingsCount}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Capacity</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{capacityPct !== null ? `${capacityPct}%` : '-'}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Est. Revenue</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Paid</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{formatCurrency(totalPaidAmount)}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs font-medium text-text-muted">Link Clicks</p>
-          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalLinkClicks.toLocaleString()}</p>
-        </Card>
-      </div>
+    <div className="space-y-6">
+      <StatGrid columns={3}>
+        <Stat label="Total Seats Booked" value={totalSeats} />
+        <Stat label="Active Bookings" value={activeBookingsCount} />
+        <Stat label="Capacity" value={capacityPct !== null ? `${capacityPct}%` : '-'} />
+        <Stat label="Est. Revenue" value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'} />
+        <Stat label="Paid" value={formatCurrency(totalPaidAmount)} />
+        <Stat label="Link Clicks" value={totalLinkClicks.toLocaleString()} />
+      </StatGrid>
 
       {/* Manual booking form */}
       {canManage && (
@@ -1241,227 +1223,225 @@ function AttendeesTab({
         <CardHeader
           title="Attendees"
           action={
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            // CardHeader wraps these under the title on a narrow card.
+            <>
               {canManage && (
                 <Button
                   variant="secondary"
                   size="sm"
                   icon={<Icon name="check" size={14} />}
                   onClick={() => {
+                    // A full page load: check-in is the event kiosk, outside the staff shell.
                     window.location.href = `/events/${event.id}/check-in`
                   }}
                 >
                   Check-In
                 </Button>
               )}
-              <Button
+              <LinkButton
+                href={`/api/events/${event.id}/booking-sheets`}
+                download
                 variant="secondary"
                 size="sm"
                 icon={<Icon name="download" size={14} />}
-                onClick={() => {
-                  window.location.href = `/api/events/${event.id}/booking-sheets`
-                }}
                 disabled={activeBookingsCount === 0}
               >
                 Booking Sheets
-              </Button>
-              <Button
+              </LinkButton>
+              <LinkButton
+                href={`/api/events/${event.id}/guest-list`}
+                download
                 variant="secondary"
                 size="sm"
                 icon={<Icon name="download" size={14} />}
-                onClick={() => {
-                  window.location.href = `/api/events/${event.id}/guest-list`
-                }}
                 disabled={activeBookingsCount === 0}
               >
                 Guest List
-              </Button>
+              </LinkButton>
               <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
                 {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
               </Button>
-            </div>
+            </>
           }
         />
-        <CardBody>
-          {visibleBookings.length === 0 ? (
-            <EmptyState title="No Bookings" description="No bookings yet for this event." />
-          ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Seats</TableHead>
-                      {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
-                      <TableHead>Paid</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                      {canManage && <TableHead>Actions</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagedBookings.map((booking) => {
-                      const isEditing = editingBookingId === booking.id
-                      const customerName = [
-                        booking.customer?.first_name,
-                        booking.customer?.last_name,
-                      ]
-                        .filter(Boolean)
-                        .join(' ') || '-'
-                      const isCancelled = booking.status === 'cancelled'
+        {visibleBookings.length === 0 ? (
+          <Empty size="sm" title="No bookings yet" description="Bookings for this event show here once they are made." />
+        ) : (
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Seats</TableHead>
+                    {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
+                    <TableHead>Paid</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    {canManage && <TableHead>Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedBookings.map((booking) => {
+                    const isEditing = editingBookingId === booking.id
+                    const customerName = [
+                      booking.customer?.first_name,
+                      booking.customer?.last_name,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || '-'
+                    const isCancelled = booking.status === 'cancelled'
 
-                      return (
-                        <TableRow key={booking.id} className={isCancelled ? 'opacity-50' : ''}>
-                          <TableCell>
-                            <CustomerLink
-                              customerId={booking.customer?.id ?? null}
-                              name={customerName}
-                              fallback="-"
-                            />
-                            {renderAttendeeNames(booking)}
-                          </TableCell>
-                          <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
-                          <TableCell>
-                            {isEditing ? (
-                              renderBookingActions(booking)
-                            ) : (
-                              <>
-                                {booking.seats ?? '-'}
-                                {booking.ticket_breakdown && (
-                                  <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
-                                )}
-                              </>
-                            )}
-                          </TableCell>
-                          {event.booking_mode === 'communal' && (
-                            <TableCell>
-                              <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
-                                {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
-                              </Badge>
-                            </TableCell>
-                          )}
-                          <TableCell>{formatBookingPayment(booking)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              tone={eventBookingStatusTone(booking.status)}
-                              dot
-                            >
-                              {formatStatusLabel(booking.status)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {formatDateInLondon(booking.created_at, {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
-                          </TableCell>
-                          {canManage && (
-                            <TableCell>
-                              {isEditing ? null : renderBookingActions(booking)}
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile card list */}
-              <div className="block md:hidden divide-y divide-border">
-                {pagedBookings.map((booking) => {
-                  const customerName = [
-                    booking.customer?.first_name,
-                    booking.customer?.last_name,
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || '-'
-                  const isCancelled = booking.status === 'cancelled'
-
-                  return (
-                    <div key={booking.id} className={`py-4 ${isCancelled ? 'opacity-50' : ''}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 font-medium">
+                    return (
+                      <TableRow key={booking.id} className={isCancelled ? 'opacity-50' : ''}>
+                        <TableCell>
                           <CustomerLink
                             customerId={booking.customer?.id ?? null}
                             name={customerName}
                             fallback="-"
                           />
-                        </div>
-                        <Badge
-                          tone={eventBookingStatusTone(booking.status)}
-                          dot
-                        >
-                          {formatStatusLabel(booking.status)}
-                        </Badge>
-                      </div>
-
-                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        <div>
-                          <dt className="text-xs font-medium text-text-muted">Phone</dt>
-                          <dd className="mt-0.5 text-text">{booking.customer?.mobile_number ?? '-'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-medium text-text-muted">Seats</dt>
-                          <dd className="mt-0.5 text-text">
-                            {booking.seats ?? '-'}
-                            {booking.ticket_breakdown && (
-                              <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
-                            )}
-                          </dd>
-                        </div>
+                          {renderAttendeeNames(booking)}
+                        </TableCell>
+                        <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            renderBookingActions(booking)
+                          ) : (
+                            <>
+                              {booking.seats ?? '-'}
+                              {booking.ticket_breakdown && (
+                                <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
+                              )}
+                            </>
+                          )}
+                        </TableCell>
                         {event.booking_mode === 'communal' && (
-                          <div>
-                            <dt className="text-xs font-medium text-text-muted">Type</dt>
-                            <dd className="mt-0.5">
-                              <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
-                                {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
-                              </Badge>
-                            </dd>
-                          </div>
+                          <TableCell>
+                            <Badge tone={eventSeatingTypeTone(booking.event_seating_type)}>
+                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
+                            </Badge>
+                          </TableCell>
                         )}
+                        <TableCell>{formatBookingPayment(booking)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            tone={eventBookingStatusTone(booking.status)}
+                            dot
+                          >
+                            {formatStatusLabel(booking.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {formatDateInLondon(booking.created_at, {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </TableCell>
+                        {canManage && (
+                          <TableCell>
+                            {isEditing ? null : renderBookingActions(booking)}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="block md:hidden divide-y divide-border px-pad-card">
+              {pagedBookings.map((booking) => {
+                const customerName = [
+                  booking.customer?.first_name,
+                  booking.customer?.last_name,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || '-'
+                const isCancelled = booking.status === 'cancelled'
+
+                return (
+                  <div key={booking.id} className={`py-4 ${isCancelled ? 'opacity-50' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 font-medium">
+                        <CustomerLink
+                          customerId={booking.customer?.id ?? null}
+                          name={customerName}
+                          fallback="-"
+                        />
+                      </div>
+                      <Badge
+                        tone={eventBookingStatusTone(booking.status)}
+                        dot
+                      >
+                        {formatStatusLabel(booking.status)}
+                      </Badge>
+                    </div>
+
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <dt className="text-xs font-medium text-text-muted">Phone</dt>
+                        <dd className="mt-0.5 text-text">{booking.customer?.mobile_number ?? '-'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-text-muted">Seats</dt>
+                        <dd className="mt-0.5 text-text">
+                          {booking.seats ?? '-'}
+                          {booking.ticket_breakdown && (
+                            <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
+                          )}
+                        </dd>
+                      </div>
+                      {event.booking_mode === 'communal' && (
                         <div>
-                          <dt className="text-xs font-medium text-text-muted">Paid</dt>
-                          <dd className="mt-0.5 text-text">{formatBookingPayment(booking)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-medium text-text-muted">Created</dt>
-                          <dd className="mt-0.5 text-text">
-                            {formatDateInLondon(booking.created_at, {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
+                          <dt className="text-xs font-medium text-text-muted">Type</dt>
+                          <dd className="mt-0.5">
+                            <Badge tone={eventSeatingTypeTone(booking.event_seating_type)}>
+                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
+                            </Badge>
                           </dd>
-                        </div>
-                      </dl>
-
-                      {renderAttendeeNames(booking)}
-
-                      {canManage && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {renderBookingActions(booking)}
                         </div>
                       )}
-                    </div>
-                  )
-                })}
-              </div>
+                      <div>
+                        <dt className="text-xs font-medium text-text-muted">Paid</dt>
+                        <dd className="mt-0.5 text-text">{formatBookingPayment(booking)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-text-muted">Created</dt>
+                        <dd className="mt-0.5 text-text">
+                          {formatDateInLondon(booking.created_at, {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </dd>
+                      </div>
+                    </dl>
 
-              <TablePagination
-                page={attendeePage}
-                totalPages={totalAttendeePages}
-                onPageChange={setAttendeePage}
-                pageSize={pageSize}
-                totalItems={visibleBookings.length}
-              />
-            </>
-          )}
-        </CardBody>
+                    {renderAttendeeNames(booking)}
+
+                    {canManage && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {renderBookingActions(booking)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <TablePagination
+              page={attendeePage}
+              totalPages={totalAttendeePages}
+              onPageChange={setAttendeePage}
+              pageSize={pageSize}
+              totalItems={visibleBookings.length}
+            />
+          </>
+        )}
       </Card>
     </div>
   )
@@ -1489,25 +1469,6 @@ function formatMarketingTemplateLabel(templateKey: string): string {
   return labels[templateKey] ?? formatStatusLabel(templateKey)
 }
 
-function getMessageStatusTone(status: string): BadgeTone {
-  switch (status.toLowerCase()) {
-    case 'sent':
-    case 'delivered':
-      return 'success'
-    // Still on its way, not a problem: info, as a queued message is on the private booking
-    // communications tab and a scheduled or sending campaign is in marketing.
-    case 'queued':
-    case 'scheduled':
-    case 'accepted':
-      return 'info'
-    case 'failed':
-    case 'undelivered':
-      return 'danger'
-    default:
-      return 'neutral'
-  }
-}
-
 function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[] }) {
   const sortedMessages = useMemo(
     () => [...messages].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()),
@@ -1524,24 +1485,25 @@ function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[]
       />
       <CardBody>
         {sortedMessages.length === 0 ? (
-          <EmptyState
-            title="No Marketing Messages Sent"
+          <Empty
+            size="sm"
+            title="No marketing messages yet"
             description="No event marketing SMS messages have been logged for this event yet."
           />
         ) : (
-          <div className="space-y-3">
+          <ul className="divide-y divide-border">
             {sortedMessages.map((message) => {
               const recipient = message.customerName || message.recipientPhone || 'Unknown recipient'
               const hasBody = Boolean(message.body?.trim())
 
               return (
-                <div key={message.id} className="rounded-md border border-border bg-surface-2 p-3">
+                <li key={message.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="info" size="sm">
                       {formatMarketingTemplateLabel(message.templateKey)}
                     </Badge>
-                    <Badge tone={getMessageStatusTone(message.status)} size="sm">
-                      {formatStatusLabel(message.status)}
+                    <Badge tone={messageDeliveryStatusTone(message.status)} size="sm">
+                      {messageDeliveryStatusLabel(message.status)}
                     </Badge>
                     <span className="text-xs text-text-muted">
                       Sent {formatDateInLondon(message.sentAt, {
@@ -1557,10 +1519,10 @@ function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[]
                   <p className={`mt-2 whitespace-pre-wrap break-words text-sm ${hasBody ? 'text-text' : 'text-text-muted italic'}`}>
                     {hasBody ? message.body : 'Message body was not logged, but the marketing send was recorded.'}
                   </p>
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
       </CardBody>
     </Card>
@@ -1583,7 +1545,7 @@ function MarketingTab({
   onLinkGenerated: (link: EventMarketingLink) => void
 }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-6">
       <EventArtworkDownloadsCard event={event} />
 
       <EventMarketingLinksCard
@@ -1611,25 +1573,13 @@ function MarketingTab({
 /*  Shared sub-components                                              */
 /* ================================================================== */
 
-function DetailRow({
-  label,
-  value,
-  className,
-  children,
-}: {
-  label: string
-  value: string
-  className?: string
-  children?: React.ReactNode
-}) {
+/** A value with something beside it: a copy button or a small badge. */
+function ValueWithExtra({ value, children }: { value: string; children?: React.ReactNode }) {
   return (
-    <div className={className}>
-      <dt className="text-xs font-medium text-text-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-text flex items-center gap-1.5 min-w-0">
-        <span className="truncate min-w-0">{value}</span>
-        {children}
-      </dd>
-    </div>
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="min-w-0 break-words">{value}</span>
+      {children}
+    </span>
   )
 }
 
@@ -1641,7 +1591,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       size="sm"
       onClick={() => copyToClipboard(text, label)}
       icon={<Icon name="copy" size={14} />}
-      label={`Copy ${label}`}
+      // Icon-only buttons are named in sentence case ("Copy booking URL").
+      label={`Copy ${label.replace(/^\w/, (first) => first.toLowerCase())}`}
       className="text-text-muted hover:text-text"
     />
   )

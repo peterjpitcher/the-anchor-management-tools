@@ -38,6 +38,9 @@ describe('private booking status badges', () => {
     expect(privateBookingStatusBlockClasses('cancelled')).toBe(`${privateBookingStatusBlockClasses('completed')} line-through`)
     expect(privateBookingStatusBlockClasses('draft')).toContain('bg-warning-soft')
     expect(privateBookingStatusBlockClasses('confirmed')).toContain('bg-primary-soft')
+    // The edge is the primary-border token, not an opacity of the primary colour.
+    expect(privateBookingStatusBlockClasses('confirmed')).toContain('border-primary-border')
+    expect(privateBookingStatusBlockClasses('confirmed')).not.toMatch(/border-primary\/\d+/)
   })
 })
 

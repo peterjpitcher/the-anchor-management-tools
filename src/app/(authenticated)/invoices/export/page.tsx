@@ -2,19 +2,26 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageLayout } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Card } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
-import { Download, Calendar } from 'lucide-react'
+import {
+  PageLayout,
+  Icon,
+  Button,
+  Input,
+  Select,
+  Field,
+  Fieldset,
+  Card,
+  CardHeader,
+  CardBody,
+  Alert,
+  FormFooter,
+  toast,
+} from '@/ds'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
+import { financeNav } from '../_shared/nav'
 
 export default function InvoiceExportPage() {
   const router = useRouter()
@@ -108,16 +115,15 @@ export default function InvoiceExportPage() {
     setEndDate(toLocalIsoDate(quarterEnd))
   }
 
+  const layoutProps = {
+    title: 'Invoices',
+    subtitle: 'Export: a ZIP of invoice PDFs and a summary CSV for the accountant',
+    navItems: financeNav({ canExport }),
+    containerSize: 'md' as const,
+  }
+
   if (permissionsLoading) {
-    return (
-      <PageLayout
-        title="Export Invoices"
-        subtitle="Export invoices as a ZIP file containing individual PDFs"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        loading
-        loadingLabel="Checking export permissions..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Checking export permissions" />
   }
 
   if (!canExport) {
@@ -125,127 +131,106 @@ export default function InvoiceExportPage() {
   }
 
   return (
-    <PageLayout
-      title="Export Invoices"
-      subtitle="Export invoices as a ZIP file containing individual PDFs"
-      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-    >
-      <div className="space-y-6">
-        {error && (
-          <Alert variant="error" description={error} />
-        )}
+    <PageLayout {...layoutProps}>
+      {error && (
+        <Alert tone="danger">{error}</Alert>
+      )}
 
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold">Export Options</h2>
-
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium">Quick Select</label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setQuarterDates(0)}
-                  leftIcon={<Calendar className="h-4 w-4" />}
-                >
-                  Current Quarter
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setQuarterDates(-1)}
-                  leftIcon={<Calendar className="h-4 w-4" />}
-                >
-                  Last Quarter
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    const now = new Date()
-                    const yearStart = new Date(now.getFullYear(), 0, 1)
-                    const yearEnd = new Date(now.getFullYear(), 11, 31)
-                    setStartDate(toLocalIsoDate(yearStart))
-                    setEndDate(toLocalIsoDate(yearEnd))
-                  }}
-                  leftIcon={<Calendar className="h-4 w-4" />}
-                >
-                  Current Year
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Start Date <span className="text-danger">*</span>
-                </label>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  End Date <span className="text-danger">*</span>
-                </label>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <FormGroup label="Invoice Status">
-              <Select
-                value={exportType}
-                onChange={(e) => setExportType(e.target.value as typeof exportType)}
+      <Card>
+        <CardHeader title="Export Options" />
+        <CardBody className="space-y-4">
+          {/* The preset buttons answer one question, so the DS Fieldset names them as a group. */}
+          <Fieldset legend="Quick Select">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setQuarterDates(0)}
+                leftIcon={<Icon name="calendar" size={16} />}
               >
-                <option value="all">All Invoices</option>
-                <option value="paid">Paid Only</option>
-                <option value="unpaid">Unpaid Only</option>
-              </Select>
-            </FormGroup>
+                Current Quarter
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setQuarterDates(-1)}
+                leftIcon={<Icon name="calendar" size={16} />}
+              >
+                Last Quarter
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const now = new Date()
+                  const yearStart = new Date(now.getFullYear(), 0, 1)
+                  const yearEnd = new Date(now.getFullYear(), 11, 31)
+                  setStartDate(toLocalIsoDate(yearStart))
+                  setEndDate(toLocalIsoDate(yearEnd))
+                }}
+                leftIcon={<Icon name="calendar" size={16} />}
+              >
+                Current Year
+              </Button>
+            </div>
+          </Fieldset>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Start Date" required>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
+            </Field>
+
+            <Field label="End Date" required>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                required
+              />
+            </Field>
           </div>
 
-          <div className="mt-6 rounded-lg border border-info-border bg-info-soft p-4">
-            <h3 className="mb-2 font-medium text-info-fg">What&apos;s included:</h3>
-            <ul className="space-y-1 text-sm text-info-fg">
-              <li>• Individual PDF for each invoice</li>
-              <li>• Invoice summary CSV file</li>
-              <li>• Organized by invoice number</li>
-              <li>• Ready for accountant submission</li>
+          <Field label="Invoice Status">
+            <Select
+              value={exportType}
+              onChange={(e) => setExportType(e.target.value as typeof exportType)}
+            >
+              <option value="all">All Invoices</option>
+              <option value="paid">Paid Only</option>
+              <option value="unpaid">Unpaid Only</option>
+            </Select>
+          </Field>
+
+          <Alert tone="info" title="What's included" role="status">
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Individual PDF for each invoice</li>
+              <li>Invoice summary CSV file</li>
+              <li>Organized by invoice number</li>
+              <li>Ready for accountant submission</li>
             </ul>
-          </div>
+          </Alert>
+        </CardBody>
+      </Card>
 
-          <div className="mt-6 flex justify-end gap-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push('/invoices')}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleExport}
-              disabled={loading || !startDate || !endDate || !canExport}
-              loading={loading}
-              leftIcon={<Download className="h-4 w-4" />}
-            >
-              Export Invoices
-            </Button>
-          </div>
-        </Card>
-      </div>
+      {/* A tab page has no Cancel: there is nothing to go back to. */}
+      <FormFooter>
+        <Button variant="primary"
+          onClick={handleExport}
+          disabled={loading || !startDate || !endDate || !canExport}
+          loading={loading}
+          leftIcon={<Icon name="download" size={16} />}
+        >
+          Export ZIP
+        </Button>
+      </FormFooter>
     </PageLayout>
   )
 }

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { formatDateInLondon, formatDateTime } from '@/lib/dateUtils'
-import { Button, toast } from '@/ds'
-import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
+import { Button, Card, CardBody, CardHeader, Empty, Icon, toast } from '@/ds'
+import { auditEntryIconClasses } from '@/app/(authenticated)/employees/_shared/status-ui'
 import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 
 interface EmployeeAuditTrailProps {
@@ -46,17 +46,27 @@ export function EmployeeAuditTrail({
 
   if (!canViewAudit) {
     return (
-      <div className="text-center py-8 text-text-muted">
-        You do not have permission to view audit history.
-      </div>
+      <Card>
+        <CardHeader title="Audit Trail" />
+        <CardBody>
+          <p className="text-center text-sm text-text-muted">
+            You do not have permission to view audit history.
+          </p>
+        </CardBody>
+      </Card>
     )
   }
 
   if (timelineEntries.length === 0) {
     return (
-      <div className="text-center py-8 text-text-muted">
-        No audit history available{employeeName ? ` for ${employeeName}` : ''}.
-      </div>
+      <Card>
+        <CardHeader title="Audit Trail" />
+        <Empty
+          size="sm"
+          title="No audit history yet"
+          description={`Changes to ${employeeName || 'this employee'} will appear here.`}
+        />
+      </Card>
     )
   }
 
@@ -100,13 +110,6 @@ export function EmployeeAuditTrail({
       delete_attachment: 'deleted attachment'
     }
     return actionLabels[log.operation_type] || log.operation_type
-  }
-
-  const getActionColor = (operationType: string) => {
-    if (operationType === 'create') return 'bg-success-soft text-success-fg'
-    if (operationType === 'delete' || operationType.includes('delete')) return 'bg-danger-soft text-danger-fg'
-    if (operationType === 'update' || operationType.includes('update')) return 'bg-info-soft text-info-fg'
-    return 'bg-surface-hover text-text'
   }
 
   const formatDetails = (log: AuditLogEntry) => {
@@ -229,7 +232,7 @@ export function EmployeeAuditTrail({
       }
 
       if (note) {
-        details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '...' : ''}`)
+        details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '…' : ''}`)
       }
     }
 
@@ -277,89 +280,84 @@ export function EmployeeAuditTrail({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-surface shadow-sm sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center text-lg font-medium leading-6 text-text">
-              <ClockIcon className="mr-2 h-5 w-5" />
-              Audit Trail
-            </h3>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              icon={<ClipboardDocumentIcon className="h-4 w-4" />}
-              onClick={handleCopyAll}
-            >
-              {copied ? 'Copied' : 'Copy all'}
-            </Button>
-          </div>
+    <Card>
+      <CardHeader
+        title="Audit Trail"
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            icon={<Icon name="copy" size={16} />}
+            onClick={handleCopyAll}
+          >
+            {copied ? 'Copied' : 'Copy All'}
+          </Button>
+        }
+      />
+      <CardBody>
+        <div className="flow-root">
+          <ul className="-mb-8">
+            {timelineEntries.map((entry, idx) => {
+              const isAudit = entry.type === 'audit'
+              const log = isAudit ? entry.log : null
+              const note = !isAudit ? entry.note : null
 
-          <div className="mt-4 flow-root">
-            <ul className="-mb-8">
-              {timelineEntries.map((entry, idx) => {
-                const isAudit = entry.type === 'audit'
-                const log = isAudit ? entry.log : null
-                const note = !isAudit ? entry.note : null
-
-                return (
-                  <li key={entry.id}>
-                    <div className="relative pb-8">
-                      {idx !== timelineEntries.length - 1 ? (
-                        <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-border" aria-hidden="true" />
-                      ) : null}
-                      <div className="relative flex space-x-3">
-                        <div>
-                          <span
-                            className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                              // A note is a kind of entry, not a warning, so it takes a category colour.
-                              isAudit ? getActionColor(log!.operation_type) : 'bg-cat-6-soft text-cat-6-fg'
-                            }`}
-                          >
-                            {isAudit ? (
-                              <UserIcon className="h-5 w-5" />
-                            ) : (
-                              <ChatBubbleLeftRightIcon className="h-5 w-5" />
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex-1 space-y-1">
+              return (
+                <li key={entry.id}>
+                  <div className="relative pb-8">
+                    {idx !== timelineEntries.length - 1 ? (
+                      <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-border" aria-hidden="true" />
+                    ) : null}
+                    <div className="relative flex space-x-3">
+                      <div>
+                        <span
+                          className={`flex h-10 w-10 items-center justify-center rounded-full ${auditEntryIconClasses(
+                            isAudit ? { kind: 'audit', operationType: log!.operation_type } : { kind: 'note' },
+                          )}`}
+                        >
                           {isAudit ? (
-                            <>
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 break-words text-sm font-medium text-text">
-                                  {log!.user_email ?? 'System'} {getActionLabel(log!)}
-                                </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(log!.created_at)}</p>
-                              </div>
-                              {formatDetails(log!) && (
-                                <p className="text-sm text-text-muted break-words">{formatDetails(log!)}</p>
-                              )}
-                            </>
+                            <Icon name="user" size={20} />
                           ) : (
-                            <>
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 break-words text-sm font-medium text-text">
-                                  {note!.author_name} added a note
-                                </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(note!.created_at)}</p>
-                              </div>
-                              <p className="text-sm text-text-muted whitespace-pre-wrap break-words">
-                                {note!.note_text}
-                              </p>
-                            </>
+                            <Icon name="message" size={20} />
                           )}
-                        </div>
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        {isAudit ? (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 break-words text-sm font-medium text-text">
+                                {log!.user_email ?? 'System'} {getActionLabel(log!)}
+                              </p>
+                              <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(log!.created_at)}</p>
+                            </div>
+                            {formatDetails(log!) && (
+                              <p className="text-sm text-text-muted break-words">{formatDetails(log!)}</p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 break-words text-sm font-medium text-text">
+                                {note!.author_name} added a note
+                              </p>
+                              <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(note!.created_at)}</p>
+                            </div>
+                            <p className="text-sm text-text-muted whitespace-pre-wrap break-words">
+                              {note!.note_text}
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-      </div>
-    </div>
+      </CardBody>
+    </Card>
   )
 }

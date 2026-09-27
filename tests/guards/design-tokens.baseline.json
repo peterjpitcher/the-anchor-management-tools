@@ -1,9 +1,76 @@
 {
+  "$rules": {
+    "bare-rounded": 1,
+    "brand-ramp-outside-shell": 1,
+    "dark-variant": 1,
+    "guest-token-outside-guest": 1,
+    "hex-colour": 1,
+    "legacy-focus-ring": 1,
+    "legacy-hsl-var": 1,
+    "off-scale-radius": 1,
+    "off-scale-shadow": 1,
+    "px-text-size": 2,
+    "raw-820-breakpoint": 1,
+    "raw-palette": 2,
+    "rounded-md": 1,
+    "sidebar-outside-shell": 1,
+    "status-opacity": 1
+  },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
     "hex-colour": 8
   },
+  "src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx": {
+    "brand-ramp-outside-shell": 1,
+    "rounded-md": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx": {
+    "brand-ramp-outside-shell": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
+    "rounded-md": 8
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
+    "rounded-md": 3
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohCreateBookingModal.tsx": {
+    "rounded-md": 11
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
+    "status-opacity": 3,
+    "rounded-md": 3
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
+    "raw-palette": 1,
+    "status-opacity": 3,
+    "rounded-md": 7
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
+    "status-opacity": 1,
+    "rounded-md": 1
+  },
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
+  },
+  "src/ds/primitives/Avatar.tsx": {
+    "raw-palette": 1
+  },
+  "src/ds/primitives/Badge.tsx": {
+    "status-opacity": 1
+  },
+  "src/ds/primitives/Button.tsx": {
+    "raw-palette": 1
+  },
+  "src/ds/primitives/LinkButton.tsx": {
+    "raw-palette": 1
+  },
+  "src/ds/primitives/Stepper.tsx": {
+    "raw-palette": 2
+  },
+  "src/ds/shell/FohClockBand.tsx": {
+    "status-opacity": 2
+  },
+  "src/ds/shell/MobileChrome.tsx": {
+    "raw-palette": 2
   },
   "src/lib/analytics/engagement-scoring.ts": {
     "hex-colour": 2
@@ -61,5 +128,8 @@
   },
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
+  },
+  "src/lib/table-bookings/ui.ts": {
+    "status-opacity": 9
   }
 }

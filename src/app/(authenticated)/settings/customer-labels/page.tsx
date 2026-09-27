@@ -2,6 +2,7 @@ import { getCustomerLabels } from '@/app/actions/customer-labels';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { PageLayout } from '@/ds';
 import CustomerLabelsClient from './CustomerLabelsClient';
+import { CUSTOMER_LABELS_LAYOUT } from '../_shared/layouts';
 import { redirect } from 'next/navigation';
 
 export default async function CustomerLabelsPage() {
@@ -18,12 +19,7 @@ export default async function CustomerLabelsPage() {
 
   if (labelsResult.error) {
     return (
-      <PageLayout
-        title="Customer Labels"
-        subtitle="Organise customers with labels for better targeting and management"
-        backButton={{ label: 'Back to Settings', href: '/settings' }}
-        error={labelsResult.error}
-      />
+      <PageLayout {...CUSTOMER_LABELS_LAYOUT} error={labelsResult.error} />
     );
   }
 

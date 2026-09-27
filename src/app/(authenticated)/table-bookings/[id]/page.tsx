@@ -2,7 +2,6 @@ import { notFound, redirect } from 'next/navigation'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { PageLayout } from '@/ds'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import {
   isPreorderEnabled,
@@ -123,31 +122,21 @@ export default async function BookingDetailPage({ params }: Props) {
     audit_trail: auditTrail,
   } as unknown as Booking
 
-  const guestName = [customer?.first_name, customer?.last_name]
-    .filter(Boolean)
-    .join(' ')
-  const title = guestName || booking.booking_reference || 'Booking'
-
   const seasonalPreorder = await loadSeasonalPreorder(rawBooking, canEdit)
   // P7: the guest message card offers email when the option is on (and defaults to it for a
   // guest with a usable address). Read only for staff who can send, who are the only ones shown it.
   const emailOption = canEdit ? await resolveCustomerStaffEmailOption(customer?.id ?? null) : undefined
 
+  // The client renders PageLayout itself, so its header can carry the booking's actions.
   return (
-    <PageLayout
-      title={title}
-      subtitle={`${booking.booking_reference ?? ''} · ${booking.booking_date} · ${booking.booking_time ?? ''}`}
-      backButton={{ label: 'Back to BOH', href: '/table-bookings/boh' }}
-    >
-      <BookingDetailClient
-        booking={normalizedBooking}
-        canEdit={canEdit}
-        canManage={canManage}
-        canRefund={canRefund || canManage}
-        seasonalPreorder={seasonalPreorder}
-        emailOption={emailOption}
-      />
-    </PageLayout>
+    <BookingDetailClient
+      booking={normalizedBooking}
+      canEdit={canEdit}
+      canManage={canManage}
+      canRefund={canRefund || canManage}
+      seasonalPreorder={seasonalPreorder}
+      emailOption={emailOption}
+    />
   )
 }
 

@@ -1,49 +1,65 @@
 import { cn } from '@/lib/utils'
 
+type StatTone = 'default' | 'success' | 'warning' | 'danger'
+type DeltaDirection = 'up' | 'down' | 'flat'
+
 interface StatProps {
   label: string
   value: string | number
   delta?: number
-  deltaDirection?: 'up' | 'down' | 'flat'
+  deltaDirection?: DeltaDirection
+  /**
+   * Which way is good news. 'up' (the default) shows a rise in the success colour and a fall
+   * in the danger colour; 'down' swaps them, for figures such as costs or no-shows.
+   */
+  deltaGood?: 'up' | 'down'
+  /**
+   * Replaces the displayed delta text, which is otherwise the unsigned percentage. Use it for a
+   * change that is not a percentage: an absolute change when the previous figure was zero ("+2")
+   * or a change in percentage points ("+5 pts"). The direction, its colour, the arrow and the
+   * screen-reader direction word still come from `delta` (or `deltaDirection`).
+   */
+  deltaLabel?: string
+  /** Colours the value: a figure that is itself good or bad news. */
+  tone?: StatTone
   icon?: React.ReactNode
   hint?: string
-  /** @deprecated Use `hint` instead */
-  description?: string
-  /** @deprecated Accepted for backward compatibility */
-  variant?: string
-  /** @deprecated Use `delta` instead */
-  change?: string
-  /** @deprecated Use `deltaDirection` instead */
-  changeType?: string
-  /** @deprecated Accepted for backward compatibility */
-  loading?: boolean
-  /** @deprecated Accepted for backward compatibility */
-  color?: string
-  /** @deprecated Accepted for backward compatibility */
-  size?: string
   className?: string
 }
 
-function inferDirection(delta: number): 'up' | 'down' | 'flat' {
+const TONE_CLASSES: Record<StatTone, string> = {
+  default: 'text-text',
+  success: 'text-success-fg',
+  warning: 'text-warning-fg',
+  danger: 'text-danger-fg',
+}
+
+function inferDirection(delta: number): DeltaDirection {
   if (delta > 0) return 'up'
   if (delta < 0) return 'down'
   return 'flat'
 }
 
 // The arrow and colour carry direction visually; this is what a screen reader hears
-// before the unsigned percentage.
-const DELTA_DIRECTION_LABEL: Record<'up' | 'down' | 'flat', string> = {
+// before the unsigned percentage (or the deltaLabel). It names the direction, never whether it is good.
+const DELTA_DIRECTION_LABEL: Record<DeltaDirection, string> = {
   up: 'up',
   down: 'down',
   flat: 'no change',
 }
 
-const DeltaArrow = ({ direction }: { direction: 'up' | 'down' | 'flat' }) => {
+function deltaColour(direction: DeltaDirection, deltaGood: 'up' | 'down'): string {
+  if (direction === 'flat') return 'text-text-muted'
+  return direction === deltaGood ? 'text-success-fg' : 'text-danger-fg'
+}
+
+// The arrow takes its colour from the delta text around it.
+const DeltaArrow = ({ direction }: { direction: DeltaDirection }) => {
   if (direction === 'flat') return <span className="inline-block w-3 text-center" aria-hidden="true">-</span>
 
   return (
     <svg
-      className={cn('inline-block w-3 h-3', direction === 'up' ? 'text-success-fg' : 'text-danger-fg')}
+      className="inline-block w-3 h-3"
       viewBox="0 0 12 12"
       fill="currentColor"
       aria-hidden="true"
@@ -57,8 +73,7 @@ const DeltaArrow = ({ direction }: { direction: 'up' | 'down' | 'flat' }) => {
   )
 }
 
-export function Stat({ label, value, delta, deltaDirection, icon, hint, description, variant: _variant, change: _change, changeType: _changeType, loading: _loading, color: _color, size: _size, className }: StatProps) {
-  const resolvedHint = hint ?? description
+export function Stat({ label, value, delta, deltaDirection, deltaGood = 'up', deltaLabel, tone = 'default', icon, hint, className }: StatProps): React.JSX.Element {
   const direction = deltaDirection ?? (delta !== undefined ? inferDirection(delta) : undefined)
 
   return (
@@ -73,27 +88,21 @@ export function Stat({ label, value, delta, deltaDirection, icon, hint, descript
         {label}
       </span>
 
-      <span className="text-2xl font-bold text-text tabular-nums">
+      {/* One step smaller on a phone, where StatGrid puts two figures side by side. */}
+      <span className={cn('break-words text-xl font-bold tabular-nums sm:text-2xl', TONE_CLASSES[tone])}>
         {value}
       </span>
 
-      {delta !== undefined && direction && (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 text-xs font-medium',
-            direction === 'up' && 'text-success-fg',
-            direction === 'down' && 'text-danger-fg',
-            direction === 'flat' && 'text-text-muted'
-          )}
-        >
+      {(delta !== undefined || deltaLabel !== undefined) && direction && (
+        <span className={cn('inline-flex items-center gap-1 text-xs font-medium', deltaColour(direction, deltaGood))}>
           <span className="sr-only">{`${DELTA_DIRECTION_LABEL[direction]} `}</span>
           <DeltaArrow direction={direction} />
-          {Math.abs(delta)}%
+          {deltaLabel ?? `${Math.abs(delta ?? 0)}%`}
         </span>
       )}
 
-      {resolvedHint && (
-        <span className="text-xs text-text-soft mt-0.5">{resolvedHint}</span>
+      {hint && (
+        <span className="text-xs text-text-soft mt-0.5">{hint}</span>
       )}
     </div>
   )

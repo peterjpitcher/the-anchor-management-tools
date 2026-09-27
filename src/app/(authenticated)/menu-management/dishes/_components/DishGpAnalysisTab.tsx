@@ -1,10 +1,23 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
 import { computeIngredientCost, computeRecipeCost } from './DishCompositionTab';
 import type { DishIngredientFormRow, DishRecipeFormRow } from './CompositionRow';
 import type { IngredientSummary, RecipeSummary, DishListItem } from './DishExpandedRow';
+import {
+  Alert,
+  Card,
+  Icon,
+  Section,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds';
+import { cn } from '@/lib/utils';
+import { GP_TARGET_UI, allergenRemovableRowClass, gpTargetState } from '../../_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -17,7 +30,7 @@ interface DishGpAnalysisTabProps {
   recipeMap: Map<string, RecipeSummary>;
   sellingPrice: number;
   targetGpPct: number;
-  /** The full dish object — needed for allergen data on saved dishes */
+  /** The full dish object, needed for allergen data on saved dishes */
   dish?: DishListItem | null;
 }
 
@@ -59,7 +72,7 @@ interface AllergenEntry {
   removalNote: string;
 }
 
-/** Cartesian product of arrays — pick one from each */
+/** Cartesian product of arrays: pick one from each */
 function cartesianProduct<T>(arrays: T[][]): T[][] {
   if (arrays.length === 0) return [[]];
   return arrays.reduce<T[][]>(
@@ -141,7 +154,7 @@ export function DishGpAnalysisTab({
     // 7. Sort by portion cost descending (worst GP first)
     results.sort((a, b) => b.portionCost - a.portionCost);
 
-    // 8. Explosion guard — trim to worst 20 + best 20
+    // 8. Explosion guard: trim to worst 20 + best 20
     let trimmed = false;
     if (exploded) {
       const worst = results.slice(0, EDGE_COUNT);
@@ -229,7 +242,7 @@ export function DishGpAnalysisTab({
       upgradeRows.push({ name: u.name, groupName: '', extraCharge: u.price, ingredientCost: u.cost, gpPct: gp });
     }
 
-    // "With all upgrades" — max price per group + all ungrouped
+    // "With all upgrades": max price per group + all ungrouped
     let allUpgradeRevenue = sellingPrice;
     let allUpgradeCost = baseCost;
 
@@ -284,7 +297,7 @@ export function DishGpAnalysisTab({
     // Build a map: allergen -> list of components with inclusion type
     const allergenMap = new Map<string, AllergenComponent[]>();
 
-    // Ingredient allergens — only non-upgrade items
+    // Ingredient allergens: only non-upgrade items
     for (const row of formIngredients) {
       if (!row.ingredient_id) continue;
       const inclusionType = row.inclusion_type || 'included';
@@ -301,7 +314,7 @@ export function DishGpAnalysisTab({
       }
     }
 
-    // Recipe allergens — only non-upgrade items
+    // Recipe allergens: only non-upgrade items
     for (const row of formRecipes) {
       if (!row.recipe_id) continue;
       const inclusionType = row.inclusion_type || 'included';
@@ -357,7 +370,7 @@ export function DishGpAnalysisTab({
 
       for (const comp of components) {
         if (comp.inclusionType === 'removable') {
-          // Fine — can be removed
+          // Fine: can be removed
           continue;
         } else if (comp.inclusionType === 'choice') {
           // Check if there's an alternative in the group without this allergen
@@ -378,7 +391,7 @@ export function DishGpAnalysisTab({
             nonRemovableComponents.push(comp.name);
           }
         } else {
-          // 'included' — cannot be removed
+          // 'included': cannot be removed
           removable = false;
           nonRemovableComponents.push(comp.name);
         }
@@ -386,14 +399,14 @@ export function DishGpAnalysisTab({
 
       if (!removable && nonRemovableComponents.length > 0) {
         removalNote = `${allergen} in ${nonRemovableComponents.join(', ')} cannot be removed`;
-        notModifiable.push({ allergen, reason: `${nonRemovableComponents.join(', ')} \u2014 included` });
+        notModifiable.push({ allergen, reason: `${nonRemovableComponents.join(', ')}: included` });
       } else if (removable) {
         const removableNames = components
           .filter((c) => c.inclusionType === 'removable')
           .map((c) => c.name);
         removalNote = removableNames.length > 0
-          ? `Yes \u2014 remove ${removableNames.join(', ')}`
-          : 'Yes \u2014 choose alternative';
+          ? `Yes, remove ${removableNames.join(', ')}`
+          : 'Yes, choose alternative';
         modifiableFor.push(`${allergen}-free`);
       }
 
@@ -422,140 +435,127 @@ export function DishGpAnalysisTab({
   return (
     <div className="space-y-6">
       {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
+        <Alert tone="warning">
           <span className="font-semibold">Cost data incomplete.</span>{' '}
           Missing costs: {missingCostItems.join(', ')}. GP percentages and target prices are unreliable until these items are priced.
-        </div>
+        </Alert>
       )}
 
       {/* Section 1: Combinations */}
-      {!hasCombinations ? (
-        <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
-          No option groups configured — all ingredients are fixed. GP analysis only applies when
-          option groups create multiple possible combinations.
-        </div>
-      ) : (
-        <CombinationsSection
-          analysis={analysis}
-          targetGpPct={targetGpPct}
-        />
-      )}
+      <Section title="Combinations">
+        {!hasCombinations ? (
+          <Alert tone="info" role="status">
+            No option groups configured: all ingredients are fixed. GP analysis only applies when
+            option groups create multiple possible combinations.
+          </Alert>
+        ) : (
+          <CombinationsSection
+            analysis={analysis}
+            targetGpPct={targetGpPct}
+          />
+        )}
+      </Section>
 
       {/* Section 2: Upgrade Impact */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
-          Upgrade Impact
-        </h3>
+      <Section title="Upgrade Impact">
         {!upgradeAnalysis.hasUpgrades ? (
-          <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
+          <Alert tone="info" role="status">
             No upgrades configured.
-          </div>
+          </Alert>
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-text">
               Base GP%: <span className="font-semibold">{(upgradeAnalysis.baseGpPct * 100).toFixed(1)}%</span>
             </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                    <th scope="col" className="px-3 py-2">Upgrade</th>
-                    <th scope="col" className="px-3 py-2">Group</th>
-                    <th scope="col" className="px-3 py-2 text-right">Extra Charge</th>
-                    <th scope="col" className="px-3 py-2 text-right">Ingredient Cost</th>
-                    <th scope="col" className="px-3 py-2 text-right">GP%</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+            <Card padding="none">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Upgrade</TableHead>
+                    <TableHead>Group</TableHead>
+                    <TableHead align="right">Extra Charge</TableHead>
+                    <TableHead align="right">Ingredient Cost</TableHead>
+                    <TableHead align="right">GP%</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {upgradeAnalysis.upgradeRows.map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-3 py-2 text-text">{row.name}</td>
-                      <td className="px-3 py-2 text-text-muted">{row.groupName || '\u2014'}</td>
-                      <td className="px-3 py-2 text-right font-medium text-text">
+                    <TableRow key={idx}>
+                      <TableCell className="whitespace-normal">{row.name}</TableCell>
+                      <TableCell className="text-text-muted">{row.groupName || '\u2014'}</TableCell>
+                      <TableCell align="right" className="font-medium">
                         +£{row.extraCharge.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-text">
+                      </TableCell>
+                      <TableCell align="right" className="font-medium">
                         £{row.ingredientCost.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-text">
+                      </TableCell>
+                      <TableCell align="right" className="font-medium">
                         {(row.gpPct * 100).toFixed(1)}%
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-border-strong bg-surface-2 font-semibold">
-                    <td className="px-3 py-2 text-text" colSpan={4}>
-                      With all upgrades
-                    </td>
-                    <td className="px-3 py-2 text-right text-text">
+                  {/* The total row: every upgrade taken at once. */}
+                  <TableRow className="bg-surface-2 font-semibold hover:bg-surface-2">
+                    <TableCell colSpan={4}>With all upgrades</TableCell>
+                    <TableCell align="right">
                       {(upgradeAnalysis.allUpgradeGpPct * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </Card>
           </div>
         )}
-      </div>
+      </Section>
 
       {/* Section 3: Allergen Summary */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
-          Allergen Summary
-        </h3>
+      <Section title="Allergen Summary">
         {!allergenAnalysis ? (
-          <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
+          <Alert tone="info" role="status">
             Save the dish first to see allergen analysis.
-          </div>
+          </Alert>
         ) : !allergenAnalysis.hasAllergens ? (
-          <div className="rounded-lg border border-success-border bg-success-soft p-4 text-sm text-success-fg">
+          <Alert tone="success" role="status">
             No allergens identified.
-          </div>
+          </Alert>
         ) : (
           <div className="space-y-3">
             {/* Modifiability summary */}
             {allergenAnalysis.modifiableFor.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-success-border bg-success-soft px-4 py-3 text-sm text-success-fg">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                <span>
-                  This dish can be modified for: <span className="font-semibold">{allergenAnalysis.modifiableFor.join(', ')}</span>
-                </span>
-              </div>
+              <Alert tone="success" role="status" icon={<Icon name="checkCircle" size={16} className="text-success" />}>
+                This dish can be modified for: <span className="font-semibold">{allergenAnalysis.modifiableFor.join(', ')}</span>
+              </Alert>
             )}
             {allergenAnalysis.notModifiable.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                <span>
-                  Cannot be modified for:{' '}
-                  {allergenAnalysis.notModifiable.map((m, i) => (
-                    <span key={m.allergen}>
-                      {i > 0 ? ', ' : ''}
-                      <span className="font-semibold">{m.allergen}-free</span>{' '}
-                      <span className="text-warning-fg">({m.reason})</span>
-                    </span>
-                  ))}
-                </span>
-              </div>
+              <Alert tone="warning" role="status" icon={<Icon name="alertTriangle" size={16} className="text-warning" />}>
+                Cannot be modified for:{' '}
+                {allergenAnalysis.notModifiable.map((m, i) => (
+                  <span key={m.allergen}>
+                    {i > 0 ? ', ' : ''}
+                    <span className="font-semibold">{m.allergen}-free</span>{' '}
+                    <span>({m.reason})</span>
+                  </span>
+                ))}
+              </Alert>
             )}
 
             {/* Allergen detail table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                    <th scope="col" className="px-3 py-2">Allergen</th>
-                    <th scope="col" className="px-3 py-2">Components</th>
-                    <th scope="col" className="px-3 py-2">Removable?</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+            <Card padding="none">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Allergen</TableHead>
+                    <TableHead>Components</TableHead>
+                    <TableHead>Removable?</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {allergenAnalysis.entries.map((entry) => (
-                    <tr key={entry.allergen} className={entry.removable ? '' : 'bg-warning-soft'}>
-                      <td className="px-3 py-2 font-medium text-text capitalize">
+                    <TableRow key={entry.allergen} className={allergenRemovableRowClass(entry.removable)}>
+                      <TableCell className="font-medium capitalize">
                         {entry.allergen}
-                      </td>
-                      <td className="px-3 py-2 text-text">
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
                         {entry.components.map((c, i) => (
                           <span key={i}>
                             {i > 0 ? ', ' : ''}
@@ -563,18 +563,18 @@ export function DishGpAnalysisTab({
                             <span className="text-text-muted">({c.inclusionType})</span>
                           </span>
                         ))}
-                      </td>
-                      <td className="px-3 py-2 text-text">
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
                         {entry.removalNote || (entry.removable ? 'Yes' : 'No')}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+            </Card>
           </div>
         )}
-      </div>
+      </Section>
     </div>
   );
 }
@@ -606,7 +606,7 @@ function CombinationsSection({
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
+      <Card variant="secondary">
         <p className="text-sm text-text">
           <span className="font-semibold">{totalCombinations}</span> combination{totalCombinations !== 1 ? 's' : ''}
           {' '}across {groupNames.length} option group{groupNames.length !== 1 ? 's' : ''}
@@ -615,78 +615,68 @@ function CombinationsSection({
         <p className="mt-1 text-sm">
           {belowCount > 0 ? (
             <>
-              <span className="font-semibold text-danger">{belowCount}</span>{' '}
-              <span className="text-danger">below target</span>
+              <span className={cn('font-semibold', GP_TARGET_UI.below.text)}>{belowCount}</span>{' '}
+              <span className={GP_TARGET_UI.below.text}>below target</span>
             </>
           ) : null}
           {belowCount > 0 && okCount > 0 ? ', ' : null}
           {okCount > 0 ? (
             <>
-              <span className="font-semibold text-success-fg">{okCount}</span>{' '}
-              <span className="text-success-fg">OK</span>
+              <span className={cn('font-semibold', GP_TARGET_UI.ok.text)}>{okCount}</span>{' '}
+              <span className={GP_TARGET_UI.ok.text}>OK</span>
             </>
           ) : null}
         </p>
-      </div>
+      </Card>
 
       {/* Explosion warning */}
       {trimmed && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <span>
-            {totalCombinations} combinations detected — showing worst {EDGE_COUNT} and best {EDGE_COUNT} only.
-          </span>
-        </div>
+        <Alert tone="warning" role="status" icon={<Icon name="alertTriangle" size={16} className="text-warning" />}>
+          {totalCombinations} combinations detected, showing worst {EDGE_COUNT} and best {EDGE_COUNT} only.
+        </Alert>
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-              <th scope="col" className="px-3 py-2">Combination</th>
-              <th scope="col" className="px-3 py-2 text-right">Portion Cost</th>
-              <th scope="col" className="px-3 py-2 text-right">GP%</th>
-              <th scope="col" className="px-3 py-2">Status</th>
-              <th scope="col" className="px-3 py-2 text-right">Target Price</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {results.map((row, idx) => (
-              <tr
-                key={idx}
-                className={row.belowTarget ? 'bg-danger-soft' : ''}
-              >
-                <td className="px-3 py-2 text-text">{row.label}</td>
-                <td className="px-3 py-2 text-right font-medium text-text">
-                  £{row.portionCost.toFixed(2)}
-                </td>
-                <td className="px-3 py-2 text-right font-medium text-text">
-                  {(row.gpPct * 100).toFixed(1)}%
-                </td>
-                <td className="px-3 py-2">
-                  {row.belowTarget ? (
-                    <span className="inline-flex items-center gap-1 text-danger">
-                      <ExclamationTriangleIcon className="h-4 w-4" />
-                      Below target
+      <Card padding="none">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Combination</TableHead>
+              <TableHead align="right">Portion Cost</TableHead>
+              <TableHead align="right">GP%</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead align="right">Target Price</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {results.map((row, idx) => {
+              const gpUi = GP_TARGET_UI[gpTargetState(row.belowTarget)];
+              return (
+                <TableRow key={idx} className={gpUi.row}>
+                  <TableCell className="whitespace-normal">{row.label}</TableCell>
+                  <TableCell align="right" className="font-medium">
+                    £{row.portionCost.toFixed(2)}
+                  </TableCell>
+                  <TableCell align="right" className="font-medium">
+                    {(row.gpPct * 100).toFixed(1)}%
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn('inline-flex items-center gap-1', gpUi.text)}>
+                      <Icon name={gpUi.icon} size={16} className={gpUi.iconClass} />
+                      {gpUi.label}
                     </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-success-fg">
-                      <CheckCircleIcon className="h-4 w-4" />
-                      OK
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right text-text-muted">
-                  {row.targetPrice !== null
-                    ? `Sell at £${row.targetPrice.toFixed(2)} for ${Math.round(targetGpPct * 100)}% GP`
-                    : '\u2014'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  </TableCell>
+                  <TableCell align="right" className="text-text-muted">
+                    {row.targetPrice !== null
+                      ? `Sell at £${row.targetPrice.toFixed(2)} for ${Math.round(targetGpPct * 100)}% GP`
+                      : '\u2014'}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

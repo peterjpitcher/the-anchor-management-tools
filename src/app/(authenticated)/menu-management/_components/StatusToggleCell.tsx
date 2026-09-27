@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Spinner, Badge } from '@/ds';
+import { Spinner, Badge, Button } from '@/ds';
+import { menuActiveLabel, menuActiveTone } from '../_shared/status-ui';
 
 interface StatusToggleCellProps {
   isActive: boolean;
@@ -62,18 +63,21 @@ export function StatusToggleCell({
 
   return (
     <div className="flex flex-col gap-1">
-      <button
+      {/* A compact ghost button: the badge is the control, so the cell stays one row high. */}
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         onClick={() => void handleToggle()}
         disabled={isSaving}
-        className="inline-flex items-center gap-2 rounded-sm transition-colors hover:bg-surface-hover px-1 py-0.5 disabled:opacity-50 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
+        iconRight={isSaving ? <Spinner size="sm" /> : undefined}
+        className="h-auto justify-start gap-2 self-start px-1 py-0.5 font-normal"
         aria-label={`Toggle ${entityName} ${optimisticActive ? 'active' : 'inactive'}`}
       >
-        <Badge tone={optimisticActive ? 'success' : 'neutral'}>{optimisticActive ? 'Active' : 'Inactive'}</Badge>
-        {isSaving && <Spinner size="sm" />}
-      </button>
+        <Badge tone={menuActiveTone(optimisticActive)}>{menuActiveLabel(optimisticActive)}</Badge>
+      </Button>
       {error && (
-        <span className="text-xs text-danger">{error}</span>
+        <span className="text-xs text-danger-fg">{error}</span>
       )}
     </div>
   );

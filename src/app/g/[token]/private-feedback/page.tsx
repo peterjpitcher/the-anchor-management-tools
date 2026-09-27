@@ -1,9 +1,9 @@
 import { headers } from 'next/headers'
-import { Check } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, normalizeGuestFirstName } from '@/lib/guest/names'
 import { getPrivateBookingFeedbackPreviewByRawToken } from '@/lib/private-bookings/feedback'
+import { cn } from '@/lib/utils'
 import {
   GuestAlert,
   GuestBlockedState,
@@ -11,17 +11,16 @@ import {
   GuestCard,
   GuestField,
   guestFieldControlProps,
+  GuestIntro,
+  GuestSelect,
   GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
+  GuestStatusMark,
+  GuestTextarea,
+  GUEST_BANNER_TONE,
+  GUEST_MESSAGE_CLASS,
   GUEST_SUNK_BOX_CLASS,
-  GUEST_TEXTAREA_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { cn } from '@/lib/utils'
 
 /** Names the flow in the intro block. Carries no facts. */
 // Static and non-personal on purpose: no token, customer name or booking reference may reach
@@ -29,9 +28,6 @@ import { cn } from '@/lib/utils'
 export const metadata = { title: 'Your feedback - The Anchor' }
 
 const KICKER = 'Private hire'
-
-/** The body column is wider here than on the payment pages, as it is today. */
-const BODY_WIDTH_CLASS = 'max-w-2xl'
 
 function mapBlockedReason(reason?: string): string {
   switch (reason) {
@@ -110,7 +106,7 @@ function SummaryRow({
  */
 function BlockedPanel({ reason }: { reason: string | undefined }): React.JSX.Element {
   return (
-    <GuestShell maxWidthClassName={BODY_WIDTH_CLASS}>
+    <GuestShell width="wide">
       <GuestBlockedState
         kicker={KICKER}
         heading="Feedback unavailable"
@@ -153,31 +149,22 @@ export default async function PrivateBookingFeedbackPage({
 
   if (preview.state === 'submitted') {
     return (
-      <GuestShell maxWidthClassName={BODY_WIDTH_CLASS}>
-        <section className="flex flex-col gap-[18px]">
-          <div className={GUEST_INTRO_CLASS}>
-            <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-            <h1 className={GUEST_H1_CLASS}>Thanks for your feedback</h1>
-            <p className={GUEST_LEAD_CLASS}>
-              {formatGuestGreeting(preview.customer_first_name || preview.customer_name, 'your feedback has been received.')}
+      <GuestShell width="wide">
+        <GuestIntro
+          kicker={KICKER}
+          title="Thanks for your feedback"
+          lead={formatGuestGreeting(preview.customer_first_name || preview.customer_name, 'your feedback has been received.')}
+        />
+
+        <GuestCard variant="accent">
+          <div className="flex flex-col gap-guest-md">
+            <GuestStatusMark tone="success" />
+
+            <p className={GUEST_MESSAGE_CLASS}>
+              We have received your feedback for booking {preview.private_booking_id || ''}.
             </p>
           </div>
-
-          <GuestCard variant="accent">
-            <div className="flex flex-col gap-[14px]">
-              <span
-                aria-hidden="true"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12]"
-              >
-                <Check className="h-4 w-4 text-anchor-success" />
-              </span>
-
-              <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">
-                We have received your feedback for booking {preview.private_booking_id || ''}.
-              </p>
-            </div>
-          </GuestCard>
-        </section>
+        </GuestCard>
       </GuestShell>
     )
   }
@@ -189,100 +176,76 @@ export default async function PrivateBookingFeedbackPage({
   const customerFirstName = normalizeGuestFirstName(preview.customer_first_name || preview.customer_name)
 
   return (
-    <GuestShell maxWidthClassName={BODY_WIDTH_CLASS}>
-      <section className="flex flex-col gap-[18px]">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>Private booking feedback</h1>
-          <p className={GUEST_LEAD_CLASS}>
-            {formatGuestGreeting(customerFirstName, 'your booking details are below. Please share your feedback when you are ready.')}
-          </p>
+    <GuestShell width="wide">
+      <GuestIntro
+        kicker={KICKER}
+        title="Private booking feedback"
+        lead={formatGuestGreeting(customerFirstName, 'your booking details are below. Please share your feedback when you are ready.')}
+      />
+
+      {banner && <GuestAlert tone={GUEST_BANNER_TONE[banner.tone]}>{banner.text}</GuestAlert>}
+
+      <div className={GUEST_SUNK_BOX_CLASS}>
+        <div className="flex flex-col gap-2">
+          <SummaryRow label="Booking" value={preview.private_booking_id} mono />
+          <SummaryRow
+            label="Event"
+            value={formatEventDate(preview.event_date, preview.start_time)}
+          />
+          {preview.guest_count ? (
+            <SummaryRow label="Guests" value={preview.guest_count} />
+          ) : null}
         </div>
+      </div>
 
-        {banner && (
-          <GuestAlert tone={banner.tone === 'green' ? 'success' : 'problem'}>
-            {banner.text}
-          </GuestAlert>
-        )}
-
-        <div className={GUEST_SUNK_BOX_CLASS}>
-          <div className="flex flex-col gap-[9px]">
-            <SummaryRow label="Booking" value={preview.private_booking_id} mono />
-            <SummaryRow
-              label="Event"
-              value={formatEventDate(preview.event_date, preview.start_time)}
-            />
-            {preview.guest_count ? (
-              <SummaryRow label="Guests" value={preview.guest_count} />
-            ) : null}
-          </div>
-        </div>
-
-        <GuestCard variant="accent">
-          {/*
-            Server-rendered POST, deliberately. Feedback has to submit with no
-            JavaScript, so this stays a plain form.
-          */}
-          <form
-            method="post"
-            action={`/g/${token}/private-feedback/action`}
-            className="flex flex-col gap-4"
-          >
-            <GuestField id="rating_overall" label="Overall rating" required>
-              <select
-                {...guestFieldControlProps({ id: 'rating_overall', required: true })}
-                name="rating_overall"
-                className={GUEST_INPUT_CLASS}
-              >
-                {renderScoreOptions()}
-              </select>
-            </GuestField>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <GuestField id="rating_food" label="Food rating (optional)">
-                <select
-                  {...guestFieldControlProps({ id: 'rating_food' })}
-                  name="rating_food"
-                  className={GUEST_INPUT_CLASS}
-                >
-                  {renderScoreOptions()}
-                </select>
-              </GuestField>
-
-              <GuestField id="rating_service" label="Service rating (optional)">
-                <select
-                  {...guestFieldControlProps({ id: 'rating_service' })}
-                  name="rating_service"
-                  className={GUEST_INPUT_CLASS}
-                >
-                  {renderScoreOptions()}
-                </select>
-              </GuestField>
-            </div>
-
-            <GuestField id="comments" label="Comments (optional)">
-              <textarea
-                {...guestFieldControlProps({ id: 'comments' })}
-                name="comments"
-                rows={5}
-                maxLength={2000}
-                className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS, 'min-h-[120px]')}
-                placeholder="Tell us anything you liked or what we can improve."
-              />
-            </GuestField>
-
-            <GuestButton
-              as="button"
-              type="submit"
-              variant="primary"
-              size="md"
-              className="w-full sm:w-auto"
+      <GuestCard variant="accent">
+        {/*
+          Server-rendered POST, deliberately. Feedback has to submit with no
+          JavaScript, so this stays a plain form.
+        */}
+        <form
+          method="post"
+          action={`/g/${token}/private-feedback/action`}
+          className="flex flex-col gap-guest-lg"
+        >
+          <GuestField id="rating_overall" label="Overall rating" required>
+            <GuestSelect
+              {...guestFieldControlProps({ id: 'rating_overall', required: true })}
+              name="rating_overall"
             >
-              Submit feedback
-            </GuestButton>
-          </form>
-        </GuestCard>
-      </section>
+              {renderScoreOptions()}
+            </GuestSelect>
+          </GuestField>
+
+          <div className="grid gap-guest-lg md:grid-cols-2">
+            <GuestField id="rating_food" label="Food rating (optional)">
+              <GuestSelect {...guestFieldControlProps({ id: 'rating_food' })} name="rating_food">
+                {renderScoreOptions()}
+              </GuestSelect>
+            </GuestField>
+
+            <GuestField id="rating_service" label="Service rating (optional)">
+              <GuestSelect {...guestFieldControlProps({ id: 'rating_service' })} name="rating_service">
+                {renderScoreOptions()}
+              </GuestSelect>
+            </GuestField>
+          </div>
+
+          <GuestField id="comments" label="Comments (optional)">
+            <GuestTextarea
+              {...guestFieldControlProps({ id: 'comments' })}
+              name="comments"
+              rows={5}
+              maxLength={2000}
+              placeholder="Tell us anything you liked or what we can improve."
+            />
+          </GuestField>
+
+          <GuestButton as="button" type="submit" variant="primary" size="md" fullWidth="mobile">
+            Submit feedback
+          </GuestButton>
+        </form>
+      </GuestCard>
     </GuestShell>
   )
 }

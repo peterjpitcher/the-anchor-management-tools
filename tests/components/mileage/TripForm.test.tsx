@@ -63,7 +63,7 @@ describe('TripForm', () => {
 
   it('asks who drove before saving a new trip', async () => {
     renderForm(null)
-    await userEvent.click(screen.getByRole('button', { name: 'Save Trip' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Create Trip' }))
     expect(await screen.findByText('Choose who drove.')).toBeInTheDocument()
     expect(createTrip).not.toHaveBeenCalled()
   })
@@ -107,9 +107,9 @@ describe('TripForm', () => {
     await user.type(screen.getByLabelText('Miles from The Anchor to Shop One'), '1.7')
     await user.type(screen.getByLabelText('Return miles'), '1.7')
 
-    await user.click(screen.getByRole('button', { name: 'Save Trip' }))
+    await user.click(screen.getByRole('button', { name: 'Create Trip' }))
     expect(await screen.findByText('Failed to save the trip. Nothing was changed. Try again.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Save Trip' }))
+    await user.click(screen.getByRole('button', { name: 'Create Trip' }))
 
     await waitFor(() => expect(createTrip).toHaveBeenCalledTimes(2))
     const [first] = createTrip.mock.calls[0] as [{ requestId: string; driverId: string; description: string }]

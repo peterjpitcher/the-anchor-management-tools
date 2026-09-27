@@ -1,10 +1,9 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
-import { useFormStatus } from 'react-dom'
 import { updateEmergencyContact } from '@/app/actions/employeeActions'
 import type { EmployeeEmergencyContact } from '@/types/database'
-import { Button, Input, Modal, Select, Textarea } from '@/ds'
+import { Alert, Button, Field, Input, Modal, Select, Textarea } from '@/ds'
 
 interface EditEmergencyContactModalProps {
   contact: EmployeeEmergencyContact
@@ -13,22 +12,14 @@ interface EditEmergencyContactModalProps {
   onSuccess?: () => void
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" variant="primary" disabled={pending}>
-      {pending ? 'Saving…' : 'Save Changes'}
-    </Button>
-  )
-}
-
 export default function EditEmergencyContactModal({
   contact,
   isOpen,
   onClose,
   onSuccess,
 }: EditEmergencyContactModalProps) {
-  const [state, formAction] = useActionState(updateEmergencyContact, null)
+  const [state, formAction, pending] = useActionState(updateEmergencyContact, null)
+  const formId = `edit-emergency-contact-${contact.id}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -48,31 +39,44 @@ export default function EditEmergencyContactModal({
     { name: 'address', label: 'Address', type: 'textarea', defaultValue: contact.address ?? '' },
   ]
 
-  // The actions stay inside the form rather than in the Modal footer: SubmitButton reads the
-  // form's pending state, which only works for a button rendered within the form.
+  // The actions sit in the Modal footer; the submit button reaches the form through form=.
   return (
-    <Modal open={isOpen} onClose={onClose} title="Edit Emergency Contact">
-      <form action={formAction} className="space-y-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Edit Contact"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" loading={pending}>
+            Save Changes
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} action={formAction} className="space-y-4">
         <input type="hidden" name="contact_id" value={contact.id} />
         <input type="hidden" name="employee_id" value={contact.employee_id} />
-        {formFields.map((field) => (
-          <div key={field.name}>
-            <label htmlFor={`edit-${field.name}`} className="block text-sm font-medium text-text">
-              {field.label} {field.required && <span className="text-danger">*</span>}
-            </label>
-            <div className="mt-1">
+        {formFields.map((field) => {
+          const error = state?.errors?.[field.name]?.join(' ') || undefined
+          return (
+            <Field key={field.name} label={field.label} required={field.required}>
               {field.type === 'textarea' ? (
                 <Textarea
                   id={`edit-${field.name}`}
                   name={field.name}
                   rows={3}
                   defaultValue={field.defaultValue}
+                  error={error}
                 />
               ) : field.type === 'select' ? (
                 <Select
                   id={`edit-${field.name}`}
                   name={field.name}
                   defaultValue={field.defaultValue}
+                  error={error}
                 >
                   {field.options?.map((option) => (
                     <option key={option} value={option}>{option}</option>
@@ -85,25 +89,17 @@ export default function EditEmergencyContactModal({
                   name={field.name}
                   required={field.required}
                   defaultValue={field.defaultValue}
+                  error={error}
                 />
               )}
-            </div>
-            {state?.errors?.[field.name] && (
-              <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
-            )}
-          </div>
-        ))}
+            </Field>
+          )
+        })}
 
         {state?.type === 'error' && !state.errors && (
-          <p className="text-sm text-danger">{state.message}</p>
+          <Alert tone="danger" size="sm">{state.message}</Alert>
         )}
 
-        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <SubmitButton />
-        </div>
       </form>
     </Modal>
   )

@@ -8,11 +8,8 @@ import HealthRecordsForm from '@/components/features/employees/HealthRecordsForm
 import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeRightToWork } from '@/types/database'
-import { displayName } from '@/lib/employees/display-name'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Tabs } from '@/ds'
-import { LinkButton } from '@/ds'
+import { PageLayout, Tabs } from '@/ds'
+import { employeePageTitle } from '../../_shared/employee-title'
 
 interface EmployeeEditClientProps {
   employee: Employee
@@ -46,42 +43,46 @@ export default function EmployeeEditClient({
     router.replace(`/employees/${employee.employee_id}/edit?tab=${tab}`, { scroll: false })
   }
 
+  // Every form ends with its own Cancel, back to the employee.
+  const employeeHref = `/employees/${employee.employee_id}`
+
   const tabs = [
     {
-      key: 'personal',
+      id: 'personal',
       label: 'Personal Details',
       content: (
         <EmployeeForm
           employee={employee}
           formAction={updateEmployee}
           initialFormState={null}
-          showTitle={false}
-          showCancel={false}
+          cancelHref={employeeHref}
         />
       )
     },
     {
-      key: 'financial',
+      id: 'financial',
       label: 'Financial Details',
       content: (
         <FinancialDetailsForm
           employeeId={employee.employee_id}
           financialDetails={financialDetails}
+          cancelHref={employeeHref}
         />
       )
     },
     {
-      key: 'health',
+      id: 'health',
       label: 'Health Records',
       content: (
         <HealthRecordsForm
           employeeId={employee.employee_id}
           healthRecord={healthRecord}
+          cancelHref={employeeHref}
         />
       )
     },
     {
-      key: 'right_to_work',
+      id: 'right_to_work',
       label: 'Right to Work',
       content: (
         <RightToWorkTab
@@ -89,6 +90,7 @@ export default function EmployeeEditClient({
           rightToWork={rightToWork}
           canEdit={true}
           canViewDocuments={canViewDocuments}
+          cancelHref={employeeHref}
         />
       )
     }
@@ -96,21 +98,14 @@ export default function EmployeeEditClient({
 
   return (
     <PageLayout
-      title={`Edit: ${displayName(employee, employee.email_address)}`}
-      subtitle="Update employee details"
-      backButton={{
-        label: 'Back to Employee',
-        href: `/employees/${employee.employee_id}`
-      }}
-      headerActions={
-        <LinkButton href={`/employees/${employee.employee_id}`} variant="secondary" size="sm">
-          Cancel
-        </LinkButton>
-      }
+      title="Edit Employee"
+      // The employee's name, as their page is titled.
+      subtitle={employeePageTitle(employee)}
+      // Back to the employee's page, named as that page is titled.
+      backButton={{ label: `Back to ${employeePageTitle(employee)}`, href: employeeHref }}
+      containerSize="md"
     >
-      <Card id="personal">
-        <Tabs items={tabs} activeKey={activeTab} onChange={handleTabChange} />
-      </Card>
+      <Tabs aria-label="Employee details" tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
     </PageLayout>
   )
 }

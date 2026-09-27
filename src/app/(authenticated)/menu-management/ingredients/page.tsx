@@ -2,23 +2,22 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Section } from '@/ds';
+import { PageLayout, Icon } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
-import { Select } from '@/ds';
 import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
-import { FilterPanel, type FilterDefinition } from '@/ds';
-import { Pagination } from '@/ds';
-import { EmptyState } from '@/ds';
+import { TablePagination } from '@/ds';
+import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
+import { Dropdown, DropdownItem, DropdownLabel } from '@/ds';
 import { toast } from '@/ds';
-import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
-import { ArrowDownTrayIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from '../_components/useTablePipeline';
+import { MenuTableFilters, type MenuFilterDefinition } from '../_components/MenuTableFilters';
+import { MENU_NAV, MENU_TITLE } from '../_shared/nav';
+import { menuActiveLabel, menuActiveTone, purchaseDepartmentTone } from '../_shared/status-ui';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
 import { IngredientExpandedRow, type Ingredient } from './_components/IngredientExpandedRow';
@@ -82,6 +81,48 @@ function formatRoundedCost(value: number | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+type IngredientRow = Record<string, unknown>;
+
+function asIngredient(row: IngredientRow): Ingredient {
+  return row as unknown as Ingredient;
+}
+
+function getIngredientRowKey(row: IngredientRow): string {
+  return asIngredient(row).id;
+}
+
+/**
+ * Column sorts the pipeline applies to the whole filtered list before it is cut into pages (the
+ * table is sorted under control, so a header click never sorts just the 25 rows on screen). Name
+ * compares its own field; the other columns are worked out from the ingredient.
+ */
+const INGREDIENT_SORT_FNS: Record<string, (a: IngredientRow, b: IngredientRow) => number> = {
+  supplier: (a, b) => (asIngredient(a).supplier_name || '').localeCompare(asIngredient(b).supplier_name || ''),
+  purchase_department: (a, b) =>
+    getMenuPurchaseDepartmentLabel(asIngredient(a).purchase_department).localeCompare(
+      getMenuPurchaseDepartmentLabel(asIngredient(b).purchase_department)
+    ),
+  costs: (a, b) => {
+    const ia = asIngredient(a);
+    const ib = asIngredient(b);
+    return Number(ia.latest_pack_cost ?? ia.pack_cost) - Number(ib.latest_pack_cost ?? ib.pack_cost);
+  },
+  // An ingredient with no portion cost sorts as the cheapest.
+  portionCost: (a, b) =>
+    (calculatePortionCost(asIngredient(a)) ?? -1) - (calculatePortionCost(asIngredient(b)) ?? -1),
+  usage: (a, b) => asIngredient(a).dishes.length - asIngredient(b).dishes.length,
+  // Active ingredients first.
+  status: (a, b) => {
+    const activeA = asIngredient(a).is_active;
+    const activeB = asIngredient(b).is_active;
+    return activeA === activeB ? 0 : activeA ? -1 : 1;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Filter definitions
 // ---------------------------------------------------------------------------
 
@@ -103,8 +144,8 @@ const PURCHASE_DEPARTMENT_OPTIONS = MENU_PURCHASE_DEPARTMENTS.map((value) => ({
   label: MENU_PURCHASE_DEPARTMENT_LABELS[value],
 }));
 
-const ALLERGEN_REPORT_DEPARTMENT_OPTIONS = [
-  { value: 'all', label: 'All departments' },
+const ALLERGEN_REPORT_DEPARTMENT_OPTIONS: Array<{ value: MenuPurchaseDepartment | 'all'; label: string }> = [
+  { value: 'all', label: 'All Departments' },
   ...PURCHASE_DEPARTMENT_OPTIONS,
 ];
 
@@ -122,9 +163,9 @@ const DIETARY_FILTER_OPTIONS = [
   { value: 'kosher', label: 'Kosher' },
 ];
 
-const filterDefinitions: FilterDefinition[] = [
-  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
-  { id: 'purchase_department', label: 'Department', type: 'select', options: PURCHASE_DEPARTMENT_OPTIONS, pinned: true },
+const filterDefinitions: MenuFilterDefinition[] = [
+  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS },
+  { id: 'purchase_department', label: 'Department', type: 'select', options: PURCHASE_DEPARTMENT_OPTIONS },
   { id: 'storage_type', label: 'Storage Type', type: 'select', options: STORAGE_TYPE_OPTIONS },
   { id: 'supplier_name', label: 'Supplier', type: 'text', placeholder: 'Filter by supplier...' },
   { id: 'allergens', label: 'Allergens', type: 'multiselect', options: ALLERGEN_FILTER_OPTIONS },
@@ -248,7 +289,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
 
   // Smart import modal
   const [showImportModal, setShowImportModal] = useState(false);
-  const [allergenReportDepartment, setAllergenReportDepartment] = useState<MenuPurchaseDepartment | 'all'>('all');
 
   const canManage = hasPermission('menu_management', 'manage');
 
@@ -318,6 +358,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
     filterFn: ingredientFilterFn,
+    sortFns: INGREDIENT_SORT_FNS,
   });
 
   // ---- Actions ----
@@ -356,10 +397,10 @@ export default function MenuIngredientsPage(): React.ReactElement {
     }
   }
 
-  function handleDownloadAllergenPdf() {
+  function handleDownloadAllergenPdf(department: MenuPurchaseDepartment | 'all') {
     const params = new URLSearchParams({ download: '1' });
-    if (allergenReportDepartment !== 'all') {
-      params.set('department', allergenReportDepartment);
+    if (department !== 'all') {
+      params.set('department', department);
     }
 
     const link = document.createElement('a');
@@ -394,11 +435,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'supplier',
         header: 'Supplier',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return (ia.supplier_name || '').localeCompare(ib.supplier_name || '');
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return ingredient.supplier_name ? (
@@ -417,17 +453,10 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'purchase_department',
         header: 'Dept',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return getMenuPurchaseDepartmentLabel(ia.purchase_department).localeCompare(
-            getMenuPurchaseDepartmentLabel(ib.purchase_department)
-          );
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return (
-            <Badge variant={ingredient.purchase_department === 'bar' ? 'primary' : 'secondary'}>
+            <Badge tone={purchaseDepartmentTone(ingredient.purchase_department)}>
               {getMenuPurchaseDepartmentLabel(ingredient.purchase_department)}
             </Badge>
           );
@@ -456,11 +485,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'costs',
         header: 'Pack Cost',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return Number(ia.latest_pack_cost ?? ia.pack_cost) - Number(ib.latest_pack_cost ?? ib.pack_cost);
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return canManage ? (
@@ -490,11 +514,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'portionCost',
         header: 'Portion Cost',
         sortable: true,
-        sortFn: (a, b) => {
-          const costA = calculatePortionCost(a as unknown as Ingredient) ?? -1;
-          const costB = calculatePortionCost(b as unknown as Ingredient) ?? -1;
-          return costA - costB;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return <span className="text-sm">{formatRoundedCost(calculatePortionCost(ingredient))}</span>;
@@ -504,14 +523,9 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'usage',
         header: 'Dishes',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return ia.dishes.length - ib.dishes.length;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
-          return <Badge variant="secondary">{ingredient.dishes.length}</Badge>;
+          return <Badge tone="neutral">{ingredient.dishes.length}</Badge>;
         },
       },
       {
@@ -535,11 +549,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'status',
         header: 'Status',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return ia.is_active === ib.is_active ? 0 : ia.is_active ? -1 : 1;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return canManage ? (
@@ -555,8 +564,8 @@ export default function MenuIngredientsPage(): React.ReactElement {
               }}
             />
           ) : (
-            <Badge tone={ingredient.is_active ? 'success' : 'neutral'}>
-              {ingredient.is_active ? 'Active' : 'Inactive'}
+            <Badge tone={menuActiveTone(ingredient.is_active)}>
+              {menuActiveLabel(ingredient.is_active)}
             </Badge>
           );
         },
@@ -602,127 +611,133 @@ export default function MenuIngredientsPage(): React.ReactElement {
 
   // ---- Header actions ----
 
+  // The allergen report is an export, so it is a header action: one button whose menu picks the
+  // department the PDF covers, rather than a picker in the header beside it.
   const headerActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select
-        value={allergenReportDepartment}
-        onChange={(event) => {
-          const value = event.target.value;
-          setAllergenReportDepartment(isMenuPurchaseDepartment(value) ? value : 'all');
-        }}
-        aria-label="Allergen report department"
-        options={ALLERGEN_REPORT_DEPARTMENT_OPTIONS}
-        className="w-40"
-      />
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={handleDownloadAllergenPdf}
-        disabled={loading}
-        leftIcon={<ArrowDownTrayIcon />}
+    <>
+      <Dropdown
+        trigger={
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={loading}
+            icon={<Icon name="download" size={14} />}
+            iconRight={<Icon name="chevronDown" size={14} />}
+          >
+            Download PDF
+          </Button>
+        }
       >
-        Download Allergens
-      </Button>
+        <DropdownLabel>Allergen Report</DropdownLabel>
+        {ALLERGEN_REPORT_DEPARTMENT_OPTIONS.map((option) => (
+          <DropdownItem key={option.value} onClick={() => handleDownloadAllergenPdf(option.value)}>
+            {option.label}
+          </DropdownItem>
+        ))}
+      </Dropdown>
+      {/* Four header actions are more than three, so Menu Target and Smart Import share one
+          "More" menu. */}
       {canManage && (
         <>
-          <Button variant="secondary" onClick={() => setShowImportModal(true)}>
-            Smart Import
-          </Button>
-          <Button onClick={openCreate}>Add Ingredient</Button>
+          <Dropdown
+            width="auto"
+            trigger={
+              <Button variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+                More
+              </Button>
+            }
+          >
+            <DropdownItem icon={<Icon name="cog" size={14} />} onClick={() => router.push('/settings/menu-target')}>
+              Menu Target
+            </DropdownItem>
+            <DropdownItem icon={<Icon name="upload" size={14} />} onClick={() => setShowImportModal(true)}>
+              Smart Import
+            </DropdownItem>
+          </Dropdown>
+          <Button variant="primary" size="sm" onClick={openCreate}>New Ingredient</Button>
         </>
       )}
-      {canManage && (
-        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
-          Menu Target
-        </LinkButton>
-      )}
-    </div>
+    </>
   );
 
   // ---- Render ----
 
+  // One set of header props for every state, so the title, tabs and actions never move.
+  const layoutProps = {
+    title: MENU_TITLE,
+    subtitle: 'Ingredients: costs, suppliers and allergen information',
+    navItems: MENU_NAV,
+    headerActions,
+  };
+
   return (
     <PageLayout
-      title="Menu Ingredients"
-      subtitle="Maintain ingredient costs, suppliers, and allergen information"
-      backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
-      navItems={[
-        { label: 'Overview', href: '/menu-management' },
-        { label: 'Dishes', href: '/menu-management/dishes' },
-        { label: 'Recipes', href: '/menu-management/recipes' },
-        { label: 'Ingredients', href: '/menu-management/ingredients' },
-      ]}
-      headerActions={headerActions}
+      {...layoutProps}
       loading={loading}
-      loadingLabel="Loading ingredients..."
+      loadingLabel="Loading ingredients"
       error={error}
       onRetry={loadIngredients}
     >
-      <Section>
-        {/* Filter panel with integrated search */}
-        <FilterPanel
-          filters={filterDefinitions}
-          values={pipeline.filters}
-          onChange={pipeline.setFilters}
-          showSearch
-          searchValue={pipeline.searchQuery}
-          onSearchChange={pipeline.setSearchQuery}
-          searchPlaceholder="Search name, supplier, allergens or dietary..."
-          layout="horizontal"
-          onReset={pipeline.clearFilters}
-        />
+      <MenuTableFilters
+        filters={filterDefinitions}
+        values={pipeline.filters}
+        onChange={pipeline.setFilters}
+        searchValue={pipeline.searchQuery}
+        onSearchChange={pipeline.setSearchQuery}
+        searchPlaceholder="Search name, supplier, allergens or dietary..."
+        searchLabel="Search ingredients"
+        onClear={pipeline.clearFilters}
+      />
 
-        {/* Data table */}
-        <Card className="mt-4">
-          {!loading && ingredients.length === 0 ? (
-            <EmptyState
-              title="No ingredients yet"
-              description="Add your first ingredient or use Smart Import to bulk-add from a supplier list."
-              icon="inbox"
-              action={
-                canManage ? (
-                  <div className="flex gap-2">
-                    <Button variant="secondary" onClick={() => setShowImportModal(true)}>
-                      Smart Import
-                    </Button>
-                    <Button onClick={openCreate}>Add Ingredient</Button>
-                  </div>
-                ) : undefined
-              }
-            />
-          ) : (
-            <DataTable
-              data={pipeline.pageData}
-              columns={columns}
-              getRowKey={(row) => (row as unknown as Ingredient).id}
-              emptyMessage={
-                pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                  ? 'No ingredients match your filters'
-                  : 'No ingredients configured yet'
-              }
-              expandable
-              renderExpandedContent={(row) => (
-                <IngredientExpandedRow ingredient={row as unknown as Ingredient} />
-              )}
-            />
-          )}
-        </Card>
-
-        {/* Pagination */}
-        {pipeline.totalPages > 1 && (
-          <Pagination
-            currentPage={pipeline.currentPage}
-            totalPages={pipeline.totalPages}
-            totalItems={pipeline.totalItems}
-            itemsPerPage={pipeline.itemsPerPage}
-            onPageChange={pipeline.setCurrentPage}
-            onItemsPerPageChange={pipeline.setItemsPerPage}
-            showItemsPerPage
-            showItemCount
-            className="mt-2"
+      <Card padding="none">
+        {!loading && ingredients.length === 0 ? (
+          <Empty
+            size="sm"
+            title="No ingredients yet"
+            description="Create your first ingredient, or use Smart Import to bulk-add from a supplier list."
+            icon="inbox"
+            action={
+              canManage ? (
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setShowImportModal(true)}>
+                    Smart Import
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={openCreate}>New Ingredient</Button>
+                </div>
+              ) : undefined
+            }
+          />
+        ) : (
+          <DataTable
+            data={pipeline.pageData}
+            columns={columns}
+            getRowKey={getIngredientRowKey}
+            sortKey={pipeline.sortKey || null}
+            sortDirection={pipeline.sortDirection}
+            onSortChange={pipeline.setSort}
+            bordered={false}
+            emptyMessage={
+              pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
+                ? 'No ingredients match these filters'
+                : 'No ingredients yet'
+            }
+            expandable
+            renderExpandedContent={(row) => (
+              <IngredientExpandedRow ingredient={row as unknown as Ingredient} />
+            )}
           />
         )}
-      </Section>
+
+        {pipeline.totalPages > 1 && (
+          <TablePagination
+            page={pipeline.currentPage}
+            totalPages={pipeline.totalPages}
+            onPageChange={pipeline.setCurrentPage}
+            pageSize={pipeline.itemsPerPage}
+            totalItems={pipeline.totalItems}
+          />
+        )}
+      </Card>
 
       {/* Ingredient drawer (create / edit) */}
       <IngredientDrawer
@@ -740,15 +755,15 @@ export default function MenuIngredientsPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(ingredientToDelete)}
-        title="Delete ingredient"
+        title="Delete Ingredient"
         message={`Are you sure you want to delete ${ingredientToDelete?.name}? This cannot be undone.`}
-        confirmText="Delete"
-        type="danger"
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setIngredientToDelete(null)}
         onConfirm={handleDelete}
       />
 
-      {/* Smart import modal (kept as-is) */}
+      {/* Smart import modal */}
       <SmartImportModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}

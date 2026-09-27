@@ -8,7 +8,9 @@ import {
   CardBody,
   CardHeader,
   Empty,
+  FileButton,
   Modal,
+  PageLoading,
   Spinner,
   Textarea,
   toast,
@@ -91,8 +93,6 @@ export function MaintenancePhotos({
   const [redactError, setRedactError] = useState<string | null>(null)
   const [redacting, setRedacting] = useState(false)
 
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const libraryInputRef = useRef<HTMLInputElement>(null)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -203,19 +203,6 @@ export function MaintenancePhotos({
     [itemId, updateTask]
   )
 
-  const onInputChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const input = event.currentTarget
-      // Copied before the input is cleared, because clearing empties input.files.
-      const files = Array.from(input.files ?? [])
-      // Cleared first, so choosing the same file twice still fires a change
-      // event. Doing it after the await left a failed photo unpickable.
-      input.value = ''
-      await handleFiles(files)
-    },
-    [handleFiles]
-  )
-
   const dismissTask = useCallback((taskId: string) => {
     setTasks((current) => current.filter((task) => task.id !== taskId))
   }, [])
@@ -282,54 +269,36 @@ export function MaintenancePhotos({
     <Card>
       <CardHeader
         title="Photos"
-        subtitle="Photos are resized on your device before they are uploaded."
+        subtitle="Photos are resized on your device before they are uploaded"
       />
-      <CardBody>
+      <CardBody className="space-y-4">
         {canUpload ? (
           <div className="flex flex-wrap gap-2">
             {/*
               Two controls, not one. capture is only a hint, and a camera-only
               control would make attaching an older photo impossible.
-            */}
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => cameraInputRef.current?.click()}
-            >
-              Take photo
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => libraryInputRef.current?.click()}
-            >
-              Choose existing photo
-            </Button>
 
-            {/*
               HEIC is deliberately absent from accept. It also stops Safari 17+
-              turning a JPEG into HEIC on the way out of the picker.
+              turning a JPEG into HEIC on the way out of the picker. FileButton
+              clears its input before handing over the files, so choosing the same
+              photo again after a failure still fires.
             */}
-            <input
-              ref={cameraInputRef}
-              type="file"
+            <FileButton
+              variant="primary"
               accept={MAINTENANCE_PHOTO_ACCEPT}
               capture="environment"
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={onInputChange}
-            />
-            <input
-              ref={libraryInputRef}
-              type="file"
+              onFiles={(files) => void handleFiles(files)}
+            >
+              Take Photo
+            </FileButton>
+            <FileButton
+              variant="secondary"
               accept={MAINTENANCE_PHOTO_ACCEPT}
               multiple
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={onInputChange}
-            />
+              onFiles={(files) => void handleFiles(files)}
+            >
+              Choose Existing Photo
+            </FileButton>
           </div>
         ) : null}
 
@@ -339,7 +308,7 @@ export function MaintenancePhotos({
         </p>
 
         {tasks.length > 0 ? (
-          <ul className="mt-4 space-y-2">
+          <ul className="space-y-2">
             {tasks.map((task) => (
               <li key={task.id}>
                 {task.stage === 'failed' ? (
@@ -363,43 +332,35 @@ export function MaintenancePhotos({
         ) : null}
 
         {loadError ? (
-          <div className="mt-4">
-            <Alert tone="danger" title="The photos could not be loaded">
-              <div className="space-y-2">
-                <p>{loadError}</p>
-                <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
-                  Try again
-                </Button>
-              </div>
-            </Alert>
-          </div>
+          <Alert tone="danger" title="The photos could not be loaded">
+            <div className="space-y-2">
+              <p>{loadError}</p>
+              <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
+                Try Again
+              </Button>
+            </div>
+          </Alert>
         ) : null}
 
-        {loading ? (
-          <p className="mt-4 flex items-center gap-2 text-sm text-text-muted">
-            <Spinner size="sm" />
-            Loading photos
-          </p>
-        ) : null}
+        {loading ? <PageLoading inline label="Loading photos" /> : null}
 
         {!loading && !loadError && photos.length === 0 ? (
-          <div className="mt-4">
-            <Empty
-              title="No photos yet"
-              description="Add a photo so the problem is easy to recognise later."
-            />
-          </div>
+          <Empty
+            size="sm"
+            title="No photos yet"
+            description="Add a photo so the problem is easy to recognise later."
+          />
         ) : null}
 
         {photos.length > 0 ? (
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {photos.map((photo, index) => (
               <li key={photo.id} className="space-y-1">
                 <a
                   href={photo.signedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:shadow-ring"
+                  className="block overflow-hidden rounded-default border border-border focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   {/*
                     A plain img, not next/image. The optimiser rejects a signed
@@ -447,9 +408,10 @@ export function MaintenancePhotos({
         <Modal
           open={redactTarget !== null}
           onClose={closeRedact}
-          title="Remove this photo"
+          title="Remove This Photo"
+          description="The photo file is deleted permanently and cannot be recovered. The record that it was here, who removed it and why stays on this item."
           footer={
-            <div className="flex justify-end gap-2">
+            <>
               <Button type="button" variant="secondary" onClick={closeRedact} disabled={redacting}>
                 Cancel
               </Button>
@@ -460,26 +422,20 @@ export function MaintenancePhotos({
                 loading={redacting}
                 disabled={redacting}
               >
-                Remove photo
+                Remove Photo
               </Button>
-            </div>
+            </>
           }
         >
-          <div className="space-y-3">
-            <p className="text-sm text-text">
-              The photo file is deleted permanently and cannot be recovered. The record that
-              it was here, who removed it and why stays on this item.
-            </p>
-            <Textarea
-              label="Why is it being removed?"
-              value={redactReason}
-              onChange={(event) => setRedactReason(event.target.value)}
-              rows={3}
-              maxLength={500}
-              disabled={redacting}
-              error={redactError ?? undefined}
-            />
-          </div>
+          <Textarea
+            label="Why is it being removed?"
+            value={redactReason}
+            onChange={(event) => setRedactReason(event.target.value)}
+            rows={3}
+            maxLength={500}
+            disabled={redacting}
+            error={redactError ?? undefined}
+          />
         </Modal>
       </CardBody>
     </Card>

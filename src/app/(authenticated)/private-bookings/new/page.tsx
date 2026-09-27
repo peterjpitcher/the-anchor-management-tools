@@ -2,29 +2,26 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  CalendarIcon, 
-  // ClockIcon, 
-  UserIcon,
-  DocumentTextIcon,
-  BuildingOfficeIcon,
-  CurrencyPoundIcon
-} from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Checkbox } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Alert } from '@/ds'
-import { LinkButton } from '@/ds'
-import { toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  Field,
+  FormFooter,
+  Input,
+  LinkButton,
+  PageLayout,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
+import { PB_BACK_TO_LIST } from '../_shared/nav'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 interface Customer {
   id: string
@@ -89,14 +86,14 @@ export default function NewPrivateBookingPage() {
 
     // A £0 deposit requires the GM waiver to be explicitly confirmed
     if (showDepositWaiver && !depositWaived) {
-      setError('A £0 deposit requires a General Manager waiver — please confirm the waiver')
+      setError('A £0 deposit requires a General Manager waiver: please confirm the waiver')
       setIsSubmitting(false)
       return
     }
 
     try {
       const result = await createPrivateBooking(formData)
-      
+
       if (result.error) {
         setError(result.error)
         setIsSubmitting(false)
@@ -114,7 +111,7 @@ export default function NewPrivateBookingPage() {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
   const defaultDate = toLocalIsoDate(tomorrow)
-  
+
   // Default deposit due date (14 days from today)
   const defaultDepositDate = new Date()
   defaultDepositDate.setDate(defaultDepositDate.getDate() + 14)
@@ -128,37 +125,32 @@ export default function NewPrivateBookingPage() {
 
   return (
     <PageLayout
-      title="New Private Booking"
+      title="New Booking"
       subtitle="Create a new venue hire booking"
-      backButton={{ label: 'Back to Private Bookings', onBack: () => router.push('/private-bookings') }}
+      backButton={PB_BACK_TO_LIST}
+      containerSize="md"
     >
-      <div className="space-y-6">
-        <Card>
-          <form onSubmit={handleSubmit} className="space-y-6">
+      {/* One form around the page's cards, so every block submits together */}
+      <form onSubmit={handleSubmit} className="space-y-6">
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           <input type="hidden" name="default_country_code" value="44" />
           {/* Customer Information */}
-          <Section 
-            title="Customer Information"
-            icon={<UserIcon className="h-5 w-5" />}
-          >
-            <div className="space-y-4">
+          <Card>
+            <CardHeader title="Customer Information" />
+            <CardBody className="space-y-4">
               {/* Customer Search */}
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Search Existing Customer
-                </label>
+              <Field
+                label="Search Existing Customer"
+                hint="Select an existing customer, or enter a phone number below to create a new one"
+              >
                 <CustomerSearchInput
                   onCustomerSelect={setSelectedCustomer}
                   placeholder="Search by name or phone number..."
                 />
-                <p className="mt-1 text-sm text-text-muted">
-                  Select an existing customer, or enter a phone number below to create a new one
-                </p>
-              </div>
+              </Field>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-                <FormGroup
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
                   label="First Name"
                   required
                 >
@@ -171,8 +163,8 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="John"
                   />
-                </FormGroup>
-                <FormGroup
+                </Field>
+                <Field
                   label="Last Name"
                 >
                   <Input
@@ -183,11 +175,11 @@ export default function NewPrivateBookingPage() {
                     onChange={(e) => setCustomerLastName(e.target.value)}
                     placeholder="Smith"
                   />
-                </FormGroup>
+                </Field>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-                <FormGroup
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
                   label="Phone Number"
                   required={!selectedCustomer}
                 >
@@ -202,10 +194,10 @@ export default function NewPrivateBookingPage() {
                     autoComplete="tel"
                     inputMode="tel"
                   />
-                </FormGroup>
+                </Field>
               </div>
-              
-              <FormGroup
+
+              <Field
                 label="Email Address"
               >
                 <Input
@@ -217,35 +209,25 @@ export default function NewPrivateBookingPage() {
                   placeholder="john@example.com"
                   autoComplete="email"
                 />
-              </FormGroup>
-            </div>
-          </Section>
+              </Field>
+            </CardBody>
+          </Card>
 
           {/* Event Details */}
-          <Section
-            title="Event Details"
-            icon={<CalendarIcon className="h-5 w-5" />}
-          >
-            <div className="space-y-4">
-              <div>
-                <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-text">
-                  <input
-                    type="checkbox"
-                    id="date_tbd"
-                    name="date_tbd_toggle"
-                    checked={dateTbd}
-                    onChange={(event) => setDateTbd(event.target.checked)}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  <span>Event date/time to be confirmed</span>
-                </label>
-                <p className="mt-1 text-xs text-text-muted">
-                  We’ll keep this booking in draft until you add the event details.
-                </p>
-              </div>
+          <Card>
+            <CardHeader title="Event Details" />
+            <CardBody className="space-y-4">
+              <Checkbox
+                id="date_tbd"
+                name="date_tbd_toggle"
+                checked={dateTbd}
+                onChange={setDateTbd}
+                label="Event date/time to be confirmed"
+                description="We’ll keep this booking in draft until you add the event details."
+              />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-              <FormGroup
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field
                 label="Event Date"
                 required={!dateTbd}
               >
@@ -259,8 +241,8 @@ export default function NewPrivateBookingPage() {
                   max={maxDate}
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Event Type"
               >
                 <Input
@@ -269,8 +251,8 @@ export default function NewPrivateBookingPage() {
                   name="event_type"
                   placeholder="Birthday Party, Wedding, Corporate Event..."
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Booking Source"
               >
                 <Select
@@ -288,11 +270,11 @@ export default function NewPrivateBookingPage() {
                     { value: 'other', label: 'Other' }
                   ]}
                 />
-              </FormGroup>
+              </Field>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4 mt-6 sm:mt-4">
-              <FormGroup
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field
                 label="Start Time"
                 required={!dateTbd}
               >
@@ -304,8 +286,8 @@ export default function NewPrivateBookingPage() {
                   defaultValue="18:00"
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="End Time"
               >
                 <Input
@@ -315,8 +297,8 @@ export default function NewPrivateBookingPage() {
                   defaultValue="23:00"
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Guest Count"
               >
                 <Input
@@ -326,52 +308,51 @@ export default function NewPrivateBookingPage() {
                   min="1"
                   placeholder="50"
                 />
-              </FormGroup>
+              </Field>
             </div>
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Event Details & Risk (SOP intake) */}
           <EventDetailsRiskSection />
 
           {/* Setup Details */}
-          <Section
-            title="Setup Details"
-            icon={<BuildingOfficeIcon className="h-5 w-5" />}
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-              <FormGroup
+          <Card>
+            <CardHeader title="Setup Details" />
+            <CardBody>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field
                 label="Setup Date"
-                help="Leave blank if same as event date"
+                hint="Leave blank if same as event date"
               >
                 <Input
                   type="date"
                   id="setup_date"
                   name="setup_date"
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Setup Time"
-                help="When vendors can start setup"
+                hint="When vendors can start setup"
               >
                 <Input
                   type="time"
                   id="setup_time"
                   name="setup_time"
                 />
-              </FormGroup>
+              </Field>
             </div>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Financial Details */}
-          <Section
-            title="Financial Details (Optional)"
-            icon={<CurrencyPoundIcon className="h-5 w-5" />}
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4">
-              <FormGroup
+          <Card>
+            <CardHeader title="Financial Details (Optional)" />
+            <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field
                 label="Deposit Amount (£)"
-                help="Default is £250"
+                hint="Default is £250"
               >
                 <Input
                   type="number"
@@ -382,10 +363,10 @@ export default function NewPrivateBookingPage() {
                   value={depositAmountInput}
                   onChange={(e) => setDepositAmountInput(e.target.value)}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Deposit Due (Hold Expiry)"
-                help="The provisional hold is released if the deposit hasn't arrived by this date"
+                hint="The provisional hold is released if the deposit hasn't arrived by this date"
               >
                 <Input
                   type="date"
@@ -393,23 +374,23 @@ export default function NewPrivateBookingPage() {
                   name="deposit_due_date"
                   defaultValue={defaultDepositDateIso}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Balance & Final Details Due"
-                help="Balance and final details are due 14 days before the event — leave blank to auto-calculate"
+                hint="Balance and final details are due 14 days before the event. Leave blank to auto-calculate"
               >
                 <Input
                   type="date"
                   id="balance_due_date"
                   name="balance_due_date"
                 />
-              </FormGroup>
+              </Field>
             </div>
             {showDepositReduction && (
-              <div className="mt-4">
-                <FormGroup
+              <div>
+                <Field
                   label="Reason for reduced deposit (GM discretion)"
-                  help="The standard deposit is £250 — reducing it needs a recorded reason"
+                  hint="The standard deposit is £250. Reducing it needs a recorded reason"
                 >
                   <Input
                     type="text"
@@ -418,19 +399,19 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="e.g. Repeat corporate client"
                   />
-                </FormGroup>
+                </Field>
               </div>
             )}
             {showDepositWaiver && (
-              <div className="mt-4 space-y-4">
+              <div className="space-y-4">
                 <Checkbox
                   name="deposit_waived"
                   value="true"
                   checked={depositWaived}
                   onChange={(checked) => setDepositWaived(checked)}
-                  label="Deposit waived (GM approved — venue-hosted/internal event)"
+                  label="Deposit waived (GM approved: venue-hosted/internal event)"
                 />
-                <FormGroup label="Reason for waiving the deposit">
+                <Field label="Reason for waiving the deposit">
                   <Input
                     type="text"
                     id="deposit_waived_reason"
@@ -438,18 +419,17 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="e.g. Venue-hosted event"
                   />
-                </FormGroup>
+                </Field>
               </div>
             )}
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Additional Information */}
-          <Section
-            title="Additional Information"
-            icon={<DocumentTextIcon className="h-5 w-5" />}
-          >
-            <div className="space-y-4">
-              <FormGroup
+          <Card>
+            <CardHeader title="Additional Information" />
+            <CardBody className="space-y-4">
+              <Field
                 label="Customer Requests"
               >
                 <Textarea
@@ -458,9 +438,9 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Special requests, dietary requirements, decorations..."
                 />
-              </FormGroup>
-              
-              <FormGroup
+              </Field>
+
+              <Field
                 label="Internal Notes"
               >
                 <Textarea
@@ -469,11 +449,11 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Staff notes, setup requirements, important reminders..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup
+              <Field
                 label="Contract Note"
-                help="Shown on the contract exactly as entered"
+                hint="Shown on the contract exactly as entered"
               >
                 <Textarea
                   id="contract_note"
@@ -481,9 +461,9 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Add a plain-text note to appear on the contract..."
                 />
-              </FormGroup>
-              
-              <FormGroup
+              </Field>
+
+              <Field
                 label="Special Requirements"
               >
                 <Textarea
@@ -492,9 +472,9 @@ export default function NewPrivateBookingPage() {
                   rows={2}
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
-              </FormGroup>
-              
-              <FormGroup
+              </Field>
+
+              <Field
                 label="Accessibility Needs"
               >
                 <Textarea
@@ -503,39 +483,35 @@ export default function NewPrivateBookingPage() {
                   rows={2}
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
-              </FormGroup>
-            </div>
-          </Section>
+              </Field>
+            </CardBody>
+          </Card>
 
           {/* Error Message */}
           {error && (
-            <Alert variant="error">
+            <Alert tone="danger">
               {error}
             </Alert>
           )}
 
           {/* Form Actions */}
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t border-border">
+          <FormFooter>
             <LinkButton
               variant="secondary"
               href="/private-bookings"
-              className="w-full sm:w-auto"
             >
               Cancel
             </LinkButton>
             <Button
               type="submit"
+              variant="primary"
               disabled={isSubmitting}
               loading={isSubmitting}
-              fullWidth
-              className="sm:w-auto"
             >
               Create Booking
             </Button>
-          </div>
-        </form>
-      </Card>
-      </div>
+          </FormFooter>
+      </form>
     </PageLayout>
   )
 }

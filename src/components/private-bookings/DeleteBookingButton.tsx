@@ -1,11 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
-import { Button, IconButton } from '@/ds'
-import { Input } from '@/ds'
-import { Modal, ModalActions } from '@/ds'
+import { Alert, Button, Field, IconButton, Icon, Input, Modal } from '@/ds'
 import { getBookingDeleteEligibility } from '@/app/actions/privateBookingActions'
 import { formatDateFull } from '@/lib/dateUtils'
 
@@ -17,7 +14,7 @@ interface DeleteBookingButtonProps {
    * for backwards compatibility with existing callers.
    */
   deleteAction: (formData: FormData) => Promise<void>
-  /** ISO date string (`YYYY-MM-DD`) — required for the typed-date friction check. */
+  /** ISO date string (`YYYY-MM-DD`), required for the typed-date friction check. */
   eventDate?: string
   status?: string
 }
@@ -127,7 +124,7 @@ export default function DeleteBookingButton({
           e.stopPropagation()
           void handleOpen()
         }}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
       />
 
       <Modal
@@ -135,10 +132,10 @@ export default function DeleteBookingButton({
         onClose={() => {
           if (!submitting) setModalOpen(false)
         }}
-        title="Permanently delete booking?"
+        title="Delete Booking"
         size="sm"
         footer={
-          <ModalActions>
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -156,9 +153,9 @@ export default function DeleteBookingButton({
               disabled={confirmDisabled}
               loading={submitting}
             >
-              Permanently delete
+              Delete
             </Button>
-          </ModalActions>
+          </>
         }
       >
         <div className="space-y-3 text-sm text-text">
@@ -173,21 +170,14 @@ export default function DeleteBookingButton({
             </p>
           ) : null}
           {eligibility && !eligibility.canDelete ? (
-            <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-danger-fg">
+            <Alert tone="danger" size="sm">
               {eligibility.reason ?? 'This booking has SMS activity and cannot be deleted.'}
-            </p>
+            </Alert>
           ) : null}
-          <div>
-            <label
-              htmlFor="delete-booking-confirm-input"
-              className="block text-sm font-medium text-text"
-            >
-              {hasEventDate ? 'To confirm, type the event date' : 'To confirm, type the booking id'}
-              <span className="ml-1 font-mono text-text-muted">({confirmLabel})</span>
-              {humanReadableDate ? (
-                <span className="ml-1 text-text-soft">— {humanReadableDate}</span>
-              ) : null}
-            </label>
+          <Field
+            label={hasEventDate ? 'To confirm, type the event date' : 'To confirm, type the booking id'}
+            hint={humanReadableDate ? `${confirmLabel} (${humanReadableDate})` : confirmLabel}
+          >
             <Input
               id="delete-booking-confirm-input"
               type="text"
@@ -197,11 +187,10 @@ export default function DeleteBookingButton({
               value={typedDate}
               onChange={(e) => setTypedDate(e.target.value.trim())}
               disabled={submitting || eligibility?.canDelete !== true}
-              className="mt-2"
             />
-          </div>
+          </Field>
           {error ? (
-            <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-danger-fg">{error}</p>
+            <Alert tone="danger" size="sm">{error}</Alert>
           ) : null}
         </div>
       </Modal>

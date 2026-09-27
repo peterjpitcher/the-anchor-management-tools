@@ -13,12 +13,12 @@
  *    layout that must keep its columns. `globals.css` forces
  *    `grid-template-columns: 1fr !important` on any class list containing those
  *    strings below 820px, which silently flattens a 2x2 picker into a stack.
- * 2. The 44px touch floor below 820px is met with padding on real buttons, not
- *    by swapping a button for a div, which would throw away the keyboard
- *    semantics the picker depends on.
+ * 2. The 44px touch floor is met by the DS Modal, which lifts real buttons to
+ *    44px on touch screens. Never swap a button for a div, which would throw
+ *    away the keyboard semantics the picker depends on.
  */
 
-import { cn } from '@/lib/utils'
+import { Field, Input, Segmented } from '@/ds'
 
 export interface OptionButtonsOption<T extends string> {
   value: T
@@ -38,6 +38,10 @@ export interface OptionButtonsProps<T extends string> {
   className?: string
 }
 
+/**
+ * A pick-one row of buttons: the DS Segmented control, a radio group of real buttons named by
+ * `label`. Inside the DS Modal the buttons get the 44px touch floor on touch screens.
+ */
 export function OptionButtons<T extends string>({
   label,
   options,
@@ -46,31 +50,13 @@ export function OptionButtons<T extends string>({
   className,
 }: OptionButtonsProps<T>): React.JSX.Element {
   return (
-    <div role="radiogroup" aria-label={label} className={cn('flex flex-wrap gap-2', className)}>
-      {options.map((option) => {
-        const selected = option.value === value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option.value)}
-            // px-3 py-2 carries the control past the 44px floor on its own, so
-            // the global rule never has to stretch it.
-            className={cn(
-              'rounded-md border px-3 py-2 text-sm font-medium transition-colors',
-              'focus-visible:outline-hidden focus-visible:shadow-ring',
-              selected
-                ? 'border-primary bg-primary-soft text-primary-soft-fg'
-                : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-            )}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
+    <Segmented
+      aria-label={label}
+      options={options.map((option) => ({ id: option.value, label: option.label }))}
+      value={value}
+      onChange={(id) => onChange(id as T)}
+      className={className}
+    />
   )
 }
 
@@ -88,6 +74,10 @@ export interface SliderFieldProps {
   disabled?: boolean
 }
 
+/**
+ * The DS has no slider, so the native range input stays, labelled by a DS Field. The current
+ * value sits at the right of the label row.
+ */
 export function SliderField({
   id,
   label,
@@ -101,27 +91,23 @@ export function SliderField({
   disabled,
 }: SliderFieldProps): React.JSX.Element {
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-sm font-medium text-text">
-          {label}
-        </label>
-        <output htmlFor={id} className="text-sm tabular-nums text-text-muted">
-          {valueLabel}
-        </output>
-      </div>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-1 w-full accent-primary"
-      />
-      {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
+    <div className="relative">
+      <Field label={label} hint={hint}>
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="w-full accent-primary disabled:opacity-50"
+        />
+      </Field>
+      <output htmlFor={id} className="absolute right-0 top-0 text-xs tabular-nums text-text-muted">
+        {valueLabel}
+      </output>
     </div>
   )
 }
@@ -150,29 +136,23 @@ export function NumberField({
   disabled,
 }: NumberFieldProps): React.JSX.Element {
   return (
-    <div>
-      <label htmlFor={id} className="block text-xs font-medium text-text-muted">
-        {label}
-        {suffix ? ` (${suffix})` : ''}
-      </label>
-      <input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => {
-          const next = Number(event.target.value)
-          // An empty field parses as NaN. Leaving the value untouched keeps the
-          // preview honest while someone is midway through retyping a number.
-          if (Number.isNaN(next)) return
-          onChange(next)
-        }}
-        className="mt-1 w-full rounded-default border border-border-strong bg-surface px-3 py-2 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50"
-      />
-    </div>
+    <Input
+      id={id}
+      label={`${label}${suffix ? ` (${suffix})` : ''}`}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => {
+        const next = Number(event.target.value)
+        // An empty field parses as NaN. Leaving the value untouched keeps the
+        // preview honest while someone is midway through retyping a number.
+        if (Number.isNaN(next)) return
+        onChange(next)
+      }}
+    />
   )
 }

@@ -3,17 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
-import { formatDateFull } from '@/lib/dateUtils'
-import { 
-  PlusIcon, 
-  TrashIcon,
-  PencilIcon,
-  MapPinIcon,
-  SparklesIcon,
-  UserGroupIcon,
-  ClipboardDocumentListIcon,
-  // XMarkIcon
-} from '@heroicons/react/24/outline'
 import { 
   getPrivateBooking, 
   addBookingItem, 
@@ -25,22 +14,36 @@ import {
   getVendorRate
 } from '@/app/actions/privateBookingActions'
 import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem, PrivateBookingWithDetails } from '@/types/private-bookings'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-// import { Section } from '@/ds'
-import { Button, IconButton } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Modal } from '@/ds'
-import { EmptyState } from '@/ds'
-import { Spinner } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  ConfirmDialog,
+  Empty,
+  Field,
+  Fieldset,
+  Icon,
+  IconButton,
+  Input,
+  Modal,
+  PageLayout,
+  Segmented,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
 
 import { formatCurrency } from '@/lib/format'
 import { computeBookingMoney } from '@/lib/private-bookings/vat'
+import { PB_BACK_TO_LIST, PB_DETAIL_NAV } from '../../_shared/nav'
+
+const ITEM_TYPE_OPTIONS: Array<{ id: ItemType; label: string }> = [
+  { id: 'space', label: 'Space' },
+  { id: 'catering', label: 'Catering' },
+  { id: 'vendor', label: 'Vendor' },
+  { id: 'other', label: 'Other' },
+]
 interface AddItemModalProps {
   isOpen: boolean
   onClose: () => void
@@ -183,7 +186,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       return
     }
 
-    // Only hydrate if customPrice is still empty — don't overwrite user input.
+    // Only hydrate if customPrice is still empty: don't overwrite user input.
     // The onChange handler above sets customPrice synchronously from the vendor's
     // typical_rate. This effect is a fallback for cases where the inline rate
     // was empty but a remote lookup might find one.
@@ -353,74 +356,43 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     <Modal
       open={isOpen}
       onClose={onClose}
-      title="Add Booking Item"
+      title="Add Item"
       size="lg"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="pb-items-add-form"
+            variant="primary"
+            loading={isSubmitting}
+          >
+            Add Item
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id="pb-items-add-form" onSubmit={handleSubmit} className="space-y-4">
         {/* Item Type Selection */}
-        <div>
-          <label className="block text-sm font-medium text-text mb-2">
-            Item Type
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => setItemType('space')}
-              aria-pressed={itemType === 'space'}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === 'space' 
-                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
-                  : 'border-border hover:border-border-strong'
-              }`}
-            >
-              <MapPinIcon className="h-6 w-6 mb-1" />
-              <span className="text-sm">Space</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType('catering')}
-              aria-pressed={itemType === 'catering'}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === 'catering' 
-                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
-                  : 'border-border hover:border-border-strong'
-              }`}
-            >
-              <SparklesIcon className="h-6 w-6 mb-1" />
-              <span className="text-sm">Catering</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType('vendor')}
-              aria-pressed={itemType === 'vendor'}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === 'vendor' 
-                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
-                  : 'border-border hover:border-border-strong'
-              }`}
-            >
-              <UserGroupIcon className="h-6 w-6 mb-1" />
-              <span className="text-sm">Vendor</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType('other')}
-              aria-pressed={itemType === 'other'}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === 'other' 
-                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
-                  : 'border-border hover:border-border-strong'
-              }`}
-            >
-              <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
-              <span className="text-sm">Other</span>
-            </button>
-          </div>
-        </div>
+        <Fieldset legend="Item Type">
+          <Segmented
+            aria-label="Item type"
+            options={ITEM_TYPE_OPTIONS}
+            value={itemType}
+            onChange={(id) => setItemType(id as ItemType)}
+            className="flex-wrap"
+          />
+        </Fieldset>
 
         {/* Item Selection */}
         {itemType !== 'other' && (
-          <FormGroup
+          <Field
             label={`Select ${itemType === 'space' ? 'Space' : itemType === 'catering' ? 'Package' : 'Vendor'}`}
             required
           >
@@ -463,24 +435,24 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               ]}
               required
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Custom Description (for 'other' items) */}
         {itemType === 'other' && (
-          <FormGroup label="Description" required>
+          <Field label="Description" required>
             <Input
               type="text"
               value={customDescription}
               onChange={(e) => setCustomDescription(e.target.value)}
               required
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Quantity and Price - Different layouts based on pricing model */}
         {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
-          <FormGroup label="Total Price (£)" required>
+          <Field label="Total Price (£)" required>
             <Input
               type="number"
               value={customPrice || selectedItem.cost_per_head || ''}
@@ -490,10 +462,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               required
               placeholder="Enter total price"
             />
-          </FormGroup>
+          </Field>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            <FormGroup 
+            <Field 
               label={itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
               required
             >
@@ -505,8 +477,8 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 step={itemType === 'catering' ? '1' : '0.01'}
                 required
               />
-            </FormGroup>
-            <FormGroup label="Unit Price (£)" required>
+            </Field>
+            <Field label="Unit Price (£)" required>
               <Input
                 type="number"
                 value={customPrice !== '' ? customPrice : (
@@ -527,26 +499,25 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 required={itemType === 'other' || itemType === 'vendor'}
                 readOnly={itemType !== 'other' && itemType !== 'vendor' && !!selectedItem}
               />
-            </FormGroup>
+            </Field>
           </div>
         )}
 
         {/* Discount */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-text">
-            Discount (optional)
-          </label>
+        <Fieldset legend="Discount (optional)">
           <div className="grid grid-cols-2 gap-4">
             <Input
               type="number"
               value={discountAmount}
               onChange={(e) => setDiscountAmount(e.target.value)}
               placeholder="Amount"
+              aria-label="Discount amount"
               min="0"
               step="0.01"
             />
             <Select
               value={discountType}
+              aria-label="Discount type"
               onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
               options={[
                 { value: 'percent', label: 'Percentage (%)' },
@@ -554,20 +525,20 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               ]}
             />
           </div>
-        </div>
+        </Fieldset>
 
         {/* Notes */}
-        <FormGroup label="Notes (optional)">
+        <Field label="Notes (optional)">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
           />
-        </FormGroup>
+        </Field>
 
         {/* Total Preview */}
         {(customPrice || selectedItem) && (
-          <div className="bg-surface-2 p-4 rounded-lg">
+          <div className="bg-surface-2 p-4 rounded-default">
             <div className="flex justify-between items-center">
               <span className="text-sm text-text-muted">Total:</span>
               <span className="text-lg font-semibold text-text">
@@ -577,23 +548,6 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            loading={isSubmitting}
-          >
-            Add Item
-          </Button>
-        </div>
       </form>
     </Modal>
   )
@@ -651,71 +605,8 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
       onClose={onClose}
       title="Edit Item"
       size="md"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">
-            Item
-          </label>
-          <p className="text-sm text-text">{item.description}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <FormGroup label="Quantity" required>
-            <Input
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              min={item.item_type === 'catering' ? '1' : '0.01'}
-              step={item.item_type === 'catering' ? '1' : '0.01'}
-              required
-            />
-          </FormGroup>
-          <FormGroup label="Unit Price (£)" required>
-            <Input
-              type="number"
-              value={unitPrice}
-              onChange={(e) => setUnitPrice(e.target.value)}
-              step="0.01"
-              min="0"
-              required
-            />
-          </FormGroup>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-text">
-            Discount
-          </label>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="number"
-              value={discountAmount}
-              onChange={(e) => setDiscountAmount(e.target.value)}
-              placeholder="Amount"
-              min="0"
-              step="0.01"
-            />
-            <Select
-              value={discountType}
-              onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-              options={[
-                { value: 'percent', label: 'Percentage (%)' },
-                { value: 'fixed', label: 'Fixed Amount (£)' }
-              ]}
-            />
-          </div>
-        </div>
-
-        <FormGroup label="Notes">
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-          />
-        </FormGroup>
-
-        <div className="flex justify-end gap-3 pt-4">
+      footer={
+        <>
           <Button
             type="button"
             variant="secondary"
@@ -725,12 +616,72 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           </Button>
           <Button
             type="submit"
-            disabled={isSubmitting}
+            form="pb-items-edit-form"
+            variant="primary"
             loading={isSubmitting}
           >
             Save Changes
           </Button>
+        </>
+      }
+    >
+      <form id="pb-items-edit-form" onSubmit={handleSubmit} className="space-y-4">
+        <Input label="Item" value={item.description} readOnly />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Quantity" required>
+            <Input
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              min={item.item_type === 'catering' ? '1' : '0.01'}
+              step={item.item_type === 'catering' ? '1' : '0.01'}
+              required
+            />
+          </Field>
+          <Field label="Unit Price (£)" required>
+            <Input
+              type="number"
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              step="0.01"
+              min="0"
+              required
+            />
+          </Field>
         </div>
+
+        <Fieldset legend="Discount">
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="number"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+              placeholder="Amount"
+              aria-label="Discount amount"
+              min="0"
+              step="0.01"
+            />
+            <Select
+              value={discountType}
+              aria-label="Discount type"
+              onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+              options={[
+                { value: 'percent', label: 'Percentage (%)' },
+                { value: 'fixed', label: 'Fixed Amount (£)' }
+              ]}
+            />
+          </div>
+        </Fieldset>
+
+        <Field label="Notes">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+          />
+        </Field>
+
       </form>
     </Modal>
   )
@@ -744,17 +695,21 @@ export default function ItemsPage() {
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(null)
   const [items, setItems] = useState<PrivateBookingItem[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never an empty item list.
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<PrivateBookingItem | null>(null)
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
 
   const loadData = useCallback(async (id: string) => {
     setLoading(true)
+    setLoadError(null)
 
     const bookingResult = await getPrivateBooking(id, 'items')
 
     if ('error' in bookingResult && bookingResult.error) {
       toast.error(bookingResult.error)
+      setLoadError(bookingResult.error)
       setLoading(false)
       return
     }
@@ -795,129 +750,126 @@ export default function ItemsPage() {
 
   const getItemIcon = (type: ItemType) => {
     switch (type) {
-      case 'space': return <MapPinIcon className="h-5 w-5" />
-      case 'catering': return <SparklesIcon className="h-5 w-5" />
-      case 'vendor': return <UserGroupIcon className="h-5 w-5" />
-      default: return <ClipboardDocumentListIcon className="h-5 w-5" />
+      case 'space': return <Icon name="mapPin" size={20} className="block" />
+      case 'catering': return <Icon name="sparkles" size={20} className="block" />
+      case 'vendor': return <Icon name="users" size={20} className="block" />
+      default: return <Icon name="clipboardList" size={20} className="block" />
     }
   }
 
   const calculateSubtotal = () =>
     items.reduce((sum, item) => sum + toNumber(item.line_total), 0)
 
-  if (loading) {
-    return (
-      <PageLayout
-        title="Booking Items"
-        subtitle="Loading booking details..."
-        backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-        loading
-        loadingLabel="Loading items..."
-      />
-    )
+  // One header for every state. Every tab of the booking shows the customer's name.
+  const customerLabel = booking
+    ? booking.customer_full_name || booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
+    : 'Private Booking'
+
+  const layoutProps = {
+    title: customerLabel,
+    subtitle: 'Items: what the booking includes and what it costs',
+    backButton: PB_BACK_TO_LIST,
+    navItems: PB_DETAIL_NAV(bookingId),
   }
 
-  // Stored prices are net — show VAT and the VAT-inclusive total (SOP 2026-07)
+  if (loading) {
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading items…" />
+  }
+
+  if (loadError) {
+    return <PageLayout {...layoutProps} error={loadError} onRetry={refreshData} />
+  }
+
+  // Stored prices are net: show VAT and the VAT-inclusive total (SOP 2026-07)
   const bookingMoney = computeBookingMoney(items, booking?.discount_type, booking?.discount_amount)
-
-  const customerLabel = booking
-    ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
-    : 'Unknown'
-
-  const subtitle = booking
-    ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
-    : 'Booking details'
-
-  const navItems = [
-    { label: 'Overview', href: `/private-bookings/${bookingId}` },
-    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
-    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
-    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
-    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
-  ];
 
   return (
     <PageLayout
-      title="Booking Items"
-      subtitle={subtitle}
-      backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      navItems={navItems}
+      {...layoutProps}
       headerActions={
-        <Button onClick={() => setShowAddModal(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => setShowAddModal(true)}
+          icon={<Icon name="plus" size={16} />}
+        >
           Add Item
         </Button>
       }
     >
-      <div className="space-y-6">
-        {booking?.invoice_id && <Card><p className="text-sm text-text">Original invoiced prices are locked. Included items with no charge can still be added here.</p><Link className="mt-2 inline-block text-sm text-primary underline" href={`/private-bookings/${bookingId}#booking-billing`}>Add chargeable extras on a separate invoice</Link></Card>}
-        <Card>
+      {booking?.invoice_id && (
+        <Alert tone="info" role="status">
+          Original invoiced prices are locked. Included items with no charge can still be added here.{' '}
+          <Link className="text-primary underline" href={`/private-bookings/${bookingId}#booking-billing`}>
+            Add chargeable extras on a separate invoice
+          </Link>
+        </Alert>
+      )}
+
+      <Card>
         {items.length === 0 ? (
-          <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}
-            title="No items added yet"
-            description="Click 'Add Item' to get started."
-            action={
-              <Button
-                onClick={() => setShowAddModal(true)}
-                leftIcon={<PlusIcon className="h-5 w-5" />}
-              >
-                Add Item
-              </Button>
-            }
+          <Empty
+            size="sm"
+            icon={<Icon name="clipboardList" size={48} />}
+            title="No items yet"
+            description="Build this booking with Add Item."
           />
         ) : (
-          <div className="space-y-4">
-            {items.map((item) => (
-              <div key={item.id} className="border border-border rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 text-text-subtle">
-                      {getItemIcon(item.item_type)}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-text">
-                        {item.description}
-                      </p>
-                      <div className="mt-1 flex items-center space-x-4 text-sm text-text-muted">
-                        <span>Qty: {item.quantity}</span>
-                        <span>{formatMoney(item.unit_price)} each</span>
-                        {/* Compare against 0 explicitly: a bare `item.discount_value &&`
-                            renders the number 0 for the many items stored with a zero
-                            discount, printing a stray "0" beside the price. */}
-                        {toNumber(item.discount_value) > 0 && (
-                          <span className="text-success-fg">
-                            -{item.discount_type === 'percent' ? `${item.discount_value}%` : formatMoney(item.discount_value)}
-                          </span>
+          <CardBody className="space-y-4">
+            <div className="divide-y divide-border">
+              {items.map((item) => (
+                <div key={item.id} className="py-4 first:pt-0">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 text-text-subtle">
+                        {getItemIcon(item.item_type)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-text">
+                          {item.description}
+                        </p>
+                        <div className="mt-1 flex items-center space-x-4 text-sm text-text-muted">
+                          <span>Qty: {item.quantity}</span>
+                          <span>{formatMoney(item.unit_price)} each</span>
+                          {/* Compare against 0 explicitly: a bare `item.discount_value &&`
+                              renders the number 0 for the many items stored with a zero
+                              discount, printing a stray "0" beside the price. */}
+                          {toNumber(item.discount_value) > 0 && (
+                            <span className="text-success-fg">
+                              -{item.discount_type === 'percent' ? `${item.discount_value}%` : formatMoney(item.discount_value)}
+                            </span>
+                          )}
+                        </div>
+                        {item.notes && (
+                          <p className="mt-1 text-sm text-text-muted">{item.notes}</p>
                         )}
                       </div>
-                      {item.notes && (
-                        <p className="mt-1 text-sm text-text-muted">{item.notes}</p>
-                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <span className="text-lg font-semibold text-text">
-                      {formatMoney(item.line_total)}
-                    </span>
-                    <div className="flex items-center space-x-2">
-                      <IconButton
-                        type="button"
-                        onClick={() => setEditingItem(item)}
-                        label="Edit item"
-                        icon={<PencilIcon className="h-5 w-5" />}
-                        className="text-text-muted"
-                      />
-                      <IconButton
-                        type="button"
-                        onClick={() => setDeletingItemId(item.id)}
-                        label="Delete item"
-                        icon={<TrashIcon className="h-5 w-5" />}
-                        className="text-danger hover:text-danger-fg"
-                      />
+                    <div className="flex items-center space-x-4">
+                      <span className="text-lg font-semibold text-text">
+                        {formatMoney(item.line_total)}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <IconButton
+                          type="button"
+                          onClick={() => setEditingItem(item)}
+                          label="Edit item"
+                          icon={<Icon name="edit" size={20} />}
+                          className="text-text-muted"
+                        />
+                        <IconButton
+                          type="button"
+                          onClick={() => setDeletingItemId(item.id)}
+                          label="Delete item"
+                          icon={<Icon name="trash" size={20} />}
+                          className="text-danger hover:text-danger-fg"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
 
             {/* Total */}
             <div className="border-t border-border pt-4 space-y-2">
@@ -940,10 +892,10 @@ export default function ItemsPage() {
                 </span>
               </div>
             </div>
-          </div>
+          </CardBody>
         )}
       </Card>
-      </div>
+
       {/* Modals */}
       <AddItemModal
         isOpen={showAddModal}
@@ -969,9 +921,9 @@ export default function ItemsPage() {
         onClose={() => setDeletingItemId(null)}
         onConfirm={() => deletingItemId && handleDeleteItem(deletingItemId)}
         title="Delete Item"
-        message="Are you sure you want to delete this item? This action cannot be undone."
-        confirmText="Delete"
-        confirmVariant="danger"
+        message="This removes the item and its price from the booking. This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
       />
     </PageLayout>
   )

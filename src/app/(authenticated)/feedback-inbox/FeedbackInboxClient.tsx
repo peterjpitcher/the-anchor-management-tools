@@ -3,19 +3,38 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  PageHeader,
+  Alert,
+  Badge,
+  Button,
   Card,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  CardBody,
+  CardFooter,
+  Empty,
+  PageLayout,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
+  toast,
 } from '@/ds'
-import { Badge, Select, Textarea, Button, Alert } from '@/ds'
 import { Icon } from '@/ds/icons'
-import toast from 'react-hot-toast'
+import { StarRating } from '@/components/features/feedback/StarRating'
 import {
   getReviewFeedbackList,
   updateReviewFeedbackStatus,
   type ReviewFeedbackItem,
 } from '@/app/actions/feedback'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import {
+  FEEDBACK_STATUS_LABEL,
+  FEEDBACK_STATUS_OPTIONS,
+  FEEDBACK_STATUS_TONE,
+  type FeedbackStatus,
+} from './_shared/status-ui'
 
 interface Props {
   initialItems: ReviewFeedbackItem[]
@@ -25,49 +44,15 @@ interface Props {
   loadError?: string | null
 }
 
-type FeedbackStatus = ReviewFeedbackItem['status']
+const LINK_FOCUS = 'rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring'
 
-const STATUS_OPTIONS: { value: FeedbackStatus; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'dismissed', label: 'Dismissed' },
-]
-
-const STATUS_TONE: Record<FeedbackStatus, 'info' | 'warning' | 'success' | 'neutral'> = {
-  new: 'info',
-  in_progress: 'warning',
-  resolved: 'success',
-  dismissed: 'neutral',
-}
-
-const STATUS_LABEL: Record<FeedbackStatus, string> = {
-  new: 'New',
-  in_progress: 'In progress',
-  resolved: 'Resolved',
-  dismissed: 'Dismissed',
-}
-
-function StarRating({ rating }: { rating: number }) {
+/** The guest's rating as read-only staff stars, with the figure beside them. */
+function RatingDisplay({ rating }: { rating: number }): React.JSX.Element {
   const clamped = Math.max(0, Math.min(5, Math.round(rating)))
   return (
-    <span
-      className="inline-flex items-center gap-1"
-      role="img"
-      aria-label={`${clamped} out of 5 stars`}
-      title={`${clamped}/5`}
-    >
-      <span aria-hidden="true" className="text-sm leading-none tracking-tight">
-        {[1, 2, 3, 4, 5].map((position) => (
-          <span
-            key={position}
-            className={position <= clamped ? 'text-warning' : 'text-border'}
-          >
-            {position <= clamped ? '★' : '☆'}
-          </span>
-        ))}
-      </span>
-      <span className="font-mono text-xs text-text-muted">{clamped}/5</span>
+    <span className="inline-flex items-center gap-1" title={`${clamped}/5`}>
+      <StarRating value={clamped} tone="staff" />
+      <span aria-hidden="true" className="font-mono text-xs text-text-muted">{clamped}/5</span>
     </span>
   )
 }
@@ -86,12 +71,12 @@ function ContactCell({ item }: { item: ReviewFeedbackItem }) {
     <div className="flex flex-col gap-0.5 text-xs">
       {item.customerName && <span className="font-medium text-text">{item.customerName}</span>}
       {item.customerEmail && (
-        <a href={`mailto:${item.customerEmail}`} className="text-primary hover:underline">
+        <a href={`mailto:${item.customerEmail}`} className={`text-primary hover:underline ${LINK_FOCUS}`}>
           {item.customerEmail}
         </a>
       )}
       {item.customerPhone && (
-        <a href={`tel:${item.customerPhone}`} className="text-text-muted hover:text-text">
+        <a href={`tel:${item.customerPhone}`} className={`text-text-muted hover:text-text ${LINK_FOCUS}`}>
           {item.customerPhone}
         </a>
       )}
@@ -152,7 +137,7 @@ function FeedbackControls({ item, canManage, onUpdated }: RowProps) {
   if (!canManage) {
     return (
       <div className="flex flex-col gap-1">
-        <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>
+        <Badge tone={FEEDBACK_STATUS_TONE[item.status]}>{FEEDBACK_STATUS_LABEL[item.status]}</Badge>
         {item.staffNotes && (
           <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
             {item.staffNotes}
@@ -169,7 +154,7 @@ function FeedbackControls({ item, canManage, onUpdated }: RowProps) {
         value={status}
         onChange={handleStatusChange}
         disabled={savingStatus}
-        options={STATUS_OPTIONS}
+        options={FEEDBACK_STATUS_OPTIONS}
         aria-label={`Status for feedback from ${formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}`}
       />
       <div className="flex flex-col gap-1">
@@ -196,7 +181,7 @@ function FeedbackControls({ item, canManage, onUpdated }: RowProps) {
             disabled={savingNotes || !noteDraft.trim()}
             onClick={() => persist(status, noteDraft.trim(), 'notes')}
           >
-            Add note
+            Add Note
           </Button>
         </div>
       </div>
@@ -211,7 +196,7 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
         {formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}
       </TableCell>
       <TableCell className="py-2 align-top whitespace-nowrap">
-        <StarRating rating={item.rating} />
+        <RatingDisplay rating={item.rating} />
       </TableCell>
       <TableCell className="max-w-xs py-2 align-top whitespace-normal break-words text-text">
         {item.comments ? (
@@ -235,7 +220,7 @@ function FeedbackCard({ item, canManage, onUpdated }: RowProps) {
   return (
     <div className="space-y-3 py-4 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-2">
-        <StarRating rating={item.rating} />
+        <RatingDisplay rating={item.rating} />
         <span className="whitespace-nowrap text-xs text-text-muted">
           {formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}
         </span>
@@ -262,7 +247,7 @@ export function FeedbackInboxClient({
   initialNewCount,
   canManage,
   loadError,
-}: Props) {
+}: Props): React.JSX.Element {
   const router = useRouter()
   const [items, setItems] = useState<ReviewFeedbackItem[]>(initialItems)
   const [hasMore, setHasMore] = useState(initialHasMore)
@@ -270,6 +255,9 @@ export function FeedbackInboxClient({
   const [showResolved, setShowResolved] = useState(false)
   const [loadingList, setLoadingList] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  // The first load's failure. A later successful reload clears it; until then the list stays
+  // hidden, so a failed load never reads as "no feedback".
+  const [listError, setListError] = useState<string | null>(loadError ?? null)
 
   function handleUpdated(id: string, status: FeedbackStatus, staffNotes: string | null) {
     // Keep the local "new" count in step with status transitions.
@@ -298,6 +286,7 @@ export function FeedbackInboxClient({
         return
       }
       setShowResolved(next)
+      setListError(null)
       setItems(result.data.items)
       setHasMore(result.data.hasMore)
       setNewCount(result.data.newCount)
@@ -332,119 +321,109 @@ export function FeedbackInboxClient({
     }
   }
 
+  const emptyState = (
+    <Empty
+      size="sm"
+      icon={<Icon name="message" />}
+      title={showResolved ? 'No feedback yet' : 'No open feedback'}
+      description={
+        showResolved
+          ? 'Guest feedback submitted through the review funnel will appear here.'
+          : 'Resolved and dismissed items are hidden: use "Show Resolved" to see them.'
+      }
+    />
+  )
+
   return (
-    <div>
-      <PageHeader
-        title="Feedback"
-        subtitle="Guest review feedback that needs following up"
-        className="mb-3 pb-3"
-        actions={
-          <div className="flex items-center gap-2">
-            <Badge tone="info">{newCount} new</Badge>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={toggleResolved}
-              loading={loadingList}
-              disabled={loadingList}
-              aria-pressed={showResolved}
-            >
-              {showResolved ? 'Hide resolved' : 'Show resolved'}
-            </Button>
-          </div>
-        }
-      />
+    <PageLayout title="Feedback" subtitle="Guest review feedback that needs following up">
+      {/* The filter sits directly above the list it filters, never in the header. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={toggleResolved}
+          loading={loadingList}
+          disabled={loadingList}
+          aria-pressed={showResolved}
+        >
+          {showResolved ? 'Hide Resolved' : 'Show Resolved'}
+        </Button>
+        <Badge tone={FEEDBACK_STATUS_TONE.new}>{newCount} new</Badge>
+      </div>
 
-      {loadError && (
-        <Alert tone="danger" className="mb-3">
-          {loadError}
-        </Alert>
-      )}
+      {listError && <Alert tone="danger">{listError}</Alert>}
 
-      {(() => {
-        const emptyContent = (
-          <div className="flex flex-col items-center gap-1 text-text-muted">
-            <Icon name="message" size={24} className="text-text-subtle" />
-            <span className="text-sm font-medium">
-              {showResolved ? 'No feedback yet' : 'No open feedback'}
-            </span>
-            <span className="text-xs text-text-soft">
-              {showResolved
-                ? 'Guest feedback submitted through the review funnel will appear here.'
-                : 'Resolved and dismissed items are hidden — use "Show resolved" to see them.'}
-            </span>
+      {!listError && (
+        <Card>
+          {/* Desktop: full table */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[10%]">Date</TableHead>
+                  <TableHead className="w-[14%]">Rating</TableHead>
+                  <TableHead className="w-[30%]">Comments</TableHead>
+                  <TableHead className="w-[18%]">Contact</TableHead>
+                  <TableHead className="w-[28%]">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="whitespace-normal">
+                      {emptyState}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  items.map((item) => (
+                    <FeedbackRow
+                      key={item.id}
+                      item={item}
+                      canManage={canManage}
+                      onUpdated={handleUpdated}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
-        )
-        return (
-      <Card>
-        {/* Desktop: full table */}
-        <div className="hidden md:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[10%]">Date</TableHead>
-              <TableHead className="w-[14%]">Rating</TableHead>
-              <TableHead className="w-[30%]">Comments</TableHead>
-              <TableHead className="w-[18%]">Contact</TableHead>
-              <TableHead className="w-[28%]">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+
+          {/* Mobile: stacked cards */}
+          <CardBody className="md:hidden">
             {items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" className="py-10 text-center">
-                  {emptyContent}
-                </TableCell>
-              </TableRow>
+              emptyState
             ) : (
-              items.map((item) => (
-                <FeedbackRow
-                  key={item.id}
-                  item={item}
-                  canManage={canManage}
-                  onUpdated={handleUpdated}
-                />
-              ))
+              <div className="divide-y divide-border">
+                {items.map((item) => (
+                  <FeedbackCard
+                    key={item.id}
+                    item={item}
+                    canManage={canManage}
+                    onUpdated={handleUpdated}
+                  />
+                ))}
+              </div>
             )}
-          </TableBody>
-        </Table>
-        </div>
+          </CardBody>
 
-        {/* Mobile: stacked cards */}
-        <div className="md:hidden">
-          {items.length === 0 ? (
-            <div className="py-6">{emptyContent}</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {items.map((item) => (
-                <FeedbackCard
-                  key={item.id}
-                  item={item}
-                  canManage={canManage}
-                  onUpdated={handleUpdated}
-                />
-              ))}
-            </div>
+          {hasMore && (
+            // Appends the next batch to the list, so it stays a "Load More" button, not a pager.
+            <CardFooter className="flex justify-center">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={loadMore}
+                loading={loadingMore}
+                disabled={loadingMore}
+              >
+                Load More
+              </Button>
+            </CardFooter>
           )}
-        </div>
-        {hasMore && (
-          <div className="flex justify-center border-t border-border py-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={loadMore}
-              loading={loadingMore}
-              disabled={loadingMore}
-            >
-              Load more
-            </Button>
-          </div>
-        )}
-      </Card>
-        )
-      })()}
-    </div>
+        </Card>
+      )}
+    </PageLayout>
   )
 }

@@ -8,6 +8,11 @@ vi.mock('@/app/actions/cashing-up', () => ({
   getWeeklyDataAction: getWeeklyDataActionMock,
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/cashing-up/weekly',
+}))
+
 describe('WeeklyClient', () => {
   it('renders the weekly PDF download link for weeks with data', () => {
     render(
@@ -26,7 +31,8 @@ describe('WeeklyClient', () => {
       />
     )
 
-    const link = screen.getByRole('link', { name: /download pdf/i })
+    // A header action: PageLayout renders it in the desktop header and the phone nav row.
+    const link = screen.getAllByRole('link', { name: /download pdf/i })[0]
     expect(link).toHaveAttribute(
       'href',
       '/api/cashup/weekly/print?siteId=site-1&weekStartDate=2026-05-18'

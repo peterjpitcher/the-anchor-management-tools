@@ -1,8 +1,6 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
+import { Alert, PageLayout } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { ensurePayrollPeriodsAhead, getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
@@ -10,7 +8,8 @@ import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import PayrollClient from './PayrollClient';
-import { rotaNavItems } from '../nav';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,14 +37,14 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
   const supabase = await createClient();
 
-  // Fetch period first — its start/end dates define the range for day info.
+  // Fetch period first: its start/end dates define the range for day info.
   // getOrCreatePayrollPeriod may insert a row so it runs sequentially first.
   const payrollPeriod = (
     availablePeriods.find(period => period.year === year && period.month === month)
     ?? await getOrCreatePayrollPeriod(year, month)
   ) as PayrollPeriod;
 
-  const [payrollResult, approvalResult] = await Promise.all([
+  const [payrollResult, approvalResult, navItems] = await Promise.all([
     getPayrollMonthData(year, month),
     supabase
       .from('payroll_month_approvals')
@@ -53,6 +52,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       .eq('year', year)
       .eq('month', month)
       .maybeSingle(),
+    getRotaNavItems(),
   ]);
   const dayInfo = await getRotaWeekDayInfo(payrollPeriod.period_start, payrollPeriod.period_end);
 
@@ -65,36 +65,43 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
   const approval = approvalResult.data as PayrollMonthApproval | null;
 
+  // One header for every state, so a failed load keeps the page's title, month and tabs.
+  const layoutProps = {
+    title: 'Rota',
+    subtitle: `Payroll: ${monthLabel}`,
+    navItems,
+  };
+
+  if (!payrollResult.success) {
+    return (
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Could not load payroll">{payrollResult.error}</Alert>
+      </PageLayout>
+    );
+  }
+
+  // PayrollClient renders the PageLayout itself: its header actions (approve, email, export)
+  // follow the approval it holds in state.
   return (
-    <PageLayout
-      title="Payroll"
-      subtitle={monthLabel}
-      navItems={rotaNavItems}
-    >
-      <Section
-        title={`${monthLabel} Payroll`}
-        description="Review planned vs actual hours per employee. Salaried staff are excluded. Approve to lock the snapshot, then download the Excel or email the accountant."
-      >
-        <Card>
-          {payrollResult.success ? (
-            <PayrollClient
-              year={year}
-              month={month}
-              rows={payrollResult.data}
-              employees={payrollResult.employees}
-              approval={approval}
-              period={payrollPeriod}
-              canApprove={canApprove}
-              canSend={canSend}
-              canExport={canExport}
-              monthOptions={monthOptions}
-              dayInfo={dayInfo}
-            />
-          ) : (
-            <p className="text-sm text-danger-fg">{payrollResult.error}</p>
-          )}
-        </Card>
-      </Section>
-    </PageLayout>
+    <PayrollClient
+      layout={layoutProps}
+      notice={
+        <PartialLoadAlert
+          missing={approvalResult.error ? ['approval status'] : []}
+          consequence="this month may already be approved even though it shows as pending"
+        />
+      }
+      year={year}
+      month={month}
+      rows={payrollResult.data}
+      employees={payrollResult.employees}
+      approval={approval}
+      period={payrollPeriod}
+      canApprove={canApprove}
+      canSend={canSend}
+      canExport={canExport}
+      monthOptions={monthOptions}
+      dayInfo={dayInfo}
+    />
   );
 }

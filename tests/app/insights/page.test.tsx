@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { InsightsReportView } from '@/app/(authenticated)/insights/_components/InsightsReportView'
+import { INSIGHT_STATUS_WORD } from '@/app/(authenticated)/insights/_shared/status-ui'
+import { insightSectionTitle } from '@/app/(authenticated)/insights/_shared/title'
 import { buildFixtureReport } from '../../lib/insights/helpers/report-fixture'
 
 const mocks = vi.hoisted(() => ({
@@ -46,7 +48,7 @@ describe('Insights page access', () => {
     const signal = new AbortController().signal
     options.createDb(signal)
     expect(mocks.admin).toHaveBeenCalledWith({ signal })
-    expect(renderToStaticMarkup(element)).toContain('Manager actions this week')
+    expect(renderToStaticMarkup(element)).toContain('Manager Actions This Week')
   })
 
   it('shows an error, not an empty report, when the build fails', async () => {
@@ -55,7 +57,16 @@ describe('Insights page access', () => {
     const InsightsPage = await loadPage()
     const html = renderToStaticMarkup(await InsightsPage())
     expect(html).toContain('Insights are unavailable')
-    expect(html).not.toContain('Manager actions this week')
+    expect(html).not.toContain('Manager Actions This Week')
+  })
+})
+
+describe('insightSectionTitle', () => {
+  it('shows a stored sentence-case section title in Title Case, small words lower case', () => {
+    expect(insightSectionTitle('Hosted events')).toBe('Hosted Events')
+    expect(insightSectionTitle('Employees and compliance')).toBe('Employees and Compliance')
+    expect(insightSectionTitle('Rota, shifts and leave')).toBe('Rota, Shifts and Leave')
+    expect(insightSectionTitle('Maintenance')).toBe('Maintenance')
   })
 })
 
@@ -68,10 +79,36 @@ describe('InsightsReportView', () => {
     for (const section of report.sections) {
       expect(html).toContain(`id="${section.key}"`)
       expect(html).toContain(`href="#${section.key}"`)
-      expect(html).toContain(`: ${section.title}</span></h2>`)
+      // The card title is the section's heading, in Title Case like every card title; the
+      // section is named with its status word.
+      const title = insightSectionTitle(section.title)
+      expect(html).toMatch(new RegExp(`<h3[^>]*>${title}</h3>`))
+      expect(html).toContain(`aria-label="${title}: ${INSIGHT_STATUS_WORD[section.status]}"`)
     }
     expect(html).toContain('Not checked')
     expect(html).toContain('id="actions"')
+  })
+
+  it('keeps the sub-list titles inside a card as headings, so screen readers can jump between them', () => {
+    // SubHeading: h4 under the card title (h3), in Title Case like every other sub-heading.
+    expect(html).toMatch(/<h4[^>]*>Needs Attention<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Going Well<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Next 14 Days<\/h4>/)
+    // Only the display changes: the stored sentence-case titles stay as the report wrote them.
+    expect(html).not.toMatch(/<h4[^>]*>Needs attention<\/h4>/)
+  })
+
+  it('shows a campaign list title exactly as written, never recased into Title Case', () => {
+    const withCampaign = buildFixtureReport()
+    withCampaign.sections[7].lists.push({
+      title: 'Halloween party (customer email, first sent Thu 24 Sep, early figures)',
+      titleAsWritten: true,
+      items: [{ text: 'Delivered 90 of 100 sent so far.' }],
+    })
+    const markup = renderToStaticMarkup(<InsightsReportView report={withCampaign} />)
+
+    expect(markup).toMatch(/<h4[^>]*>Halloween party \(customer email, first sent Thu 24 Sep, early figures\)<\/h4>/)
+    expect(markup).not.toContain('Halloween Party')
   })
 
   it('keeps links on this host rather than the configured origin', () => {

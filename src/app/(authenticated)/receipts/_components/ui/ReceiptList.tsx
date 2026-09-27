@@ -1,7 +1,20 @@
 'use client'
 
 import { ChangeEvent, Fragment, useMemo } from 'react'
-import { Card, CardBody, CardHeader, Select } from '@/ds'
+import {
+  Card,
+  CardHeader,
+  Empty,
+  Select,
+  SubHeading,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TablePagination,
+  TableRow,
+} from '@/ds'
 import type { ReceiptWorkspaceData, ReceiptWorkspaceFilters, ClassificationRuleSuggestion } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptTableRow } from './ReceiptTableRow'
@@ -36,7 +49,18 @@ interface ReceiptListProps {
   onTransactionChange: (updated: WorkspaceTransaction, previousStatus?: ReceiptTransaction['status']) => void
   onTransactionRemove: (id: string, previousStatus: ReceiptTransaction['status'], nextStatus?: ReceiptTransaction['status']) => void
   onRuleSuggestion: (suggestion: ClassificationRuleSuggestion) => void
+  /** The workspace pages on the server; left out when everything fits on one page. */
+  pagination?: {
+    page: number
+    totalPages: number
+    pageSize: number
+    totalItems: number
+    onPageChange: (page: number) => void
+  }
 }
+
+const NO_MATCHES = 'No transactions match these filters'
+const NO_MATCHES_HINT = 'Change or clear the filters to see more transactions.'
 
 export function ReceiptList({
   transactions,
@@ -47,6 +71,7 @@ export function ReceiptList({
   onTransactionChange,
   onTransactionRemove,
   onRuleSuggestion,
+  pagination,
 }: ReceiptListProps) {
   const currentSortBy = filters.sortBy ?? 'transaction_date'
   const currentSortDirection = filters.sortDirection ?? 'desc'
@@ -119,163 +144,179 @@ export function ReceiptList({
       onTransactionChange(updated, previousStatus)
   }
 
+  const sortHeader = (column: SortColumn, label: string, align?: 'left' | 'right') => (
+    <SortHeader
+      column={column}
+      label={label}
+      align={align}
+      currentSortBy={currentSortBy}
+      currentSortDirection={currentSortDirection}
+      onSort={onSort}
+    />
+  )
+
   return (
     <Card>
-      <CardHeader title="Transactions" subtitle="Tick off receipts as you collect them and keep the finance trail tidy." />
-      <CardBody className="p-0">
-        {/* Card list runs to lg, so the sort control must too. It used to stop
-            at sm, leaving tablets with cards and no way to sort them. */}
-        <div className="w-full p-pad-card lg:hidden">
-          <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-text-muted">Sort</label>
-          <Select
-            id="mobile-receipts-sort"
-            value={mobileSortValue}
-            onChange={onMobileSort}
-            className="mt-1"
-            options={mobileSortOptions}
-          />
-        </div>
+      <CardHeader title="Transactions" subtitle="Tick off receipts as you collect them and keep the finance trail tidy" />
+      {/* Card list runs to lg, so the sort control must too. It used to stop
+          at sm, leaving tablets with cards and no way to sort them. */}
+      <div className="w-full p-pad-card lg:hidden">
+        <Select
+          id="mobile-receipts-sort"
+          label="Sort"
+          value={mobileSortValue}
+          onChange={onMobileSort}
+          options={mobileSortOptions}
+        />
+      </div>
 
-        {/* Mobile View */}
-        <div className="flex flex-col gap-2 px-pad-card pb-pad-card lg:hidden">
-          {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
-          {transactions.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
-              No transactions match your filters.
-            </div>
-          ) : shouldGroupByVendor ? (
-            vendorGroups.map((group) => (
-              <section key={group.key} className="space-y-2">
-                <div
-                  className="rounded-md px-3 py-2 text-sm text-white shadow-sm"
-                  style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-bold text-white">{group.vendorName}</h3>
-                    <span className="text-xs font-bold text-white">Total {formatCurrency(group.totalAmount)}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-white/90">
-                    <span>{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
-                    {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
-                    {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
-                  </div>
+      {/* Phones and tablets */}
+      <div className="flex flex-col gap-2 px-pad-card pb-pad-card lg:hidden">
+        {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
+        {transactions.length === 0 ? (
+          <Empty size="sm" variant="dashed" title={NO_MATCHES} description={NO_MATCHES_HINT} />
+        ) : shouldGroupByVendor ? (
+          vendorGroups.map((group) => (
+            <section key={group.key} className="space-y-2" aria-label={group.vendorName}>
+              <div
+                className="rounded-default px-3 py-2 text-sm text-on-dark shadow-sm"
+                style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <SubHeading className="font-bold text-on-dark">{group.vendorName}</SubHeading>
+                  <span className="text-xs font-bold">Total {formatCurrency(group.totalAmount)}</span>
                 </div>
-                {group.transactions.map((transaction) => (
-                  <ReceiptMobileCard
-                    key={transaction.id}
-                    transaction={transaction}
-                    vendorOptions={knownVendors}
-                    heatColour={transactionHeatColour(transaction)}
-                    onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                    onRuleSuggestion={onRuleSuggestion}
-                  />
-                ))}
-              </section>
-            ))
-          ) : (
-            transactions.map((transaction) => (
-              <ReceiptMobileCard
-                key={transaction.id}
-                transaction={transaction}
-                vendorOptions={knownVendors}
-                onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                onRuleSuggestion={onRuleSuggestion}
-              />
-            ))
-          )}
-        </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-on-dark-muted">
+                  <span>{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                  {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
+                  {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
+                </div>
+              </div>
+              {group.transactions.map((transaction) => (
+                <ReceiptMobileCard
+                  key={transaction.id}
+                  transaction={transaction}
+                  vendorOptions={knownVendors}
+                  heatColour={transactionHeatColour(transaction)}
+                  onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+                  onRuleSuggestion={onRuleSuggestion}
+                />
+              ))}
+            </section>
+          ))
+        ) : (
+          transactions.map((transaction) => (
+            <ReceiptMobileCard
+              key={transaction.id}
+              transaction={transaction}
+              vendorOptions={knownVendors}
+              onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+              onRuleSuggestion={onRuleSuggestion}
+            />
+          ))
+        )}
+      </div>
 
-        {/* Desktop Table */}
-        <div className="hidden lg:block">
-          {transactions.length > 0 && shouldGroupByVendor && (
-            <div className="flex justify-end border-t border-border px-4 py-2">
-              <ValueHeatLegend />
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-surface-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
-                <tr>
-                  <th scope="col" className="px-4 py-2">
-                    <SortHeaderButton column="transaction_date" label="Date" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
-                  </th>
-                  <th scope="col" className="px-4 py-2">
-                    <SortHeaderButton column="details" label="Details" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
-                  </th>
-                  <th scope="col" className="px-4 py-2">Vendor</th>
-                  <th scope="col" className="px-4 py-2">Expense type</th>
-                  <th scope="col" className="px-4 py-2 text-right">
-                    <SortHeaderButton column="amount_in" label="In" align="right" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-right">
-                    <SortHeaderButton column="amount_out" label="Out" align="right" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
-                  </th>
-                  <th scope="col" className="px-4 py-2">Status</th>
-                  <th scope="col" className="px-4 py-2">Receipts</th>
-                  <th scope="col" className="px-4 py-2">Notes</th>
-                  <th scope="col" className="px-4 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border text-sm text-text">
-                {transactions.length === 0 && (
-                  <tr><td colSpan={10} className="px-4 py-6 text-center text-text-muted">No transactions match your filters.</td></tr>
-                )}
-                {transactions.length > 0 && shouldGroupByVendor ? (
-                  vendorGroups.map((group) => (
-                    <Fragment key={group.key}>
-                      <tr
-                        className="text-white shadow-sm"
-                        style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
-                      >
-                        <td colSpan={10} className="px-4 py-2">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <span className="font-bold text-white">{group.vendorName}</span>
-                              <span className="text-xs font-semibold text-white/90">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-3 text-xs font-bold text-white">
-                              <span>Total {formatCurrency(group.totalAmount)}</span>
-                              {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
-                              {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                      {group.transactions.map((transaction) => (
-                        <ReceiptTableRow
-                          key={transaction.id}
-                          transaction={transaction}
-                          vendorOptions={knownVendors}
-                          heatColour={transactionHeatColour(transaction)}
-                          onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                          onRemove={onTransactionRemove}
-                          onRuleSuggestion={onRuleSuggestion}
-                        />
-                      ))}
-                    </Fragment>
-                  ))
-                ) : (
-                  transactions.map((transaction) => (
+      {/* Desktop table */}
+      <div className="hidden lg:block">
+        {transactions.length > 0 && shouldGroupByVendor && (
+          <div className="flex justify-end border-t border-border px-4 py-2">
+            <ValueHeatLegend />
+          </div>
+        )}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {sortHeader('transaction_date', 'Date')}
+              {sortHeader('details', 'Details')}
+              <TableHead>Vendor</TableHead>
+              <TableHead>Expense type</TableHead>
+              {sortHeader('amount_in', 'In', 'right')}
+              {sortHeader('amount_out', 'Out', 'right')}
+              <TableHead>Status</TableHead>
+              <TableHead>Receipts</TableHead>
+              <TableHead>Notes</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="text-sm text-text">
+            {transactions.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={10}>
+                  <Empty size="sm" title={NO_MATCHES} description={NO_MATCHES_HINT} />
+                </TableCell>
+              </TableRow>
+            )}
+            {transactions.length > 0 && shouldGroupByVendor ? (
+              vendorGroups.map((group) => (
+                <Fragment key={group.key}>
+                  {/* A plain row: its heat colour is worked out per group, and TableRow takes no style. */}
+                  <tr
+                    className="text-on-dark shadow-sm"
+                    style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
+                  >
+                    <td colSpan={10} className="px-4 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold">{group.vendorName}</span>
+                          <span className="text-xs font-semibold text-on-dark-muted">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-xs font-bold">
+                          <span>Total {formatCurrency(group.totalAmount)}</span>
+                          {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
+                          {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  {group.transactions.map((transaction) => (
                     <ReceiptTableRow
                       key={transaction.id}
                       transaction={transaction}
                       vendorOptions={knownVendors}
+                      heatColour={transactionHeatColour(transaction)}
                       onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
                       onRemove={onTransactionRemove}
                       onRuleSuggestion={onRuleSuggestion}
                     />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </CardBody>
+                  ))}
+                </Fragment>
+              ))
+            ) : (
+              transactions.map((transaction) => (
+                <ReceiptTableRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  vendorOptions={knownVendors}
+                  onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+                  onRemove={onTransactionRemove}
+                  onRuleSuggestion={onRuleSuggestion}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {pagination && (
+        <TablePagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          onPageChange={pagination.onPageChange}
+        />
+      )}
     </Card>
   )
 }
 
-function SortHeaderButton({
+/**
+ * The server sorts every matching transaction and the order lives in the address, so DataTable
+ * (which sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is
+ * used, and the caller picks the next direction.
+ */
+function SortHeader({
   column,
   label,
   align = 'left',
@@ -292,14 +333,15 @@ function SortHeaderButton({
 }) {
   const isActive = currentSortBy === column
   return (
-    <button
-      type="button"
-      onClick={() => onSort(column)}
-      aria-label={`Sort by ${label}`}
-      className={`flex w-full items-center gap-1 rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset ${align === 'right' ? 'justify-end' : ''} ${isActive ? 'text-primary' : 'hover:text-text'}`}
+    <TableHead
+      sortable
+      align={align}
+      sortDirection={isActive ? currentSortDirection : null}
+      onSort={() => onSort(column)}
+      className={isActive ? 'text-primary' : undefined}
     >
-      {label} {isActive && (currentSortDirection === 'asc' ? '↑' : '↓')}
-    </button>
+      {label}
+    </TableHead>
   )
 }
 
@@ -307,10 +349,11 @@ function ValueHeatLegend() {
   return (
     <div className="flex items-center gap-2 text-meta font-bold text-text-muted">
       <span>Lower value</span>
+      {/* The same two colours getValueHeatColour mixes between, as tokens. */}
       <span
         aria-hidden="true"
         className="h-3 w-28 rounded-full border border-border"
-        style={{ background: 'linear-gradient(90deg, rgb(25 95 235), rgb(220 38 38))' }}
+        style={{ background: 'linear-gradient(90deg, var(--color-info), var(--color-danger))' }}
       />
       <span>Higher value</span>
     </div>

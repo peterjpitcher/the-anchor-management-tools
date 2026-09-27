@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Drawer, DrawerActions } from '@/ds';
+import { Drawer, FormFooter, Icon, PageLoading, SHELL_MEDIA_QUERY } from '@/ds';
 import { Tabs } from '@/ds';
-import { Badge, Button } from '@/ds';
+import { Badge, Button, Card } from '@/ds';
 import { Checkbox } from '@/ds';
 import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
+import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { formatDateInLondon } from '@/lib/dateUtils';
-import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
+import { ALLERGEN_VERIFICATION_UI, GP_TARGET_UI } from '../../_shared/status-ui';
 import {
   createMenuDish,
   updateMenuDish,
@@ -29,6 +29,7 @@ import {
   defaultRecipeRow,
 } from './CompositionRow';
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from './DishExpandedRow';
+import { formatDateInLondon } from '@/lib/dateUtils';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -62,7 +63,7 @@ export function DishDrawer({
   selectedMenuCode,
   onSaved,
 }: DishDrawerProps): React.ReactElement {
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(SHELL_MEDIA_QUERY);
   const isEditing = Boolean(dish);
 
   // Form state
@@ -475,15 +476,16 @@ export function DishDrawer({
 
   // ---- Drawer header content ----
   const drawerTitle = isEditing ? (dish?.name ?? 'Edit Dish') : 'New Dish';
+  const drawerDescription = isEditing ? undefined : 'Cost a dish from its recipes and ingredients, then place it on menus';
 
   const gpDisplayPct = computedGp !== null ? `${Math.round(computedGp * 100)}%` : '\u2014';
 
   // ---- Tab items ----
-  // Not memoised — the items contain JSX which creates new references every render,
+  // Not memoised: the items contain JSX which creates new references every render,
   // and the massive dependency array was causing reconciliation issues that broke tab clicks.
   const tabItems = [
     {
-      key: 'overview',
+      id: 'overview',
       label: 'Overview',
       content: (
         <DishOverviewTab
@@ -495,7 +497,7 @@ export function DishDrawer({
       ),
     },
     {
-      key: 'composition',
+      id: 'composition',
       label: 'Composition',
       content: (
         <DishCompositionTab
@@ -514,7 +516,7 @@ export function DishDrawer({
       ),
     },
     {
-      key: 'menus',
+      id: 'menus',
       label: 'Menus',
       content: (
         <DishMenusTab
@@ -526,7 +528,7 @@ export function DishDrawer({
       ),
     },
     {
-      key: 'gp-analysis',
+      id: 'gp-analysis',
       label: 'GP Analysis',
       content: (
         <DishGpAnalysisTab
@@ -550,15 +552,12 @@ export function DishDrawer({
         size={isMobile ? 'full' : 'xl'}
         width={isMobile ? '100vw' : 'min(1040px, calc(100vw - 72px))'}
         title={drawerTitle}
-        description={
-          loadingDetail
-            ? 'Loading dish details...'
-            : undefined
-        }
+        description={drawerDescription}
         footer={
-          <DrawerActions align="between" className="mt-0 w-full border-t-0 pt-0">
-            <div className="flex items-center gap-2">
-              {isEditing && (
+          <FormFooter
+            className="w-full"
+            start={
+              isEditing ? (
                 <Button
                   type="button"
                   variant="danger"
@@ -567,109 +566,116 @@ export function DishDrawer({
                 >
                   Delete
                 </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="secondary" onClick={requestClose}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving || loadingDetail}
-              >
-                {saving ? 'Saving...' : isEditing ? 'Update Dish' : 'Create Dish'}
-              </Button>
-            </div>
-          </DrawerActions>
+              ) : undefined
+            }
+          >
+            <Button type="button" variant="secondary" onClick={requestClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void handleSave()}
+              disabled={loadingDetail}
+              loading={saving}
+            >
+              {isEditing ? 'Save Changes' : 'Create Dish'}
+            </Button>
+          </FormFooter>
         }
       >
-        {/* Server error */}
-        {serverError && (
-          <Alert
-            variant="error"
-            title="Save Error"
-            description={serverError}
-            closable
-            onClose={() => setServerError(null)}
-            className="mb-4"
-          />
-        )}
+        <div className="space-y-4">
+          {/* Server error */}
+          {serverError && (
+            <Alert
+              tone="danger"
+              title="Save Error"
+              closable
+              onClose={() => setServerError(null)}
+            >
+              {serverError}
+            </Alert>
+          )}
 
-        {/* Live header summary: cost / price / GP */}
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-4 py-3">
-          <span className="text-sm text-text-muted">
-            Cost: <span className="font-semibold">£{computedPortionCost.toFixed(2)}</span>
-          </span>
-          <span className="text-sm text-text-muted">
-            Price: <span className="font-semibold">£{sellingPrice.toFixed(2)}</span>
-          </span>
-          <span className={`text-sm font-semibold ${gpBelowTarget ? 'text-danger' : 'text-text'}`}>
-            GP: {gpDisplayPct}
-            {gpBelowTarget && (
-              <ExclamationTriangleIcon className="ml-1 inline h-4 w-4 text-danger" />
-            )}
-          </span>
+          {/* Live header summary: cost / price / GP */}
+          <Card variant="secondary" padding="sm">
+            <div className="flex flex-wrap items-center gap-3 px-1">
+              <span className="text-sm text-text-muted">
+                Cost: <span className="font-semibold">£{computedPortionCost.toFixed(2)}</span>
+              </span>
+              <span className="text-sm text-text-muted">
+                Price: <span className="font-semibold">£{sellingPrice.toFixed(2)}</span>
+              </span>
+              <span className={cn('text-sm font-semibold', gpBelowTarget ? GP_TARGET_UI.below.text : 'text-text')}>
+                GP: {gpDisplayPct}
+                {gpBelowTarget && (
+                  <Icon name={GP_TARGET_UI.below.icon} size={16} className={cn('ml-1 inline', GP_TARGET_UI.below.iconClass)} />
+                )}
+              </span>
 
-          {/* Active / Sunday lunch toggles + allergen verification */}
-          <div className="ml-auto flex items-center gap-3">
-            <Checkbox
-              label="Dish is active"
-              checked={formState.is_active}
-              onChange={(checked) => update({ is_active: checked })}
+              {/* Active / Sunday lunch toggles + allergen verification */}
+              <div className="ml-auto flex items-center gap-3">
+                <Checkbox
+                  label="Dish is active"
+                  checked={formState.is_active}
+                  onChange={(checked) => update({ is_active: checked })}
+                />
+                <Checkbox
+                  label="Sunday lunch"
+                  checked={formState.is_sunday_lunch}
+                  onChange={(checked) => update({ is_sunday_lunch: checked })}
+                />
+
+                {isEditing && (
+                  allergenVerified ? (
+                    <Badge
+                      tone={ALLERGEN_VERIFICATION_UI.verified.tone}
+                      icon={<Icon name="checkCircle" size={12} />}
+                      title={allergenVerifiedAt ? `Verified ${formatDateInLondon(allergenVerifiedAt)}` : undefined}
+                    >
+                      Allergens Verified
+                    </Badge>
+                  ) : (
+                    // A secondary button with a warning icon: it is an action, and the icon keeps the
+                    // "not yet verified" signal the amber pill used to give.
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="xs"
+                      onClick={() => void handleVerifyAllergens()}
+                      loading={verifying}
+                      icon={<Icon name="alertTriangle" size={14} className={ALLERGEN_VERIFICATION_UI.unverified.iconClass} />}
+                    >
+                      Verify Allergens
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Tabbed content. While an existing dish's details load, the tabs wait. */}
+          {loadingDetail ? (
+            <PageLoading inline label="Loading dish details" />
+          ) : (
+            <Tabs
+              aria-label="Dish sections"
+              tabs={tabItems}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
             />
-            <Checkbox
-              label="Sunday lunch"
-              checked={formState.is_sunday_lunch}
-              onChange={(checked) => update({ is_sunday_lunch: checked })}
-            />
-
-            {isEditing && (
-              allergenVerified ? (
-                <Badge
-                  tone="success"
-                  icon={<CheckCircleIcon />}
-                  title={allergenVerifiedAt ? `Verified ${formatDateInLondon(allergenVerifiedAt)}` : undefined}
-                >
-                  Allergens Verified
-                </Badge>
-              ) : (
-                // A secondary button with a warning icon: it is an action, and the icon keeps the
-                // "not yet verified" signal the amber pill used to give.
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => void handleVerifyAllergens()}
-                  disabled={verifying}
-                  icon={<ExclamationTriangleIcon className="h-3.5 w-3.5 text-warning" />}
-                >
-                  {verifying ? 'Verifying...' : 'Verify Allergens'}
-                </Button>
-              )
-            )}
-          </div>
+          )}
         </div>
-
-        {/* Tabbed content */}
-        <Tabs
-          items={tabItems}
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          variant="underline"
-          bordered={false}
-          padded={false}
-          destroyInactive={false}
-        />
       </Drawer>
 
       {/* Unsaved changes confirmation */}
       <ConfirmDialog
         open={showUnsavedConfirm}
-        title="Unsaved changes"
+        title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
-        confirmText="Discard"
-        type="danger"
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {
           setShowUnsavedConfirm(false);
@@ -680,16 +686,14 @@ export function DishDrawer({
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete dish?"
+        title="Delete Dish"
         message={
           dish
             ? `Are you sure you want to delete ${dish.name}? This cannot be undone.`
             : undefined
         }
-        confirmText="Delete"
-        type="danger"
-        confirmVariant="danger"
-        destructive
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={() => {
           setShowDeleteConfirm(false);

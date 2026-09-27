@@ -2,7 +2,7 @@
 
 import { useEffect, useActionState } from 'react';
 import { inviteEmployee } from '@/app/actions/employeeInvite';
-import { Button, Input, Modal, toast } from '@/ds';
+import { Alert, Button, Input, Modal, toast } from '@/ds';
 
 interface InviteEmployeeModalProps {
   onClose: () => void;
@@ -22,14 +22,26 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
     }
   }, [state, onSuccess, onClose]);
 
-  // The buttons stay inside the form (not the Modal footer) so Send Invite submits it.
+  // The actions sit in the Modal footer; Send Invite reaches the form through form=.
   return (
-    <Modal open onClose={onClose} title="Invite Employee" width="md">
-      <p className="text-sm text-text-muted mb-6">
-        Enter the employee&apos;s email address. They will receive an invite to create their account and complete their profile.
-      </p>
-
-      <form action={formAction} className="space-y-4">
+    <Modal
+      open
+      onClose={onClose}
+      title="Invite Employee"
+      description="They will receive an invite by email to create their account and complete their profile."
+      width="md"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="invite-employee-form" variant="primary" loading={pending}>
+            Send Invite
+          </Button>
+        </>
+      }
+    >
+      <form id="invite-employee-form" action={formAction} className="space-y-4">
         <Input
           id="invite-email"
           name="email"
@@ -58,17 +70,9 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
         />
 
         {state?.type === 'error' && (
-          <p className="text-sm text-danger-fg">{state.message}</p>
+          <Alert tone="danger" size="sm">{state.message}</Alert>
         )}
 
-        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={pending}>
-            {pending ? 'Sending...' : 'Send Invite'}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

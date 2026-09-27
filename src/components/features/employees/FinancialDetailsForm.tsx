@@ -6,16 +6,15 @@ import { upsertFinancialDetails } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
 import { usePathname, useRouter } from 'next/navigation';
-import { toast } from '@/ds';
-import { Input } from '@/ds';
-import { Textarea } from '@/ds';
-import { Button } from '@/ds';
+import { Alert, Button, Card, CardBody, CardHeader, Field, FormFooter, Input, LinkButton, Textarea, toast } from '@/ds';
 
 interface FinancialDetailsFormProps {
   employeeId: string;
   financialDetails: EmployeeFinancialDetails | null;
   onSave?: (data: FormData) => void;
   draftMode?: boolean;
+  /** Where Cancel goes. Without it the form has no Cancel button. */
+  cancelHref?: string;
 }
 
 function SubmitButton() {
@@ -26,12 +25,12 @@ function SubmitButton() {
       loading={pending}
       variant="primary"
     >
-      {pending ? 'Saving...' : 'Save Changes'}
+      Save Financial Details
     </Button>
   );
 }
 
-export default function FinancialDetailsForm({ employeeId, financialDetails, onSave, draftMode = false }: FinancialDetailsFormProps) {
+export default function FinancialDetailsForm({ employeeId, financialDetails, onSave, draftMode = false, cancelHref }: FinancialDetailsFormProps) {
   const [state, formAction] = useActionState(upsertFinancialDetails, null);
   const pathname = usePathname();
   const router = useRouter();
@@ -68,46 +67,53 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
     <form action={draftMode ? undefined : formAction} onSubmit={draftMode ? handleSubmit : undefined} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
 
-      <div className="space-y-4">
-        {details.map(field => (
-          <div key={field.name} className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-            <label htmlFor={field.name} className="block text-sm font-medium text-text sm:col-span-1">
-              {field.label}
-            </label>
-            <div className="mt-1 sm:col-span-3 sm:mt-0">
-              {field.name === 'branch_address' ? (
-                <Textarea
-                  name={field.name}
-                  id={field.name}
-                  defaultValue={field.defaultValue || ''}
-                  rows={2}
-                  error={!!state?.errors?.[field.name]}
-                />
-              ) : (
-                <Input
-                  type="text"
-                  name={field.name}
-                  id={field.name}
-                  defaultValue={field.defaultValue || ''}
-                  placeholder={field.placeholder}
-                  error={!!state?.errors?.[field.name]}
-                  fullWidth
-                />
-              )}
-              {state?.errors?.[field.name] && (
-                <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <Card>
+        <CardHeader title="Financial Details" subtitle="Confidential financial and payment information" />
+        <CardBody className="grid gap-4 sm:grid-cols-2">
+          {details.map(field => {
+            const error = state?.errors?.[field.name]?.join(' ') || undefined;
+            return (
+              <Field
+                key={field.name}
+                label={field.label}
+                className={field.name === 'branch_address' ? 'sm:col-span-2' : undefined}
+              >
+                {field.name === 'branch_address' ? (
+                  <Textarea
+                    name={field.name}
+                    id={field.name}
+                    defaultValue={field.defaultValue || ''}
+                    rows={2}
+                    error={error}
+                  />
+                ) : (
+                  <Input
+                    type="text"
+                    name={field.name}
+                    id={field.name}
+                    defaultValue={field.defaultValue || ''}
+                    placeholder={field.placeholder}
+                    error={error}
+                  />
+                )}
+              </Field>
+            );
+          })}
+        </CardBody>
+      </Card>
 
-      <div className="flex justify-end pt-4">
-        <SubmitButton />
-      </div>
       {state?.type === 'error' && !state.errors && (
-        <p className="mt-2 text-sm text-danger">{state.message}</p>
+        <Alert tone="danger">{state.message}</Alert>
       )}
+
+      <FormFooter>
+        {cancelHref && (
+          <LinkButton href={cancelHref} variant="secondary">
+            Cancel
+          </LinkButton>
+        )}
+        <SubmitButton />
+      </FormFooter>
     </form>
   );
-} 
+}

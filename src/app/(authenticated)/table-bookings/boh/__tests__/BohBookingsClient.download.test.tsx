@@ -18,16 +18,18 @@ vi.mock('@/lib/download-file', () => ({
   ),
 }))
 
-vi.mock('react-hot-toast', () => {
-  const toast = Object.assign(vi.fn(), {
-    error: vi.fn(),
-    success: vi.fn(),
-  })
-  return { default: toast, toast }
-})
+// The client renders PageLayout, whose section tabs read the current path.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/table-bookings/boh',
+}))
+
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}))
 
 import { downloadBlob } from '@/lib/download-file'
-import toast from 'react-hot-toast'
+import { toast } from '@/ds'
 
 const downloadBlobMock = vi.mocked(downloadBlob)
 const toastErrorMock = vi.mocked(toast.error)
@@ -172,10 +174,22 @@ function installFetch(options: {
   return fetchMock
 }
 
+/**
+ * The toolbar lives in PageLayout's header actions, which PageLayout renders twice: once in the
+ * desktop header and once in the phone nav row, one of them hidden by CSS. jsdom applies no
+ * stylesheet, so both copies are in the tree; they share the same props and state. Tests act on
+ * the first (desktop) copy.
+ */
+function headerAction(role: 'button' | 'radio', name: string): HTMLElement {
+  const matches = screen.getAllByRole(role, { name })
+  expect(matches).toHaveLength(2)
+  return matches[0]
+}
+
 function downloadButton(): HTMLButtonElement {
   // Queried by its VISIBLE label: the accessible name must match the visible text so that voice
   // control ("click Download PDF") works — WCAG 2.5.3 Label in Name.
-  return screen.getByRole('button', { name: 'Download PDF' }) as HTMLButtonElement
+  return headerAction('button', 'Download PDF') as HTMLButtonElement
 }
 
 async function renderClient() {
@@ -187,7 +201,7 @@ async function renderClient() {
 
 async function switchTo(user: ReturnType<typeof userEvent.setup>, label: 'Day' | 'Week' | 'Month') {
   // The view switch is a DS Segmented control: a radio group, one radio per view.
-  await user.click(screen.getByRole('radio', { name: label }))
+  await user.click(headerAction('radio', label))
 }
 
 beforeEach(() => {
@@ -244,7 +258,7 @@ describe('BohBookingsClient — Download PDF button', () => {
 
       await switchTo(user, 'Day')
 
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled())
+      await waitFor(() => expect(headerAction('button', 'Refresh')).toBeEnabled())
       expect(downloadButton()).toBeDisabled()
     })
 
@@ -260,7 +274,7 @@ describe('BohBookingsClient — Download PDF button', () => {
 
       await switchTo(user, 'Day')
 
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled())
+      await waitFor(() => expect(headerAction('button', 'Refresh')).toBeEnabled())
       expect(downloadButton()).toBeDisabled()
     })
 
@@ -281,7 +295,7 @@ describe('BohBookingsClient — Download PDF button', () => {
 
       await switchTo(user, 'Day')
 
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled())
+      await waitFor(() => expect(headerAction('button', 'Refresh')).toBeEnabled())
       expect(downloadButton()).toBeDisabled()
     })
   })

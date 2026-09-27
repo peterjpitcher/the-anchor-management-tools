@@ -65,8 +65,8 @@ describe('MaintenancePhotos', () => {
 
     const { container } = render(<MaintenancePhotos itemId={ITEM_ID} itemTitle="Leaking cellar tap" />)
 
-    const take = await screen.findByRole('button', { name: 'Take photo' })
-    const choose = screen.getByRole('button', { name: 'Choose existing photo' })
+    const take = await screen.findByRole('button', { name: 'Take Photo' })
+    const choose = screen.getByRole('button', { name: 'Choose Existing Photo' })
 
     // Both are real buttons, so both are keyboard operable by default.
     expect(take.tagName).toBe('BUTTON')
@@ -85,14 +85,30 @@ describe('MaintenancePhotos', () => {
     const withCapture = inputs.filter((input) => input.getAttribute('capture') === 'environment')
     expect(withCapture).toHaveLength(1)
     // capture is a hint browsers may ignore, so the other control has none.
-    expect(inputs.filter((input) => !input.hasAttribute('capture'))).toHaveLength(1)
+    const withoutCapture = inputs.filter((input) => !input.hasAttribute('capture'))
+    expect(withoutCapture).toHaveLength(1)
+
+    // Each button opens its own picker: the camera for Take Photo, the library (several at
+    // once) for Choose Existing Photo.
+    const camera = withCapture[0] as HTMLInputElement
+    const library = withoutCapture[0] as HTMLInputElement
+    expect(camera.multiple).toBe(false)
+    expect(library.multiple).toBe(true)
+    const openCamera = vi.spyOn(camera, 'click')
+    const openLibrary = vi.spyOn(library, 'click')
+    fireEvent.click(take)
+    expect(openCamera).toHaveBeenCalledTimes(1)
+    expect(openLibrary).not.toHaveBeenCalled()
+    fireEvent.click(choose)
+    expect(openLibrary).toHaveBeenCalledTimes(1)
+    expect(openCamera).toHaveBeenCalledTimes(1)
   })
 
   it('announces upload status politely', async () => {
     mockedList.mockResolvedValue({ photos: [] })
 
     const { container } = render(<MaintenancePhotos itemId={ITEM_ID} />)
-    await screen.findByRole('button', { name: 'Take photo' })
+    await screen.findByRole('button', { name: 'Take Photo' })
 
     const live = container.querySelector('[aria-live="polite"]')
     expect(live).not.toBeNull()
@@ -130,7 +146,7 @@ describe('MaintenancePhotos', () => {
     await waitFor(() => {
       expect(screen.getByText('The photos could not be loaded')).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
     expect(screen.queryByText('No photos yet')).not.toBeInTheDocument()
   })
 
@@ -142,8 +158,8 @@ describe('MaintenancePhotos', () => {
     await waitFor(() => {
       expect(screen.getByText('No photos yet')).toBeInTheDocument()
     })
-    expect(screen.queryByRole('button', { name: 'Take photo' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Choose existing photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Take Photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose Existing Photo' })).not.toBeInTheDocument()
   })
 
   it('shows an error rather than loading for ever when the list call rejects', async () => {
@@ -158,7 +174,7 @@ describe('MaintenancePhotos', () => {
     expect(
       screen.getByText('The photos could not be loaded. Check your connection and try again.')
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
     // The spinner is gone, so nothing sits on "Loading photos".
     expect(screen.queryByText('Loading photos')).not.toBeInTheDocument()
   })
@@ -168,7 +184,7 @@ describe('MaintenancePhotos', () => {
     mockedUpload.mockRejectedValue(new Error('Failed to fetch'))
 
     const { container } = render(<MaintenancePhotos itemId={ITEM_ID} />)
-    await screen.findByRole('button', { name: 'Take photo' })
+    await screen.findByRole('button', { name: 'Take Photo' })
 
     const library = container.querySelectorAll('input[type="file"]')[1] as HTMLInputElement
     const file = new File([new Uint8Array(8)], 'IMG_0042.JPG', { type: 'image/jpeg' })
@@ -202,9 +218,13 @@ describe('MaintenancePhotos', () => {
     expect(
       await screen.findByText(/The photo file is deleted permanently and cannot be recovered/)
     ).toBeInTheDocument()
+    // It is the dialog's description, so a screen reader hears it with the title.
+    expect(screen.getByRole('dialog', { name: 'Remove This Photo' })).toHaveAccessibleDescription(
+      /The photo file is deleted permanently/
+    )
 
     // An empty reason is refused before anything is sent.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Photo' }))
     expect(
       await screen.findByText('Please say briefly why this photo is being removed.')
     ).toBeInTheDocument()
@@ -213,7 +233,7 @@ describe('MaintenancePhotos', () => {
     fireEvent.change(screen.getByLabelText('Why is it being removed?'), {
       target: { value: 'A payslip is readable on the worktop.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Photo' }))
 
     await waitFor(() => {
       expect(mockedRedact).toHaveBeenCalledWith('photo-1', 'A payslip is readable on the worktop.')
@@ -237,7 +257,7 @@ describe('MaintenancePhotos', () => {
     fireEvent.change(await screen.findByLabelText('Why is it being removed?'), {
       target: { value: 'A payslip is readable on the worktop.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Photo' }))
 
     expect(
       await screen.findByText('Could not remove that photo. Check your connection and try again.')
@@ -245,7 +265,7 @@ describe('MaintenancePhotos', () => {
     // Nothing is assumed about the file, so the photo stays in the gallery and
     // the button is live again for a retry.
     expect(screen.getByAltText('Maintenance photo 1 of 1 of Leaking cellar tap')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Remove photo' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove Photo' })).not.toBeDisabled()
   })
 
   it('offers no removal control when the caller may not upload', async () => {

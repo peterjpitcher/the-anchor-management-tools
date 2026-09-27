@@ -1,29 +1,18 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import {
-  ChatBubbleLeftRightIcon,
-  CheckIcon,
-  XMarkIcon,
-  ClockIcon,
-  PhoneIcon,
-  CalendarIcon,
-  ExclamationTriangleIcon,
-  PaperAirplaneIcon
-} from '@heroicons/react/24/outline'
 
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { SmsQueueService } from '@/services/sms-queue'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Alert } from '@/ds'
-import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Alert, Badge, Card, CardBody, CardHeader, Empty, Icon, PageLayout, Section } from '@/ds'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
-import { getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
+import { smsQueueTone } from '../_shared/status-ui'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
+
+type SmsQueueRow = NonNullable<Awaited<ReturnType<typeof SmsQueueService.getQueue>>>[number]
 
 async function handleApproveSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
   'use server'
@@ -83,7 +72,10 @@ async function handleSendSms(_prevState: SmsQueueActionState, formData: FormData
 }
 
 export default async function SmsQueuePage() {
-  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+  const [permissionsResult, canViewReports] = await Promise.all([
+    getCurrentUserModuleActions('private_bookings'),
+    checkUserPermission('reports', 'view'),
+  ])
 
   if ('error' in permissionsResult) {
     if (permissionsResult.error === 'Not authenticated') {
@@ -147,45 +139,56 @@ export default async function SmsQueuePage() {
     return types[type] || type
   }
 
+  const customerName = (sms: SmsQueueRow) =>
+    sms.booking?.customer_first_name && sms.booking?.customer_last_name
+      ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
+      : sms.booking?.customer_name || 'Unknown Customer'
+
+  const messageCount = (count: number) => `${count} message${count !== 1 ? 's' : ''}`
+
   return (
     <PageLayout
-      title="SMS Queue"
-      subtitle="Review and approve SMS messages for private bookings"
-      navItems={[
-        { label: 'Bookings', href: '/private-bookings' },
-        { label: 'Calendar', href: '/private-bookings/calendar' },
-        { label: 'SMS Queue', href: '/private-bookings/sms-queue' },
-      ]}
+      title="Private Bookings"
+      subtitle="SMS queue: review and approve texts before they go"
+      navItems={privateBookingsNav({ canViewSmsQueue: true, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) })}
     >
-      <div className="space-y-6">
       {!canApproveSms && !canSendSms && (
-        <Alert variant="info">
+        <Alert tone="info">
           You can view the SMS queue but do not currently have permission to approve or send messages.
         </Alert>
       )}
       {error && (
-        <Alert variant="error">
-          We could not refresh the SMS queue. The latest list may be incomplete.
+        <Alert tone="danger">
+          We could not load the SMS queue. Refresh the page to try again.
         </Alert>
       )}
+
+      {/* A failed load shows only the error above, never empty lists. */}
+      {!error && (
+      <>
       {/* Pending Messages */}
-      <Section 
+      <Section
         title="Pending Approval"
-        icon={<ClockIcon className="h-6 w-6 text-warning" />}
-        description={`${pendingSms.length} message${pendingSms.length !== 1 ? 's' : ''}`}
+        icon={<Icon name="clock" size={20} />}
+        description={messageCount(pendingSms.length)}
       >
         {pendingSms.length === 0 ? (
-          <EmptyState icon={<ChatBubbleLeftRightIcon className="h-12 w-12" />}
-            title="No messages pending approval"
-          />
+          <Card>
+            <Empty
+              size="sm"
+              icon={<Icon name="message" size={48} />}
+              title="No messages to approve"
+            />
+          </Card>
         ) : (
           <div className="space-y-4">
             {pendingSms.map((sms) => (
               <Card key={sms.id}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="warning">
+                <CardHeader
+                  title={customerName(sms)}
+                  action={
+                    <div className="flex items-center gap-3">
+                      <Badge tone={smsQueueTone('pending')}>
                         {formatTriggerType(sms.trigger_type)}
                       </Badge>
                       {sms.booking && (
@@ -197,61 +200,60 @@ export default async function SmsQueuePage() {
                         </Link>
                       )}
                     </div>
-                    
-                    <h3 className="text-lg font-medium text-text mb-1">
-                      {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
-                        ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
-                        : sms.booking?.customer_name || 'Unknown Customer'}
-                    </h3>
-                    
-                    <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
+                  }
+                />
+                <CardBody className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-text-muted">
+                    <span className="flex items-center gap-1">
+                      <Icon name="phone" size={16} />
+                      {sms.recipient_phone}
+                    </span>
+                    {sms.booking && (
                       <span className="flex items-center gap-1">
-                        <PhoneIcon className="h-4 w-4" />
-                        {sms.recipient_phone}
+                        <Icon name="calendar" size={16} />
+                        {formatDateFull(sms.booking.event_date)}
                       </span>
-                      {sms.booking && (
-                        <span className="flex items-center gap-1">
-                          <CalendarIcon className="h-4 w-4" />
-                          {formatDateFull(sms.booking.event_date)}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="bg-surface-2 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
-                    </div>
-                    
-                    <p className="text-xs text-text-muted">
-                      Created {formatDateTime12Hour(sms.created_at)}
-                    </p>
+                    )}
                   </div>
-                </div>
-                
-                <div className="flex gap-3">
-                  <SmsQueueActionForm
-                    action={handleApproveSms}
-                    smsId={sms.id}
-                    confirmMessage="Approve this SMS for sending?"
-                    leftIcon={<CheckIcon className="h-4 w-4" />}
-                    variant="primary"
-                    successMessage="SMS approved"
-                    disabled={!canApproveSms}
-                  >
-                    Approve
-                  </SmsQueueActionForm>
 
-                  <SmsQueueActionForm
-                    action={handleRejectSms}
-                    smsId={sms.id}
-                    confirmMessage="Reject this SMS?"
-                    leftIcon={<XMarkIcon className="h-4 w-4" />}
-                    variant="danger"
-                    successMessage="SMS rejected"
-                    disabled={!canApproveSms}
-                  >
-                    Reject
-                  </SmsQueueActionForm>
-                </div>
+                  <div className="bg-surface-2 rounded-default p-4">
+                    <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
+                  </div>
+
+                  <p className="text-xs text-text-muted">
+                    Created {formatDateTime12Hour(sms.created_at)}
+                  </p>
+
+                  <div className="flex gap-3">
+                    <SmsQueueActionForm
+                      action={handleApproveSms}
+                      smsId={sms.id}
+                      confirmTitle="Approve Message"
+                      confirmMessage="Approve this SMS for sending?"
+                      confirmLabel="Approve"
+                      leftIcon={<Icon name="check" size={16} />}
+                      variant="primary"
+                      successMessage="SMS approved"
+                      disabled={!canApproveSms}
+                    >
+                      Approve
+                    </SmsQueueActionForm>
+
+                    <SmsQueueActionForm
+                      action={handleRejectSms}
+                      smsId={sms.id}
+                      confirmTitle="Reject Message"
+                      confirmMessage="Reject this SMS? It will not be sent."
+                      confirmLabel="Reject"
+                      leftIcon={<Icon name="x" size={16} />}
+                      variant="danger"
+                      successMessage="SMS rejected"
+                      disabled={!canApproveSms}
+                    >
+                      Reject
+                    </SmsQueueActionForm>
+                  </div>
+                </CardBody>
               </Card>
             ))}
           </div>
@@ -259,61 +261,60 @@ export default async function SmsQueuePage() {
       </Section>
 
       {/* Approved Messages */}
-      <Section 
+      <Section
         title="Approved Messages"
-        icon={<CheckIcon className="h-6 w-6 text-success" />}
-        description={`${approvedSms.length} message${approvedSms.length !== 1 ? 's' : ''}`}
+        icon={<Icon name="check" size={20} />}
+        description={messageCount(approvedSms.length)}
       >
         {approvedSms.length === 0 ? (
-          <EmptyState icon={<PaperAirplaneIcon className="h-12 w-12" />}
-            title="No approved messages ready to send"
-          />
+          <Card>
+            <Empty
+              size="sm"
+              icon={<Icon name="send" size={48} />}
+              title="No messages to send"
+            />
+          </Card>
         ) : (
           <div className="space-y-4">
             {approvedSms.map((sms) => (
               <Card key={sms.id}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="success">Approved</Badge>
-                      <span className="text-xs text-text-muted">
-                        by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
-                      </span>
-                    </div>
-                    
-                    <h3 className="text-lg font-medium text-text mb-1">
-                      {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
-                        ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
-                        : sms.booking?.customer_name || 'Unknown Customer'}
-                    </h3>
-                    
-                    <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
-                      <span className="flex items-center gap-1">
-                        <PhoneIcon className="h-4 w-4" />
-                        {sms.recipient_phone}
-                      </span>
-                    </div>
-                    
-                    <div className="bg-surface-2 rounded-lg p-4">
-                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
-                    </div>
+                <CardHeader
+                  title={customerName(sms)}
+                  action={<Badge tone={smsQueueTone('approved')}>Approved</Badge>}
+                />
+                <CardBody className="space-y-4">
+                  <p className="text-xs text-text-muted">
+                    Approved by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-text-muted">
+                    <span className="flex items-center gap-1">
+                      <Icon name="phone" size={16} />
+                      {sms.recipient_phone}
+                    </span>
                   </div>
-                </div>
-                
-                <SmsQueueActionForm
-                  action={handleSendSms}
-                  smsId={sms.id}
-                  confirmMessage={
-                    emailFirst
-                      ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
-                      : 'Send this approved SMS now?'
-                  }
-                  leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                  successMessage="SMS sent"
-                  disabled={!canSendSms}
-                >
-                  Send Now
-                </SmsQueueActionForm>
+
+                  <div className="bg-surface-2 rounded-default p-4">
+                    <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
+                  </div>
+
+                  <SmsQueueActionForm
+                    action={handleSendSms}
+                    smsId={sms.id}
+                    confirmTitle="Send Message"
+                    confirmLabel="Send Now"
+                    confirmMessage={
+                      emailFirst
+                        ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
+                        : 'Send this approved SMS now?'
+                    }
+                    leftIcon={<Icon name="send" size={16} />}
+                    successMessage="SMS sent"
+                    disabled={!canSendSms}
+                  >
+                    Send Now
+                  </SmsQueueActionForm>
+                </CardBody>
               </Card>
             ))}
           </div>
@@ -322,10 +323,10 @@ export default async function SmsQueuePage() {
 
       {/* Cancelled Messages */}
       {cancelledSms.length > 0 && (
-        <Section 
+        <Section
           title="Cancelled Messages"
-          icon={<XMarkIcon className="h-6 w-6 text-danger" />}
-          description={`${cancelledSms.length} message${cancelledSms.length !== 1 ? 's' : ''}`}
+          icon={<Icon name="x" size={20} />}
+          description={messageCount(cancelledSms.length)}
         >
           <div className="space-y-4">
             {cancelledSms.map((sms) => {
@@ -334,60 +335,54 @@ export default async function SmsQueuePage() {
               const old_date = typeof metadata.old_date === 'string' ? metadata.old_date : undefined
               const new_date = typeof metadata.new_date === 'string' ? metadata.new_date : undefined
               const isDateChange = cancelled_reason === 'event_date_changed'
-              
+
               return (
                 <Card key={sms.id} className="opacity-75">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <Badge tone="neutral">Cancelled</Badge>
+                  <CardHeader
+                    title={customerName(sms)}
+                    action={
+                      <div className="flex items-center gap-3">
+                        <Badge tone={smsQueueTone('cancelled')}>Cancelled</Badge>
                         {isDateChange && (
-                          <Badge variant="warning">Date Changed</Badge>
+                          <Badge tone={smsQueueTone('date_changed')}>Date Changed</Badge>
                         )}
                       </div>
-                      
-                      <h3 className="text-lg font-medium text-text mb-1">
-                        {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
-                          ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
-                          : sms.booking?.customer_name || 'Unknown Customer'}
-                      </h3>
-                      
-                      {isDateChange && old_date && new_date && (
-                        <Alert variant="warning" className="mb-3">
-                          <strong>Booking rescheduled:</strong> {formatDateFull(old_date)} → {formatDateFull(new_date)}
-                        </Alert>
-                      )}
-                      
-                      <div className="bg-surface-2 rounded-lg p-4 line-through">
-                        <p className="text-sm text-text-muted whitespace-pre-wrap">{sms.message_body}</p>
-                      </div>
-                      
-                      <p className="text-xs text-text-muted mt-2">
-                        Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at as string) : 'recently'}
-                      </p>
+                    }
+                  />
+                  <CardBody className="space-y-4">
+                    {isDateChange && old_date && new_date && (
+                      <Alert tone="warning">
+                        <strong>Booking rescheduled:</strong> {formatDateFull(old_date)} → {formatDateFull(new_date)}
+                      </Alert>
+                    )}
+
+                    <div className="bg-surface-2 rounded-default p-4 line-through">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">{sms.message_body}</p>
                     </div>
-                  </div>
+
+                    <p className="text-xs text-text-muted">
+                      Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at as string) : 'recently'}
+                    </p>
+                  </CardBody>
                 </Card>
               )
             })}
           </div>
         </Section>
       )}
+      </>
+      )}
 
       {/* Info Box */}
-      <Alert variant="info" icon={<ExclamationTriangleIcon className="h-6 w-6" />}>
-        <div>
-          <h3 className="text-base font-medium mb-2">SMS Approval Process</h3>
-          <ul className="text-sm space-y-1 list-disc list-inside">
-            <li>Some SMS messages are sent automatically (e.g. booking created, reminders, payments)</li>
-            <li>Other SMS messages are queued for approval before sending</li>
-            <li>Approved messages must be manually sent using the &quot;Send Now&quot; button</li>
-            <li>Rejected messages are moved to the cancelled status and won&apos;t be sent</li>
-            <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>
-          </ul>
-        </div>
+      <Alert tone="info" title="SMS Approval Process" icon={<Icon name="alertTriangle" size={24} />}>
+        <ul className="space-y-1 list-disc list-inside">
+          <li>Some SMS messages are sent automatically (e.g. booking created, reminders, payments)</li>
+          <li>Other SMS messages are queued for approval before sending</li>
+          <li>Approved messages must be manually sent using the &quot;Send Now&quot; button</li>
+          <li>Rejected messages are moved to the cancelled status and won&apos;t be sent</li>
+          <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>
+        </ul>
       </Alert>
-      </div>
     </PageLayout>
   )
 }

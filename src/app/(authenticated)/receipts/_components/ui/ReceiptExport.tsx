@@ -1,9 +1,7 @@
 'use client'
 
 import { FormEvent } from 'react'
-import { toast } from 'react-hot-toast'
-import { Button, Select, Card, CardBody, CardHeader } from '@/ds'
-import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { Button, Select, Card, CardBody, CardHeader, FormFooter, toast, Icon } from '@/ds'
 import { getLastCompletedQuarter } from '@/lib/receipts/export/default-period'
 
 export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
@@ -27,11 +25,12 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
 
   return (
     <Card>
-      <CardHeader title="Quarterly export" subtitle="Download PDF summary and receipts as ZIP." />
+      <CardHeader title="Quarterly Export" subtitle="A ZIP of the PDF summary and the receipts for one quarter" />
       <CardBody>
-        <form onSubmit={handleExportSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+        <form onSubmit={handleExportSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Select
+              label="Year"
               name="year"
               defaultValue={String(defaultPeriod.year)}
               options={[
@@ -43,6 +42,7 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
               ]}
             />
             <Select
+              label="Quarter"
               name="quarter"
               defaultValue={String(defaultPeriod.quarter)}
               options={[
@@ -54,10 +54,11 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
               ]}
             />
           </div>
-          <Button type="submit" size="sm" className="w-full">
-            <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
-            Download bundle
-          </Button>
+          <FormFooter>
+            <Button type="submit" icon={<Icon name="download" size={16} />}>
+              Export ZIP
+            </Button>
+          </FormFooter>
         </form>
       </CardBody>
     </Card>

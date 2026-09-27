@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Field, Input } from '@/ds';
+import { Alert, Button, Field, Input } from '@/ds';
+import { StepFooter } from './StepParts';
 import { createEmployeeAccount } from '@/app/actions/employeeInvite';
 
 interface CreateAccountStepProps {
@@ -10,7 +11,7 @@ interface CreateAccountStepProps {
   onSuccess: () => void;
   description?: string;
   buttonLabel?: string;
-  loadingLabel?: string;
+  onBack?: () => void;
 }
 
 export default function CreateAccountStep({
@@ -19,7 +20,7 @@ export default function CreateAccountStep({
   onSuccess,
   description,
   buttonLabel = 'Create Account & Continue',
-  loadingLabel = 'Creating account...',
+  onBack,
 }: CreateAccountStepProps) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -56,15 +57,13 @@ export default function CreateAccountStep({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <p className="text-sm text-text-muted mb-4">
-          {description ?? (
-            <>
-              Create a password for your account. You&apos;ll use your email address (<strong>{email}</strong>) and this password to sign in.
-            </>
-          )}
-        </p>
-      </div>
+      <p className="text-sm text-text-muted">
+        {description ?? (
+          <>
+            Create a password for your account. You&apos;ll use your email address (<strong>{email}</strong>) and this password to sign in.
+          </>
+        )}
+      </p>
 
       <Field label="Password">
         <Input
@@ -89,13 +88,13 @@ export default function CreateAccountStep({
         />
       </Field>
 
-      {error && (
-        <p className="text-sm text-danger">{error}</p>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? loadingLabel : buttonLabel}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" loading={loading}>
+          {buttonLabel}
+        </Button>
+      </StepFooter>
     </form>
   );
 }

@@ -2,10 +2,30 @@
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Alert, Badge, Button, Card, CardBody, Field, Input, Modal, Select, Switch, Textarea } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  ConfirmDialog,
+  Empty,
+  Field,
+  Input,
+  Modal,
+  PageLayout,
+  Select,
+  Switch,
+  Textarea,
+  toast,
+} from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { listTodos, createTodo, completeTodo, cancelTodo, type TodoView } from '@/app/actions/checklists-todos'
+import { checklistsManageLayout } from '../../_shared/nav'
+import { CHECKLIST_TODO_STATUS } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = checklistsManageLayout('todos')
 
 const DEPARTMENT_OPTIONS = [
   { value: '', label: 'No department' },
@@ -36,6 +56,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
   const [showClosed, setShowClosed] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [cancelId, setCancelId] = useState<string | null>(null)
 
   // New-todo form state.
   const [title, setTitle] = useState('')
@@ -100,7 +121,6 @@ export function TodosClient({ initial, error }: TodosClientProps) {
   }
 
   async function handleCancel(id: string) {
-    if (!window.confirm('Cancel this todo?')) return
     const res = await cancelTodo(id)
     if (res.error) {
       toast.error(res.error)
@@ -113,29 +133,35 @@ export function TodosClient({ initial, error }: TodosClientProps) {
 
   if (error) {
     return (
-      <Alert variant="danger" title="Could not load todos">
-        {error}
-      </Alert>
+      <PageLayout {...LAYOUT}>
+        <Alert tone="danger" title="Could not load todos">
+          {error}
+        </Alert>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <PageLayout
+      {...LAYOUT}
+      headerActions={
+        <Button variant="primary" size="sm" onClick={() => setModalOpen(true)}>
+          New Todo
+        </Button>
+      }
+    >
+      <div className="flex flex-wrap items-end gap-3">
         <Switch
           checked={showClosed}
           onChange={handleToggleClosed}
           label="Show completed and cancelled"
         />
-        <Button variant="primary" onClick={() => setModalOpen(true)}>
-          New todo
-        </Button>
       </div>
 
       {todos.length === 0 ? (
-        <Alert variant="info" title="No todos">
-          There is nothing to do here right now.
-        </Alert>
+        <Card>
+          <Empty title="No todos" description="There is nothing to do here right now." />
+        </Card>
       ) : (
         <div className="space-y-2">
           {todos.map((todo) => {
@@ -149,8 +175,11 @@ export function TodosClient({ initial, error }: TodosClientProps) {
                       {todo.department && (
                         <Badge tone="neutral">{departmentLabel(todo.department)}</Badge>
                       )}
-                      {todo.state === 'done' && <Badge tone="success">Done</Badge>}
-                      {todo.state === 'cancelled' && <Badge tone="neutral">Cancelled</Badge>}
+                      {todo.state !== 'open' && (
+                        <Badge tone={CHECKLIST_TODO_STATUS[todo.state].tone}>
+                          {CHECKLIST_TODO_STATUS[todo.state].label}
+                        </Badge>
+                      )}
                     </div>
                     {todo.description && (
                       <p className="mt-1 text-xs text-text-muted">{todo.description}</p>
@@ -166,10 +195,10 @@ export function TodosClient({ initial, error }: TodosClientProps) {
                   {isOpen && (
                     <div className="flex shrink-0 gap-2">
                       <Button variant="secondary" size="sm" onClick={() => handleDone(todo.id)}>
-                        Mark done
+                        Mark Done
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleCancel(todo.id)}>
-                        Cancel
+                      <Button variant="ghost" size="sm" onClick={() => setCancelId(todo.id)}>
+                        Cancel Todo
                       </Button>
                     </div>
                   )}
@@ -183,14 +212,14 @@ export function TodosClient({ initial, error }: TodosClientProps) {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="New todo"
+        title="New Todo"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={submitting}>
+            <Button variant="secondary" onClick={() => setModalOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleCreate} loading={submitting} disabled={submitting}>
-              Add todo
+            <Button variant="primary" onClick={handleCreate} loading={submitting}>
+              Create Todo
             </Button>
           </>
         }
@@ -230,6 +259,19 @@ export function TodosClient({ initial, error }: TodosClientProps) {
           </Field>
         </div>
       </Modal>
-    </div>
+
+      <ConfirmDialog
+        open={cancelId !== null}
+        onClose={() => setCancelId(null)}
+        onConfirm={async () => {
+          if (cancelId) await handleCancel(cancelId)
+        }}
+        title="Cancel Todo"
+        message="Cancel this todo?"
+        confirmLabel="Cancel Todo"
+        cancelLabel="Keep Todo"
+        tone="danger"
+      />
+    </PageLayout>
   )
 }

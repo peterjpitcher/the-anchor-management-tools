@@ -144,43 +144,25 @@ export interface CategoryFormData {
   accessibility_notes?: string
 }
 
-import {
-  AcademicCapIcon,
-  BeakerIcon,
-  SquaresPlusIcon,
-  SparklesIcon,
-  MusicalNoteIcon,
-  CakeIcon,
-  GlobeAltIcon,
-  HeartIcon,
-  StarIcon,
-  TrophyIcon,
-  CalendarIcon,
-  UsersIcon,
-  MicrophoneIcon,
-  FilmIcon,
-  PaintBrushIcon,
-  BuildingStorefrontIcon
-} from '@heroicons/react/24/outline'
-
-// Icon options for categories
+// Icon options for categories. value is the name saved on the category (the old icon
+// library component name, kept so saved categories still match); icon is the DS glyph.
 export const CATEGORY_ICONS = [
-  { value: 'AcademicCapIcon', label: 'Academic', icon: AcademicCapIcon },
-  { value: 'BeakerIcon', label: 'Science', icon: BeakerIcon },
-  { value: 'SquaresPlusIcon', label: 'Games', icon: SquaresPlusIcon },
-  { value: 'SparklesIcon', label: 'Special', icon: SparklesIcon },
-  { value: 'MusicalNoteIcon', label: 'Music', icon: MusicalNoteIcon },
-  { value: 'CakeIcon', label: 'Party', icon: CakeIcon },
-  { value: 'GlobeAltIcon', label: 'Global', icon: GlobeAltIcon },
-  { value: 'HeartIcon', label: 'Love', icon: HeartIcon },
-  { value: 'StarIcon', label: 'Featured', icon: StarIcon },
-  { value: 'TrophyIcon', label: 'Competition', icon: TrophyIcon },
-  { value: 'CalendarIcon', label: 'Calendar', icon: CalendarIcon },
-  { value: 'UsersIcon', label: 'Community', icon: UsersIcon },
-  { value: 'MicrophoneIcon', label: 'Microphone', icon: MicrophoneIcon },
-  { value: 'FilmIcon', label: 'Film', icon: FilmIcon },
-  { value: 'PaintBrushIcon', label: 'Art', icon: PaintBrushIcon },
-  { value: 'BuildingStorefrontIcon', label: 'Dining', icon: BuildingStorefrontIcon },
+  { value: 'AcademicCapIcon', label: 'Academic', icon: 'graduationCap' },
+  { value: 'BeakerIcon', label: 'Science', icon: 'beaker' },
+  { value: 'SquaresPlusIcon', label: 'Games', icon: 'gridPlus' },
+  { value: 'SparklesIcon', label: 'Special', icon: 'sparkles' },
+  { value: 'MusicalNoteIcon', label: 'Music', icon: 'music' },
+  { value: 'CakeIcon', label: 'Party', icon: 'cake' },
+  { value: 'GlobeAltIcon', label: 'Global', icon: 'globe' },
+  { value: 'HeartIcon', label: 'Love', icon: 'heart' },
+  { value: 'StarIcon', label: 'Featured', icon: 'star' },
+  { value: 'TrophyIcon', label: 'Competition', icon: 'trophy' },
+  { value: 'CalendarIcon', label: 'Calendar', icon: 'calendar' },
+  { value: 'UsersIcon', label: 'Community', icon: 'users' },
+  { value: 'MicrophoneIcon', label: 'Microphone', icon: 'mic' },
+  { value: 'FilmIcon', label: 'Film', icon: 'film' },
+  { value: 'PaintBrushIcon', label: 'Art', icon: 'brush' },
+  { value: 'BuildingStorefrontIcon', label: 'Dining', icon: 'store' },
 ] as const
 
 // Color presets for categories

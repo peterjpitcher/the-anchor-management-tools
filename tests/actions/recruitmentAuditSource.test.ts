@@ -93,17 +93,20 @@ describe('recruitment audit source coverage', () => {
     // across the tabs, so these labels must stay reachable from the mapping itself.
     expect(dashboardClientSource).toContain('function drawerStageActions')
     expect(dashboardClientSource).toContain('function recruitmentNextActionHint')
+    // Button labels are Title Case (UI_UX.md); the note the action bar saves keeps its
+    // sentence-case wording ("Mark interviewed from the action bar").
     expect(dashboardClientSource).toContain("status('Shortlist', 'shortlisted')")
-    expect(dashboardClientSource).toContain("status('Mark interviewed', 'interviewed')")
-    expect(dashboardClientSource).toContain('Send interview booking link')
-    expect(dashboardClientSource).toContain('Resend interview booking link')
+    expect(dashboardClientSource).toContain("status('Mark Interviewed', 'interviewed')")
+    expect(dashboardClientSource).toContain('note: `${sentenceCase(label)} from the action bar`')
+    expect(dashboardClientSource).toContain('Send Interview Booking Link')
+    expect(dashboardClientSource).toContain('Resend Interview Booking Link')
     // No trial booking link: trials are assigned by staff around the rota.
-    expect(dashboardClientSource).toContain("label: 'Book trial directly'")
-    expect(dashboardClientSource).toContain('Change stage manually')
-    expect(dashboardClientSource).toContain('Re-score AI fit')
-    expect(dashboardClientSource).toContain('Create employee invite')
-    expect(dashboardClientSource).toContain('Archive application')
-    expect(dashboardClientSource).toContain('Restore application')
+    expect(dashboardClientSource).toContain("label: 'Book Trial Directly'")
+    expect(dashboardClientSource).toContain('Change Stage Manually')
+    expect(dashboardClientSource).toContain('Re-score AI Fit')
+    expect(dashboardClientSource).toContain('Create Employee Invite')
+    expect(dashboardClientSource).toContain('Archive Application')
+    expect(dashboardClientSource).toContain('Restore Application')
   })
 
   it('keeps the drawer action bar and tabs pinned above the scrolling tab body', () => {
@@ -130,7 +133,9 @@ describe('recruitment audit source coverage', () => {
   })
 
   it('keeps candidate profile fields labelled and compact', () => {
-    expect(dashboardClientSource).toContain('function ProfileField')
+    // The DS Field labels each profile control (the local ProfileField clone is gone).
+    expect(dashboardClientSource).not.toContain('function ProfileField')
+    expect(dashboardClientSource).toContain('<Field label="First name">')
     expect(dashboardClientSource).toContain('label="First name"')
     expect(dashboardClientSource).toContain('label="Last name"')
     expect(dashboardClientSource).toContain('label="Email"')

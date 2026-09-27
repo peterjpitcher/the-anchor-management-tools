@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { Customer } from '@/types/database'
@@ -25,15 +23,17 @@ import {
 } from '@/app/actions/emailSuppressionActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
-import { PageLayout } from '@/ds'
-import { Card, CardBody, CardDescription, CardTitle } from '@/ds'
+import { PageLayout, PageLoading, toast, Icon } from '@/ds'
+import { Card, CardBody, CardHeader, FormFooter } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
 import { Button } from '@/ds'
 import { SearchInput } from '@/ds'
 import { DataTable } from '@/ds'
+import { Empty } from '@/ds'
 import { Modal } from '@/ds'
 import { Select } from '@/ds'
+import { Section, Stat, StatGrid } from '@/ds'
 import { Textarea } from '@/ds'
 import { Input } from '@/ds'
 import { MessageThread } from '@/components/features/messages/MessageThread'
@@ -41,8 +41,14 @@ import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
 import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
 import { privateBookingStatusTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
+import { CUSTOMERS_BACK_LABEL } from '../_shared/nav'
+import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
+
+/** Links the Edit Customer dialog's footer buttons to the form in its body. */
+const EDIT_CUSTOMER_FORM_ID = 'edit-customer-form'
+
 const CUSTOMER_DETAIL_SELECT = `
   id,
   first_name,
@@ -298,6 +304,7 @@ export default function CustomerViewPage() {
   const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
   const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
   const [isEditingCustomer, setIsEditingCustomer] = useState(false)
+  const [savingCustomer, setSavingCustomer] = useState(false)
   const [isEmailingCustomer, setIsEmailingCustomer] = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
@@ -671,6 +678,7 @@ export default function CustomerViewPage() {
   const handleUpdateCustomer = async (data: Omit<Customer, 'id' | 'created_at'>) => {
     if (!customer) return
 
+    setSavingCustomer(true)
     try {
       const formData = new FormData()
       formData.append('first_name', data.first_name)
@@ -694,6 +702,8 @@ export default function CustomerViewPage() {
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
+    } finally {
+      setSavingCustomer(false)
     }
   }
 
@@ -1160,72 +1170,597 @@ export default function CustomerViewPage() {
     }
   ], [])
 
+  const customerName = customer ? `${customer.first_name} ${customer.last_name || ''}`.trim() : ''
+
+  // One header for every state, so the page does not jump when the customer arrives. A
+  // customer's page is a child page: the back button, not the Customers tab row.
+  const layoutProps = {
+    title: customerName || 'Customer',
+    backButton: { label: CUSTOMERS_BACK_LABEL, href: '/customers' },
+  }
+
   if (loading) {
-    return (
-      <PageLayout
-        title="Customer Details"
-        subtitle="Loading customer information"
-        backButton={{ label: 'Back to Customers', href: '/customers' }}
-        loading
-        loadingLabel="Loading customer..."
-      >
-        {null}
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading customer" />
   }
 
   if (!customer) {
     return (
       <PageLayout
-        title="Customer Details"
-        subtitle="Customer not found"
-        backButton={{ label: 'Back to Customers', href: '/customers' }}
+        {...layoutProps}
         error="The requested customer could not be found."
-      >
-        {null}
-      </PageLayout>
+        onRetry={() => void loadData()}
+      />
     )
   }
 
-  const customerName = `${customer.first_name} ${customer.last_name || ''}`.trim()
+  const smsState = customer.sms_opt_in !== false ? 'active' : 'inactive'
+  const whatsAppState = customer.whatsapp_opt_in === true ? 'active' : 'inactive'
 
   return (
     <PageLayout
-      title={customerName}
+      {...layoutProps}
       subtitle={customer.mobile_number || 'No mobile number'}
-      backButton={{ label: 'Back to Customers', href: '/customers' }}
       headerActions={
         (canEmailCustomer && customer.email) || canManageCustomers ? (
-          <div className="flex flex-wrap gap-2">
+          <>
             {canEmailCustomer && customer.email && (
               <Button
                 variant="secondary"
+                size="sm"
                 type="button"
                 onClick={openCustomerEmail}
               >
-                Email customer
+                Email Customer
               </Button>
             )}
             {canManageCustomers && (
               <Button
                 variant="secondary"
+                size="sm"
                 type="button"
                 onClick={() => setIsEditingCustomer(true)}
               >
-                Edit Details
+                Edit
               </Button>
             )}
-          </div>
+          </>
         ) : undefined
       }
     >
-      <div className="space-y-6">
+        <div className="grid gap-6 xl:grid-cols-3">
+          <Card className="xl:col-span-2">
+            <CardHeader
+              title="Messages"
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={loadMessages}
+                  loading={messagesLoading}
+                >
+                  Refresh
+                </Button>
+              }
+            />
+            <MessageThread
+              messages={messages}
+              customerId={customer.id}
+              customerName={customerName}
+              canReply={customer.sms_opt_in !== false}
+              onMessageSent={async () => {
+                await loadMessages()
+              }}
+            />
+          </Card>
+
+          <div className="space-y-6">
+            <Card>
+              <CardBody>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Icon name="message" size={20} className="text-text-subtle" />
+                    <Badge tone={CONTACT_CHANNEL_TONE[smsState]}>
+                      SMS {smsState === 'active' ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
+                  {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+                    <span className="text-sm text-warning-fg">
+                      {customer.sms_delivery_failures} failed deliveries
+                    </span>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardBody>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Icon name="message" size={20} className="text-text-subtle" />
+                    <Badge tone={CONTACT_CHANNEL_TONE[whatsAppState]}>
+                      WhatsApp {whatsAppState === 'active' ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
+                  {customer.whatsapp_delivery_failures && customer.whatsapp_delivery_failures > 0 && (
+                    <span className="text-sm text-warning-fg">
+                      {customer.whatsapp_delivery_failures} failed deliveries
+                    </span>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+
+            {hasPermission('customers', 'manage') && (
+              <Card>
+                <CardHeader title="Customer Labels" />
+                <CardBody>
+                  <CustomerLabelSelector
+                    customerId={customer.id}
+                    canEdit
+                    initialLabels={availableLabels}
+                    initialAssignments={customerLabelAssignments}
+                    onLabelsChange={(updatedAssignments) => {
+                      setCustomerLabelAssignments(updatedAssignments)
+                    }}
+                  />
+                </CardBody>
+              </Card>
+            )}
+
+            {canManageCustomers && (
+              <Card>
+                <CardHeader
+                  title="Internal Notes"
+                  subtitle="Visible to staff only, not shared with the customer"
+                  action={
+                    !isEditingNotes ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setIsEditingNotes(true)}
+                      >
+                        Edit
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                <CardBody>
+                  {isEditingNotes ? (
+                    <div className="space-y-3">
+                      <Textarea
+                        rows={4}
+                        value={notesValue}
+                        onChange={(e) => setNotesValue(e.target.value)}
+                        placeholder="Add internal notes about this customer..."
+                        aria-label="Internal notes"
+                      />
+                      <FormFooter>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={isSavingNotes}
+                          onClick={() => {
+                            setNotesValue(customer.internal_notes ?? '')
+                            setIsEditingNotes(false)
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="sm" variant="primary" onClick={handleSaveNotes} loading={isSavingNotes}>
+                          Save Notes
+                        </Button>
+                      </FormFooter>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-text whitespace-pre-wrap">
+                      {customer.internal_notes || <span className="text-text-soft italic">No notes added</span>}
+                    </p>
+                  )}
+                </CardBody>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader
+                title="Booking Snapshot"
+                subtitle="Quick totals across all booking types"
+                action={<Badge size="sm">{bookingInsights.totalBookings}</Badge>}
+              />
+              <CardBody>
+                <div className="space-y-2 text-sm text-text">
+                  <div className="flex items-center justify-between">
+                    <span>Event bookings</span>
+                    <span className="font-medium">{bookingInsights.sourceCounts.event}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Table bookings</span>
+                    <span className="font-medium">{bookingInsights.sourceCounts.table}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Private bookings</span>
+                    <span className="font-medium">{bookingInsights.sourceCounts.private}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Parking bookings</span>
+                    <span className="font-medium">{bookingInsights.sourceCounts.parking}</span>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader
+                title="SMS Messaging Status"
+                subtitle="Control whether this customer receives SMS notifications and replies"
+                action={
+                  canManageContactPreferences ? (
+                    <Button
+                      onClick={handleToggleSms}
+                      loading={togglingSmsSetting}
+                      variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
+                      size="sm"
+                    >
+                      {customer.sms_opt_in !== false ? 'Deactivate SMS' : 'Activate SMS'}
+                    </Button>
+                  ) : undefined
+                }
+              />
+              {(smsStats || customer.sms_deactivation_reason) && (
+                <CardBody className="space-y-4">
+                  {smsStats && (
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-sm font-medium text-text-muted">Total Messages</dt>
+                        <dd className="mt-1 text-sm text-text">{smsStats.stats?.totalMessages || 0}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-text-muted">Delivered</dt>
+                        <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveredMessages || 0}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-text-muted">Failed</dt>
+                        <dd className="mt-1 text-sm text-text">{smsStats.stats?.failedMessages || 0}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-text-muted">Delivery Rate</dt>
+                        <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveryRate || 0}%</dd>
+                      </div>
+                    </dl>
+                  )}
+
+                  {customer.sms_deactivation_reason && (
+                    <Alert tone="danger" title="Auto-deactivated">
+                      {customer.sms_deactivation_reason}
+                      {customer.last_sms_failure_reason && (
+                        <p className="mt-1">
+                          Last error: {customer.last_sms_failure_reason}
+                        </p>
+                      )}
+                    </Alert>
+                  )}
+                </CardBody>
+              )}
+            </Card>
+
+            <Card>
+              <CardHeader
+                title="WhatsApp Messaging Status"
+                subtitle="Control whether this customer receives transactional WhatsApp messages"
+                action={
+                  canManageWhatsAppOptIn ? (
+                    <Button
+                      onClick={handleToggleWhatsApp}
+                      loading={togglingWhatsAppSetting}
+                      variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
+                      size="sm"
+                    >
+                      {customer.whatsapp_opt_in === true ? 'Deactivate WhatsApp' : 'Activate WhatsApp'}
+                    </Button>
+                  ) : undefined
+                }
+              />
+              <CardBody className="space-y-4">
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-sm font-medium text-text-muted">Status</dt>
+                    <dd className="mt-1 text-sm text-text">{customer.whatsapp_status || 'unknown'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-text-muted">Failed</dt>
+                    <dd className="mt-1 text-sm text-text">{customer.whatsapp_delivery_failures || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-text-muted">Last success</dt>
+                    <dd className="mt-1 text-sm text-text">
+                      {customer.last_successful_whatsapp_at ? formatLondonDateTime(customer.last_successful_whatsapp_at) : 'Never'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-text-muted">Last inbound</dt>
+                    <dd className="mt-1 text-sm text-text">
+                      {customer.last_whatsapp_inbound_at ? formatLondonDateTime(customer.last_whatsapp_inbound_at) : 'Never'}
+                    </dd>
+                  </div>
+                </dl>
+                {customer.last_whatsapp_failure_reason && (
+                  <p className="text-sm text-warning-fg">
+                    Last failure: {customer.last_whatsapp_failure_reason}
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+
+            {canViewConsentAudit && (
+              <Card>
+                <CardHeader
+                  title="Consent Audit"
+                  subtitle="Recent contact preference evidence for this customer"
+                  action={
+                    canExportConsentAudit ? (
+                      <Button size="sm" variant="secondary" onClick={handleExportConsentAudit}>
+                        Export CSV
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                {consentAudit.length === 0 ? (
+                  <CardBody>
+                    <Empty size="sm" title="No consent records yet" />
+                  </CardBody>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {consentAudit.slice(0, 8).map((row) => (
+                      <li key={row.id} className="px-pad-card py-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-text">
+                            {formatLabel(row.channel)} {formatLabel(row.purpose)}
+                          </span>
+                          <Badge size="sm">{formatLabel(row.status)}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {row.captured_at ? formatLondonDateTime(row.captured_at) : 'Unknown time'} by {formatLabel(row.source)}
+                        </p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {formatLabel(row.capture_method)} - {row.consent_text_version || 'no version'}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
+          </div>
+        </div>
+
+        <Section
+          title="Guest Profile Insights"
+          description="Booking patterns and preferences pulled from event, table, private, and parking data"
+        >
+          <div className="space-y-6">
+            <StatGrid columns={4}>
+              <Stat label="Total bookings" value={bookingInsights.totalBookings} />
+              <Stat label="Upcoming bookings" value={bookingInsights.upcomingCount} />
+              <Stat
+                label="Average party size"
+                value={bookingInsights.averagePartySize != null ? bookingInsights.averagePartySize.toFixed(1) : 'N/A'}
+              />
+              <Stat
+                label="Private booking value"
+                value={bookingInsights.totalPrivateValue > 0 ? formatCurrency(bookingInsights.totalPrivateValue) : 'N/A'}
+              />
+              <Stat label="Event seats booked" value={bookingInsights.totalEventSeats} />
+              <Stat label="Reminder-only events" value={bookingInsights.reminderOnlyEvents} />
+              <Stat label="First booking" value={formatDateForMetric(bookingInsights.firstBooking?.booking_datetime)} />
+              <Stat label="Most recent booking" value={formatDateForMetric(bookingInsights.latestBooking?.booking_datetime)} />
+            </StatGrid>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card>
+                <CardHeader title="Behavior Signals" />
+                <CardBody>
+                  <div className="space-y-2 text-sm text-text">
+                    <p>
+                      Favorite category:{' '}
+                      <span className="font-medium">
+                        {bookingInsights.topCategory
+                          ? `${bookingInsights.topCategory.category_name} (${bookingInsights.topCategory.times_attended})`
+                          : 'No attendance data'}
+                      </span>
+                    </p>
+                    <p>
+                      Top interest:{' '}
+                      <span className="font-medium">
+                        {bookingInsights.topInterest
+                          ? `${bookingInsights.topInterest[0]} (${bookingInsights.topInterest[1]})`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                    <p>
+                      Preferred table purpose:{' '}
+                      <span className="font-medium">
+                        {bookingInsights.topTablePurpose
+                          ? `${bookingInsights.topTablePurpose[0]} (${bookingInsights.topTablePurpose[1]})`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                    <p>
+                      Preferred booking day:{' '}
+                      <span className="font-medium">
+                        {bookingInsights.preferredDay
+                          ? `${bookingInsights.preferredDay[0]} (${bookingInsights.preferredDay[1]})`
+                          : 'N/A'}
+                      </span>
+                    </p>
+                    <p>
+                      Disrupted bookings:{' '}
+                      <span className="font-medium">{bookingInsights.disruptedBookings}</span>
+                    </p>
+                  </div>
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader title="Event Category Preferences" />
+                <CardBody>
+                  {topCategoryPreferences.length === 0 ? (
+                    <Empty size="sm" title="No event preferences yet" />
+                  ) : (
+                    <div className="space-y-3">
+                      {topCategoryPreferences.map((preference) => (
+                        <div key={preference.category_id}>
+                          <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
+                            <span>{preference.category_name}</span>
+                            <span>{preference.times_attended}</span>
+                          </div>
+                          <div className="h-2 rounded-pill bg-border">
+                            <div
+                              className="h-2 rounded-pill bg-chart-1"
+                              style={{
+                                width: `${Math.max((preference.times_attended / maxCategoryAttendance) * 100, 6)}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+
+              <Card>
+                <CardHeader title="Booking Status Mix" />
+                <CardBody>
+                  {bookingInsights.statusMix.length === 0 ? (
+                    <Empty size="sm" title="No booking statuses yet" />
+                  ) : (
+                    <div className="space-y-2">
+                      {bookingInsights.statusMix.map(([status, count]) => (
+                        <div key={status} className="flex items-center justify-between text-sm text-text">
+                          <span>{status}</span>
+                          <span className="font-medium">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            </div>
+          </div>
+        </Section>
+
+        <Card>
+          <CardHeader
+            title="All Bookings"
+            subtitle="Filter and sort every booking tied to this customer to understand what they attend most"
+            action={
+              <Badge size="sm">
+                {filteredBookings.length} of {unifiedBookings.length}
+              </Badge>
+            }
+          />
+          {/* Filters sit directly above the table they filter. */}
+          <CardBody className="border-b border-border">
+            <div className="flex flex-wrap items-end gap-3">
+              <SearchInput
+                value={bookingSearch}
+                onSearch={setBookingSearch}
+                placeholder="Search booking type, status, reference..."
+                aria-label="Search bookings"
+                debounceDelay={150}
+                className="w-full sm:w-72"
+              />
+
+              <Select
+                aria-label="Booking type"
+                value={bookingTypeFilter}
+                onChange={(event) => setBookingTypeFilter(event.target.value as BookingSource | 'all')}
+                options={[
+                  { value: 'all', label: 'All booking types' },
+                  { value: 'event', label: 'Event bookings' },
+                  { value: 'table', label: 'Table bookings' },
+                  { value: 'private', label: 'Private bookings' },
+                  { value: 'parking', label: 'Parking bookings' },
+                ]}
+              />
+
+              <Select
+                aria-label="When"
+                value={bookingTimeFilter}
+                onChange={(event) => setBookingTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
+                options={[
+                  { value: 'all', label: 'All time' },
+                  { value: 'upcoming', label: 'Upcoming only' },
+                  { value: 'past', label: 'Past only' },
+                ]}
+              />
+
+              <Select
+                aria-label="Status"
+                value={bookingStatusFilter}
+                onChange={(event) => setBookingStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                {bookingStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </Select>
+
+              <Select
+                aria-label="Interest"
+                value={bookingInterestFilter}
+                onChange={(event) => setBookingInterestFilter(event.target.value)}
+              >
+                <option value="all">All interests</option>
+                {bookingInterestOptions.map((interest) => (
+                  <option key={interest} value={interest}>
+                    {interest}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </CardBody>
+          <DataTable
+            data={filteredBookings}
+            columns={bookingColumns}
+            getRowKey={(booking) => booking.key}
+            bordered={false}
+            className="max-shell:p-4"
+            emptyMessage={unifiedBookings.length === 0 ? 'No bookings yet' : 'No bookings match these filters'}
+            emptyDescription={
+              unifiedBookings.length === 0
+                ? 'This customer has not made a booking yet.'
+                : 'Clear one or more filters to see more bookings.'
+            }
+          />
+        </Card>
+
         <Modal
           open={isEditingCustomer}
-          onClose={() => setIsEditingCustomer(false)}
-          title="Edit Customer Details"
+          onClose={() => {
+            if (savingCustomer) return
+            setIsEditingCustomer(false)
+          }}
+          title="Edit Customer"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEditingCustomer(false)}
+                disabled={savingCustomer}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" form={EDIT_CUSTOMER_FORM_ID} loading={savingCustomer}>
+                Save Changes
+              </Button>
+            </>
+          }
         >
           <CustomerForm
+            formId={EDIT_CUSTOMER_FORM_ID}
             customer={customer}
             onSubmit={handleUpdateCustomer}
             onCancel={() => setIsEditingCustomer(false)}
@@ -1239,6 +1774,27 @@ export default function CustomerViewPage() {
             setIsEmailingCustomer(false)
           }}
           title={`Email ${customerName}`}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEmailingCustomer(false)}
+                disabled={sendingEmail}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleSendCustomerEmail}
+                loading={sendingEmail}
+                disabled={!emailSubject.trim() || !emailBody.trim()}
+              >
+                Send Email
+              </Button>
+            </>
+          }
         >
           <div className="space-y-4">
             {customer.email && (
@@ -1256,18 +1812,18 @@ export default function CustomerViewPage() {
               write a "come to the quiz on Friday" message to somebody who had unsubscribed,
               and nothing on screen would stop or even mention it.
             */}
-            <p className="rounded-md bg-surface-2 p-3 text-sm text-text-muted">
+            <Alert tone="info" size="sm" role="status">
               Service messages only. Use this for something to do with this customer, a
               booking, a payment or a reply. Anything promotional goes out as a marketing
               campaign, which carries the unsubscribe link.
-            </p>
+            </Alert>
 
             {emailBlockLoading && (
-              <p className="text-sm text-text-muted">Checking contact preferences…</p>
+              <PageLoading inline label="Checking contact preferences" className="py-4" />
             )}
 
             {emailBlock && (
-              <div className="space-y-2 rounded-md border border-border p-3 text-sm">
+              <div className="space-y-2 text-sm">
                 <p className="text-text">
                   Marketing email:{' '}
                   <span className="font-medium">
@@ -1293,31 +1849,33 @@ export default function CustomerViewPage() {
                   to stop. So it says it plainly and leaves the decision with the person.
                 */}
                 {(!emailBlock.marketingOptIn || emailBlock.marketingOptedOutAt) && (
-                  <p className="text-warning-fg">
+                  <Alert tone="warning" size="sm">
                     This customer has not opted in to marketing email. Keep this message about
                     their booking or their enquiry.
-                  </p>
+                  </Alert>
                 )}
 
                 {(emailBlock.suppressed || emailBlock.deactivatedAt) && (
-                  <div className="space-y-2">
-                    <p className="text-danger-fg">
-                      Email to this address is blocked
-                      {emailBlock.suppressionReason ? ` (${emailBlock.suppressionReason})` : ''}
-                      {emailBlock.lastFailureReason ? `: ${emailBlock.lastFailureReason}` : '.'} It
-                      will not send until the block is cleared.
-                    </p>
+                  <Alert tone="danger" size="sm">
+                    Email to this address is blocked
+                    {emailBlock.suppressionReason ? ` (${emailBlock.suppressionReason})` : ''}
+                    {emailBlock.lastFailureReason ? `: ${emailBlock.lastFailureReason}` : '.'} It
+                    will not send until the block is cleared.
                     {canManageCustomers && (
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        onClick={handleClearEmailBlock}
-                        disabled={clearingEmailBlock || sendingEmail}
-                      >
-                        {clearingEmailBlock ? 'Clearing…' : 'Clear the block and try this address again'}
-                      </Button>
+                      <div className="mt-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          type="button"
+                          onClick={handleClearEmailBlock}
+                          loading={clearingEmailBlock}
+                          disabled={sendingEmail}
+                        >
+                          Clear the Block and Try This Address Again
+                        </Button>
+                      </div>
                     )}
-                  </div>
+                  </Alert>
                 )}
               </div>
             )}
@@ -1337,573 +1895,8 @@ export default function CustomerViewPage() {
               rows={8}
               disabled={sendingEmail}
             />
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => setIsEmailingCustomer(false)}
-                disabled={sendingEmail}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                type="button"
-                onClick={handleSendCustomerEmail}
-                disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
-              >
-                {sendingEmail ? 'Sending…' : 'Send email'}
-              </Button>
-            </div>
           </div>
         </Modal>
-
-        <div className="grid gap-6 xl:grid-cols-3">
-          <Card
-            className="xl:col-span-2"
-            header={
-              <div className="flex items-center justify-between">
-                <CardTitle>Messages</CardTitle>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={loadMessages}
-                  disabled={messagesLoading}
-                >
-                  {messagesLoading ? 'Refreshing…' : 'Refresh'}
-                </Button>
-              </div>
-            }
-          >
-            <MessageThread
-              messages={messages}
-              customerId={customer.id}
-              customerName={customerName}
-              canReply={customer.sms_opt_in !== false}
-              onMessageSent={async () => {
-                await loadMessages()
-              }}
-            />
-          </Card>
-
-          <div className="space-y-6">
-            <Card>
-              <CardBody>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
-                    <span
-                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-success-fg' : 'text-danger-fg'}`}
-                    >
-                      SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-                    <span className="text-sm text-warning-fg">
-                      {customer.sms_delivery_failures} failed deliveries
-                    </span>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardBody>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
-                    <span
-                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-success-fg' : 'text-danger-fg'}`}
-                    >
-                      WhatsApp {customer.whatsapp_opt_in === true ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  {customer.whatsapp_delivery_failures && customer.whatsapp_delivery_failures > 0 && (
-                    <span className="text-sm text-warning-fg">
-                      {customer.whatsapp_delivery_failures} failed deliveries
-                    </span>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-
-            {hasPermission('customers', 'manage') && (
-              <Card header={<CardTitle>Customer Labels</CardTitle>}>
-                <CustomerLabelSelector
-                  customerId={customer.id}
-                  canEdit
-                  initialLabels={availableLabels}
-                  initialAssignments={customerLabelAssignments}
-                  onLabelsChange={(updatedAssignments) => {
-                    setCustomerLabelAssignments(updatedAssignments)
-                  }}
-                />
-              </Card>
-            )}
-
-            {canManageCustomers && (
-              <Card
-                header={
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <CardTitle>Internal Notes</CardTitle>
-                      <CardDescription>Visible to staff only, not shared with the customer.</CardDescription>
-                    </div>
-                    {!isEditingNotes && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setIsEditingNotes(true)}
-                      >
-                        Edit
-                      </Button>
-                    )}
-                  </div>
-                }
-              >
-                {isEditingNotes ? (
-                  <div className="space-y-3">
-                    <Textarea
-                      rows={4}
-                      value={notesValue}
-                      onChange={(e) => setNotesValue(e.target.value)}
-                      placeholder="Add internal notes about this customer..."
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveNotes} disabled={isSavingNotes}>
-                        {isSavingNotes ? 'Saving...' : 'Save'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setNotesValue(customer.internal_notes ?? '')
-                          setIsEditingNotes(false)
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-text whitespace-pre-wrap">
-                    {customer.internal_notes || <span className="text-text-soft italic">No notes added</span>}
-                  </p>
-                )}
-              </Card>
-            )}
-
-            <Card
-              header={
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>Booking Snapshot</CardTitle>
-                    <CardDescription>Quick totals across all booking types.</CardDescription>
-                  </div>
-                  <Badge size="sm">{bookingInsights.totalBookings}</Badge>
-                </div>
-              }
-            >
-              <div className="space-y-2 text-sm text-text">
-                <div className="flex items-center justify-between">
-                  <span>Event bookings</span>
-                  <span className="font-medium">{bookingInsights.sourceCounts.event}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Table bookings</span>
-                  <span className="font-medium">{bookingInsights.sourceCounts.table}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Private bookings</span>
-                  <span className="font-medium">{bookingInsights.sourceCounts.private}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Parking bookings</span>
-                  <span className="font-medium">{bookingInsights.sourceCounts.parking}</span>
-                </div>
-              </div>
-            </Card>
-
-            <Card
-              header={
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle>SMS Messaging Status</CardTitle>
-                    <CardDescription>
-                      Control whether this customer receives SMS notifications and replies.
-                    </CardDescription>
-                  </div>
-                  {canManageContactPreferences && (
-                    <Button
-                      onClick={handleToggleSms}
-                      disabled={togglingSmsSetting}
-                      variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
-                      size="sm"
-                    >
-                      {togglingSmsSetting
-                        ? 'Updating...'
-                        : customer.sms_opt_in !== false
-                          ? 'Deactivate SMS'
-                          : 'Activate SMS'}
-                    </Button>
-                  )}
-                </div>
-              }
-            >
-              {smsStats && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Total Messages</dt>
-                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.totalMessages || 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Delivered</dt>
-                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveredMessages || 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Failed</dt>
-                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.failedMessages || 0}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Delivery Rate</dt>
-                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveryRate || 0}%</dd>
-                  </div>
-                </div>
-              )}
-
-              {customer.sms_deactivation_reason && (
-                <Alert variant="error" title="Auto-deactivated" className="mt-4">
-                  {customer.sms_deactivation_reason}
-                  {customer.last_sms_failure_reason && (
-                    <p className="mt-1 text-sm text-danger-fg">
-                      Last error: {customer.last_sms_failure_reason}
-                    </p>
-                  )}
-                </Alert>
-              )}
-            </Card>
-
-            <Card
-              header={
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>WhatsApp Messaging Status</CardTitle>
-                    <CardDescription>
-                      Control whether this customer receives transactional WhatsApp messages.
-                    </CardDescription>
-                  </div>
-                  {canManageWhatsAppOptIn && (
-                    <Button
-                      onClick={handleToggleWhatsApp}
-                      disabled={togglingWhatsAppSetting}
-                      variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
-                      size="sm"
-                    >
-                      {togglingWhatsAppSetting
-                        ? 'Updating...'
-                        : customer.whatsapp_opt_in === true
-                          ? 'Deactivate'
-                          : 'Activate'}
-                    </Button>
-                  )}
-                </div>
-              }
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Status</dt>
-                  <dd className="mt-1 text-sm text-text">{customer.whatsapp_status || 'unknown'}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Failed</dt>
-                  <dd className="mt-1 text-sm text-text">{customer.whatsapp_delivery_failures || 0}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Last success</dt>
-                  <dd className="mt-1 text-sm text-text">
-                    {customer.last_successful_whatsapp_at ? formatLondonDateTime(customer.last_successful_whatsapp_at) : 'Never'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Last inbound</dt>
-                  <dd className="mt-1 text-sm text-text">
-                    {customer.last_whatsapp_inbound_at ? formatLondonDateTime(customer.last_whatsapp_inbound_at) : 'Never'}
-                  </dd>
-                </div>
-              </div>
-              {customer.last_whatsapp_failure_reason && (
-                <p className="mt-4 text-sm text-warning-fg">
-                  Last failure: {customer.last_whatsapp_failure_reason}
-                </p>
-              )}
-            </Card>
-
-            {canViewConsentAudit && (
-              <Card
-                header={
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>Consent Audit</CardTitle>
-                      <CardDescription>Recent contact preference evidence for this customer.</CardDescription>
-                    </div>
-                    {canExportConsentAudit && (
-                      <Button size="sm" variant="secondary" onClick={handleExportConsentAudit}>
-                        Export
-                      </Button>
-                    )}
-                  </div>
-                }
-              >
-                {consentAudit.length === 0 ? (
-                  <p className="text-sm text-text-muted">No consent audit rows yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {consentAudit.slice(0, 8).map((row) => (
-                      <div key={row.id} className="rounded-md border border-border bg-surface-2 p-3 text-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium text-text">
-                            {formatLabel(row.channel)} {formatLabel(row.purpose)}
-                          </span>
-                          <Badge size="sm">{formatLabel(row.status)}</Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-text-muted">
-                          {row.captured_at ? formatLondonDateTime(row.captured_at) : 'Unknown time'} by {formatLabel(row.source)}
-                        </p>
-                        <p className="mt-1 text-xs text-text-muted">
-                          {formatLabel(row.capture_method)} - {row.consent_text_version || 'no version'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
-          </div>
-        </div>
-
-        <Card
-          header={
-            <div>
-              <CardTitle>Guest Profile Insights</CardTitle>
-              <CardDescription>
-                Booking patterns and preferences pulled from event, table, private, and parking data.
-              </CardDescription>
-            </div>
-          }
-        >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Total bookings</p>
-              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.totalBookings}</p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Upcoming bookings</p>
-              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.upcomingCount}</p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Average party size</p>
-              <p className="mt-1 text-xl font-semibold text-text">
-                {bookingInsights.averagePartySize != null ? bookingInsights.averagePartySize.toFixed(1) : 'N/A'}
-              </p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Private booking value</p>
-              <p className="mt-1 text-xl font-semibold text-text">
-                {bookingInsights.totalPrivateValue > 0 ? formatCurrency(bookingInsights.totalPrivateValue) : 'N/A'}
-              </p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Event seats booked</p>
-              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.totalEventSeats}</p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Reminder-only events</p>
-              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.reminderOnlyEvents}</p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">First booking</p>
-              <p className="mt-1 text-xl font-semibold text-text">
-                {formatDateForMetric(bookingInsights.firstBooking?.booking_datetime)}
-              </p>
-            </div>
-            <div className="rounded-md border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">Most recent booking</p>
-              <p className="mt-1 text-xl font-semibold text-text">
-                {formatDateForMetric(bookingInsights.latestBooking?.booking_datetime)}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
-            <div>
-              <h4 className="text-sm font-semibold text-text">Behavior Signals</h4>
-              <div className="mt-3 space-y-2 text-sm text-text">
-                <p>
-                  Favorite category:{' '}
-                  <span className="font-medium">
-                    {bookingInsights.topCategory
-                      ? `${bookingInsights.topCategory.category_name} (${bookingInsights.topCategory.times_attended})`
-                      : 'No attendance data'}
-                  </span>
-                </p>
-                <p>
-                  Top interest:{' '}
-                  <span className="font-medium">
-                    {bookingInsights.topInterest
-                      ? `${bookingInsights.topInterest[0]} (${bookingInsights.topInterest[1]})`
-                      : 'N/A'}
-                  </span>
-                </p>
-                <p>
-                  Preferred table purpose:{' '}
-                  <span className="font-medium">
-                    {bookingInsights.topTablePurpose
-                      ? `${bookingInsights.topTablePurpose[0]} (${bookingInsights.topTablePurpose[1]})`
-                      : 'N/A'}
-                  </span>
-                </p>
-                <p>
-                  Preferred booking day:{' '}
-                  <span className="font-medium">
-                    {bookingInsights.preferredDay
-                      ? `${bookingInsights.preferredDay[0]} (${bookingInsights.preferredDay[1]})`
-                      : 'N/A'}
-                  </span>
-                </p>
-                <p>
-                  Disrupted bookings:{' '}
-                  <span className="font-medium">{bookingInsights.disruptedBookings}</span>
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold text-text">Event Category Preferences</h4>
-              {topCategoryPreferences.length === 0 ? (
-                <p className="mt-3 text-sm text-text-muted">No event attendance preferences available yet.</p>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {topCategoryPreferences.map((preference) => (
-                    <div key={preference.category_id}>
-                      <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
-                        <span>{preference.category_name}</span>
-                        <span>{preference.times_attended}</span>
-                      </div>
-                      <div className="h-2 rounded-pill bg-border">
-                        <div
-                          className="h-2 rounded-pill bg-chart-1"
-                          style={{
-                            width: `${Math.max((preference.times_attended / maxCategoryAttendance) * 100, 6)}%`
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold text-text">Booking Status Mix</h4>
-              {bookingInsights.statusMix.length === 0 ? (
-                <p className="mt-3 text-sm text-text-muted">No booking statuses available yet.</p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {bookingInsights.statusMix.map(([status, count]) => (
-                    <div key={status} className="flex items-center justify-between text-sm text-text">
-                      <span>{status}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          header={
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>All Bookings</CardTitle>
-                <CardDescription>
-                  Filter and sort every booking tied to this customer to understand what they attend most.
-                </CardDescription>
-              </div>
-              <Badge size="sm">
-                {filteredBookings.length} of {unifiedBookings.length}
-              </Badge>
-            </div>
-          }
-        >
-          <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <SearchInput
-              value={bookingSearch}
-              onSearch={setBookingSearch}
-              placeholder="Search booking type, status, reference..."
-              debounceDelay={150}
-            />
-
-            <Select
-              value={bookingTypeFilter}
-              onChange={(event) => setBookingTypeFilter(event.target.value as BookingSource | 'all')}
-              options={[
-                { value: 'all', label: 'All booking types' },
-                { value: 'event', label: 'Event bookings' },
-                { value: 'table', label: 'Table bookings' },
-                { value: 'private', label: 'Private bookings' },
-                { value: 'parking', label: 'Parking bookings' },
-              ]}
-            />
-
-            <Select
-              value={bookingTimeFilter}
-              onChange={(event) => setBookingTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
-              options={[
-                { value: 'all', label: 'All time' },
-                { value: 'upcoming', label: 'Upcoming only' },
-                { value: 'past', label: 'Past only' },
-              ]}
-            />
-
-            <Select
-              value={bookingStatusFilter}
-              onChange={(event) => setBookingStatusFilter(event.target.value)}
-            >
-              <option value="all">All statuses</option>
-              {bookingStatusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </Select>
-
-            <Select
-              value={bookingInterestFilter}
-              onChange={(event) => setBookingInterestFilter(event.target.value)}
-            >
-              <option value="all">All interests</option>
-              {bookingInterestOptions.map((interest) => (
-                <option key={interest} value={interest}>
-                  {interest}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <DataTable
-            data={filteredBookings}
-            columns={bookingColumns}
-            getRowKey={(booking) => booking.key}
-            emptyMessage={unifiedBookings.length === 0 ? 'No bookings found' : 'No bookings match your filters'}
-            emptyDescription={
-              unifiedBookings.length === 0
-                ? 'This customer has not made a booking yet.'
-                : 'Try clearing one or more filters.'
-            }
-          />
-        </Card>
-      </div>
     </PageLayout>
   )
 }

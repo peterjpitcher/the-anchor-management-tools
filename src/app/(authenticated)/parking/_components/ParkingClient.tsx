@@ -7,16 +7,46 @@ import {
   parseLondonDateTimeLocalToIso,
   toLondonDateTimeLocalValue,
 } from '@/lib/dateUtils'
-import { toast } from '@/ds'
+import { cn } from '@/lib/utils'
 import {
-  PageHeader, Card, CardHeader, CardBody, SectionNav,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
   CustomerLink,
+  DescriptionList,
+  Empty,
+  FormFooter,
+  Input,
+  Modal,
+  PageLayout,
+  PageLoading,
+  SearchInput,
+  Select,
+  Stat,
+  StatGrid,
+  SubHeading,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tabs,
+  Textarea,
+  toast,
 } from '@/ds'
 import {
-  Button, Badge, SearchInput, Select, Stat, Spinner, Alert,
-  Modal, Input, Textarea, Switch, Dropdown, DropdownItem, Empty, ConfirmDialog,
-} from '@/ds'
+  PARKING_BOOKING_STATUS_LABEL,
+  PARKING_BOOKING_STATUS_TONE,
+  PARKING_PAYMENT_STATUS_LABEL,
+  PARKING_PAYMENT_STATUS_TONE,
+} from '../_shared/status-ui'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import { RefundDialog } from './RefundDialog'
 import { RefundHistoryTable } from './RefundHistoryTable'
 import type {
@@ -61,40 +91,31 @@ interface Props {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
+// The filters use the same words as the status badges.
 const statusOptions = [
   { value: 'all', label: 'All statuses' },
-  { value: 'pending_payment', label: 'Pending Payment' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'expired', label: 'Expired' },
+  ...Object.entries(PARKING_BOOKING_STATUS_LABEL).map(([value, label]) => ({ value, label })),
 ]
 
 const paymentStatusOptions = [
   { value: 'all', label: 'All payment states' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'paid', label: 'Paid' },
-  { value: 'refunded', label: 'Refunded' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'expired', label: 'Expired' },
+  ...Object.entries(PARKING_PAYMENT_STATUS_LABEL).map(([value, label]) => ({ value, label })),
 ]
 
-type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
-
-const statusBadgeTone: Record<ParkingBookingStatus, BadgeTone> = {
-  pending_payment: 'warning',
-  confirmed: 'success',
-  completed: 'info',
-  cancelled: 'danger',
-  expired: 'neutral',
+const NOTIFICATION_CHANNEL_LABEL: Record<ParkingNotificationRecord['channel'], string> = {
+  sms: 'SMS',
+  email: 'Email',
 }
 
-const paymentBadgeTone: Record<ParkingPaymentStatus, BadgeTone> = {
-  pending: 'warning',
-  paid: 'success',
-  refunded: 'info',
-  failed: 'danger',
-  expired: 'neutral',
+// Sentence case, as a table cell (the old `capitalize` class turned these into Title Case).
+const NOTIFICATION_EVENT_LABEL: Record<ParkingNotificationRecord['event_type'], string> = {
+  payment_request: 'Payment request',
+  payment_reminder: 'Payment reminder',
+  payment_confirmation: 'Payment confirmation',
+  session_start: 'Session start',
+  session_end: 'Session end',
+  payment_overdue: 'Payment overdue',
+  refund_confirmation: 'Refund confirmation',
 }
 
 const initialFormState = {
@@ -141,9 +162,15 @@ function formatDuration(minutes: number): string {
 export default function ParkingClient({ permissions, initialError }: Props) {
   const [bookings, setBookings] = useState<ParkingBooking[]>([])
   const [loading, setLoading] = useState(true)
+  // False until the first load settles: until then the count and the figures would read 0.
+  const [firstLoadSettled, setFirstLoadSettled] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
+  // A failed load is shown as a failure, never as "No bookings": an empty list after an outage
+  // reads as a quiet day rather than a broken request.
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<ParkingNotificationRecord[]>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
   const [activeRates, setActiveRates] = useState<ParkingRateConfig | null>(null)
   const [pricingPreview, setPricingPreview] = useState<ParkingPricingResult | null>(null)
   const [pricingError, setPricingError] = useState<string | null>(null)
@@ -166,6 +193,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   })
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
+  // Which detail-card action started the running mutation, so only that button shows it is busy.
+  const [mutatingAction, setMutatingAction] = useState<'payment-link' | 'mark-paid' | null>(null)
   const pageError = initialError ?? null
 
   // Refund state
@@ -178,7 +207,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   // refetches when the payment it is showing changes.
   const [refundHistoryKey, setRefundHistoryKey] = useState(0)
 
-  /* ---------- SectionNav ---------- */
+  /* ---------- In-page tabs ---------- */
   const [activeSection, setActiveSection] = useState('bookings')
   const sections = [
     { id: 'bookings', label: 'Bookings' },
@@ -198,14 +227,25 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         search: search || undefined,
       })
       if (!result || 'error' in result) {
-        toast.error(result?.error || 'Failed to load parking bookings')
+        const message = result?.error || 'Failed to load parking bookings'
+        toast.error(message)
+        setLoadError(message)
         setBookings([])
         return []
       }
       records = result.data
       setBookings(records)
+      setLoadError(null)
+    } catch {
+      // The server action itself failed (network, deploy mid-request): the same failure state.
+      const message = 'Failed to load parking bookings'
+      toast.error(message)
+      setLoadError(message)
+      setBookings([])
+      return []
     } finally {
       setLoading(false)
+      setFirstLoadSettled(true)
     }
     return records
   }
@@ -514,14 +554,22 @@ export default function ParkingClient({ permissions, initialError }: Props) {
 
   const loadNotifications = async (bookingId: string) => {
     setLoadingNotifications(true)
+    setNotificationsError(null)
     try {
       const result = await getParkingBookingNotifications(bookingId)
       if (!result || 'error' in result) {
-        toast.error(result?.error || 'Failed to load notifications')
+        const message = result?.error || 'Failed to load notifications'
+        toast.error(message)
+        setNotificationsError(message)
         setNotifications([])
         return
       }
       setNotifications(result.data as ParkingNotificationRecord[])
+    } catch {
+      const message = 'Failed to load notifications'
+      toast.error(message)
+      setNotificationsError(message)
+      setNotifications([])
     } finally {
       setLoadingNotifications(false)
     }
@@ -547,192 +595,263 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   /* ---------- Render ---------- */
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        breadcrumbs={[{ label: 'Parking' }]}
-        title="Parking"
-        subtitle={`${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
-        className="mb-0"
-        actions={
-          permissions.canCreate ? (
-            <Button size="sm" onClick={() => setShowCreateModal(true)}>New Booking</Button>
-          ) : undefined
-        }
-      />
-
+    <PageLayout
+      title="Parking"
+      // No count before the first load settles or while the list failed to load: "0 bookings
+      // total" would be a claim, not a fact.
+      subtitle={!firstLoadSettled || loadError ? undefined : `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
+      headerActions={
+        <>
+          <Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>
+            Refresh
+          </Button>
+          {permissions.canCreate && (
+            <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>New Booking</Button>
+          )}
+        </>
+      }
+    >
       {pageError && <Alert tone="danger" title="We couldn't load everything">{pageError}</Alert>}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card><CardBody><Stat label="Total Bookings" value={bookings.length} /></CardBody></Card>
-        <Card><CardBody><Stat label="Upcoming" value={upcomingCount} /></CardBody></Card>
-        <Card><CardBody><Stat label="Pending Payments" value={pendingPaymentCount} hint={pendingPaymentCount > 0 ? 'Requires attention' : undefined} /></CardBody></Card>
-      </div>
+      {/* Before the first load settles, or after a failed load, the figures would all read 0.
+          The bookings card shows the loading state or the alert that explains the gap instead. */}
+      {firstLoadSettled && !loadError && (
+        <StatGrid columns={3}>
+          <Stat label="Total Bookings" value={bookings.length} />
+          <Stat label="Upcoming" value={upcomingCount} />
+          <Stat
+            label="Pending Payments"
+            value={pendingPaymentCount}
+            tone={pendingPaymentCount > 0 ? 'warning' : 'default'}
+            hint={pendingPaymentCount > 0 ? 'Requires attention' : undefined}
+          />
+        </StatGrid>
+      )}
 
-      <SectionNav items={sections} activeId={activeSection} onSelect={setActiveSection} />
+      <Tabs aria-label="Parking sections" tabs={sections} activeTab={activeSection} onTabChange={setActiveSection} />
 
       {activeSection === 'bookings' && (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px]">
           {/* Left: bookings table */}
           <Card>
-            <CardHeader title="Bookings" action={<Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>Refresh</Button>} />
-            {/* The filters get their own row. CardHeader lays its children out in
-                the same flex line as the title and the action, so passing them as
-                children squeezed them against the Refresh button and clipped them. */}
-            <div className="flex flex-wrap items-center gap-3 border-b border-border px-pad-card py-3">
-              <SearchInput placeholder="Reference or customer" value={search} onChange={setSearch} className="w-full sm:w-64" />
-              <Select options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
-              <Select options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />
-            </div>
-            <CardBody className="p-0">
-              {loading && bookings.length === 0 ? (
-                <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
-              ) : bookings.length === 0 ? (
-                <Empty title="No bookings" description="No bookings found for the current filters." />
-              ) : (
-                <>
-                  {/* Desktop: full table */}
-                  <div className="hidden overflow-x-auto md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Reference</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Start</TableHead>
-                          <TableHead>End</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Payment</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Due</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {bookings.map((booking) => (
-                          <TableRow
-                            key={booking.id}
-                            className="cursor-pointer"
-                            onClick={() => handleSelectBooking(booking)}
-                          >
-                            <TableCell className="font-medium">{booking.reference}</TableCell>
-                            <TableCell>
-                              <div onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
-                                <CustomerLink
-                                  customerId={booking.customer_id ?? null}
-                                  name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
-                                  fallback="Unknown Customer"
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell>{formatDateTime(booking.start_at)}</TableCell>
-                            <TableCell>{formatDateTime(booking.end_at)}</TableCell>
-                            <TableCell><Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge></TableCell>
-                            <TableCell><Badge tone={paymentBadgeTone[booking.payment_status]}>{booking.payment_status}</Badge></TableCell>
-                            <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
-                            <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '—'}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  {/* Mobile: stacked cards */}
-                  <div className="divide-y divide-border md:hidden">
-                    {bookings.map((booking) => (
-                      <button
-                        key={booking.id}
-                        type="button"
-                        onClick={() => handleSelectBooking(booking)}
-                        className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset ${
-                          selectedBooking?.id === booking.id ? 'bg-primary-soft' : ''
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="font-medium text-text-strong">{booking.reference}</span>
-                          <span className="text-sm font-medium text-text">
-                            {formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-text">
-                          {`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim() || 'Unknown Customer'}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge>
-                          <Badge tone={paymentBadgeTone[booking.payment_status]}>{booking.payment_status}</Badge>
-                        </div>
-                        <dl className="space-y-1 text-xs text-text-muted">
-                          <div className="flex justify-between gap-2">
-                            <dt>Start</dt>
-                            <dd className="text-right text-text">{formatDateTime(booking.start_at)}</dd>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>End</dt>
-                            <dd className="text-right text-text">{formatDateTime(booking.end_at)}</dd>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>Due</dt>
-                            <dd className="text-right text-text">{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '—'}</dd>
-                          </div>
-                        </dl>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+            <CardHeader title="Bookings" />
+            <CardBody className="flex flex-wrap items-end gap-3 border-b border-border">
+              <SearchInput
+                id="parking-search"
+                aria-label="Search parking bookings"
+                placeholder="Reference or customer"
+                value={search}
+                onChange={setSearch}
+                className="w-full sm:w-64"
+              />
+              <Select aria-label="Filter by status" options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
+              <Select aria-label="Filter by payment" options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />
             </CardBody>
+            {loading && bookings.length === 0 ? (
+              <PageLoading inline label="Loading bookings" />
+            ) : loadError ? (
+              <CardBody>
+                <Alert tone="danger" title="Bookings could not be loaded">
+                  {loadError}
+                  <div className="mt-3">
+                    <Button type="button" variant="secondary" size="sm" onClick={() => void fetchBookings()}>
+                      Try Again
+                    </Button>
+                  </div>
+                </Alert>
+              </CardBody>
+            ) : bookings.length === 0 ? (
+              search || statusFilter !== 'all' || paymentFilter !== 'all' ? (
+                <Empty size="sm" title="No bookings match these filters" description="Clear the search or the filters to see every booking." />
+              ) : (
+                <Empty size="sm" title="No bookings yet" description="Bookings show here once they are made." />
+              )
+            ) : (
+              <>
+                {/* Desktop: full table */}
+                <Table className="hidden md:block">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Reference</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Start</TableHead>
+                      <TableHead>End</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Payment</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Due</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bookings.map((booking) => (
+                      <TableRow
+                        key={booking.id}
+                        className="cursor-pointer"
+                        onClick={() => handleSelectBooking(booking)}
+                      >
+                        <TableCell className="font-medium">{booking.reference}</TableCell>
+                        <TableCell>
+                          <div onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
+                            <CustomerLink
+                              customerId={booking.customer_id ?? null}
+                              name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
+                              fallback="Unknown Customer"
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDateTime(booking.start_at)}</TableCell>
+                        <TableCell>{formatDateTime(booking.end_at)}</TableCell>
+                        <TableCell><Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge></TableCell>
+                        <TableCell><Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge></TableCell>
+                        <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
+                        <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Mobile: stacked cards. Each card is one DS Button, restyled as a full-width
+                    row, so the whole card selects the booking from the keyboard as well. */}
+                <div className="divide-y divide-border md:hidden">
+                  {bookings.map((booking) => (
+                    <Button
+                      key={booking.id}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handleSelectBooking(booking)}
+                      className={cn(
+                        'h-auto w-full flex-col items-stretch justify-start gap-2 rounded-none border-0 px-4 py-3 text-left font-normal whitespace-normal focus-visible:shadow-ring-inset',
+                        selectedBooking?.id === booking.id && 'bg-primary-soft',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-medium text-text-strong">{booking.reference}</span>
+                        <span className="text-sm font-medium text-text">
+                          {formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-text">
+                        {`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim() || 'Unknown Customer'}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge>
+                        <Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge>
+                      </div>
+                      <dl className="space-y-1 text-xs text-text-muted">
+                        <div className="flex justify-between gap-2">
+                          <dt>Start</dt>
+                          <dd className="text-right text-text">{formatDateTime(booking.start_at)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>End</dt>
+                          <dd className="text-right text-text">{formatDateTime(booking.end_at)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>Due</dt>
+                          <dd className="text-right text-text">{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '-'}</dd>
+                        </div>
+                      </dl>
+                    </Button>
+                  ))}
+                </div>
+              </>
+            )}
           </Card>
 
           {/* Right: detail sidebar */}
-          <div className="space-y-4">
+          <div className="space-y-6">
             {selectedBooking ? (
               <>
                 <Card>
                   <CardHeader title="Booking Details" action={<Button variant="ghost" size="sm" onClick={() => setSelectedBooking(null)}>Close</Button>} />
-                  <CardBody className="space-y-3">
-                    <DetailRow label="Reference" value={selectedBooking.reference} />
-                    <DetailRow
-                      label="Customer"
-                      value={
-                        <CustomerLink
-                          customerId={selectedBooking.customer_id ?? null}
-                          name={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`.trim()}
-                          fallback="Unknown Customer"
-                        />
-                      }
+                  <CardBody className="space-y-4">
+                    <DescriptionList
+                      columns={1}
+                      items={[
+                        { key: 'reference', label: 'Reference', value: selectedBooking.reference },
+                        {
+                          key: 'customer',
+                          label: 'Customer',
+                          value: (
+                            <CustomerLink
+                              customerId={selectedBooking.customer_id ?? null}
+                              name={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`.trim()}
+                              fallback="Unknown Customer"
+                            />
+                          ),
+                        },
+                        { key: 'mobile', label: 'Mobile', value: selectedBooking.customer_mobile || '-' },
+                        { key: 'email', label: 'Email', value: selectedBooking.customer_email || '-' },
+                        {
+                          key: 'vehicle',
+                          label: 'Vehicle',
+                          value: `${selectedBooking.vehicle_registration}${selectedBooking.vehicle_make ? ` - ${selectedBooking.vehicle_make}` : ''}${selectedBooking.vehicle_model ? ` ${selectedBooking.vehicle_model}` : ''}`,
+                        },
+                        { key: 'start', label: 'Start', value: formatDateTime(selectedBooking.start_at) },
+                        { key: 'end', label: 'End', value: formatDateTime(selectedBooking.end_at) },
+                        {
+                          key: 'status',
+                          label: 'Status',
+                          value: (
+                            <Badge tone={PARKING_BOOKING_STATUS_TONE[selectedBooking.status]}>
+                              {PARKING_BOOKING_STATUS_LABEL[selectedBooking.status]}
+                            </Badge>
+                          ),
+                        },
+                        {
+                          key: 'payment',
+                          label: 'Payment',
+                          value: (
+                            <Badge tone={PARKING_PAYMENT_STATUS_TONE[selectedBooking.payment_status]}>
+                              {PARKING_PAYMENT_STATUS_LABEL[selectedBooking.payment_status]}
+                            </Badge>
+                          ),
+                        },
+                        {
+                          key: 'amount',
+                          label: 'Amount',
+                          value: formatCurrency(selectedBooking.override_price ?? selectedBooking.calculated_price ?? 0),
+                        },
+                        ...(selectedBooking.notes
+                          ? [{
+                              key: 'notes',
+                              label: 'Notes',
+                              // Notes keep the line breaks staff typed.
+                              value: <span className="whitespace-pre-wrap">{selectedBooking.notes}</span>,
+                            }]
+                          : []),
+                      ]}
                     />
-                    <DetailRow label="Mobile" value={selectedBooking.customer_mobile} />
-                    <DetailRow label="Email" value={selectedBooking.customer_email ?? '—'} />
-                    <DetailRow label="Vehicle" value={`${selectedBooking.vehicle_registration}${selectedBooking.vehicle_make ? ` - ${selectedBooking.vehicle_make}` : ''}${selectedBooking.vehicle_model ? ` ${selectedBooking.vehicle_model}` : ''}`} />
-                    <DetailRow label="Start" value={formatDateTime(selectedBooking.start_at)} />
-                    <DetailRow label="End" value={formatDateTime(selectedBooking.end_at)} />
-                    <DetailRow label="Status" value={<Badge tone={statusBadgeTone[selectedBooking.status]}>{selectedBooking.status.replace('_', ' ')}</Badge>} />
-                    <DetailRow label="Payment" value={<Badge tone={paymentBadgeTone[selectedBooking.payment_status]}>{selectedBooking.payment_status}</Badge>} />
-                    <DetailRow label="Amount" value={formatCurrency(selectedBooking.override_price ?? selectedBooking.calculated_price ?? 0)} />
-
-                    {selectedBooking.notes && (
-                      <div className="rounded-md border border-border bg-surface-2 p-3 text-sm text-text-muted">
-                        <strong className="block text-text">Notes</strong>
-                        <span className="mt-1 block whitespace-pre-wrap">{selectedBooking.notes}</span>
-                      </div>
-                    )}
 
                     {permissions.canManage && (
-                      <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                      <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                         <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => openEditBooking(selectedBooking)}>
                           Edit
                         </Button>
                         {selectedBooking.payment_status === 'pending' && (
                           <>
-                            <Button size="sm" disabled={isMutating} onClick={() => handleGeneratePaymentLink(selectedBooking.id)}>
-                              {isMutating ? 'Generating...' : 'Payment Link'}
+                            <Button
+                              size="sm"
+                              disabled={isMutating}
+                              loading={isMutating && mutatingAction === 'payment-link'}
+                              onClick={() => { setMutatingAction('payment-link'); handleGeneratePaymentLink(selectedBooking.id) }}
+                            >
+                              Payment Link
                             </Button>
-                            <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => handleMarkPaid(selectedBooking.id)}>
-                              {isMutating ? 'Updating...' : 'Mark Paid'}
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={isMutating}
+                              loading={isMutating && mutatingAction === 'mark-paid'}
+                              onClick={() => { setMutatingAction('mark-paid'); handleMarkPaid(selectedBooking.id) }}
+                            >
+                              Mark Paid
                             </Button>
                           </>
                         )}
                         {selectedBooking.status !== 'cancelled' && selectedBooking.status !== 'completed' && (
-                          <Button variant="ghost" size="sm" disabled={isMutating} onClick={() => setCancelTarget(selectedBooking)}>
-                            Cancel
+                          <Button variant="danger" size="sm" disabled={isMutating} onClick={() => setCancelTarget(selectedBooking)}>
+                            Cancel Booking
                           </Button>
                         )}
                         {selectedBooking.status === 'confirmed' && new Date(selectedBooking.end_at) < new Date() && (
@@ -753,17 +872,13 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                 {['paid', 'refunded'].includes(selectedBooking.payment_status) && refundPaymentId && (
                   <Card>
                     <CardHeader title="Refund History" />
-                    <CardBody className="p-0">
-                      <RefundHistoryTable key={refundHistoryKey} sourceType="parking" sourceId={refundPaymentId} />
-                    </CardBody>
+                    <RefundHistoryTable key={refundHistoryKey} sourceType="parking" sourceId={refundPaymentId} />
                   </Card>
                 )}
               </>
             ) : (
               <Card>
-                <CardBody>
-                  <Empty title="No booking selected" description="Click a booking row to view details." />
-                </CardBody>
+                <Empty size="sm" title="No booking selected" description="Click a booking row to view details." />
               </Card>
             )}
           </div>
@@ -773,38 +888,46 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       {activeSection === 'notifications' && (
         <Card>
           <CardHeader title="Notification History" action={
-            <Button variant="secondary" size="sm" onClick={() => selectedBooking && void loadNotifications(selectedBooking.id)} disabled={loadingNotifications || !selectedBooking}>
-              {loadingNotifications ? 'Refreshing...' : 'Refresh'}
+            <Button variant="secondary" size="sm" onClick={() => selectedBooking && void loadNotifications(selectedBooking.id)} loading={loadingNotifications} disabled={!selectedBooking}>
+              Refresh
             </Button>
           } />
-          <CardBody className="p-0">
-            {loadingNotifications ? (
-              <div className="flex items-center justify-center py-8"><Spinner size="md" /></div>
-            ) : notifications.length === 0 ? (
-              <Empty title="No notifications" description={selectedBooking ? 'No notification history yet.' : 'Select a booking first to view notifications.'} />
+          {loadingNotifications ? (
+            <PageLoading inline label="Loading notifications" />
+          ) : notificationsError ? (
+            <CardBody>
+              <Alert tone="danger" title="Notifications could not be loaded">{notificationsError}</Alert>
+            </CardBody>
+          ) : notifications.length === 0 ? (
+            selectedBooking ? (
+              <Empty size="sm" title="No notifications yet" description="Texts and emails about this booking show here once sent." />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Channel</TableHead>
-                    <TableHead>Event</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Sent At</TableHead>
+              <Empty size="sm" title="No booking selected" description="Select a booking on the Bookings tab to see its notifications." />
+            )
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Channel</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notifications.map((n) => (
+                  <TableRow key={n.id}>
+                    <TableCell>{NOTIFICATION_CHANNEL_LABEL[n.channel] ?? n.channel}</TableCell>
+                    <TableCell>{NOTIFICATION_EVENT_LABEL[n.event_type] ?? n.event_type.replace(/_/g, ' ')}</TableCell>
+                    <TableCell>
+                      <Badge tone={messageDeliveryStatusTone(n.status)}>{messageDeliveryStatusLabel(n.status)}</Badge>
+                    </TableCell>
+                    <TableCell>{n.sent_at ? formatDateTime(n.sent_at) : '-'}</TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {notifications.map((n) => (
-                    <TableRow key={n.id}>
-                      <TableCell className="capitalize">{n.channel}</TableCell>
-                      <TableCell className="capitalize">{n.event_type.replace('_', ' ')}</TableCell>
-                      <TableCell>{n.status}</TableCell>
-                      <TableCell>{n.sent_at ? formatDateTime(n.sent_at) : '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardBody>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Card>
       )}
 
@@ -815,8 +938,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             subtitle={activeRateRecord ? `Active from ${formatDateTime(activeRateRecord.effective_from)}` : undefined}
           />
           <CardBody>
-            <form onSubmit={handleSaveRates} className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <form onSubmit={handleSaveRates} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Input
                   label="Hourly rate"
                   type="number"
@@ -854,7 +977,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                   onChange={(event) => setRateForm((prev) => ({ ...prev, monthly_rate: event.target.value }))}
                 />
               </div>
-              <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
+              <div className="grid gap-4 sm:grid-cols-[220px_minmax(0,1fr)]">
                 <Input
                   label="Capacity override"
                   type="number"
@@ -870,21 +993,33 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                   rows={2}
                 />
               </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isMutating}>
-                  {isMutating ? 'Saving...' : 'Save Rates'}
+              <FormFooter>
+                <Button type="submit" variant="primary" loading={isMutating}>
+                  Save Rates
                 </Button>
-              </div>
+              </FormFooter>
             </form>
           </CardBody>
         </Card>
       )}
 
       {/* Create Booking Modal */}
-      <Modal open={showCreateModal} onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }} title="Create Parking Booking">
-        <form onSubmit={handleCreateBooking} className="flex flex-col gap-5 p-4">
+      <Modal
+        open={showCreateModal}
+        onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}
+        title="New Booking"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}>Cancel</Button>
+            <Button type="submit" form="parking-create-form" variant="primary" loading={isPending}>Create Booking</Button>
+          </>
+        }
+      >
+        <form id="parking-create-form" onSubmit={handleCreateBooking} className="flex flex-col gap-5">
+          {/* Each group keeps its fieldset, and its legend is a real sub-heading (h3 under the
+              dialog's h2 title), so both the group and the heading reach a screen reader. */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Customer</legend>
+            <legend><SubHeading as="h3">Customer</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="First name" required value={createForm.customer_first_name} onChange={(e) => handleInputChange('customer_first_name', e.target.value)} />
               <Input label="Last name" value={createForm.customer_last_name} onChange={(e) => handleInputChange('customer_last_name', e.target.value)} />
@@ -894,7 +1029,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Schedule</legend>
+            <legend><SubHeading as="h3">Schedule</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Start" type="datetime-local" required value={createForm.start_at} onChange={(e) => handleInputChange('start_at', e.target.value)} />
               <Input label="End" type="datetime-local" required value={createForm.end_at} onChange={(e) => handleInputChange('end_at', e.target.value)} />
@@ -902,7 +1037,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Vehicle</legend>
+            <legend><SubHeading as="h3">Vehicle</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Registration" required placeholder="AB12CDE" value={createForm.vehicle_registration} onChange={(e) => handleInputChange('vehicle_registration', e.target.value.toUpperCase())} />
               <Input label="Make" value={createForm.vehicle_make} onChange={(e) => handleInputChange('vehicle_make', e.target.value)} />
@@ -912,24 +1047,18 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Pricing</legend>
+            <legend><SubHeading as="h3">Pricing</SubHeading></legend>
             {pricingPreview && (
-              <div className="rounded-md border border-border bg-surface-2 p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-text-strong">Estimated price</span>
-                  <span className="text-base font-semibold">{formatCurrency(pricingPreview.total)}</span>
-                </div>
-                <p className="mt-2 text-text-muted">
-                  Covers {formatDuration(pricingPreview.durationMinutes)}
-                </p>
-                <ul className="list-disc pl-5 mt-1 text-text-muted">
+              <Alert tone="info" role="status" title={`Estimated price: ${formatCurrency(pricingPreview.total)}`}>
+                <p>Covers {formatDuration(pricingPreview.durationMinutes)}</p>
+                <ul className="mt-1 list-disc pl-5">
                   {pricingPreview.breakdown.map((line, i) => (
                     <li key={`${line.unit}-${i}`}>{line.quantity} x {line.unit}(s) @ {formatCurrency(line.rate)} = {formatCurrency(line.subtotal)}</li>
                   ))}
                 </ul>
-              </div>
+              </Alert>
             )}
-            {pricingError && <p className="text-sm text-danger">{pricingError}</p>}
+            {pricingError && <Alert tone="danger" size="sm">{pricingError}</Alert>}
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Override price" type="number" min="0" step="0.01" value={createForm.override_price} onChange={(e) => handleInputChange('override_price', e.target.value)} />
               <Input label="Override reason" value={createForm.override_reason} onChange={(e) => handleInputChange('override_reason', e.target.value)} />
@@ -941,18 +1070,23 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             <Textarea label="Internal notes" value={createForm.notes} onChange={(e) => handleInputChange('notes', e.target.value)} />
             <Switch label="Send payment link now" checked={createForm.send_payment_link} onChange={(v) => handleInputChange('send_payment_link', v)} />
           </fieldset>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button type="button" variant="secondary" onClick={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }}>Cancel</Button>
-            <Button type="submit" disabled={isPending}>{isPending ? 'Creating...' : 'Create Booking'}</Button>
-          </div>
         </form>
       </Modal>
 
-      <Modal open={showEditModal} onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }} title="Edit Parking Booking">
-        <form onSubmit={handleEditBooking} className="flex flex-col gap-5 p-4">
+      <Modal
+        open={showEditModal}
+        onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}
+        title="Edit Parking Booking"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}>Cancel</Button>
+            <Button type="submit" form="parking-edit-form" variant="primary" loading={isMutating}>Save Changes</Button>
+          </>
+        }
+      >
+        <form id="parking-edit-form" onSubmit={handleEditBooking} className="flex flex-col gap-5">
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Customer</legend>
+            <legend><SubHeading as="h3">Customer</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="First name" required value={editForm.customer_first_name} onChange={(e) => handleEditInputChange('customer_first_name', e.target.value)} />
               <Input label="Last name" value={editForm.customer_last_name} onChange={(e) => handleEditInputChange('customer_last_name', e.target.value)} />
@@ -962,7 +1096,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Schedule</legend>
+            <legend><SubHeading as="h3">Schedule</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Start" type="datetime-local" required value={editForm.start_at} onChange={(e) => handleEditInputChange('start_at', e.target.value)} />
               <Input label="End" type="datetime-local" required value={editForm.end_at} onChange={(e) => handleEditInputChange('end_at', e.target.value)} />
@@ -970,7 +1104,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Vehicle</legend>
+            <legend><SubHeading as="h3">Vehicle</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Registration" required placeholder="AB12CDE" value={editForm.vehicle_registration} onChange={(e) => handleEditInputChange('vehicle_registration', e.target.value.toUpperCase())} />
               <Input label="Make" value={editForm.vehicle_make} onChange={(e) => handleEditInputChange('vehicle_make', e.target.value)} />
@@ -980,7 +1114,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-text-strong">Pricing</legend>
+            <legend><SubHeading as="h3">Pricing</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Override price" type="number" min="0" step="0.01" value={editForm.override_price} onChange={(e) => handleEditInputChange('override_price', e.target.value)} />
               <Input label="Override reason" value={editForm.override_reason} onChange={(e) => handleEditInputChange('override_reason', e.target.value)} />
@@ -991,11 +1125,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             )}
             <Textarea label="Internal notes" value={editForm.notes} onChange={(e) => handleEditInputChange('notes', e.target.value)} />
           </fieldset>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button type="button" variant="secondary" onClick={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}>Cancel</Button>
-            <Button type="submit" disabled={isMutating}>{isMutating ? 'Saving...' : 'Save Booking'}</Button>
-          </div>
         </form>
       </Modal>
 
@@ -1003,11 +1132,11 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         open={Boolean(cancelTarget)}
         onClose={() => setCancelTarget(null)}
         onConfirm={handleConfirmCancelBooking}
-        type="warning"
-        title="Cancel parking booking?"
-        message={cancelTarget ? `Cancel booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
-        confirmText="Cancel Booking"
-        confirmVariant="danger"
+        tone="danger"
+        title="Cancel Booking"
+        message={cancelTarget ? `Cancel parking booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
+        confirmLabel="Cancel Booking"
+        cancelLabel="Keep Booking"
       />
 
       {/* Refund Dialog */}
@@ -1025,19 +1154,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           onRefunded={handleRefundProcessed}
         />
       )}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Detail row helper                                                  */
-/* ------------------------------------------------------------------ */
-
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between items-start gap-2">
-      <span className="text-xs font-medium text-text-muted uppercase tracking-wide shrink-0">{label}</span>
-      <span className="text-sm text-text text-right">{value ?? '—'}</span>
-    </div>
+    </PageLayout>
   )
 }

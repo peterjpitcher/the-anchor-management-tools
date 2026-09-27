@@ -1,9 +1,8 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import type { InvoiceWithDetails } from '@/types/invoices'
-import { Card } from '@/ds'
+import { Icon } from '@/ds'
 import { Badge } from '@/ds'
 import { IconButton } from '@/ds'
-import { Download } from 'lucide-react'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 interface MobileInvoiceCardProps {
@@ -32,9 +31,31 @@ export function MobileInvoiceCard({
   const isPaid = invoice.status === 'paid'
 
   return (
-    <Card
-      className={`transition-shadow hover:shadow-default ${onClick ? 'cursor-pointer' : ''}`}
-      onClick={() => onClick?.(invoice)}
+    // One row of the invoice list's own Card on phones, so it takes no frame of its own and the
+    // list's dividers separate the rows. Not a DS Card: even a ghost Card keeps a 1px transparent
+    // border, which Tailwind emits after divide-y and so hides the dividers. The role and tab stop
+    // are the ones the Card gave a clickable row.
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick ? () => onClick(invoice) : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              // Only the row itself: Enter on the download button inside must not open the invoice.
+              if (event.target !== event.currentTarget) return
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick(invoice)
+              }
+            }
+          : undefined
+      }
+      className={
+        onClick
+          ? 'cursor-pointer p-pad-card transition-colors hover:bg-surface-hover'
+          : 'p-pad-card'
+      }
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
@@ -61,7 +82,7 @@ export function MobileInvoiceCard({
               event.stopPropagation()
               onDownload?.(invoice)
             }}
-            icon={<Download className="h-4 w-4" aria-hidden="true" />}
+            icon={<Icon name="download" size={16} />}
             className="text-text-muted hover:text-text"
           />
           <Badge tone={invoiceStatusTone(invoice.status)} size="sm" dot>
@@ -79,7 +100,7 @@ export function MobileInvoiceCard({
         </div>
         <div className="flex justify-between">
           <span className="text-text-muted">Due Date:</span>
-          <span className={`font-medium ${isOverdue ? 'text-danger' : ''}`}>
+          <span className={isOverdue ? 'font-medium text-danger-fg' : 'font-medium'}>
             {new Date(invoice.due_date).toLocaleDateString('en-GB')}
           </span>
         </div>
@@ -97,14 +118,12 @@ export function MobileInvoiceCard({
           {isPaid ? (
             <div className="font-semibold text-success-fg">Paid</div>
           ) : (
-            <div
-              className={`font-semibold ${isOverdue ? 'text-danger' : ''}`}
-            >
+            <div className={isOverdue ? 'font-semibold text-danger-fg' : 'font-semibold'}>
               {formatCurrency(invoiceBalanceDue(invoice))}
             </div>
           )}
         </div>
       </div>
-    </Card>
+    </div>
   )
 }

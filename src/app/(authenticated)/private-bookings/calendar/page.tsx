@@ -1,11 +1,15 @@
 import { redirect } from 'next/navigation'
 import CalendarView from '@/components/private-bookings/CalendarView'
 import { PageLayout } from '@/ds'
-import { getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 
 export default async function PrivateBookingsCalendarPage() {
-  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+  const [permissionsResult, canViewReports] = await Promise.all([
+    getCurrentUserModuleActions('private_bookings'),
+    checkUserPermission('reports', 'view'),
+  ])
 
   if ('error' in permissionsResult) {
     if (permissionsResult.error === 'Not authenticated') {
@@ -21,28 +25,19 @@ export default async function PrivateBookingsCalendarPage() {
     redirect('/unauthorized')
   }
 
+  const canViewSmsQueue = actions.has('view_sms_queue') || actions.has('manage')
+  const layoutProps = {
+    title: 'Private Bookings',
+    subtitle: 'Calendar: every booking, month by month',
+    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) }),
+  }
+
   const result = await fetchPrivateBookingsForCalendar()
 
   if ('error' in result) {
-    return (
-      <PageLayout
-        title="Private Bookings Calendar"
-        subtitle="View all bookings in calendar format"
-        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        error={result.error}
-      />
-    )
+    return <PageLayout {...layoutProps} error={result.error} />
   }
 
-  return (
-    <PageLayout
-      title="Private Bookings Calendar"
-      subtitle="View all bookings in calendar format"
-      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-    >
-      <div className="space-y-6">
-        <CalendarView bookings={result.data} />
-      </div>
-    </PageLayout>
-  )
+  // CalendarView renders the PageLayout, so its Calendar/Agenda switch can sit in the header.
+  return <CalendarView bookings={result.data} layoutProps={layoutProps} />
 }

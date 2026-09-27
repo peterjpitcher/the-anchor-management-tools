@@ -4,7 +4,8 @@ import { Button } from '@/ds';
 import { Select } from '@/ds';
 import { Input } from '@/ds';
 import { Checkbox } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
+import { Card } from '@/ds';
 import type { MenuSummary } from './DishExpandedRow';
 
 // ---------------------------------------------------------------------------
@@ -94,87 +95,87 @@ export function DishMenusTab({
         {formAssignments.map((assignment, index) => {
           const menuForRow = menus.find((m) => m.code === assignment.menu_code) || menus[0];
           return (
-            <div key={`assignment-${index}`} className="rounded-lg border border-border bg-surface p-4 shadow-sm space-y-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <FormGroup label="Menu" required>
-                  <Select
-                    value={assignment.menu_code}
-                    onChange={(e) => {
-                      const newMenuCode = e.target.value;
-                      const menu = menus.find((m) => m.code === newMenuCode);
-                      updateAssignment(index, {
-                        menu_code: newMenuCode,
-                        category_code: menu?.categories?.[0]?.code || '',
-                      });
-                    }}
-                  >
-                    {menus.map((menu) => (
-                      <option key={menu.code} value={menu.code}>{menu.name}</option>
-                    ))}
-                  </Select>
-                </FormGroup>
+            <Card key={`assignment-${index}`} padding="sm">
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label="Menu" required>
+                    <Select
+                      value={assignment.menu_code}
+                      onChange={(e) => {
+                        const newMenuCode = e.target.value;
+                        const menu = menus.find((m) => m.code === newMenuCode);
+                        updateAssignment(index, {
+                          menu_code: newMenuCode,
+                          category_code: menu?.categories?.[0]?.code || '',
+                        });
+                      }}
+                    >
+                      {menus.map((menu) => (
+                        <option key={menu.code} value={menu.code}>{menu.name}</option>
+                      ))}
+                    </Select>
+                  </Field>
 
-                <FormGroup label="Category" required>
-                  <Select
-                    value={assignment.category_code}
-                    onChange={(e) => updateAssignment(index, { category_code: e.target.value })}
-                  >
-                    <option value="">Select category</option>
-                    {menuForRow?.categories?.map((cat) => (
-                      <option key={cat.code} value={cat.code}>{cat.name}</option>
-                    ))}
-                  </Select>
-                </FormGroup>
+                  <Field label="Category" required>
+                    <Select
+                      value={assignment.category_code}
+                      onChange={(e) => updateAssignment(index, { category_code: e.target.value })}
+                    >
+                      <option value="">Select category</option>
+                      {menuForRow?.categories?.map((cat) => (
+                        <option key={cat.code} value={cat.code}>{cat.name}</option>
+                      ))}
+                    </Select>
+                  </Field>
 
-                <FormGroup label="Sort Order">
-                  <Input
-                    type="number"
-                    value={assignment.sort_order}
-                    onChange={(e) => updateAssignment(index, { sort_order: e.target.value })}
-                  />
-                </FormGroup>
-              </div>
-
-              <div className="flex flex-wrap gap-4">
-                <Checkbox
-                  checked={assignment.is_special}
-                  onChange={(checked) => updateAssignment(index, { is_special: checked })}
-                >
-                  Mark as special
-                </Checkbox>
-                <Checkbox
-                  checked={assignment.is_default_side}
-                  onChange={(checked) => updateAssignment(index, { is_default_side: checked })}
-                >
-                  Default side (included)
-                </Checkbox>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <FormGroup label="Available From">
-                  <Input
-                    type="date"
-                    value={assignment.available_from}
-                    onChange={(e) => updateAssignment(index, { available_from: e.target.value })}
-                  />
-                </FormGroup>
-                <FormGroup label="Available Until">
-                  <Input
-                    type="date"
-                    value={assignment.available_until}
-                    onChange={(e) => updateAssignment(index, { available_until: e.target.value })}
-                  />
-                </FormGroup>
-              </div>
-
-              {formAssignments.length > 1 && (
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => removeAssignment(index)}>
-                    Remove placement
-                  </Button>
+                  <Field label="Sort Order">
+                    <Input
+                      type="number"
+                      value={assignment.sort_order}
+                      onChange={(e) => updateAssignment(index, { sort_order: e.target.value })}
+                    />
+                  </Field>
                 </div>
-              )}
-            </div>
+
+                <div className="flex flex-wrap gap-4">
+                  <Checkbox
+                    label="Mark as special"
+                    checked={assignment.is_special}
+                    onChange={(checked) => updateAssignment(index, { is_special: checked })}
+                  />
+                  <Checkbox
+                    label="Default side (included)"
+                    checked={assignment.is_default_side}
+                    onChange={(checked) => updateAssignment(index, { is_default_side: checked })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Available From">
+                    <Input
+                      type="date"
+                      value={assignment.available_from}
+                      onChange={(e) => updateAssignment(index, { available_from: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Available Until">
+                    <Input
+                      type="date"
+                      value={assignment.available_until}
+                      onChange={(e) => updateAssignment(index, { available_until: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                {formAssignments.length > 1 && (
+                  <div className="flex justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => removeAssignment(index)}>
+                      Remove Placement
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
           );
         })}
       </div>

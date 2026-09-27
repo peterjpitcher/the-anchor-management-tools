@@ -4,21 +4,28 @@ import { cn } from '@/lib/utils'
 export interface PageLoadingProps {
   /** Accessible label announced to screen readers */
   label?: string
+  /**
+   * Loading inside a page or a card, under a header that stays put. Without it the indicator
+   * fills half the viewport, which is what a route `loading.tsx` wants.
+   */
+  inline?: boolean
   className?: string
 }
 
 /**
- * Minimal centred loading indicator.
- *
- * Used by route-level `loading.tsx` files (full-height by default) and
- * in-component loading regions (override sizing via `className`,
- * e.g. `className="min-h-0 py-12"`).
+ * The one loading indicator. Route `loading.tsx` files render `<PageLoading />`; a page or a
+ * block that is still fetching renders `<PageLoading inline />` (PageLayout's `loading` prop
+ * does this for you).
  */
-export function PageLoading({ label = 'Loading…', className }: PageLoadingProps): React.JSX.Element {
+export function PageLoading({ label = 'Loading…', inline = false, className }: PageLoadingProps): React.JSX.Element {
   return (
     <div
       role="status"
-      className={cn('flex min-h-[50vh] w-full items-center justify-center', className)}
+      className={cn(
+        'flex w-full items-center justify-center',
+        inline ? 'py-12' : 'min-h-[50vh]',
+        className,
+      )}
     >
       <Spinner size="lg" />
       <span className="sr-only">{label}</span>

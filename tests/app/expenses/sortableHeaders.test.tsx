@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -17,8 +17,6 @@ vi.mock('@/app/actions/expenses', () => ({
   deleteExpenseFile: vi.fn(),
   getExpenseInsights: vi.fn(),
 }))
-// The chart draws nothing these tests need, so it is kept out of jsdom.
-vi.mock('@/components/charts/BarChart', () => ({ BarChart: () => null }))
 
 import { ExpensesClient } from '@/app/(authenticated)/expenses/_components/ExpensesClient'
 import { ExpensesInsightsClient } from '@/app/(authenticated)/expenses/insights/_components/ExpensesInsightsClient'
@@ -82,8 +80,11 @@ describe('sortable expense table headers', () => {
       <ExpensesInsightsClient
         initialData={{
           bars: [],
-          totals: { totalAmount: 520, totalVat: 86.67, count: 4 },
-          byCompany: [{ companyRef: 'Booker', totalAmount: 520, totalVat: 86.67, count: 4 }],
+          totals: { totalAmount: 640, totalVat: 106.67, count: 5 },
+          byCompany: [
+            { companyRef: 'Costco', totalAmount: 120, totalVat: 20, count: 1 },
+            { companyRef: 'Booker', totalAmount: 520, totalVat: 86.67, count: 4 },
+          ],
         }}
       />,
     )
@@ -91,8 +92,23 @@ describe('sortable expense table headers', () => {
     for (const name of ['Company', 'Total', 'VAT', 'Count']) {
       expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
     }
-    expect(screen.getByRole('columnheader', { name: 'Total' })).toHaveAttribute('aria-sort', 'descending')
     expect(headerRowTags(screen.getByRole('columnheader', { name: 'Company' }))).toEqual(Array(4).fill('TH'))
     expect(invalidNestingWarnings()).toEqual([])
+
+    // The table opens biggest spend first. It is the DS DataTable now, which has no notion of
+    // an initial sort column, so no header claims the sort until one is clicked.
+    const companyCells = () =>
+      screen.getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[0].textContent)
+    expect(companyCells()).toEqual(['Booker', 'Costco'])
+    const total = screen.getByRole('columnheader', { name: 'Total' })
+    expect(total).toHaveAttribute('aria-sort', 'none')
+
+    fireEvent.click(within(total).getByRole('button'))
+    expect(total).toHaveAttribute('aria-sort', 'ascending')
+    expect(companyCells()).toEqual(['Costco', 'Booker'])
+
+    fireEvent.click(within(total).getByRole('button'))
+    expect(total).toHaveAttribute('aria-sort', 'descending')
+    expect(companyCells()).toEqual(['Booker', 'Costco'])
   })
 })

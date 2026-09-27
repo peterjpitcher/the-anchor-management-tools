@@ -4,12 +4,7 @@ import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/bala
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
-import { Modal, ModalActions } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Alert } from '@/ds'
-import { Send, Clock, AlertTriangle } from 'lucide-react'
+import { Modal, Icon, Button, Input, Textarea, Field, Alert } from '@/ds'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
@@ -151,10 +146,10 @@ P.S. I've attached a copy of the invoice for your reference.`
       open={isOpen}
       onClose={onClose}
       title="Chase Payment"
-      size="lg"
-      mobileFullscreen
+      description={`Invoice ${invoice.invoice_number} is ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue`}
+      width="lg"
       footer={
-        <ModalActions>
+        <>
           <Button
             variant="secondary"
             onClick={onClose}
@@ -167,86 +162,62 @@ P.S. I've attached a copy of the invoice for your reference.`
             onClick={handleSend}
             disabled={!toEmails}
             loading={sending}
-            leftIcon={<Send className="h-4 w-4" />}
+            leftIcon={<Icon name="send" size={16} />}
           >
             Send Reminder
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-4">
-        {/* Chase Payment Header */}
-        <div className="flex items-center gap-3 pb-4 border-b border-border">
-          <Clock className="h-6 w-6 text-warning" />
-          <div>
-            <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
-          </div>
-        </div>
-
         {recentChaseWarning && lastChaseDate && (
-          <Alert 
-            variant="warning" 
+          <Alert
+            tone="warning"
             title="Recent Reminder Sent"
-            description={`A payment reminder was already sent on ${formatDateInLondon(lastChaseDate)} at ${formatDateTimeInLondon(lastChaseDate, { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
-            className="mb-4"
-          />
+          >
+            {`A payment reminder was already sent on ${formatDateInLondon(lastChaseDate)} at ${formatDateTimeInLondon(lastChaseDate, { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
+          </Alert>
         )}
 
         {error && (
-          <Alert variant="error">{error}</Alert>
+          <Alert tone="danger">{error}</Alert>
         )}
 
-        <div>
-          <label className="block text-sm font-medium mb-1">To</label>
+        <Field label="To" hint="Primary recipient. Usually the vendor's primary contact.">
           <Input
             type="text"
             value={toEmails}
             onChange={(e) => setToEmails(e.target.value)}
             placeholder="primary.contact@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">
-            Primary recipient. Usually the vendor&apos;s primary contact.
-          </p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">CC</label>
+        <Field label="CC" hint="Separate multiple emails with commas or semicolons.">
           <Input
             type="text"
             value={ccEmails}
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Subject
-          </label>
-          <Input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </div>
+        <Input
+          label="Subject"
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Message
-          </label>
-          <Textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={12}
-          />
-        </div>
+        <Textarea
+          label="Message"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={12}
+        />
 
-        <Alert variant="warning"
-          title="Attachment"
-          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}
-        >
-          <p className="text-sm text-warning-fg mt-2">
+        <Alert tone="warning" title="Attachment">
+          <p>{`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}</p>
+          <p className="mt-2">
             <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
           </p>
         </Alert>

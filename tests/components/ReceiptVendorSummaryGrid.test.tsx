@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
+// The grid renders the Receipts page chrome (PageLayout), which reads the router and path.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/receipts/vendors',
+}))
+
 vi.mock('@/app/actions/receipts', () => ({
   getReceiptVendorAiSummary: vi.fn(),
   getReceiptVendorDetail: vi.fn(),
@@ -133,9 +139,9 @@ describe('VendorSummaryGrid', () => {
       },
     })
 
-    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} canManage />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'All vendors' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'All Vendors' }))
     const breweryRow = screen.getAllByRole('row').find((row) => within(row).queryByText('Brewery A'))
     expect(breweryRow).toBeDefined()
     fireEvent.click(within(breweryRow!).getByRole('button', { name: /view details/i }))
@@ -145,9 +151,9 @@ describe('VendorSummaryGrid', () => {
       monthWindow: 12,
     }))
     expect(await screen.findByText('Invoice 123')).toBeInTheDocument()
-    expect(screen.getByText('Full transaction history')).toBeInTheDocument()
+    expect(screen.getByText('Full Transaction History')).toBeInTheDocument()
     expect(screen.getByText('05 Jun 2026')).toBeInTheDocument()
-    expect(screen.getByText('Monthly movement')).toBeInTheDocument()
+    expect(screen.getByText('Monthly Movement')).toBeInTheDocument()
     expect(screen.getByText('+£100.00')).toBeInTheDocument()
     expect(screen.getByText('Entertainment')).toBeInTheDocument()
   })
@@ -168,16 +174,18 @@ describe('VendorSummaryGrid', () => {
         movements: [{ ...movement('Brewery A', 200), comparison: 'yoy' }],
       })
 
-    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} canManage />)
 
-    expect(await screen.findByText('Spend movement overview')).toBeInTheDocument()
+    expect(await screen.findByText('Spend Movement Overview')).toBeInTheDocument()
     // The heading above renders while the movements are still loading, so it cannot stand
     // in for the table being present. Wait for a control that only exists once loaded.
-    fireEvent.click(await screen.findByRole('button', { name: 'All vendors' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'All Vendors' }))
     const rows = await screen.findAllByRole('row')
     expect(within(rows[1]).getByText('Food Supplier')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Year on year' }))
+    // The comparison switch is a header action: PageLayout renders it in the desktop header and
+    // the phone nav row.
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Year on Year' })[0])
 
     await waitFor(() => expect(mockedGetReceiptVendorMovements).toHaveBeenLastCalledWith({
       range: '36m',
@@ -196,13 +204,14 @@ describe('VendorSummaryGrid', () => {
           updatedAt: '2026-06-01T00:00:00.000Z',
         }]}
         initialReviews={[]}
+        canManage
       />,
     )
 
     // Wait for the panel to finish loading, not merely for the request to be issued. The
     // view filters and the table only render once the movements promise has resolved, so
     // asserting on the mock's call count leaves the click racing the first re-render.
-    fireEvent.click(await screen.findByRole('button', { name: 'Watched (1)' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'Watched (1)' }))
 
     const rows = (await screen.findAllByRole('row')).slice(1)
     expect(rows.some((row) => within(row).queryByText('Brewery A'))).toBe(true)
@@ -228,7 +237,7 @@ describe('VendorSummaryGrid', () => {
       signals: [],
     })
 
-    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} canManage />)
 
     const statusControls = await screen.findAllByRole('combobox', { name: 'Review status for Brewery A' })
     fireEvent.change(statusControls[0], { target: { value: 'action_required' } })

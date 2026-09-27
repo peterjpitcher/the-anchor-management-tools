@@ -5,13 +5,13 @@
  * for a new order. The table shows from 768px; phones get MileageTripCard instead.
  */
 
-import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { Badge, IconButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
+import { Badge, IconButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Icon } from '@/ds'
 import type { MileageListDirection, MileageListSort } from '@/lib/mileage/list-query'
 import { formatLongDate } from '@/lib/mileage/periods'
 import type { MileageReportTrip } from '@/lib/mileage/report/dataset'
 import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
 import { describeTripRate, describeTripRoute } from '@/lib/mileage/report/model'
+import { MILEAGE_TRIP_SOURCE_LABEL, MILEAGE_TRIP_SOURCE_TONE } from '../_shared/status-ui'
 
 export interface TripRowActions {
   canManage: boolean
@@ -42,26 +42,22 @@ interface SortHeaderProps {
 }
 
 /**
- * The design-system header only listens for clicks on the cell, which a keyboard cannot reach.
- * The button inside gives it a tab stop: Enter or Space clicks the button, and that click bubbles
- * to the cell's handler, so the button needs no handler of its own and a press sorts only once.
+ * The database sorts every matching trip and the order lives in the address, so DataTable (which
+ * sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is used,
+ * and the caller picks the next direction.
  */
 function SortHeader({ column, label, sort, dir, onSort, align }: SortHeaderProps): React.JSX.Element {
   return (
     <TableHead sortable sortDirection={sort === column ? dir : null} onSort={() => onSort(column)} align={align}>
-      <button
-        type="button"
-        className="rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-      >
-        {label}
-      </button>
+      {label}
     </TableHead>
   )
 }
 
 export function MileageTripTable({ trips, sort, dir, onSort, canManage, onEdit, onDelete }: MileageTripTableProps): React.JSX.Element {
+  // The trips page frames this table in a Card with the pager.
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div>
       <p className="sr-only" aria-live="polite">
         {SORT_DESCRIPTIONS[sort][dir]}
       </p>
@@ -101,21 +97,21 @@ export function MileageTripTable({ trips, sort, dir, onSort, canManage, onEdit, 
                   {formatPoundsText(trip.amountPence)}
                 </TableCell>
                 <TableCell align="center">
-                  <Badge tone={isOjProjects ? 'primary' : 'neutral'}>{isOjProjects ? 'OJ Projects' : 'Logged'}</Badge>
+                  <Badge tone={MILEAGE_TRIP_SOURCE_TONE[trip.source]}>{MILEAGE_TRIP_SOURCE_LABEL[trip.source]}</Badge>
                 </TableCell>
                 {canManage && (
                   <TableCell align="right">
                     {!isOjProjects && (
                       <div className="flex items-center justify-end gap-1">
                         <IconButton
-                          icon={<PencilSquareIcon className="h-4 w-4" />}
+                          icon={<Icon name="edit" size={16} />}
                           label={`Edit trip on ${dateLabel}`}
                           variant="ghost"
                           size="sm"
                           onClick={() => onEdit(trip)}
                         />
                         <IconButton
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                          icon={<Icon name="trash" size={16} className="text-danger" />}
                           label={`Delete trip on ${dateLabel}`}
                           variant="ghost"
                           size="sm"

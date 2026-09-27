@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Button, Input } from '@/ds'
+import { Alert, Button, ConfirmDialog, Input } from '@/ds'
 import { UNDO_WINDOW_SECONDS } from '@/lib/vouchers/constants'
 import {
   newIdempotencyKey,
@@ -13,7 +13,6 @@ import { useVoucherLookup } from './useVoucherLookup'
 import { NumberSearch } from './NumberSearch'
 import { VoucherCard, isActionable } from './VoucherCard'
 import { CustomerAttach } from './CustomerAttach'
-import { ConfirmDialog } from './ConfirmDialog'
 
 type RedeemPanelProps = {
   canEdit: boolean
@@ -151,8 +150,9 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
   const showBookingRef = Boolean(selected && isActionable(selected, 'redeem') && selected.requiresBooking)
   const canMarkUsed = Boolean(canEdit && staffId && selected && isActionable(selected, 'redeem'))
 
+  // Blocks flow straight into the screen's own stack (VouchersFohClient).
   return (
-    <div className="space-y-4">
+    <>
       <NumberSearch
         idPrefix="foh-redeem"
         label="Voucher number"
@@ -168,51 +168,55 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-base text-info-fg">
+          <Alert tone="info" role="status">
             {outcome}
-          </p>
+          </Alert>
         )}
       </div>
 
       {success && (
-        <div className="rounded-lg border border-success-border bg-success-soft p-4">
-          <p className="text-xl font-bold text-success-fg">Marked as used</p>
-          <p className="mt-1 text-base text-success-fg">
-            <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
-          </p>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            {undoSecondsLeft > 0 ? (
-              // Warning outline so the undo reads as a cautious step, not the next action.
+        <Alert
+          tone="success"
+          role="status"
+          title="Marked as used"
+          actions={
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {undoSecondsLeft > 0 ? (
+                // Warning outline so the undo reads as a cautious step, not the next action.
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  onClick={handleUndo}
+                  disabled={!staffId}
+                  loading={undoBusy}
+                  className="h-14 flex-1 border-2 border-warning text-lg text-warning-fg hover:bg-warning-soft"
+                >
+                  {`Undo (${undoSecondsLeft}s left)`}
+                </Button>
+              ) : (
+                <p className="flex min-h-14 flex-1 items-center rounded-default border border-border-strong bg-surface px-4 text-base text-text">
+                  Undo window closed. Ask a manager if this was a mistake.
+                </p>
+              )}
               <Button
                 type="button"
-                variant="secondary"
+                variant="primary"
                 size="lg"
-                onClick={handleUndo}
-                disabled={undoBusy || !staffId}
-                className="h-14 flex-1 border-2 border-warning text-lg text-warning-fg hover:bg-warning-soft"
+                onClick={() => {
+                  setSuccess(null)
+                  setOutcome(null)
+                  lookup.reset()
+                }}
+                className="h-14 flex-1 text-lg"
               >
-                {undoBusy ? 'Undoing...' : `Undo (${undoSecondsLeft}s left)`}
+                Next Guest
               </Button>
-            ) : (
-              <p className="flex min-h-14 flex-1 items-center rounded-default border border-border-strong bg-surface px-4 text-base text-text">
-                Undo window closed. Ask a manager if this was a mistake.
-              </p>
-            )}
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              onClick={() => {
-                setSuccess(null)
-                setOutcome(null)
-                lookup.reset()
-              }}
-              className="h-14 flex-1 text-lg"
-            >
-              Next guest
-            </Button>
-          </div>
-        </div>
+            </div>
+          }
+        >
+          <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
+        </Alert>
       )}
 
       {selected && !success && (
@@ -227,48 +231,40 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
           {isActionable(selected, 'redeem') && (
             <div className="mt-4 space-y-3 border-t border-border pt-4">
               {showBookingRef && (
-                <div>
-                  <label htmlFor="foh-redeem-booking-ref" className="mb-1 block text-sm font-medium text-text">
-                    Booking reference (optional)
-                  </label>
-                  <Input
-                    id="foh-redeem-booking-ref"
-                    type="text"
-                    autoComplete="off"
-                    value={bookingRef}
-                    onChange={(event) => setBookingRef(event.target.value)}
-                    className="h-12 text-base"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label htmlFor="foh-redeem-transaction-ref" className="mb-1 block text-sm font-medium text-text">
-                  Till transaction reference (optional)
-                </label>
                 <Input
-                  id="foh-redeem-transaction-ref"
+                  id="foh-redeem-booking-ref"
+                  label="Booking reference (optional)"
                   type="text"
                   autoComplete="off"
-                  value={transactionRef}
-                  onChange={(event) => setTransactionRef(event.target.value)}
+                  value={bookingRef}
+                  onChange={(event) => setBookingRef(event.target.value)}
                   className="h-12 text-base"
                 />
-              </div>
+              )}
+
+              <Input
+                id="foh-redeem-transaction-ref"
+                label="Till transaction reference (optional)"
+                type="text"
+                autoComplete="off"
+                value={transactionRef}
+                onChange={(event) => setTransactionRef(event.target.value)}
+                className="h-12 text-base"
+              />
 
               {!selected.customer && (
                 <CustomerAttach idPrefix="foh-redeem" value={customer} onChange={setCustomer} />
               )}
 
               {!canEdit && (
-                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-text">
+                <Alert tone="info" role="status">
                   You have view-only access. Ask a manager to mark this voucher as used.
-                </p>
+                </Alert>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <Alert tone="warning" role="status">
                   Choose your name at the top before marking the voucher as used.
-                </p>
+                </Alert>
               )}
 
               {canEdit && (
@@ -280,7 +276,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                   disabled={!canMarkUsed}
                   className="h-14 w-full text-xl font-bold"
                 >
-                  Mark as used
+                  Mark as Used
                 </Button>
               )}
             </div>
@@ -290,20 +286,22 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Mark this voucher as used?"
-        confirmLabel="Yes, mark as used"
-        busy={submitting}
+        onClose={() => setConfirmOpen(false)}
         onConfirm={confirmRedeem}
-        onCancel={() => setConfirmOpen(false)}
-      >
-        {selected && (
-          <p>
-            <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
-            {bookingRef.trim() ? `, booking ref ${bookingRef.trim()}` : ''}. This can be undone for{' '}
-            {UNDO_WINDOW_SECONDS} seconds.
-          </p>
-        )}
-      </ConfirmDialog>
-    </div>
+        title="Mark This Voucher as Used"
+        confirmLabel="Yes, Mark as Used"
+        tone="primary"
+        message={
+          selected ? (
+            <>
+              Mark this voucher as used?{' '}
+              <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
+              {bookingRef.trim() ? `, booking ref ${bookingRef.trim()}` : ''}. This can be undone for{' '}
+              {UNDO_WINDOW_SECONDS} seconds.
+            </>
+          ) : undefined
+        }
+      />
+    </>
   )
 }

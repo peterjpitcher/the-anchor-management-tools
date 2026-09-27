@@ -164,14 +164,15 @@ export function MileageReportDialog({
     <Modal
       open={open}
       onClose={handleClose}
-      title="Download mileage report"
+      title="Download Report"
+      description="The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment."
       footer={
         <>
-          <Button variant="ghost" onClick={handleClose} disabled={isDownloading}>
+          <Button variant="secondary" onClick={handleClose} disabled={isDownloading}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleDownload} loading={isDownloading} disabled={isDownloading}>
-            {isDownloading ? 'Building report' : 'Download PDF'}
+            Download PDF
           </Button>
         </>
       }
@@ -211,15 +212,12 @@ export function MileageReportDialog({
           onChange={(event) => setDriver(event.target.value)}
           options={[{ value: 'all', label: 'All drivers' }, ...drivers.map((entry) => ({ value: entry.id, label: `${entry.displayName} only` }))]}
         />
-        <p className="text-sm text-text-muted">
-          The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment.
-        </p>
         {ignoredFilters.length > 0 && (
-          <p className="rounded-md bg-surface-2 p-3 text-sm text-text">
+          <Alert tone="info" role="status">
             {`The PDF uses the dates and driver only. It ignores the ${joinWords(ignoredFilters)} ${
               ignoredFilters.length === 1 ? 'filter' : 'filters'
             } on the trips table, so it lists every trip in these dates.`}
-          </p>
+          </Alert>
         )}
         {downloadError && (
           <Alert tone="danger" title="Nothing was downloaded">

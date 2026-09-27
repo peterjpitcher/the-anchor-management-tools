@@ -36,10 +36,10 @@
  *    numeric fields deliberately bypass it: they are the exact-entry escape
  *    hatch, and silently turning a typed 49% into 50% would be a bug.
  *
- * The surface is a full-screen dialog rather than a route or the DS Modal.
- * Navigating away from the event drawer would discard unsaved event edits, and
- * the DS Modal caps at 800px while an A4 preview 600px wide is about 848px
- * tall, so neither fits.
+ * The surface is the DS Modal at its widest (800px) rather than a route:
+ * navigating away from the event drawer would discard unsaved event edits. The
+ * preview is sized to fit inside it whatever the artwork's shape (see
+ * PREVIEW_MAX_HEIGHT), with the controls below it.
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -52,11 +52,8 @@ import {
   type DragEndEvent,
   type DragMoveEvent,
 } from '@dnd-kit/core'
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
 import { z } from 'zod'
-import { Button, ConfirmDialog, IconButton } from '@/ds'
+import { Alert, Button, Checkbox, ConfirmDialog, Modal, SubHeading, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   LOGO_DEFAULT_WIDTH_FRAC,
@@ -120,6 +117,12 @@ const NO_SNAP: SnapAxes = { x: null, y: null }
  * full-resolution canvas and paint a shadow ten times too heavy.
  */
 const NOMINAL_PREVIEW_WIDTH_PX = 600
+
+/**
+ * The tallest the preview may be inside the modal. Its width is derived from this and the
+ * artwork's shape, so a tall poster and a wide cover both fit whole, at their true proportions.
+ */
+const PREVIEW_MAX_HEIGHT = '60dvh'
 
 /** How much of the strip's displayed width the label glyphs take. */
 const QR_STRIP_FONT_FRAC = 0.6
@@ -657,385 +660,363 @@ export function ArtworkBrandingModal({
   const canSave = qrCheck.ok && !busy
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-50">
-      <DialogBackdrop className="fixed inset-0 bg-overlay" />
-      <div className="fixed inset-0 flex">
-        <DialogPanel className="flex h-full w-full flex-col bg-bg">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
-            <div className="min-w-0">
-              <DialogTitle className="truncate text-base font-semibold text-text">
-                Branding: {config.label}
-              </DialogTitle>
-              <p className="truncate text-xs text-text-muted">
-                {imageW} x {imageH} px. The logo is stamped on the saved file.
-              </p>
-            </div>
-            <IconButton
-              type="button"
-              variant="secondary"
-              onClick={onClose}
-              icon={<XMarkIcon className="h-5 w-5" aria-hidden="true" />}
-              label="Close branding editor"
-              className="min-h-touch min-w-touch shrink-0"
-            />
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <DndContext
-              sensors={sensors}
-              onDragMove={handleDragMove}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Branding: ${config.label}`}
+      description={`${imageW} x ${imageH} px. The logo is stamped on the saved file.`}
+      width="xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => setConfirmRevert(true)} disabled={busy} className="sm:mr-auto">
+            Revert to Original
+          </Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSave} disabled={!canSave}>
+            Save Branding
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <DndContext
+          sensors={sensors}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex items-center justify-center rounded-lg bg-surface-2 p-3">
+            <div
+              ref={previewRef}
+              data-testid="artwork-preview"
+              className="relative overflow-hidden rounded-default bg-surface shadow-sm"
+              style={{
+                aspectRatio: `${imageW} / ${imageH}`,
+                // As wide as the modal allows, but never taller than PREVIEW_MAX_HEIGHT.
+                width: `min(100%, calc(${PREVIEW_MAX_HEIGHT} * ${imageW / imageH}))`,
+              }}
             >
-              <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-surface-2 p-4">
-                <div
-                  ref={previewRef}
-                  data-testid="artwork-preview"
-                  className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md bg-surface shadow-sm"
-                  style={{ aspectRatio: `${imageW} / ${imageH}` }}
+              <img
+                src={imageUrl}
+                alt={`${config.label} artwork for this event`}
+                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+              />
+
+              {logoBox && (
+                <PlacementOverlay
+                  id="logo"
+                  testId="logo-overlay"
+                  label="Logo position"
+                  rect={logoBox}
+                  imageW={imageW}
+                  imageH={imageH}
+                  draggable={logoMode === 'free'}
+                  onNudge={nudgeLogo}
                 >
                   <img
-                    src={imageUrl}
-                    alt={`${config.label} artwork for this event`}
-                    className="absolute inset-0 h-full w-full object-cover"
+                    src={`/guest/anchor-logo-${colour}.png`}
+                    alt=""
+                    data-testid="logo-preview-image"
+                    className="pointer-events-none h-full w-full object-contain"
                     draggable={false}
+                    style={{ filter: logoShadowFilter }}
                   />
+                </PlacementOverlay>
+              )}
 
-                  {logoBox && (
-                    <PlacementOverlay
-                      id="logo"
-                      testId="logo-overlay"
-                      label="Logo position"
-                      rect={logoBox}
-                      imageW={imageW}
-                      imageH={imageH}
-                      draggable={logoMode === 'free'}
-                      onNudge={nudgeLogo}
-                    >
+              {qrBlockBox && qrCodeBox && qrStripBox && (
+                <PlacementOverlay
+                  id="qr"
+                  testId="qr-overlay"
+                  label="QR code position"
+                  // The BLOCK is dragged and outlined, because the block is
+                  // what lands on the artwork. `codeRect` carries the code
+                  // on its own, which is what the stored width still means.
+                  rect={qrBlockBox}
+                  codeRect={qrCodeBox}
+                  imageW={imageW}
+                  imageH={imageH}
+                  draggable
+                  invalid={!qrCheck.ok}
+                  onNudge={nudgeQr}
+                >
+                  <span
+                    data-testid="qr-strip"
+                    className="pointer-events-none absolute top-0 flex items-center justify-center overflow-hidden font-semibold leading-none"
+                    style={{
+                      left: percentOf(qrStripBox.x - qrBlockBox.x, qrBlockBox.width),
+                      width: percentOf(qrStripBox.width, qrBlockBox.width),
+                      height: '100%',
+                      // Deliberately literal black and white (CSS keywords)
+                      // rather than design tokens: this is a picture of what
+                      // the compositor prints, and printing it in the app's
+                      // theme colours would make the preview a lie.
+                      backgroundColor: 'black',
+                      color: 'white',
+                      // vertical-rl plus a half turn reads bottom to top,
+                      // which is the convention for a spine label.
+                      writingMode: 'vertical-rl',
+                      transform: 'rotate(180deg)',
+                      fontSize: `${qrStripFontPx}px`,
+                      letterSpacing: '0.08em',
+                    }}
+                  >
+                    {QR_STRIP_LABEL}
+                  </span>
+
+                  <span
+                    className="pointer-events-none absolute top-0"
+                    style={{
+                      left: percentOf(qrCodeBox.x - qrBlockBox.x, qrBlockBox.width),
+                      width: percentOf(qrCodeBox.width, qrBlockBox.width),
+                      height: '100%',
+                    }}
+                  >
+                    {qrDataUrl && (
                       <img
-                        src={`/guest/anchor-logo-${colour}.png`}
+                        src={qrDataUrl}
                         alt=""
-                        data-testid="logo-preview-image"
                         className="pointer-events-none h-full w-full object-contain"
                         draggable={false}
-                        style={{ filter: logoShadowFilter }}
                       />
-                    </PlacementOverlay>
-                  )}
+                    )}
+                    {/* The caption sits ON the code deliberately. It labels
+                        the preview as a guide and makes it unscannable, so
+                        nobody points a phone at a screen and books from a
+                        draft. */}
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-2xs font-medium leading-tight text-surface">
+                      Guide only
+                    </span>
+                  </span>
+                </PlacementOverlay>
+              )}
 
-                  {qrBlockBox && qrCodeBox && qrStripBox && (
-                    <PlacementOverlay
-                      id="qr"
-                      testId="qr-overlay"
-                      label="QR code position"
-                      // The BLOCK is dragged and outlined, because the block is
-                      // what lands on the artwork. `codeRect` carries the code
-                      // on its own, which is what the stored width still means.
-                      rect={qrBlockBox}
-                      codeRect={qrCodeBox}
-                      imageW={imageW}
-                      imageH={imageH}
-                      draggable
-                      invalid={!qrCheck.ok}
-                      onNudge={nudgeQr}
-                    >
-                      <span
-                        data-testid="qr-strip"
-                        className="pointer-events-none absolute top-0 flex items-center justify-center overflow-hidden font-semibold leading-none"
-                        style={{
-                          left: percentOf(qrStripBox.x - qrBlockBox.x, qrBlockBox.width),
-                          width: percentOf(qrStripBox.width, qrBlockBox.width),
-                          height: '100%',
-                          // Deliberately literal black and white (CSS keywords)
-                          // rather than design tokens: this is a picture of what
-                          // the compositor prints, and printing it in the app's
-                          // theme colours would make the preview a lie.
-                          backgroundColor: 'black',
-                          color: 'white',
-                          // vertical-rl plus a half turn reads bottom to top,
-                          // which is the convention for a spine label.
-                          writingMode: 'vertical-rl',
-                          transform: 'rotate(180deg)',
-                          fontSize: `${qrStripFontPx}px`,
-                          letterSpacing: '0.08em',
-                        }}
-                      >
-                        {QR_STRIP_LABEL}
-                      </span>
+              {/* The guides sit above the overlays so a snapped edge is
+                  still visible against the artwork, and are decorative:
+                  the polite region below says the same thing in words. */}
+              {snapGuide.x !== null && (
+                <div
+                  data-testid="snap-guide-x"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary ring-1 ring-surface/70"
+                  style={{ left: `${snapGuide.x * 100}%` }}
+                />
+              )}
+              {snapGuide.y !== null && (
+                <div
+                  data-testid="snap-guide-y"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 h-0.5 -translate-y-1/2 bg-primary ring-1 ring-surface/70"
+                  style={{ top: `${snapGuide.y * 100}%` }}
+                />
+              )}
+            </div>
+          </div>
+        </DndContext>
 
-                      <span
-                        className="pointer-events-none absolute top-0"
-                        style={{
-                          left: percentOf(qrCodeBox.x - qrBlockBox.x, qrBlockBox.width),
-                          width: percentOf(qrCodeBox.width, qrBlockBox.width),
-                          height: '100%',
-                        }}
-                      >
-                        {qrDataUrl && (
-                          <img
-                            src={qrDataUrl}
-                            alt=""
-                            className="pointer-events-none h-full w-full object-contain"
-                            draggable={false}
-                          />
-                        )}
-                        {/* The caption sits ON the code deliberately. It labels
-                            the preview as a guide and makes it unscannable, so
-                            nobody points a phone at a screen and books from a
-                            draft. */}
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-2xs font-medium leading-tight text-surface">
-                          Guide only
-                        </span>
-                      </span>
-                    </PlacementOverlay>
-                  )}
+        {/* The logo and QR groups side by side on a wide screen. md:grid-cols-2 is
+            flattened to one column below 820px by globals.css, which is what a
+            phone wants here. */}
+        <div className="grid gap-6 md:grid-cols-2">
+          <section className="min-w-0 space-y-3">
+            <SubHeading as="h3">Logo</SubHeading>
+            <p className="text-xs text-text-muted">
+              The logo is applied to every size of this event&apos;s artwork.
+            </p>
 
-                  {/* The guides sit above the overlays so a snapped edge is
-                      still visible against the artwork, and are decorative:
-                      the polite region below says the same thing in words. */}
-                  {snapGuide.x !== null && (
-                    <div
-                      data-testid="snap-guide-x"
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary ring-1 ring-surface/70"
-                      style={{ left: `${snapGuide.x * 100}%` }}
-                    />
-                  )}
-                  {snapGuide.y !== null && (
-                    <div
-                      data-testid="snap-guide-y"
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0 h-0.5 -translate-y-1/2 bg-primary ring-1 ring-surface/70"
-                      style={{ top: `${snapGuide.y * 100}%` }}
-                    />
-                  )}
-                </div>
-              </div>
-            </DndContext>
+            <OptionButtons
+              label="Logo placement mode"
+              options={MODE_OPTIONS}
+              value={logoMode}
+              onChange={setLogoMode}
+            />
 
-            <div className="w-full shrink-0 space-y-5 overflow-y-auto border-t border-border bg-surface p-4 lg:w-[380px] lg:border-l lg:border-t-0">
-              <section aria-labelledby={`${fieldId}-logo-heading`} className="space-y-3">
-                <h2 id={`${fieldId}-logo-heading`} className="text-sm font-semibold text-text">
-                  Logo
-                </h2>
-                <p className="text-xs text-text-muted">
-                  The logo is applied to every size of this event&apos;s artwork.
-                </p>
+            {logoMode === 'corner' && (
+              <OptionButtons
+                label="Logo corner"
+                options={CORNER_OPTIONS}
+                value={corner}
+                onChange={setCorner}
+                // grid-cols-2 with no breakpoint prefix. A `md:grid-cols-2`
+                // here would be flattened to one column below 820px by the
+                // global rule in globals.css.
+                className="grid w-full grid-cols-2"
+              />
+            )}
 
+            {logoMode !== 'none' && (
+              <>
                 <OptionButtons
-                  label="Logo placement mode"
-                  options={MODE_OPTIONS}
-                  value={logoMode}
-                  onChange={setLogoMode}
+                  label="Logo colour"
+                  options={COLOUR_OPTIONS}
+                  value={colour}
+                  onChange={setColour}
                 />
 
-                {logoMode === 'corner' && (
-                  <OptionButtons
-                    label="Logo corner"
-                    options={CORNER_OPTIONS}
-                    value={corner}
-                    onChange={setCorner}
-                    // grid-cols-2 with no breakpoint prefix. A `md:grid-cols-2`
-                    // here would be flattened to one column below 820px by the
-                    // global rule in globals.css.
-                    className="grid w-full grid-cols-2 gap-2"
+                <SliderField
+                  id={`${fieldId}-logo-size`}
+                  label="Logo size"
+                  min={Math.ceil(LOGO_MIN_WIDTH_FRAC * 100)}
+                  max={Math.floor(LOGO_MAX_WIDTH_FRAC * 100)}
+                  value={toPercent(logoWidthFrac)}
+                  valueLabel={`${toPercent(logoWidthFrac)}% of the width`}
+                  onChange={(next) => setLogoWidthFrac(next / 100)}
+                />
+
+                {/* Typed positions are NOT snapped, on purpose. These fields
+                    are the exact-entry escape hatch from the snapping the
+                    drag and arrow keys apply, and quietly turning a typed
+                    49% into 50% would make the number on screen a lie.
+                    Setting one clears the guide for the same reason. */}
+                <div className="grid grid-cols-3 gap-2">
+                  <NumberField
+                    id={`${fieldId}-logo-x`}
+                    label="Logo X"
+                    suffix="%"
+                    min={0}
+                    max={100}
+                    value={toPercent(logoCentre.x)}
+                    disabled={logoMode !== 'free'}
+                    onChange={(next) => setExactCentre('logo', 'x', next / 100)}
                   />
-                )}
+                  <NumberField
+                    id={`${fieldId}-logo-y`}
+                    label="Logo Y"
+                    suffix="%"
+                    min={0}
+                    max={100}
+                    value={toPercent(logoCentre.y)}
+                    disabled={logoMode !== 'free'}
+                    onChange={(next) => setExactCentre('logo', 'y', next / 100)}
+                  />
+                  <NumberField
+                    id={`${fieldId}-logo-width`}
+                    label="Logo width"
+                    suffix="%"
+                    min={Math.ceil(LOGO_MIN_WIDTH_FRAC * 100)}
+                    max={Math.floor(LOGO_MAX_WIDTH_FRAC * 100)}
+                    value={toPercent(logoWidthFrac)}
+                    onChange={(next) => setLogoWidthFrac(next / 100)}
+                  />
+                </div>
 
-                {logoMode !== 'none' && (
-                  <>
-                    <OptionButtons
-                      label="Logo colour"
-                      options={COLOUR_OPTIONS}
-                      value={colour}
-                      onChange={setColour}
+                <Button variant="secondary" size="sm" onClick={resetLogoPlacement}>
+                  Reset Logo Placement
+                </Button>
+              </>
+            )}
+          </section>
+
+          {print && (
+            <section className="min-w-0 space-y-3">
+              <SubHeading as="h3">Booking QR Code</SubHeading>
+
+              <Checkbox
+                label={`Put a QR code on the ${print.surfaceName}`}
+                checked={qrOn}
+                onChange={setQrOn}
+              />
+
+              {qrOn && (
+                <>
+                  <div>
+                    <p className="text-xs font-medium text-text-muted">The code points to</p>
+                    <p className="mt-0.5 break-all text-sm text-text">{printShortUrl}</p>
+                  </div>
+
+                  <SliderField
+                    id={`${fieldId}-qr-size`}
+                    label="QR size"
+                    min={minQrWidthPercent}
+                    max={MAX_QR_WIDTH_PERCENT}
+                    value={toPercent(qrWidthFrac)}
+                    valueLabel={`${toPercent(qrWidthFrac)}% of the width`}
+                    hint={`Never smaller than the ${print.qrMinMm}mm print minimum.`}
+                    onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
+                  />
+
+                  {/* Exact entry, so these are not snapped either. */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumberField
+                      id={`${fieldId}-qr-x`}
+                      label="QR X"
+                      suffix="%"
+                      min={0}
+                      max={100}
+                      value={toPercent(qrCentre.x)}
+                      onChange={(next) => setExactCentre('qr', 'x', next / 100)}
                     />
-
-                    <SliderField
-                      id={`${fieldId}-logo-size`}
-                      label="Logo size"
-                      min={Math.ceil(LOGO_MIN_WIDTH_FRAC * 100)}
-                      max={Math.floor(LOGO_MAX_WIDTH_FRAC * 100)}
-                      value={toPercent(logoWidthFrac)}
-                      valueLabel={`${toPercent(logoWidthFrac)}% of the width`}
-                      onChange={(next) => setLogoWidthFrac(next / 100)}
+                    <NumberField
+                      id={`${fieldId}-qr-y`}
+                      label="QR Y"
+                      suffix="%"
+                      min={0}
+                      max={100}
+                      value={toPercent(qrCentre.y)}
+                      onChange={(next) => setExactCentre('qr', 'y', next / 100)}
                     />
-
-                    {/* Typed positions are NOT snapped, on purpose. These fields
-                        are the exact-entry escape hatch from the snapping the
-                        drag and arrow keys apply, and quietly turning a typed
-                        49% into 50% would make the number on screen a lie.
-                        Setting one clears the guide for the same reason. */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <NumberField
-                        id={`${fieldId}-logo-x`}
-                        label="Logo X"
-                        suffix="%"
-                        min={0}
-                        max={100}
-                        value={toPercent(logoCentre.x)}
-                        disabled={logoMode !== 'free'}
-                        onChange={(next) => setExactCentre('logo', 'x', next / 100)}
-                      />
-                      <NumberField
-                        id={`${fieldId}-logo-y`}
-                        label="Logo Y"
-                        suffix="%"
-                        min={0}
-                        max={100}
-                        value={toPercent(logoCentre.y)}
-                        disabled={logoMode !== 'free'}
-                        onChange={(next) => setExactCentre('logo', 'y', next / 100)}
-                      />
-                      <NumberField
-                        id={`${fieldId}-logo-width`}
-                        label="Logo width"
-                        suffix="%"
-                        min={Math.ceil(LOGO_MIN_WIDTH_FRAC * 100)}
-                        max={Math.floor(LOGO_MAX_WIDTH_FRAC * 100)}
-                        value={toPercent(logoWidthFrac)}
-                        onChange={(next) => setLogoWidthFrac(next / 100)}
-                      />
-                    </div>
-
-                    <Button variant="secondary" size="sm" onClick={resetLogoPlacement}>
-                      Reset logo placement
-                    </Button>
-                  </>
-                )}
-              </section>
-
-              {print && (
-                <section aria-labelledby={`${fieldId}-qr-heading`} className="space-y-3 border-t border-border pt-5">
-                  <h2 id={`${fieldId}-qr-heading`} className="text-sm font-semibold text-text">
-                    Booking QR code
-                  </h2>
-
-                  <label className="flex min-h-touch items-center gap-2 text-sm text-text">
-                    <input
-                      type="checkbox"
-                      checked={qrOn}
-                      onChange={(event) => setQrOn(event.target.checked)}
-                      className="h-4 w-4 accent-primary"
+                    <NumberField
+                      id={`${fieldId}-qr-width`}
+                      label="QR width"
+                      suffix="%"
+                      min={minQrWidthPercent}
+                      max={MAX_QR_WIDTH_PERCENT}
+                      value={toPercent(qrWidthFrac)}
+                      onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
                     />
-                    Put a QR code on the {print.surfaceName}
-                  </label>
+                  </div>
 
-                  {qrOn && (
-                    <>
-                      <div className="rounded-md border border-border bg-surface-2 p-3">
-                        <p className="text-xs font-medium text-text-muted">The code points to</p>
-                        <p className="mt-0.5 break-all text-sm text-text">{printShortUrl}</p>
-                      </div>
-
-                      <SliderField
-                        id={`${fieldId}-qr-size`}
-                        label="QR size"
-                        min={minQrWidthPercent}
-                        max={MAX_QR_WIDTH_PERCENT}
-                        value={toPercent(qrWidthFrac)}
-                        valueLabel={`${toPercent(qrWidthFrac)}% of the width`}
-                        hint={`Never smaller than the ${print.qrMinMm}mm print minimum.`}
-                        onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
-                      />
-
-                      {/* Exact entry, so these are not snapped either. */}
-                      <div className="grid grid-cols-3 gap-2">
-                        <NumberField
-                          id={`${fieldId}-qr-x`}
-                          label="QR X"
-                          suffix="%"
-                          min={0}
-                          max={100}
-                          value={toPercent(qrCentre.x)}
-                          onChange={(next) => setExactCentre('qr', 'x', next / 100)}
-                        />
-                        <NumberField
-                          id={`${fieldId}-qr-y`}
-                          label="QR Y"
-                          suffix="%"
-                          min={0}
-                          max={100}
-                          value={toPercent(qrCentre.y)}
-                          onChange={(next) => setExactCentre('qr', 'y', next / 100)}
-                        />
-                        <NumberField
-                          id={`${fieldId}-qr-width`}
-                          label="QR width"
-                          suffix="%"
-                          min={minQrWidthPercent}
-                          max={MAX_QR_WIDTH_PERCENT}
-                          value={toPercent(qrWidthFrac)}
-                          onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
-                        />
-                      </div>
-
-                      {qrCodeBox && (
-                        <p className="text-xs text-text-muted">
-                          Printed size: {qrCodeBox.width} px, {qrMillimetres.toFixed(0)} mm on{' '}
-                          {print.printedSizeLabel}. The {QR_STRIP_LABEL} strip is printed beside it.
-                        </p>
-                      )}
-
-                      <Button variant="secondary" size="sm" onClick={resetQrPlacement}>
-                        Reset QR placement
-                      </Button>
-                    </>
+                  {qrCodeBox && (
+                    <p className="text-xs text-text-muted">
+                      Printed size: {qrCodeBox.width} px, {qrMillimetres.toFixed(0)} mm on{' '}
+                      {print.printedSizeLabel}. The {QR_STRIP_LABEL} strip is printed beside it.
+                    </p>
                   )}
-                </section>
+
+                  <Button variant="secondary" size="sm" onClick={resetQrPlacement}>
+                    Reset QR Placement
+                  </Button>
+                </>
               )}
+            </section>
+          )}
+        </div>
 
-              {/* One polite region for placement problems. It only changes when
-                  the reason changes, and state is committed at the end of a
-                  drag rather than on every pointer move, so a screen reader is
-                  not talked over while someone is still moving things. */}
-              <p role="status" aria-live="polite" className="min-h-[1.25rem] text-sm text-danger">
-                {qrCheck.ok ? '' : qrCheck.reason}
-              </p>
+        {/* One polite region for placement problems. It only changes when
+            the reason changes, and state is committed at the end of a
+            drag rather than on every pointer move, so a screen reader is
+            not talked over while someone is still moving things. */}
+        <p role="status" aria-live="polite" className="min-h-[1.25rem] text-sm text-danger-fg">
+          {qrCheck.ok ? '' : qrCheck.reason}
+        </p>
 
-              {/* The guide line is the sighted signal; this is the same news for
-                  anyone who cannot see it. It changes only when an axis catches
-                  or lets go, so a drag across the centre is announced once
-                  rather than on every pointer move. */}
-              <p role="status" aria-live="polite" className="sr-only">
-                {snapMessage}
-              </p>
+        {/* The guide line is the sighted signal; this is the same news for
+            anyone who cannot see it. It changes only when an axis catches
+            or lets go, so a drag across the centre is announced once
+            rather than on every pointer move. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {snapMessage}
+        </p>
 
-              {apiError && (
-                <p role="alert" className="rounded-md border border-danger-border bg-danger-soft p-3 text-sm text-danger-fg">
-                  {apiError}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col gap-2 border-t border-border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button variant="secondary" onClick={() => setConfirmRevert(true)} disabled={busy}>
-              Revert to original
-            </Button>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button variant="secondary" onClick={onClose} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleSave} disabled={!canSave}>
-                Save branding
-              </Button>
-            </div>
-          </div>
-        </DialogPanel>
+        {apiError && <Alert tone="danger">{apiError}</Alert>}
       </div>
 
+      {/* Inside the modal so it stacks above it as a nested dialog. */}
       <ConfirmDialog
         open={confirmRevert}
         onClose={() => setConfirmRevert(false)}
         onConfirm={handleRevert}
-        title="Revert to original"
+        title="Revert to Original"
         message="This puts the uploaded file back and removes the logo and QR code from it. Continue?"
         confirmLabel="Revert"
-        tone="danger"
+        // Not destructive: the original upload comes back and the branding can be applied again.
+        tone="primary"
         closeOnConfirm={false}
       />
-    </Dialog>
+    </Modal>
   )
 }
 
@@ -1097,6 +1078,8 @@ function PlacementOverlay({
     onNudge(dx, dy)
   }
 
+  // A raw button on purpose: it is a box drawn over the artwork at the placed element's true
+  // size and position, which a DS Button (with its own height and padding) cannot be.
   return (
     <button
       ref={setNodeRef}
@@ -1139,7 +1122,7 @@ function PlacementOverlay({
         'group border-2 border-dashed focus-visible:outline-hidden focus-visible:shadow-ring',
         draggable ? 'cursor-grab' : 'cursor-default',
         isDragging && 'cursor-grabbing opacity-70',
-        invalid ? 'border-danger' : 'border-primary/70'
+        invalid ? 'border-danger' : 'border-primary'
       )}
     >
       {children}

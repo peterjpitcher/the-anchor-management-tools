@@ -38,7 +38,7 @@ export function TableTalkerSheetButton({
         }
       }}
     >
-      Print sheet (A4)
+      Print Sheet (A4)
     </Button>
   )
 }

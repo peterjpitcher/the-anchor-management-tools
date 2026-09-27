@@ -100,7 +100,8 @@ describe('MileageReportDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
 
-    expect(await screen.findByRole('button', { name: /Building report/ })).toBeDisabled()
+    // The label stays; the Button's loading state shows the report is building.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download PDF' })).toBeDisabled())
   })
 })
 

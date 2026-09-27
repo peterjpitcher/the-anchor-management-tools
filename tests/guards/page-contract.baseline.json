@@ -1,0 +1,86 @@
+{
+  "src/app/(authenticated)/checklists/manage/_components/WeeklyReviewClient.tsx": {
+    "raw-button": 1
+  },
+  "src/app/(authenticated)/events/_components/ArtworkBrandingModal.tsx": {
+    "raw-button": 1
+  },
+  "src/app/(authenticated)/events/_components/branding/BrandingControls.tsx": {
+    "raw-input": 1
+  },
+  "src/app/(authenticated)/recruitment/_components/RecruitmentDashboardClient.tsx": {
+    "raw-button": 1
+  },
+  "src/app/(authenticated)/rota/RotaGrid.tsx": {
+    "raw-button": 7
+  },
+  "src/app/(authenticated)/settings/business-hours/SpecialHoursCalendar.tsx": {
+    "raw-button": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx": {
+    "compat-import": 1,
+    "raw-button": 2,
+    "hot-toast-import": 1,
+    "rounded-md": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
+    "raw-button": 1,
+    "rounded-md": 8
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
+    "compat-import": 1,
+    "raw-button": 2,
+    "rounded-md": 3
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohCreateBookingModal.tsx": {
+    "raw-button": 2,
+    "raw-input": 7,
+    "raw-label": 7,
+    "rounded-md": 11
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
+    "raw-button": 2,
+    "raw-input": 1,
+    "raw-label": 1,
+    "rounded-md": 3
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohMiniModals.tsx": {
+    "compat-import": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohOutsideBookings.tsx": {
+    "raw-button": 1,
+    "raw-heading": 1,
+    "hand-spinner": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
+    "raw-heading": 1,
+    "hand-spinner": 1,
+    "rounded-md": 7
+  },
+  "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
+    "raw-button": 1,
+    "raw-heading": 1,
+    "rounded-md": 1
+  },
+  "src/app/(authenticated)/table-bookings/foh/page.tsx": {
+    "pagelayout-spacing": 1
+  },
+  "src/components/features/customers/CustomerLabelSelector.tsx": {
+    "raw-button": 1
+  },
+  "src/components/features/customers/CustomerSearchInput.tsx": {
+    "raw-button": 1
+  },
+  "src/components/features/events/EventCategoryFormGrouped.tsx": {
+    "raw-button": 2
+  },
+  "src/components/foh/DraggableBookingBlock.tsx": {
+    "raw-button": 1
+  },
+  "src/components/schedule-calendar/ScheduleCalendarList.tsx": {
+    "raw-button": 1
+  },
+  "src/components/schedule-calendar/ScheduleCalendarMonth.tsx": {
+    "raw-button": 4
+  }
+}

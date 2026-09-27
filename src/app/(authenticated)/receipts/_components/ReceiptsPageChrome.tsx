@@ -1,55 +1,41 @@
 import type { ReactNode } from 'react'
-import { PageHeader, SectionNav } from '@/ds'
-import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsActiveId, getReceiptsNavItems } from '../receiptsNavItems'
-
-type ReceiptNavView =
-  | 'workspace'
-  | 'monthly'
-  | 'bank-balance'
-  | 'vendors'
-  | 'pnl'
-  | 'bulk'
-  | 'missing-expense'
+import { PageLayout } from '@/ds'
+import { receiptsNav, type ReceiptsNavState } from '../_shared/nav'
 
 type ReceiptsPageChromeProps = {
-  title: string
-  subtitle?: string
-  navState:
-    | {
-        view: 'workspace'
-        missingVendorOnly?: boolean
-        missingExpenseOnly?: boolean
-      }
-    | {
-        view: Exclude<ReceiptNavView, 'workspace'>
-      }
-  actions?: ReactNode
+  /** One short line saying what this tab is for. The title is always the section name. */
+  subtitle: string
+  navState: ReceiptsNavState
+  /**
+   * Whether this person has `receipts:manage`. Bulk classification redirects to /unauthorized
+   * without it, so a view-only user is never shown that tab. The page resolves it on the server.
+   */
+  canManage: boolean
+  /** Page-level buttons: secondary first, primary last, size="sm". */
+  headerActions?: ReactNode
   children: ReactNode
 }
 
-export async function ReceiptsPageChrome({
-  title,
+/**
+ * The page chrome of every Receipts tab: PageLayout titled "Receipts" with the Receipts tab row.
+ * It has no server-only code, so a server page can render it, and so can a client component that
+ * needs stateful header actions (the bank balance range switch).
+ */
+export function ReceiptsPageChrome({
   subtitle,
   navState,
-  actions,
+  canManage,
+  headerActions,
   children,
-}: ReceiptsPageChromeProps) {
-  // Bulk classification redirects to /unauthorized without `receipts:manage`,
-  // so a view-only user should never be shown the tab in the first place.
-  const canManage = await checkUserPermission('receipts', 'manage')
-
+}: ReceiptsPageChromeProps): React.JSX.Element {
   return (
-    <div className="space-y-4">
-      <PageHeader
-        breadcrumbs={[{ label: 'Finance' }, { label: 'Receipts' }]}
-        title={title}
-        subtitle={subtitle}
-        actions={actions}
-        className="mb-0"
-      />
-      <SectionNav items={getReceiptsNavItems({ canManage })} activeId={getReceiptsActiveId(navState)} />
+    <PageLayout
+      title="Receipts"
+      subtitle={subtitle}
+      navItems={receiptsNav(navState, { canManage })}
+      headerActions={headerActions}
+    >
       {children}
-    </div>
+    </PageLayout>
   )
 }

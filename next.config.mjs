@@ -101,6 +101,20 @@ const nextConfig = {
         destination: '/api/rota/pdf',
         permanent: false,
       },
+      {
+        // The singular /private-booking/* URLs were aliases of the private
+        // bookings pages. Nothing in the app builds them any more, but old
+        // calendar entries and emails may, so they redirect to the real pages
+        // (owner decision, 26 September 2026).
+        source: '/private-booking/:id',
+        destination: '/private-bookings/:id',
+        permanent: true,
+      },
+      {
+        source: '/private-booking/:id/edit',
+        destination: '/private-bookings/:id/edit',
+        permanent: true,
+      },
     ]
   },
   images: {

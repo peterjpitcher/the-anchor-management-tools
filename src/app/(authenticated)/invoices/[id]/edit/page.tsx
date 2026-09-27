@@ -6,19 +6,27 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
-import { Plus, Trash2, Save, Package } from 'lucide-react'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  LinkButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  FormFooter,
+  toast,
+} from '@/ds'
 import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
+import { invoicePageTitle } from '../../_shared/nav'
 
 export default function EditInvoicePage() {
   const params = useParams()
@@ -205,16 +213,16 @@ export default function EditInvoicePage() {
     }
   }
 
+  const backHref = invoiceId ? `/invoices/${invoiceId}` : '/invoices'
+  const layoutProps = {
+    title: 'Edit Invoice',
+    subtitle: 'Update invoice details',
+    // Back to the invoice page, named as that page is titled ("Invoice INV-001").
+    backButton: { label: `Back to ${invoicePageTitle(invoice?.invoice_number)}`, href: backHref },
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Edit Invoice"
-        subtitle="Update invoice details"
-        backButton={{ label: 'Back to Invoices', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' }}
-        loading
-        loadingLabel="Loading invoice..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading invoice" />
   }
 
   if (!permissionsLoading && !canEditInvoice) {
@@ -222,213 +230,197 @@ export default function EditInvoicePage() {
   }
 
   if (error && !invoice) {
-    return (
-      <PageLayout
-        title="Edit Invoice"
-        subtitle="Update invoice details"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        error={error}
-      />
-    )
+    return <PageLayout {...layoutProps} error={error} />
   }
 
-  const pageTitle = invoice?.invoice_number ? `Edit Invoice ${invoice.invoice_number}` : 'Edit Invoice'
-  const backHref = invoiceId ? `/invoices/${invoiceId}` : '/invoices'
-
   return (
-    <PageLayout
-      title={pageTitle}
-      subtitle="Update invoice details"
-      backButton={{ label: 'Back to Invoice', href: backHref }}
-    >
-      <div className="space-y-6">
-        {error && <Alert variant="error" description={error} />}
+    <PageLayout {...layoutProps}>
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold">Invoice Details</h2>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card>
+          <CardHeader title="Invoice Details" subtitle={invoice?.invoice_number} />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
+              <Select
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
+                required
+              >
+                <option value="">Select a vendor</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Vendor" required>
-                <Select
-                  value={vendorId}
-                  onChange={(e) => setVendorId(e.target.value)}
-                  required
-                >
-                  <option value="">Select a vendor</option>
-                  {vendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </Select>
-              </FormGroup>
+            <Field label="Reference">
+              <Input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="PO number or reference"
+              />
+            </Field>
 
-              <FormGroup label="Reference">
-                <Input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="PO number or reference"
-                />
-              </FormGroup>
+            <Field label="Invoice Date" required>
+              <Input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                required
+              />
+            </Field>
 
-              <FormGroup label="Invoice Date" required>
-                <Input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  required
-                />
-              </FormGroup>
+            <Field label="Due Date" required>
+              <Input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+              />
+            </Field>
+          </CardBody>
+        </Card>
 
-              <FormGroup label="Due Date" required>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  required
-                />
-              </FormGroup>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Line Items</h2>
+        <Card>
+          <CardHeader
+            title="Line Items"
+            action={
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 onClick={addLineItem}
-                leftIcon={<Plus className="h-4 w-4" />}
+                leftIcon={<Icon name="plus" size={16} />}
               >
-                Add Item
+                Add Line Item
               </Button>
-            </div>
-
-            <div className="space-y-4">
-              {lineItems.map((item, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex gap-2">
-                    <Select
-                      value={item.catalog_item_id || ''}
-                      onChange={(e) => {
-                        const catalogId = e.target.value
-                        if (catalogId) {
-                          const catalogItem = catalogItems.find((c) => c.id === catalogId)
-                          if (catalogItem) {
-                            updateLineItem(index, 'catalog_item_id', catalogId)
-                            updateLineItem(index, 'description', catalogItem.description || catalogItem.name)
-                            updateLineItem(index, 'unit_price', catalogItem.default_price)
-                            updateLineItem(index, 'vat_rate', catalogItem.default_vat_rate)
-                          }
-                        } else {
-                          updateLineItem(index, 'catalog_item_id', undefined)
+            }
+          />
+          <CardBody className="space-y-4">
+            {lineItems.map((item, index) => (
+              <div key={index} className="space-y-2">
+                <div className="flex gap-2">
+                  <Select
+                    aria-label="Catalog item"
+                    value={item.catalog_item_id || ''}
+                    onChange={(e) => {
+                      const catalogId = e.target.value
+                      if (catalogId) {
+                        const catalogItem = catalogItems.find((c) => c.id === catalogId)
+                        if (catalogItem) {
+                          updateLineItem(index, 'catalog_item_id', catalogId)
+                          updateLineItem(index, 'description', catalogItem.description || catalogItem.name)
+                          updateLineItem(index, 'unit_price', catalogItem.default_price)
+                          updateLineItem(index, 'vat_rate', catalogItem.default_vat_rate)
                         }
-                      }}
-                      className="flex-1"
-                    >
-                      <option value="">Select from catalog or enter manually...</option>
-                      {catalogItems.map((catalogItem) => (
-                        <option key={catalogItem.id} value={catalogItem.id}>
-                          {catalogItem.name} - £{catalogItem.default_price.toFixed(2)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => router.push('/invoices/catalog')}
-                      title="Manage Catalog"
-                      iconOnly
-                    >
-                      <Package className="h-4 w-4" />
-                    </Button>
+                      } else {
+                        updateLineItem(index, 'catalog_item_id', undefined)
+                      }
+                    }}
+                    className="flex-1"
+                  >
+                    <option value="">Select from catalog or enter manually...</option>
+                    {catalogItems.map((catalogItem) => (
+                      <option key={catalogItem.id} value={catalogItem.id}>
+                        {catalogItem.name} - £{catalogItem.default_price.toFixed(2)}
+                      </option>
+                    ))}
+                  </Select>
+                  <IconButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => router.push('/invoices/catalog')}
+                    title="Manage catalog"
+                    label="Manage catalog"
+                    icon={<Icon name="package" size={16} />}
+                  />
+                </div>
+                <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-12 lg:gap-2">
+                  <div className="lg:col-span-4">
+                    <Input
+                      label="Description"
+                      type="text"
+                      value={item.description}
+                      onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                      placeholder="Description"
+                      required
+                    />
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-12 lg:gap-2">
-                    <div className="lg:col-span-4">
-                      <label className="mb-1 block text-sm font-medium lg:hidden">Description</label>
-                      <Input
-                        type="text"
-                        value={item.description}
-                        onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                        placeholder="Description"
-                        required
-                      />
-                    </div>
-                    <div className="lg:col-span-1">
-                      <label className="mb-1 block text-sm font-medium lg:hidden">Quantity</label>
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                        placeholder="Qty"
-                        step="0.001"
-                        required
-                      />
-                    </div>
-                    <div className="lg:col-span-2">
-                      <label className="mb-1 block text-sm font-medium lg:hidden">Unit Price (£)</label>
-                      <Input
-                        type="number"
-                        value={item.unit_price}
-                        onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                        placeholder="Unit Price"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                    <div className="lg:col-span-1">
-                      <label className="mb-1 block text-sm font-medium lg:hidden">Disc %</label>
-                      <Input
-                        type="number"
-                        value={item.discount_percentage}
-                        onChange={(e) => updateLineItem(index, 'discount_percentage', parseFloat(e.target.value) || 0)}
-                        placeholder="Disc %"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                      />
-                    </div>
-                    <div className="lg:col-span-1">
-                      <label className="mb-1 block text-sm font-medium lg:hidden">VAT %</label>
-                      <Input
-                        type="number"
-                        value={item.vat_rate}
-                        onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value) || 0)}
-                        placeholder="VAT %"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                    <div className="flex items-center justify-between border-t border-border pt-3 lg:col-span-2 lg:block lg:border-0 lg:pt-2 lg:text-right">
-                      <span className="text-sm font-medium lg:hidden">Line Total</span>
-                      <span>£{(invoiceTotals.lineBreakdown[index]?.total ?? 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex lg:col-span-1 lg:items-start">
-                      <Button
-                        type="button"
-                        variant="danger"
-                        onClick={() => removeLineItem(index)}
-                        size="sm"
-                        iconOnly
-                        aria-label="Remove line item"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <div className="lg:col-span-1">
+                    <Input
+                      label="Quantity"
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                      placeholder="Qty"
+                      step="0.001"
+                      required
+                    />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <Input
+                      label="Unit Price (£)"
+                      type="number"
+                      value={item.unit_price}
+                      onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                      placeholder="Unit Price"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <Input
+                      label="Disc %"
+                      type="number"
+                      value={item.discount_percentage}
+                      onChange={(e) => updateLineItem(index, 'discount_percentage', parseFloat(e.target.value) || 0)}
+                      placeholder="Disc %"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <Input
+                      label="VAT %"
+                      type="number"
+                      value={item.vat_rate}
+                      onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value) || 0)}
+                      placeholder="VAT %"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-3 lg:col-span-2 lg:block lg:border-0 lg:pt-6 lg:text-right">
+                    <span className="text-sm font-medium lg:hidden">Line Total</span>
+                    <span>£{(invoiceTotals.lineBreakdown[index]?.total ?? 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex lg:col-span-1 lg:items-start lg:pt-5">
+                    <IconButton
+                      type="button"
+                      variant="ghost"
+                      onClick={() => removeLineItem(index)}
+                      size="sm"
+                      label="Remove line item"
+                      icon={<Icon name="trash" size={16} className="text-danger" />}
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          </Card>
+              </div>
+            ))}
+          </CardBody>
+        </Card>
 
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold">Additional Details</h2>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Invoice Discount (%)">
+        <Card>
+          <CardHeader title="Additional Details" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Invoice Discount (%)">
                 <Input
                   type="number"
                   value={invoiceDiscountPercentage}
@@ -437,75 +429,69 @@ export default function EditInvoicePage() {
                   min="0"
                   max="100"
                 />
-              </FormGroup>
+              </Field>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Notes (visible on invoice)">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Notes (visible on invoice)">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Any notes for the customer..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes">
+              <Field label="Internal Notes">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                   placeholder="Internal notes (not shown on invoice)..."
                 />
-              </FormGroup>
+              </Field>
             </div>
-          </Card>
+          </CardBody>
+        </Card>
 
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold">Summary</h2>
-
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
-              </div>
-              {invoiceTotals.invoiceDiscountAmount > 0 && (
-                <div className="flex justify-between text-danger">
-                  <span>Invoice Discount ({invoiceDiscountPercentage}%)</span>
-                  <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>VAT</span>
-                <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
-                <span>Total</span>
-                <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
-              </div>
+        <Card>
+          <CardHeader title="Summary" />
+          <CardBody className="space-y-2">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
             </div>
-          </Card>
+            {invoiceTotals.invoiceDiscountAmount > 0 && (
+              <div className="flex justify-between text-danger-fg">
+                <span>Invoice Discount ({invoiceDiscountPercentage}%)</span>
+                <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>VAT</span>
+              <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
+              <span>Total</span>
+              <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
+            </div>
+          </CardBody>
+        </Card>
 
-          <div className="flex flex-col justify-end gap-3 sm:flex-row">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push(backHref)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={submitting || !canEditInvoice}
-              loading={submitting}
-              leftIcon={!submitting && <Save className="h-4 w-4" />}
-            >
-              {submitting ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
-        </form>
-      </div>
+        <FormFooter>
+          <LinkButton href={backHref} variant="secondary" disabled={submitting}>
+            Cancel
+          </LinkButton>
+          <Button variant="primary"
+            type="submit"
+            disabled={submitting || !canEditInvoice}
+            loading={submitting}
+            leftIcon={<Icon name="save" size={16} />}
+          >
+            Save Changes
+          </Button>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

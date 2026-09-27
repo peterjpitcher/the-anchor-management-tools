@@ -131,11 +131,11 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
 
-    expect(screen.getByRole('heading', { name: 'interviewed' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'trial completed' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'on hold' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'new' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'offered' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Interviewed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Trial Completed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'On Hold' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'New' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offered' })).not.toBeInTheDocument()
     expect(screen.getByText('Candidate 1 Test')).toBeInTheDocument()
     expect(screen.getByText('Candidate 2 Test')).toBeInTheDocument()
     expect(screen.getByText('Candidate 3 Test')).toBeInTheDocument()
@@ -151,9 +151,9 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
 
-    expect(screen.queryByRole('heading', { name: 'hired' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'rejected' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'withdrawn' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Hired' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Rejected' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Withdrawn' })).not.toBeInTheDocument()
   })
 
   it('requires confirmation before erasing a candidate', () => {
@@ -176,8 +176,10 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Talent pool/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Erase' }))
 
-    expect(screen.getByRole('dialog', { name: 'Erase candidate' })).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Erase Candidate' })
+    expect(dialog).toBeInTheDocument()
     expect(screen.getByText('This permanently anonymises the candidate record. Continue?')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Erase' })).toHaveClass('bg-danger')
   })
 
   it('uses explicit quarter-hour slot time controls and defaults close time two hours later', () => {
@@ -187,6 +189,8 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     const startsAt = container.querySelector<HTMLInputElement>('input[name="starts_at"]')
     const endsAt = container.querySelector<HTMLInputElement>('input[name="ends_at"]')
+    // The three controls sit in one group named by its legend.
+    expect(screen.getByRole('group', { name: 'Opens' })).toBeInTheDocument()
     const opensDate = screen.getByLabelText('Opens date')
     const opensHour = screen.getByLabelText('Opens hour')
     const opensMinute = screen.getByLabelText('Opens minute')
@@ -244,12 +248,16 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByRole('button', { name: 'Save slot' })).toBeInTheDocument()
+    // Edit opens the slot drawer, which has its own Delete beside the row's.
+    const drawer = await screen.findByRole('dialog', { name: 'Interview Slot' })
+    expect(within(drawer).getByRole('button', { name: 'Save Changes' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete slot' })
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Slot' })
     expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    // Deleting is destructive, so the confirm button is red.
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toHaveClass('bg-danger')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(cancelRecruitmentSlotAction).toHaveBeenCalledTimes(1))
     const formData = (cancelRecruitmentSlotAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
@@ -283,7 +291,7 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage booking' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Booking' }))
     expect(screen.getByRole('dialog', { name: 'Megan Daily' })).toBeInTheDocument()
   })
 
@@ -309,11 +317,11 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     // The drawer always opens on Candidate. For an invited candidate the action
     // bar's primary action is the route to the scheduling form.
-    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Book Interview Directly' }))
 
-    expect(screen.getByText('Schedule interview for candidate')).toBeInTheDocument()
+    expect(screen.getByText('Schedule Interview for Candidate')).toBeInTheDocument()
     expect(screen.getByLabelText('Interview slot to schedule')).toHaveValue('slot-1')
-    expect(screen.getByRole('button', { name: 'Schedule interview' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Schedule Interview' })).toBeInTheDocument()
   })
 
   it('confirms, then submits the schedule interview action with the chosen slot', async () => {
@@ -334,18 +342,62 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
     fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Book Interview Directly' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule interview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule Interview' }))
 
     // A confirmation step gates the action (it emails the candidate + books a calendar slot).
     expect(scheduleRecruitmentInterviewForCandidateAction).not.toHaveBeenCalled()
-    const dialog = await screen.findByRole('dialog', { name: 'Schedule interview' })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Schedule Interview' })
+    // Booking is not destructive, so the confirm button is the primary colour, not red.
+    expect(within(dialog).getByRole('button', { name: 'Schedule' })).toHaveClass('bg-primary')
+    expect(within(dialog).getByRole('button', { name: 'Schedule' })).not.toHaveClass('bg-danger')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Schedule' }))
 
     await waitFor(() => expect(scheduleRecruitmentInterviewForCandidateAction).toHaveBeenCalledTimes(1))
     const formData = (scheduleRecruitmentInterviewForCandidateAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
     expect(formData.get('application_id')).toBe('application-1')
     expect(formData.get('slot_id')).toBe('slot-1')
+  })
+})
+
+describe('RecruitmentDashboardClient Run Retention', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('asks in a danger dialog that says what it deletes before running, and runs only on confirm', async () => {
+    const { runRecruitmentRetentionAction } = await import('@/app/actions/recruitment')
+    render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Run Retention' })[0])
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Run Retention')).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('anonymised')
+    // The run also blanks every message sent to them (runRecruitmentRetentionCleanup), so the
+    // warning says so.
+    expect(dialog).toHaveTextContent('the text of messages sent to them are removed')
+    expect(dialog).toHaveTextContent('permanently deleted')
+    expect(dialog).toHaveTextContent('This cannot be undone.')
+    expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()
+
+    const confirm = within(dialog).getByRole('button', { name: 'Run' })
+    expect(confirm).toHaveClass('bg-danger')
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(runRecruitmentRetentionAction).toHaveBeenCalledTimes(1))
+  })
+
+  it('does nothing when the dialog is cancelled', async () => {
+    const { runRecruitmentRetentionAction } = await import('@/app/actions/recruitment')
+    render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Run Retention' })[0])
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()
   })
 })

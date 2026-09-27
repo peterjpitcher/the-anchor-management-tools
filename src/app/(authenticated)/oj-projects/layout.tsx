@@ -1,8 +1,9 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { redirect } from 'next/navigation'
-import { PageHeader } from '@/ds'
-import { OJProjectsNav } from './_components/OJProjectsNav'
 
+// Permission gate for the section. Each page renders its own PageLayout with
+// OJ_PROJECTS_LAYOUT (oj-projects/_shared/nav.ts), so a tab can put its "New X" button in the
+// header and the active tab comes from the path.
 export default async function OJProjectsLayout({
   children,
 }: {
@@ -11,15 +12,5 @@ export default async function OJProjectsLayout({
   const hasPermission = await checkUserPermission('oj_projects', 'view')
   if (!hasPermission) redirect('/unauthorized')
 
-  return (
-    <div className="flex flex-col gap-4">
-      <PageHeader
-        title="OJ Projects"
-        subtitle="Project management and time tracking"
-        className="mb-0"
-      />
-      <OJProjectsNav />
-      {children}
-    </div>
-  )
+  return <>{children}</>
 }

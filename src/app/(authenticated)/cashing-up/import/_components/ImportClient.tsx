@@ -2,12 +2,14 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import {
-  Card, CardHeader, CardBody,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Card, CardHeader, CardBody, PageLayout,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
 } from '@/ds'
 import { Button, Alert, Checkbox, FileUpload, ProgressBar } from '@/ds'
 import Papa from 'papaparse'
 import { importCashupHistoryAction, ImportRow } from '@/app/actions/cashing-up-import'
+import { cashingUpLayout } from '../../_shared/nav'
+import { cashupImportResultTone } from '../../_shared/status-ui'
 
 const PREVIEW_PAGE_SIZE = 25
 
@@ -154,7 +156,7 @@ export function ImportClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageLayout {...cashingUpLayout('Import: past cash-ups from a spreadsheet')}>
       {/* Instructions */}
       <Card>
         <CardHeader title="Import Historic Cashing Up" subtitle="Upload CSV files with historic cash-up data" />
@@ -172,26 +174,26 @@ export function ImportClient() {
       {/* File upload */}
       <Card>
         <CardHeader title="Upload Data" />
-        <CardBody>
+        <CardBody className="space-y-4">
           <FileUpload
             accept=".csv"
             onFiles={handleFiles}
-            hint="CSV files only. Drag and drop or click to browse."
+            hint="CSV files only"
           />
 
           {error && (
-            <Alert tone="danger" className="mt-4">
+            <Alert tone="danger">
               {error}
             </Alert>
           )}
 
           {progress && (
-            <div className="mt-4 space-y-2">
+            <div className="space-y-2">
               <div className="flex justify-between text-sm text-text-muted">
-                <span>Importing...</span>
+                <span>Importing…</span>
                 <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
               </div>
-              <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" />
+              <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" label="Import progress" />
               <p className="text-xs text-text-soft text-center">
                 Processed {progress.processed} of {progress.total} rows
               </p>
@@ -199,7 +201,7 @@ export function ImportClient() {
           )}
 
           {result && !progress && (
-            <Alert tone={result.failed === 0 ? 'success' : 'warning'} className="mt-4" title={result.failed === 0 ? 'Import Successful!' : 'Import Status'}>
+            <Alert tone={cashupImportResultTone(result.failed)} title={result.failed === 0 ? 'Import successful' : 'Import status'}>
               <p>Total: {result.total} | Succeeded: {result.succeeded} | Failed: {result.failed}</p>
               {result.errors.length > 0 && (
                 <div className="mt-2 max-h-32 overflow-y-auto">
@@ -217,7 +219,7 @@ export function ImportClient() {
       {previewData.length > 0 && !progress && (
         <Card>
           <CardHeader
-            title={`Preview (${previewData.length} rows)`}
+            title={`Preview (${previewData.length} Rows)`}
             action={
               <div className="flex flex-wrap items-center justify-end gap-3">
                 <Checkbox
@@ -225,7 +227,7 @@ export function ImportClient() {
                   checked={confirmed}
                   onChange={(checked) => setConfirmed(checked)}
                 />
-                <Button variant="primary" onClick={handleImport} loading={isPending} disabled={!confirmed}>
+                <Button variant="primary" size="sm" onClick={handleImport} loading={isPending} disabled={!confirmed}>
                   Import {previewData.length} Rows
                 </Button>
               </div>
@@ -262,32 +264,16 @@ export function ImportClient() {
             </TableBody>
           </Table>
           {previewData.length > PREVIEW_PAGE_SIZE && (
-            <div className="flex items-center justify-between gap-3 border-t border-border bg-surface-2 px-4 py-2 text-xs text-text-soft">
-              <span>
-                Page {previewPage + 1} of {totalPreviewPages}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPreviewPage((page) => Math.max(0, page - 1))}
-                  disabled={previewPage === 0}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPreviewPage((page) => Math.min(totalPreviewPages - 1, page + 1))}
-                  disabled={previewPage >= totalPreviewPages - 1}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+            <TablePagination
+              page={previewPage + 1}
+              totalPages={totalPreviewPages}
+              onPageChange={(page) => setPreviewPage(Math.min(totalPreviewPages - 1, Math.max(0, page - 1)))}
+              pageSize={PREVIEW_PAGE_SIZE}
+              totalItems={previewData.length}
+            />
           )}
         </Card>
       )}
-    </div>
+    </PageLayout>
   )
 }

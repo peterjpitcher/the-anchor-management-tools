@@ -4,24 +4,32 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { PageLayout } from '@/ds'
-import { Button } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Card } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
-import { PlusCircle, Trash2 } from 'lucide-react'
+import {
+  PageLayout,
+  Icon,
+  Button,
+  IconButton,
+  LinkButton,
+  Field,
+  Input,
+  Select,
+  Textarea,
+  Card,
+  CardHeader,
+  CardBody,
+  Alert,
+  FormFooter,
+  Modal,
+  Empty,
+  toast,
+} from '@/ds'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
-import { Modal } from '@/ds'
-import { EmptyState } from '@/ds'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
+import { BACK_TO_INVOICES } from '../_shared/nav'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -215,16 +223,14 @@ export default function NewInvoicePage() {
     [calculationInput, invoiceDiscountPercentage]
   )
 
+  const layoutProps = {
+    title: 'New Invoice',
+    subtitle: 'Create a new invoice',
+    backButton: BACK_TO_INVOICES,
+  }
+
   if (permissionsLoading) {
-    return (
-      <PageLayout
-        title="New Invoice"
-        subtitle="Create a new invoice"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        loading
-        loadingLabel="Checking permissions..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Checking permissions" />
   }
 
   if (!canCreate) {
@@ -232,22 +238,16 @@ export default function NewInvoicePage() {
   }
 
   return (
-    <>
-      <PageLayout
-        title="New Invoice"
-        subtitle="Create a new invoice"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      >
-        {error && (
-          <Alert variant="error" description={error} className="mb-6" />
-        )}
+    <PageLayout {...layoutProps}>
+      {error && (
+        <Alert tone="danger">{error}</Alert>
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="overflow-visible">
-          <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Vendor" required>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card>
+          <CardHeader title="Invoice Details" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
               <Select
                 value={vendorId}
                 onChange={(e) => {
@@ -266,170 +266,162 @@ export default function NewInvoicePage() {
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Reference">
+            <Field label="Reference">
               <Input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="PO number or reference"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Invoice Date" required>
+            <Field label="Invoice Date" required>
               <Input
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Due Date" required>
+            <Field label="Due Date" required>
               <Input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 required
               />
-            </FormGroup>
-          </div>
+            </Field>
+          </CardBody>
         </Card>
 
         <Card>
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
-            <h2 className="text-lg font-semibold">Line Items</h2>
-            <div className="flex flex-wrap gap-2">
-              {catalogItems.length > 0 && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setIsCatalogModalOpen(true)}
-                >
-                  Add from Catalog
+          <CardHeader
+            title="Line Items"
+            action={
+              <div className="flex flex-wrap gap-2">
+                {catalogItems.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsCatalogModalOpen(true)}
+                  >
+                    Add from Catalog
+                  </Button>
+                )}
+                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plus" size={16} />} size="sm">
+                  Add Line Item
                 </Button>
-              )}
-              <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
-                <span className="hidden sm:inline">Add Line Item</span>
-                <span className="sm:hidden">Add Item</span>
-              </Button>
-            </div>
-          </div>
+              </div>
+            }
+          />
+          <CardBody>
+            {lineItems.length === 0 ? (
+              <Empty
+                size="sm"
+                title="No line items yet"
+                description='Click "Add Line Item" to begin.'
+              />
+            ) : (
+              <div className="space-y-4">
+                {lineItems.map((item, index) => {
+                  const breakdown = invoiceTotals.lineBreakdown[index]
+                  const lineTotal = breakdown ? breakdown.total : 0
 
-          {lineItems.length === 0 ? (
-            <EmptyState
-              title="No line items yet"
-              description='Click "Add Line Item" to begin.'
-            />
-          ) : (
-            <div className="space-y-4">
-              {lineItems.map((item, index) => {
-                const breakdown = invoiceTotals.lineBreakdown[index]
-                const lineTotal = breakdown ? breakdown.total : 0
+                  return (
+                    <Card key={item.id}>
+                      <CardBody>
+                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+                          <div className="lg:col-span-5">
+                            <Input
+                              label="Description"
+                              type="text"
+                              value={item.message}
+                              onChange={(e) => updateLineItem(item.id, { message: e.target.value })}
+                              placeholder="Item description"
+                              required
+                            />
+                          </div>
 
-                return (
-                  <div key={item.id} className="border border-border rounded-lg p-4">
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                    <div className="lg:col-span-5">
-                      <label className="block text-sm font-medium mb-1">
-                        Description
-                      </label>
-                      <Input
-                        type="text"
-                        value={item.message}
-                        onChange={(e) => updateLineItem(item.id, { message: e.target.value })}
-                        placeholder="Item description"
-                        required
-                      />
-                    </div>
+                          <div className="lg:col-span-2">
+                            <Input
+                              label="Quantity"
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                              required
+                            />
+                          </div>
 
-                    <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium mb-1">
-                        Quantity
-                      </label>
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
+                          <div className="lg:col-span-2">
+                            <Input
+                              label="Unit Price (£)"
+                              type="number"
+                              value={item.unit_price}
+                              onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                              required
+                            />
+                          </div>
 
-                    <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium mb-1">
-                        Unit Price (£)
-                      </label>
-                      <Input
-                        type="number"
-                        value={item.unit_price}
-                        onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
+                          <div className="lg:col-span-1">
+                            <Input
+                              label="Disc %"
+                              type="number"
+                              value={item.discount_percentage}
+                              onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              max="100"
+                              step="0.01"
+                            />
+                          </div>
 
-                    <div className="lg:col-span-1">
-                      <label className="block text-sm font-medium mb-1">
-                        Disc %
-                      </label>
-                      <Input
-                        type="number"
-                        value={item.discount_percentage}
-                        onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                        min="0"
-                        max="100"
-                        step="0.01"
-                      />
-                    </div>
+                          <div className="lg:col-span-1">
+                            <Input
+                              label="VAT %"
+                              type="number"
+                              value={item.vat_rate}
+                              onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
 
-                    <div className="lg:col-span-1">
-                      <label className="block text-sm font-medium mb-1">
-                        VAT %
-                      </label>
-                      <Input
-                        type="number"
-                        value={item.vat_rate}
-                        onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
+                          <div className="flex items-end lg:col-span-1">
+                            <IconButton
+                              type="button"
+                              onClick={() => removeLineItem(item.id)}
+                              variant="ghost"
+                              label="Remove line item"
+                              icon={<Icon name="trash" size={16} className="text-danger" />}
+                            />
+                          </div>
+                        </div>
 
-                    <div className="lg:col-span-1 flex items-end">
-                      <Button
-                        type="button"
-                        onClick={() => removeLineItem(item.id)}
-                        variant="danger"
-                        iconOnly
-                        aria-label="Remove line item"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
-                    <span className="text-sm text-text-muted">Line Total:</span>
-                    <span className="font-semibold">£{lineTotal.toFixed(2)}</span>
-                  </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                        <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                          <span className="text-sm text-text-muted">Line Total:</span>
+                          <span className="font-semibold">£{lineTotal.toFixed(2)}</span>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </CardBody>
         </Card>
 
         <Card>
-          <h2 className="text-lg font-semibold mb-4">Invoice Summary</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <CardHeader title="Invoice Summary" />
+          <CardBody className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="space-y-4">
-              <FormGroup label="Invoice Discount (%)">
+              <Field label="Invoice Discount (%)">
                 <Input
                   type="number"
                   value={invoiceDiscountPercentage}
@@ -438,30 +430,30 @@ export default function NewInvoicePage() {
                   max="100"
                   step="0.01"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Notes (visible on invoice)">
+              <Field label="Notes (visible on invoice)">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Payment terms, special instructions, etc."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes">
+              <Field label="Internal Notes">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                   placeholder="Private notes about this invoice"
                 />
-              </FormGroup>
+              </Field>
             </div>
 
-            <div className="bg-surface-2 rounded-lg p-4">
-              <h3 className="font-semibold mb-3">Summary</h3>
-              <div className="space-y-2">
+            <Card variant="secondary">
+              <CardHeader title="Summary" />
+              <CardBody className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
                   <span className="font-medium">
@@ -484,70 +476,65 @@ export default function NewInvoicePage() {
                     <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
+              </CardBody>
+            </Card>
+          </CardBody>
         </Card>
 
-        <div className="sticky bottom-0 -mx-6 border-t border-border bg-surface px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
-          <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push('/invoices')}
-              className="w-full sm:w-auto"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading || lineItems.length === 0 || !canCreate}
-              loading={loading}
-              className="w-full sm:w-auto"
-            >
-              Create Invoice
-            </Button>
-          </div>
-        </div>
+        <FormFooter>
+          <LinkButton href={BACK_TO_INVOICES.href} variant="secondary">
+            Cancel
+          </LinkButton>
+          <Button variant="primary"
+            type="submit"
+            disabled={loading || lineItems.length === 0 || !canCreate}
+            loading={loading}
+          >
+            Create Invoice
+          </Button>
+        </FormFooter>
       </form>
-      </PageLayout>
 
       <Modal
         open={isCatalogModalOpen}
         onClose={() => setIsCatalogModalOpen(false)}
         title="Add from Catalog"
-        size="lg"
+        width="lg"
       >
-        <div className="space-y-3">
-          {catalogItems.length > 0 ? (
-            <div className="max-h-96 overflow-y-auto space-y-2 pr-1">
+        {catalogItems.length > 0 ? (
+          <Card padding="none">
+            <div className="max-h-96 divide-y divide-border overflow-y-auto">
               {catalogItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    addFromCatalog(item)
-                    setIsCatalogModalOpen(false)
-                  }}
-                  className="w-full text-left rounded-md border border-border p-3 hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                >
-                  <div className="font-medium text-text">{item.name}</div>
-                  {item.description && (
-                    <div className="text-sm text-text-muted mt-0.5">{item.description}</div>
-                  )}
-                  <div className="text-xs text-text-muted mt-2">
-                    £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
+                <div key={item.id} className="flex items-start justify-between gap-3 p-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-text">{item.name}</div>
+                    {item.description && (
+                      <div className="mt-0.5 text-sm text-text-muted">{item.description}</div>
+                    )}
+                    <div className="mt-2 text-xs text-text-muted">
+                      £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
+                    </div>
                   </div>
-                </button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    aria-label={`Add ${item.name}`}
+                    onClick={() => {
+                      addFromCatalog(item)
+                      setIsCatalogModalOpen(false)
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
               ))}
             </div>
-          ) : (
-            <div className="text-sm text-text-muted text-center py-4">
-              No catalog items available.
-            </div>
-          )}
-        </div>
+          </Card>
+        ) : (
+          <Empty size="sm" title="No catalog items yet" description="Add items on the Catalog tab to pick them here." />
+        )}
       </Modal>
-    </>
+    </PageLayout>
   )
 }

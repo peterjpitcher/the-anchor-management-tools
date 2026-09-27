@@ -152,7 +152,8 @@ describe('InvoiceDetailClient credit note UI', () => {
 
     render(<InvoiceDetailClient initialInvoice={invoiceWithStoredTotals} emailConfigured={false} />)
 
-    const lineItemsCard = screen.getByRole('heading', { name: 'Line Items' }).parentElement as HTMLElement
+    // The Line Items heading is a DS CardHeader; the totals sit in the same Card below the table.
+    const lineItemsCard = screen.getByRole('heading', { name: 'Line Items' }).closest('.rounded-lg') as HTMLElement
 
     expect(within(lineItemsCard).getByText('£10.00')).toBeInTheDocument()
     expect(within(lineItemsCard).getByText('£1.23')).toBeInTheDocument()

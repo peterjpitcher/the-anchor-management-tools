@@ -1,12 +1,11 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
-import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
-import { Badge, Button, IconButton, Modal } from '@/ds'
-import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Icon, IconButton, Modal, SubHeading } from '@/ds'
+import { contactPriorityTone } from '@/app/(authenticated)/employees/_shared/status-ui'
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 import EditEmergencyContactModal from '@/components/modals/EditEmergencyContactModal'
 
@@ -14,15 +13,6 @@ interface EmergencyContactsTabProps {
   employeeId: string
   contacts: EmployeeEmergencyContact[]
   canEdit: boolean
-}
-
-function ConfirmDeleteButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" variant="danger" disabled={pending}>
-      {pending ? 'Deleting…' : 'Delete'}
-    </Button>
-  )
 }
 
 function DeleteContactButton({
@@ -33,7 +23,8 @@ function DeleteContactButton({
   onDeleted: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [state, formAction] = useActionState(deleteEmergencyContact, null)
+  const [state, formAction, pending] = useActionState(deleteEmergencyContact, null)
+  const formId = `delete-emergency-contact-${contact.id}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -51,27 +42,36 @@ function DeleteContactButton({
         className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title="Delete contact"
         label={`Delete ${contact.name}`}
-        icon={<TrashIcon className="h-4 w-4" />}
+        icon={<Icon name="trash" size={16} />}
       />
 
-      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
-          buttons stay inside it so the submit button can read the form's pending state. */}
-      <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete contact" width="sm">
-        <form action={formAction}>
+      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form. Its footer
+          mirrors ConfirmDialog, and the submit button reaches the form through form=. */}
+      <Modal
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="Delete Contact"
+        width="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form={formId} variant="danger" loading={pending}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} action={formAction} className="space-y-4">
           <input type="hidden" name="contact_id" value={contact.id} />
           <input type="hidden" name="employee_id" value={contact.employee_id} />
           <p className="text-sm text-text-muted">
             Remove <strong>{contact.name}</strong> as an emergency contact? This cannot be undone.
           </p>
           {state?.type === 'error' && (
-            <p className="mt-3 text-sm text-danger-fg">{state.message}</p>
+            <Alert tone="danger" size="sm">{state.message}</Alert>
           )}
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
-            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
-              Cancel
-            </Button>
-            <ConfirmDeleteButton />
-          </div>
         </form>
       </Modal>
     </>
@@ -94,16 +94,14 @@ export default function EmergencyContactsTab({
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h3 className="text-lg font-medium text-text">Emergency Contacts</h3>
-          <p className="mt-1 text-sm text-text-muted">A list of emergency contacts for this employee.</p>
-        </div>
-        {canEdit && (
-          <Button variant="primary" onClick={() => setIsAddOpen(true)}>Add Contact</Button>
-        )}
-      </div>
+    <Card>
+      <CardHeader
+        title="Emergency Contacts"
+        subtitle="A list of emergency contacts for this employee"
+        action={canEdit ? (
+          <Button variant="primary" size="sm" onClick={() => setIsAddOpen(true)}>Add Contact</Button>
+        ) : undefined}
+      />
 
       <AddEmergencyContactModal
         employeeId={employeeId}
@@ -121,52 +119,55 @@ export default function EmergencyContactsTab({
         />
       )}
 
-      {contacts.length === 0 ? (
-        <p className="text-sm text-text-muted">No emergency contacts found.</p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {contacts.map((contact) => (
-            <li key={contact.id} className="py-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-medium">{contact.name}</h3>
-                    {contact.priority && contact.priority !== 'Other' && (
-                      <Badge tone={contact.priority === 'Primary' ? 'success' : 'info'}>
-                        {contact.priority}
-                      </Badge>
-                    )}
-                    {contact.relationship && (
-                      <p className="text-sm text-text-muted">{contact.relationship}</p>
-                    )}
+      <CardBody>
+        {contacts.length === 0 ? (
+          <Empty size="sm" title="No emergency contacts yet" />
+        ) : (
+          <ul className="-my-4 divide-y divide-border">
+            {contacts.map((contact) => (
+              <li key={contact.id} className="py-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Each contact is headed by its name, under the card's title. */}
+                      <SubHeading>{contact.name}</SubHeading>
+                      {contact.priority && contact.priority !== 'Other' && (
+                        <Badge tone={contactPriorityTone(contact.priority)}>
+                          {contact.priority}
+                        </Badge>
+                      )}
+                      {contact.relationship && (
+                        <p className="text-sm text-text-muted">{contact.relationship}</p>
+                      )}
+                    </div>
+                    {contact.phone_number && <p className="text-sm text-text-muted">Telephone: {contact.phone_number}</p>}
+                    {contact.mobile_number && <p className="text-sm text-text-muted">Mobile: {contact.mobile_number}</p>}
+                    {contact.address && <p className="text-sm text-text-muted">{contact.address}</p>}
                   </div>
-                  {contact.phone_number && <p className="text-sm text-text-muted">Telephone: {contact.phone_number}</p>}
-                  {contact.mobile_number && <p className="text-sm text-text-muted">Mobile: {contact.mobile_number}</p>}
-                  {contact.address && <p className="text-sm text-text-muted">{contact.address}</p>}
-                </div>
 
-                {canEdit && (
-                  <div className="flex items-center gap-1 ml-4 flex-shrink-0">
-                    <IconButton
-                      type="button"
-                      size="sm"
-                      onClick={() => setEditingContact(contact)}
-                      className="text-text-subtle hover:text-text-muted"
-                      title="Edit contact"
-                      label={`Edit ${contact.name}`}
-                      icon={<PencilIcon className="h-4 w-4" />}
-                    />
-                    <DeleteContactButton
-                      contact={contact}
-                      onDeleted={() => router.refresh()}
-                    />
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1 ml-4 flex-shrink-0">
+                      <IconButton
+                        type="button"
+                        size="sm"
+                        onClick={() => setEditingContact(contact)}
+                        className="text-text-muted hover:text-text"
+                        title="Edit contact"
+                        label={`Edit ${contact.name}`}
+                        icon={<Icon name="edit" size={16} />}
+                      />
+                      <DeleteContactButton
+                        contact={contact}
+                        onDeleted={() => router.refresh()}
+                      />
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardBody>
+    </Card>
   )
 }

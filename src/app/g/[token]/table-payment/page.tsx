@@ -4,16 +4,7 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
-import {
-  GuestAlert,
-  GuestBlockedState,
-  GuestButton,
-  GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
-} from '@/components/features/guest'
+import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createInlinePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -84,17 +75,15 @@ function BlockedScreen({ reason }: { reason: string | undefined }): React.JSX.El
 function PaymentSetupFailedScreen({ lead }: { lead: string }): React.JSX.Element {
   return (
     <GuestShell>
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>Table booking</p>
-        <h1 className={GUEST_H1_CLASS}>Payment unavailable</h1>
-        <p className={GUEST_LEAD_CLASS}>{lead}</p>
-      </div>
-
-      <GuestAlert tone="problem">Please call {GUEST_CONTACT.phoneDisplay} for help.</GuestAlert>
-
-      <GuestButton as="a" href={GUEST_CONTACT.telHref} variant="primary" fullWidth>
-        Call {GUEST_CONTACT.phoneDisplay}
-      </GuestButton>
+      <GuestBlockedState
+        kicker="Table booking"
+        heading="Payment unavailable"
+        lead={lead}
+        primaryAction={{
+          label: `Call ${GUEST_CONTACT.phoneDisplay}`,
+          href: GUEST_CONTACT.telHref,
+        }}
+      />
     </GuestShell>
   )
 }

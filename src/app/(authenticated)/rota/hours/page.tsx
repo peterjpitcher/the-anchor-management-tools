@@ -4,7 +4,6 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   isIsoDate,
-  toIsoDate,
   addDaysIso,
   addWeeksIso,
   mondayOfWeekIso,
@@ -17,8 +16,8 @@ import {
 import { loadHoursReportData, type EmployeeRow } from '@/lib/rota/hours-report-data';
 import { displayName } from '@/lib/employees/display-name';
 import { ROTA_HOURS_SERIES_COLOURS } from '@/lib/rota/status-ui';
-import { PageLayout } from '@/ds';
-import { rotaNavItems } from '../nav';
+import { Button, Icon, LinkButton, PageLayout } from '@/ds';
+import { getRotaNavItems } from '../_shared/nav';
 import HoursByEmployeeClient, {
   type HoursEmployeeOption,
   type HolidayEmployeeSummary,
@@ -77,11 +76,10 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const requestedEmployeeIds = normalizeEmployeeParams(params.employee);
   const supabase = createAdminClient();
 
-  const { employees, sessions, leaveDays, sickShifts, plannedShifts } = await loadHoursReportData(supabase, {
-    fromDate,
-    toDate,
-    today,
-  });
+  const [{ employees, sessions, leaveDays, sickShifts, plannedShifts }, navItems] = await Promise.all([
+    loadHoursReportData(supabase, { fromDate, toDate, today }),
+    getRotaNavItems(),
+  ]);
 
   const employeeMap = new Map(employees.map(employee => [employee.employee_id, employee]));
   const validEmployeeIds = new Set(employees.map(employee => employee.employee_id));
@@ -310,11 +308,39 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     }))
     .filter(summary => summary.sickDays > 0);
 
+  // The report as filtered, for the header's download. It follows the applied filters, not
+  // the ones still being edited on the page.
+  const pdfParams = new URLSearchParams();
+  pdfParams.set('from', fromDate);
+  pdfParams.set('to', toDate);
+  for (const employeeId of selectedEmployeeIds) {
+    pdfParams.append('employee', employeeId);
+  }
+
   return (
     <PageLayout
-      title="Hours by employee"
-      subtitle="Actual timeclock hours, future planned hours, holidays, and Couldn't Work days grouped by employee"
-      navItems={rotaNavItems}
+      title="Rota"
+      subtitle="Hours by employee: actual and planned hours, holidays and Couldn't Work days"
+      navItems={navItems}
+      headerActions={
+        // With nobody selected there is no report to download. A disabled link can still be
+        // reached and followed from the keyboard, so the unavailable action is a disabled button.
+        series.length === 0 ? (
+          <Button type="button" size="sm" variant="secondary" icon={<Icon name="download" size={16} />} disabled>
+            Download PDF
+          </Button>
+        ) : (
+          <LinkButton
+            href={`/api/rota/hours/pdf?${pdfParams.toString()}`}
+            download
+            size="sm"
+            variant="secondary"
+            icon={<Icon name="download" size={16} />}
+          >
+            Download PDF
+          </LinkButton>
+        )
+      }
     >
       <HoursByEmployeeClient
         employees={employeeOptions}

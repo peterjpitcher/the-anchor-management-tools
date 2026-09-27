@@ -2,7 +2,9 @@
 
 import { useState, useCallback } from 'react'
 import {
+  Alert,
   Card,
+  PageLayout,
   Table,
   TableHeader,
   TableBody,
@@ -28,6 +30,11 @@ import {
   updateWorkType,
   disableWorkType,
 } from '@/app/actions/oj-projects/work-types'
+import { ojProjectsLayout } from '../../_shared/nav'
+import { ojActive } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('work-types')
 
 type WorkTypeForm = {
   id?: string
@@ -44,9 +51,11 @@ const emptyForm: WorkTypeForm = {
 
 interface WorkTypesClientProps {
   initialWorkTypes: any[]
+  /** Set when the work types failed to load, so the page says so. */
+  loadError?: string
 }
 
-export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): React.ReactElement {
+export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClientProps): React.ReactElement {
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
   const canEdit = hasPermission('oj_projects', 'edit')
@@ -132,33 +141,40 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
     }
   }
 
+  if (loadError) {
+    return (
+      <PageLayout {...LAYOUT}>
+        <Alert tone="danger" title="Could not load work types">
+          {loadError}
+        </Alert>
+      </PageLayout>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex justify-end">
-        {canCreate && (
-          <Button onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
+    <PageLayout
+      {...LAYOUT}
+      headerActions={
+        canCreate ? (
+          <Button variant="primary" onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
             New Work Type
           </Button>
-        )}
-      </div>
-
-      {/* Table */}
-      <Card>
+        ) : undefined
+      }
+    >
+      <Card padding="none">
         {workTypes.length === 0 ? (
-          <Empty title="No work types" description="Add a work type to categorize time entries." />
+          <Empty size="sm" title="No work types yet" description="Work types you create show here, ready to categorise time entries." />
         ) : (
           <>
-            <div className="divide-y divide-border md:hidden">
+            <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {workTypes.map((wt) => (
                 <div key={wt.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0">
                     <p className="font-medium text-text">{wt.name}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                       <span>Order {wt.sort_order ?? 0}</span>
-                      <Badge tone={wt.is_active ? 'success' : 'neutral'}>
-                        {wt.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
+                      <Badge tone={ojActive(wt.is_active).tone}>{ojActive(wt.is_active).label}</Badge>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -181,8 +197,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                         canEdit && wt.is_active && {
                           key: 'disable',
                           label: 'Disable',
-                          icon: <Icon name="trash" size={16} />,
-                          tone: 'danger',
+                          icon: <Icon name="ban" size={16} />,
                           onSelect: () => setDisableId(wt.id),
                         },
                       ]}
@@ -207,9 +222,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                   <TableCell className="font-medium">{wt.name}</TableCell>
                   <TableCell>{wt.sort_order ?? 0}</TableCell>
                   <TableCell>
-                    <Badge tone={wt.is_active ? 'success' : 'neutral'}>
-                      {wt.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
+                    <Badge tone={ojActive(wt.is_active).tone}>{ojActive(wt.is_active).label}</Badge>
                   </TableCell>
                   <TableCell>
                     {canEdit && (
@@ -233,8 +246,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                         canEdit && wt.is_active && {
                           key: 'disable',
                           label: 'Disable',
-                          icon: <Icon name="trash" size={16} />,
-                          tone: 'danger',
+                          icon: <Icon name="ban" size={16} />,
                           onSelect: () => setDisableId(wt.id),
                         },
                       ]}
@@ -253,8 +265,18 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={isEditing ? 'Edit Work Type' : 'New Work Type'}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-work-type-form" variant="primary" loading={saving}>
+              {isEditing ? 'Save Changes' : 'Create Work Type'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form id="oj-work-type-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Field label="Name" required>
             <Input
               value={form.name}
@@ -276,14 +298,6 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
             checked={form.is_active}
             onChange={(checked) => setForm({ ...form, is_active: checked })}
           />
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {isEditing ? 'Save Changes' : 'Create Work Type'}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -295,8 +309,8 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
         title="Disable Work Type"
         message="This work type will be deactivated. Existing entries will keep their work type label."
         confirmLabel="Disable"
-        tone="danger"
+        tone="primary"
       />
-    </div>
+    </PageLayout>
   )
 }

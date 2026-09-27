@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
+import { Card, CardBody, CardHeader, Fieldset, FormFooter } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
@@ -16,12 +16,6 @@ import { ConfirmDialog } from '@/ds'
 import { fetchBulkRecipients, sendBulkMessages } from '@/app/actions/bulk-messages'
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import {
-  ChatBubbleLeftRightIcon,
-  MagnifyingGlassIcon,
-  PaperAirplaneIcon,
-  FunnelIcon,
-} from '@heroicons/react/24/outline'
 import type { BulkRecipientFilters, BulkRecipient } from '@/types/bulk-messages'
 import type { EventCategory } from '@/types/event-categories'
 
@@ -88,6 +82,10 @@ export default function BulkMessagesClient({
   const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A failed recipient read leaves the list empty. It must not also show "No recipients found"
+  // under the error, which reads as an empty audience, so the table is held back until a read
+  // succeeds. `error` alone cannot say this: send failures use it too.
+  const [loadFailed, setLoadFailed] = useState(false)
 
   // Compose state
   const [message, setMessage] = useState('')
@@ -146,9 +144,11 @@ export default function BulkMessagesClient({
 
     if ('error' in result) {
       setError(result.error)
+      setLoadFailed(true)
       setRecipients([])
       setRecipientTotal(0)
     } else {
+      setLoadFailed(false)
       setRecipients(result.data)
       setRecipientTotal(result.total)
       setRecipientPage(result.page)
@@ -348,159 +348,116 @@ export default function BulkMessagesClient({
     <PageLayout
       title="Bulk Messages"
       subtitle="Send SMS messages to multiple customers"
-      breadcrumbs={[
-        { label: 'Messages', href: '/messages' },
-        { label: 'Bulk Messages' },
-      ]}
+      backButton={{ label: 'Back to Messages', href: '/messages' }}
     >
-      <div className="space-y-6">
-        {/* Quiet hours warning */}
-        {quietHoursEval.inQuietHours && (
-          <Alert variant="warning" title="SMS Quiet Hours Active">
-            Messages sent now will be queued and delivered after{' '}
-            {formatDateInLondon(quietHoursEval.nextAllowedSendAt, {
-              hour: 'numeric',
-              minute: 'numeric',
-              timeZoneName: 'short',
-            })}
-            . Quiet hours are 9 PM to 9 AM London time.
-          </Alert>
-        )}
+      {/* Quiet hours warning */}
+      {quietHoursEval.inQuietHours && (
+        <Alert tone="warning" title="SMS Quiet Hours Active">
+          Messages sent now will be queued and delivered after{' '}
+          {formatDateInLondon(quietHoursEval.nextAllowedSendAt, {
+            hour: 'numeric',
+            minute: 'numeric',
+            timeZoneName: 'short',
+          })}
+          . Quiet hours are 9 PM to 9 AM London time.
+        </Alert>
+      )}
 
-        {/* Filter Panel */}
-        <Card
-          header={
-            <div className="flex items-center gap-2">
-              <FunnelIcon className="h-5 w-5 text-text-muted" />
-              <h3 className="text-lg font-medium text-text">Filters</h3>
-            </div>
-          }
-        >
+      {/* Filter Panel */}
+      <Card>
+        <CardHeader title="Filters" />
+        <CardBody className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Event filter */}
-            <div>
-              <label htmlFor="filter-event" className="block text-sm font-medium text-text mb-1">
-                Event
-              </label>
-              <Select
-                id="filter-event"
-                value={eventId}
-                onChange={(e) => setEventId(e.target.value)}
-                placeholder="All events"
-              >
-                <option value="">All events</option>
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} ({formatDateInLondon(event.date, { day: 'numeric', month: 'short', year: 'numeric' })})
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <Select
+              id="filter-event"
+              label="Event"
+              value={eventId}
+              onChange={(e) => setEventId(e.target.value)}
+              placeholder="All events"
+            >
+              <option value="">All events</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} ({formatDateInLondon(event.date, { day: 'numeric', month: 'short', year: 'numeric' })})
+                </option>
+              ))}
+            </Select>
 
-            {/* Booking status filter */}
-            <div>
-              <label htmlFor="filter-booking-status" className="block text-sm font-medium text-text mb-1">
-                Booking Status
-              </label>
-              <Select
-                id="filter-booking-status"
-                value={bookingStatus}
-                onChange={(e) => setBookingStatus(e.target.value)}
-                placeholder="Any status"
-              >
-                <option value="">Any status</option>
-                <option value="with_bookings">With bookings</option>
-                <option value="without_bookings">Without bookings</option>
-              </Select>
-            </div>
+            <Select
+              id="filter-booking-status"
+              label="Booking Status"
+              value={bookingStatus}
+              onChange={(e) => setBookingStatus(e.target.value)}
+              placeholder="Any status"
+            >
+              <option value="">Any status</option>
+              <option value="with_bookings">With bookings</option>
+              <option value="without_bookings">Without bookings</option>
+            </Select>
 
-            {/* SMS Opt-in filter */}
-            <div>
-              <label htmlFor="filter-sms-optin" className="block text-sm font-medium text-text mb-1">
-                SMS Opt-in
-              </label>
-              <Select
-                id="filter-sms-optin"
-                value={smsOptIn}
-                onChange={(e) => setSmsOptIn(e.target.value as 'opted_in' | 'all')}
-              >
-                <option value="opted_in">Opted in only</option>
-                <option value="all">All customers</option>
-              </Select>
-            </div>
+            <Select
+              id="filter-sms-optin"
+              label="SMS Opt-in"
+              value={smsOptIn}
+              onChange={(e) => setSmsOptIn(e.target.value as 'opted_in' | 'all')}
+            >
+              <option value="opted_in">Opted in only</option>
+              <option value="all">All customers</option>
+            </Select>
 
-            {/* Category filter */}
-            <div>
-              <label htmlFor="filter-category" className="block text-sm font-medium text-text mb-1">
-                Category
-              </label>
-              <Select
-                id="filter-category"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                placeholder="All categories"
-              >
-                <option value="">All categories</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <Select
+              id="filter-category"
+              label="Category"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              placeholder="All categories"
+            >
+              <option value="">All categories</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </Select>
 
-            {/* Date range filters */}
-            <div>
-              <label htmlFor="filter-created-after" className="block text-sm font-medium text-text mb-1">
-                Created After
-              </label>
-              <Input
-                id="filter-created-after"
-                type="date"
-                value={createdAfter}
-                onChange={(e) => setCreatedAfter(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="filter-created-before" className="block text-sm font-medium text-text mb-1">
-                Created Before
-              </label>
-              <Input
-                id="filter-created-before"
-                type="date"
-                value={createdBefore}
-                onChange={(e) => setCreatedBefore(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="mt-4">
-            <label htmlFor="filter-search" className="block text-sm font-medium text-text mb-1">
-              Search
-            </label>
             <Input
-              id="filter-search"
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or mobile number..."
-              leftIcon={<MagnifyingGlassIcon />}
+              id="filter-created-after"
+              label="Created After"
+              type="date"
+              value={createdAfter}
+              onChange={(e) => setCreatedAfter(e.target.value)}
+            />
+
+            <Input
+              id="filter-created-before"
+              label="Created Before"
+              type="date"
+              value={createdBefore}
+              onChange={(e) => setCreatedBefore(e.target.value)}
             />
           </div>
-        </Card>
 
-        {/* Recipients List */}
-        <Card
-          header={
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-medium text-text">Recipients</h3>
-                <Badge tone="info" size="sm">
-                  {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
-                </Badge>
-              </div>
+          <Input
+            id="filter-search"
+            label="Search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or mobile number..."
+            leftIcon={<Icon name="search" size={16} />}
+          />
+        </CardBody>
+      </Card>
+
+      {/* Recipients List */}
+      <Card>
+        <CardHeader
+          title="Recipients"
+          action={
+            <div className="flex items-center gap-2">
+              <Badge tone="info" size="sm">
+                {loading ? '…' : `${recipients.length} of ${recipientTotal}`}
+              </Badge>
               {selectedKeys.size > 0 && (
                 <Badge tone="success" size="sm">
                   {selectedKeys.size} selected
@@ -508,11 +465,23 @@ export default function BulkMessagesClient({
               )}
             </div>
           }
-        >
-          {error && (
-            <Alert variant="error" title="Error loading recipients" description={error} className="mb-4" />
-          )}
+        />
+        {error && (
+          <CardBody>
+            <Alert tone="danger" title="Error loading recipients">
+              {error}
+              {loadFailed && (
+                <div className="mt-3">
+                  <Button variant="secondary" size="sm" onClick={() => void loadRecipients(recipientPage)}>
+                    Try Again
+                  </Button>
+                </div>
+              )}
+            </Alert>
+          </CardBody>
+        )}
 
+        {loadFailed && !loading ? null : (
           <DataTable<BulkRecipient>
             data={recipients}
             columns={columns}
@@ -521,36 +490,33 @@ export default function BulkMessagesClient({
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
-            emptyMessage="No recipients found"
-            emptyDescription="Try adjusting your filters to find customers."
+            emptyMessage="No recipients match these filters"
+            emptyDescription="Change the filters to find customers."
             size="sm"
+            bordered={false}
+            className="max-shell:p-4"
           />
-          {recipientTotal > RECIPIENT_PAGE_SIZE && (
-            <TablePagination
-              page={recipientPage}
-              totalPages={recipientTotalPages}
-              totalItems={recipientTotal}
-              pageSize={RECIPIENT_PAGE_SIZE}
-              onPageChange={(nextPage) => {
-                void loadRecipients(nextPage)
-              }}
-            />
-          )}
-        </Card>
+        )}
+        {recipientTotal > RECIPIENT_PAGE_SIZE && (
+          <TablePagination
+            page={recipientPage}
+            totalPages={recipientTotalPages}
+            totalItems={recipientTotal}
+            pageSize={RECIPIENT_PAGE_SIZE}
+            onPageChange={(nextPage) => {
+              void loadRecipients(nextPage)
+            }}
+          />
+        )}
+      </Card>
 
-        {/* Compose Panel */}
-        <Card
-          header={
-            <div className="flex items-center gap-2">
-              <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-muted" />
-              <h3 className="text-lg font-medium text-text">Compose Message</h3>
-            </div>
-          }
-        >
-          {/* Personalisation variables */}
-          <div className="mb-3">
-            <span className="text-sm text-text-muted mr-2">Insert variable:</span>
-            <div className="inline-flex gap-2 flex-wrap">
+      {/* Compose Panel */}
+      <Card>
+        <CardHeader title="Compose Message" />
+        <CardBody className="space-y-4">
+          {/* Personalisation variables: one question ("which variable?"), so one Fieldset. */}
+          <Fieldset legend="Insert Variable">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 size="xs"
@@ -566,23 +532,24 @@ export default function BulkMessagesClient({
                 {'{{last_name}}'}
               </Button>
             </div>
-          </div>
+          </Fieldset>
 
-          {/* Message textarea */}
-          <Textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message here..."
-            rows={4}
-            autoResize
-            minRows={3}
-            maxRows={8}
-          />
+          <div>
+            {/* Message textarea */}
+            <Textarea
+              ref={textareaRef}
+              label="Message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Type your message here..."
+              rows={4}
+              autoResize
+              minRows={3}
+              maxRows={8}
+            />
 
-          {/* Character / segment counter */}
-          <div className="mt-2 flex items-center justify-between text-sm text-text-muted">
-            <div className="flex items-center gap-3">
+            {/* Character / segment counter */}
+            <div className="mt-2 flex items-center gap-3 text-sm text-text-muted">
               <span>
                 {smsInfo.chars} characters
               </span>
@@ -599,35 +566,34 @@ export default function BulkMessagesClient({
 
           {/* Preview */}
           {trimmedMessage && previewRecipient && (
-            <div className="mt-4 rounded-md bg-surface-2 p-3 border border-border">
+            <Card variant="secondary" padding="sm">
               <p className="text-xs font-medium text-text-muted mb-1">
                 Preview (for {previewRecipient.first_name} {previewRecipient.last_name}):
               </p>
               <p className="text-sm text-text whitespace-pre-wrap">{previewMessage}</p>
-            </div>
+            </Card>
           )}
 
           {/* Send controls */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-text-muted">
-              {selectedKeys.size > 0
+          <FormFooter
+            start={
+              selectedKeys.size > 0
                 ? `${selectedKeys.size} recipient${selectedKeys.size !== 1 ? 's' : ''} selected`
-                : 'Select recipients above to send'}
-            </div>
+                : 'Select recipients above to send'
+            }
+          >
             <Button
               variant="primary"
-              leftIcon={<PaperAirplaneIcon />}
+              leftIcon={<Icon name="send" size={16} />}
               onClick={() => setShowConfirm(true)}
               disabled={!canSend}
               loading={sending}
             >
-              {sending
-                ? 'Sending...'
-                : `Send to ${selectedKeys.size} recipient${selectedKeys.size !== 1 ? 's' : ''}`}
+              {`Send to ${selectedKeys.size} Recipient${selectedKeys.size !== 1 ? 's' : ''}`}
             </Button>
-          </div>
-        </Card>
-      </div>
+          </FormFooter>
+        </CardBody>
+      </Card>
 
       {/* Confirm dialog */}
       <ConfirmDialog
@@ -636,20 +602,21 @@ export default function BulkMessagesClient({
         onConfirm={handleSend}
         title="Send Bulk SMS"
         message={
-          <>
-            Are you sure you want to send this message to{' '}
-            <strong>{selectedKeys.size}</strong> recipient
-            {selectedKeys.size !== 1 ? 's' : ''}?
+          <div className="space-y-2">
+            <p>
+              Are you sure you want to send this message to{' '}
+              <strong>{selectedKeys.size}</strong> recipient
+              {selectedKeys.size !== 1 ? 's' : ''}?
+            </p>
             {quietHoursEval.inQuietHours && (
-              <span className="block mt-2 text-warning-fg">
+              <p className="text-warning-fg">
                 Note: Messages will be queued until quiet hours end.
-              </span>
+              </p>
             )}
-          </>
+          </div>
         }
-        type="info"
-        confirmText="Send Messages"
-        loadingText="Sending..."
+        tone="primary"
+        confirmLabel="Send Messages"
       />
     </PageLayout>
   )

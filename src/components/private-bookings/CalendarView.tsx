@@ -2,14 +2,24 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { 
-  ChevronLeftIcon, 
-  ChevronRightIcon,
-  ClockIcon
-} from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
-import { Badge, Button, Card, IconButton, Segmented, Select } from '@/ds'
+import { useMediaQuery } from '@/hooks/use-media-query'
+import {
+  Badge,
+  Button,
+  Card,
+  CardFooter,
+  CardHeader,
+  Empty,
+  IconButton,
+  Segmented,
+  Select,
+  Icon,
+  PageLayout,
+  SHELL_MEDIA_QUERY,
+  type HeaderNavItem,
+} from '@/ds'
 import {
   privateBookingStatusBlockClasses,
   privateBookingStatusLabel,
@@ -30,32 +40,26 @@ interface CalendarBooking {
 
 interface CalendarViewProps {
   bookings: CalendarBooking[]
+  /** The page header, built once by the page so the error state shows the same one. */
+  layoutProps: { title: string; subtitle?: string; navItems?: HeaderNavItem[] }
 }
 
 // Tentative is left out: no live booking has it (checked 18 Sep 2026).
 const LEGEND_STATUSES = ['draft', 'confirmed', 'completed', 'cancelled'] as const
 
-export default function CalendarView({ bookings }: CalendarViewProps) {
+export default function CalendarView({ bookings, layoutProps }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'calendar' | 'agenda'>('calendar')
-  const [isMobile, setIsMobile] = useState(false)
+  // The phone shell: the agenda toggle shows and day cells hold one booking.
+  const isMobile = useMediaQuery(SHELL_MEDIA_QUERY)
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>('all')
   
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 640)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
-  // On first mount, default mobile users to the agenda (list) view — the month
+  // On first mount, default mobile users to the agenda (list) view: the month
   // grid's day-cell booking pills are too small to tap reliably at phone widths.
   // Runs once; the user can still switch back to the calendar view.
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+    if (typeof window !== 'undefined' && window.matchMedia(SHELL_MEDIA_QUERY).matches) {
       setViewMode('agenda')
     }
   }, [])
@@ -151,79 +155,83 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   }
 
   return (
+    <PageLayout
+      {...layoutProps}
+      headerActions={
+        // The view switch is phones only: from the shell breakpoint up the month grid always shows.
+        <Segmented
+          aria-label="View"
+          className="shell:hidden"
+          size="sm"
+          options={[
+            { id: 'calendar', label: 'Calendar' },
+            { id: 'agenda', label: 'Agenda' },
+          ]}
+          value={viewMode}
+          onChange={(id) => setViewMode(id as 'calendar' | 'agenda')}
+        />
+      }
+    >
     <Card padding="none">
       {/* Calendar Header */}
-      <div className="px-4 sm:px-6 py-4 border-b border-border">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text-strong">
-            {currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
-          </h2>
-          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            {/* View Mode Toggle - Mobile Only */}
-            <Segmented
-              className="sm:hidden"
-              options={[
-                { id: 'calendar', label: 'Calendar' },
-                { id: 'agenda', label: 'Agenda' },
-              ]}
-              value={viewMode}
-              onChange={(id) => setViewMode(id as 'calendar' | 'agenda')}
-            />
-            <Button type="button" variant="secondary" onClick={() => setCurrentDate(new Date())}>
+      <CardHeader
+        title={currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+        action={
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCurrentDate(new Date())}>
               Today
             </Button>
-            <div className="flex gap-1">
-              <IconButton
-                type="button"
-                variant="secondary"
-                label="Previous month"
-                icon={<ChevronLeftIcon className="h-4 w-4" />}
-                onClick={() => navigateMonth('prev')}
-              />
-              <IconButton
-                type="button"
-                variant="secondary"
-                label="Next month"
-                icon={<ChevronRightIcon className="h-4 w-4" />}
-                onClick={() => navigateMonth('next')}
-              />
-            </div>
+            <IconButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              label="Previous month"
+              icon={<Icon name="chevronLeft" size={16} />}
+              onClick={() => navigateMonth('prev')}
+            />
+            <IconButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              label="Next month"
+              icon={<Icon name="chevronRight" size={16} />}
+              onClick={() => navigateMonth('next')}
+            />
           </div>
-        </div>
+        }
+      />
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <Select
-              label="Status"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as BookingStatus | 'all')}
-            >
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </Select>
-          </div>
-          <div>
-            <Select
-              label="Date range"
-              value={timeFilter}
-              onChange={(event) => setTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
-            >
-              <option value="all">All dates</option>
-              <option value="upcoming">Upcoming</option>
-              <option value="past">Past</option>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button onClick={handleResetFilters} variant="secondary" size="sm" className="w-full sm:w-auto">
-              Reset filters
-            </Button>
-          </div>
+      {/* Filters, directly above the calendar they filter */}
+      <div className="flex flex-wrap items-end gap-3 px-pad-card py-3 border-b border-border">
+        <div className="w-full sm:w-48">
+          <Select
+            label="Status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as BookingStatus | 'all')}
+          >
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </Select>
         </div>
+        <div className="w-full sm:w-48">
+          <Select
+            label="Date range"
+            value={timeFilter}
+            onChange={(event) => setTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
+          >
+            <option value="all">All dates</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="past">Past</option>
+          </Select>
+        </div>
+        <Button onClick={handleResetFilters} variant="secondary">
+          Reset Filters
+        </Button>
       </div>
-      
+
       {/* Show Calendar View on Desktop, Selected View on Mobile */}
       {(viewMode === 'calendar' || !isMobile) ? (
         <>
@@ -276,7 +284,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                     >
                       <div className="font-medium truncate hidden sm:block">{booking.customer_name}</div>
                       <div className="flex items-center gap-1 sm:mt-0.5">
-                        <ClockIcon className="h-3 w-3 hidden sm:block" />
+                        <Icon name="clock" size={12} className="hidden sm:block" />
                         <span className="sm:hidden">{formatTime12Hour(booking.start_time).replace(':00', '')}</span>
                         <span className="hidden sm:inline">{formatTime12Hour(booking.start_time)}</span>
                       </div>
@@ -298,9 +306,11 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
         /* Agenda View - Mobile Only */
         <div className="divide-y divide-border">
           {monthBookings.length === 0 ? (
-            <div className="px-4 py-8 text-center text-text-muted">
-              No bookings for this month
-            </div>
+            <Empty
+              size="sm"
+              icon="calendar"
+              title={statusFilter !== 'all' || timeFilter !== 'all' ? 'No bookings match these filters' : 'No bookings for this period'}
+            />
           ) : (
             monthBookings.map((booking) => {
               const bookingDate = new Date(booking.event_date)
@@ -322,7 +332,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                           <span className="text-xs font-medium text-primary">Today</span>
                         )}
                       </div>
-                      <h3 className="font-medium text-text">{booking.customer_name}</h3>
+                      <p className="font-medium text-text">{booking.customer_name}</p>
                       {booking.event_type && (
                         <p className="text-sm text-text-muted mt-0.5">{booking.event_type}</p>
                       )}
@@ -331,7 +341,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                           {bookingDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                         </span>
                         <span className="flex items-center gap-1">
-                          <ClockIcon className="h-4 w-4" />
+                          <Icon name="clock" size={16} />
                           {formatTime12Hour(booking.start_time)}
                           {booking.end_time && (
                             <>
@@ -346,7 +356,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                         )}
                       </div>
                     </div>
-                    <ChevronRightIcon className="h-5 w-5 text-text-subtle flex-shrink-0 ml-2" />
+                    <Icon name="chevronRight" size={20} className="text-text-subtle flex-shrink-0 ml-2" />
                   </div>
                 </Link>
               )
@@ -357,20 +367,21 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
       
       {/* Legend - Show only in calendar view */}
       {(viewMode === 'calendar' || !isMobile) && (
-        <div className="px-4 sm:px-6 py-4 bg-surface-2 border-t border-border">
-        <div className="flex flex-wrap gap-4 text-sm">
-          {LEGEND_STATUSES.map((status) => (
-            <div key={status} className="flex items-center gap-2">
-              {/* Same classes as the day-cell blocks, so the key matches what it explains. */}
-              <div className={`w-3 h-3 rounded-sm border ${privateBookingStatusBlockClasses(status)}`}></div>
-              <span className={status === 'cancelled' ? 'text-text-muted line-through' : 'text-text-muted'}>
-                {privateBookingStatusLabel(status)}
-              </span>
-            </div>
-          ))}
-        </div>
-        </div>
+        <CardFooter>
+          <div className="flex flex-wrap gap-4 text-sm">
+            {LEGEND_STATUSES.map((status) => (
+              <div key={status} className="flex items-center gap-2">
+                {/* Same classes as the day-cell blocks, so the key matches what it explains. */}
+                <div className={`w-3 h-3 rounded-sm border ${privateBookingStatusBlockClasses(status)}`}></div>
+                <span className={status === 'cancelled' ? 'text-text-muted line-through' : 'text-text-muted'}>
+                  {privateBookingStatusLabel(status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardFooter>
       )}
     </Card>
+    </PageLayout>
   )
 }

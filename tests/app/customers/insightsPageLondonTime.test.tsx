@@ -92,7 +92,9 @@ describe('CustomersInsightsPage, London clock', () => {
   it('shows the Generated time on the London clock', async () => {
     render(await CustomersInsightsPage({ searchParams: Promise.resolve({}) }))
 
-    expect(screen.getByText('2 Oct 2026, 00:30')).toBeInTheDocument()
+    // The generated time sits at the end of the page description, which the header renders
+    // for both phone and desktop.
+    expect(screen.getAllByText(/, generated 2 Oct 2026, 00:30$/).length).toBeGreaterThan(0)
   })
 
   it('shows a last booking date from a date column as that calendar day', async () => {

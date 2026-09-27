@@ -2,16 +2,16 @@
 
 import Script from 'next/script'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  GuestAlert,
-  GuestButton,
-  GuestCard,
-  GUEST_CHOICE_ROW_CLASS,
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
-} from '@/components/features/guest'
+// Imported file by file rather than through the `guest` barrel, which would pull
+// the guest webfont module into this client bundle. GuestShell stays on the server page.
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GuestButton } from '@/components/features/guest/GuestButton'
+import { GuestCard } from '@/components/features/guest/GuestCard'
+import { GuestCardHeader } from '@/components/features/guest/GuestCardHeader'
+import { GuestChoice } from '@/components/features/guest/GuestChoice'
+import { GuestIntro } from '@/components/features/guest/GuestIntro'
+import type { GuestTone } from '@/components/features/guest/status-ui'
+import { GUEST_MESSAGE_CLASS, GUEST_MUTED_CLASS } from '@/components/features/guest/styles'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type Props = {
@@ -53,8 +53,7 @@ function appointmentStarted(appointment: any) {
 export default function RecruitmentBookingClient({ token, initialPreview }: Props) {
   const [preview, setPreview] = useState(initialPreview)
   const [selectedSlot, setSelectedSlot] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
-  const [messageIsError, setMessageIsError] = useState(false)
+  const [message, setMessage] = useState<{ tone: GuestTone; text: string } | null>(null)
   const [pending, setPending] = useState(false)
   const [turnstileReady, setTurnstileReady] = useState(false)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
@@ -118,12 +117,10 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
-      setMessageIsError(true)
-      setMessage(payload?.error?.message || 'Booking failed.')
+      setMessage({ tone: 'problem', text: payload?.error?.message || 'Booking failed.' })
       return
     }
-    setMessageIsError(false)
-    setMessage('Booked.')
+    setMessage({ tone: 'success', text: 'Booked.' })
     await refresh()
   }
 
@@ -138,12 +135,10 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
-      setMessageIsError(true)
-      setMessage(payload?.error?.message || 'Cancellation failed.')
+      setMessage({ tone: 'problem', text: payload?.error?.message || 'Cancellation failed.' })
       return
     }
-    setMessageIsError(false)
-    setMessage('Cancelled.')
+    setMessage({ tone: 'success', text: 'Cancelled.' })
     await refresh()
   }
 
@@ -160,29 +155,26 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
-      setMessageIsError(true)
-      setMessage(payload?.error?.message || 'Reschedule failed.')
+      setMessage({ tone: 'problem', text: payload?.error?.message || 'Reschedule failed.' })
       return
     }
-    setMessageIsError(false)
-    setMessage('Rescheduled.')
+    setMessage({ tone: 'success', text: 'Rescheduled.' })
     await refresh()
   }
 
   if (!preview?.valid || !preview.application) {
     return (
-      <section className="flex flex-col gap-6">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>Interview booking</p>
-          <h1 className={GUEST_H1_CLASS}>Booking unavailable</h1>
-          <p className={GUEST_LEAD_CLASS}>This recruitment booking link is invalid or expired.</p>
-        </div>
-      </section>
+      <GuestIntro
+        kicker="Interview booking"
+        title="Booking unavailable"
+        lead="This recruitment booking link is invalid or expired."
+      />
     )
   }
 
+  // A fragment, not a wrapper: GuestShell spaces these blocks itself.
   return (
-    <section className="flex flex-col gap-6">
+    <>
       {turnstileSiteKey ? (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
@@ -191,53 +183,64 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
         />
       ) : null}
 
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>Interview booking</p>
-        <h1 className={GUEST_H1_CLASS}>{preview.application.role_title}</h1>
-        <p className={GUEST_LEAD_CLASS}>Choose a time to come in and meet us at The Anchor.</p>
-      </div>
+      <GuestIntro
+        kicker="Interview booking"
+        title={preview.application.role_title}
+        lead="Choose a time to come in and meet us at The Anchor."
+      />
 
       {currentAppointment && (
         <GuestCard variant="accent">
-          <h2 className="font-anchor-body text-sm font-semibold text-guest-text-strong">Current booking</h2>
-          <p className="mt-2 font-anchor-body text-base text-guest-text">{formatDateTime(currentAppointment.scheduled_start)}</p>
-          <p className="font-anchor-body text-sm text-guest-text-muted">{currentAppointment.location}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <GuestButton type="button" variant="outline" size="sm" onClick={cancel} disabled={pending || readOnly || blockedByTurnstile}>
-              Cancel
-            </GuestButton>
-            <GuestButton type="button" variant="outline" size="sm" onClick={reschedule} disabled={pending || readOnly || !selectedSlot || currentAppointment.reschedule_count >= 1 || blockedByTurnstile}>
-              Reschedule
-            </GuestButton>
+          <GuestCardHeader title="Current booking" />
+          <div className="flex flex-col gap-guest-md">
+            <div>
+              <p className={GUEST_MESSAGE_CLASS}>{formatDateTime(currentAppointment.scheduled_start)}</p>
+              <p className={GUEST_MUTED_CLASS}>{currentAppointment.location}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <GuestButton type="button" variant="outline" size="sm" onClick={cancel} disabled={pending || readOnly || blockedByTurnstile}>
+                Cancel
+              </GuestButton>
+              <GuestButton type="button" variant="outline" size="sm" onClick={reschedule} disabled={pending || readOnly || !selectedSlot || currentAppointment.reschedule_count >= 1 || blockedByTurnstile}>
+                Reschedule
+              </GuestButton>
+            </div>
           </div>
         </GuestCard>
       )}
 
       {!readOnly && (
         <GuestCard>
-          <h2 className="font-anchor-body text-sm font-semibold text-guest-text-strong">Available times</h2>
-          <div className="mt-3 flex flex-col gap-2">
-            {(preview.slots ?? []).map((slot: any) => (
-              <label key={slot.id} className={`${GUEST_CHOICE_ROW_CLASS} rounded-guest-field border border-guest-border px-3 py-2`}>
-                <input
+          <GuestCardHeader title="Available times" />
+          <div className="flex flex-col gap-guest-md">
+            <div className="flex flex-col gap-2">
+              {(preview.slots ?? []).map((slot: any) => (
+                <GuestChoice
+                  key={slot.id}
                   type="radio"
+                  id={`slot-${slot.id}`}
                   name="slot"
                   value={slot.id}
                   checked={selectedSlot === slot.id}
                   onChange={() => setSelectedSlot(slot.id)}
+                  boxed
+                  label={
+                    <>
+                      <span className="block font-medium text-guest-text-strong">{formatDateTime(slot.starts_at)}</span>
+                      <span className="text-guest-text-muted">{slot.location}</span>
+                    </>
+                  }
                 />
-                <span>
-                  <span className="block font-medium text-guest-text-strong">{formatDateTime(slot.starts_at)}</span>
-                  <span className="text-guest-text-muted">{slot.location}</span>
-                </span>
-              </label>
-            ))}
+              ))}
+            </div>
+            {!currentAppointment && (
+              <div>
+                <GuestButton type="button" variant="primary" onClick={claim} disabled={pending || !selectedSlot || blockedByTurnstile}>
+                  Book
+                </GuestButton>
+              </div>
+            )}
           </div>
-          {!currentAppointment && (
-            <GuestButton type="button" variant="primary" className="mt-4" onClick={claim} disabled={pending || !selectedSlot || blockedByTurnstile}>
-              Book
-            </GuestButton>
-          )}
         </GuestCard>
       )}
 
@@ -247,9 +250,7 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
         </GuestCard>
       ) : null}
 
-      {message && (
-        <GuestAlert tone={messageIsError ? 'problem' : 'success'}>{message}</GuestAlert>
-      )}
-    </section>
+      {message && <GuestAlert tone={message.tone}>{message.text}</GuestAlert>}
+    </>
   )
 }

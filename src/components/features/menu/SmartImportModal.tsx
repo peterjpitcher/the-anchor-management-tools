@@ -76,23 +76,39 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Smart Ingredient Import" size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Smart Ingredient Import"
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={parsing}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleParse} disabled={!input.trim()} loading={parsing}>
+            Analyze & Import
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-4">
-        <Alert variant="info">
+        <Alert tone="info">
           <div className="space-y-2">
             <p>
               Paste <strong>any</strong> product text, HTML source, or JSON below. Our AI will extract the details for you.
             </p>
-            <div className="flex gap-2">
-              <Badge variant="neutral" size="sm">Booker HTML</Badge>
-              <Badge variant="neutral" size="sm">Supplier Emails</Badge>
-              <Badge variant="neutral" size="sm">Spreadsheet Rows</Badge>
-              <Badge variant="neutral" size="sm">Website Text</Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="neutral" size="sm">Booker HTML</Badge>
+              <Badge tone="neutral" size="sm">Supplier Emails</Badge>
+              <Badge tone="neutral" size="sm">Spreadsheet Rows</Badge>
+              <Badge tone="neutral" size="sm">Website Text</Badge>
             </div>
           </div>
         </Alert>
 
         <Textarea
+          label="Product Details"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Paste product details here..."
@@ -102,19 +118,10 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
         />
 
         {error && (
-          <Alert variant="error" title="Parsing Failed">
+          <Alert tone="danger" title="Parsing Failed">
             {error}
           </Alert>
         )}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={parsing}>
-            Cancel
-          </Button>
-          <Button onClick={handleParse} disabled={parsing || !input.trim()}>
-            {parsing ? 'Analyzing...' : 'Analyze & Import'}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

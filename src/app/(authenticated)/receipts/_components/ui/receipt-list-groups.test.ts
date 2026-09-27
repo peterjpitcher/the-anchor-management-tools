@@ -22,10 +22,11 @@ describe('receipt vendor groups', () => {
     ])
   })
 
-  it('maps the lowest value to blue and the highest value to red', () => {
+  it('maps the lowest value to the info blue and the highest value to the danger red', () => {
     expect(getValueHeatLevel(10, 10, 100)).toBe(0)
     expect(getValueHeatLevel(100, 10, 100)).toBe(1)
-    expect(getValueHeatColour(10, 10, 100)).toBe('rgb(25 95 235)')
+    // --color-info (#0284c7) and --color-danger (#dc2626), the ends of the legend's gradient.
+    expect(getValueHeatColour(10, 10, 100)).toBe('rgb(2 132 199)')
     expect(getValueHeatColour(100, 10, 100)).toBe('rgb(220 38 38)')
   })
 })

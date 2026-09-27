@@ -4,7 +4,7 @@ import { getVoucherLedger, listVoucherTypes, listVoucherBatches } from '@/app/ac
 import type { VoucherLedgerFilters } from '@/app/actions/vouchers'
 import { PageLayout, Alert } from '@/ds'
 import type { VoucherStatus } from '@/types/vouchers'
-import { VOUCHER_SECTION_NAV } from '../_shared/voucher-ui'
+import { VOUCHERS_NAV } from '../_shared/nav'
 import { LedgerClient } from './LedgerClient'
 
 export const dynamic = 'force-dynamic'
@@ -77,9 +77,15 @@ export default async function AllVouchersPage({
     listVoucherBatches(),
   ])
 
+  const layoutProps = {
+    title: 'Vouchers',
+    subtitle: 'All Vouchers: every voucher, with filters, bulk actions and CSV export',
+    navItems: VOUCHERS_NAV,
+  }
+
   if (ledgerResult.error || !ledgerResult.data) {
     return (
-      <PageLayout title="All vouchers" navItems={VOUCHER_SECTION_NAV}>
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Could not load the ledger">
           {ledgerResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>
@@ -88,11 +94,7 @@ export default async function AllVouchersPage({
   }
 
   return (
-    <PageLayout
-      title="All vouchers"
-      subtitle="The full voucher ledger with filters, bulk actions and CSV export"
-      navItems={VOUCHER_SECTION_NAV}
-    >
+    <PageLayout {...layoutProps}>
       <LedgerClient
         initialFilters={filters}
         initialResult={ledgerResult.data}

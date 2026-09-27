@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Checkbox, Spinner } from '@/ds';
 import { toggleIngredientDietaryFlag } from '@/app/actions/menu-management';
+import { MENU_DIETARY_TONE } from '../../_shared/status-ui';
 import type { Ingredient } from './IngredientExpandedRow';
 
 type DietaryFlag = 'vegetarian' | 'vegan' | 'gluten_free' | 'halal';
@@ -82,7 +83,7 @@ export function IngredientDietaryFlagsCell({
     return selectedOptions.length > 0 ? (
       <div className="flex min-w-36 flex-wrap gap-1">
         {selectedOptions.map((option) => (
-          <Badge key={option.value} tone="success">
+          <Badge key={option.value} tone={MENU_DIETARY_TONE}>
             {option.shortLabel}
           </Badge>
         ))}
@@ -109,7 +110,7 @@ export function IngredientDietaryFlagsCell({
           </div>
         ))}
       </div>
-      {error && <span className="text-xs text-danger">{error}</span>}
+      {error && <span className="text-xs text-danger-fg">{error}</span>}
     </div>
   );
 }

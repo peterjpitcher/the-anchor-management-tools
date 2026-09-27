@@ -1,7 +1,7 @@
 'use client';
 
-import { FormSection } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Card, CardBody, CardHeader } from '@/ds';
+import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Textarea } from '@/ds';
 import { Checkbox } from '@/ds';
@@ -78,106 +78,115 @@ export function DishOverviewTab({
 
   return (
     <div className="space-y-6">
-      <FormSection title="Dish Details" description="Core details used for menu display and costing.">
-        <FormGroup label="Name" required help="Shown on the website and kitchen reports.">
-          <Input
-            value={formState.name}
-            onChange={(e) => onChange({ name: e.target.value })}
-            required
-          />
-        </FormGroup>
+      <Card>
+        <CardHeader title="Dish Details" subtitle="Core details used for menu display and costing" />
+        <CardBody className="space-y-4">
+          <Field label="Name" required hint="Shown on the website and kitchen reports.">
+            <Input
+              value={formState.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              required
+            />
+          </Field>
 
-        <div className="space-y-1">
-          <FormGroup label="Selling Price (£)" required help="Gross selling price visible to guests.">
+          <div className="space-y-1">
+            <Field label="Selling Price (£)" required hint="Gross selling price visible to guests.">
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formState.selling_price}
+                onChange={(e) => onChange({ selling_price: e.target.value })}
+                required
+              />
+            </Field>
+            {targetPriceDisplay && (
+              <p className="text-xs text-text-muted">
+                Target price for {Math.round(targetGpPct * 100)}% GP: {targetPriceDisplay}
+              </p>
+            )}
+          </div>
+
+          <Field label="Calories" hint="Optional. Displayed on menus where calorie information is required.">
             <Input
               type="number"
               min="0"
-              step="0.01"
-              value={formState.selling_price}
-              onChange={(e) => onChange({ selling_price: e.target.value })}
-              required
+              value={formState.calories}
+              onChange={(e) => onChange({ calories: e.target.value })}
             />
-          </FormGroup>
-          {targetPriceDisplay && (
-            <p className="text-xs text-text-muted">
-              Target price for {Math.round(targetGpPct * 100)}% GP: {targetPriceDisplay}
-            </p>
-          )}
-        </div>
+          </Field>
+        </CardBody>
+      </Card>
 
-        <FormGroup label="Calories" help="Optional. Displayed on menus where calorie information is required.">
-          <Input
-            type="number"
-            min="0"
-            value={formState.calories}
-            onChange={(e) => onChange({ calories: e.target.value })}
-          />
-        </FormGroup>
-      </FormSection>
+      <Card>
+        <CardHeader title="Descriptions" subtitle="Public and internal descriptions for the dish" />
+        <CardBody className="space-y-4">
+          <Field label="Guest Description" hint="Visible on website/menus.">
+            <Textarea
+              rows={3}
+              value={formState.description}
+              onChange={(e) => onChange({ description: e.target.value })}
+            />
+          </Field>
 
-      <FormSection title="Descriptions" description="Public and internal descriptions for the dish.">
-        <FormGroup label="Guest Description" help="Visible on website/menus.">
-          <Textarea
-            rows={3}
-            value={formState.description}
-            onChange={(e) => onChange({ description: e.target.value })}
-          />
-        </FormGroup>
+          <Field label="Internal Notes" hint="Staff only: plating guidance, prep notes, etc.">
+            <Textarea
+              rows={3}
+              value={formState.notes}
+              onChange={(e) => onChange({ notes: e.target.value })}
+            />
+          </Field>
+        </CardBody>
+      </Card>
 
-        <FormGroup label="Internal Notes" help="Staff only — plating guidance, prep notes, etc.">
-          <Textarea
-            rows={3}
-            value={formState.notes}
-            onChange={(e) => onChange({ notes: e.target.value })}
-          />
-        </FormGroup>
-      </FormSection>
-
-      <FormSection
-        title="New Product"
-        description="Shows a New badge on the website while the dish is still a launch item."
-      >
-        <Checkbox
-          label="Mark this dish as a new product"
-          checked={isMarkedNew}
-          onChange={(checked) => {
-            if (checked) {
-              const today = getTodayIsoDate();
-              onChange({
-                new_from: today,
-                new_until: getLocalIsoDateDaysAhead(DEFAULT_NEW_WINDOW_DAYS),
-              });
-            } else {
-              onChange({ new_from: '', new_until: '' });
-            }
-          }}
+      <Card>
+        <CardHeader
+          title="New Product"
+          subtitle="Shows a New badge on the website while the dish is still a launch item"
         />
+        <CardBody className="space-y-4">
+          <Checkbox
+            label="Mark this dish as a new product"
+            checked={isMarkedNew}
+            onChange={(checked) => {
+              if (checked) {
+                const today = getTodayIsoDate();
+                onChange({
+                  new_from: today,
+                  new_until: getLocalIsoDateDaysAhead(DEFAULT_NEW_WINDOW_DAYS),
+                });
+              } else {
+                onChange({ new_from: '', new_until: '' });
+              }
+            }}
+          />
 
-        {isMarkedNew && (
-          <>
-            <FormGroup label="New from" help="First day the badge appears. Defaults to today.">
-              <Input
-                type="date"
-                value={formState.new_from}
-                onChange={(e) => onChange({ new_from: e.target.value })}
-              />
-            </FormGroup>
+          {isMarkedNew && (
+            <>
+              <Field label="New from" hint="First day the badge appears. Defaults to today.">
+                <Input
+                  type="date"
+                  value={formState.new_from}
+                  onChange={(e) => onChange({ new_from: e.target.value })}
+                />
+              </Field>
 
-            <FormGroup
-              label="New until"
-              help="Last day the badge appears. Defaults to 8 weeks after launch, then it clears itself."
-              error={newWindowError}
-            >
-              <Input
-                type="date"
-                value={formState.new_until}
-                min={formState.new_from || undefined}
-                onChange={(e) => onChange({ new_until: e.target.value })}
-              />
-            </FormGroup>
-          </>
-        )}
-      </FormSection>
+              <Field
+                label="New until"
+                hint="Last day the badge appears. Defaults to 8 weeks after launch, then it clears itself."
+                error={newWindowError}
+              >
+                <Input
+                  type="date"
+                  value={formState.new_until}
+                  min={formState.new_from || undefined}
+                  onChange={(e) => onChange({ new_until: e.target.value })}
+                />
+              </Field>
+            </>
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
 }

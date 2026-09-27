@@ -8,22 +8,34 @@ import {
 // tailwind-merge only knows Tailwind's default scale. Without this it reads custom tokens
 // such as shadow-ring or rounded-pill as colours, keeps two conflicting classes, and lets
 // whichever Tailwind emits last win: that is how every DS field in an error state showed
-// the green focus halo instead of the red one (audit, 18 Sep 2026). Keep these lists in
-// step with the @theme block in src/app/globals.css.
+// the green focus halo instead of the red one (audit, 18 Sep 2026). An unregistered guest
+// type size is worse: text-guest-h1 reads as a colour, so cn('text-guest-h1', 'text-anchor-gold')
+// silently dropped the size. Keep these lists in step with the @theme block in
+// src/app/globals.css; tests/lib/cn.test.ts reads that block and fails on a name missing here.
+// Colours and font families need no entry: tailwind-merge accepts any name for those.
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      text: ['2xs', 'meta', 'ui', 'guest-lead'],
+      text: [
+        '2xs', 'meta', 'ui',
+        'guest-label', 'guest-kicker', 'guest-note', 'guest-small', 'guest-body', 'guest-lead',
+        'guest-control', 'guest-large', 'guest-h2', 'guest-figure', 'guest-h1', 'guest-h1-wide',
+        'guest-script', 'guest-amount', 'guest-amount-wide',
+      ],
       radius: ['default', 'pill', 'guest-field', 'guest-card'],
       shadow: ['default', 'ring', 'ring-inset', 'guest-card', 'guest-gold', 'guest-focus'],
       spacing: [
         'cell-y', 'input-h', 'btn-h', 'btn-h-sm', 'btn-h-lg', 'sidebar-expanded', 'sidebar-collapsed',
         'topbar', 'logo-row', 'pad-card', 'page-shell-pad-y', 'touch', 'shell-pad-top', 'shell-pad-x',
         'shell-pad-bottom',
+        'guest-3xs', 'guest-2xs', 'guest-xs', 'guest-sm', 'guest-md', 'guest-lg', 'guest-xl', 'guest-2xl',
+        'guest-3xl', 'guest-touch', 'guest-control', 'guest-control-lg', 'guest-logo',
       ],
+      leading: ['guest-flat', 'guest-snug', 'guest-body'],
+      tracking: ['guest-display', 'guest-label', 'guest-kicker'],
       ease: ['default'],
-      breakpoint: ['shell'],
-      container: ['guest'],
+      breakpoint: ['shell', 'guest-narrow'],
+      container: ['guest', 'guest-wide'],
     },
   },
 });

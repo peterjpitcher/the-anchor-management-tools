@@ -591,6 +591,8 @@ function campaignList(
   const late = lateSend ? `, ${LATE_SEND_PHRASE}` : ''
   return {
     title: `${campaignName(campaign.name)} (${campaign.audience} email, first sent ${formatDayDate(campaign.startDate)}${late}${state})`,
+    // The campaign's own name and a description: never recased into Title Case on the page.
+    titleAsWritten: true,
     items,
   }
 }

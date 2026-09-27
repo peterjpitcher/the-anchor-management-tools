@@ -1,7 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Badge, Button, Card, CardBody, Spinner, Textarea, toast } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  FormFooter,
+  PageLoading,
+  Textarea,
+  toast,
+} from '@/ds'
 import { addMaintenanceNote, getMaintenanceTimeline } from '@/app/actions/maintenance'
 import type { MaintenanceTimelineCursor, MaintenanceTimelineEntry } from '@/services/maintenance'
 import {
@@ -10,6 +22,7 @@ import {
   maintenanceHistoryFieldLabel,
   maintenanceHistoryValueLabel,
 } from './maintenanceDisplay'
+import { MAINTENANCE_PHOTO_EVENT_TONES } from '../_shared/status-ui'
 
 export interface MaintenanceTimelineProps {
   itemId: string
@@ -144,10 +157,9 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
 
   return (
     <Card>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-text">History</h2>
-
-        <form onSubmit={handleAddNote} noValidate className="mt-3">
+      <CardHeader title="History" />
+      <CardBody className="space-y-4">
+        <form onSubmit={handleAddNote} noValidate className="space-y-3">
           <Textarea
             ref={noteRef}
             label="Add a note"
@@ -158,11 +170,11 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
             error={noteError ?? undefined}
             placeholder="What has happened, or what still needs doing"
           />
-          <div className="mt-2">
-            <Button type="submit" size="sm" loading={savingNote} disabled={savingNote}>
-              Save note
+          <FormFooter>
+            <Button type="submit" variant="secondary" size="sm" loading={savingNote} disabled={savingNote}>
+              Add Note
             </Button>
-          </div>
+          </FormFooter>
         </form>
 
         <p className="sr-only" role="status" aria-live="polite">
@@ -170,31 +182,28 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
         </p>
 
         {loadError && (
-          <div className="mt-4">
-            <Alert tone="danger" title="Could not load the history">
-              <p>{loadError}</p>
-              <p className="mt-2">
-                <Button size="sm" onClick={() => void loadFirstPage()}>
-                  Try again
-                </Button>
-              </p>
-            </Alert>
-          </div>
+          <Alert tone="danger" title="Could not load the history">
+            <p>{loadError}</p>
+            <p className="mt-2">
+              <Button variant="secondary" size="sm" onClick={() => void loadFirstPage()}>
+                Try Again
+              </Button>
+            </p>
+          </Alert>
         )}
 
         {loading ? (
-          <div className="mt-4 flex items-center gap-2 text-ui text-text-muted">
-            <Spinner size="sm" />
-            <span>Loading the history</span>
-          </div>
+          <PageLoading inline label="Loading the history" />
         ) : (
           !loadError && (
-            <div className="mt-4 space-y-4">
+            <div className="space-y-4">
               <section aria-label="Notes">
                 {notes.length === 0 ? (
-                  <p className="text-ui text-text-muted">
-                    No notes yet. Anything you write here stays with the item.
-                  </p>
+                  <Empty
+                    size="sm"
+                    title="No notes yet"
+                    description="Anything you write here stays with the item."
+                  />
                 ) : (
                   <ul className="space-y-3">
                     {notes.map(entry => (
@@ -222,12 +231,12 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
                   aria-expanded={showSystem}
                   aria-controls="maintenance-system-events"
                 >
-                  {showSystem ? 'Hide system events' : `Show system events (${systemEvents.length})`}
+                  {showSystem ? 'Hide System Events' : `Show System Events (${systemEvents.length})`}
                 </Button>
 
                 <div id="maintenance-system-events" hidden={!showSystem} className="mt-2">
                   {systemEvents.length === 0 ? (
-                    <p className="text-ui text-text-muted">Nothing recorded yet.</p>
+                    <Empty size="sm" title="No system events yet" />
                   ) : (
                     <ul className="space-y-2">
                       {systemEvents.map(entry => (
@@ -252,7 +261,11 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
                           ) : (
                             <p className="flex flex-wrap items-center gap-2 text-ui text-text">
                               <span>Photo {entry.photo.fileName ?? 'added'}</span>
-                              <Badge tone={entry.photo.redactedAt ? 'warning' : 'neutral'}>
+                              <Badge
+                                tone={
+                                  MAINTENANCE_PHOTO_EVENT_TONES[entry.photo.redactedAt ? 'redacted' : 'kept']
+                                }
+                              >
                                 {entry.photo.redactedAt ? 'Redacted' : entry.photo.state}
                               </Badge>
                             </p>
@@ -270,8 +283,8 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
               </section>
 
               {hasMore && (
-                <Button size="sm" onClick={() => void loadOlder()} loading={loadingOlder}>
-                  Load older
+                <Button size="sm" variant="secondary" onClick={() => void loadOlder()} loading={loadingOlder}>
+                  Load Older
                 </Button>
               )}
             </div>

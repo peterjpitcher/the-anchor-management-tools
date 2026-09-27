@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, FormGroup, IconButton, Input, Select } from '@/ds';
-import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
-import { cn } from '@/lib/utils';
+import { Badge, Card, Field, IconButton, Input, Select, Icon } from '@/ds';
+import { inclusionTypeBorder, inclusionTypeTone, optionGroupStyle } from '../../_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -31,32 +30,6 @@ const INCLUSION_TYPES = [
   { value: 'choice', label: 'Choice' },
   { value: 'upgrade', label: 'Upgrade' },
 ];
-
-// ---------------------------------------------------------------------------
-// Option group visual helpers
-// ---------------------------------------------------------------------------
-
-// Option groups are categories with no status meaning, so they take the cat-* tokens. Two are
-// left out on purpose: cat-6 is the same amber as the warning tokens the upgrade state uses (an
-// amber group used to look exactly like an upgrade row), and cat-8 is the stone grey that reads
-// as the neutral "removable" state. The pill classes go on a DS Badge (which has no category
-// tones), in the same soft, -fg and /20 border shades as the booking status map's categories.
-const GROUP_STYLES = [
-  { border: 'border-l-cat-1', pill: 'border-cat-1/20 bg-cat-1-soft text-cat-1-fg' },
-  { border: 'border-l-cat-2', pill: 'border-cat-2/20 bg-cat-2-soft text-cat-2-fg' },
-  { border: 'border-l-cat-3', pill: 'border-cat-3/20 bg-cat-3-soft text-cat-3-fg' },
-  { border: 'border-l-cat-4', pill: 'border-cat-4/20 bg-cat-4-soft text-cat-4-fg' },
-  { border: 'border-l-cat-5', pill: 'border-cat-5/20 bg-cat-5-soft text-cat-5-fg' },
-  { border: 'border-l-cat-7', pill: 'border-cat-7/20 bg-cat-7-soft text-cat-7-fg' },
-] as const;
-
-type GroupStyle = (typeof GROUP_STYLES)[number];
-
-function getGroupStyle(group: string): GroupStyle {
-  let hash = 0;
-  for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
-  return GROUP_STYLES[Math.abs(hash) % GROUP_STYLES.length];
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -213,26 +186,17 @@ export function IngredientCompositionRow({
   const showUpgradePrice = inclusionType === 'upgrade';
 
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? getGroupStyle(groupTrimmed) : null;
+  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? optionGroupStyle(groupTrimmed) : null;
 
-  // Visual styling per inclusion type
-  const borderStyle = inclusionType === 'removable'
-    ? 'border-l-4 border-dashed border-l-border-strong'
-    : inclusionType === 'upgrade'
-      ? 'border-l-4 border-l-warning'
-      : groupStyle
-        ? cn('border-l-4', groupStyle.border)
-        : '';
+  // The left edge shows the inclusion type, or a choice's option group colour.
+  const borderStyle = groupStyle ? groupStyle.border : inclusionTypeBorder(inclusionType);
 
   return (
-    <div className={cn(
-      'rounded-lg border border-border bg-surface p-3 shadow-sm',
-      borderStyle,
-    )}>
+    <Card padding="sm" className={borderStyle}>
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <Badge tone="neutral">(removable)</Badge>
+          <Badge tone={inclusionTypeTone('removable')}>(removable)</Badge>
         </div>
       )}
       {inclusionType === 'choice' && groupTrimmed && groupStyle && (
@@ -242,7 +206,7 @@ export function IngredientCompositionRow({
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <Badge tone="warning">
+          <Badge tone={inclusionTypeTone('upgrade')}>
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
           </Badge>
         </div>
@@ -250,7 +214,7 @@ export function IngredientCompositionRow({
 
       {/* Compact row: ingredient, quantity, unit, type, [group], [price], expand/remove */}
       <div className="flex items-end gap-2 flex-wrap">
-        <FormGroup label="Ingredient" required className="min-w-0 flex-1">
+        <Field label="Ingredient" required className="min-w-0 flex-1">
           <Select
             value={row.ingredient_id}
             onChange={(e) => handleIngredientChange(e.target.value)}
@@ -264,9 +228,9 @@ export function IngredientCompositionRow({
               </option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Qty" required className="w-24 shrink-0">
+        <Field label="Qty" required className="w-24 shrink-0">
           <Input
             type="number"
             min="0.0001"
@@ -275,9 +239,9 @@ export function IngredientCompositionRow({
             onChange={(e) => onChange(index, { quantity: e.target.value })}
             required
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Unit" required className="w-32 shrink-0">
+        <Field label="Unit" required className="w-32 shrink-0">
           <Select
             value={row.unit}
             onChange={(e) => onChange(index, { unit: e.target.value })}
@@ -286,9 +250,9 @@ export function IngredientCompositionRow({
               <option key={u.value} value={u.value}>{u.label}</option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Type" className="w-28 shrink-0">
+        <Field label="Type" className="w-28 shrink-0">
           <Select
             value={inclusionType}
             onChange={(e) => handleInclusionTypeChange(e.target.value)}
@@ -297,10 +261,10 @@ export function IngredientCompositionRow({
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
         {showGroup && (
-          <div className="w-24 shrink-0">
+          <Field label="Group" className="w-24 shrink-0">
             <Input
               type="text"
               value={row.option_group}
@@ -310,16 +274,16 @@ export function IngredientCompositionRow({
               list={`ing-groups-${index}`}
               aria-label="Option group"
             />
-            {existingGroups.length > 0 && (
-              <datalist id={`ing-groups-${index}`}>
-                {existingGroups.map((g) => <option key={g} value={g} />)}
-              </datalist>
-            )}
-          </div>
+          </Field>
+        )}
+        {showGroup && existingGroups.length > 0 && (
+          <datalist id={`ing-groups-${index}`}>
+            {existingGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
         )}
 
         {showUpgradePrice && (
-          <FormGroup label="£ extra" className="w-20 shrink-0">
+          <Field label="£ extra" className="w-20 shrink-0">
             <Input
               type="number"
               min="0"
@@ -327,7 +291,7 @@ export function IngredientCompositionRow({
               value={row.upgrade_price}
               onChange={(e) => onChange(index, { upgrade_price: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Line cost display */}
@@ -347,7 +311,7 @@ export function IngredientCompositionRow({
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
             label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
-            icon={expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            icon={expanded ? <Icon name="chevronUp" size={16} /> : <Icon name="chevronDown" size={16} />}
             className="text-text-subtle hover:text-text-muted"
           />
           <IconButton
@@ -355,7 +319,7 @@ export function IngredientCompositionRow({
             onClick={() => onRemove(index)}
             disabled={!canRemove}
             label="Remove ingredient"
-            icon={<TrashIcon className="h-4 w-4" />}
+            icon={<Icon name="trash" size={16} />}
             className="text-text-subtle hover:bg-danger-soft hover:text-danger"
           />
         </div>
@@ -364,44 +328,44 @@ export function IngredientCompositionRow({
       {/* Expanded: advanced fields */}
       {expanded && (
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-5">
-          <FormGroup label="Yield %">
+          <Field label="Yield %">
             <Input
               type="number" min="0" max="100" step="1"
               value={row.yield_pct}
               onChange={(e) => onChange(index, { yield_pct: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Wastage %">
+          </Field>
+          <Field label="Wastage %">
             <Input
               type="number" min="0" max="100" step="1"
               value={row.wastage_pct}
               onChange={(e) => onChange(index, { wastage_pct: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Cost override (£)">
+          </Field>
+          <Field label="Cost override (£)">
             <Input
               type="number" min="0" step="0.01"
               value={row.cost_override}
               onChange={(e) => onChange(index, { cost_override: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Measure (ml)">
+          </Field>
+          <Field label="Measure (ml)">
             <Input
               type="number" min="0" step="1"
               value={row.measure_ml}
               onChange={(e) => onChange(index, { measure_ml: e.target.value })}
               placeholder="e.g. 568"
             />
-          </FormGroup>
-          <FormGroup label="Notes">
+          </Field>
+          <Field label="Notes">
             <Input
               value={row.notes}
               onChange={(e) => onChange(index, { notes: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -475,26 +439,17 @@ export function RecipeCompositionRow({
   const showUpgradePrice = inclusionType === 'upgrade';
 
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? getGroupStyle(groupTrimmed) : null;
+  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? optionGroupStyle(groupTrimmed) : null;
 
-  // Visual styling per inclusion type
-  const borderStyle = inclusionType === 'removable'
-    ? 'border-l-4 border-dashed border-l-border-strong'
-    : inclusionType === 'upgrade'
-      ? 'border-l-4 border-l-warning'
-      : groupStyle
-        ? cn('border-l-4', groupStyle.border)
-        : '';
+  // The left edge shows the inclusion type, or a choice's option group colour.
+  const borderStyle = groupStyle ? groupStyle.border : inclusionTypeBorder(inclusionType);
 
   return (
-    <div className={cn(
-      'rounded-lg border border-border bg-surface p-3 shadow-sm',
-      borderStyle,
-    )}>
+    <Card padding="sm" className={borderStyle}>
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <Badge tone="neutral">(removable)</Badge>
+          <Badge tone={inclusionTypeTone('removable')}>(removable)</Badge>
         </div>
       )}
       {inclusionType === 'choice' && groupTrimmed && groupStyle && (
@@ -504,7 +459,7 @@ export function RecipeCompositionRow({
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <Badge tone="warning">
+          <Badge tone={inclusionTypeTone('upgrade')}>
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
           </Badge>
         </div>
@@ -512,7 +467,7 @@ export function RecipeCompositionRow({
 
       {/* Compact row: recipe, quantity, type, [group], [price], expand/remove */}
       <div className="flex items-end gap-2 flex-wrap">
-        <FormGroup label="Recipe" required className="min-w-0 flex-1">
+        <Field label="Recipe" required className="min-w-0 flex-1">
           <Select
             value={row.recipe_id}
             onChange={(e) => onChange(index, { recipe_id: e.target.value })}
@@ -526,9 +481,9 @@ export function RecipeCompositionRow({
               </option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Qty" required className="w-24 shrink-0">
+        <Field label="Qty" required className="w-24 shrink-0">
           <Input
             type="number"
             min="0"
@@ -537,9 +492,9 @@ export function RecipeCompositionRow({
             onChange={(e) => onChange(index, { quantity: e.target.value })}
             required
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Type" className="w-28 shrink-0">
+        <Field label="Type" className="w-28 shrink-0">
           <Select
             value={inclusionType}
             onChange={(e) => handleInclusionTypeChange(e.target.value)}
@@ -548,10 +503,10 @@ export function RecipeCompositionRow({
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
         {showGroup && (
-          <div className="w-24 shrink-0">
+          <Field label="Group" className="w-24 shrink-0">
             <Input
               type="text"
               value={row.option_group}
@@ -561,16 +516,16 @@ export function RecipeCompositionRow({
               list={`rec-groups-${index}`}
               aria-label="Option group"
             />
-            {existingGroups.length > 0 && (
-              <datalist id={`rec-groups-${index}`}>
-                {existingGroups.map((g) => <option key={g} value={g} />)}
-              </datalist>
-            )}
-          </div>
+          </Field>
+        )}
+        {showGroup && existingGroups.length > 0 && (
+          <datalist id={`rec-groups-${index}`}>
+            {existingGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
         )}
 
         {showUpgradePrice && (
-          <FormGroup label="£ extra" className="w-20 shrink-0">
+          <Field label="£ extra" className="w-20 shrink-0">
             <Input
               type="number"
               min="0"
@@ -578,7 +533,7 @@ export function RecipeCompositionRow({
               value={row.upgrade_price}
               onChange={(e) => onChange(index, { upgrade_price: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Line cost display */}
@@ -598,7 +553,7 @@ export function RecipeCompositionRow({
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
             label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
-            icon={expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            icon={expanded ? <Icon name="chevronUp" size={16} /> : <Icon name="chevronDown" size={16} />}
             className="text-text-subtle hover:text-text-muted"
           />
           <IconButton
@@ -606,7 +561,7 @@ export function RecipeCompositionRow({
             onClick={() => onRemove(index)}
             disabled={!canRemove}
             label="Remove recipe"
-            icon={<TrashIcon className="h-4 w-4" />}
+            icon={<Icon name="trash" size={16} />}
             className="text-text-subtle hover:bg-danger-soft hover:text-danger"
           />
         </div>
@@ -615,35 +570,35 @@ export function RecipeCompositionRow({
       {/* Expanded: advanced fields */}
       {expanded && (
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
-          <FormGroup label="Yield %">
+          <Field label="Yield %">
             <Input
               type="number" min="0" max="100" step="1"
               value={row.yield_pct}
               onChange={(e) => onChange(index, { yield_pct: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Wastage %">
+          </Field>
+          <Field label="Wastage %">
             <Input
               type="number" min="0" max="100" step="1"
               value={row.wastage_pct}
               onChange={(e) => onChange(index, { wastage_pct: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Cost override (£)">
+          </Field>
+          <Field label="Cost override (£)">
             <Input
               type="number" min="0" step="0.01"
               value={row.cost_override}
               onChange={(e) => onChange(index, { cost_override: e.target.value })}
             />
-          </FormGroup>
-          <FormGroup label="Notes">
+          </Field>
+          <Field label="Notes">
             <Input
               value={row.notes}
               onChange={(e) => onChange(index, { notes: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

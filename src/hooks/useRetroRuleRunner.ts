@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'react-hot-toast'
+import { toast } from '@/ds'
 import {
   runReceiptRuleRetroactivelyStep,
   finalizeReceiptRuleRetroRun,

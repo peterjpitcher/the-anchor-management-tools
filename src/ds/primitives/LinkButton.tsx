@@ -17,6 +17,15 @@ export interface LinkButtonProps {
   iconRight?: React.ReactNode
   target?: string
   rel?: string
+  /**
+   * Download the file at href instead of opening it: true keeps the server's file name, a
+   * string sets it. Renders a plain <a download>, because next/link would try to navigate.
+   */
+  download?: boolean | string
+  /**
+   * Shows the link faded and makes it inert: no href (so nothing can navigate, by mouse, keyboard
+   * or middle click), out of the tab order, and announced as a disabled link.
+   */
   disabled?: boolean
   className?: string
   children: React.ReactNode
@@ -48,6 +57,7 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
       iconRight,
       target,
       rel,
+      download,
       disabled = false,
       className,
       children,
@@ -74,8 +84,22 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
       </>
     )
 
-    // External links
+    // A disabled link keeps its look and its link role but has no href, so it cannot be
+    // followed, and tabIndex -1 keeps it out of the tab order.
+    if (disabled) {
+      return (
+        <a ref={ref} role="link" aria-disabled="true" tabIndex={-1} className={classes}>
+          {inner}
+        </a>
+      )
+    }
+
+    // true or '' downloads under the server's file name; a non-empty string names the file.
+    const downloadAttr = typeof download === 'string' ? download : download ? '' : undefined
+
+    // Downloads and external links are plain anchors.
     if (
+      downloadAttr !== undefined ||
       target === '_blank' ||
       href.startsWith('http') ||
       href.startsWith('mailto:') ||
@@ -87,8 +111,8 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
           href={href}
           target={target}
           rel={rel || (target === '_blank' ? 'noopener noreferrer' : undefined)}
+          download={downloadAttr}
           className={classes}
-          aria-disabled={disabled || undefined}
         >
           {inner}
         </a>
@@ -97,7 +121,7 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
 
     // Internal links
     return (
-      <Link ref={ref} href={href} className={classes} aria-disabled={disabled || undefined}>
+      <Link ref={ref} href={href} className={classes}>
         {inner}
       </Link>
     )

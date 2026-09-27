@@ -2,8 +2,7 @@
 
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'react-hot-toast'
-import { Button, Input, Select, Card, CardBody, CardHeader, Spinner } from '@/ds'
+import { Button, Select, Card, CardBody, CardHeader, Field, FileButton, FormFooter, Icon, toast } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'
@@ -59,17 +58,18 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   if (!canManageReceipts) {
     return (
       <Card>
-        <CardHeader title="Upload bank statement" subtitle="You have view-only access. Ask a receipts manager to upload statements." />
+        <CardHeader title="Upload Bank Statement" subtitle="You have view-only access. Ask a receipts manager to upload statements" />
       </Card>
     )
   }
 
   return (
     <Card>
-      <CardHeader title="Upload bank statement" subtitle="Import CSV and auto-match recurring items." />
+      <CardHeader title="Upload Bank Statement" subtitle="Import CSV and auto-match recurring items" />
       <CardBody>
-        <form onSubmit={handleStatementSubmit} className="space-y-3">
+        <form onSubmit={handleStatementSubmit} className="space-y-4">
           <Select
+            label="Statement type"
             value={sourceType}
             onChange={(event) => {
               setSourceType(event.target.value as 'bank' | 'amex')
@@ -80,24 +80,29 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
               { value: 'amex', label: 'American Express statement' },
             ]}
           />
-          <Input
-            type="file"
-            accept=".csv"
-            onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={isStatementPending || !canManageReceipts}>
-              {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
+          {/* The picked file lives in state only, so Clear and a finished upload really do empty it
+              (a plain file input kept showing the old file name after both). */}
+          <Field label="CSV file" hint={statementFile ? statementFile.name : 'No file chosen'}>
+            <FileButton
+              accept=".csv"
+              icon={<Icon name="upload" size={16} />}
+              onFiles={(files) => setStatementFile(files[0] ?? null)}
+              disabled={isStatementPending}
+              className="self-start"
+            >
+              {statementFile ? 'Choose Another File' : 'Choose CSV File'}
+            </FileButton>
+          </Field>
+          <FormFooter
+            start={lastImport ? `Last: ${formatDate(lastImport.uploaded_at)} \u00b7 ${lastImport.original_filename}` : undefined}
+          >
+            <Button type="button" variant="secondary" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
               Clear
             </Button>
-          </div>
-          {lastImport && (
-            <p className="text-xs text-text-muted">
-              Last: {formatDate(lastImport.uploaded_at)} · {lastImport.original_filename}
-            </p>
-          )}
+            <Button type="submit" loading={isStatementPending} disabled={isStatementPending || !canManageReceipts}>
+              Upload
+            </Button>
+          </FormFooter>
         </form>
       </CardBody>
     </Card>

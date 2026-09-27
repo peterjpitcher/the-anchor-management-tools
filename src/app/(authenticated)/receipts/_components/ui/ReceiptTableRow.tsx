@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useTransition, useRef, ChangeEvent } from 'react'
-import { toast } from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, IconButton, Input, Select, Spinner } from '@/ds'
+import { useState, useTransition, useRef } from 'react'
+import { Badge, Button, ConfirmDialog, FileButton, IconButton, Input, Select, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -13,22 +12,18 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptExpenseCategory, ReceiptClassificationSource } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
-import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  PencilSquareIcon,
-  SparklesIcon,
-  ArrowUpTrayIcon,
-  ArrowUturnLeftIcon,
-  CheckIcon,
-  ForwardIcon,
-  QuestionMarkCircleIcon,
-} from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
-import { formatDateTimeInLondon } from '@/lib/dateUtils'
+import { formatCurrency, formatDate } from '@/app/(authenticated)/receipts/utils'
+import {
+  RECEIPT_CLASSIFICATION_SOURCE_LABEL,
+  RECEIPT_CLASSIFICATION_SOURCE_TONE,
+  RECEIPT_SOURCE_LABEL,
+  RECEIPT_SOURCE_TONE,
+  RECEIPT_STATUS_LABEL,
+  RECEIPT_STATUS_TONE,
+} from '@/app/(authenticated)/receipts/_shared/status-ui'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 // Re-defined here or imported? Imported `ReceiptWorkspaceData` in parent, but here we just need the type.
 // We can use ReceiptTransaction & { files: ReceiptFile[], autoRule?: ... }
@@ -40,29 +35,19 @@ type WorkspaceTransaction = ReceiptTransaction & {
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
 
 export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['source_type'] }) {
-  const isAmex = sourceType === 'amex'
+  const source = sourceType === 'amex' ? 'amex' : 'bank'
   return (
-    <Badge tone={isAmex ? 'info' : 'neutral'} size="sm">
-      {isAmex ? 'Amex' : 'Bank'}
+    <Badge tone={RECEIPT_SOURCE_TONE[source]} size="sm">
+      {RECEIPT_SOURCE_LABEL[source]}
     </Badge>
   )
 }
 
 function ClassificationBadge({ source }: { source?: ReceiptClassificationSource | null }) {
   if (!source || source === 'manual') return null
-  const labels: Record<string, string> = {
-    ai: 'AI',
-    rule: 'Rule',
-  }
-  // AI suggestions share the info tone with the sparkle icon beside them; a rule is an
-  // automation the team set up, so it takes the primary tone.
-  const tones: Record<string, 'info' | 'primary'> = {
-    ai: 'info',
-    rule: 'primary',
-  }
   return (
-    <Badge tone={tones[source] ?? 'neutral'} size="sm">
-      {labels[source] ?? source}
+    <Badge tone={RECEIPT_CLASSIFICATION_SOURCE_TONE[source] ?? 'neutral'} size="sm">
+      {RECEIPT_CLASSIFICATION_SOURCE_LABEL[source] ?? source}
     </Badge>
   )
 }
@@ -97,7 +82,6 @@ export function ReceiptTableRow({
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const noteInputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleStatusUpdate(status: ReceiptTransaction['status']) {
     if (!canManageReceipts) return
@@ -136,10 +120,9 @@ export function ReceiptTableRow({
     })
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleUpload(files: File[]) {
     if (!canManageReceipts) return
-    const file = event.target.files?.[0]
-    event.target.value = ''
+    const file = files[0]
     if (!file) return
 
     startTransition(async () => {
@@ -300,12 +283,12 @@ export function ReceiptTableRow({
           <p className="font-medium text-text-strong">{transaction.details}</p>
           <SourceBadge sourceType={transaction.source_type} />
         </div>
-        <p className="text-xs text-text-muted">{transaction.transaction_type ?? '—'}</p>
+        <p className="text-xs text-text-muted">{transaction.transaction_type ?? '-'}</p>
         {transaction.source_type === 'amex' && transaction.card_member && (
           <p className="text-xs text-text-muted">{transaction.card_member}</p>
         )}
         {transaction.rule_applied_id && (
-          <Badge tone="primary" icon={<ArrowPathIcon />} className="mt-1">
+          <Badge tone="primary" icon={<Icon name="refresh" size={12} />} className="mt-1">
             Auto rule
           </Badge>
         )}
@@ -318,7 +301,7 @@ export function ReceiptTableRow({
             {isCustomVendor ? (
               <div className="space-y-2">
                 <Input autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} placeholder="Vendor name" disabled={isPending} />
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setIsCustomVendor(false); setClassificationDraft('') }} disabled={isPending}>⟵ Pick existing</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setIsCustomVendor(false); setClassificationDraft('') }} disabled={isPending}>⟵ Pick Existing</Button>
               </div>
             ) : (
               <Select autoFocus value={classificationDraft} onChange={e => {
@@ -331,20 +314,20 @@ export function ReceiptTableRow({
               ]} />
             )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
+              <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
             {/* `||` not `??`: a blank vendor string still needs the prompt, and
-                those are exactly the rows the "Missing vendor" filter surfaces. */}
-            <button type="button" className="rounded-sm text-left text-sm font-medium text-text-strong hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
-              {transaction.vendor_name || <span className="text-text-subtle font-normal">Add vendor</span>}
-            </button>
+                those are exactly the rows the Needs Vendor tab surfaces. */}
+            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
+              {transaction.vendor_name || <span className="font-normal text-text-soft">Add vendor</span>}
+            </Button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.vendor_source} />
-              {transaction.vendor_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
+              {transaction.vendor_source === 'ai' && <Icon name="sparkles" size={12} className="text-info" />}
             </div>
           </div>
         )}
@@ -359,18 +342,18 @@ export function ReceiptTableRow({
               ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
             ]} />
             <div className="flex gap-2">
-              <Button size="sm" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
+              <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button type="button" className="rounded-sm text-left text-sm font-medium text-text-strong hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
-              {transaction.expense_category || <span className="text-text-subtle font-normal">Add category</span>}
-            </button>
+            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
+              {transaction.expense_category || <span className="font-normal text-text-soft">Add category</span>}
+            </Button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.expense_category_source} />
-              {transaction.expense_category_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
+              {transaction.expense_category_source === 'ai' && <Icon name="sparkles" size={12} className="text-info" />}
             </div>
           </div>
         )}
@@ -381,21 +364,29 @@ export function ReceiptTableRow({
 
       <td className="px-4 py-2">
         <Badge
-          tone={statusTone[transaction.status]}
+          tone={RECEIPT_STATUS_TONE[transaction.status]}
           icon={
-            transaction.status === 'completed' ? <CheckCircleIcon /> : transaction.status === 'pending' ? <XCircleIcon /> : undefined
+            transaction.status === 'completed' ? <Icon name="checkCircle" size={12} /> : transaction.status === 'pending' ? <Icon name="xCircle" size={12} /> : undefined
           }
           className="whitespace-nowrap"
         >
-          {statusLabels[transaction.status]}
+          {RECEIPT_STATUS_LABEL[transaction.status]}
         </Badge>
       </td>
 
       <td className="px-4 py-2">
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
-            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="rounded-sm text-primary hover:underline text-xs truncate max-w-[100px] focus-visible:outline-hidden focus-visible:shadow-ring">{f.file_name || 'View'}</button>
-            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring" disabled={isPending}>×</button>
+            <Button variant="link" size="xs" onClick={() => handleReceiptDownload(f.id)} className="max-w-[100px]">
+              <span className="truncate">{f.file_name || 'View'}</span>
+            </Button>
+            <IconButton
+              size="sm"
+              label={`Delete ${f.file_name || 'receipt file'}`}
+              icon={<Icon name="x" size={14} className="text-danger" />}
+              onClick={() => setDeleteFileId(f.id)}
+              disabled={isPending}
+            />
           </div>
         ))}
         {transaction.files.length > 0 && (
@@ -405,8 +396,8 @@ export function ReceiptTableRow({
           open={Boolean(deleteFileId)}
           onClose={() => setDeleteFileId(null)}
           onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
-          title="Delete receipt file"
-          message="Remove this receipt file from the transaction?"
+          title="Delete Receipt File"
+          message="Delete this receipt file from the transaction? This cannot be undone."
           confirmLabel="Delete"
           tone="danger"
         />
@@ -424,7 +415,7 @@ export function ReceiptTableRow({
               disabled={isPending}
             />
             <div className="flex gap-1">
-              <Button size="sm" onClick={saveNote} disabled={isPending}>Save</Button>
+              <Button size="sm" variant="primary" onClick={saveNote} loading={isPending}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
@@ -436,13 +427,13 @@ export function ReceiptTableRow({
                 <p className="text-sm text-text break-words">{transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes}</p>
               </>
             ) : (
-              <span className="text-xs text-text-subtle italic">No notes</span>
+              <span className="text-xs text-text-soft italic">No notes</span>
             )}
             {/* Always visible: this table is used on an iPad, where there is no
                 hover and a hover-only control is simply unreachable. */}
-            <button type="button" onClick={startNoteEdit} className="rounded-sm text-xs text-text-muted flex items-center gap-1 hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
-              <PencilSquareIcon className="h-3 w-3" /> Edit
-            </button>
+            <Button variant="ghost" size="xs" icon={<Icon name="edit" size={12} />} onClick={startNoteEdit} disabled={!canManageReceipts}>
+              Edit
+            </Button>
           </div>
         )}
       </td>
@@ -451,15 +442,16 @@ export function ReceiptTableRow({
         {/* Default IconButton size (31px square), not sm (25px): this table is used on an iPad,
             and the buttons these replaced were 36px wide, so sm would shrink every target. */}
         <div className="flex flex-row items-center gap-1">
-          <IconButton
+          {/* FileButton, not the FileUpload drop zone, which is too big for a table row. */}
+          <FileButton
             variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
+            accept={RECEIPT_UPLOAD_ACCEPT}
+            onFiles={handleUpload}
             disabled={isPending || !canManageReceipts}
+            aria-label="Upload receipt"
             title="Upload receipt"
-            label="Upload receipt"
-            icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+            icon={<Icon name="upload" size={16} />}
           />
-          <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
           {transaction.status !== 'completed' && (
             <IconButton
@@ -468,7 +460,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Mark as done"
               label="Mark as done"
-              icon={<CheckIcon className="h-4 w-4" />}
+              icon={<Icon name="check" size={16} />}
             />
           )}
 
@@ -479,7 +471,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Skip (no receipt needed)"
               label="Skip (no receipt needed)"
-              icon={<ForwardIcon className="h-4 w-4" />}
+              icon={<Icon name="fastForward" size={16} />}
             />
           )}
 
@@ -491,7 +483,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Mark as missing"
               label="Mark as missing"
-              icon={<QuestionMarkCircleIcon className="h-4 w-4" />}
+              icon={<Icon name="helpCircle" size={16} />}
             />
           )}
 
@@ -502,7 +494,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Reopen"
               label="Reopen"
-              icon={<ArrowUturnLeftIcon className="h-4 w-4" />}
+              icon={<Icon name="undo" size={16} />}
             />
           )}
         </div>

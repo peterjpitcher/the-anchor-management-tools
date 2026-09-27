@@ -85,17 +85,40 @@ describe('GuestShell', () => {
     ).toBeInTheDocument()
   })
 
-  it('honours the width, padding and centring overrides the feedback pages need', () => {
+  it('offers exactly two column widths, the default and one named wide option', () => {
+    const { rerender } = render(
+      <GuestShell>
+        <p>Body content</p>
+      </GuestShell>
+    )
+
+    let main = screen.getByRole('main')
+    expect(main.className).toContain('max-w-guest')
+    expect(main.className).not.toContain('max-w-guest-wide')
+
+    rerender(
+      <GuestShell width="wide">
+        <p>Body content</p>
+      </GuestShell>
+    )
+
+    main = screen.getByRole('main')
+    expect(main.className).toContain('max-w-guest-wide')
+    // The shell owns the rhythm and the gutters on every page: no arbitrary values.
+    expect(main.className).toContain('gap-guest-lg')
+    expect(main.className).toContain('px-guest-lg')
+    expect(main.className).not.toMatch(/\[\d/)
+  })
+
+  it('centres the column and its text for the two short feedback pages', () => {
     render(
-      <GuestShell maxWidthClassName="max-w-2xl" bodyClassName="pt-10" centred>
+      <GuestShell centred>
         <p>Body content</p>
       </GuestShell>
     )
 
     const main = screen.getByRole('main')
-    expect(main.className).toContain('max-w-2xl')
     expect(main.className).toContain('items-center')
     expect(main.className).toContain('text-center')
-    expect(main.className).not.toContain('max-w-[560px]')
   })
 })

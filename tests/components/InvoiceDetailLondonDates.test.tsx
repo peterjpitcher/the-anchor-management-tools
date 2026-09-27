@@ -91,7 +91,7 @@ function overdueInvoice(): InvoiceWithDetails {
 }
 
 function chooseNewDueDate(isoDate: string) {
-  fireEvent.click(screen.getByRole('button', { name: 'Change due date' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Change Due Date' }))
   fireEvent.change(screen.getByLabelText('New due date'), { target: { value: isoDate } })
 }
 
@@ -128,7 +128,7 @@ describe('InvoiceDetailClient on the London clock', () => {
     // Invoice date, due date and the payment date are all Postgres date columns.
     expect(screen.getAllByText('01/10/2026')).toHaveLength(3)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change due date' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change Due Date' }))
     expect(screen.getAllByText('01/10/2026')).toHaveLength(4)
   })
 })

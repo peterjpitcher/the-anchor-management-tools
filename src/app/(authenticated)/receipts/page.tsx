@@ -3,6 +3,7 @@ import { currentUserCanGovernReceiptRules, getReceiptWorkspaceData, type Receipt
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { ReceiptsPageChrome } from './_components/ReceiptsPageChrome'
+import { ReceiptReclassify } from './_components/ui/ReceiptReclassify'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
@@ -24,9 +25,10 @@ type ReceiptsPageProps = {
 }
 
 export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) {
-  const [canView, canExport] = await Promise.all([
+  const [canView, canExport, canManage] = await Promise.all([
     checkUserPermission('receipts', 'view'),
     checkUserPermission('receipts', 'export'),
+    checkUserPermission('receipts', 'manage'),
   ])
   if (!canView) {
     redirect('/unauthorized')
@@ -110,9 +112,16 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
 
   return (
     <ReceiptsPageChrome
-      title="Receipts"
-      subtitle="Upload statements, tick off receipts, and download quarterly packs."
+      subtitle={
+        missingVendorOnly
+          ? 'Needs Vendor: transactions still waiting for a vendor'
+          : missingExpenseOnly
+            ? 'Needs Expense: transactions still waiting for an expense category'
+            : 'Receipts: upload statements, tick off receipts and download quarterly packs'
+      }
       navState={{ view: 'workspace', missingVendorOnly, missingExpenseOnly }}
+      canManage={canManage}
+      headerActions={<ReceiptReclassify />}
     >
       <ReceiptsClient
         initialData={data}

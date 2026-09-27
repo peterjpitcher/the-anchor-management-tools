@@ -19,6 +19,7 @@ export { ProgressBar } from './ProgressBar'
 export { Spinner } from './Spinner'
 export { SearchInput } from './SearchInput'
 export { Dropdown, DropdownItem } from './Dropdown'
+export type { DropdownWidth } from './Dropdown'
 
 export { Tooltip } from './Tooltip'
 export { ConfirmDialog } from './ConfirmDialog'
@@ -35,6 +36,11 @@ export { LinkButton } from './LinkButton'
 
 export { Accordion } from './Accordion'
 
-export { Pagination } from './Pagination'
-
 export { FormSubmitButton } from './FormSubmitButton'
+
+export { FileButton } from './FileButton'
+export type { FileButtonProps } from './FileButton'
+export { Fieldset } from './Fieldset'
+export type { FieldsetProps } from './Fieldset'
+export { SubHeading } from './SubHeading'
+export type { SubHeadingProps } from './SubHeading'

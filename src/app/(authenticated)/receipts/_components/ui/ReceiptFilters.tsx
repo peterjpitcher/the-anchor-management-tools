@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, FormEvent, ChangeEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Button, Input, Select, Checkbox } from '@/ds'
+import { Button, Input, Select, Checkbox, Fieldset } from '@/ds'
 import type { ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 
@@ -179,58 +179,54 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
     applyFilters({ ...localFilters, groupByVendor: checked })
   }
 
-  function handleMissingVendorToggle(checked: boolean) {
-    applyFilters({ ...localFilters, missingVendorOnly: checked })
-  }
-
-  function handleMissingExpenseToggle(checked: boolean) {
-    applyFilters({ ...localFilters, missingExpenseOnly: checked })
-  }
-
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Select value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
-        <Select value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
-        <Select value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <Select label="Status" value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
+        <Select label="Direction" value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
+        <Select label="Source" value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
         {availableCardMembers.length > 0 && localFilters.sourceType === 'amex' && (
-          <Select value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
+          <Select label="Cardholder" value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
         )}
       </div>
 
       {monthOptions.length > 0 && (
-        <div
-          className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-        >
-          <Button
-            variant={!localFilters.month ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => applyFilters({ ...localFilters, month: undefined })}
-            className="whitespace-nowrap flex-shrink-0"
+        <Fieldset legend="Month">
+          <div
+            className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            All time
-          </Button>
-          {monthOptions.map((monthValue) => {
-            const isActive = monthValue === localFilters.month
-            return (
-              <Button
-                key={monthValue}
-                variant={isActive ? 'secondary' : 'ghost'}
-                size="sm"
-                aria-pressed={isActive}
-                onClick={() => handleMonthSelect(monthValue)}
-                className="whitespace-nowrap flex-shrink-0"
-              >
-                {formatMonthLabel(monthValue)}
-              </Button>
-            )
-          })}
-        </div>
+            <Button
+              variant={!localFilters.month ? 'secondary' : 'ghost'}
+              size="sm"
+              aria-pressed={!localFilters.month}
+              onClick={() => applyFilters({ ...localFilters, month: undefined })}
+              className="whitespace-nowrap flex-shrink-0"
+            >
+              All Time
+            </Button>
+            {monthOptions.map((monthValue) => {
+              const isActive = monthValue === localFilters.month
+              return (
+                <Button
+                  key={monthValue}
+                  variant={isActive ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={isActive}
+                  onClick={() => handleMonthSelect(monthValue)}
+                  className="whitespace-nowrap flex-shrink-0"
+                >
+                  {formatMonthLabel(monthValue)}
+                </Button>
+              )
+            })}
+          </div>
+        </Fieldset>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
           <Input
+            label="Search"
             name="search"
             placeholder="Search description or type"
             value={localFilters.search ?? ''}
@@ -250,16 +246,8 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
             checked={localFilters.groupByVendor}
             onChange={handleGroupByVendorToggle}
           />
-          <Checkbox
-            label="Missing vendor"
-            checked={localFilters.missingVendorOnly}
-            onChange={handleMissingVendorToggle}
-          />
-          <Checkbox
-            label="Missing expense"
-            checked={localFilters.missingExpenseOnly}
-            onChange={handleMissingExpenseToggle}
-          />
+          {/* Missing vendor and missing expense are the Needs Vendor and Needs Expense tabs, not
+              filters here: the filters keep whichever of them is on while the others change. */}
         </div>
       </div>
     </div>

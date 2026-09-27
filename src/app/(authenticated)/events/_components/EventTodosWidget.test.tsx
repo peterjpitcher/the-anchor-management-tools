@@ -20,18 +20,20 @@ vi.mock('@/ds', async () => {
   const React = await import('react')
   return {
     Card: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
-    CardHeader: ({ title, subtitle }: { title?: string; subtitle?: string }) =>
-      React.createElement('div', null, title, subtitle ? React.createElement('p', null, subtitle) : null),
+    CardHeader: ({ title, subtitle, action }: { title?: string; subtitle?: string; action?: React.ReactNode }) =>
+      React.createElement('div', null, title, subtitle ? React.createElement('p', null, subtitle) : null, action),
     CardBody: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
     Badge: ({ tone, children }: { tone?: string; children: React.ReactNode }) =>
       React.createElement('span', { 'data-tone': tone }, children),
     Checkbox: ({
       onChange,
       checked,
+      touchTarget,
       ...rest
     }: {
       onChange?: (v: boolean) => void
       checked?: boolean
+      touchTarget?: boolean
       'aria-label'?: string
     }) =>
       React.createElement('button', {
@@ -39,8 +41,15 @@ vi.mock('@/ds', async () => {
         role: 'checkbox',
         'aria-checked': Boolean(checked),
         'aria-label': rest['aria-label'],
+        'data-touch-target': touchTarget ? 'true' : undefined,
         onClick: () => onChange?.(!checked),
       }),
+    Alert: ({ tone, children }: { tone?: string; children: React.ReactNode }) =>
+      React.createElement('div', { role: 'alert', 'data-tone': tone }, children),
+    Empty: ({ title, description }: { title: string; description?: string }) =>
+      React.createElement('div', null, React.createElement('p', null, title), description ? React.createElement('p', null, description) : null),
+    LinkButton: ({ href, children }: { href: string; children: React.ReactNode }) =>
+      React.createElement('a', { href }, children),
     toast: { error: vi.fn(), success: vi.fn() },
   }
 })
@@ -100,8 +109,14 @@ describe('EventTodosWidget', () => {
 
   it('shows a load-error state instead of the caught-up state when loadError is set', () => {
     render(<EventTodosWidget initialTodos={[]} canManage todayIso={TODAY} loadError="boom" />)
+    expect(screen.getByRole('alert')).toHaveAttribute('data-tone', 'danger')
     expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument()
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument()
+  })
+
+  it('links to the full cross-event todo list', () => {
+    render(<EventTodosWidget initialTodos={[makeItem()]} canManage todayIso={TODAY} />)
+    expect(screen.getByRole('link', { name: 'View All' })).toHaveAttribute('href', '/events/todo')
   })
 
   it('hides checkboxes when the user cannot manage', () => {
@@ -114,6 +129,24 @@ describe('EventTodosWidget', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' }),
     ).toBeInTheDocument()
+  })
+
+  it('asks the DS checkbox for its 44px tap area instead of wrapping it in a label', () => {
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Update All Event Details and Publish' })]} canManage todayIso={TODAY} />)
+    const checkbox = screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' })
+    expect(checkbox).toHaveAttribute('data-touch-target', 'true')
+    expect(checkbox.closest('label')).toBeNull()
+  })
+
+  it('keeps the link clear of the tick\'s 44px tap area, so a tap on the link opens the event', () => {
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Update All Event Details and Publish' })]} canManage todayIso={TODAY} />)
+    const checkbox = screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' })
+    // The tap area reaches 14px past the 16px box (the DS input sits above the link), so the row
+    // leaves a 14px gap (gap-3.5) before the link. A gap-2 row let the tick take the link's first 6px.
+    const row = checkbox.closest('li')
+    expect(row).toHaveClass('gap-3.5')
+    expect(row).not.toHaveClass('gap-2')
+    expect(row?.querySelector('a[href^="/events/"]')).not.toBeNull()
   })
 
   it('optimistically removes a todo on successful completion', async () => {

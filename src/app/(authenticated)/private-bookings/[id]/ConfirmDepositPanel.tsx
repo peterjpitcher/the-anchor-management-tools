@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Alert, Button, FormGroup, Input, Modal, Textarea, toast } from '@/ds'
+import { Alert, Button, Field, Input, Modal, Textarea, toast } from '@/ds'
 import { formatDateFull } from '@/lib/dateUtils'
 import { confirmPrivateBookingDeposit } from '@/app/actions/privateBookingActions'
 
@@ -86,7 +86,7 @@ export function ConfirmDepositPanel({
 
   return (
     <>
-      <Alert tone="warning" title="Deposit to be confirmed" className="mb-6">
+      <Alert tone="warning" title="Deposit to be confirmed">
         <p>
           The guest has not been told a deposit yet. Deposit reminders and the automatic release of
           the hold are paused until you confirm it.
@@ -94,7 +94,7 @@ export function ConfirmDepositPanel({
         {canConfirm ? (
           <div className="mt-3">
             <Button type="button" variant="primary" size="sm" onClick={openDialog}>
-              Confirm deposit
+              Confirm Deposit
             </Button>
           </div>
         ) : (
@@ -107,20 +107,20 @@ export function ConfirmDepositPanel({
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title="Confirm the deposit"
+        title="Confirm Deposit"
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
             </Button>
             <Button type="button" variant="primary" onClick={handleConfirm} loading={pending} disabled={pending}>
-              Confirm and send
+              Confirm and Send
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-4">
-          <FormGroup label="Deposit amount (£)" required>
+          <Field label="Deposit amount (£)" required>
             <Input
               id="confirm-deposit-amount"
               type="number"
@@ -130,9 +130,9 @@ export function ConfirmDepositPanel({
               onChange={(event) => setAmount(event.target.value)}
               disabled={pending}
             />
-          </FormGroup>
+          </Field>
           {needsReason && (
-            <FormGroup label="Reason for the reduced deposit (General Manager)" required>
+            <Field label="Reason for the reduced deposit (General Manager)" required>
               <Textarea
                 id="confirm-deposit-reason"
                 rows={2}
@@ -141,7 +141,7 @@ export function ConfirmDepositPanel({
                 disabled={pending}
                 placeholder="The standard deposit is £250"
               />
-            </FormGroup>
+            </Field>
           )}
           <div className="space-y-2 text-sm text-text">
             {deadline && <p>{deadline}</p>}

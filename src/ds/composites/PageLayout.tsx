@@ -3,14 +3,14 @@
 import React from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Spinner } from '@/ds/primitives/Spinner'
 import { Alert } from '@/ds/primitives/Alert'
 import { Button } from '@/ds/primitives/Button'
 import { Icon } from '@/ds/icons'
 import { SectionNav } from './SectionNav'
+import { PageLoading } from './PageLoading'
 
 /* ------------------------------------------------------------------ */
-/*  HeaderNav — PageLayout adapter for the standard SectionNav        */
+/*  HeaderNav: PageLayout adapter for the standard SectionNav         */
 /* ------------------------------------------------------------------ */
 
 export interface HeaderNavItem {
@@ -93,10 +93,10 @@ function HeaderNav({
     disabled: item.disabled,
   }))
 
+  // No match means no tab is current. Falling back to the first tab told people they were
+  // somewhere they were not; a page that belongs under a tab marks it with `active`.
   const activeItem = resolvedItems.find(({ active }) => active)
-  const activeId = activeItem
-    ? getItemId(activeItem.item, resolvedItems.indexOf(activeItem))
-    : sectionItems[0]?.id ?? ''
+  const activeId = activeItem ? getItemId(activeItem.item, resolvedItems.indexOf(activeItem)) : ''
 
   const handleSelect = (id: string) => {
     const match = resolvedItems.find(({ item }, index) => getItemId(item, index) === id)
@@ -117,15 +117,16 @@ function HeaderNav({
 export interface PageLayoutProps {
   title: string
   subtitle?: string
-  breadcrumbs?: Array<{ label: string; href?: string }>
+  /** A child page's way back: "Back to <the parent page's title>", pointing at that parent. No breadcrumbs. */
   backButton?: { label: string; href?: string; onBack?: () => void }
   headerActions?: React.ReactNode
   showHeaderActionsOnMobile?: boolean
   hideMobileMenuButton?: boolean
   compactHeader?: boolean
   /**
-   * 'default' sits on the app background like PageHeader, so list and detail pages look the
-   * same. 'dark' paints the page and header in the sidebar green for the FOH manager kiosk.
+   * 'default' is every staff page. 'dark' is reserved for the FOH manager iPad kiosk, which the
+   * owner keeps exactly as it is: it paints the page in the brand colour and keeps its original
+   * 768px header switch and spacing.
    */
   headerVariant?: 'default' | 'dark'
   navItems?: HeaderNavItem[]
@@ -133,6 +134,11 @@ export interface PageLayoutProps {
   toolbar?: React.ReactNode
   children?: React.ReactNode
   padded?: boolean
+  /**
+   * 'full' (the default) for lists, dashboards, grids and editors with tables. A page whose
+   * content is a single form with no table uses 'md'. Narrow content stays left-aligned under
+   * the title.
+   */
   containerSize?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
   loading?: boolean
   loadingLabel?: string
@@ -156,16 +162,40 @@ const maxWidthClasses: Record<string, string> = {
  * Spacing. AppShell's <main> pads the page (12px 16px on phones, the shell-pad tokens from the
  * shell breakpoint up). PageLayout cancels that padding with matching negative margins and adds
  * it back inside, so the dark kiosk variant can paint edge to edge while the default variant's
- * title and content line up exactly with pages that use PageHeader.
+ * title and content keep the shell inset.
+ *
+ * Rhythm. The content area is a 24px stack (`space-y-6`), so blocks passed as children are
+ * spaced the same on every page. Pages never add their own outer padding, margins between
+ * blocks, or spacing classes on the header.
  */
 const BLEED = '-mx-4 -mt-3 shell:-mx-shell-pad-x shell:-mt-shell-pad-top'
 const INSET_X = 'px-4 shell:px-shell-pad-x'
 const INSET_X_COMPACT = 'px-3 shell:px-4'
 
+/*
+ * Phone or desktop header. Staff pages switch where the app shell switches (821px, `shell:`),
+ * so an iPad in portrait gets the phone header with the phone shell. The dark FOH kiosk keeps
+ * its original 768px (`md:`) switch: the owner asked for that screen to stay exactly as it is.
+ * Whole class strings only, so Tailwind can see every class.
+ */
+const RESPONSIVE = {
+  default: {
+    mobileOnly: 'shell:hidden',
+    desktopOnly: 'hidden shell:flex shell:flex-row shell:items-start shell:justify-between shell:gap-4',
+    navRow: 'flex flex-wrap items-center gap-3 text-xs shell:gap-4 shell:text-sm',
+    navRowCompact: 'flex flex-wrap items-center gap-2 text-xs shell:gap-3 shell:text-sm',
+  },
+  dark: {
+    mobileOnly: 'md:hidden',
+    desktopOnly: 'hidden md:flex md:flex-row md:items-start md:justify-between md:gap-4',
+    navRow: 'flex flex-wrap items-center gap-3 text-xs md:gap-4 md:text-sm',
+    navRowCompact: 'flex flex-wrap items-center gap-2 text-xs md:gap-3 md:text-sm',
+  },
+} as const
+
 export function PageLayout({
   title,
   subtitle,
-  breadcrumbs,
   backButton,
   headerActions,
   navItems,
@@ -188,6 +218,7 @@ export function PageLayout({
 }: PageLayoutProps) {
   const router = useRouter()
   const dark = headerVariant === 'dark'
+  const responsive = dark ? RESPONSIVE.dark : RESPONSIVE.default
   const insetX = compactHeader ? INSET_X_COMPACT : INSET_X
   const showMobileHeaderActionsInNavRow = Boolean(headerActions) && !showHeaderActionsOnMobile
   const hasNavRow =
@@ -212,12 +243,12 @@ export function PageLayout({
         className={cn(
           'flex flex-wrap items-center gap-2',
           navItems && navItems.length > 0 ? '' : 'sm:ml-auto',
-          !navActions && 'md:hidden',
+          !navActions && responsive.mobileOnly,
         )}
       >
         {navActions}
         {showMobileHeaderActionsInNavRow && headerActions && (
-          <div className="flex flex-wrap items-center gap-2 md:hidden">{headerActions}</div>
+          <div className={cn('flex flex-wrap items-center gap-2', responsive.mobileOnly)}>{headerActions}</div>
         )}
       </div>
     ) : null
@@ -239,70 +270,26 @@ export function PageLayout({
         >
           {errorMessage}
           {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-2 text-sm font-medium text-danger-fg hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
-            >
-              Try again
-            </button>
+            <div className="mt-3">
+              <Button variant="secondary" size="sm" onClick={onRetry}>
+                Try Again
+              </Button>
+            </div>
           )}
         </Alert>
       )
     }
 
     if (loading) {
-      return (
-        <div className="flex min-h-[200px] items-center justify-center">
-          <Spinner size="lg" />
-          <span className="ml-3 text-sm text-text-muted">{loadingLabel}</span>
-        </div>
-      )
+      return <PageLoading inline label={loadingLabel} />
     }
 
     return children
   })()
 
-  const breadcrumbsNode =
-    breadcrumbs && breadcrumbs.length > 0 ? (
-      <nav
-        aria-label="Breadcrumbs"
-        className={cn('mb-2 flex items-center gap-1 text-sm', subtitleColour)}
-      >
-        {breadcrumbs.map((crumb, i) => {
-          const isLast = i === breadcrumbs.length - 1
-          return (
-            <React.Fragment key={crumb.label}>
-              {i > 0 && (
-                <Icon
-                  name="chevronRight"
-                  size={14}
-                  className={cn('flex-shrink-0', dark ? 'text-on-dark-subtle' : 'text-text-subtle')}
-                />
-              )}
-              {isLast ? (
-                <span className={cn('truncate font-medium', dark ? 'text-on-dark' : 'text-text')}>
-                  {crumb.label}
-                </span>
-              ) : crumb.href ? (
-                <a
-                  href={crumb.href}
-                  className={cn('truncate transition-colors', dark ? 'hover:text-on-dark' : 'hover:text-text')}
-                >
-                  {crumb.label}
-                </a>
-              ) : (
-                <span className="truncate">{crumb.label}</span>
-              )}
-            </React.Fragment>
-          )
-        })}
-      </nav>
-    ) : null
-
   /* Mobile header */
   const mobileHeader = (
-    <div className={cn(compactHeader ? 'flex items-center gap-1.5 md:hidden' : 'flex items-center gap-2 md:hidden')}>
+    <div className={cn('flex items-center', compactHeader ? 'gap-1.5' : 'gap-2', responsive.mobileOnly)}>
       {backButton && (
         <button
           type="button"
@@ -328,7 +315,7 @@ export function PageLayout({
         >
           {title}
         </h1>
-        {subtitle && <p className={cn('truncate text-xs', subtitleColour)}>{subtitle}</p>}
+        {subtitle && <p className={cn('text-xs', subtitleColour)}>{subtitle}</p>}
       </div>
       {showHeaderActionsOnMobile && headerActions && (
         <div className="ml-1 flex items-center gap-2">{headerActions}</div>
@@ -352,9 +339,9 @@ export function PageLayout({
     </div>
   )
 
-  /* Desktop header: the same title, subtitle and action row as PageHeader */
+  /* Desktop header: title and subtitle on the left, header actions and the back button on the right */
   const desktopHeader = (
-    <div className="hidden md:flex md:flex-row md:items-start md:justify-between md:gap-4">
+    <div className={responsive.desktopOnly}>
       <div className="min-w-0 flex-1">
         <h1
           className={cn(
@@ -398,13 +385,6 @@ export function PageLayout({
         className,
       )}
     >
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-surface focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-sm focus:font-medium focus:text-text"
-      >
-        Skip to main content
-      </a>
-
       {/* Page header */}
       <div
         className={cn(
@@ -418,7 +398,6 @@ export function PageLayout({
             compactHeader ? 'pt-2 pb-2 shell:pt-3 shell:pb-3' : 'pt-3 pb-4 shell:pt-shell-pad-top',
           )}
         >
-          {breadcrumbsNode}
           {mobileHeader}
           {desktopHeader}
         </div>
@@ -426,13 +405,7 @@ export function PageLayout({
         {/* Sub-navigation / toolbar */}
         {(navRow || toolbar) && (
           <div className={cn(insetX, compactHeader ? 'pb-2' : 'pb-4')}>
-            <div
-              className={cn(
-                compactHeader
-                  ? 'flex flex-wrap items-center gap-2 text-xs md:gap-3 md:text-sm'
-                  : 'flex flex-wrap items-center gap-3 text-xs md:gap-4 md:text-sm',
-              )}
-            >
+            <div className={compactHeader ? responsive.navRowCompact : responsive.navRow}>
               {toolbar ? (
                 <div className="flex flex-col gap-3 w-full">
                   {navRow}
@@ -446,18 +419,20 @@ export function PageLayout({
         )}
       </div>
 
-      <main id="main-content" className={cn('flex-1', padded && 'pb-4')}>
+      {/* The shell owns the <main> landmark and the skip link; this is the page body. */}
+      <div className="flex-1">
         <div
           className={cn(
-            'w-full mx-auto',
+            'w-full',
             maxWidthClasses[containerSize],
-            padded ? cn(insetX, 'pt-0') : 'pt-0',
+            padded ? insetX : undefined,
+            !dark && 'space-y-6',
             contentClassName,
           )}
         >
           {content}
         </div>
-      </main>
+      </div>
     </div>
   )
 }

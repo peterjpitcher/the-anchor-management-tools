@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+// Confirmations are toasts, so assert on the toast rather than on inline text.
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}))
+
 vi.mock('@/app/actions/maintenance-areas', () => ({
   listMaintenanceAreasForAdmin: vi.fn(),
   createMaintenanceArea: vi.fn(),
@@ -18,6 +23,7 @@ import {
   setMaintenanceAreaActive,
 } from '@/app/actions/maintenance-areas'
 import MaintenanceAreasClient from '@/app/(authenticated)/settings/maintenance/MaintenanceAreasClient'
+import { toast } from '@/ds/primitives/Toast'
 import { AREA_DUPLICATE_NAME_MESSAGE } from '@/lib/maintenance/areas'
 import type { MaintenanceArea } from '@/types/maintenance'
 
@@ -63,7 +69,7 @@ describe('the maintenance areas settings screen', () => {
 
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Turn off' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Turn Off' })).toHaveLength(2)
   })
 
   it('shows the duplicate name message rather than a constraint error', async () => {
@@ -71,7 +77,7 @@ describe('the maintenance areas settings screen', () => {
     render(<MaintenanceAreasClient initialAreas={AREAS} initialError={null} />)
 
     await userEvent.type(screen.getByLabelText('Area name'), 'main   BAR')
-    await userEvent.click(screen.getByRole('button', { name: 'Add area' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Create Area' }))
 
     await waitFor(() => {
       expect(screen.getByText(AREA_DUPLICATE_NAME_MESSAGE)).toBeInTheDocument()
@@ -87,10 +93,10 @@ describe('the maintenance areas settings screen', () => {
     const field = screen.getByLabelText('Rename Main Bar')
     await userEvent.clear(field)
     await userEvent.type(field, 'Front Bar')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Existing items now show the new name/)).toBeInTheDocument()
+      expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/Existing items now show the new name/))
     })
   })
 
@@ -98,14 +104,16 @@ describe('the maintenance areas settings screen', () => {
     mockedSetActive.mockResolvedValue({ success: true, data: area(BAR_ID, 'Main Bar', 10, false) })
     render(<MaintenanceAreasClient initialAreas={AREAS} initialError={null} />)
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Turn off' })[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Turn Off' })[0])
 
     await waitFor(() => {
       expect(mockedSetActive).toHaveBeenCalledWith({ id: BAR_ID, active: false })
     })
-    expect(
-      screen.getByText(/Existing items keep it and stay filterable by it/),
-    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringMatching(/Existing items keep it and stay filterable by it/),
+      )
+    })
   })
 
   it('sends the whole running order when an area is moved', async () => {
@@ -123,11 +131,12 @@ describe('the maintenance areas settings screen', () => {
     mockedSetActive.mockResolvedValue({ success: false, error: 'Insufficient permissions' })
     render(<MaintenanceAreasClient initialAreas={AREAS} initialError={null} />)
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Turn off' })[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Turn Off' })[0])
 
     await waitFor(() => {
       expect(screen.getByText('Insufficient permissions')).toBeInTheDocument()
     })
+    expect(toast.success).not.toHaveBeenCalled()
   })
 
   it('shows a load failure passed down from the server', () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CreateAccountStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/CreateAccountStep'
 import PersonalStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/PersonalStep'
@@ -43,7 +43,10 @@ describe('onboarding step errors', () => {
     fireEvent.blur(field)
 
     expect(await screen.findByText(/already goes by "Peter"/)).toBeInTheDocument()
-    expect(field).toHaveAttribute('aria-invalid', 'true')
+    // A soft warning (Input warning), not an error: it is the field's description, so a screen
+    // reader hears it on the field, and it does not mark the field invalid.
+    expect(field).toHaveAccessibleDescription(/already goes by "Peter"/)
+    expect(field).not.toHaveAttribute('aria-invalid')
   })
 
   it('clears the preferred name warning once the starter edits it again', async () => {
@@ -74,9 +77,13 @@ describe('onboarding step errors', () => {
     fireEvent.change(field, { target: { value: 'Peter' } })
     fireEvent.blur(field)
 
-    await waitFor(() => {
-      expect(field).not.toHaveAttribute('aria-invalid')
-    })
+    await waitFor(() => expect(checkPreferredNameAvailability).toHaveBeenCalled())
+    // Let the rejected check settle, then the field carries no warning: its description is only
+    // the help text (a warning would come first), and it is not marked invalid.
+    await act(async () => {})
+    expect(field).toHaveAccessibleDescription(/^What you would like the team to call you/)
+    expect(field).not.toHaveAttribute('aria-invalid')
+    expect(field).toHaveValue('Peter')
   })
 
   it('surfaces thrown account creation errors', async () => {
