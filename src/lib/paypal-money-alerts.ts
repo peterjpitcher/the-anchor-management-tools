@@ -118,6 +118,13 @@ function linkFor(input: PayPalMoneyAlertInput): string | null {
   }
 }
 
+/**
+ * Invoice refunds and reversals need a credit note, which the owner raises, so those alerts go only
+ * to this inbox rather than the general CRON_ALERT_EMAIL (owner decision, 27 September 2026). Every
+ * other PayPal money alert still goes to CRON_ALERT_EMAIL.
+ */
+export const INVOICE_CREDIT_NOTE_ALERT_RECIPIENT = 'manager@the-anchor.pub'
+
 export async function alertStaffToPayPalMoneyEvent(
   supabase: SupabaseClient<any, 'public', any>,
   input: PayPalMoneyAlertInput,
@@ -148,6 +155,7 @@ export async function alertStaffToPayPalMoneyEvent(
   const result = await reportPaymentAlert({
     title,
     summary,
+    to: input.domain === 'invoices' ? INVOICE_CREDIT_NOTE_ALERT_RECIPIENT : undefined,
     context: {
       Record: `${input.domain} ${input.key}`,
       Link: linkFor(input),

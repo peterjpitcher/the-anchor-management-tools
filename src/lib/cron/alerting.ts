@@ -55,8 +55,10 @@ export async function reportPaymentAlert(input: {
   title: string
   summary: string
   context?: Record<string, unknown>
+  /** Send to this inbox instead of CRON_ALERT_EMAIL (for alerts one person owns). */
+  to?: string
 }): Promise<{ sent: boolean; reason?: string }> {
-  const alertEmail = process.env.CRON_ALERT_EMAIL
+  const alertEmail = input.to ?? process.env.CRON_ALERT_EMAIL
   if (!alertEmail) {
     console.error(`[payment-alert] CRON_ALERT_EMAIL not configured; staff were NOT told: ${input.title}`)
     return { sent: false, reason: 'not_configured' }

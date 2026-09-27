@@ -46,6 +46,16 @@ describe('reportPaymentAlert', () => {
     expect(options.html).not.toContain('>Link<')
   })
 
+  it('sends to the given inbox instead of the staff alert inbox when one is named', async () => {
+    process.env.CRON_ALERT_EMAIL = 'alerts@example.test'
+
+    const result = await reportPaymentAlert({ title: 'Credit note needed', summary: 'x', to: 'manager@example.test' })
+
+    expect(result).toEqual({ sent: true })
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(sendEmail).mock.calls[0][0].to).toBe('manager@example.test')
+  })
+
   it('reports that nobody was told when no alert inbox is configured', async () => {
     delete process.env.CRON_ALERT_EMAIL
 
