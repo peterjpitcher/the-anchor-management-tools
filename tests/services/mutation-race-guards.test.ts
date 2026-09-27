@@ -320,6 +320,40 @@ describe('Mutation race/row-effect guards', () => {
     await expect(EventService.deleteEvent('event-1')).rejects.toThrow('Event not found')
   })
 
+  it('EventService.deleteEvent explains the refusal when a booking still holds a payment', async () => {
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({ data: { name: 'Live Jazz', date: '2026-03-01' }, error: null })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+    // No active bookings: a cancelled booking kept its payment, so the database guard refuses.
+    const bookingsSelectIn = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const bookingsSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ in: bookingsSelectIn }) })
+    const zeroCountEq = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const cleanupDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+    const deleteMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: '23503', message: 'Event booking b-1 holds a payment, so it cannot be deleted' },
+    })
+    const deleteEq = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle }) })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'bookings') return { select: bookingsSelect }
+        if (table === 'event_check_ins') return { select: vi.fn().mockReturnValue({ eq: zeroCountEq }) }
+        if (table === 'sms_promo_context' || table === 'promo_sequence') return { delete: cleanupDelete }
+        if (table !== 'events') throw new Error(`Unexpected table: ${table}`)
+        return {
+          select: vi.fn((_columns: string, options?: { count?: string; head?: boolean }) => (
+            options?.count ? { eq: zeroCountEq } : { eq: fetchEq }
+          )),
+          delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+        }
+      }),
+    })
+
+    await expect(EventService.deleteEvent('event-1')).resolves.toEqual({
+      error: 'Cannot delete this event: some of its bookings still hold a payment. Refund them first, or keep the event.',
+    })
+  })
+
   it('InvoiceService.deleteCatalogItem throws not-found when soft-delete update affects no rows', async () => {
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })

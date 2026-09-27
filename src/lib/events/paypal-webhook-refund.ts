@@ -25,10 +25,11 @@ import {
  * itself is left alone, as the staff refund leaves it: refunding money is not cancelling a seat.
  * Nothing here messages the guest.
  *
- * `payments` has no unique index on the refund id, and PayPal sends every refund twice
- * (PAYMENT.CAPTURE.REFUNDED and PAYMENT.REFUND.COMPLETED, different event ids). So the write runs
- * under a claim in `idempotency_keys` on the refund id: the second delivery either sees the row or
- * is told to come back later, never inserts beside it.
+ * PayPal sends every refund twice (PAYMENT.CAPTURE.REFUNDED and PAYMENT.REFUND.COMPLETED, different
+ * event ids). So the write runs under a claim in `idempotency_keys` on the refund id: the second
+ * delivery either sees the row or is told to come back later, never inserts beside it. The claim
+ * does not cover a staff refund recording the same id at the same moment; the unique index
+ * `payments_paypal_refund_id_unique` does, and losing that race counts as already recorded.
  */
 
 export type EventWebhookRefundResult = {
@@ -52,6 +53,10 @@ type RefundRow = {
 
 function manualReview(reason: string): EventWebhookRefundResult {
   return { state: 'manual_review', reason }
+}
+
+function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '23505'
 }
 
 export async function recordEventPayPalRefund(
@@ -257,6 +262,19 @@ async function recordUnderClaim(
     })
     .select('id')
     .maybeSingle()
+  if (insertError && isUniqueViolation(insertError)) {
+    // A staff refund recorded this id between our look and our insert: settle its row instead.
+    const { data: winner, error: winnerError } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('charge_type', 'refund')
+      .contains('metadata', { paypal_refund_id: refundId })
+      .limit(1)
+      .maybeSingle()
+    if (winnerError) throw winnerError
+    await reconcileEventRefund(supabase, { paypalRefundId: refundId, paypalStatus: refund.rawStatus })
+    return { state: 'already_recorded', paymentId: winner?.id ?? null }
+  }
   if (insertError) throw insertError
 
   if (rowStatus === 'refunded') {

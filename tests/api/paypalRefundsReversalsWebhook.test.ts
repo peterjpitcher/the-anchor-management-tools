@@ -84,6 +84,8 @@ function makeDb(seed: Record<string, Row[]>): FakeSupabase {
       idempotency_keys: (row) => row.key,
       // Partial unique index: only rows that carry a refund id.
       payment_refunds: (row) => row.paypal_refund_id ?? undefined,
+      // payments_paypal_refund_id_unique: refund rows carrying a refund id.
+      payments: (row) => (row.charge_type === 'refund' ? row.metadata?.paypal_refund_id ?? undefined : undefined),
     },
   })
   // idempotency_keys is keyed on `key`; the real upsert conflicts on it.
@@ -402,6 +404,43 @@ describe('event ticket refund made inside PayPal', () => {
     expect(landed).toBe(true)
     expect(response.status).toBe(200)
     expect(eventRefundRows()).toEqual([expect.objectContaining({ id: 'staff-row-12', status: 'refunded' })])
+    expect(ticketPayment().status).toBe('refunded')
+  })
+
+  it('settles a staff refund written between the re-check and the insert, which the unique index refuses', async () => {
+    makeDb(eventSeed())
+    let landed = false
+    const from = db.from
+    db.from = (table: string) => {
+      const builder = from(table)
+      if (table === 'payments') {
+        const insert = builder.insert
+        builder.insert = (row: Row) => {
+          if (!landed && row?.charge_type === 'refund' && row?.metadata?.paypal_refund_id === 'R-E13') {
+            landed = true
+            db.tables.payments.push({
+              id: 'staff-row-13',
+              event_booking_id: EVENT_BOOKING,
+              charge_type: 'refund',
+              payment_provider: 'paypal',
+              payment_method: 'paypal',
+              amount: 20,
+              currency: 'GBP',
+              status: 'pending',
+              metadata: { source_payment_id: TICKET_PAYMENT, paypal_refund_id: 'R-E13', reason: 'staff_cancel_refund' },
+            })
+          }
+          return insert(row)
+        }
+      }
+      return builder
+    }
+
+    const response = await deliver(refundEvent('WH-E13', { refundId: 'R-E13', captureId: EVENT_CAPTURE, amount: '20.00' }))
+
+    expect(landed).toBe(true)
+    expect(response.status).toBe(200)
+    expect(eventRefundRows()).toEqual([expect.objectContaining({ id: 'staff-row-13', status: 'refunded' })])
     expect(ticketPayment().status).toBe('refunded')
   })
 
