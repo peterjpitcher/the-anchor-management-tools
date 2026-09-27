@@ -238,6 +238,7 @@ describe('private bookings list page chrome', () => {
   it('shows the section tab row and puts New Booking in the header', () => {
     grantedPermissions.add('reports:view')
     grantedPermissions.add('private_bookings:view_sms_queue')
+    grantedPermissions.add('private_bookings:manage_catering')
     render(
       <PrivateBookingsClient
         permissions={{ hasCreatePermission: true, hasDeletePermission: false, hasEditPermission: true }}
@@ -278,7 +279,8 @@ describe('private bookings list page chrome', () => {
     )
 
     const sectionTabs = screen.getAllByRole('tab').filter((tab) => tab.tagName === 'A').map((tab) => tab.textContent)
-    expect(sectionTabs).toEqual(['Bookings', 'Calendar', 'Settings'])
+    // No settings tab they can use either, so Settings is hidden rather than a dead end.
+    expect(sectionTabs).toEqual(['Bookings', 'Calendar'])
     expect(screen.queryByRole('link', { name: 'New Booking' })).not.toBeInTheDocument()
   })
 

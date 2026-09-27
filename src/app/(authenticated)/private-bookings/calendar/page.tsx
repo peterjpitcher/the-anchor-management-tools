@@ -3,7 +3,7 @@ import CalendarView from '@/components/private-bookings/CalendarView'
 import { PageLayout } from '@/ds'
 import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
-import { privateBookingsNav } from '../_shared/nav'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 
 export default async function PrivateBookingsCalendarPage() {
   const [permissionsResult, canViewReports] = await Promise.all([
@@ -29,7 +29,7 @@ export default async function PrivateBookingsCalendarPage() {
   const layoutProps = {
     title: 'Private Bookings',
     subtitle: 'Calendar: every booking, month by month',
-    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports }),
+    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) }),
   }
 
   const result = await fetchPrivateBookingsForCalendar()

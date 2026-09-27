@@ -6,7 +6,7 @@ import {
   type PrivateBookingGrowthSnapshot,
 } from '@/lib/analytics/private-booking-growth'
 import PrivateBookingGrowthReportClient from './_components/PrivateBookingGrowthReportClient'
-import { privateBookingsNav } from '../_shared/nav'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 
 export default async function PrivateBookingGrowthReportPage() {
   const [permissionsResult, canViewReports] = await Promise.all([
@@ -28,7 +28,7 @@ export default async function PrivateBookingGrowthReportPage() {
   const layoutProps = {
     title: 'Private Bookings',
     subtitle: 'Reports: customer private events by the date they happened',
-    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports }),
+    navItems: privateBookingsNav({ canViewSmsQueue, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) }),
   }
 
   // A failed load keeps the page header and tab row and says so, rather than dropping to the

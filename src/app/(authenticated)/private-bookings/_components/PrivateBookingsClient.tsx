@@ -143,6 +143,9 @@ export default function PrivateBookingsClient({
   const canViewReports = hasPermission('reports', 'view')
   const canViewSmsQueue =
     hasPermission('private_bookings', 'view_sms_queue') || hasPermission('private_bookings', 'manage')
+  const canOpenSettings = (['manage', 'manage_catering', 'manage_vendors', 'manage_spaces'] as const).some(
+    (action) => hasPermission('private_bookings', action),
+  )
 
   /* --- Data state --- */
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
@@ -399,7 +402,7 @@ export default function PrivateBookingsClient({
     <PageLayout
       title="Private Bookings"
       subtitle="Bookings: venue hire and events"
-      navItems={privateBookingsNav({ canViewSmsQueue, canViewReports })}
+      navItems={privateBookingsNav({ canViewSmsQueue, canViewReports, canOpenSettings })}
       headerActions={
         permissions.hasCreatePermission ? (
           <LinkButton href="/private-bookings/new" variant="primary" size="sm" icon={<Icon name="plus" size={16} />}>

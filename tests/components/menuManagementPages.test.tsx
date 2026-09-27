@@ -264,31 +264,32 @@ describe('Menu tabs follow the page contract', () => {
 
   it('Ingredients: a worked-out column sort (dish count) orders the whole list, not just the page', async () => {
     pathnameMock.current = '/menu-management/ingredients'
-    // Thirty ingredients: Ing 01 is in the most dishes, Ing 30 in the fewest.
+    // Twenty-six ingredients, one more than a page of 25: Ing 01 is in the most dishes, Ing 26
+    // in the fewest.
     listMenuIngredientsMock.mockResolvedValue({
-      data: Array.from({ length: 30 }, (_, i) => {
+      data: Array.from({ length: 26 }, (_, i) => {
         const n = String(i + 1).padStart(2, '0')
         return {
           ...ingredient,
           id: `ing-${n}`,
           name: `Ing ${n}`,
-          dishes: Array.from({ length: 30 - i }, (_, d) => ({ dish_id: `d-${n}-${d}`, dish_name: `Dish ${d}` })),
+          dishes: Array.from({ length: 26 - i }, (_, d) => ({ dish_id: `d-${n}-${d}`, dish_name: `Dish ${d}` })),
         }
       }),
     })
     render(<MenuIngredientsPage />)
 
-    // Sorted by name: Ing 01 leads and Ing 30 is on page 2.
+    // Sorted by name: Ing 01 leads and Ing 26 is on page 2.
     expect(await screen.findByText('Ing 01')).toBeInTheDocument()
-    expect(screen.queryByText('Ing 30')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ing 26')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dishes' }))
 
-    // Fewest dishes first across all thirty: Ing 30 comes onto page 1 and Ing 01 leaves it.
-    expect(screen.getByText('Ing 30')).toBeInTheDocument()
+    // Fewest dishes first across all of them: Ing 26 comes onto page 1 and Ing 01 leaves it.
+    expect(screen.getByText('Ing 26')).toBeInTheDocument()
     expect(screen.queryByText('Ing 01')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Dishes' }).closest('th')).toHaveAttribute('aria-sort', 'ascending')
-  })
+  }, 20_000) // a full page of the ingredients table is slow to render in jsdom when the whole suite runs
 
   it('Dishes: the allergen report menu downloads the chosen PDF', async () => {
     pathnameMock.current = '/menu-management/dishes'

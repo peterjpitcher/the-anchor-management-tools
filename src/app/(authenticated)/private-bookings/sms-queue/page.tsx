@@ -7,7 +7,7 @@ import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 import { Alert, Badge, Card, CardBody, CardHeader, Empty, Icon, PageLayout, Section } from '@/ds'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
 import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { privateBookingsNav } from '../_shared/nav'
+import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 import { smsQueueTone } from '../_shared/status-ui'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
@@ -150,7 +150,7 @@ export default async function SmsQueuePage() {
     <PageLayout
       title="Private Bookings"
       subtitle="SMS queue: review and approve texts before they go"
-      navItems={privateBookingsNav({ canViewSmsQueue: true, canViewReports })}
+      navItems={privateBookingsNav({ canViewSmsQueue: true, canViewReports, canOpenSettings: canOpenPrivateBookingSettings(actions) })}
     >
       {!canApproveSms && !canSendSms && (
         <Alert tone="info">

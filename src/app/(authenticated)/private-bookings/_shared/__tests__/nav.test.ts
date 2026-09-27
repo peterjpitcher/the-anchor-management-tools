@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PB_SETTINGS_NAV,
   PB_SETTINGS_TITLE,
+  canOpenPrivateBookingSettings,
   privateBookingSettingsNav,
   privateBookingsNav,
 } from '../nav'
@@ -28,15 +29,25 @@ describe('private bookings tab rows', () => {
     expect(privateBookingSettingsNav(new Set(['view', 'manage']))).toEqual(PB_SETTINGS_NAV)
   })
 
+  it('has no General tab', () => {
+    expect(labels(PB_SETTINGS_NAV)).toEqual(['Catering', 'Vendors', 'Spaces'])
+  })
+
   it('shows only the settings tabs whose page this person can open', () => {
     // Catering, Vendors and Spaces each send you to /unauthorized without their own action.
-    expect(labels(privateBookingSettingsNav(new Set(['view'])))).toEqual(['General'])
-    expect(labels(privateBookingSettingsNav(new Set(['view', 'manage_vendors'])))).toEqual(['General', 'Vendors'])
+    expect(labels(privateBookingSettingsNav(new Set(['view'])))).toEqual([])
+    expect(labels(privateBookingSettingsNav(new Set(['view', 'manage_vendors'])))).toEqual(['Vendors'])
     expect(
       labels(privateBookingSettingsNav(new Set(['view', 'manage_catering', 'manage_spaces']))),
-    ).toEqual(['General', 'Catering', 'Spaces'])
-    // General needs view, so a catering-only role is not offered a tab that refuses it.
+    ).toEqual(['Catering', 'Spaces'])
     expect(labels(privateBookingSettingsNav(new Set(['manage_catering'])))).toEqual(['Catering'])
+  })
+
+  it('hides the Settings tab from people who cannot open any settings tab', () => {
+    expect(canOpenPrivateBookingSettings(new Set(['view']))).toBe(false)
+    expect(canOpenPrivateBookingSettings(new Set(['view', 'manage_spaces']))).toBe(true)
+    expect(labels(privateBookingsNav({ canOpenSettings: false }))).not.toContain('Settings')
+    expect(labels(privateBookingsNav({ canOpenSettings: true }))).toContain('Settings')
   })
 
   it('titles every settings tab with the sub-area name', () => {
