@@ -28,13 +28,16 @@ export const PAYPAL_LEGACY_WEBHOOK_PATHS = [
 /**
  * Event types the app acts on. A registration missing one of these loses real work:
  * PAYMENT.CAPTURE.COMPLETED records money in, DENIED releases a dead order, REFUNDED reconciles
- * a refund. `optionalEvents` are refund lifecycle names some PayPal products do not offer for
- * subscription, so their absence is reported for review rather than treated as a fault.
+ * a refund (including one made in the PayPal dashboard), and REVERSED records money PayPal took
+ * back (a chargeback or reversal) and alerts staff. `optionalEvents` are refund lifecycle names
+ * some PayPal products do not offer for subscription, so their absence is reported for review
+ * rather than treated as a fault.
  */
 export const PAYPAL_REQUIRED_EVENTS = [
   'PAYMENT.CAPTURE.COMPLETED',
   'PAYMENT.CAPTURE.DENIED',
   'PAYMENT.CAPTURE.REFUNDED',
+  'PAYMENT.CAPTURE.REVERSED',
 ]
 
 export const PAYPAL_OPTIONAL_EVENTS = [

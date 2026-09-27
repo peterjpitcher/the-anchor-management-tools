@@ -5,23 +5,33 @@ import { gatePayPalWebhook, sanitizePayPalHeadersForLog } from '@/lib/paypal-web
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import {
   PAYPAL_REFUND_EVENT_TYPES,
+  PAYPAL_REVERSAL_EVENT_TYPE,
   routePayPalEvent,
   type PayPalRouteDecision,
 } from '@/lib/paypal-webhook-router'
+import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
+import { alertStaffToPayPalMoneyEvent } from '@/lib/paypal-money-alerts'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
-import { handleInvoiceCapture, handleInvoiceDenied } from '@/lib/paypal-domains/invoices'
+import { handleInvoiceCapture, handleInvoiceDenied, handleInvoiceRefund } from '@/lib/paypal-domains/invoices'
 import {
   handleDepositCaptureCompleted as handlePrivateBookingCapture,
   handleDepositCaptureDenied as handlePrivateBookingDenied,
 } from '@/lib/paypal-domains/private-bookings'
-import { handleDepositCaptureCompleted as handleTableBookingCapture } from '@/lib/paypal-domains/table-bookings'
+import {
+  handleDepositCaptureCompleted as handleTableBookingCapture,
+  handleDepositCaptureDenied as handleTableBookingDenied,
+} from '@/lib/paypal-domains/table-bookings'
 import { handlePaymentCompleted as handleParkingCapture, handlePaymentDenied as handleParkingDenied } from '@/lib/paypal-domains/parking'
-import { handleEventBookingCapture, handleEventBookingRefund } from '@/lib/paypal-domains/event-bookings'
+import {
+  handleEventBookingCapture,
+  handleEventBookingRefund,
+  type EventBookingOutcome,
+} from '@/lib/paypal-domains/event-bookings'
 
 /**
  * One pipeline for every PayPal webhook delivery, whichever URL it arrives on.
@@ -92,6 +102,21 @@ async function logWebhook(
   }
 }
 
+/**
+ * What a refund or reversal handler did with the money: recorded it, or left it for a person.
+ * Capture handlers return nothing and are always a plain "processed".
+ */
+type MoneyOutcome = { recorded: boolean; manualReview: boolean; reason?: string | null; state?: string }
+
+function fromRefundOutcome(
+  outcome: { state: string; manualReview?: boolean; reason?: string } | void,
+): MoneyOutcome | null {
+  // Tolerates a handler (or a test double) that returns nothing: that is an ordinary success.
+  if (!outcome) return { recorded: true, manualReview: false }
+  const manualReview = outcome.manualReview === true
+  return { recorded: !manualReview, manualReview, reason: outcome.reason ?? null, state: outcome.state }
+}
+
 async function runDomainHandler(
   supabase: ReturnType<typeof createAdminClient>,
   decision: PayPalRouteDecision,
@@ -104,6 +129,10 @@ async function runDomainHandler(
   }
 
   const isRefund = PAYPAL_REFUND_EVENT_TYPES.has(eventType)
+  const isReversal = eventType === PAYPAL_REVERSAL_EVENT_TYPE
+  const moneyKind = isReversal ? 'reversal' : 'refund'
+  let money: MoneyOutcome | null = null
+  let eventOutcome: EventBookingOutcome | null = null
 
   switch (decision.domain) {
     case 'invoices': {
@@ -111,6 +140,8 @@ async function runDomainHandler(
         await handleInvoiceCapture(event, eventId, decision.key)
       } else if (eventType === 'PAYMENT.CAPTURE.DENIED') {
         await handleInvoiceDenied(supabase, event, eventId, decision.key)
+      } else if (isRefund || isReversal) {
+        money = fromRefundOutcome(await handleInvoiceRefund(supabase, event, eventId, decision.key, moneyKind))
       }
       break
     }
@@ -120,8 +151,8 @@ async function runDomainHandler(
         await handlePrivateBookingCapture(supabase, event)
       } else if (eventType === 'PAYMENT.CAPTURE.DENIED') {
         await handlePrivateBookingDenied(supabase, event)
-      } else if (isRefund) {
-        await handleRefundEvent(supabase, event, 'private_booking')
+      } else if (isRefund || isReversal) {
+        money = fromRefundOutcome(await handleRefundEvent(supabase, event, 'private_booking', { kind: moneyKind }))
       }
       break
     }
@@ -129,10 +160,11 @@ async function runDomainHandler(
     case 'table_bookings': {
       if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
         await handleTableBookingCapture(supabase, event)
-      } else if (isRefund) {
-        await handleRefundEvent(supabase, event, 'table_booking')
+      } else if (eventType === 'PAYMENT.CAPTURE.DENIED') {
+        await handleTableBookingDenied(supabase, event, decision.key)
+      } else if (isRefund || isReversal) {
+        money = fromRefundOutcome(await handleRefundEvent(supabase, event, 'table_booking', { kind: moneyKind }))
       }
-      // Table bookings have no denial handler, by design.
       break
     }
 
@@ -141,30 +173,54 @@ async function runDomainHandler(
         await handleParkingCapture(supabase, event)
       } else if (eventType === 'PAYMENT.CAPTURE.DENIED') {
         await handleParkingDenied(supabase, event)
-      } else if (isRefund) {
-        await handleRefundEvent(supabase, event, 'parking')
+      } else if (isRefund || isReversal) {
+        money = fromRefundOutcome(await handleRefundEvent(supabase, event, 'parking', { kind: moneyKind }))
       }
       break
     }
 
     case 'event_bookings': {
-      const outcome = isRefund
-        ? await handleEventBookingRefund(supabase, event, eventId)
+      eventOutcome = isRefund || isReversal
+        ? await handleEventBookingRefund(supabase, event, eventId, decision.key, moneyKind)
         : await handleEventBookingCapture(supabase, event, eventId)
-      // Event bookings answer PayPal with their own state, as this route always has.
-      return outcome
+      money = eventOutcome.money ?? null
+      break
     }
   }
 
+  // Every reversal is a person's business, recorded or not; a refund only when it could not be
+  // recorded. Staff are told once per PayPal refund id, never the customer. Raised only once the
+  // handler has succeeded: a failed write has already thrown, and PayPal's retry alerts instead.
+  if (money && (isReversal || money.manualReview)) {
+    await alertStaffToPayPalMoneyEvent(supabase, {
+      kind: isReversal ? 'reversal' : 'refund_review',
+      domain: decision.domain,
+      key: decision.key,
+      eventId,
+      eventType,
+      refund: readPayPalRefundResource(event),
+      recorded: money.recorded,
+      reason: money.reason ?? null,
+    })
+  }
+
+  if (eventOutcome) {
+    // Event bookings answer PayPal with their own state, as this route always has.
+    return eventOutcome
+  }
+
+  const manualReview = money?.manualReview === true
   return {
     result: {
-      state: 'processed',
+      state: manualReview ? 'manual_review' : 'processed',
+      ...(money ? { money_state: money.state ?? null, reason: money.reason ?? null } : {}),
       event_id: eventId,
       event_type: eventType,
       domain: decision.domain,
       processed_at: new Date().toISOString(),
     },
-    httpStatus: 200,
+    // 202 is still an acknowledgement (PayPal stops), but logs the delivery as `manual_review`.
+    httpStatus: manualReview ? 202 : 200,
     // A bare acknowledgement is all PayPal needs, and all these routes have ever returned.
     // The detail goes to the idempotency record and the log, not over the wire.
     responseBody: { received: true },

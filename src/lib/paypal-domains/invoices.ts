@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { applyInvoicePayPalCapture, positivePennies } from '@/lib/invoices/paypal-capture'
+import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
+import { SYSTEM_USER_ID } from '@/lib/system-user'
 
 /**
  * Invoice payment handlers. The logic is the route's, unchanged; it moved here so every PayPal
@@ -82,4 +84,56 @@ export async function handleInvoiceDenied(
     additional_info: { event_id: eventId, event_type: event?.event_type, order_id: orderId },
   })
   if (auditError) throw auditError
+}
+
+/**
+ * A refund made in PayPal, or a reversal, against an invoice payment.
+ *
+ * Invoices have no way to record money going back. `invoice_payments` refuses a negative or zero
+ * row and refuses to change or delete a PayPal capture (its guard says to resolve a refund or a
+ * credit), and `paid_amount` and `status` are derived from that ledger. The staff tool for this
+ * is a credit note, which is a numbered VAT document and a decision for a person. So the invoice
+ * is left exactly as it is and the event becomes a failure audit row plus a staff alert (raised by
+ * the dispatcher), answered 202 so the webhook log reads `manual_review`.
+ *
+ * The audit row is written on every delivery and is what makes the webhook fail closed: if it
+ * cannot be written, this throws and PayPal retries.
+ */
+export async function handleInvoiceRefund(
+  supabase: ReturnType<typeof createAdminClient>,
+  event: any, // PayPal webhook event payload is not typed in this project
+  eventId: string,
+  invoiceId: string,
+  kind: 'refund' | 'reversal'
+): Promise<{ state: 'manual_review'; manualReview: true; reason: string }> {
+  const refund = readPayPalRefundResource(event)
+
+  const { error: auditError } = await supabase.from('audit_logs').insert({
+    operation_type: kind === 'reversal' ? 'paypal_capture_reversed' : 'paypal_refund_unrecorded',
+    resource_type: 'invoice',
+    resource_id: invoiceId,
+    operation_status: 'failure',
+    additional_info: {
+      event_id: eventId,
+      event_type: event?.event_type,
+      paypal_refund_id: refund.refundId,
+      paypal_capture_id: refund.captureId,
+      amount: refund.amount,
+      currency: refund.currency,
+      paypal_status: refund.rawStatus,
+      kind,
+      initiated_by_type: 'system',
+      actor_user_id: SYSTEM_USER_ID,
+      action_needed:
+        'PayPal returned money on this invoice outside the app. The invoice still shows the payment as received; issue a credit note if the refund stands.',
+    },
+  })
+  if (auditError) throw auditError
+
+  logger.error('PayPal refund on an invoice needs a credit note; invoice left unchanged', {
+    error: new Error('invoice_paypal_refund_unrecorded'),
+    metadata: { eventId, invoiceId, kind, paypalRefundId: refund.refundId, amount: refund.amount },
+  })
+
+  return { state: 'manual_review', manualReview: true, reason: 'invoice_refunds_not_recorded' }
 }

@@ -8,6 +8,8 @@ import {
   sendEventPaymentManualReviewEmail,
 } from '@/lib/email/event-ticket-emails'
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
+import { recordEventPayPalRefund } from '@/lib/events/paypal-webhook-refund'
+import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
 import {
   getCaptureAmount,
   getCaptureCurrency,
@@ -30,18 +32,38 @@ export type EventBookingOutcome = {
   responseBody: Record<string, unknown>
   /** 202 asks a human to look; 200 is settled. */
   httpStatus: number
+  /** Set on refunds and reversals: whether the money was recorded, and why not when it was not. */
+  money?: { recorded: boolean; manualReview: boolean; reason?: string | null }
 }
 
+/**
+ * A refund or reversal on an event ticket capture.
+ *
+ * A refund the app issued already has its row (found by PayPal refund id) and only needs its
+ * status settled. One made in the PayPal dashboard, or a reversal, has no row yet and is recorded
+ * the way the staff refund path records one. `bookingId` is the booking the router placed it under.
+ */
 export async function handleEventBookingRefund(
   supabase: ReturnType<typeof createAdminClient>,
   event: any, // PayPal webhook event payload is not typed in this project
-  eventId: string
+  eventId: string,
+  bookingId: string | null = null,
+  kind: 'refund' | 'reversal' = 'refund'
 ): Promise<EventBookingOutcome> {
-  const refundResource = event.resource || {}
-  const refundId = typeof refundResource?.id === 'string' ? refundResource.id.trim() : ''
-  const refundStatus = typeof refundResource?.status === 'string' ? refundResource.status : null
+  const refund = readPayPalRefundResource(event)
+  const refundId = refund.refundId ?? ''
+  const refundStatus = refund.rawStatus
 
   if (!refundId) {
+    if (kind === 'reversal') {
+      const state = { state: 'manual_review', reason: 'not_a_refund_resource', event_id: eventId, booking_id: bookingId }
+      return {
+        result: state,
+        responseBody: state,
+        httpStatus: 202,
+        money: { recorded: false, manualReview: true, reason: 'not_a_refund_resource' },
+      }
+    }
     const state = { state: 'ignored', reason: 'missing_refund_id', event_id: eventId }
     return { result: state, responseBody: state, httpStatus: 200 }
   }
@@ -51,16 +73,47 @@ export async function handleEventBookingRefund(
     paypalStatus: refundStatus,
   })
 
-  const state = {
-    state: 'refund_reconciled',
-    matched: reconciled.matched,
-    changed: reconciled.changed,
-    outcome: reconciled.outcome,
-    event_id: eventId,
-    booking_id: reconciled.bookingId,
+  if (reconciled.matched || !bookingId) {
+    const state = {
+      state: 'refund_reconciled',
+      matched: reconciled.matched,
+      changed: reconciled.changed,
+      outcome: reconciled.outcome,
+      event_id: eventId,
+      booking_id: reconciled.bookingId,
+    }
+    return {
+      result: state,
+      responseBody: state,
+      httpStatus: 200,
+      money: { recorded: reconciled.matched, manualReview: false },
+    }
   }
 
-  return { result: state, responseBody: state, httpStatus: 200 }
+  // Not a refund the app issued: record it.
+  const recorded = await recordEventPayPalRefund(supabase, {
+    bookingId,
+    refund,
+    kind,
+    eventId,
+    eventType: typeof event?.event_type === 'string' ? event.event_type : 'unknown',
+  })
+
+  const manualReview = recorded.state === 'manual_review'
+  const state = {
+    state: manualReview ? 'manual_review' : `refund_${recorded.state}`,
+    reason: recorded.reason ?? null,
+    event_id: eventId,
+    booking_id: bookingId,
+    payment_id: recorded.paymentId ?? null,
+  }
+
+  return {
+    result: state,
+    responseBody: state,
+    httpStatus: manualReview ? 202 : 200,
+    money: { recorded: !manualReview, manualReview, reason: recorded.reason ?? null },
+  }
 }
 
 export async function handleEventBookingCapture(

@@ -26,6 +26,70 @@ export type ReconcileRefundResult = {
   bookingId: string | null
 }
 
+/** Statuses a ticket charge can move through once paid; only ever forwards. */
+const SOURCE_STATUS_RANK: Record<string, number> = {
+  succeeded: 0,
+  partially_refunded: 1,
+  refunded: 2,
+}
+
+/**
+ * Bring a ticket charge's own status into line with the refunds recorded against it, the way
+ * `processEventRefund` does when a refund completes: `refunded` once the refunds cover the charge,
+ * `partially_refunded` before that. The booking list reads "Refunded" or "Part refunded" from this
+ * status, so a refund that completed later (a pending one, or one made in PayPal) left the booking
+ * reading "Paid".
+ *
+ * The same sum as the staff path (refund rows that are refunded, pending or succeeded), and it only
+ * ever moves forwards, so running it again, or on a charge the staff path already settled, changes
+ * nothing. Throws on a failed write so a webhook retries.
+ */
+export async function reconvergeEventRefundSource(
+  supabase: SupabaseClient<any, 'public', any>,
+  sourcePaymentId: string
+): Promise<void> {
+  const { data: source, error: sourceError } = await supabase
+    .from('payments')
+    .select('id, amount, status')
+    .eq('id', sourcePaymentId)
+    .maybeSingle()
+
+  if (sourceError) throw sourceError
+  if (!source || !(source.status in SOURCE_STATUS_RANK)) return
+
+  const { data: refundRows, error: refundError } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('charge_type', 'refund')
+    .contains('metadata', { source_payment_id: sourcePaymentId })
+    .in('status', ['refunded', 'pending', 'succeeded'])
+
+  if (refundError) throw refundError
+
+  const totalRefunded = (refundRows ?? []).reduce(
+    (sum: number, row: { amount: unknown }) => sum + Math.max(0, Number(row.amount || 0)),
+    0
+  )
+  if (totalRefunded <= 0) return
+
+  const paid = Math.max(0, Number(source.amount || 0))
+  const next = totalRefunded + 0.004 >= paid ? 'refunded' : 'partially_refunded'
+  if (SOURCE_STATUS_RANK[next] <= SOURCE_STATUS_RANK[source.status]) return
+
+  const { error: updateError } = await supabase
+    .from('payments')
+    .update({ status: next, updated_at: new Date().toISOString() })
+    .eq('id', sourcePaymentId)
+    .eq('status', source.status)
+
+  if (updateError) throw updateError
+}
+
+function readSourcePaymentId(metadata: unknown): string | null {
+  const value = (metadata as Record<string, unknown> | null)?.source_payment_id
+  return typeof value === 'string' && value ? value : null
+}
+
 /**
  * Reconcile an event refund's local status against PayPal. Finds the refund
  * `payments` row by its PayPal refund id and — only on a `pending` → terminal
@@ -53,9 +117,15 @@ export async function reconcileEventRefund(
   }
 
   const bookingId = (row.event_booking_id as string | null) ?? null
+  const sourcePaymentId = readSourcePaymentId(row.metadata)
 
   // Only act on a pending → terminal transition; anything else is already settled.
   if (row.status !== 'pending' || outcome === 'pending' || outcome === 'unknown') {
+    // A settled refund may still have left its charge behind, if the write below failed on an
+    // earlier delivery. Repairing it is a no-op when the charge is already right.
+    if (row.status === 'refunded' && sourcePaymentId) {
+      await reconvergeEventRefundSource(supabase, sourcePaymentId)
+    }
     return { matched: true, changed: false, outcome, bookingId }
   }
 
@@ -82,15 +152,27 @@ export async function reconcileEventRefund(
   const amount = Math.max(0, Number(row.amount || 0))
   const currency = typeof row.currency === 'string' ? row.currency : 'GBP'
 
+  if (outcome === 'refunded' && sourcePaymentId) {
+    await reconvergeEventRefundSource(supabase, sourcePaymentId)
+  }
+
+  // Rows the webhook recorded by itself (a refund made in the PayPal dashboard, or PayPal taking
+  // the money back in a chargeback) were never promised to the guest by us, so the guest hears
+  // nothing from us about them; a reversal alerts staff instead. A staff refund the webhook got to
+  // first is re-marked 'staff' when the staff path adopts it, so it still emails as before.
+  const recordedFromPayPal = (row.metadata as Record<string, unknown> | null)?.initiated_by_type === 'system'
+
   if (!bookingId) {
     return { matched: true, changed: true, outcome, bookingId }
   }
 
   if (outcome === 'refunded') {
-    await sendEventRefundStatusUpdateEmail(supabase, { bookingId, outcome: 'completed', amount, currency })
-      .catch((e) => logger.warn('Failed to send refund completed email', {
-        metadata: { bookingId, error: e instanceof Error ? e.message : String(e) }
-      }))
+    if (!recordedFromPayPal) {
+      await sendEventRefundStatusUpdateEmail(supabase, { bookingId, outcome: 'completed', amount, currency })
+        .catch((e) => logger.warn('Failed to send refund completed email', {
+          metadata: { bookingId, error: e instanceof Error ? e.message : String(e) }
+        }))
+    }
   } else if (outcome === 'failed') {
     const { error: exceptionError } = await supabase.from('event_payment_exceptions').insert({
       event_booking_id: bookingId,
@@ -102,10 +184,12 @@ export async function reconcileEventRefund(
         metadata: { bookingId, paymentId: row.id, error: exceptionError.message }
       })
     }
-    await sendEventRefundStatusUpdateEmail(supabase, { bookingId, outcome: 'failed', amount, currency })
-      .catch((e) => logger.warn('Failed to send refund failed email', {
-        metadata: { bookingId, error: e instanceof Error ? e.message : String(e) }
-      }))
+    if (!recordedFromPayPal) {
+      await sendEventRefundStatusUpdateEmail(supabase, { bookingId, outcome: 'failed', amount, currency })
+        .catch((e) => logger.warn('Failed to send refund failed email', {
+          metadata: { bookingId, error: e instanceof Error ? e.message : String(e) }
+        }))
+    }
   }
 
   return { matched: true, changed: true, outcome, bookingId }
