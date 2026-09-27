@@ -143,7 +143,7 @@ export default async function EmployeeBirthdaysPage() {
                     <div className="flex items-center justify-between sm:block sm:text-right">
                       <div className="flex items-center gap-2 sm:justify-end">
                         <span className="text-xs font-medium text-text sm:text-sm">
-                          {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' }, 'en-US')}
+                          {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' })}
                         </span>
                         <Badge tone={birthdayCountdownTone(birthday.days_until_birthday)}>
                           {getCountdownText(birthday.days_until_birthday)}

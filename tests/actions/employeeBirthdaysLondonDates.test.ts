@@ -98,9 +98,9 @@ describe('birthday reminder email', () => {
     expect(email!.subject).toBe('Birthday Reminder: 1 upcoming birthday next week')
     expect(email!.html).toContain('<strong>Alex</strong>')
     expect(email!.html).not.toContain('<strong>Sam</strong>')
-    expect(email!.html).toMatch(/Friday, September 25\s*<\/td>/)
+    expect(email!.html).toMatch(/Friday 25 September\s*<\/td>/)
     expect(email!.html).toContain('Turning 36')
-    expect(email!.text).toContain('• Alex (Bar Staff)\n  Birthday: Friday, September 25\n  Turning: 36\n')
+    expect(email!.text).toContain('• Alex (Bar Staff)\n  Birthday: Friday 25 September\n  Turning: 36\n')
   })
 
   it('names the day before midnight in London', async () => {
@@ -111,7 +111,7 @@ describe('birthday reminder email', () => {
     expectCleanRender(email!)
     expect(email!.html).toContain('<strong>Sam</strong>')
     expect(email!.html).not.toContain('<strong>Alex</strong>')
-    expect(email!.text).toContain('• Sam (Bar Staff)\n  Birthday: Thursday, September 24\n  Turning: 36\n')
+    expect(email!.text).toContain('• Sam (Bar Staff)\n  Birthday: Thursday 24 September\n  Turning: 36\n')
   })
 
   it('agrees in both zones in winter', async () => {
@@ -120,7 +120,7 @@ describe('birthday reminder email', () => {
 
     expect(email).not.toBeNull()
     expectCleanRender(email!)
-    expect(email!.text).toContain('• Jo (Bar Staff)\n  Birthday: Thursday, January 22\n  Turning: 41\n')
+    expect(email!.text).toContain('• Jo (Bar Staff)\n  Birthday: Thursday 22 January\n  Turning: 41\n')
   })
 
   it('keeps a 29 February birthday on 1 March in other years', async () => {
@@ -129,7 +129,7 @@ describe('birthday reminder email', () => {
 
     expect(email).not.toBeNull()
     expectCleanRender(email!)
-    expect(email!.text).toContain('• Leap (Bar Staff)\n  Birthday: Monday, March 1\n  Turning: 27\n')
+    expect(email!.text).toContain('• Leap (Bar Staff)\n  Birthday: Monday 1 March\n  Turning: 27\n')
   })
 
   it('sends nothing when nobody is exactly a week away', async () => {
