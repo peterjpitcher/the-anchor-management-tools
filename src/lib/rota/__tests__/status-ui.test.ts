@@ -10,9 +10,13 @@ import {
   ROTA_DEPARTMENT_FALLBACK_CLASSES,
   ROTA_HOLIDAY_CLASSES,
   ROTA_HOURS_SERIES_COLOURS,
+  ROTA_LEAVE_STATUS_LABEL,
+  ROTA_LEAVE_STATUS_TONE,
   ROTA_SHIFT_STATUS_CLASSES,
   rotaDepartmentCategory,
   rotaDepartmentClasses,
+  rotaLeaveStatusLabel,
+  rotaLeaveStatusTone,
   rotaShiftStatusClasses,
 } from '../status-ui';
 
@@ -60,6 +64,36 @@ describe('rota holiday colours', () => {
       holiday: STAFF.success,
       couldntWork: STAFF.danger,
     });
+  });
+});
+
+describe('leave request status badges', () => {
+  it.each([
+    ['pending', 'warning', 'Pending approval'],
+    ['approved', 'success', 'Approved'],
+    ['declined', 'danger', 'Declined'],
+  ])('shows %s as %s, worded "%s"', (status, tone, label) => {
+    expect(rotaLeaveStatusTone(status)).toBe(tone);
+    expect(rotaLeaveStatusLabel(status)).toBe(label);
+  });
+
+  it('covers exactly the statuses the leave_requests check allows', () => {
+    expect(Object.keys(ROTA_LEAVE_STATUS_TONE).sort()).toEqual(['approved', 'declined', 'pending']);
+    expect(Object.keys(ROTA_LEAVE_STATUS_LABEL).sort()).toEqual(['approved', 'declined', 'pending']);
+  });
+
+  it('uses the same meanings as the holiday colours on the rota', () => {
+    expect(ROTA_HOLIDAY_CLASSES.pending).toContain(ROTA_LEAVE_STATUS_TONE.pending);
+    expect(ROTA_HOLIDAY_CLASSES.approved).toContain(ROTA_LEAVE_STATUS_TONE.approved);
+  });
+
+  it('shows a value it does not know as neutral and as stored, including Object property names', () => {
+    for (const status of ['cancelled', 'constructor', 'toString']) {
+      expect(rotaLeaveStatusTone(status)).toBe('neutral');
+    }
+    expect(rotaLeaveStatusLabel('cancelled')).toBe('Cancelled');
+    expect(rotaLeaveStatusLabel(null)).toBe('Unknown');
+    expect(rotaLeaveStatusTone(undefined)).toBe('neutral');
   });
 });
 

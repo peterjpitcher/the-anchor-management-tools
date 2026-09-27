@@ -2,8 +2,7 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'react-hot-toast'
-import { Button } from '@/ds'
+import { Button, toast } from '@/ds'
 import { requeueUnclassifiedTransactions } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 
@@ -39,9 +38,9 @@ export function ReceiptReclassify() {
       variant="secondary"
       size="sm"
       onClick={handleRequeue}
-      disabled={isPending}
+      loading={isPending}
     >
-      {isPending ? 'Queueing...' : 'Re-classify untagged'}
+      Re-classify Untagged
     </Button>
   )
 }

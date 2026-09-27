@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useRef, useCallback, type FormEvent, type DragEvent } from 'react'
+import { useState, useCallback, useEffect, type FormEvent, type DragEvent } from 'react'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { X } from 'lucide-react'
-import { Alert, Button, Checkbox, Field, IconButton, Input, Textarea } from '@/ds'
+import { Alert, Checkbox, ConfirmDialog, Field, Fieldset, FileButton, IconButton, Input, Textarea, Icon } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,10 +37,13 @@ interface ExpenseFormProps {
   onUploadFiles?: (files: File[], expenseId?: string) => Promise<{ success?: boolean; error?: string }>
   /** Called when an existing file should be deleted */
   onDeleteFile?: (fileId: string) => Promise<{ success?: boolean; error?: string }>
-  /** Called when the form should close/cancel */
-  onCancel: () => void
-  /** Whether the form is in edit mode */
-  isEditing?: boolean
+  /**
+   * The form's id. The form sits in a Modal whose footer holds Cancel and the submit button, and
+   * that submit button names the form with `form={formId}`.
+   */
+  formId: string
+  /** Told when saving or uploading starts and stops, so the footer buttons can show it. */
+  onBusyChange?: (busy: boolean) => void
 }
 
 const ACCEPTED_TYPES = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf'
@@ -59,8 +61,8 @@ export function ExpenseForm({
   onSubmit,
   onUploadFiles,
   onDeleteFile,
-  onCancel,
-  isEditing = false,
+  formId,
+  onBusyChange,
 }: ExpenseFormProps): React.JSX.Element {
   // Form state
   const [expenseDate, setExpenseDate] = useState(initialData?.expense_date ?? '')
@@ -74,7 +76,6 @@ export function ExpenseForm({
   // File state
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Submission state
   const [submitting, setSubmitting] = useState(false)
@@ -82,6 +83,7 @@ export function ExpenseForm({
   const [error, setError] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
+  const [filePendingDelete, setFilePendingDelete] = useState<ExistingFile | null>(null)
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const validFiles: File[] = []
@@ -91,7 +93,7 @@ export function ExpenseForm({
     const currentTotal = existingFiles.length + pendingFiles.length
     if (currentTotal + fileArray.length > MAX_FILES_PER_EXPENSE) {
       setFileError(
-        `Maximum ${MAX_FILES_PER_EXPENSE} files per expense. You already have ${currentTotal} — can only add ${Math.max(0, MAX_FILES_PER_EXPENSE - currentTotal)} more.`
+        `Maximum ${MAX_FILES_PER_EXPENSE} files per expense. You already have ${currentTotal}, so you can only add ${Math.max(0, MAX_FILES_PER_EXPENSE - currentTotal)} more.`
       )
       return
     }
@@ -143,7 +145,6 @@ export function ExpenseForm({
   const handleDeleteExistingFile = useCallback(
     async (fileId: string) => {
       if (!onDeleteFile) return
-      if (!confirm('Delete this receipt file?')) return
 
       setDeletingFileId(fileId)
       try {
@@ -193,18 +194,18 @@ export function ExpenseForm({
         return
       }
 
-      // Upload pending files if any — pass createdId directly to avoid stale closure
+      // Upload pending files if any: pass createdId directly to avoid stale closure
       if (pendingFiles.length > 0 && onUploadFiles) {
         setUploading(true)
         const uploadResult = await onUploadFiles(pendingFiles, result.createdId)
         if (uploadResult.error) {
           setFileError(uploadResult.error)
-          // Don't return — expense was already saved
+          // Don't return: the expense was already saved
         }
         setUploading(false)
       }
 
-      // Success — parent handles closing
+      // Success: the parent handles closing
     } finally {
       setSubmitting(false)
     }
@@ -212,8 +213,12 @@ export function ExpenseForm({
 
   const isLoading = submitting || uploading
 
+  useEffect(() => {
+    onBusyChange?.(isLoading)
+  }, [isLoading, onBusyChange])
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
       {/* Date + Company */}
@@ -305,132 +310,116 @@ export function ExpenseForm({
       </Field>
 
       {/* Receipt upload */}
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
-          Receipt Images
-        </p>
+      <Fieldset legend="Receipt Images">
+        <div className="space-y-3">
+          {/* Existing files (edit mode) */}
+          {existingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {existingFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="group relative flex items-center gap-2 rounded-default border border-border bg-surface-2 px-3 py-2 text-sm"
+                >
+                  {file.mime_type.startsWith('image/') && file.signed_url ? (
+                    <img
+                      src={file.signed_url}
+                      alt={file.file_name}
+                      className="h-10 w-10 rounded-sm object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-text-muted">
+                      PDF
+                    </span>
+                  )}
+                  <span className="max-w-[120px] truncate">{file.file_name}</span>
+                  {onDeleteFile && (
+                    <IconButton
+                      type="button"
+                      size="sm"
+                      disabled={deletingFileId === file.id}
+                      loading={deletingFileId === file.id}
+                      onClick={() => setFilePendingDelete(file)}
+                      label={`Delete ${file.file_name}`}
+                      icon={<Icon name="x" size={16} />}
+                      className="ml-1 text-danger hover:text-danger-fg"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Existing files (edit mode) */}
-        {existingFiles.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {existingFiles.map((file) => (
-              <div
-                key={file.id}
-                className="group relative flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm"
+          {/* Drop target for dragged files; the FileButton inside is the control for keyboard,
+              touch and click. Not the DS FileUpload: this one reports rejected files, and
+              FileButton clears its input after each pick so the same file can be picked again. */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+              isDragging
+                ? 'border-primary bg-primary-soft'
+                : 'border-border'
+            }`}
+          >
+            <p className="text-sm text-text-muted">
+              Drag and drop receipt images here, or
+            </p>
+            <div className="mt-2 flex justify-center">
+              <FileButton
+                accept={ACCEPTED_TYPES}
+                multiple
+                size="sm"
+                icon={<Icon name="upload" size={16} />}
+                onFiles={handleFilesSelected}
               >
-                {file.mime_type.startsWith('image/') && file.signed_url ? (
-                  <img
-                    src={file.signed_url}
-                    alt={file.file_name}
-                    className="h-10 w-10 rounded-sm object-cover"
-                  />
-                ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-text-muted">
-                    PDF
-                  </span>
-                )}
-                <span className="max-w-[120px] truncate">{file.file_name}</span>
-                {onDeleteFile && (
+                Choose Files
+              </FileButton>
+            </div>
+            <p className="mt-2 text-xs text-text-soft">
+              JPEG, PNG, WebP, HEIC or PDF, up to {MAX_FILE_SIZE_MB}MB each
+            </p>
+          </div>
+
+          {/* Pending files */}
+          {pendingFiles.length > 0 && (
+            <div className="space-y-1">
+              {pendingFiles.map((file, idx) => (
+                <div
+                  key={`${file.name}-${idx}`}
+                  className="flex items-center justify-between rounded-default bg-surface-2 px-3 py-2 text-sm"
+                >
+                  <span className="truncate">{file.name}</span>
                   <IconButton
                     type="button"
                     size="sm"
-                    disabled={deletingFileId === file.id}
-                    loading={deletingFileId === file.id}
-                    onClick={() => handleDeleteExistingFile(file.id)}
-                    label={`Delete ${file.file_name}`}
-                    icon={<X className="h-4 w-4" aria-hidden="true" />}
-                    className="ml-1 text-danger hover:text-danger-fg"
+                    onClick={() => removePendingFile(idx)}
+                    label={`Remove ${file.name}`}
+                    icon={<Icon name="x" size={16} />}
+                    className="ml-2 text-danger hover:text-danger-fg"
                   />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Drop zone: same look as the DS FileUpload. Kept local because this one reports
-            rejected files and resets the input so the same file can be picked again. */}
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-            isDragging
-              ? 'border-primary bg-primary-soft'
-              : 'border-border hover:border-border-strong'
-          }`}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              fileInputRef.current?.click()
-            }
-          }}
-        >
-          <p className="text-sm text-text-muted">
-            Drag and drop receipt images here, or click to browse
-          </p>
-          <p className="mt-1 text-xs text-text-soft">
-            JPEG, PNG, WebP, HEIC, PDF — max {MAX_FILE_SIZE_MB}MB each
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_TYPES}
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files) {
-                handleFilesSelected(e.target.files)
-                e.target.value = '' // Reset so the same file can be re-selected
-              }
-            }}
-          />
+          {fileError && (
+            <Alert tone="danger" size="sm">{fileError}</Alert>
+          )}
         </div>
+      </Fieldset>
 
-        {/* Pending files */}
-        {pendingFiles.length > 0 && (
-          <div className="mt-3 space-y-1">
-            {pendingFiles.map((file, idx) => (
-              <div
-                key={`${file.name}-${idx}`}
-                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm"
-              >
-                <span className="truncate">{file.name}</span>
-                <IconButton
-                  type="button"
-                  size="sm"
-                  onClick={() => removePendingFile(idx)}
-                  label={`Remove ${file.name}`}
-                  icon={<X className="h-4 w-4" aria-hidden="true" />}
-                  className="ml-2 text-danger hover:text-danger-fg"
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {fileError && (
-          <p className="mt-2 text-sm text-danger">{fileError}</p>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isLoading}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" disabled={isLoading}>
-          {isLoading
-            ? uploading
-              ? 'Uploading files...'
-              : 'Saving...'
-            : isEditing
-              ? 'Update Expense'
-              : 'Create Expense'}
-        </Button>
-      </div>
+      <ConfirmDialog
+        open={filePendingDelete !== null}
+        title="Delete Receipt File"
+        message="Delete this receipt file from the expense? This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={async () => {
+          if (filePendingDelete) await handleDeleteExistingFile(filePendingDelete.id)
+        }}
+        onClose={() => setFilePendingDelete(null)}
+      />
     </form>
   )
 }

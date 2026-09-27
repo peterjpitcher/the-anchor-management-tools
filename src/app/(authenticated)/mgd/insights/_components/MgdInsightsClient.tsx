@@ -2,17 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TabNav } from '@/ds'
-import { StatGroup } from '@/ds'
-import { Stat } from '@/ds'
-import { Card } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
+import { BarChart, Card, CardBody, CardHeader, Empty, PageLayout, Segmented, Stat, StatGrid } from '@/ds'
 import type { MgdInsightsData, MgdGranularity } from '@/app/actions/mgd'
+import { MGD_INSIGHTS_LAYOUT } from '../../_shared/nav'
 
-const PERIOD_TABS = [
-  { key: 'quarterly' as const, label: 'Quarterly' },
-  { key: 'annually' as const, label: 'Annually' },
-  { key: 'all' as const, label: 'All Time' },
+const PERIOD_OPTIONS: Array<{ id: MgdGranularity; label: string }> = [
+  { id: 'quarterly', label: 'Quarterly' },
+  { id: 'annually', label: 'Annually' },
+  { id: 'all', label: 'All Time' },
 ]
 
 function formatCurrency(value: number): string {
@@ -28,7 +25,7 @@ function getMgdPeriodEnd(periodStart: string, granularity: MgdGranularity): stri
   if (granularity === 'annually' || granularity === 'all') {
     return `${y}-12-31`
   }
-  // quarterly — map month to MGD quarter end
+  // quarterly: map month to MGD quarter end
   switch (m) {
     case 2:  return `${y}-04-30`  // Feb quarter ends Apr 30
     case 5:  return `${y}-07-31`  // May quarter ends Jul 31
@@ -64,15 +61,19 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
   }))
 
   return (
-    <div className="space-y-6">
-      <TabNav
-        tabs={PERIOD_TABS}
-        activeKey={granularity}
-        onChange={handlePeriodChange}
-        variant="pills"
-      />
-
-      <StatGroup columns={3}>
+    <PageLayout
+      {...MGD_INSIGHTS_LAYOUT}
+      headerActions={
+        <Segmented
+          options={PERIOD_OPTIONS}
+          value={granularity}
+          onChange={handlePeriodChange}
+          size="sm"
+          aria-label="Period"
+        />
+      }
+    >
+      <StatGrid columns={3}>
         <Stat
           label="Total Net Takings"
           value={formatCurrency(data.totals.totalNetTake)}
@@ -85,22 +86,26 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
           label="Total VAT on Supplier"
           value={formatCurrency(data.totals.totalVatOnSupplier)}
         />
-      </StatGroup>
+      </StatGrid>
 
       <Card>
-        <h3 className="text-lg font-semibold mb-4">Net Takings Over Time</h3>
-        {chartData.length > 0 ? (
-          <BarChart
-            data={chartData}
-            height={300}
-            color="var(--color-chart-1)"
-            formatType="shorthandCurrency"
-            onBarClick={handleBarClick}
-          />
-        ) : (
-          <p className="text-text-muted text-center py-12">No collection data available.</p>
-        )}
+        <CardHeader title="Net Takings Over Time" />
+        <CardBody>
+          {chartData.length > 0 ? (
+            <BarChart
+              data={chartData}
+              height={300}
+              color="var(--color-chart-1)"
+              formatType="shorthandCurrency"
+              onBarClick={handleBarClick}
+              seriesLabel="Net takings"
+              ariaLabel="Net takings over time"
+            />
+          ) : (
+            <Empty size="sm" title="No collections for this period" description="No machine game collections were recorded in this period." />
+          )}
+        </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   )
 }

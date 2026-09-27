@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getHandoutContext } from '@/app/actions/vouchers'
 import { PageLayout, Alert } from '@/ds'
-import { VOUCHER_SECTION_NAV } from '../_shared/voucher-ui'
+import { VOUCHERS_NAV } from '../_shared/nav'
 import { HandoutClient } from './HandoutClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,9 +18,17 @@ export default async function HandoutModePage({
   const params = await searchParams
   const contextResult = await getHandoutContext()
 
+  // A top-level tab: no back button. One form and no table, so the narrow form width.
+  const layoutProps = {
+    title: 'Vouchers',
+    subtitle: 'Hand-Out Mode: set the context once, then log each card as you hand it over',
+    navItems: VOUCHERS_NAV,
+    containerSize: 'md' as const,
+  }
+
   if (contextResult.error || !contextResult.data) {
     return (
-      <PageLayout title="Hand-out mode" navItems={VOUCHER_SECTION_NAV}>
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Could not load hand-out mode">
           {contextResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>
@@ -29,12 +37,7 @@ export default async function HandoutModePage({
   }
 
   return (
-    <PageLayout
-      title="Hand-out mode"
-      subtitle="Set the context once, then log each card as you hand it to a winner"
-      navItems={VOUCHER_SECTION_NAV}
-      backButton={{ label: 'Back to vouchers', href: '/vouchers' }}
-    >
+    <PageLayout {...layoutProps}>
       <HandoutClient context={contextResult.data} prefillNumber={params.number ?? null} />
     </PageLayout>
   )

@@ -2,19 +2,24 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageLayout } from '@/ds'
-import { Button } from '@/ds'
-import { Modal, ModalActions } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Card } from '@/ds'
-import { Alert } from '@/ds'
-import { EmptyState } from '@/ds'
-import { DataTable } from '@/ds'
-import { Plus, Edit2, Trash2, Package } from 'lucide-react'
+import {
+  PageLayout,
+  Icon,
+  Button,
+  IconButton,
+  Modal,
+  Input,
+  Textarea,
+  Field,
+  Card,
+  Alert,
+  ConfirmDialog,
+  DataTable,
+} from '@/ds'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { financeNav } from '../_shared/nav'
 
 interface CatalogFormData {
   name: string
@@ -42,6 +47,9 @@ export default function LineItemCatalogPage() {
   })
   const [formLoading, setFormLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A failed load is kept apart from a failed save or delete, so it is never drawn as an empty catalog.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<LineItemCatalogItem | null>(null)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -69,8 +77,9 @@ export default function LineItemCatalogPage() {
       }
 
       setItems(result.items)
+      setLoadError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load catalog')
+      setLoadError(err instanceof Error ? err.message : 'Failed to load catalog')
     } finally {
       setLoading(false)
     }
@@ -149,13 +158,17 @@ export default function LineItemCatalogPage() {
     }
   }
 
-  async function handleDelete(item: LineItemCatalogItem) {
+  function requestDelete(item: LineItemCatalogItem) {
     if (!canManage) {
       setError('You do not have permission to manage catalog items')
       return
     }
+    setDeleteTarget(item)
+  }
 
-    if (!confirm(`Are you sure you want to delete "${item.name}"?`)) {
+  async function handleDelete(item: LineItemCatalogItem) {
+    if (!canManage) {
+      setError('You do not have permission to manage catalog items')
       return
     }
 
@@ -172,162 +185,109 @@ export default function LineItemCatalogPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Invoices',
+    subtitle: 'Catalog: reusable line items for invoices and quotes',
+    navItems: financeNav({ canExport: hasPermission('invoices', 'export') }),
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Line Item Catalog"
-        subtitle="Manage reusable line items for invoices and quotes"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        navItems={[
-          { label: 'Catalog', href: '/invoices/catalog' },
-          { label: 'Vendors', href: '/invoices/vendors' },
-          { label: 'Recurring', href: '/invoices/recurring' },
-        ]}
-        loading
-        loadingLabel="Loading catalog..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading catalog" />
   }
 
   if (!canView) {
     return null
   }
 
+  const itemActions = (i: LineItemCatalogItem) => (
+    <div className="flex justify-end gap-2">
+      <IconButton
+        variant="secondary"
+        size="sm"
+        onClick={() => openForm(i)}
+        label="Edit item"
+        icon={<Icon name="edit" size={16} />}
+        disabled={!canManage}
+        title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
+      />
+      <IconButton
+        variant="danger"
+        size="sm"
+        onClick={() => requestDelete(i)}
+        label="Delete item"
+        icon={<Icon name="trash" size={16} />}
+        disabled={!canManage}
+        title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
+      />
+    </div>
+  )
+
   return (
     <PageLayout
-      title="Line Item Catalog"
-      subtitle="Manage reusable line items for invoices and quotes"
-      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      navItems={[
-        { label: 'Catalog', href: '/invoices/catalog' },
-        { label: 'Vendors', href: '/invoices/vendors' },
-        { label: 'Recurring', href: '/invoices/recurring' },
-      ]}
+      {...layoutProps}
       headerActions={
         canManage ? (
-          <Button
-            variant="primary"
+          <Button variant="primary"
+            size="sm"
             onClick={() => openForm()}
-            leftIcon={<Plus className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
           >
-            Add Item
+            New Catalog Item
           </Button>
         ) : undefined
       }
     >
-      <div className="space-y-6">
-        {isReadOnly && (
-          <Alert
-            variant="info"
-            description="You have read-only access to the catalog. Create, edit, and delete actions are disabled."
-            className="mb-6"
-          />
-        )}
-        {error && (
-          <Alert variant="error" description={error} className="mb-6" />
-        )}
+      {isReadOnly && (
+        <Alert tone="info">
+          You have read-only access to the catalog. Create, edit, and delete actions are disabled.
+        </Alert>
+      )}
+      {error && !showForm && <Alert tone="danger">{error}</Alert>}
 
-        {items.length === 0 ? (
-          <EmptyState icon={<Package className="h-12 w-12" />}
-            title="No catalog items found"
-            description="Add common line items for quick reuse."
-            action={
-              canManage ? (
-                <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-                  Add Your First Item
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <Card>
-            <DataTable
-              data={items}
-              getRowKey={(i) => i.id}
-              columns={[
-                { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
-                { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-text-muted">{i.description || '-'}</span> },
-                { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
-                { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
-                { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => openForm(i)}
-                      aria-label="Edit item"
-                      iconOnly
-                      disabled={!canManage}
-                      title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDelete(i)}
-                      aria-label="Delete item"
-                      iconOnly
-                      disabled={!canManage}
-                      title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+      {loadError ? (
+        <Alert tone="danger" title="Could not load the catalog">{loadError}</Alert>
+      ) : (
+        <Card padding="none">
+          <DataTable
+            data={items}
+            getRowKey={(i) => i.id}
+            bordered={false}
+            columns={[
+              { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
+              { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-text-muted">{i.description || '-'}</span> },
+              { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
+              { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
+              { key: 'actions', header: 'Actions', align: 'right', cell: itemActions },
+            ]}
+            emptyMessage="No catalog items yet"
+            emptyDescription="Use New Catalog Item to save a line item you use often."
+            renderMobileCard={(i: LineItemCatalogItem) => (
+              <div className="border-b border-border p-pad-card">
+                <div className="mb-2 flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-text">{i.name}</div>
+                    {i.description && <div className="mt-1 truncate text-sm text-text-muted">{i.description}</div>}
                   </div>
-                ) },
-              ]}
-              emptyMessage="No catalog items found"
-              renderMobileCard={(i: LineItemCatalogItem) => (
-                <div className="p-2">
-                  <div className="mb-2 flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-text">{i.name}</div>
-                      {i.description && <div className="mt-1 truncate text-sm text-text-muted">{i.description}</div>}
-                    </div>
-                    <div className="ml-4 flex gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openForm(i)}
-                        aria-label="Edit item"
-                        iconOnly
-                        disabled={!canManage}
-                        title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDelete(i)}
-                        aria-label="Delete item"
-                        iconOnly
-                        disabled={!canManage}
-                        title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div><span className="text-text-muted">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
-                    <div><span className="text-text-muted">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
-                  </div>
+                  <div className="ml-4">{itemActions(i)}</div>
                 </div>
-              )}
-            />
-          </Card>
-        )}
-      </div>
+                <div className="flex items-center justify-between text-sm">
+                  <div><span className="text-text-muted">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
+                  <div><span className="text-text-muted">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
+                </div>
+              </div>
+            )}
+          />
+        </Card>
+      )}
 
       {/* Form Modal */}
       <Modal
         open={showForm}
         onClose={closeForm}
-        title={editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
-        size="sm"
+        title={editingItem ? 'Edit Catalog Item' : 'New Catalog Item'}
+        width="sm"
         footer={
-          <ModalActions>
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -336,22 +296,21 @@ export default function LineItemCatalogPage() {
             >
               Cancel
             </Button>
-            <Button
+            <Button variant="primary"
               type="submit"
               form="catalog-form"
               disabled={formLoading || !canManage}
               loading={formLoading}
             >
-              {editingItem ? 'Save Changes' : 'Add Item'}
+              {editingItem ? 'Save Changes' : 'Create Catalog Item'}
             </Button>
-          </ModalActions>
+          </>
         }
       >
         <form id="catalog-form" onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Name <span className="text-danger">*</span>
-            </label>
+          {error && <Alert tone="danger">{error}</Alert>}
+
+          <Field label="Name" required>
             <Input
               type="text"
               value={formData.name}
@@ -359,25 +318,18 @@ export default function LineItemCatalogPage() {
               required
               disabled={formLoading}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Description
-            </label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
-              disabled={formLoading}
-            />
-          </div>
+          <Textarea
+            label="Description"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            rows={3}
+            disabled={formLoading}
+          />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Default Price (£) <span className="text-danger">*</span>
-              </label>
+            <Field label="Default Price (£)" required>
               <Input
                 type="number"
                 value={formData.default_price}
@@ -387,12 +339,9 @@ export default function LineItemCatalogPage() {
                 required
                 disabled={formLoading}
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                VAT Rate (%) <span className="text-danger">*</span>
-              </label>
+            <Field label="VAT Rate (%)" required>
               <Input
                 type="number"
                 value={formData.default_vat_rate}
@@ -403,10 +352,22 @@ export default function LineItemCatalogPage() {
                 required
                 disabled={formLoading}
               />
-            </div>
+            </Field>
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (deleteTarget) await handleDelete(deleteTarget)
+        }}
+        title="Delete Catalog Item"
+        message={deleteTarget ? `Are you sure you want to delete "${deleteTarget.name}"?` : undefined}
+        confirmLabel="Delete"
+        tone="danger"
+      />
     </PageLayout>
   )
 }

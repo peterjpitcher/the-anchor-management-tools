@@ -1,14 +1,12 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
-import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
-import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Button, IconButton, Modal, toast } from '@/ds'
+import { Alert, Button, Empty, Icon, IconButton, Modal, toast } from '@/ds'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -31,7 +29,8 @@ function DeleteAttachmentButton({
   onDeleted: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const [state, dispatch] = useActionState(deleteEmployeeAttachment, null)
+  const [state, dispatch, pending] = useActionState(deleteEmployeeAttachment, null)
+  const formId = `delete-attachment-${attachmentId}`
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -41,15 +40,6 @@ function DeleteAttachmentButton({
       // error is shown inline; no alert needed
     }
   }, [state, onDeleted])
-
-  function SubmitActualDeleteButton() {
-    const { pending } = useFormStatus()
-    return (
-      <Button type="submit" variant="danger" disabled={pending}>
-        {pending ? 'Deleting…' : 'Delete'}
-      </Button>
-    )
-  }
 
   if (!storagePath) {
     return null
@@ -62,29 +52,38 @@ function DeleteAttachmentButton({
         type="button"
         size="md"
         className="text-danger hover:bg-danger-soft hover:text-danger-fg"
-        title="Delete Attachment"
+        title="Delete attachment"
         label={`Delete ${attachmentName}`}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
       />
 
-      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
-          buttons stay inside it so the submit button can read the form's pending state. */}
-      <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete Attachment" width="md">
-        <form action={dispatch}>
+      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form. Its footer
+          mirrors ConfirmDialog, and the submit button reaches the form through form=. */}
+      <Modal
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="Delete Attachment"
+        width="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form={formId} variant="danger" loading={pending}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} action={dispatch} className="space-y-4">
           <input type="hidden" name="employee_id" value={employeeId} />
           <input type="hidden" name="attachment_id" value={attachmentId} />
           <p className="text-sm text-text-muted">
             Are you sure you want to delete &quot;{attachmentName}&quot;? This action cannot be undone.
           </p>
           {state?.type === 'error' && (
-            <p className="mt-3 text-sm text-danger-fg">{state.message}</p>
+            <Alert tone="danger" size="sm">{state.message}</Alert>
           )}
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
-            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
-              Cancel
-            </Button>
-            <SubmitActualDeleteButton />
-          </div>
         </form>
       </Modal>
     </>
@@ -169,7 +168,7 @@ export default function EmployeeAttachmentsList({
   }
 
   if (!attachments || attachments.length === 0) {
-    return <p className="text-sm text-text-muted">No documents uploaded yet.</p>
+    return <Empty size="sm" icon="document" title="No documents yet" />
   }
 
   return (
@@ -180,7 +179,7 @@ export default function EmployeeAttachmentsList({
           <li key={attachment.attachment_id} className="py-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center space-x-3">
-                <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-text-subtle" />
+                <Icon name="paperclip" size={20} className="flex-shrink-0 text-text-subtle" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text">{attachment.file_name}</p>
                   <p className="truncate text-xs text-text-muted">
@@ -198,7 +197,7 @@ export default function EmployeeAttachmentsList({
                     className="text-text-muted hover:text-text"
                     disabled={viewing === attachment.attachment_id}
                     label={`View ${attachment.file_name}`}
-                    icon={<EyeIcon className="h-5 w-5" />}
+                    icon={<Icon name="eye" size={20} />}
                   />
                 )}
                 <IconButton
@@ -208,7 +207,7 @@ export default function EmployeeAttachmentsList({
                   className="text-text-muted hover:text-text"
                   disabled={downloading === attachment.attachment_id}
                   label={`Download ${attachment.file_name}`}
-                  icon={<ArrowDownTrayIcon className="h-5 w-5" />}
+                  icon={<Icon name="download" size={20} />}
                 />
                 {canDelete && attachment.storage_path && (
                   <DeleteAttachmentButton

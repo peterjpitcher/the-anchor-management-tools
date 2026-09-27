@@ -2,7 +2,6 @@ import { getPlDashboardData } from '@/app/actions/pnl'
 import PnlClient from '@/app/(authenticated)/receipts/_components/PnlClient'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 export const runtime = 'nodejs'
 
@@ -19,13 +18,6 @@ export default async function ReceiptsPnlPage() {
 
   const data = await getPlDashboardData()
 
-  return (
-    <ReceiptsPageChrome
-      title="Business Health"
-      subtitle="Compare cash-up sales and receipt expenses against the Greene King Shadow P&L."
-      navState={{ view: 'pnl' }}
-    >
-      <PnlClient initialData={data} canExport={canExport} canManage={canManage} />
-    </ReceiptsPageChrome>
-  )
+  // PnlClient renders the Receipts chrome, so the timeframe switch and exports sit in the header.
+  return <PnlClient initialData={data} canExport={canExport} canManage={canManage} />
 }

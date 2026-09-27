@@ -91,7 +91,8 @@ describe('audit logs London times', () => {
     })
 
     renderLogs()
-    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+    // The page header renders its actions twice: once for phones, once for desktop.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export CSV' })[0])
 
     expect(downloadName).toBe('audit-logs-2026-10-02.csv')
   })

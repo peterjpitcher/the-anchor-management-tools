@@ -12,9 +12,11 @@ import {
   Checkbox,
   Empty,
   Input,
+  LinkButton,
+  PageLoading,
   Select,
-  Spinner,
   Stat,
+  StatGrid,
   Table,
   TableBody,
   TableCell,
@@ -48,13 +50,19 @@ import {
   type MaintenanceFilterState,
   type MaintenanceStatusFilter,
 } from './maintenanceFilters'
+import { formatMaintenanceDate, formatPounds } from './maintenanceDisplay'
 import {
+  MAINTENANCE_OVERDUE_TONE,
   MAINTENANCE_PRIORITY_TONES,
   MAINTENANCE_RESPONSIBILITY_TONES,
   MAINTENANCE_STATUS_TONES,
-  formatMaintenanceDate,
-  formatPounds,
-} from './maintenanceDisplay'
+  maintenanceOverdueCountTone,
+} from '../_shared/status-ui'
+
+const ROW_LINK =
+  'rounded-sm text-text underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:shadow-ring'
+/** Each filter control's width in the one filter row. */
+const FILTER_WIDTH = 'w-full sm:w-48'
 
 export interface MaintenanceListClientProps {
   areas: MaintenanceArea[]
@@ -246,183 +254,185 @@ export function MaintenanceListClient({
 
   const narrowed = hasNarrowedMaintenanceFilters(filters)
 
+  // A fragment: the totals, the filters and the list are page blocks, spaced by PageLayout.
   return (
-    <div className="space-y-4">
+    <>
       {error && (
         <Alert tone="danger" title="Something went wrong">
           <p>{error}</p>
           <p className="mt-2">
-            <Button size="sm" onClick={() => void load(filters)}>
-              Try again
+            <Button variant="secondary" size="sm" onClick={() => void load(filters)}>
+              Try Again
             </Button>
           </p>
         </Alert>
       )}
 
-      <section aria-labelledby="maintenance-totals-heading">
-        <h2 id="maintenance-totals-heading" className="sr-only">
-          Totals
-        </h2>
-        <Card>
-          <CardBody>
-            {costs ? (
-              <>
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                  <Stat label="Open" value={String(costs.openCount)} hint="Not done or cancelled" />
-                  <Stat
-                    label="Overdue"
-                    value={String(costs.overdueCount)}
-                    hint="Target date already passed"
-                  />
-                  <Stat
-                    label="Our open estimate"
-                    value={formatPounds(costs.ourOpenEstimate)}
-                    hint="Pounds including VAT"
-                  />
-                  <Stat
-                    label="Uncosted"
-                    value={String(costs.ourUncostedCount)}
-                    hint="Open items of ours with no estimate. Not counted as nil."
-                  />
+      {costs ? (
+        <>
+          <StatGrid columns={4}>
+            <Stat label="Open" value={String(costs.openCount)} hint="Not done or cancelled" />
+            <Stat
+              label="Overdue"
+              value={String(costs.overdueCount)}
+              tone={maintenanceOverdueCountTone(costs.overdueCount)}
+              hint="Target date already passed"
+            />
+            <Stat
+              label="Our open estimate"
+              value={formatPounds(costs.ourOpenEstimate)}
+              hint="Pounds including VAT"
+            />
+            <Stat
+              label="Uncosted"
+              value={String(costs.ourUncostedCount)}
+              hint="Open items of ours with no estimate. Not counted as nil."
+            />
+          </StatGrid>
+          <Card>
+            <CardBody className="space-y-3">
+              <dl className="grid grid-cols-1 gap-2 text-ui sm:grid-cols-2">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-text-muted">Greene King open estimate</dt>
+                  <dd className="text-text">
+                    {formatPounds(costs.greeneKingOpenEstimate)}
+                    {', '}
+                    {costs.greeneKingUncostedCount} uncosted
+                  </dd>
                 </div>
-                <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-border pt-4 text-ui sm:grid-cols-2">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-text-muted">Greene King open estimate</dt>
-                    <dd className="text-text">
-                      {formatPounds(costs.greeneKingOpenEstimate)}
-                      {', '}
-                      {costs.greeneKingUncostedCount} uncosted
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-text-muted">To confirm open estimate</dt>
-                    <dd className="text-text">
-                      {formatPounds(costs.toConfirmOpenEstimate)}
-                      {', '}
-                      {costs.toConfirmUncostedCount} uncosted
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-3 text-xs text-text-muted">
-                  {narrowed
-                    ? 'These totals follow the filters you have set. Greene King and to-confirm amounts are shown on their own and are never added to ours.'
-                    : 'Greene King and to-confirm amounts are shown on their own and are never added to ours.'}
-                </p>
-              </>
-            ) : (
-              <p className="text-ui text-text-muted">
-                The totals are unavailable at the moment. The list below is unaffected.
+                <div className="flex justify-between gap-2">
+                  <dt className="text-text-muted">To confirm open estimate</dt>
+                  <dd className="text-text">
+                    {formatPounds(costs.toConfirmOpenEstimate)}
+                    {', '}
+                    {costs.toConfirmUncostedCount} uncosted
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs text-text-muted">
+                {narrowed
+                  ? 'These totals follow the filters you have set. Greene King and to-confirm amounts are shown on their own and are never added to ours.'
+                  : 'Greene King and to-confirm amounts are shown on their own and are never added to ours.'}
               </p>
-            )}
-          </CardBody>
-        </Card>
-      </section>
+            </CardBody>
+          </Card>
+        </>
+      ) : (
+        <Alert tone="warning">
+          The totals are unavailable at the moment. The list below is unaffected.
+        </Alert>
+      )}
 
-      <section aria-labelledby="maintenance-filters-heading">
-        <h2 id="maintenance-filters-heading" className="sr-only">
-          Filters
-        </h2>
-        <Card>
-          <CardBody>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Input
-                label="Search"
-                type="search"
-                value={searchDraft}
-                onChange={event => setSearchDraft(event.target.value)}
-                placeholder="Title or reference"
-                hint="Searches the title and the reference"
-                maxLength={200}
-              />
-              <Select
-                label="Type"
-                value={filters.kind}
-                onChange={event =>
-                  update('kind', event.target.value as MaintenanceFilterState['kind'])
-                }
-              >
-                <option value="">All types</option>
-                {MAINTENANCE_KINDS.map(kind => (
-                  <option key={kind} value={kind}>
-                    {MAINTENANCE_KIND_LABELS[kind]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Status"
-                value={filters.status}
-                onChange={event => update('status', event.target.value as MaintenanceStatusFilter)}
-              >
-                {STATUS_FILTER_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Area"
-                value={filters.areaId}
-                onChange={event => update('areaId', event.target.value)}
-              >
-                <option value="">All areas</option>
-                {/*
-                  Switched-off areas stay in this list. Items logged against one are
-                  still real work, and dropping the option would leave the control
-                  reading "All areas" while the list was still filtered to it.
-                */}
-                {areas.map(area => (
-                  <option key={area.id} value={area.id}>
-                    {area.active ? area.name : `${area.name} (off)`}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Responsibility"
-                value={filters.responsibility}
-                onChange={event =>
-                  update(
-                    'responsibility',
-                    event.target.value as MaintenanceFilterState['responsibility']
-                  )
-                }
-              >
-                <option value="">Anyone</option>
-                {MAINTENANCE_RESPONSIBILITIES.map(value => (
-                  <option key={value} value={value}>
-                    {MAINTENANCE_RESPONSIBILITY_LABELS[value]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Priority"
-                value={filters.priority}
-                onChange={event =>
-                  update('priority', event.target.value as MaintenanceFilterState['priority'])
-                }
-              >
-                <option value="">Any priority</option>
-                {MAINTENANCE_PRIORITIES.map(value => (
-                  <option key={value} value={value}>
-                    {MAINTENANCE_PRIORITY_LABELS[value]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-4">
-              <Checkbox
-                label="Overdue only"
-                checked={filters.overdueOnly}
-                onChange={checked => update('overdueOnly', checked)}
-              />
-              {narrowed && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              )}
-            </div>
-          </CardBody>
-        </Card>
-      </section>
+      {/* The filters, in one row directly above the list they filter. */}
+      <div role="group" aria-label="Filters" className="flex flex-wrap items-end gap-3">
+        <div className={FILTER_WIDTH}>
+          <Input
+            label="Search"
+            type="search"
+            value={searchDraft}
+            onChange={event => setSearchDraft(event.target.value)}
+            placeholder="Title or reference"
+            aria-description="Searches the title and the reference"
+            maxLength={200}
+          />
+        </div>
+        <div className={FILTER_WIDTH}>
+          <Select
+            label="Type"
+            value={filters.kind}
+            onChange={event =>
+              update('kind', event.target.value as MaintenanceFilterState['kind'])
+            }
+          >
+            <option value="">All types</option>
+            {MAINTENANCE_KINDS.map(kind => (
+              <option key={kind} value={kind}>
+                {MAINTENANCE_KIND_LABELS[kind]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className={FILTER_WIDTH}>
+          <Select
+            label="Status"
+            value={filters.status}
+            onChange={event => update('status', event.target.value as MaintenanceStatusFilter)}
+          >
+            {STATUS_FILTER_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className={FILTER_WIDTH}>
+          <Select
+            label="Area"
+            value={filters.areaId}
+            onChange={event => update('areaId', event.target.value)}
+          >
+            <option value="">All areas</option>
+            {/*
+              Switched-off areas stay in this list. Items logged against one are
+              still real work, and dropping the option would leave the control
+              reading "All areas" while the list was still filtered to it.
+            */}
+            {areas.map(area => (
+              <option key={area.id} value={area.id}>
+                {area.active ? area.name : `${area.name} (off)`}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className={FILTER_WIDTH}>
+          <Select
+            label="Responsibility"
+            value={filters.responsibility}
+            onChange={event =>
+              update(
+                'responsibility',
+                event.target.value as MaintenanceFilterState['responsibility']
+              )
+            }
+          >
+            <option value="">Anyone</option>
+            {MAINTENANCE_RESPONSIBILITIES.map(value => (
+              <option key={value} value={value}>
+                {MAINTENANCE_RESPONSIBILITY_LABELS[value]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className={FILTER_WIDTH}>
+          <Select
+            label="Priority"
+            value={filters.priority}
+            onChange={event =>
+              update('priority', event.target.value as MaintenanceFilterState['priority'])
+            }
+          >
+            <option value="">Any priority</option>
+            {MAINTENANCE_PRIORITIES.map(value => (
+              <option key={value} value={value}>
+                {MAINTENANCE_PRIORITY_LABELS[value]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {/* The same height as the fields beside it, so the checkbox lines up with them. */}
+        <div className="flex h-input-h items-center">
+          <Checkbox
+            label="Overdue only"
+            checked={filters.overdueOnly}
+            onChange={checked => update('overdueOnly', checked)}
+          />
+        </div>
+        {narrowed && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            Clear Filters
+          </Button>
+        )}
+      </div>
 
       <p className="sr-only" role="status" aria-live="polite">
         {loading
@@ -432,41 +442,33 @@ export function MaintenanceListClient({
 
       {loading ? (
         <Card>
-          <CardBody>
-            <div className="flex items-center justify-center gap-2 py-10 text-ui text-text-muted">
-              <Spinner size="md" />
-              <span>Loading the list</span>
-            </div>
-          </CardBody>
+          <PageLoading inline label="Loading the list" />
         </Card>
       ) : items.length === 0 ? (
         <Card>
-          <CardBody>
-            {narrowed ? (
-              <Empty
-                title="Nothing matches those filters"
-                description="Try widening the status, area or search."
-                action={
-                  <Button size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                }
-              />
-            ) : (
-              <Empty
-                title="Nothing logged yet"
-                description="Log the first issue or improvement and it will appear here."
-                action={
-                  <Link
-                    href="/maintenance/new"
-                    className="text-ui font-medium text-primary underline"
-                  >
-                    Log an issue
-                  </Link>
-                }
-              />
-            )}
-          </CardBody>
+          {narrowed ? (
+            <Empty
+              size="sm"
+              title="No items match these filters"
+              description="Try widening the status, area or search."
+              action={
+                <Button size="sm" onClick={clearFilters}>
+                  Clear Filters
+                </Button>
+              }
+            />
+          ) : (
+            <Empty
+              size="sm"
+              title="No items yet"
+              description="Log the first issue or improvement and it will appear here."
+              action={
+                <LinkButton href="/maintenance/new" variant="primary" size="sm">
+                  Log an Issue
+                </LinkButton>
+              }
+            />
+          )}
         </Card>
       ) : (
         <>
@@ -480,7 +482,7 @@ export function MaintenanceListClient({
                     <CardBody>
                       <Link
                         href={`/maintenance/${item.id}`}
-                        className="text-sm font-semibold text-text underline-offset-2 hover:underline"
+                        className={`text-sm font-semibold ${ROW_LINK}`}
                       >
                         {item.title}
                       </Link>
@@ -501,7 +503,7 @@ export function MaintenanceListClient({
                         <Badge tone={MAINTENANCE_RESPONSIBILITY_TONES[item.responsibility]}>
                           {MAINTENANCE_RESPONSIBILITY_LABELS[item.responsibility]}
                         </Badge>
-                        {overdue && <Badge tone="danger">Overdue</Badge>}
+                        {overdue && <Badge tone={MAINTENANCE_OVERDUE_TONE}>Overdue</Badge>}
                       </div>
                       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                         <dt className="text-text-muted">Target date</dt>
@@ -522,7 +524,7 @@ export function MaintenanceListClient({
 
           {/* Desktop: the same rows as a table. */}
           <div className="hidden lg:block">
-            <Card>
+            <Card padding="none">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -548,7 +550,7 @@ export function MaintenanceListClient({
                         <TableCell>
                           <Link
                             href={`/maintenance/${item.id}`}
-                            className="font-medium text-text underline-offset-2 hover:underline"
+                            className={`font-medium ${ROW_LINK}`}
                           >
                             {item.title}
                           </Link>
@@ -574,7 +576,7 @@ export function MaintenanceListClient({
                           {formatMaintenanceDate(item.targetDate)}
                           {overdue && (
                             <span className="ml-2">
-                              <Badge tone="danger">Overdue</Badge>
+                              <Badge tone={MAINTENANCE_OVERDUE_TONE}>Overdue</Badge>
                             </span>
                           )}
                         </TableCell>
@@ -592,15 +594,21 @@ export function MaintenanceListClient({
           </div>
 
           {hasMore && (
+            // Appends the next batch to the list, so it stays a "Load More" button, not a pager.
             <div className="flex justify-center">
-              <Button onClick={() => void handleLoadMore()} loading={loadingMore}>
-                Load more
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleLoadMore()}
+                loading={loadingMore}
+              >
+                Load More
               </Button>
             </div>
           )}
         </>
       )}
-    </div>
+    </>
   )
 }
 

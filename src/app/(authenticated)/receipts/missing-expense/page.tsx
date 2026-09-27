@@ -1,9 +1,23 @@
 import { getReceiptMissingExpenseSummary } from '@/app/actions/receipts'
-import { Badge, Card, LinkButton } from '@/ds'
-import Link from 'next/link'
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  LinkButton,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
+import { RECEIPT_FLOW_TEXT_CLASS, RECEIPT_FLOW_TONE } from '../_shared/status-ui'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-GB', {
@@ -14,14 +28,24 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '—'
+  if (!value) return '-'
   return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
 }
+
+/** The workspace, filtered to this vendor's transactions that still need an expense category. */
+function reviewHref(vendorLabel: string): string {
+  return `/receipts?needsExpense=1${vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(vendorLabel)}` : ''}`
+}
+
+const ALL_CATEGORISED = 'No expense gaps'
 
 export const runtime = 'nodejs'
 
 export default async function ReceiptsMissingExpensePage() {
-  const canView = await checkUserPermission('receipts', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('receipts', 'view'),
+    checkUserPermission('receipts', 'manage'),
+  ])
   if (!canView) {
     redirect('/unauthorized')
   }
@@ -33,75 +57,78 @@ export default async function ReceiptsMissingExpensePage() {
 
   return (
     <ReceiptsPageChrome
-      title="Transactions needing expense category"
-      subtitle="Vendors with receipts that still require an expense category."
+      subtitle="Expense Gaps: vendors whose transactions still need an expense category"
       navState={{ view: 'missing-expense' }}
+      canManage={canManage}
     >
-      <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <SummaryCard label="Transactions without expense" value={totalTransactions} tone="warning" />
-          <SummaryCard label="Uncategorised outgoing" value={formatCurrency(totalOutgoing)} tone="spend" />
-          <SummaryCard label="Uncategorised incoming" value={formatCurrency(totalIncoming)} tone="income" />
-        </div>
+      <StatGrid columns={3}>
+        {/* Amber while anything needs a category; money out red and money in green, as in the table below. */}
+        <Stat
+          label="Transactions without expense"
+          value={totalTransactions}
+          tone={totalTransactions > 0 ? 'warning' : 'default'}
+          hint="Needs attention"
+        />
+        <Stat
+          label="Uncategorised outgoing"
+          value={formatCurrency(totalOutgoing)}
+          tone={totalOutgoing > 0 ? RECEIPT_FLOW_TONE.spend : 'default'}
+          hint="Awaiting categorisation"
+        />
+        <Stat
+          label="Uncategorised incoming"
+          value={formatCurrency(totalIncoming)}
+          tone={totalIncoming > 0 ? RECEIPT_FLOW_TONE.income : 'default'}
+          hint="Incoming balance"
+        />
+      </StatGrid>
 
-        {/* Desktop / tablet: table (unchanged at >=768px) */}
-        <Card className="hidden md:block">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
-              <thead className="bg-surface-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <tr>
-                  <th scope="col" className="px-4 py-3">Vendor</th>
-                  <th scope="col" className="px-4 py-3 text-right">Transactions</th>
-                  <th scope="col" className="px-4 py-3 text-right">Total out</th>
-                  <th scope="col" className="px-4 py-3 text-right">Total in</th>
-                  <th scope="col" className="px-4 py-3">Latest activity</th>
-                  <th scope="col" className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border text-text">
-                {summary.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-sm text-text-muted" colSpan={6}>
-                      All transactions have an expense category assigned.
-                    </td>
-                  </tr>
-                ) : (
-                  summary.map((item) => (
-                    <tr key={item.vendorLabel}>
-                      <td className="px-4 py-3 font-medium text-text-strong">{item.vendorLabel}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{item.transactionCount}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-danger-fg">{formatCurrency(item.totalOutgoing)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-success-fg">{formatCurrency(item.totalIncoming)}</td>
-                      <td className="px-4 py-3 text-text-muted">{formatDate(item.latestTransaction)}</td>
-                      <td className="px-4 py-3 text-right text-sm">
-                        <Link
-                          href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
-                          className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
-                        >
-                          Review
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+      {summary.length === 0 ? (
+        <Card>
+          <Empty size="sm" title={ALL_CATEGORISED} description="Every transaction has an expense category." />
         </Card>
+      ) : (
+        <>
+          {/* Desktop and tablet: table (from 768px) */}
+          <Card padding="none" className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead align="right">Transactions</TableHead>
+                  <TableHead align="right">Total out</TableHead>
+                  <TableHead align="right">Total in</TableHead>
+                  <TableHead>Latest activity</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summary.map((item) => (
+                  <TableRow key={item.vendorLabel}>
+                    <TableCell className="font-medium text-text-strong">{item.vendorLabel}</TableCell>
+                    <TableCell align="right" className="tabular-nums">{item.transactionCount}</TableCell>
+                    <TableCell align="right" className={`tabular-nums ${RECEIPT_FLOW_TEXT_CLASS.spend}`}>{formatCurrency(item.totalOutgoing)}</TableCell>
+                    <TableCell align="right" className={`tabular-nums ${RECEIPT_FLOW_TEXT_CLASS.income}`}>{formatCurrency(item.totalIncoming)}</TableCell>
+                    <TableCell className="text-text-muted">{formatDate(item.latestTransaction)}</TableCell>
+                    <TableCell align="right">
+                      <LinkButton href={reviewHref(item.vendorLabel)} variant="secondary" size="sm">
+                        Review
+                      </LinkButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
 
-        {/* Mobile: stacked cards (below 768px) */}
-        <div className="space-y-3 md:hidden">
-          {summary.length === 0 ? (
-            <Card>
-              <p className="py-4 text-center text-sm text-text-muted">
-                All transactions have an expense category assigned.
-              </p>
-            </Card>
-          ) : (
-            summary.map((item) => (
+          {/* Phones: one card per vendor (below 768px) */}
+          <div className="space-y-3 md:hidden">
+            {summary.map((item) => (
               <Card key={item.vendorLabel}>
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold leading-snug text-text-strong">{item.vendorLabel}</h3>
+                <CardHeader title={item.vendorLabel} />
+                <CardBody className="space-y-3">
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div>
                       <dt className="text-xs uppercase tracking-wide text-text-muted">Transactions</dt>
@@ -113,47 +140,22 @@ export default async function ReceiptsMissingExpensePage() {
                     </div>
                     <div>
                       <dt className="text-xs uppercase tracking-wide text-text-muted">Total out</dt>
-                      <dd className="mt-0.5 font-medium tabular-nums text-danger-fg">{formatCurrency(item.totalOutgoing)}</dd>
+                      <dd className={`mt-0.5 font-medium tabular-nums ${RECEIPT_FLOW_TEXT_CLASS.spend}`}>{formatCurrency(item.totalOutgoing)}</dd>
                     </div>
                     <div>
                       <dt className="text-xs uppercase tracking-wide text-text-muted">Total in</dt>
-                      <dd className="mt-0.5 font-medium tabular-nums text-success-fg">{formatCurrency(item.totalIncoming)}</dd>
+                      <dd className={`mt-0.5 font-medium tabular-nums ${RECEIPT_FLOW_TEXT_CLASS.income}`}>{formatCurrency(item.totalIncoming)}</dd>
                     </div>
                   </dl>
-                  <LinkButton
-                    href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
+                  <LinkButton href={reviewHref(item.vendorLabel)} variant="secondary" size="sm" className="w-full">
                     Review
                   </LinkButton>
-                </div>
+                </CardBody>
               </Card>
-            ))
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </ReceiptsPageChrome>
-  )
-}
-
-function SummaryCard({ label, value, tone }: { label: string; value: string | number; tone: 'income' | 'spend' | 'warning' }) {
-  const badgeTone: Record<typeof tone, 'success' | 'danger' | 'warning'> = {
-    income: 'success',
-    spend: 'danger',
-    warning: 'warning',
-  }
-
-  return (
-    <Card className="h-full">
-      <div className="space-y-1.5">
-        <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
-        <p className="text-2xl font-semibold text-text-strong">{value}</p>
-        <Badge tone={badgeTone[tone]} size="sm" className="w-fit">
-          {tone === 'spend' ? 'Awaiting categorisation' : tone === 'income' ? 'Incoming balance' : 'Needs attention'}
-        </Badge>
-      </div>
-    </Card>
   )
 }

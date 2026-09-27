@@ -6,6 +6,8 @@ import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import { CashingUpService } from '@/services/cashing-up.service'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { getErrorMessage } from '@/lib/errors'
+import { Alert, PageLayout } from '@/ds'
+import { CASHING_UP_DAILY_SUBTITLE, cashingUpLayout } from '../_shared/nav'
 import { DailyClient } from './_components/DailyClient'
 
 export default async function DailyCashupPage(props: { searchParams: Promise<{ date?: string; siteId?: string; edit?: string }> }) {
@@ -16,8 +18,16 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   const siteId = searchParams.siteId || site?.id
   const siteName = site?.name || 'Default Site'
 
+  const layoutProps = cashingUpLayout(CASHING_UP_DAILY_SUBTITLE)
+
   if (!siteId) {
-    return <p className="text-text-muted text-center py-8">No site configured. Please configure a site in the database.</p>
+    return (
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="No site configured">
+          Please configure a site in the database.
+        </Alert>
+      </PageLayout>
+    )
   }
 
   const todayIso = getTodayIsoDate()
@@ -43,9 +53,11 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
 
   if (existingSessionRes.error) {
     return (
-      <p className="text-danger-fg text-center py-8">
-        Unable to load the existing cash-up: {existingSessionRes.error}. Please refresh and try again.
-      </p>
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Unable to load the existing cash-up">
+          {existingSessionRes.error}. Please refresh and try again.
+        </Alert>
+      </PageLayout>
     )
   }
 
@@ -60,6 +72,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
       dailySummary={summaryRes.success ? summaryRes.summary ?? null : null}
       dailyTarget={targetAmount}
       weeklyData={weeklyRes.data ?? []}
+      weeklyError={weeklyRes.data ? undefined : weeklyRes.error ?? 'The week could not be loaded'}
       existingSession={existingSession ? JSON.parse(JSON.stringify(existingSession)) : null}
       missingDates={missingRes.success && missingRes.dates ? missingRes.dates : []}
       initialEditMode={initialEditMode}

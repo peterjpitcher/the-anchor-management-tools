@@ -8,6 +8,7 @@ import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 const STATUS_VALUES = new Set(receiptTransactionStatusSchema.options)
+const BULK_SUBTITLE = 'Bulk: group similar transactions, confirm AI suggestions and roll out rules in one sweep'
 
 type BulkStatus = ReceiptTransaction['status']
 
@@ -60,15 +61,16 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
   if (loadError || !data) {
     return (
       <ReceiptsPageChrome
-        title="Bulk classification"
-        subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
+        subtitle={BULK_SUBTITLE}
         navState={{ view: 'bulk' }}
+        canManage={canManage}
       >
         <Alert
-          variant="error"
+          tone="danger"
           title="Failed to load bulk review"
-          description={loadError ?? 'An unexpected error occurred. Please try again.'}
-        />
+        >
+          {loadError ?? 'An unexpected error occurred. Please try again.'}
+        </Alert>
       </ReceiptsPageChrome>
     )
   }
@@ -81,9 +83,9 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
 
   return (
     <ReceiptsPageChrome
-      title="Bulk classification"
-      subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
+      subtitle={BULK_SUBTITLE}
       navState={{ view: 'bulk' }}
+      canManage={canManage}
     >
       <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
     </ReceiptsPageChrome>

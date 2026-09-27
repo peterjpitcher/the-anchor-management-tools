@@ -7,20 +7,23 @@ import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBo
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Checkbox } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Alert } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { LinkButton } from '@/ds'
-import { Spinner } from '@/ds'
-import { toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  Field,
+  FormFooter,
+  Input,
+  LinkButton,
+  PageLayout,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
 import { formatDateFull } from '@/lib/dateUtils'
 type FormState = { error: string } | { success: boolean } | null
 
@@ -198,52 +201,47 @@ export default function EditPrivateBookingPage({
     null
   )
 
-  if (loading) {
-    return (
-      <PageLayout
-        title="Edit Private Booking"
-        subtitle="Loading booking details..."
-        backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
-        loading
-        loadingLabel="Loading booking..."
-      />
-    )
-  }
-
-  if (error || !booking) {
-    return (
-      <PageLayout
-        title="Edit Private Booking"
-        subtitle="Something went wrong"
-        backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
-        error={error || 'Booking not found'}
-      />
-    )
-  }
   const customerLabel = booking
     ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
     : 'Unknown'
 
-  const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
+  // The booking page is titled with the customer's name ("Private Booking" until it loads), so
+  // the way back names it the same way.
+  const parentTitle = booking
+    ? booking.customer_full_name || booking.customer_name || 'Private Booking'
+    : 'Private Booking'
+
+  // One header for every state: the title stays put while the booking loads.
+  const layoutProps = {
+    title: 'Edit Booking',
+    subtitle: booking
+      ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
+      : undefined,
+    backButton: { label: `Back to ${parentTitle}`, href: `/private-bookings/${id}` },
+    containerSize: 'md' as const,
+  }
+
+  if (loading) {
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking…" />
+  }
+
+  if (error || !booking) {
+    return <PageLayout {...layoutProps} error={error || 'Booking not found'} />
+  }
 
   // Saving with the status switched to Cancelled is a real cancellation, not a
   // field edit, so it needs naming before it happens.
   const isCancelling = statusValue === 'cancelled' && booking.status !== 'cancelled'
 
   return (
-    <PageLayout
-      title="Edit Private Booking"
-      subtitle={subtitle}
-      backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
-    >
-      <div className="space-y-6">
-        <Card>
+    <PageLayout {...layoutProps}>
           {state && 'error' in state && (
-            <Alert variant="error" className="mb-6">
+            <Alert tone="danger">
               {state.error}
             </Alert>
           )}
 
+          {/* One form around the page's cards, so every block submits together */}
           <form
             ref={formRef}
             action={formAction}
@@ -262,23 +260,21 @@ export default function EditPrivateBookingPage({
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           <input type="hidden" name="default_country_code" value="44" />
           {/* Customer Information */}
-          <Section title="Customer Information">
-            <div className="space-y-4">
+          <Card>
+            <CardHeader title="Customer Information" />
+            <CardBody className="space-y-4">
               {/* Customer Search */}
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Change Customer
-                </label>
+              <Field label="Change Customer">
                 <CustomerSearchInput
                   onCustomerSelect={handleCustomerSelect}
                   placeholder="Search to change customer..."
                   selectedCustomerId={selectedCustomer?.id || booking.customer_id}
                 />
-                <input type="hidden" name="customer_id" value={selectedCustomer?.id || booking.customer_id || ''} />
-              </div>
+              </Field>
+              <input type="hidden" name="customer_id" value={selectedCustomer?.id || booking.customer_id || ''} />
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormGroup label="First Name" required>
+                <Field label="First Name" required>
                   <Input
                     type="text"
                     name="customer_first_name"
@@ -287,9 +283,9 @@ export default function EditPrivateBookingPage({
                     value={customerFirstName}
                     onChange={(e) => setCustomerFirstName(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Last Name">
+                <Field label="Last Name">
                   <Input
                     type="text"
                     name="customer_last_name"
@@ -297,9 +293,9 @@ export default function EditPrivateBookingPage({
                     value={customerLastName}
                     onChange={(e) => setCustomerLastName(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Contact Phone">
+                <Field label="Contact Phone">
                   <Input
                     type="tel"
                     name="contact_phone"
@@ -307,9 +303,9 @@ export default function EditPrivateBookingPage({
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Contact Email">
+                <Field label="Contact Email">
                   <Input
                     type="email"
                     name="contact_email"
@@ -317,9 +313,9 @@ export default function EditPrivateBookingPage({
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Event Type">
+                <Field label="Event Type">
                   <Input
                     type="text"
                     name="event_type"
@@ -327,9 +323,9 @@ export default function EditPrivateBookingPage({
                     defaultValue={booking.event_type || ''}
                     placeholder="Birthday Party, Wedding, Corporate Event..."
                   />
-                </FormGroup>
+                </Field>
 
-              <FormGroup label="Booking Source">
+              <Field label="Booking Source">
                 <Select
                   name="source"
                   id="source"
@@ -346,11 +342,11 @@ export default function EditPrivateBookingPage({
                     { value: 'other', label: 'Other' }
                   ]}
                 />
-              </FormGroup>
+              </Field>
 
-                <FormGroup
+                <Field
                   label="Booking Status"
-                  help="Confirming, completing or cancelling all text the customer when you save"
+                  hint="Confirming, completing or cancelling all text the customer when you save"
                 >
                   <Select
                     name="status"
@@ -359,15 +355,17 @@ export default function EditPrivateBookingPage({
                     onChange={(e) => setStatusValue(e.target.value)}
                     options={STATUS_OPTIONS[booking.status] || []}
                   />
-                </FormGroup>
+                </Field>
               </div>
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Financial Details */}
-          <Section title="Financial Details">
+          <Card>
+            <CardHeader title="Financial Details" />
+            <CardBody className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormGroup label="Deposit Amount">
+              <Field label="Deposit Amount">
                 <Input
                   type="number"
                   name="deposit_amount"
@@ -378,11 +376,11 @@ export default function EditPrivateBookingPage({
                   disabled={!!booking.deposit_paid_date}
                   onChange={(e) => setDepositAmountDraft(e.target.value)}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup
+              <Field
                 label="Balance & Final Details Due"
-                help="Clear to auto-recalculate (14 days before the event). The customer is texted when this date changes."
+                hint="Clear to auto-recalculate (14 days before the event). The customer is texted when this date changes."
               >
                 <Input
                   type="date"
@@ -391,7 +389,7 @@ export default function EditPrivateBookingPage({
                   disabled={dateTbd}
                   defaultValue={booking.balance_due_date || ''}
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             {/* SOP §12: reduced/waived deposits need a recorded GM reason */}
@@ -402,10 +400,10 @@ export default function EditPrivateBookingPage({
               if (!Number.isFinite(draftValue) || draftValue === originalDeposit) return null
               if (draftValue > 0 && draftValue < 250) {
                 return (
-                  <div className="mt-4">
-                    <FormGroup
+                  <div>
+                    <Field
                       label="Reason for reduced deposit (GM discretion)"
-                      help="The standard deposit is £250 — reducing it needs a recorded reason"
+                      hint="The standard deposit is £250. Reducing it needs a recorded reason"
                     >
                       <Input
                         type="text"
@@ -414,19 +412,19 @@ export default function EditPrivateBookingPage({
                         required
                         placeholder="e.g. Repeat corporate client"
                       />
-                    </FormGroup>
+                    </Field>
                   </div>
                 )
               }
               if (draftValue === 0) {
                 return (
-                  <div className="mt-4 space-y-4">
+                  <div className="space-y-4">
                     <Checkbox
                       name="deposit_waived"
                       value="true"
-                      label="Deposit waived (GM approved — venue-hosted/internal event)"
+                      label="Deposit waived (GM approved: venue-hosted/internal event)"
                     />
-                    <FormGroup label="Reason for waiving the deposit">
+                    <Field label="Reason for waiving the deposit">
                       <Input
                         type="text"
                         name="deposit_waived_reason"
@@ -434,52 +432,48 @@ export default function EditPrivateBookingPage({
                         required
                         placeholder="e.g. Venue-hosted event"
                       />
-                    </FormGroup>
+                    </Field>
                   </div>
                 )
               }
               return null
             })()}
 
-            <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-              <input type="hidden" name="has_open_dispute" value="false" />
-              <Checkbox
-                name="has_open_dispute"
-                value="true"
-                defaultChecked={booking.has_open_dispute === true}
-                label="Open payment dispute or chargeback"
-                description="Cancellation and refund decisions will require manual review while this is selected."
-              />
-            </div>
-          </Section>
+            <input type="hidden" name="has_open_dispute" value="false" />
+            <Checkbox
+              name="has_open_dispute"
+              value="true"
+              defaultChecked={booking.has_open_dispute === true}
+              label="Open payment dispute or chargeback"
+              description="Cancellation and refund decisions will require manual review while this is selected."
+              className="rounded-default border border-border p-3"
+            />
+            </CardBody>
+          </Card>
 
           {/* Event Details */}
-          <Section title="Event Details">
+          <Card>
+            <CardHeader title="Event Details" />
+            <CardBody className="space-y-4">
             {dateTbd && (
               <Alert
-                variant="warning"
-                className="mb-4"
+                tone="warning"
                 title="Lead without confirmed date"
               >
                 Keep this booking in draft until the customer confirms the schedule.
               </Alert>
             )}
 
-            <div className="space-y-4">
-              <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-text">
-                <input
-                  type="checkbox"
-                  id="date_tbd"
-                  name="date_tbd_toggle"
-                  checked={dateTbd}
-                  onChange={(event) => handleToggleDateTbd(event.target.checked)}
-                  className="h-4 w-4 accent-primary"
-                />
-                <span>Event date/time to be confirmed</span>
-              </label>
+              <Checkbox
+                id="date_tbd"
+                name="date_tbd_toggle"
+                checked={dateTbd}
+                onChange={handleToggleDateTbd}
+                label="Event date/time to be confirmed"
+              />
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormGroup label="Event Date" required={!dateTbd}>
+                <Field label="Event Date" required={!dateTbd}>
                   <Input
                     type="date"
                     name="event_date"
@@ -489,9 +483,9 @@ export default function EditPrivateBookingPage({
                     value={eventDate}
                     onChange={(e) => setEventDate(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Expected Guests">
+                <Field label="Expected Guests">
                   <Input
                     type="number"
                     name="guest_count"
@@ -499,9 +493,9 @@ export default function EditPrivateBookingPage({
                     min="1"
                     defaultValue={booking.guest_count || ''}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Setup Date">
+                <Field label="Setup Date">
                   <Input
                     type="date"
                     name="setup_date"
@@ -510,9 +504,9 @@ export default function EditPrivateBookingPage({
                     value={setupDate}
                     onChange={(e) => setSetupDate(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Setup Time">
+                <Field label="Setup Time">
                   <Input
                     type="time"
                     name="setup_time"
@@ -521,9 +515,9 @@ export default function EditPrivateBookingPage({
                     value={setupTime}
                     onChange={(e) => setSetupTime(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Start Time" required={!dateTbd}>
+                <Field label="Start Time" required={!dateTbd}>
                   <Input
                     type="time"
                     name="start_time"
@@ -533,9 +527,9 @@ export default function EditPrivateBookingPage({
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="End Time">
+                <Field label="End Time">
                   <Input
                     type="time"
                     name="end_time"
@@ -544,10 +538,10 @@ export default function EditPrivateBookingPage({
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
               </div>
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Event Details & Risk (SOP intake) */}
           <EventDetailsRiskSection
@@ -570,9 +564,10 @@ export default function EditPrivateBookingPage({
           />
 
           {/* Additional Information */}
-          <Section title="Additional Information">
-            <div className="space-y-4">
-              <FormGroup label="Customer Requests">
+          <Card>
+            <CardHeader title="Additional Information" />
+            <CardBody className="space-y-4">
+              <Field label="Customer Requests">
                 <Textarea
                   name="customer_requests"
                   id="customer_requests"
@@ -580,9 +575,9 @@ export default function EditPrivateBookingPage({
                   defaultValue={booking.customer_requests || ''}
                   placeholder="Special requests, dietary requirements, etc."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes">
+              <Field label="Internal Notes">
                 <Textarea
                   name="internal_notes"
                   id="internal_notes"
@@ -591,9 +586,9 @@ export default function EditPrivateBookingPage({
                   onChange={(e) => setInternalNotesField(e.target.value)}
                   placeholder="Staff notes (not visible to customer)"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Contract Note" help="Shown on the contract exactly as entered">
+              <Field label="Contract Note" hint="Shown on the contract exactly as entered">
                 <Textarea
                   name="contract_note"
                   id="contract_note"
@@ -601,9 +596,9 @@ export default function EditPrivateBookingPage({
                   defaultValue={booking.contract_note || ''}
                   placeholder="Add a plain-text note to appear on the contract..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Special Requirements">
+              <Field label="Special Requirements">
                 <Textarea
                   name="special_requirements"
                   id="special_requirements"
@@ -611,9 +606,9 @@ export default function EditPrivateBookingPage({
                   defaultValue={booking.special_requirements || ''}
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Accessibility Needs">
+              <Field label="Accessibility Needs">
                 <Textarea
                   name="accessibility_needs"
                   id="accessibility_needs"
@@ -621,31 +616,27 @@ export default function EditPrivateBookingPage({
                   defaultValue={booking.accessibility_needs || ''}
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
-              </FormGroup>
-            </div>
-          </Section>
+              </Field>
+            </CardBody>
+          </Card>
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t border-border">
+          <FormFooter>
             <LinkButton
               variant="secondary"
               href={`/private-bookings/${id}`}
-              className="w-full sm:w-auto"
             >
               Cancel
             </LinkButton>
             <Button
               type="submit"
+              variant="primary"
               disabled={isPending}
               loading={isPending}
-              fullWidth
-              className="sm:w-auto"
             >
               Save Changes
             </Button>
-          </div>
+          </FormFooter>
         </form>
-      </Card>
-      </div>
 
       <ConfirmDialog
         open={showCancelConfirm}
@@ -654,10 +645,10 @@ export default function EditPrivateBookingPage({
           cancelConfirmedRef.current = true
           formRef.current?.requestSubmit()
         }}
-        title="Cancel this booking?"
+        title="Cancel Booking"
         message="Saving with the status set to Cancelled cancels the booking: the customer is sent a cancellation text, the diary entry is removed and any messages still queued for them are dropped. This cannot be undone from here."
-        confirmLabel="Cancel booking and text the customer"
-        cancelLabel="Keep booking"
+        confirmLabel="Cancel Booking"
+        cancelLabel="Keep Booking"
         tone="danger"
       />
     </PageLayout>

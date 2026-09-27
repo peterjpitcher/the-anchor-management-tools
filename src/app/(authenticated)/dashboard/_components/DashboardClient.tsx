@@ -2,21 +2,23 @@
 
 import Link from 'next/link'
 import {
-  PageHeader,
-  Card,
-  CardHeader,
-  CardBody,
-  Badge,
-  Button,
-  LinkButton,
+  Alert,
   Avatar,
   AvatarStack,
-  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
   Empty,
+  LinkButton,
+  PageLayout,
   ProgressBar,
-  Sparkline,
   RevenueChart,
+  Stat,
+  StatGrid,
 } from '@/ds'
+import { ACTION_ITEM_SEVERITY_CLASSES, revenueChangeTone, type DashboardStatTone } from '../_shared/status-ui'
 
 /* ---------- Types ---------- */
 
@@ -43,8 +45,8 @@ interface ActivityItem {
 interface MetricMini {
   label: string
   value: string
-  trend: number[]
-  tone?: 'primary' | 'warning'
+  /** Colours the figure when it needs attention (see attentionCountTone). */
+  tone?: DashboardStatTone
 }
 
 interface TodayItem {
@@ -78,6 +80,8 @@ interface QuickAction {
 
 interface DashboardProps {
   subtitle: string
+  /** The audit log needs settings:manage, so its link only shows to people who can open it. */
+  canViewAuditLog: boolean
   calendar?: React.ReactNode
   revenueData: RevenueData[]
   revenueSummary: { avgDaily: string; completedThrough: string; vsLastWeek: string; lastYearSameWeek: string }
@@ -97,6 +101,7 @@ interface DashboardProps {
 
 export default function DashboardClient({
   subtitle,
+  canViewAuditLog,
   calendar,
   revenueData,
   revenueSummary,
@@ -110,27 +115,24 @@ export default function DashboardClient({
   quickActions,
   alerts,
   refreshAction,
-}: DashboardProps) {
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Page Header */}
-      <PageHeader
-        breadcrumbs={[{ label: 'Dashboard' }]}
-        title="Dashboard"
-        subtitle={subtitle}
-        className="mb-0"
-        actions={
-          <form action={refreshAction}>
-            <Button type="submit" variant="secondary" size="sm">
-              Refresh
-            </Button>
-          </form>
-        }
-      />
+}: DashboardProps): React.JSX.Element {
+  const permittedQuickActions = quickActions.filter((q) => q.permitted)
 
+  return (
+    <PageLayout
+      title="Dashboard"
+      subtitle={subtitle}
+      headerActions={
+        <form action={refreshAction}>
+          <Button type="submit" variant="secondary" size="sm">
+            Refresh
+          </Button>
+        </form>
+      }
+    >
       {/* Alerts */}
       {alerts.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {alerts.map((a, i) => (
             <Alert key={i} tone={a.tone} title={a.title}>
               {a.body}
@@ -143,52 +145,46 @@ export default function DashboardClient({
       {calendar}
 
       {/* Action Items + Quick Actions row */}
-      {(actionItems.length > 0 || quickActions.filter((q) => q.permitted).length > 0) && (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      {(actionItems.length > 0 || permittedQuickActions.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           {actionItems.length > 0 && (
             <Card className="xl:col-span-2">
               <CardHeader title="Action Required" />
               <CardBody className="flex flex-col gap-2">
-                {actionItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                      item.severity === 'high'
-                        ? 'bg-danger-soft border-danger-border'
-                        : 'bg-warning-soft border-warning-border'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'}`}>
-                        {item.title}
-                      </p>
-                      <p className={`text-xs ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'} opacity-80`}>
-                        {item.description}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
+                {actionItems.map((item) => {
+                  const severity = ACTION_ITEM_SEVERITY_CLASSES[item.severity]
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className={`flex items-start gap-3 p-3 rounded-default border transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${severity.row}`}
+                    >
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${severity.text}`}>{item.title}</p>
+                        <p className={`text-xs ${severity.text}`}>{item.description}</p>
+                      </div>
+                    </Link>
+                  )
+                })}
               </CardBody>
             </Card>
           )}
 
-          {quickActions.filter((q) => q.permitted).length > 0 && (
+          {permittedQuickActions.length > 0 && (
             <Card>
               <CardHeader title="Quick Actions" />
               <CardBody>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {quickActions
-                    .filter((qa) => qa.permitted)
-                    .map((action) => (
-                      <Link
-                        key={action.label}
-                        href={action.href}
-                        className="flex items-center justify-center p-3 bg-surface border border-border rounded-lg hover:border-primary hover:bg-primary-soft transition-all text-center text-xs font-medium text-text-muted hover:text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
-                      >
-                        {action.label}
-                      </Link>
-                    ))}
+                  {permittedQuickActions.map((action) => (
+                    <LinkButton
+                      key={action.label}
+                      href={action.href}
+                      variant="secondary"
+                      className="w-full justify-center"
+                    >
+                      {action.label}
+                    </LinkButton>
+                  ))}
                 </div>
               </CardBody>
             </Card>
@@ -197,7 +193,7 @@ export default function DashboardClient({
       )}
 
       {/* Today + Upcoming Events + Activity */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-4">
         <Card>
           <CardHeader title={todayTitle} />
           <CardBody className="flex flex-col gap-2">
@@ -206,7 +202,7 @@ export default function DashboardClient({
               {todayMeta.onRota.length > 0 ? (
                 <AvatarStack names={todayMeta.onRota} max={4} size="sm" />
               ) : (
-                <span className="text-text-subtle">--</span>
+                <span className="text-text-soft">--</span>
               )}
             </div>
             <div className="flex items-center justify-between gap-3 text-ui">
@@ -234,7 +230,7 @@ export default function DashboardClient({
                       <Link
                         key={item.id}
                         href={item.href}
-                        className="flex min-w-0 items-start gap-2 rounded-md text-ui hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring"
+                        className="flex min-w-0 items-start gap-2 rounded-sm text-ui hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring"
                       >
                         {content}
                       </Link>
@@ -257,17 +253,17 @@ export default function DashboardClient({
 
         <Card className="xl:col-span-2">
           <CardHeader
-            title="Upcoming events"
+            title="Upcoming Events"
             subtitle={`Next 7 days · ${upcomingEvents.length} events`}
             action={
               <LinkButton href="/events" variant="ghost" size="sm">
-                All events &rarr;
+                All Events &rarr;
               </LinkButton>
             }
           />
           <CardBody className="p-0">
             {upcomingEvents.length === 0 ? (
-              <Empty title="No upcoming events" className="py-8" />
+              <Empty size="sm" title="No upcoming events" />
             ) : (
               <div className="px-pad-card">
                 {upcomingEvents.map((e) => (
@@ -276,7 +272,7 @@ export default function DashboardClient({
                     href={e.href}
                     className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                   >
-                    <div className="w-11 text-center rounded-lg bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
+                    <div className="w-11 text-center rounded-default bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
                       <div className="text-2xs font-bold tracking-wider uppercase">{e.dateLabel}</div>
                       <div className="text-base font-bold leading-tight">{e.dayNumber}</div>
                     </div>
@@ -303,7 +299,7 @@ export default function DashboardClient({
           <CardHeader title="Activity" subtitle="Last 24h" />
           <CardBody className="flex flex-col gap-3">
             {activity.length === 0 ? (
-              <Empty title="No recent activity" />
+              <Empty size="sm" title="No recent activity" />
             ) : (
               activity.map((a) => (
                 <div key={a.id} className="flex items-start gap-2.5">
@@ -318,10 +314,14 @@ export default function DashboardClient({
                 </div>
               ))
             )}
-            <div className="h-px bg-border" />
-            <Link href="/settings/audit-logs" className="rounded-sm text-ui text-primary font-medium hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">
-              View audit log &rarr;
-            </Link>
+            {canViewAuditLog && (
+              <>
+                <div className="h-px bg-border" />
+                <Link href="/settings/audit-logs" className="rounded-sm text-ui text-primary font-medium hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">
+                  View audit log &rarr;
+                </Link>
+              </>
+            )}
           </CardBody>
         </Card>
       </div>
@@ -332,52 +332,31 @@ export default function DashboardClient({
           title="Revenue"
           subtitle="Cashing up totals"
         />
-        <CardBody>
+        <CardBody className="space-y-4">
           {revenueData.length > 0 ? (
             <RevenueChart data={revenueData} />
           ) : (
-            <div className="h-[160px] flex items-center justify-center text-sm text-text-muted">
-              No cashing up data for this period
-            </div>
+            <Empty size="sm" icon="chart" title="No cashing up data for this period" />
           )}
-          <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border md:grid-cols-4">
-            <div>
-              <div className="text-meta text-text-muted">Average daily</div>
-              <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.avgDaily}</div>
-            </div>
-            <div>
-              <div className="text-meta text-text-muted">Completed through</div>
-              <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.completedThrough}</div>
-            </div>
-            <div>
-              <div className="text-meta text-text-muted">Week vs last</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-danger' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success-fg'}`}>{revenueSummary.vsLastWeek}</div>
-            </div>
-            <div>
-              <div className="text-meta text-text-muted">Last year same week</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-danger' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success-fg'}`}>{revenueSummary.lastYearSameWeek}</div>
-            </div>
+          <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 md:grid-cols-4">
+            <Stat label="Average daily" value={revenueSummary.avgDaily} />
+            <Stat label="Completed through" value={revenueSummary.completedThrough} />
+            <Stat label="Week vs last" value={revenueSummary.vsLastWeek} tone={revenueChangeTone(revenueSummary.vsLastWeek)} />
+            <Stat
+              label="Last year same week"
+              value={revenueSummary.lastYearSameWeek}
+              tone={revenueChangeTone(revenueSummary.lastYearSameWeek)}
+            />
           </div>
         </CardBody>
       </Card>
 
-      {/* Mini Metric Sparklines */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Mini metrics */}
+      <StatGrid columns={4}>
         {miniMetrics.map((m) => (
-          <Card key={m.label}>
-            <CardBody>
-              <div className="text-xs text-text-muted font-medium mb-2">{m.label}</div>
-              <div className="flex items-end justify-between">
-                <div className="text-xl font-bold text-text-strong tabular-nums">{m.value}</div>
-                <Sparkline
-                  data={m.trend}
-                  color={m.tone === 'warning' ? 'var(--color-warning)' : undefined}
-                />
-              </div>
-            </CardBody>
-          </Card>
+          <Stat key={m.label} label={m.label} value={m.value} tone={m.tone} />
         ))}
-      </div>
-    </div>
+      </StatGrid>
+    </PageLayout>
   )
 }

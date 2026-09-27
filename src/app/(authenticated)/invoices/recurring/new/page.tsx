@@ -5,19 +5,28 @@ import { useRouter } from 'next/navigation'
 import { createRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
-import { Plus, Trash2, Package } from 'lucide-react'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  LinkButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  DescriptionList,
+  FormFooter,
+  toast,
+} from '@/ds'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { BACK_TO_RECURRING } from '../../_shared/nav'
 
 export default function NewRecurringInvoicePage() {
   const router = useRouter()
@@ -184,16 +193,14 @@ export default function NewRecurringInvoicePage() {
     }
   }
 
+  const layoutProps = {
+    title: 'New Recurring Invoice',
+    subtitle: 'Set up automated invoice generation',
+    backButton: BACK_TO_RECURRING,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="New Recurring Invoice"
-        subtitle="Set up automated invoice generation"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        loading
-        loadingLabel="Loading recurring setup..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading recurring setup" />
   }
 
   if (!canCreate) {
@@ -203,27 +210,17 @@ export default function NewRecurringInvoicePage() {
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <PageLayout
-      title="New Recurring Invoice"
-      subtitle="Set up automated invoice generation"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Recurring', href: '/invoices/recurring' }
-      ]}
-      backButton={{ label: 'Back to Recurring', href: '/invoices/recurring' }}
-    >
-      <div className="space-y-6">
-        {error && (
-          <Alert variant="error" description={error} />
-        )}
+    <PageLayout {...layoutProps}>
+      {error && (
+        <Alert tone="danger">{error}</Alert>
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Recurring Details</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Vendor" required>
+          <CardHeader title="Recurring Details" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
               <Select
                 value={vendorId}
                 onChange={(e) => setVendorId(e.target.value)}
@@ -236,9 +233,9 @@ export default function NewRecurringInvoicePage() {
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Frequency" required>
+            <Field label="Frequency" required>
               <Select
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
@@ -249,9 +246,9 @@ export default function NewRecurringInvoicePage() {
                 <option value="quarterly">Quarterly</option>
                 <option value="yearly">Yearly</option>
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Start Date" required>
+            <Field label="Start Date" required>
               <Input
                 type="date"
                 value={startDate}
@@ -264,12 +261,12 @@ export default function NewRecurringInvoicePage() {
                 }}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup
+            <Field
               label="Next Invoice Date"
               required
-              help="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
+              hint="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
             >
               <Input
                 type="date"
@@ -281,18 +278,18 @@ export default function NewRecurringInvoicePage() {
                 min={startDate}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="End Date (Optional)">
+            <Field label="End Date (Optional)">
               <Input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 min={startDate}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Days Before Due" required help="Number of days after invoice date until payment is due">
+            <Field label="Days Before Due" required hint="Number of days after invoice date until payment is due">
               <Input
                 type="number"
                 value={daysBefore}
@@ -301,30 +298,43 @@ export default function NewRecurringInvoicePage() {
                 max="365"
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Reference">
+            <Field label="Reference">
               <Input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="PO number or reference"
               />
-            </FormGroup>
-          </div>
+            </Field>
+          </CardBody>
         </Card>
 
         {/* Line Items */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Line Items</h2>
-          
-          <div className="space-y-4">
+          <CardHeader
+            title="Line Items"
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={addLineItem}
+                leftIcon={<Icon name="plus" size={16} />}
+              >
+                Add Line Item
+              </Button>
+            }
+          />
+          <CardBody className="space-y-4">
             {lineItems.map((item, index) => (
-              <div key={index} className="border border-border rounded-lg p-4">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-6">
-                    <div className="flex gap-2 mb-2">
+              <Card key={index}>
+                <CardBody className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                  <div className="space-y-2 md:col-span-6">
+                    <div className="flex gap-2">
                       <Select
+                        aria-label="Catalog item"
                         value={item.catalog_item_id || ''}
                         onChange={(e) => {
                           const catalogId = e.target.value
@@ -351,28 +361,27 @@ export default function NewRecurringInvoicePage() {
                           </option>
                         ))}
                       </Select>
-                      <Button
+                      <IconButton
                         type="button"
                         variant="secondary"
                         size="sm"
                         onClick={() => router.push('/invoices/catalog')}
-                        title="Manage Catalog"
-                        iconOnly
-                      >
-                        <Package className="h-4 w-4" />
-                      </Button>
+                        title="Manage catalog"
+                        label="Manage catalog"
+                        icon={<Icon name="package" size={16} />}
+                      />
                     </div>
-                    <FormGroup label="Description" required>
+                    <Field label="Description" required>
                       <Input
                         type="text"
                         value={item.description}
                         onChange={(e) => updateLineItem(index, 'description', e.target.value)}
                         required
                       />
-                    </FormGroup>
+                    </Field>
                   </div>
 
-                  <FormGroup label="Quantity">
+                  <Field label="Quantity">
                     <Input
                       type="number"
                       value={item.quantity}
@@ -381,9 +390,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       required
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="Unit Price (ex VAT)">
+                  <Field label="Unit Price (ex VAT)">
                     <Input
                       type="number"
                       value={item.unit_price}
@@ -392,9 +401,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       required
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="Discount %">
+                  <Field label="Discount %">
                     <Input
                       type="number"
                       value={item.discount_percentage}
@@ -403,9 +412,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       max="100"
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="VAT Rate %">
+                  <Field label="VAT Rate %">
                     <Select
                       value={item.vat_rate}
                       onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value))}
@@ -414,129 +423,118 @@ export default function NewRecurringInvoicePage() {
                       <option value="5">5%</option>
                       <option value="20">20%</option>
                     </Select>
-                  </FormGroup>
+                  </Field>
 
-                  <div className="md:col-span-2 flex items-end justify-between">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Line Total</label>
-                      <p className="text-lg font-medium">
-                        £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
-                      </p>
-                    </div>
+                  <div className="flex items-end justify-between md:col-span-2">
+                    <DescriptionList
+                      columns={1}
+                      items={[{
+                        key: 'line_total',
+                        label: 'Line Total',
+                        value: (
+                          <span className="text-lg font-medium">
+                            £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
+                          </span>
+                        ),
+                      }]}
+                    />
                     {lineItems.length > 1 && (
-                      <Button
+                      <IconButton
                         type="button"
-                        variant="danger"
+                        variant="ghost"
                         size="sm"
                         onClick={() => removeLineItem(index)}
-                        iconOnly
-                        aria-label="Remove line item"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        label="Remove line item"
+                        icon={<Icon name="trash" size={16} className="text-danger" />}
+                      />
                     )}
                   </div>
-                </div>
-              </div>
+                </CardBody>
+              </Card>
             ))}
-          </div>
-
-          <Button type="button"
-            variant="secondary"
-            onClick={addLineItem}
-            className="mt-4"
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Add Line Item
-          </Button>
+          </CardBody>
         </Card>
 
         {/* Invoice Settings */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Invoice Settings</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Invoice Discount %" help="Discount applied to entire invoice after line discounts">
-              <Input
-                type="number"
-                value={invoiceDiscount}
-                onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
-                step="0.01"
-                min="0"
-                max="100"
-              />
-            </FormGroup>
-          </div>
+          <CardHeader title="Invoice Settings" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Invoice Discount %" hint="Discount applied to entire invoice after line discounts">
+                <Input
+                  type="number"
+                  value={invoiceDiscount}
+                  onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
+                  step="0.01"
+                  min="0"
+                  max="100"
+                />
+              </Field>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <FormGroup label="Notes (Visible on Invoice)">
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-              />
-            </FormGroup>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Notes (Visible on Invoice)">
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                />
+              </Field>
 
-            <FormGroup label="Internal Notes">
-              <Textarea
-                value={internalNotes}
-                onChange={(e) => setInternalNotes(e.target.value)}
-                rows={3}
-              />
-            </FormGroup>
-          </div>
+              <Field label="Internal Notes">
+                <Textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  rows={3}
+                />
+              </Field>
+            </div>
+          </CardBody>
         </Card>
 
         {/* Summary */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Summary (Per Invoice)</h2>
-          
-          <div className="max-w-xs ml-auto space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span className="font-medium">£{subtotal.toFixed(2)}</span>
-            </div>
-            
-            {invoiceDiscount > 0 && (
-              <div className="flex justify-between text-danger">
-                <span>Invoice Discount ({invoiceDiscount}%):</span>
-                <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
+          <CardHeader title="Summary (Per Invoice)" />
+          <CardBody>
+            <div className="ml-auto max-w-xs space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span className="font-medium">£{subtotal.toFixed(2)}</span>
               </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span>VAT:</span>
-              <span className="font-medium">£{totalVat.toFixed(2)}</span>
+
+              {invoiceDiscount > 0 && (
+                <div className="flex justify-between text-danger-fg">
+                  <span>Invoice Discount ({invoiceDiscount}%):</span>
+                  <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <span>VAT:</span>
+                <span className="font-medium">£{totalVat.toFixed(2)}</span>
+              </div>
+
+              <div className="flex justify-between border-t border-border pt-2 text-lg font-bold">
+                <span>Total:</span>
+                <span>£{total.toFixed(2)}</span>
+              </div>
             </div>
-            
-            <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
-              <span>Total:</span>
-              <span>£{total.toFixed(2)}</span>
-            </div>
-          </div>
+          </CardBody>
         </Card>
 
-        {/* Actions */}
-        <div className="flex flex-col justify-end gap-3 sm:flex-row sm:gap-4">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/invoices/recurring')}
-            className="w-full sm:w-auto"
-          >
+        <FormFooter>
+          <LinkButton href={BACK_TO_RECURRING.href} variant="secondary">
             Cancel
-          </Button>
-          <Button
+          </LinkButton>
+          <Button variant="primary"
             type="submit"
             disabled={submitting || !vendorId || lineItems.length === 0 || !canCreate}
             loading={submitting}
-            className="w-full sm:w-auto"
           >
-            {submitting ? 'Creating...' : 'Create Recurring Invoice'}
+            Create Recurring Invoice
           </Button>
-        </div>
-        </form>
-      </div>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

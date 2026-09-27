@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { sendQuoteViaEmail } from '@/app/actions/email'
-import { Button, Modal, ModalActions, Input, Textarea, Alert, FormGroup } from '@/ds'
-import { Send } from 'lucide-react'
+import { Button, Modal, Input, Textarea, Alert, Field, Icon } from '@/ds'
 import type { QuoteWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -114,22 +113,38 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
   }
 
   return (
-    <Modal 
-      open={isOpen} 
+    <Modal
+      open={isOpen}
       onClose={onClose}
       title="Email Quote"
-      size="lg"
-      mobileFullscreen
+      width="lg"
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={onClose}
+            disabled={sending}
+          >
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSend}
+            disabled={!toEmails && !ccEmails}
+            loading={sending}
+            leftIcon={!sending && <Icon name="send" size={16} />}
+          >
+            Send Email
+          </Button>
+        </>
+      }
     >
-
       <div className="space-y-4">
         {error && (
-          <Alert variant="error">
+          <Alert tone="danger">
             {error}
           </Alert>
         )}
 
-        <FormGroup label="To" required>
+        <Field label="To" required hint="Primary recipient. Usually the vendor's primary contact.">
           <Input
             type="text"
             value={toEmails}
@@ -137,63 +152,37 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-text-muted mt-1">
-            Primary recipient. Usually the vendor&apos;s primary contact.
-          </p>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="CC">
+        <Field label="CC" hint="Separate multiple emails with commas or semicolons.">
           <Input
             type="text"
             value={ccEmails}
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Subject">
+        <Field label="Subject">
           <Input
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Message">
+        <Field label="Message">
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={10}
           />
-        </FormGroup>
+        </Field>
 
-        <div className="bg-surface-2 rounded-lg p-4">
-          <p className="text-sm text-text-muted">
-            <strong>Attachment:</strong> Quote {quote.quote_number} (PDF format)
-          </p>
-          <p className="text-sm text-text-muted mt-1">
-            The quote will be attached as a PDF file for professional presentation and easy printing.
-          </p>
-        </div>
+        <Alert tone="info" title="Attachment" role="status">
+          {`Quote ${quote.quote_number} (PDF format). The quote will be attached as a PDF file for professional presentation and easy printing.`}
+        </Alert>
       </div>
-
-      <ModalActions>
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          disabled={sending}
-        >
-          Cancel
-        </Button>
-        <Button onClick={handleSend}
-          disabled={!toEmails && !ccEmails}
-          loading={sending}
-          leftIcon={!sending && <Send className="h-4 w-4" />}
-        >
-          Send Email
-        </Button>
-      </ModalActions>
     </Modal>
   )
 }

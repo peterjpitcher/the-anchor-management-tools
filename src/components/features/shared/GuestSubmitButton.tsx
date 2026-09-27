@@ -1,45 +1,45 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+// Imported file by file rather than through the `guest` barrel: the barrel pulls in
+// `GuestShell` and with it the guest webfont module, which a client module does not need.
+import { GuestButton } from '@/components/features/guest/GuestButton'
+
+type GuestSubmitButtonProps = {
+  children: ReactNode
+  /** Shown while the form is submitting. Defaults to `Processing...`. */
+  loadingText?: string
+  /** `'mobile'` (the default) fills the column on a phone and sizes to the label from 640px. */
+  fullWidth?: boolean | 'mobile'
+}
 
 /**
- * A submit button for native HTML forms (method="post") that disables itself
- * after the first click to prevent double-submission. Shows a spinner while
- * the form is submitting.
+ * The primary submit for a native HTML form (method="post"). It is a `GuestButton`
+ * that disables itself after the first click, so a second tap on a slow signal
+ * cannot post the form twice, and says what it is doing while the page loads.
  */
 export function GuestSubmitButton({
   children,
-  className,
   loadingText,
-}: {
-  children: ReactNode
-  className: string
-  loadingText?: string
-}) {
+  fullWidth = 'mobile',
+}: GuestSubmitButtonProps): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
 
   return (
-    <button
+    <GuestButton
       type="submit"
-      disabled={submitting}
-      className={className}
+      variant="primary"
+      size="md"
+      fullWidth={fullWidth}
+      loading={submitting}
+      loadingText={loadingText || 'Processing...'}
       onClick={() => {
-        // Allow the native form submission to proceed, then disable
-        // Use requestAnimationFrame so the form submits before we disable
+        // Let the native form submission start first, then disable. Disabling
+        // synchronously would cancel the submit this click is making.
         requestAnimationFrame(() => setSubmitting(true))
       }}
     >
-      {submitting ? (
-        <span className="inline-flex items-center gap-2">
-          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          {loadingText || 'Processing...'}
-        </span>
-      ) : (
-        children
-      )}
-    </button>
+      {children}
+    </GuestButton>
   )
 }

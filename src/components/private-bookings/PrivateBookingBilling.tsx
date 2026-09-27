@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Alert, Button, Card, Input, Modal, Select } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, Fieldset, Input, Modal, PageLoading, Select } from '@/ds'
 import {
   cancelPrivateBookingExtraInvoice, deletePrivateBookingExtras, getPrivateBookingBilling,
   issuePrivateBookingExtras, previewPrivateBookingExtras, recordPrivateBookingInvoicePayment,
@@ -110,20 +110,24 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
   const allocationTotal = Object.values(allocations).reduce((sum, amount) => sum + Math.round((Number(amount) || 0) * 100), 0)
 
   return (
-    <section id="booking-billing" aria-labelledby="booking-billing-title" className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="booking-billing-title" className="text-lg font-semibold text-text">Invoices and extra charges</h2>
-        <div className="flex flex-wrap gap-2">
-          {canRecordPayments && payable.length > 0 && <Button variant="secondary" disabled={busy} onClick={() => {
-            setReceiptId(crypto.randomUUID()); setPaymentAmount(''); setPaymentDate(getTodayIsoDate()); setPaymentReference(''); setAllocations({}); setPaymentOpen(true); setError(null)
-          }}>Record invoice payment</Button>}
-          {canIssue && canAddExtras && <Button disabled={busy} onClick={() => openEditor()}>Add extra charges</Button>}
-        </div>
-      </div>
-      {error && !editor && !paymentOpen && !cancelInvoiceId && !discardBatch && <Alert variant="error">{error}</Alert>}
-      {notice && <Alert variant="success">{notice}</Alert>}
+    // The id is the anchor the booking page links to ("Record payment against an invoice").
+    <div id="booking-billing">
       <Card>
-        {!billing ? <p className="text-sm text-text-muted">{error ? 'Billing is unavailable.' : 'Loading invoices…'}</p> : <div className="space-y-4">
+        <CardHeader
+          title="Invoices and Extra Charges"
+          action={
+            <div className="flex flex-wrap gap-2">
+              {canRecordPayments && payable.length > 0 && <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
+                setReceiptId(crypto.randomUUID()); setPaymentAmount(''); setPaymentDate(getTodayIsoDate()); setPaymentReference(''); setAllocations({}); setPaymentOpen(true); setError(null)
+              }}>Record Invoice Payment</Button>}
+              {canIssue && canAddExtras && <Button size="sm" variant="primary" disabled={busy} onClick={() => openEditor()}>Add Extra Charges</Button>}
+            </div>
+          }
+        />
+        <CardBody className="space-y-4">
+        {error && !editor && !paymentOpen && !cancelInvoiceId && !discardBatch && <Alert tone="danger">{error}</Alert>}
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {!billing ? (error ? <p className="text-sm text-text-muted">Billing is unavailable.</p> : <PageLoading inline label="Loading invoices…" />) : <div className="space-y-4">
           <p className="text-sm text-text-muted">Additional charges: {money(billing.supplementaryTotal)}. Credits: {money(billing.creditsTotal)}. Outstanding across invoices: {money(billing.collectibleBalance)}.</p>
           {billing.invoices.map(invoice => <div key={invoice.id} className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
             <div>
@@ -133,51 +137,57 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
               <p className="text-xs text-text-muted">{invoice.deliveryState === 'sending' ? 'Sending or awaiting delivery check' : invoice.deliveryState === 'failed' ? 'Email failed' : invoice.sent_at ? `Sent ${formatDateFull(invoice.sent_at)}` : 'Not sent'}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a className="text-sm text-primary underline" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Download invoice</a>
+              <a className="text-sm text-primary underline" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Download PDF</a>
               {canIssue && invoice.paymentUrl && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void act(async () => {
                 await navigator.clipboard.writeText(invoice.paymentUrl!); setNotice('Payment link copied.')
-              })}>Copy payment link</Button>}
+              })}>Copy Payment Link</Button>}
               {canIssue && invoice.kind === 'supplementary' && !['void', 'written_off'].includes(invoice.status) && <>
                 <Button size="sm" variant="secondary" disabled={busy || invoice.deliveryState === 'sending'} onClick={() => void act(async () => {
                   const result = await resendPrivateBookingExtraInvoice(bookingId, invoice.id)
                   if (result.error || !result.sent) throw new Error(result.error || result.warning || 'The invoice was not sent.')
                   await changed(); setNotice(result.warning || 'Additional invoice sent.')
-                })}>{invoice.sent_at ? 'Resend invoice' : 'Retry sending'}</Button>
-                {invoice.paid_amount === 0 && <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setCancelInvoiceId(invoice.id); setCancelReason(''); setError(null) }}>Cancel invoice</Button>}
+                })}>Email Invoice</Button>
+                {invoice.paid_amount === 0 && <Button size="sm" variant="danger" disabled={busy} onClick={() => { setCancelInvoiceId(invoice.id); setCancelReason(''); setError(null) }}>Cancel Invoice</Button>}
               </>}
             </div>
           </div>)}
           {billing.batches.filter(draft => draft.status === 'draft').map(draft => <div key={draft.id} className="flex flex-wrap justify-between gap-2 rounded-default border border-border p-3">
             <div><p className="text-sm font-medium">Draft extras: {money(calculateExtraChargeTotals(draft.lines).totalAmount)}</p><p className="text-sm text-text-muted">{draft.lines.map(line => line.description).join(', ')}</p></div>
-            {canIssue && <div className="flex gap-2"><Button size="sm" variant="secondary" disabled={busy} onClick={() => openEditor(draft)}>Edit draft</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => { setDiscardBatch(draft); setError(null) }}>Discard draft</Button></div>}
+            {canIssue && <div className="flex gap-2"><Button size="sm" variant="secondary" disabled={busy} onClick={() => openEditor(draft)}>Edit Draft</Button><Button size="sm" variant="danger" disabled={busy} onClick={() => { setDiscardBatch(draft); setError(null) }}>Discard Draft</Button></div>}
           </div>)}
         </div>}
+        </CardBody>
       </Card>
 
-      <Modal open={editor} onClose={() => { if (!busy) setEditor(false) }} title={preview ? 'Review additional invoice' : 'Extra booking charges'} width="xl" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => preview ? setPreview(null) : setEditor(false)}>{preview ? 'Edit draft' : 'Close'}</Button>
-        {!preview ? <><Button variant="secondary" disabled={busy} onClick={() => void act(() => save(false))}>Save draft</Button><Button disabled={busy} onClick={() => void act(() => save(true))}>Preview invoice</Button></> : <Button disabled={busy || (!preview.paypalEnabled && !allowWithoutOnlinePayment)} onClick={() => void act(async () => {
+      <Modal open={editor} onClose={() => { if (!busy) setEditor(false) }} title={preview ? 'Review Additional Invoice' : batch ? 'Edit Draft' : 'Add Extra Charges'} width="xl" footer={<>
+        <Button variant="secondary" disabled={busy} onClick={() => preview ? setPreview(null) : setEditor(false)}>{preview ? 'Edit Draft' : 'Cancel'}</Button>
+        {!preview ? <><Button variant="secondary" disabled={busy} onClick={() => void act(() => save(false))}>Save Draft</Button><Button variant="primary" disabled={busy} onClick={() => void act(() => save(true))}>Preview Invoice</Button></> : <Button variant="primary" loading={busy} disabled={!preview.paypalEnabled && !allowWithoutOnlinePayment} onClick={() => void act(async () => {
           const result = await issuePrivateBookingExtras({ bookingId, batchId: preview.batch.id, expectedRevision: preview.batch.revision, sourceHash: preview.sourceHash, allowWithoutOnlinePayment })
           if (result.error) throw new Error(result.error)
           setEditor(false); setPreview(null); await changed()
-          setNotice(result.warning || (result.sent ? `Invoice ${result.invoiceNumber} sent.` : 'Invoice created. Email was not sent; use Retry sending.'))
-        })}>{busy ? 'Issuing…' : 'Issue and send additional invoice'}</Button>}
+          setNotice(result.warning || (result.sent ? `Invoice ${result.invoiceNumber} sent.` : 'Invoice created. Email was not sent; use Email Invoice.'))
+        })}>Issue and Send Additional Invoice</Button>}
       </>}>
         <div className="space-y-4">
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
           {preview ? <>
             <p>Send to {preview.recipientEmail}. Due {formatDateFull(preview.batch.due_date)}.</p>
             <p className="text-sm text-text-muted">This invoice contains only the extras below. Original charges and payments remain on their existing invoice.</p>
             {preview.batch.lines.map((line, index) => <p key={index} className="text-sm">{line.description} · {line.quantity} × {money(line.unit_price)} excluding VAT · {line.discount_percentage}% discount · {line.vat_rate}% VAT</p>)}
-            {!preview.paypalEnabled && <Alert variant="warning" title="Online payments are not enabled">
+            {!preview.paypalEnabled && <Alert tone="warning" title="Online payments are not enabled">
               <p>Enable PayPal in the invoice customer settings to include a payment link.</p>
-              <label className="mt-3 flex items-start gap-2"><input type="checkbox" checked={allowWithoutOnlinePayment} onChange={event => setAllowWithoutOnlinePayment(event.target.checked)} />Issue without an online payment link</label>
+              <Checkbox
+                className="mt-3"
+                checked={allowWithoutOnlinePayment}
+                onChange={setAllowWithoutOnlinePayment}
+                label="Issue without an online payment link"
+              />
             </Alert>}
           </> : <>
             <p className="text-sm text-text-muted">Unit prices exclude VAT. The original booking discount does not apply to these extras.</p>
             <div className="grid gap-3 sm:grid-cols-2"><Input label="Payment due date" type="date" value={dueDate} required onChange={event => setDueDate(event.target.value)} /><Input label="Invoice reference (optional)" value={reference} onChange={event => setReference(event.target.value)} maxLength={500} /></div>
-            {lines.map((line, index) => <fieldset key={index} className="space-y-3 rounded-default border border-border p-3">
-              <legend className="px-1 text-sm font-medium">Extra charge {index + 1}</legend>
+            {/* The box is a wrapper, so the legend reads like a field label inside it rather than sitting in the border. */}
+            {lines.map((line, index) => <div key={index} className="rounded-default border border-border p-3"><Fieldset legend={`Extra Charge ${index + 1}`}><div className="space-y-3">
               {catalogue.length > 0 && <Select label={`Catalogue item ${index + 1}`} value={line.catalog_item_id ?? ''} onChange={event => {
                 const item = catalogue.find(row => row.id === event.target.value)
                 changeLine(index, item ? { catalog_item_id: item.id, description: item.description || item.name, unit_price: Number(item.default_price), vat_rate: Number(item.default_vat_rate) } : { catalog_item_id: null })
@@ -189,23 +199,23 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
                 <Input label={`Discount % ${index + 1}`} type="number" step="0.01" min="0" max="100" value={line.discount_percentage} onChange={event => changeLine(index, { discount_percentage: Number(event.target.value) })} />
                 <Input label={`VAT % ${index + 1}`} type="number" step="0.01" min="0" max="100" value={line.vat_rate} onChange={event => changeLine(index, { vat_rate: Number(event.target.value) })} />
               </div>
-              {lines.length > 1 && <Button variant="secondary" size="sm" onClick={() => setLines(current => current.filter((_, row) => row !== index))}>Remove charge {index + 1}</Button>}
-            </fieldset>)}
-            <Button variant="secondary" disabled={lines.length >= 100} onClick={() => setLines(current => [...current, emptyLine()])}>Add another line</Button>
+              {lines.length > 1 && <Button variant="secondary" size="sm" onClick={() => setLines(current => current.filter((_, row) => row !== index))}>Remove Charge {index + 1}</Button>}
+            </div></Fieldset></div>)}
+            <Button variant="secondary" disabled={lines.length >= 100} onClick={() => setLines(current => [...current, emptyLine()])}>Add Another Line</Button>
           </>}
           <dl className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm"><dt>Net after discounts</dt><dd className="text-right">{money((preview?.totals ?? totals).subtotalBeforeInvoiceDiscount)}</dd><dt>VAT</dt><dd className="text-right">{money((preview?.totals ?? totals).vatAmount)}</dd><dt className="font-semibold">Additional invoice total</dt><dd className="text-right font-semibold">{money((preview?.totals ?? totals).totalAmount)}</dd></dl>
         </div>
       </Modal>
 
-      <Modal open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false) }} title="Record invoice payment" width="lg" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => setPaymentOpen(false)}>Cancel</Button><Button disabled={busy || allocationTotal <= 0 || allocationTotal !== Math.round(Number(paymentAmount) * 100)} onClick={() => void act(async () => {
+      <Modal open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false) }} title="Record Invoice Payment" width="lg" footer={<>
+        <Button variant="secondary" disabled={busy} onClick={() => setPaymentOpen(false)}>Cancel</Button><Button variant="primary" disabled={busy || allocationTotal <= 0 || allocationTotal !== Math.round(Number(paymentAmount) * 100)} onClick={() => void act(async () => {
           const result = await recordPrivateBookingInvoicePayment({ bookingId, receiptId, amount: Number(paymentAmount), paymentDate, method: paymentMethod, reference: paymentReference, allocations: Object.entries(allocations).filter(([, amount]) => Number(amount) > 0).map(([invoiceId, amount]) => ({ invoiceId, amount: Number(amount) })) })
           if (result.error) throw new Error(result.error)
           setPaymentOpen(false); await changed(); setNotice('Payment recorded against the selected invoices.')
-        })}>Record payment</Button>
+        })}>Record Payment</Button>
       </>}>
         <div className="space-y-3">
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
           <Input label="Total payment received" type="number" step="0.01" min="0.01" value={paymentAmount} onChange={event => setPaymentAmount(event.target.value)} />
           <Input label="Date payment received" type="date" value={paymentDate} onChange={event => setPaymentDate(event.target.value)} />
           <Select label="Payment method" value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as AllocatedBookingPaymentInput['method'])} options={[{ value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cash', label: 'Cash' }, { value: 'card', label: 'Card' }, { value: 'cheque', label: 'Cheque' }, { value: 'other', label: 'Other' }]} />
@@ -216,21 +226,31 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
         </div>
       </Modal>
 
-      <Modal open={Boolean(cancelInvoiceId)} onClose={() => { if (!busy) setCancelInvoiceId(null) }} title="Cancel additional invoice" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => setCancelInvoiceId(null)}>Keep invoice</Button><Button disabled={busy || !cancelReason.trim()} onClick={() => void act(async () => {
+      <Modal open={Boolean(cancelInvoiceId)} onClose={() => { if (!busy) setCancelInvoiceId(null) }} title="Cancel Invoice" footer={<>
+        <Button variant="secondary" disabled={busy} onClick={() => setCancelInvoiceId(null)}>Keep Invoice</Button><Button variant="danger" disabled={busy || !cancelReason.trim()} onClick={() => void act(async () => {
           const result = await cancelPrivateBookingExtraInvoice(bookingId, cancelInvoiceId!, cancelReason)
           if (result.error) throw new Error(result.error)
           setCancelInvoiceId(null); await changed(); setNotice('Additional invoice cancelled. Its payment link is no longer payable.')
-        })}>Cancel invoice</Button>
-      </>}><div className="space-y-3">{error && <Alert variant="error">{error}</Alert>}<p className="text-sm">This withdraws this unpaid additional invoice and its charge. It does not change the original invoice or send a customer message.</p><Input label="Reason for cancellation" value={cancelReason} onChange={event => setCancelReason(event.target.value)} /></div></Modal>
+        })}>Cancel Invoice</Button>
+      </>}><div className="space-y-3">{error && <Alert tone="danger">{error}</Alert>}<p className="text-sm">This withdraws this unpaid additional invoice and its charge. It does not change the original invoice or send a customer message.</p><Input label="Reason for cancellation" value={cancelReason} onChange={event => setCancelReason(event.target.value)} /></div></Modal>
 
-      <Modal open={Boolean(discardBatch)} onClose={() => { if (!busy) setDiscardBatch(null) }} title="Discard draft extras" footer={<>
-        <Button variant="secondary" disabled={busy} onClick={() => setDiscardBatch(null)}>Keep draft</Button><Button disabled={busy} onClick={() => void act(async () => {
-          const result = await deletePrivateBookingExtras(bookingId, discardBatch!.id, discardBatch!.revision)
+      {/* A yes/no confirmation with no fields: the DS ConfirmDialog, which shows a failure in place. */}
+      <ConfirmDialog
+        open={Boolean(discardBatch)}
+        onClose={() => setDiscardBatch(null)}
+        onConfirm={async () => {
+          if (!discardBatch) return
+          const result = await deletePrivateBookingExtras(bookingId, discardBatch.id, discardBatch.revision)
           if (result.error) throw new Error(result.error)
-          setDiscardBatch(null); await changed(); setNotice('Draft discarded.')
-        })}>Discard draft</Button>
-      </>}><div className="space-y-3">{error && <Alert variant="error">{error}</Alert>}<p>Discard these unissued extras? No invoice or payment will be changed.</p></div></Modal>
-    </section>
+          await changed()
+          setNotice('Draft discarded.')
+        }}
+        title="Discard Draft"
+        message="Discard these unissued extras? No invoice or payment will be changed."
+        confirmLabel="Discard Draft"
+        cancelLabel="Keep Draft"
+        tone="danger"
+      />
+    </div>
   )
 }

@@ -26,23 +26,22 @@ import {
 } from '@/app/actions/customers'
 
 import {
-  PageHeader,
+  PageLayout,
+  Alert,
   Card,
-  CardHeader,
   CardBody,
   Stat,
+  StatGrid,
   Badge,
   Button,
-  LinkButton,
   Avatar,
   Checkbox,
   SearchInput,
-  Select,
+  Segmented,
   PageLoading,
   Empty,
   ConfirmDialog,
   IconButton,
-  Tabs,
   Table,
   TableHeader,
   TableBody,
@@ -50,24 +49,20 @@ import {
   TableHead,
   TableCell,
   TablePagination,
+  Icon,
 } from '@/ds'
 
 /* ---------- Toast helper (re-use existing) ---------- */
 import { toast } from '@/ds'
+import { CUSTOMERS_BACK_LABEL, CUSTOMERS_NAV } from '../_shared/nav'
+import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
-/* ---------- SVG Icons ---------- */
-const PlusIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-)
-const PencilIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
-)
-const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
-)
-const MessageIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" /></svg>
-)
+/** The SMS filter above the list: every customer, or only those whose texts are on or off. */
+const SMS_FILTER_OPTIONS: Array<{ id: CustomerSmsFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'SMS Active' },
+  { id: 'deactivated', label: 'Deactivated' },
+]
 
 // ---------------------------------------------------------------------------
 // Props
@@ -120,7 +115,7 @@ export default function CustomersClient({
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Client-side column sorting of the loaded page (list is paginated server-side,
-  // so we sort the currently loaded rows — mirrors the previous DataTable behaviour)
+  // so we sort the currently loaded rows, which mirrors the previous DataTable behaviour)
   const [sortColumn, setSortColumn] = useState<'name' | 'contact' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -130,6 +125,9 @@ export default function CustomersClient({
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
   const [isFetching, setIsFetching] = useState(false)
+  // A failed read returns an empty list with an error. Showing that as "No customers found"
+  // told staff the database was empty, so the error is kept and shown in its place.
+  const [loadError, setLoadError] = useState<string | null>(initialData.error ?? null)
 
   // URL sync
   const pushParams = useCallback(
@@ -180,9 +178,9 @@ export default function CustomersClient({
         setCustomerPreferences(result.customerPreferences)
         setCustomerLabels(result.customerLabels)
         setUnreadCounts(result.unreadCounts)
-        if (result.error) toast.error(result.error)
+        setLoadError(result.error ?? null)
       } catch {
-        toast.error('Failed to load customers')
+        setLoadError('Failed to load customers')
       } finally {
         setIsFetching(false)
       }
@@ -371,133 +369,139 @@ export default function CustomersClient({
     return [...customers].sort((a, b) => sortKey(a).localeCompare(sortKey(b)) * dir)
   }, [customers, sortColumn, sortDirection])
 
+  const closeForm = useCallback(() => {
+    setShowForm(false); setEditingCustomer(null)
+  }, [])
+
   // --- Form/Import subviews ---
+  // Both stay on /customers (no route of their own), so the back button returns to the list
+  // in place rather than navigating. They are child pages, so they show the back button and
+  // not the Customers tab row.
   if (showForm || editingCustomer) {
     return (
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: editingCustomer ? 'Edit Customer' : 'New Customer' }]}
-          title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
-          className="mb-0"
+      <PageLayout
+        title={editingCustomer ? 'Edit Customer' : 'New Customer'}
+        subtitle={editingCustomer ? "Update this customer's name and contact details" : 'Create a new customer'}
+        backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: closeForm }}
+        containerSize="md"
+      >
+        <CustomerForm
+          framed
+          customer={editingCustomer ?? undefined}
+          onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+          onCancel={closeForm}
         />
-        <Card>
-          <CardBody>
-            <CustomerForm
-              customer={editingCustomer ?? undefined}
-              onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
-              onCancel={() => { setShowForm(false); setEditingCustomer(null) }}
-            />
-          </CardBody>
-        </Card>
-      </div>
+      </PageLayout>
     )
   }
 
   if (showImport) {
     return (
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: 'Import' }]}
-          title="Import Customers"
-          subtitle="Import multiple customers from a CSV file"
-          className="mb-0"
-        />
+      <PageLayout
+        title="Import Customers"
+        subtitle="Import multiple customers from a CSV file"
+        backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: () => setShowImport(false) }}
+      >
         <CustomerImport
           onImportComplete={handleImportCustomers}
           onCancel={() => setShowImport(false)}
           existingCustomers={customers}
         />
-      </div>
+      </PageLayout>
     )
   }
 
   // --- Main list view ---
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        breadcrumbs={[{ label: 'Customers' }]}
-        title="Customers"
-        subtitle={`${totalCount.toLocaleString()} customers`}
-        className="mb-0"
-        actions={
+    <PageLayout
+      title="Customers"
+      // The count lives in the figures below, which are hidden after a failed read.
+      subtitle="Customers: everyone who has booked or been added"
+      navItems={CUSTOMERS_NAV}
+      headerActions={
+        canManageCustomers ? (
+          <>
+            <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import Customers</Button>
+            <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openCreateCustomer}>
+              New Customer
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {/* The figures are zeros after a failed read, which would read as an empty database. */}
+      {!loadError && (
+        <StatGrid columns={4}>
+          <Stat label="Total customers" value={totalCount.toLocaleString()} />
+          <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
+          <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
+          <Stat label="This page" value={String(customers.length)} hint={`of ${totalCount}`} />
+        </StatGrid>
+      )}
+
+      {/* Search and the SMS filter sit directly above the list they filter. Each filter option
+          maps to its own query: All and SMS Active used to collapse into one boolean and run
+          the identical query. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchInput
+          value={searchTerm}
+          onChange={handleSearch}
+          debounceDelay={350}
+          placeholder="Search by name, phone, or email..."
+          aria-label="Search customers"
+          className="w-full sm:w-80"
+        />
+        <Segmented
+          aria-label="SMS status"
+          options={SMS_FILTER_OPTIONS}
+          value={smsFilter}
+          onChange={(id) => handleFilterChange(id as CustomerSmsFilter)}
+        />
+        <div className="flex-1" />
+        {selected.size > 0 ? (
           <div className="flex items-center gap-2">
-            {/* Insights is the only way into the win-back campaign, and it needs
-                nothing more than customers.view, so it sits outside the manage gate. */}
-            <LinkButton href="/customers/insights" variant="secondary" size="sm">Insights</LinkButton>
-            {canManageCustomers && (
-              <>
-                <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
-                <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
-                  Add customer
-                </Button>
-              </>
+            <span className="text-xs text-text-muted">{selected.size} selected</span>
+            {canSendBulkMessages && (
+              <Button size="sm" icon={<Icon name="message" size={14} />} onClick={openBulkSmsForSelected}>
+                SMS
+              </Button>
             )}
           </div>
-        }
-      />
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Total customers" value={totalCount.toLocaleString()} />
-        <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
-        <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
-        <Stat label="This page" value={String(customers.length)} hint={`of ${totalCount}`} />
+        ) : loadError ? null : (
+          <span className="text-xs text-text-muted">
+            {customers.length} of {totalCount.toLocaleString()}
+          </span>
+        )}
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        tabs={[
-          { id: 'all', label: 'All' },
-          { id: 'active', label: 'SMS Active' },
-          { id: 'deactivated', label: 'Deactivated' },
-        ]}
-        activeTab={smsFilter}
-        onTabChange={(id) => {
-          // Each tab maps to its own filter. All three used to collapse into a
-          // single boolean, so All and SMS Active ran the identical query.
-          handleFilterChange(id as CustomerSmsFilter)
-        }}
-      />
-
-      {/* Filter/Search bar + Table */}
-      <Card>
-        <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
-          <SearchInput
-            value={searchTerm}
-            onChange={handleSearch}
-            debounceDelay={350}
-            placeholder="Search by name, phone, or email..."
-            className="w-full sm:w-80"
-          />
-          <div className="flex-1" />
-          {selected.size > 0 ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-text-muted">{selected.size} selected</span>
-              {canSendBulkMessages && (
-                <Button size="sm" icon={<MessageIcon />} onClick={openBulkSmsForSelected}>
-                  SMS
-                </Button>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-text-muted">
-              {customers.length} of {totalCount.toLocaleString()}
-            </span>
-          )}
-        </div>
-
+      {loadError && !isFetching ? (
+        <Alert tone="danger" title="Could not load customers">
+          {loadError}
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={refreshCurrentPage}>
+              Try Again
+            </Button>
+          </div>
+        </Alert>
+      ) : (
+      <Card padding="none">
         {isFetching ? (
           <CardBody>
-            <PageLoading className="min-h-0 py-12" />
+            <PageLoading inline label="Loading customers" />
           </CardBody>
         ) : customers.length === 0 ? (
           <CardBody>
             <Empty
-              title="No customers found"
-              description="Adjust your search or add a new customer."
+              size="sm"
+              title={searchTerm || smsFilter !== 'all' ? 'No customers match these filters' : 'No customers yet'}
+              description={
+                searchTerm || smsFilter !== 'all'
+                  ? 'Try a different search or SMS filter, or add a new customer.'
+                  : 'Customers appear here once they book or are added.'
+              }
               action={
                 canManageCustomers ? (
-                  <Button size="sm" onClick={openCreateCustomer}>Add Customer</Button>
+                  <Button size="sm" onClick={openCreateCustomer}>New Customer</Button>
                 ) : undefined
               }
             />
@@ -569,7 +573,7 @@ export default function CustomersClient({
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-text-subtle">--</span>
+                        <span className="text-xs text-text-soft">--</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -577,13 +581,13 @@ export default function CustomersClient({
                         {customer.mobile_number || '--'}
                         {customer.email && <div>{customer.email}</div>}
                       </div>
-                      {customer.sms_opt_in === false && <Badge tone="danger">SMS off</Badge>}
+                      {customer.sms_opt_in === false && <Badge tone={CONTACT_CHANNEL_TONE.inactive}>SMS off</Badge>}
                     </TableCell>
                     {canManageCustomers && (
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <IconButton icon={<PencilIcon />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
-                          <IconButton icon={<TrashIcon />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
+                          <IconButton icon={<Icon name="edit" size={14} />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
+                          <IconButton icon={<Icon name="trash" size={14} />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
                         </div>
                       </TableCell>
                     )}
@@ -593,7 +597,7 @@ export default function CustomersClient({
             </Table>
             </div>
 
-            {/* Mobile cards (<768px) — stacked version of the list table */}
+            {/* Mobile cards (<768px): stacked version of the list table */}
             <div className="divide-y divide-border md:hidden">
               {sortedCustomers.map(customer => (
                 <div key={customer.id} className="flex gap-3 p-3">
@@ -621,13 +625,13 @@ export default function CustomersClient({
                           <div className="text-xs text-text-muted break-all">{customer.email}</div>
                         )}
                         {customer.sms_opt_in === false && (
-                          <Badge tone="danger" className="mt-1">SMS off</Badge>
+                          <Badge tone={CONTACT_CHANNEL_TONE.inactive} className="mt-1">SMS off</Badge>
                         )}
                       </div>
                       {canManageCustomers && (
                         <div className="flex flex-shrink-0 items-center gap-1">
-                          <IconButton icon={<PencilIcon />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
-                          <IconButton icon={<TrashIcon />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
+                          <IconButton icon={<Icon name="edit" size={14} />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
+                          <IconButton icon={<Icon name="trash" size={14} />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
                         </div>
                       )}
                     </div>
@@ -663,6 +667,7 @@ export default function CustomersClient({
           </>
         )}
       </Card>
+      )}
 
       {/* Delete confirmation.
           The copy has to describe both outcomes of deleteCustomer, because the
@@ -675,22 +680,22 @@ export default function CustomersClient({
         title="Delete Customer"
         message={
           deleteTarget ? (
-            // Spans, not paragraphs: ConfirmDialog renders `message` inside a <p>.
-            <>
-              <span className="block">
+            // ConfirmDialog renders a node message inside a <div>, so it may hold paragraphs.
+            <div className="space-y-2">
+              <p>
                 Delete {deleteTarget.first_name}
                 {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Where the record can be
                 removed, this permanently deletes it along with their event bookings, message history,
                 consent records, event check-ins, labels and loyalty membership.
-              </span>
-              <span className="mt-2 block">
+              </p>
+              <p>
                 A record tied to a table, private or parking booking, or to an SMS campaign, cannot be
                 removed. It is anonymised instead: the name becomes &quot;Deleted Customer&quot;, the
                 phone number and email are cleared, internal notes are wiped and every marketing opt-in
                 is switched off. Their bookings and message history stay.
-              </span>
-              <span className="mt-2 block font-medium">Either way, this cannot be undone.</span>
-            </>
+              </p>
+              <p className="font-medium">Either way, this cannot be undone.</p>
+            </div>
           ) : (
             ''
           )
@@ -699,6 +704,6 @@ export default function CustomersClient({
         tone="danger"
         onConfirm={confirmDelete}
       />
-    </div>
+    </PageLayout>
   )
 }

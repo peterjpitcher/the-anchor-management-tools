@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Drawer, DrawerActions } from '@/ds';
-import { FormSection } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Drawer, FormFooter, SHELL_MEDIA_QUERY } from '@/ds';
+import { Card, CardBody, CardHeader } from '@/ds';
+import { Field, Fieldset } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
 import { Textarea } from '@/ds';
@@ -211,7 +211,7 @@ export function IngredientDrawer({
   importData,
   onSaved,
 }: IngredientDrawerProps): React.ReactElement {
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(SHELL_MEDIA_QUERY);
   const isEditing = Boolean(ingredient);
 
   // Form state
@@ -465,10 +465,7 @@ export function IngredientDrawer({
   // ---- Drawer header ----
 
   const drawerTitle = isEditing ? (ingredient?.name ?? 'Edit Ingredient') : 'New Ingredient';
-
-  const drawerDescription = isEditing
-    ? undefined
-    : 'Add a new ingredient to the catalogue';
+  const drawerDescription = isEditing ? undefined : 'Add a new ingredient to the catalogue';
 
   // ---- Render ----
 
@@ -481,429 +478,419 @@ export function IngredientDrawer({
         title={drawerTitle}
         description={drawerDescription}
         footer={
-          <DrawerActions align="between">
-            <div className="flex items-center gap-2">
-              {isEditing && ingredient && (
-                <PriceHistoryPopover
-                  ingredientId={ingredient.id}
-                  ingredientName={ingredient.name}
-                  trigger={
-                    <Button type="button" variant="ghost" size="sm">
-                      Price History
-                    </Button>
-                  }
-                />
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleReview}
-                disabled={reviewing || saving}
-              >
-                {reviewing ? 'Reviewing...' : 'AI Review'}
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="secondary" onClick={requestClose}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving || reviewing}
-              >
-                {saving ? 'Saving...' : isEditing ? 'Update' : 'Add Ingredient'}
-              </Button>
-            </div>
-          </DrawerActions>
+          <FormFooter
+            className="w-full"
+            start={
+              <div className="flex flex-wrap items-center gap-2">
+                {isEditing && ingredient && (
+                  <PriceHistoryPopover
+                    ingredientId={ingredient.id}
+                    ingredientName={ingredient.name}
+                    placement="top-start"
+                    trigger={
+                      <Button type="button" variant="ghost" size="sm">
+                        Price History
+                      </Button>
+                    }
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleReview}
+                  disabled={saving}
+                  loading={reviewing}
+                >
+                  AI Review
+                </Button>
+              </div>
+            }
+          >
+            <Button type="button" variant="secondary" onClick={requestClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void handleSave()}
+              disabled={reviewing}
+              loading={saving}
+            >
+              {isEditing ? 'Save Changes' : 'Create Ingredient'}
+            </Button>
+          </FormFooter>
         }
       >
         <div ref={scrollRef} />
+        <div className="space-y-6">
+          {/* Server error */}
+          {serverError && (
+            <Alert
+              tone="danger"
+              title="Save Error"
+              closable
+              onClose={() => setServerError(null)}
+            >
+              {serverError}
+            </Alert>
+          )}
 
-        {/* Server error */}
-        {serverError && (
-          <Alert
-            variant="error"
-            title="Save Error"
-            description={serverError}
-            closable
-            onClose={() => setServerError(null)}
-            className="mb-4"
-          />
-        )}
-
-        {/* AI Review results */}
-        {reviewResult && (
-          <div className="space-y-4 mb-6">
-            {reviewResult.issues.length > 0 && (
-              <Alert variant="warning" title="AI Review Findings">
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  {reviewResult.issues.map((issue, idx) => (
-                    <li key={idx}>{issue}</li>
-                  ))}
-                </ul>
-              </Alert>
-            )}
-            {reviewResult.suggestions.length > 0 && (
-              <Alert variant="info" title="Suggested Corrections">
-                <div className="mt-2 space-y-2">
-                  {reviewResult.suggestions.map((suggestion, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start justify-between gap-4 bg-surface p-2 rounded-sm border border-info-border"
-                    >
-                      <div className="text-sm">
-                        <div className="font-medium text-text">
-                          {suggestion.field}:{' '}
-                          <span className="text-text-muted line-through">
-                            {formatValue(
-                              (formState as Record<string, unknown>)[suggestion.field]
-                            )}
-                          </span>{' '}
-                          <span className="text-info-fg">
-                            &rarr; {formatValue(suggestion.suggestedValue)}
-                          </span>
+          {/* AI Review results */}
+          {reviewResult && (
+            <div className="space-y-4">
+              {reviewResult.issues.length > 0 && (
+                <Alert tone="warning" title="AI Review Findings">
+                  <ul className="list-disc list-inside text-sm space-y-1">
+                    {reviewResult.issues.map((issue, idx) => (
+                      <li key={idx}>{issue}</li>
+                    ))}
+                  </ul>
+                </Alert>
+              )}
+              {reviewResult.suggestions.length > 0 && (
+                <Alert tone="info" title="Suggested Corrections">
+                  <div className="mt-2 space-y-2">
+                    {reviewResult.suggestions.map((suggestion, idx) => (
+                      <Card key={idx} padding="sm">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="text-sm">
+                            <div className="font-medium text-text">
+                              {suggestion.field}:{' '}
+                              <span className="text-text-muted line-through">
+                                {formatValue(
+                                  (formState as Record<string, unknown>)[suggestion.field]
+                                )}
+                              </span>{' '}
+                              <span className="text-info-fg">
+                                &rarr; {formatValue(suggestion.suggestedValue)}
+                              </span>
+                            </div>
+                            <div className="text-text-muted text-xs mt-0.5">{suggestion.reason}</div>
+                          </div>
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            onClick={() => applySuggestion(suggestion)}
+                          >
+                            Apply
+                          </Button>
                         </div>
-                        <div className="text-text-muted text-xs mt-0.5">{suggestion.reason}</div>
-                      </div>
-                      <Button
-                        size="xs"
-                        variant="secondary"
-                        onClick={() => applySuggestion(suggestion)}
-                      >
-                        Apply
-                      </Button>
+                      </Card>
+                    ))}
+                  </div>
+                </Alert>
+              )}
+              {!reviewResult.valid &&
+                reviewResult.issues.length === 0 &&
+                reviewResult.suggestions.length === 0 && (
+                  <Alert tone="danger" title="Review Failed">
+                    The AI marked this data as invalid but provided no specific reasons. Please
+                    check the fields manually.
+                  </Alert>
+                )}
+              {reviewResult.valid &&
+                reviewResult.issues.length === 0 &&
+                reviewResult.suggestions.length === 0 && (
+                  <Alert tone="success" title="AI Review Passed">
+                    No logical inconsistencies found.
+                  </Alert>
+                )}
+            </div>
+          )}
+
+          {/* Section 1: Basics */}
+          <Card>
+            <CardHeader title="Basics" subtitle="Core details used across dishes and reports" />
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Name" required hint="Appears in dish builders and cost reports.">
+                  <Input
+                    value={formState.name}
+                    onChange={(e) => update({ name: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field
+                  label="Brand"
+                  hint="Optional brand or range to help the kitchen pick the right product."
+                >
+                  <Input
+                    value={formState.brand}
+                    onChange={(e) => update({ brand: e.target.value })}
+                  />
+                </Field>
+                <Field
+                  label="Default Unit"
+                  required
+                  hint="Used when adding the ingredient to dishes."
+                >
+                  <Select
+                    value={formState.default_unit}
+                    onChange={(e) => update({ default_unit: e.target.value })}
+                  >
+                    {UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="Storage Type"
+                  required
+                  hint="Appears on prep sheets so the team knows where to find it."
+                >
+                  <Select
+                    value={formState.storage_type}
+                    onChange={(e) => update({ storage_type: e.target.value })}
+                  >
+                    {STORAGE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="Purchase Department"
+                  required
+                  hint="Separates kitchen food purchases from bar drink purchases."
+                >
+                  <Select
+                    value={formState.purchase_department}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      update({ purchase_department: isMenuPurchaseDepartment(value) ? value : 'kitchen' });
+                    }}
+                  >
+                    {PURCHASE_DEPARTMENT_OPTIONS.map((department) => (
+                      <option key={department.value} value={department.value}>
+                        {department.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="ABV %"
+                  hint="Alcohol by volume. Only relevant for drinks ingredients."
+                >
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={formState.abv}
+                    onChange={(e) => update({ abv: e.target.value })}
+                    placeholder="e.g. 4.6"
+                  />
+                </Field>
+              </div>
+              <Field label="Description" hint="Optional supplier or tasting notes.">
+                <Textarea
+                  rows={2}
+                  value={formState.description}
+                  onChange={(e) => update({ description: e.target.value })}
+                />
+              </Field>
+            </CardBody>
+          </Card>
+
+          {/* Section 2: Supplier & Pack */}
+          <Card>
+            <CardHeader title="Supplier & Pack" subtitle="Powers cost tracking, GP reporting, and purchase orders" />
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Supplier Name" hint="Who you usually buy this from.">
+                  <Input
+                    value={formState.supplier_name}
+                    onChange={(e) => update({ supplier_name: e.target.value })}
+                  />
+                </Field>
+                <Field label="Supplier SKU" hint="Optional stock code to speed up re-ordering.">
+                  <Input
+                    value={formState.supplier_sku}
+                    onChange={(e) => update({ supplier_sku: e.target.value })}
+                  />
+                </Field>
+                <Field label="Pack Size" hint="Full case size as supplied (e.g. 2.5 for 2.5kg).">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formState.pack_size}
+                    onChange={(e) => update({ pack_size: e.target.value })}
+                  />
+                </Field>
+                <Field label="Pack Size Unit" hint="Matches the measurement above.">
+                  <Select
+                    value={formState.pack_size_unit}
+                    onChange={(e) => update({ pack_size_unit: e.target.value })}
+                  >
+                    {UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="Pack Cost (£)"
+                  required
+                  hint="Latest price paid, excluding VAT if reclaimable."
+                >
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formState.pack_cost}
+                    onChange={(e) => update({ pack_cost: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field
+                  label="Portions Per Pack"
+                  hint="How many usable portions you usually prep from one pack."
+                >
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formState.portions_per_pack}
+                    onChange={(e) => update({ portions_per_pack: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Section 3: Wastage & Shelf Life */}
+          <Card>
+            <CardHeader title="Wastage & Shelf Life" subtitle="Trim and spoilage allowances for cost accuracy" />
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Wastage %" hint="Allowance for trim or loss during prep.">
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={formState.wastage_pct}
+                    onChange={(e) => update({ wastage_pct: e.target.value })}
+                  />
+                </Field>
+                <Field
+                  label="Shelf Life (days)"
+                  hint="Optional. Helps with prep planning and rotation."
+                >
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formState.shelf_life_days}
+                    onChange={(e) => update({ shelf_life_days: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Section 4: Allergens & Dietary */}
+          <Card>
+            <CardHeader title="Allergens & Dietary" subtitle="Tags flow through to every dish that uses the ingredient" />
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Fieldset
+                  legend="Allergens"
+                  hint="Tick every allergen present in the supplied product."
+                >
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {ALLERGEN_OPTIONS.map((option) => (
+                        <Checkbox
+                          key={option.value}
+                          label={option.label}
+                          checked={formState.allergens.includes(option.value)}
+                          onChange={() => toggleAllergen(option.value)}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </Alert>
-            )}
-            {!reviewResult.valid &&
-              reviewResult.issues.length === 0 &&
-              reviewResult.suggestions.length === 0 && (
-                <Alert variant="error" title="Review Failed">
-                  The AI marked this data as invalid but provided no specific reasons. Please
-                  check the fields manually.
-                </Alert>
-              )}
-            {reviewResult.valid &&
-              reviewResult.issues.length === 0 &&
-              reviewResult.suggestions.length === 0 && (
-                <Alert variant="success" title="AI Review Passed">
-                  No logical inconsistencies found.
-                </Alert>
-              )}
-          </div>
-        )}
-
-        {/* Section 1: Basics */}
-        <FormSection title="Basics" description="Core details used across dishes and reports.">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Name" required help="Appears in dish builders and cost reports.">
-              <Input
-                value={formState.name}
-                onChange={(e) => update({ name: e.target.value })}
-                required
-              />
-            </FormGroup>
-            <FormGroup
-              label="Brand"
-              help="Optional brand or range to help the kitchen pick the right product."
-            >
-              <Input
-                value={formState.brand}
-                onChange={(e) => update({ brand: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup
-              label="Default Unit"
-              required
-              help="Used when adding the ingredient to dishes."
-            >
-              <Select
-                value={formState.default_unit}
-                onChange={(e) => update({ default_unit: e.target.value })}
-              >
-                {UNITS.map((u) => (
-                  <option key={u.value} value={u.value}>
-                    {u.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-            <FormGroup
-              label="Storage Type"
-              required
-              help="Appears on prep sheets so the team knows where to find it."
-            >
-              <Select
-                value={formState.storage_type}
-                onChange={(e) => update({ storage_type: e.target.value })}
-              >
-                {STORAGE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-            <FormGroup
-              label="Purchase Department"
-              required
-              help="Separates kitchen food purchases from bar drink purchases."
-            >
-              <Select
-                value={formState.purchase_department}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  update({ purchase_department: isMenuPurchaseDepartment(value) ? value : 'kitchen' });
-                }}
-              >
-                {PURCHASE_DEPARTMENT_OPTIONS.map((department) => (
-                  <option key={department.value} value={department.value}>
-                    {department.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-            <FormGroup
-              label="ABV %"
-              help="Alcohol by volume. Only relevant for drinks ingredients."
-            >
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={formState.abv}
-                onChange={(e) => update({ abv: e.target.value })}
-                placeholder="e.g. 4.6"
-              />
-            </FormGroup>
-          </div>
-          <FormGroup label="Description" help="Optional supplier or tasting notes.">
-            <Textarea
-              rows={2}
-              value={formState.description}
-              onChange={(e) => update({ description: e.target.value })}
-            />
-          </FormGroup>
-        </FormSection>
-
-        {/* Section 2: Supplier & Pack */}
-        <FormSection
-          title="Supplier & Pack"
-          description="Powers cost tracking, GP reporting, and purchase orders."
-          className="mt-6"
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Supplier Name" help="Who you usually buy this from.">
-              <Input
-                value={formState.supplier_name}
-                onChange={(e) => update({ supplier_name: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup label="Supplier SKU" help="Optional stock code to speed up re-ordering.">
-              <Input
-                value={formState.supplier_sku}
-                onChange={(e) => update({ supplier_sku: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup label="Pack Size" help="Full case size as supplied (e.g. 2.5 for 2.5kg).">
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formState.pack_size}
-                onChange={(e) => update({ pack_size: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup label="Pack Size Unit" help="Matches the measurement above.">
-              <Select
-                value={formState.pack_size_unit}
-                onChange={(e) => update({ pack_size_unit: e.target.value })}
-              >
-                {UNITS.map((u) => (
-                  <option key={u.value} value={u.value}>
-                    {u.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-            <FormGroup
-              label="Pack Cost (\u00a3)"
-              required
-              help="Latest price paid, excluding VAT if reclaimable."
-            >
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formState.pack_cost}
-                onChange={(e) => update({ pack_cost: e.target.value })}
-                required
-              />
-            </FormGroup>
-            <FormGroup
-              label="Portions Per Pack"
-              help="How many usable portions you usually prep from one pack."
-            >
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formState.portions_per_pack}
-                onChange={(e) => update({ portions_per_pack: e.target.value })}
-              />
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        {/* Section 3: Wastage & Shelf Life */}
-        <FormSection
-          title="Wastage & Shelf Life"
-          description="Trim and spoilage allowances for cost accuracy."
-          className="mt-6"
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Wastage %" help="Allowance for trim or loss during prep.">
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={formState.wastage_pct}
-                onChange={(e) => update({ wastage_pct: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup
-              label="Shelf Life (days)"
-              help="Optional. Helps with prep planning and rotation."
-            >
-              <Input
-                type="number"
-                min="0"
-                value={formState.shelf_life_days}
-                onChange={(e) => update({ shelf_life_days: e.target.value })}
-              />
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        {/* Section 4: Allergens & Dietary */}
-        <FormSection
-          title="Allergens & Dietary"
-          description="Tags flow through to every dish that uses the ingredient."
-          className="mt-6"
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup
-              label="Allergens"
-              help="Tick every allergen present in the supplied product."
-            >
-              <div className="space-y-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {ALLERGEN_OPTIONS.map((option) => (
-                    <Checkbox
-                      key={option.value}
-                      checked={formState.allergens.includes(option.value)}
-                      onChange={() => toggleAllergen(option.value)}
-                    >
-                      {option.label}
-                    </Checkbox>
-                  ))}
-                </div>
-                {unknownAllergens.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1">
-                    <p className="text-xs text-warning-fg">
-                      Additional tags already stored: {unknownAllergens.join(', ')}.
-                    </p>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="text-xs text-warning-fg hover:bg-warning/10"
-                      onClick={clearUnknownAllergens}
-                    >
-                      Remove extras
-                    </Button>
+                    {unknownAllergens.length > 0 && (
+                      <Alert tone="warning" size="sm" role="status">
+                        Additional tags already stored: {unknownAllergens.join(', ')}.
+                        <div className="mt-2">
+                          <Button type="button" size="xs" variant="secondary" onClick={clearUnknownAllergens}>
+                            Remove Extras
+                          </Button>
+                        </div>
+                      </Alert>
+                    )}
                   </div>
-                )}
-              </div>
-            </FormGroup>
-            <FormGroup
-              label="Dietary Flags"
-              help="Tick how the ingredient should be treated on customer menus."
-            >
-              <div className="space-y-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {DIETARY_OPTIONS.map((option) => (
-                    <Checkbox
-                      key={option.value}
-                      checked={formState.dietary_flags.includes(option.value)}
-                      onChange={() => toggleDietaryFlag(option.value)}
-                    >
-                      {option.label}
-                    </Checkbox>
-                  ))}
-                </div>
-                {unknownDietaryFlags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1">
-                    <p className="text-xs text-warning-fg">
-                      Additional tags already stored: {unknownDietaryFlags.join(', ')}.
-                    </p>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="text-xs text-warning-fg hover:bg-warning/10"
-                      onClick={clearUnknownDietaryFlags}
-                    >
-                      Remove extras
-                    </Button>
+                </Fieldset>
+                <Fieldset
+                  legend="Dietary Flags"
+                  hint="Tick how the ingredient should be treated on customer menus."
+                >
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {DIETARY_OPTIONS.map((option) => (
+                        <Checkbox
+                          key={option.value}
+                          label={option.label}
+                          checked={formState.dietary_flags.includes(option.value)}
+                          onChange={() => toggleDietaryFlag(option.value)}
+                        />
+                      ))}
+                    </div>
+                    {unknownDietaryFlags.length > 0 && (
+                      <Alert tone="warning" size="sm" role="status">
+                        Additional tags already stored: {unknownDietaryFlags.join(', ')}.
+                        <div className="mt-2">
+                          <Button type="button" size="xs" variant="secondary" onClick={clearUnknownDietaryFlags}>
+                            Remove Extras
+                          </Button>
+                        </div>
+                      </Alert>
+                    )}
                   </div>
-                )}
+                </Fieldset>
               </div>
-            </FormGroup>
-          </div>
-        </FormSection>
+            </CardBody>
+          </Card>
 
-        {/* Section 5: Notes */}
-        <FormSection title="Notes" className="mt-6">
-          <FormGroup
-            label="Internal Notes"
-            help="Optional prep tips, storage reminders, or ordering instructions."
-          >
-            <Textarea
-              rows={3}
-              value={formState.notes}
-              onChange={(e) => update({ notes: e.target.value })}
-            />
-          </FormGroup>
+          {/* Section 5: Notes */}
+          <Card>
+            <CardHeader title="Notes" />
+            <CardBody className="space-y-4">
+              <Field
+                label="Internal Notes"
+                hint="Optional prep tips, storage reminders, or ordering instructions."
+              >
+                <Textarea
+                  rows={3}
+                  value={formState.notes}
+                  onChange={(e) => update({ notes: e.target.value })}
+                />
+              </Field>
 
-          <div className="space-y-2 rounded-lg border border-border bg-surface p-4 mt-4">
-            <div className="text-sm font-medium text-text">Ingredient availability</div>
-            <p className="text-sm text-text-muted">
-              Only active ingredients can be added to dishes. Deactivate when stock is
-              discontinued.
-            </p>
-            <Checkbox
-              label="Ingredient is active"
-              checked={formState.is_active}
-              onChange={(checked) => update({ is_active: checked })}
-            />
-          </div>
-        </FormSection>
+              <Checkbox
+                label="Ingredient is active"
+                description="Only active ingredients can be added to dishes. Deactivate when stock is discontinued."
+                checked={formState.is_active}
+                onChange={(checked) => update({ is_active: checked })}
+              />
+            </CardBody>
+          </Card>
+        </div>
       </Drawer>
 
       {/* Unsaved changes confirmation */}
       <ConfirmDialog
         open={showUnsavedConfirm}
-        title="Unsaved changes"
+        title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
-        confirmText="Discard"
-        type="danger"
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {
           setShowUnsavedConfirm(false);

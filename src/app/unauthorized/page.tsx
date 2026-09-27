@@ -2,49 +2,43 @@
 
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
-import { Icon, Button, LinkButton } from '@/ds'
+import { Button, LinkButton, PageLoading } from '@/ds'
+import { AuthCard } from '@/app/auth/_components/AuthCard'
+
+const ACCESS_DENIED = {
+  title: 'Access Denied',
+  lead: 'You do not have permission to view this page. Contact your manager if you believe this is an error.',
+  icon: { name: 'alertTriangle', tone: 'warning' },
+} as const
 
 function UnauthorizedContent() {
   const searchParams = useSearchParams()
   const attemptedPath = searchParams.get('path') || searchParams.get('from') || '/'
 
   return (
-    <div className="auth">
-      <div className="auth__card">
-        <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-full bg-warning/10 flex items-center justify-center">
-            <Icon name="alertTriangle" size={28} className="text-warning" />
-          </div>
-        </div>
+    <AuthCard {...ACCESS_DENIED}>
+      <p className="mb-4 break-words rounded-default bg-surface-2 p-3 text-center font-mono text-sm text-text-muted">
+        {attemptedPath}
+      </p>
 
-        <h1 className="auth__h1 text-center">Access Denied</h1>
-        <p className="auth__lead text-center">
-          You do not have permission to view this page. Contact your manager if you believe this is an error.
-        </p>
+      <p className="mb-4 text-center text-xs text-text-soft">
+        Your current role does not include access to this section. Ask an administrator to update your permissions if needed.
+      </p>
 
-        <div className="bg-surface-hover rounded-lg p-3 font-mono text-sm text-text-muted text-center mb-4 break-words">
-          {attemptedPath}
-        </div>
-
-        <p className="text-xs text-text-subtle text-center mb-4">
-          Your current role does not include access to this section. Ask an administrator to update your permissions if needed.
-        </p>
-
-        <div className="flex flex-col gap-2">
-          <LinkButton href="/dashboard" variant="primary" size="lg" className="w-full">
-            Go to Dashboard
-          </LinkButton>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="w-full"
-            onClick={() => window.history.back()}
-          >
-            Go Back
-          </Button>
-        </div>
+      <div className="flex flex-col gap-2">
+        <LinkButton href="/dashboard" variant="primary" size="lg" className="w-full">
+          Go to Dashboard
+        </LinkButton>
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          onClick={() => window.history.back()}
+        >
+          Go Back
+        </Button>
       </div>
-    </div>
+    </AuthCard>
   )
 }
 
@@ -52,11 +46,9 @@ export default function UnauthorizedPage() {
   return (
     <Suspense
       fallback={
-        <div className="auth">
-          <div className="auth__card">
-            <h1 className="auth__h1 text-center">Access Denied</h1>
-          </div>
-        </div>
+        <AuthCard {...ACCESS_DENIED}>
+          <PageLoading inline />
+        </AuthCard>
       }
     >
       <UnauthorizedContent />

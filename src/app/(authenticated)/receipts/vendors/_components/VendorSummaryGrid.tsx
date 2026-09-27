@@ -8,7 +8,6 @@ import {
   setReceiptVendorReviewStatus,
   setReceiptVendorWatched,
   type ReceiptVendorAiReview,
-  type ReceiptVendorCostSignal,
   type ReceiptVendorDetail,
   type ReceiptVendorMovementComparison,
   type ReceiptVendorMovementRange,
@@ -19,16 +18,41 @@ import {
   type ReceiptVendorMonthTransaction,
   type ReceiptVendorWatchlistItem,
 } from '@/app/actions/receipts'
-import { Alert, Badge, Button, Card, Drawer, IconButton, Select, Spinner } from '@/ds'
-import { statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import {
-  ArrowTrendingDownIcon,
-  ArrowTrendingUpIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  SparklesIcon,
-  StarIcon,
-} from '@heroicons/react/20/solid'
+  Alert,
+  Badge,
+  BarChart,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Drawer,
+  Empty,
+  Icon,
+  IconButton,
+  PageLoading,
+  Section,
+  Segmented,
+  Select,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
+import {
+  RECEIPT_FLOW_TONE,
+  RECEIPT_STATUS_LABEL,
+  RECEIPT_STATUS_TONE,
+  spendMovementBarColour,
+  spendMovementTextClass,
+  spendMovementTone,
+  vendorSignalTone,
+} from '@/app/(authenticated)/receipts/_shared/status-ui'
+import { ReceiptsPageChrome } from '../../_components/ReceiptsPageChrome'
 
 const MONTH_WINDOW = 12
 const DEFAULT_MOVEMENT_RANGE: ReceiptVendorMovementRange = '36m'
@@ -79,23 +103,18 @@ function formatHistoryDate(value: string) {
   return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
-function signalTone(signal: ReceiptVendorCostSignal | { severity: 'medium' | 'high'; direction: 'spike' | 'drop' | 'new' | 'resumed' }) {
-  if (signal.severity === 'high') return 'bg-danger-soft text-danger-fg border-danger-border'
-  if (signal.direction === 'drop') return 'bg-success-soft text-success-fg border-success-border'
-  return 'bg-warning-soft text-warning-fg border-warning-border'
-}
-
-/** The same rule as signalTone, as a DS Badge tone for the compact chips. */
-function signalBadgeTone(signal: ReceiptVendorCostSignal | { severity: 'medium' | 'high'; direction: 'spike' | 'drop' | 'new' | 'resumed' }): 'danger' | 'success' | 'warning' {
-  if (signal.severity === 'high') return 'danger'
-  if (signal.direction === 'drop') return 'success'
-  return 'warning'
-}
-
 type VendorSummaryGridProps = {
   initialWatchlist: ReceiptVendorWatchlistItem[]
   initialReviews?: ReceiptVendorReviewItem[]
+  /** Whether this person has `receipts:manage`, for the Receipts tab row. */
+  canManage: boolean
 }
+
+const COMPARISON_OPTIONS: Array<{ id: ReceiptVendorMovementComparison; label: string }> = [
+  { id: 'rolling_3m', label: '3m Trend' },
+  { id: 'yoy', label: 'Year on Year' },
+  { id: 'mom', label: 'Month on Month' },
+]
 
 function normalizeVendorKey(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -105,7 +124,8 @@ function reviewKey(vendorLabel: string, comparison: ReceiptVendorMovementCompari
   return `${normalizeVendorKey(vendorLabel)}|${comparison}|${monthStart}`
 }
 
-export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [] }: VendorSummaryGridProps) {
+export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [], canManage }: VendorSummaryGridProps) {
+  const [comparison, setComparison] = useState<ReceiptVendorMovementComparison>(DEFAULT_MOVEMENT_COMPARISON)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null)
   const [detail, setDetail] = useState<ReceiptVendorDetail | null>(null)
@@ -259,20 +279,34 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
     ? updatingWatchVendor === activeVendorLabel
     : false
 
+  // This client renders the Receipts chrome itself, so the comparison switch (which changes every
+  // figure on the page) can sit in the header.
   return (
-    <>
-      <div className="space-y-4">
-        <VendorMovementPanel
-          watchedVendors={watchedVendors}
-          reviews={reviews}
-          updatingWatchVendor={updatingWatchVendor}
-          updatingReview={updatingReview}
-          error={watchlistError ?? reviewError}
-          onViewDetails={openVendorDetail}
-          onToggleWatched={toggleVendorWatched}
-          onUpdateReview={updateVendorReview}
+    <ReceiptsPageChrome
+      subtitle="Vendors: which suppliers are rising in cost and where spend is stable"
+      navState={{ view: 'vendors' }}
+      canManage={canManage}
+      headerActions={
+        <Segmented
+          options={COMPARISON_OPTIONS}
+          value={comparison}
+          onChange={(value) => setComparison(value as ReceiptVendorMovementComparison)}
+          size="sm"
+          aria-label="Compare against"
         />
-      </div>
+      }
+    >
+      <VendorMovementPanel
+        comparison={comparison}
+        watchedVendors={watchedVendors}
+        reviews={reviews}
+        updatingWatchVendor={updatingWatchVendor}
+        updatingReview={updatingReview}
+        error={watchlistError ?? reviewError}
+        onViewDetails={openVendorDetail}
+        onToggleWatched={toggleVendorWatched}
+        onUpdateReview={updateVendorReview}
+      />
 
       <VendorDetailDrawer
         open={drawerOpen}
@@ -291,32 +325,7 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
         onGenerateAi={generateVendorAiSummary}
         onClose={() => setDrawerOpen(false)}
       />
-    </>
-  )
-}
-
-function SegmentedControl({
-  value,
-  options,
-  onChange,
-}: {
-  value: string
-  options: Array<{ value: string; label: string }>
-  onChange: (value: string) => void
-}) {
-  return (
-    <div className="inline-flex rounded-md border border-border bg-surface p-1">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-hidden focus-visible:shadow-ring ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    </ReceiptsPageChrome>
   )
 }
 
@@ -338,76 +347,69 @@ function movementReviewStatus(
     ?? (movement.signal ? 'needs_review' : 'reviewed')
 }
 
-function MovementMetric({
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  label: string
-  value: string
-  detail: string
-  tone?: 'neutral' | 'up' | 'down' | 'attention'
-}) {
-  const toneClass = tone === 'up'
-    ? 'border-danger-border bg-danger-soft text-danger-fg'
-    : tone === 'down'
-      ? 'border-success-border bg-success-soft text-success-fg'
-      : tone === 'attention'
-        ? 'border-warning-border bg-warning-soft text-warning-fg'
-        : 'border-border bg-surface text-text-strong'
-
-  return (
-    <div className={`rounded-lg border p-4 ${toneClass}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
-      <p className="mt-1 text-xs opacity-75">{detail}</p>
-    </div>
-  )
+/** "+£1.2k" / "-£950": the signed short form the movement chart prints on its axis and bars. */
+function formatSignedShortCurrency(value: number): string {
+  const size = Math.abs(value)
+  const short = size >= 1_000_000 ? `£${(size / 1_000_000).toFixed(1)}M` : size >= 1_000 ? `£${(size / 1_000).toFixed(1)}k` : `£${size.toFixed(0)}`
+  return value > 0 ? `+${short}` : value < 0 ? `-${short}` : short
 }
 
+/** The ten biggest movements as bars either side of zero: spend up in red, spend down in green. */
 function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovementSummary[] }) {
   const rows = [...movements]
     .filter((movement) => movement.delta !== null && movement.delta !== 0)
     .sort((left, right) => Math.abs(right.delta ?? 0) - Math.abs(left.delta ?? 0))
     .slice(0, 10)
-  const maxDelta = rows.reduce((max, movement) => Math.max(max, Math.abs(movement.delta ?? 0)), 0)
 
   if (!rows.length) {
-    return <p className="text-sm text-text-muted">No movement is available for this comparison.</p>
+    return <Empty size="sm" title="No movement for this period" description="No vendor’s spend changed between the periods compared." />
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-meta font-semibold uppercase tracking-wide text-text-soft">
-        <span>Vendor</span>
-        <div className="grid grid-cols-2 text-center"><span>Down</span><span>Up</span></div>
-        <span className="text-right">Movement</span>
-      </div>
-      {rows.map((movement) => {
-        const delta = movement.delta ?? 0
-        const width = maxDelta > 0 ? Math.max((Math.abs(delta) / maxDelta) * 50, 2) : 0
-        return (
-          <div key={movement.vendorLabel} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3">
-            <span className="truncate text-xs font-medium text-text" title={movement.vendorLabel}>{movement.vendorLabel}</span>
-            <div className="relative h-5 rounded-sm bg-surface-2">
-              <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
-              <div
-                className={`absolute inset-y-1 rounded-sm ${delta > 0 ? 'left-1/2 bg-danger' : 'right-1/2 bg-success'}`}
-                style={{ width: `${width}%` }}
-              />
-            </div>
-            <span className={`text-right text-xs font-semibold tabular-nums ${delta > 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
-              {formatSignedCurrency(delta)}
-            </span>
-          </div>
-        )
-      })}
-    </div>
+    <BarChart
+      horizontal
+      data={rows.map((movement) => ({
+        label: movement.vendorLabel,
+        value: movement.delta ?? 0,
+        color: spendMovementBarColour(movement.delta ?? 0),
+      }))}
+      height={rows.length * 36 + 40}
+      valueFormatter={formatSignedShortCurrency}
+      seriesLabel="Movement"
+      maxBarSize={20}
+      ariaLabel="Biggest spend movements by vendor"
+    />
+  )
+}
+
+/** The star that adds a vendor to, or takes it off, the watched list. */
+function WatchToggle({
+  vendorLabel,
+  watched,
+  disabled,
+  onToggle,
+}: {
+  vendorLabel: string
+  watched: boolean
+  disabled?: boolean
+  onToggle: () => void
+}) {
+  return (
+    <IconButton
+      type="button"
+      size="sm"
+      variant={watched ? 'secondary' : 'ghost'}
+      aria-pressed={watched}
+      disabled={disabled}
+      onClick={onToggle}
+      label={`${watched ? 'Stop watching' : 'Watch'} ${vendorLabel}`}
+      icon={<Icon name="star" size={16} className={watched ? 'fill-current text-warning' : 'text-text-subtle'} />}
+    />
   )
 }
 
 function VendorMovementPanel({
+  comparison,
   watchedVendors,
   reviews,
   updatingWatchVendor,
@@ -417,6 +419,7 @@ function VendorMovementPanel({
   onToggleWatched,
   onUpdateReview,
 }: {
+  comparison: ReceiptVendorMovementComparison
   watchedVendors: Record<string, string>
   reviews: Record<string, ReceiptVendorReviewStatus>
   updatingWatchVendor: string | null
@@ -427,7 +430,6 @@ function VendorMovementPanel({
   onUpdateReview: (movement: ReceiptVendorMovementSummary, status: ReceiptVendorReviewStatus) => void
 }) {
   const range: ReceiptVendorMovementRange = DEFAULT_MOVEMENT_RANGE
-  const [comparison, setComparison] = useState<ReceiptVendorMovementComparison>(DEFAULT_MOVEMENT_COMPARISON)
   const [view, setView] = useState<MovementView>('attention')
   const [state, setState] = useState<MovementState>({ movements: [], signals: [] })
   const [isLoading, setIsLoading] = useState(true)
@@ -508,208 +510,192 @@ function VendorMovementPanel({
       .sort((left, right) => Math.abs(right.delta ?? 0) - Math.abs(left.delta ?? 0))
   }, [reviews, state.movements, view, watchedVendors])
 
-  const views: Array<{ value: MovementView; label: string }> = [
-    { value: 'attention', label: `Needs attention (${summary.attentionCount})` },
-    { value: 'increases', label: 'Biggest increases' },
-    { value: 'decreases', label: 'Biggest decreases' },
-    { value: 'new', label: 'New / resumed' },
-    { value: 'watched', label: `Watched (${Object.keys(watchedVendors).length})` },
-    { value: 'all', label: 'All vendors' },
+  const views: Array<{ id: MovementView; label: string }> = [
+    { id: 'attention', label: `Needs Attention (${summary.attentionCount})` },
+    { id: 'increases', label: 'Biggest Increases' },
+    { id: 'decreases', label: 'Biggest Decreases' },
+    { id: 'new', label: 'New / Resumed' },
+    { id: 'watched', label: `Watched (${Object.keys(watchedVendors).length})` },
+    { id: 'all', label: 'All Vendors' },
   ]
 
-  return (
-    <div className="space-y-4">
-      <Card>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-text-strong">Spend movement overview</h3>
-          <p className="mt-1 text-sm text-text-muted">{periodLabel}. Uses complete months only.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl
-            value={comparison}
-            options={[
-              { value: 'rolling_3m', label: '3m trend' },
-              { value: 'yoy', label: 'Year on year' },
-              { value: 'mom', label: 'Month on month' },
-            ]}
-            onChange={(value) => setComparison(value as ReceiptVendorMovementComparison)}
-          />
-        </div>
-      </div>
+  const reviewStatusSelect = (movement: ReceiptVendorMovementSummary, status: ReceiptVendorReviewStatus, key: string) => (
+    <Select
+      value={status}
+      disabled={!movement.latestMonthStart || updatingReview === key}
+      onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
+      aria-label={`Review status for ${movement.vendorLabel}`}
+    >
+      {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+    </Select>
+  )
 
-      {isLoading ? (
-        <div className="mt-4 flex items-center gap-2 text-sm text-text-muted">
-          <Spinner className="h-4 w-4" />
-          Loading vendor movement...
-        </div>
-      ) : state.error ? (
-        <Alert tone="danger" title="Movement unavailable" className="mt-4">
-          {state.error}
-        </Alert>
-      ) : state.movements.length ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <MovementMetric label={comparison === 'rolling_3m' ? 'Average monthly spend' : 'Total spend'} value={formatCurrency(summary.currentSpend)} detail={periodLabel} />
-          <MovementMetric label="Spend increases" value={`+${formatCurrency(summary.increaseTotal)}`} detail="Across vendors that increased" tone="up" />
-          <MovementMetric label="Spend decreases" value={`-${formatCurrency(summary.decreaseTotal)}`} detail="Across vendors that decreased" tone="down" />
-          <MovementMetric label="Net movement" value={formatSignedCurrency(summary.netChange)} detail="Increases less decreases" tone={summary.netChange > 0 ? 'up' : summary.netChange < 0 ? 'down' : 'neutral'} />
-          <MovementMetric label="Needs attention" value={summary.attentionCount.toLocaleString('en-GB')} detail="Material movements not closed" tone="attention" />
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-text-muted">No vendor movement found for this view.</p>
-      )}
-      </Card>
+  return (
+    <>
+      <Section title="Spend Movement Overview" description={`${periodLabel}. Uses complete months only.`}>
+        {isLoading ? (
+          <PageLoading inline label="Loading vendor movement" />
+        ) : state.error ? (
+          <Alert tone="danger" title="Movement unavailable">
+            {state.error}
+          </Alert>
+        ) : state.movements.length ? (
+          <StatGrid columns={5}>
+            <Stat label={comparison === 'rolling_3m' ? 'Average monthly spend' : 'Total spend'} value={formatCurrency(summary.currentSpend)} hint={periodLabel} />
+            <Stat label="Spend increases" value={`+${formatCurrency(summary.increaseTotal)}`} tone={spendMovementTone(summary.increaseTotal)} hint="Across vendors that increased" />
+            <Stat label="Spend decreases" value={`-${formatCurrency(summary.decreaseTotal)}`} tone={spendMovementTone(-summary.decreaseTotal)} hint="Across vendors that decreased" />
+            <Stat
+              label="Net movement"
+              value={formatSignedCurrency(summary.netChange)}
+              tone={spendMovementTone(summary.netChange)}
+              hint="Increases less decreases"
+            />
+            <Stat
+              label="Needs attention"
+              value={summary.attentionCount.toLocaleString('en-GB')}
+              tone={summary.attentionCount > 0 ? 'warning' : 'default'}
+              hint="Material movements not closed"
+            />
+          </StatGrid>
+        ) : (
+          <Card>
+            <Empty size="sm" title="No vendor movement for this period" description="No vendor’s spend changed between the periods compared." />
+          </Card>
+        )}
+      </Section>
 
       {!isLoading && !state.error && state.movements.length > 0 && (
         <>
           <Card>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-text-strong">Biggest movements</h3>
-                <p className="mt-1 text-xs text-text-muted">Top vendors ranked by absolute pound movement.</p>
-              </div>
-              <div className="hidden items-center gap-4 text-xs sm:flex">
-                <span className="inline-flex items-center gap-1 text-success-fg"><ArrowTrendingDownIcon className="h-4 w-4" /> Spend down</span>
-                <span className="inline-flex items-center gap-1 text-danger-fg"><ArrowTrendingUpIcon className="h-4 w-4" /> Spend up</span>
-              </div>
-            </div>
-            <div className="mt-5"><DivergingMovementChart movements={state.movements} /></div>
+            <CardHeader
+              title="Biggest Movements"
+              subtitle="Top vendors ranked by absolute pound movement"
+              action={
+                // The chart's key, on phones too: the CardHeader puts it under the title when the
+                // card is narrow, and the chart itself has no Down and Up headings.
+                <div className="flex flex-wrap items-center gap-4 text-xs">
+                  <span className="inline-flex items-center gap-1 text-success-fg"><Icon name="trendDown" size={16} /> Spend down</span>
+                  <span className="inline-flex items-center gap-1 text-danger-fg"><Icon name="trendUp" size={16} /> Spend up</span>
+                </div>
+              }
+            />
+            <CardBody>
+              <DivergingMovementChart movements={state.movements} />
+            </CardBody>
           </Card>
 
           <Card>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {views.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setView(option.value)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-hidden focus-visible:shadow-ring-inset ${view === option.value ? 'bg-primary text-primary-fg' : 'bg-surface-2 text-text-muted hover:bg-surface-hover'}`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <CardHeader title="Vendors" subtitle="Review each movement and watch the suppliers you care about" />
+            <CardBody className="space-y-4">
+              <div className="overflow-x-auto">
+                <Segmented
+                  options={views}
+                  value={view}
+                  onChange={(value) => setView(value as MovementView)}
+                  size="sm"
+                  aria-label="Which vendors to show"
+                />
+              </div>
 
-            {error && <Alert tone="danger" title="Unable to save changes" className="mt-3">{error}</Alert>}
+              {error && <Alert tone="danger" title="Unable to save changes">{error}</Alert>}
 
-            {displayedMovements.length ? (
-              <>
-                <div className="mt-4 hidden overflow-x-auto md:block">
-                  <table className="min-w-full divide-y divide-border text-xs">
-                    <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
-                      <tr>
-                        <th scope="col" className="px-3 py-2">Vendor</th>
-                        <th scope="col" className="px-3 py-2 text-right">{currentLabel}</th>
-                        <th scope="col" className="px-3 py-2 text-right">{baselineLabel}</th>
-                        <th scope="col" className="px-3 py-2 text-right">Movement</th>
-                        <th scope="col" className="px-3 py-2">Review status</th>
-                        <th scope="col" className="px-3 py-2 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border text-text">
-                      {displayedMovements.map((movement) => {
-                        const watched = Boolean(watchedVendors[normalizeVendorKey(movement.vendorLabel)])
-                        const status = movementReviewStatus(movement, reviews)
-                        const key = movement.latestMonthStart ? reviewKey(movement.vendorLabel, movement.comparison, movement.latestMonthStart) : ''
-                        return (
-                          <tr key={`${movement.vendorLabel}-${movement.comparison}`}>
-                            <td className="max-w-[15rem] px-3 py-3">
-                              <div className="truncate font-semibold text-text-strong" title={movement.vendorLabel}>{movement.vendorLabel}</div>
-                              <div className="mt-1 flex items-center gap-2">
-                                {movement.signal && <Badge tone={signalBadgeTone(movement.signal)} className="capitalize">{movement.signal.direction}</Badge>}
-                                <span className="text-text-soft">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 text-right font-medium tabular-nums text-text-strong">{formatCurrency(movement.latestOutgoing)}</td>
-                            <td className="px-3 py-3 text-right tabular-nums text-text-muted">{movement.baselineOutgoing === null ? 'No baseline' : formatCurrency(movement.baselineOutgoing)}</td>
-                            <td className={`px-3 py-3 text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-danger-fg' : (movement.delta ?? 0) < 0 ? 'text-success-fg' : 'text-text-muted'}`}>
-                              <div>{formatSignedCurrency(movement.delta)}</div>
-                              <div className="mt-1 text-meta font-medium opacity-75">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <Select
-                                value={status}
-                                disabled={!movement.latestMonthStart || updatingReview === key}
-                                onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                                aria-label={`Review status for ${movement.vendorLabel}`}
-                              >
-                                {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                              </Select>
-                            </td>
-                            <td className="px-3 py-3 text-right">
-                              <div className="inline-flex items-center gap-2">
-                                <IconButton
-                                  type="button"
-                                  size="sm"
-                                  disabled={updatingWatchVendor === movement.vendorLabel}
-                                  onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
-                                  className={watched ? 'bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-subtle hover:text-warning-fg'}
-                                  label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
-                                  icon={<StarIcon className="h-4 w-4" />}
-                                />
-                                <Button type="button" variant="link" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>View details</Button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-4 space-y-3 md:hidden">
+              {displayedMovements.length ? (
+                <div className="divide-y divide-border md:hidden">
                   {displayedMovements.map((movement) => {
                     const watched = Boolean(watchedVendors[normalizeVendorKey(movement.vendorLabel)])
                     const status = movementReviewStatus(movement, reviews)
                     const key = movement.latestMonthStart ? reviewKey(movement.vendorLabel, movement.comparison, movement.latestMonthStart) : ''
                     return (
-                      <div key={`${movement.vendorLabel}-${movement.comparison}-mobile`} className="rounded-lg border border-border p-3">
+                      <div key={`${movement.vendorLabel}-${movement.comparison}-mobile`} className="py-3 first:pt-0 last:pb-0">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-text-strong">{movement.vendorLabel}</p>
                             <p className="mt-1 text-xs text-text-muted">{formatCurrency(movement.latestOutgoing)} vs {movement.baselineOutgoing === null ? 'no baseline' : formatCurrency(movement.baselineOutgoing)}</p>
                           </div>
-                          <div className={`text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
+                          <div className={`text-right font-semibold tabular-nums ${spendMovementTextClass(movement.delta ?? 0)}`}>
                             <p>{formatSignedCurrency(movement.delta)}</p>
                             <p className="text-xs">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</p>
                           </div>
                         </div>
                         <div className="mt-3 flex items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <Select
-                              value={status}
-                              disabled={!movement.latestMonthStart || updatingReview === key}
-                              onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                              aria-label={`Review status for ${movement.vendorLabel}`}
-                            >
-                              {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                            </Select>
-                          </div>
-                          <IconButton
-                            type="button"
-                            variant="secondary"
-                            onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
-                            className={watched ? 'border-warning-border bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-muted'}
-                            label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
-                            icon={<StarIcon className="h-4 w-4" />}
+                          <div className="min-w-0 flex-1">{reviewStatusSelect(movement, status, key)}</div>
+                          <WatchToggle
+                            vendorLabel={movement.vendorLabel}
+                            watched={watched}
+                            onToggle={() => onToggleWatched(movement.vendorLabel, !watched)}
                           />
-                          <Button type="button" variant="primary" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>Details</Button>
+                          <Button type="button" variant="secondary" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>Details</Button>
                         </div>
                       </div>
                     )
                   })}
                 </div>
-              </>
-            ) : (
-              <div className="mt-6 rounded-lg bg-surface-2 p-6 text-center">
-                {view === 'attention' ? <CheckCircleIcon className="mx-auto h-8 w-8 text-success" /> : <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-text-subtle" />}
-                <p className="mt-2 text-sm font-medium text-text">No vendors in this view.</p>
+              ) : (
+                <Empty
+                  size="sm"
+                  icon={view === 'attention' ? <Icon name="checkCircle" size={32} /> : <Icon name="alertTriangle" size={32} />}
+                  title="No vendors match this view"
+                  description="Choose another view to see more vendors."
+                />
+              )}
+            </CardBody>
+
+            {displayedMovements.length > 0 && (
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead align="right">{currentLabel}</TableHead>
+                      <TableHead align="right">{baselineLabel}</TableHead>
+                      <TableHead align="right">Movement</TableHead>
+                      <TableHead>Review status</TableHead>
+                      <TableHead align="right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedMovements.map((movement) => {
+                      const watched = Boolean(watchedVendors[normalizeVendorKey(movement.vendorLabel)])
+                      const status = movementReviewStatus(movement, reviews)
+                      const key = movement.latestMonthStart ? reviewKey(movement.vendorLabel, movement.comparison, movement.latestMonthStart) : ''
+                      return (
+                        <TableRow key={`${movement.vendorLabel}-${movement.comparison}`}>
+                          <TableCell className="max-w-[15rem] whitespace-normal">
+                            <div className="truncate font-semibold text-text-strong" title={movement.vendorLabel}>{movement.vendorLabel}</div>
+                            <div className="mt-1 flex items-center gap-2 text-xs">
+                              {movement.signal && <Badge tone={vendorSignalTone(movement.signal)} className="capitalize">{movement.signal.direction}</Badge>}
+                              <span className="text-text-soft">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
+                            </div>
+                          </TableCell>
+                          <TableCell align="right" className="font-medium tabular-nums text-text-strong">{formatCurrency(movement.latestOutgoing)}</TableCell>
+                          <TableCell align="right" className="tabular-nums text-text-muted">{movement.baselineOutgoing === null ? 'No baseline' : formatCurrency(movement.baselineOutgoing)}</TableCell>
+                          <TableCell align="right" className={`font-semibold tabular-nums ${spendMovementTextClass(movement.delta ?? 0)}`}>
+                            <div>{formatSignedCurrency(movement.delta)}</div>
+                            <div className="mt-1 text-meta font-medium">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
+                          </TableCell>
+                          <TableCell>{reviewStatusSelect(movement, status, key)}</TableCell>
+                          <TableCell align="right">
+                            <div className="inline-flex items-center gap-2">
+                              <WatchToggle
+                                vendorLabel={movement.vendorLabel}
+                                watched={watched}
+                                disabled={updatingWatchVendor === movement.vendorLabel}
+                                onToggle={() => onToggleWatched(movement.vendorLabel, !watched)}
+                              />
+                              <Button type="button" variant="link" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>View Details</Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </Card>
         </>
       )}
-    </div>
+    </>
   )
 }
 
@@ -743,10 +729,7 @@ function VendorDetailDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={vendorLabel} width="min(760px, 100vw)">
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-text-muted">
-          <Spinner className="h-4 w-4" />
-          Loading vendor details...
-        </div>
+        <PageLoading inline label="Loading vendor details" />
       ) : error ? (
         <Alert tone="danger" title="Unable to load vendor">
           {error}
@@ -758,7 +741,7 @@ function VendorDetailDrawer({
               type="button"
               size="sm"
               variant={watched ? 'primary' : 'secondary'}
-              icon={<StarIcon className="h-4 w-4" />}
+              icon={<Icon name="star" size={16} className="fill-current" />}
               loading={watchLoading}
               onClick={onToggleWatched}
             >
@@ -766,90 +749,103 @@ function VendorDetailDrawer({
             </Button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="12m spend" value={formatCurrency(detail.totalOutgoing)} tone="spend" />
-            <Metric label="Full history" value={detail.historyTransactionCount.toLocaleString('en-GB')} tone="neutral" />
-            <Metric label="Recent avg" value={formatCurrency(detail.recentAverageOutgoing)} tone="neutral" />
-          </div>
+          <StatGrid columns={3}>
+            <Stat label="12m spend" value={formatCurrency(detail.totalOutgoing)} tone={RECEIPT_FLOW_TONE.spend} />
+            <Stat label="Full history" value={detail.historyTransactionCount.toLocaleString('en-GB')} />
+            <Stat label="Recent avg" value={formatCurrency(detail.recentAverageOutgoing)} />
+          </StatGrid>
 
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-text-strong">AI summary</h4>
+          <Section
+            title="AI Summary"
+            actions={
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                icon={<SparklesIcon className="h-4 w-4" />}
+                icon={<Icon name="sparkles" size={16} />}
                 loading={aiLoading}
                 onClick={onGenerateAi}
               >
-                Generate summary
+                Generate Summary
               </Button>
+            }
+          >
+            <div className="space-y-3">
+              {detail.signals.length > 0 && !aiState?.review && (
+                <div className="space-y-2">
+                  {detail.signals.map((signal) => (
+                    <Alert
+                      key={`${signal.vendorLabel}-${signal.direction}`}
+                      tone={vendorSignalTone(signal)}
+                      role="status"
+                      title={`${signal.severity === 'high' ? 'High priority' : 'Review'} \u00b7 ${signal.direction}`}
+                    >
+                      {signal.reason}
+                    </Alert>
+                  ))}
+                </div>
+              )}
+
+              {aiState?.error && (
+                <Alert tone="danger" title="Summary unavailable">
+                  {aiState.error}
+                </Alert>
+              )}
+
+              {aiState?.review && (
+                <Alert tone="info" role="status">
+                  <p>{aiState.review.overview}</p>
+                  {aiState.review.reviewItems.map((item) => (
+                    <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-info-border pt-3">
+                      <p className="font-semibold">{item.direction} · {item.severity}</p>
+                      <p className="mt-1">{item.reason}</p>
+                      <p className="mt-1 text-xs">{item.suggestedReview}</p>
+                    </div>
+                  ))}
+                </Alert>
+              )}
             </div>
+          </Section>
 
-            {detail.signals.length > 0 && !aiState?.review && (
-              <div className="space-y-2">
-                {detail.signals.map((signal) => (
-                  <div key={`${signal.vendorLabel}-${signal.direction}`} className={`rounded-md border p-3 text-sm ${signalTone(signal)}`}>
-                    <p className="font-semibold">{signal.severity === 'high' ? 'High priority' : 'Review'} · {signal.direction}</p>
-                    <p className="mt-1">{signal.reason}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {aiState?.error && (
-              <Alert tone="danger" title="Summary unavailable">
-                {aiState.error}
-              </Alert>
-            )}
-
-            {aiState?.review && (
-              <div className="rounded-md border border-info-border bg-info-soft p-3 text-sm text-info-fg">
-                <p>{aiState.review.overview}</p>
-                {aiState.review.reviewItems.map((item) => (
-                  <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-info-border pt-3">
-                    <p className="font-semibold">{item.direction} · {item.severity}</p>
-                    <p className="mt-1">{item.reason}</p>
-                    <p className="mt-1 text-xs text-info-fg">{item.suggestedReview}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <h4 className="text-sm font-semibold text-text-strong">Monthly movement</h4>
+          <Section title="Monthly Movement">
             <MonthlyMovementTable months={detail.movementMonths} />
-          </section>
+          </Section>
 
-          <section className="space-y-3">
-            <h4 className="text-sm font-semibold text-text-strong">Expense breakdown</h4>
+          <Section title="Expense Breakdown">
             {detail.categoryBreakdown.length ? (
-              <div className="space-y-2">
-                {detail.categoryBreakdown.map((category) => (
-                  <div key={category.expenseCategory} className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate text-text">{category.expenseCategory}</span>
-                    <span className="shrink-0 font-semibold tabular-nums text-text-strong">{formatCurrency(category.totalOutgoing)}</span>
-                  </div>
-                ))}
-              </div>
+              <Card padding="none">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Expense type</TableHead>
+                      <TableHead align="right">Spend</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detail.categoryBreakdown.map((category) => (
+                      <TableRow key={category.expenseCategory}>
+                        <TableCell className="max-w-[20rem] truncate">{category.expenseCategory}</TableCell>
+                        <TableCell align="right" className="font-semibold tabular-nums text-text-strong">{formatCurrency(category.totalOutgoing)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
             ) : (
-              <p className="text-sm text-text-muted">No outgoing expense categories found for this vendor.</p>
+              <Empty size="sm" title="No expense categories yet" description="None of this vendor’s outgoing transactions has an expense category." />
             )}
-          </section>
+          </Section>
 
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-text-strong">Full transaction history</h4>
-              <span className="text-xs text-text-muted">
-                {detail.historyStartDate && detail.historyEndDate
-                  ? `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions · ${formatHistoryDate(detail.historyStartDate)} - ${formatHistoryDate(detail.historyEndDate)}`
-                  : `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions`}
-              </span>
-            </div>
+          <Section
+            title="Full Transaction History"
+            description={
+              detail.historyStartDate && detail.historyEndDate
+                ? `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions \u00b7 ${formatHistoryDate(detail.historyStartDate)} - ${formatHistoryDate(detail.historyEndDate)}`
+                : `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions`
+            }
+          >
             <TransactionTable transactions={detail.transactions} includeYear />
-          </section>
+          </Section>
         </div>
       ) : null}
     </Drawer>
@@ -860,46 +856,46 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
   const rows = [...months].reverse()
 
   if (!rows.length) {
-    return <p className="text-sm text-text-muted">No monthly movement found.</p>
+    return <Empty size="sm" title="No monthly movement yet" description="Each complete month with transactions for this vendor shows here." />
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-border text-xs">
-        <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
-          <tr>
-            <th scope="col" className="px-2 py-2">Month</th>
-            <th scope="col" className="px-2 py-2 text-right">Spend</th>
-            <th scope="col" className="px-2 py-2 text-right">Txns</th>
-            <th scope="col" className="px-2 py-2 text-right">MoM</th>
-            <th scope="col" className="px-2 py-2 text-right">MoM %</th>
-            <th scope="col" className="px-2 py-2 text-right">YoY</th>
-            <th scope="col" className="px-2 py-2 text-right">YoY %</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border text-text">
+    <Card padding="none">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Month</TableHead>
+            <TableHead align="right">Spend</TableHead>
+            <TableHead align="right">Txns</TableHead>
+            <TableHead align="right">MoM</TableHead>
+            <TableHead align="right">MoM %</TableHead>
+            <TableHead align="right">YoY</TableHead>
+            <TableHead align="right">YoY %</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((month) => (
-            <tr key={month.monthStart}>
-              <td className="whitespace-nowrap px-2 py-2 text-text-muted">{formatMonth(month.monthStart)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(month.totalOutgoing)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-text">{month.transactionCount.toLocaleString('en-GB')}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
+            <TableRow key={month.monthStart}>
+              <TableCell className="text-text-muted">{formatMonth(month.monthStart)}</TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">{formatCurrency(month.totalOutgoing)}</TableCell>
+              <TableCell align="right" className="tabular-nums">{month.transactionCount.toLocaleString('en-GB')}</TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">
                 {month.momBaselineAvailable ? formatSignedCurrency(month.momDelta) : 'No prior month'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
+              </TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">
                 {month.momBaselineAvailable ? formatSignedPercent(month.momPercentageChange) : '-'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
+              </TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">
                 {month.yoyBaselineAvailable ? formatSignedCurrency(month.yoyDelta) : 'No prior year'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
+              </TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">
                 {month.yoyBaselineAvailable ? formatSignedPercent(month.yoyPercentageChange) : '-'}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </Card>
   )
 }
 
@@ -911,67 +907,43 @@ function TransactionTable({
   includeYear?: boolean
 }) {
   if (!transactions.length) {
-    return <p className="text-sm text-text-muted">No individual transactions matched this vendor.</p>
+    return <Empty size="sm" title="No transactions yet" description="Transactions matched to this vendor show here." />
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-border text-xs">
-        <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
-          <tr>
-            <th scope="col" className="px-2 py-2">Date</th>
-            <th scope="col" className="px-2 py-2">Details</th>
-            <th scope="col" className="px-2 py-2">Type</th>
-            <th scope="col" className="px-2 py-2 text-right">Out</th>
-            <th scope="col" className="px-2 py-2 text-right">In</th>
-            <th scope="col" className="px-2 py-2">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border text-text">
+    <Card padding="none">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Details</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead align="right">Out</TableHead>
+            <TableHead align="right">In</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {transactions.map((transaction) => (
-            <tr key={transaction.id}>
-              <td className="whitespace-nowrap px-2 py-2 text-text-muted">
+            <TableRow key={transaction.id}>
+              <TableCell className="text-text-muted">
                 {includeYear ? formatHistoryDate(transaction.transaction_date) : formatDate(transaction.transaction_date)}
-              </td>
-              <td className="max-w-[14rem] truncate px-2 py-2 text-text-strong" title={transaction.details ?? undefined}>
-                {transaction.details || '-'}
-              </td>
-              <td className="px-2 py-2 text-text-muted">{transaction.transaction_type || '-'}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_out)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_in)}</td>
-              <td className="px-2 py-2">
-                <Badge tone={statusTone[transaction.status]} size="sm" className="whitespace-nowrap">
-                  {statusLabels[transaction.status]}
+              </TableCell>
+              <TableCell className="max-w-[14rem] truncate text-text-strong">
+                <span title={transaction.details ?? undefined}>{transaction.details || '-'}</span>
+              </TableCell>
+              <TableCell className="text-text-muted">{transaction.transaction_type || '-'}</TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">{formatCurrency(transaction.amount_out)}</TableCell>
+              <TableCell align="right" className="tabular-nums text-text-strong">{formatCurrency(transaction.amount_in)}</TableCell>
+              <TableCell>
+                <Badge tone={RECEIPT_STATUS_TONE[transaction.status]} size="sm">
+                  {RECEIPT_STATUS_LABEL[transaction.status]}
                 </Badge>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-  subtle,
-}: {
-  label: string
-  value: string
-  tone: 'spend' | 'neutral'
-  subtle?: boolean
-}) {
-  const toneClasses: Record<typeof tone, string> = {
-    spend: 'bg-danger-soft text-danger-fg',
-    neutral: subtle ? 'bg-surface-2 text-text-muted' : 'bg-surface-2 text-text',
-  }
-
-  return (
-    <div className={`rounded-md px-3 py-2 text-sm font-medium ${toneClasses[tone]}`}>
-      <p className="text-xs uppercase tracking-wide opacity-70">{label}</p>
-      <p className="text-lg">{value}</p>
-    </div>
+        </TableBody>
+      </Table>
+    </Card>
   )
 }

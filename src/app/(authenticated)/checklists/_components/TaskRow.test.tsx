@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ChecklistTaskView } from '@/app/actions/checklists'
 import { TaskRow } from './TaskRow'
 
+const { completeMock } = vi.hoisted(() => ({ completeMock: vi.fn() }))
+
 vi.mock('@/app/actions/checklists', () => ({
-  completeChecklistInstance: vi.fn(),
+  completeChecklistInstance: completeMock,
   skipChecklistInstance: vi.fn(),
   undoChecklistInstance: vi.fn(),
 }))
@@ -53,5 +56,53 @@ describe('TaskRow undo', () => {
     renderRow(doneTask({ valueRecorded: 9, valueBreach: true }))
     expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument()
     expect(screen.getByText('Out of range')).toBeInTheDocument()
+  })
+})
+
+describe('TaskRow unusual reading', () => {
+  it('asks before saving a reading far outside the band, and saves it once confirmed', async () => {
+    completeMock.mockReset()
+    completeMock.mockResolvedValue({})
+    const user = userEvent.setup()
+    renderRow(
+      doneTask({
+        state: 'pending',
+        completedByEmployeeId: null,
+        completedByName: null,
+        completedAt: null,
+        valueRecorded: null,
+      }),
+    )
+
+    await user.type(screen.getByRole('spinbutton'), '999')
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // The typo guard asks first and saves nothing yet.
+    expect(await screen.findByText('That reading looks unusual, is it correct?')).toBeInTheDocument()
+    expect(completeMock).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Yes, Save It' }))
+    await waitFor(() => expect(completeMock).toHaveBeenCalledTimes(1))
+    expect(completeMock.mock.calls[0][0]).toMatchObject({ instanceId: 'task-1', employeeId: 'emp-a', value: 999 })
+  })
+
+  it('saves nothing when the unusual reading is not confirmed', async () => {
+    completeMock.mockReset()
+    const user = userEvent.setup()
+    renderRow(
+      doneTask({
+        state: 'pending',
+        completedByEmployeeId: null,
+        completedByName: null,
+        completedAt: null,
+        valueRecorded: null,
+      }),
+    )
+
+    await user.type(screen.getByRole('spinbutton'), '999')
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(completeMock).not.toHaveBeenCalled()
   })
 })

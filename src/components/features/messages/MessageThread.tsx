@@ -2,13 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { sendSmsReply } from '@/app/actions/messageActions'
-import toast from 'react-hot-toast'
-import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
-import { Badge, Textarea } from '@/ds'
+import { Badge, Empty, IconButton, Textarea, toast, Icon } from '@/ds'
 import { cn } from '@/lib/utils'
-import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
+import {
+  MESSAGE_ATTACHMENT_BADGE_TONE,
+  MESSAGE_CHANNEL_BADGE_TONE,
+} from '@/app/(authenticated)/messages/_shared/status-ui'
+import { MESSAGE_DELIVERY_STATUS_LABEL, MESSAGE_DELIVERY_STATUS_TONE } from '@/lib/messages/status-ui'
 
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
+import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
 
 interface MessageThreadProps {
   messages: CustomerCommunication[]
@@ -127,22 +130,24 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
     return channel
   }
 
+  // No frame of its own: the customer page's Messages card frames it, straight under the
+  // card header.
   return (
-    <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px] bg-surface rounded-lg border border-border">
+    <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px]">
       {/* Messages area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-text-muted text-sm sm:text-base text-center">No messages yet. Start a conversation!</p>
+            <Empty size="sm" icon="inbox" title="No messages yet" description="Texts and emails with this customer show here." />
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dateMessages]) => (
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <span className="rounded-pill border border-border bg-surface px-3 py-0.5 text-meta font-medium text-text-muted shadow-sm">
+              <Badge size="sm">
                 {date === formatDateInLondon(new Date()) ? 'Today' : date}
-              </span>
+              </Badge>
             </div>
             
             {/* Messages for this date */}
@@ -167,8 +172,8 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                   <div className={`flex ${isInbound ? 'justify-start' : 'justify-end'} mb-2`}>
                     <div className={`max-w-[85%] sm:max-w-[70%] ${isInbound ? 'order-1' : 'order-2'}`}>
                       <div className={`mb-1 flex items-center gap-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
-                        <Badge tone="neutral">{getChannelLabel(message.channel)}</Badge>
-                        {message.has_attachments && <Badge tone="info">Attachment</Badge>}
+                        <Badge tone={MESSAGE_CHANNEL_BADGE_TONE}>{getChannelLabel(message.channel)}</Badge>
+                        {message.has_attachments && <Badge tone={MESSAGE_ATTACHMENT_BADGE_TONE}>Attachment</Badge>}
                       </div>
                       {/* Same bubbles as the /messages inbox (ConversationThread), so a conversation
                           looks the same wherever staff read it. */}
@@ -178,7 +183,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                           isInbound
                             ? 'border border-border bg-surface text-text rounded-bl-sm'
                             : 'bg-primary text-primary-fg rounded-br-sm',
-                          isFailed && 'ring-2 ring-danger/50',
+                          isFailed && 'ring-2 ring-danger-border',
                         )}
                       >
                         {message.subject && (
@@ -192,8 +197,8 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                         </span>
                         {showStatus && message.status && (
                           isFailed ? (
-                            <Badge tone="danger" className="ml-2">
-                              {getStatusText(message.status) || message.status}
+                            <Badge tone={MESSAGE_DELIVERY_STATUS_TONE.undelivered} className="ml-2">
+                              {MESSAGE_DELIVERY_STATUS_LABEL.undelivered}
                             </Badge>
                           ) : (
                             <span className="ml-2 text-xs sm:text-sm text-text-muted">
@@ -231,22 +236,22 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                 }}
                 disabled={sending}
               />
-              {/* Stays a plain button: it floats inside the field and scales in once there is
-                  text, which the DS IconButton's fixed sizes cannot do. Below the shell
-                  breakpoint every button is at least 44px, as tall as the one-line field, so
-                  it sits flush with the field's bottom rather than poking out of its top. */}
-              <button type="button"
+              {/* Floats inside the field and scales in once there is text. On phones the DS
+                  touch floor makes it 44px, as tall as the one-line field, so it sits flush
+                  with the field's bottom rather than poking out of its top. */}
+              <IconButton
+                type="button"
+                variant="primary"
+                size="sm"
+                label="Send message"
+                icon={<Icon name="send" size={16} />}
                 onClick={handleSend}
                 disabled={!newMessage.trim() || sending}
-                aria-label="Send message"
-                className={`absolute right-1 bottom-1 max-shell:bottom-0 p-2 sm:p-1.5 rounded-full bg-primary text-primary-fg transition-all touch-manipulation focus-visible:outline-hidden focus-visible:shadow-ring ${
-                  newMessage.trim() && !sending
-                    ? 'hover:bg-primary-hover scale-100'
-                    : 'scale-0'
-                }`}
-              >
-                <PaperAirplaneIcon className="h-5 w-5 sm:h-4 sm:w-4 -rotate-45" />
-              </button>
+                className={cn(
+                  'absolute right-1 bottom-1 max-shell:bottom-0 max-shell:min-w-touch rounded-full touch-manipulation',
+                  newMessage.trim() && !sending ? 'scale-100' : 'scale-0',
+                )}
+              />
             </div>
           </div>
           <p className="mt-1.5 text-xs sm:text-sm text-text-soft text-center">

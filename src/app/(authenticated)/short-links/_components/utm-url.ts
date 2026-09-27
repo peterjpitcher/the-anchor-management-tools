@@ -9,7 +9,7 @@ export interface UtmFields {
  *
  * When the UTM section is hidden the URL is returned untouched. When it is
  * shown, each utm_* param is SET from a non-empty field or DELETED when the
- * field is blank — so clearing a field on edit genuinely removes the param.
+ * field is blank, so clearing a field on edit genuinely removes the param.
  */
 export function applyUtmParams(destinationUrl: string, utm: UtmFields, showUtm: boolean): string {
   if (!showUtm) return destinationUrl

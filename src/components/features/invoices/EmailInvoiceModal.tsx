@@ -2,12 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendInvoiceViaEmail } from '@/app/actions/email'
-import { Modal, ModalActions } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Alert } from '@/ds'
-import { Send } from 'lucide-react'
+import { Modal, Icon, Button, Input, Textarea, Field, Alert } from '@/ds'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -122,10 +117,9 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
       open={isOpen}
       onClose={onClose}
       title="Email Invoice"
-      size="lg"
-      mobileFullscreen
+      width="lg"
       footer={
-        <ModalActions>
+        <>
           <Button
             variant="secondary"
             onClick={onClose}
@@ -133,23 +127,22 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
           >
             Cancel
           </Button>
-          <Button onClick={handleSend}
+          <Button variant="primary" onClick={handleSend}
             disabled={!toEmails && !ccEmails}
             loading={sending}
-            leftIcon={<Send className="h-4 w-4" />}
+            leftIcon={<Icon name="send" size={16} />}
           >
             Send Email
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-4">
         {error && (
-          <Alert variant="error" description={error} />
+          <Alert tone="danger">{error}</Alert>
         )}
 
-        <div>
-          <label className="block text-sm font-medium mb-1">To <span className="text-danger">*</span></label>
+        <Field label="To" required hint="Primary recipient. Usually the vendor's primary contact.">
           <Input
             type="text"
             value={toEmails}
@@ -157,48 +150,36 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-text-muted mt-1">
-            Primary recipient. Usually the vendor&apos;s primary contact.
-          </p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">CC</label>
+        <Field label="CC" hint="Separate multiple emails with commas or semicolons.">
           <Input
             type="text"
             value={ccEmails}
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Subject
-          </label>
-          <Input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Message
-          </label>
-          <Textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={10}
-          />
-        </div>
-
-        <Alert variant="info"
-          title="Attachment"
-          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached for professional presentation and easy printing.`}
+        <Input
+          label="Subject"
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
         />
+
+        <Textarea
+          label="Message"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={10}
+        />
+
+        <Alert tone="info"
+          title="Attachment"
+        >
+          {`Invoice ${invoice.invoice_number} (PDF format) will be attached for professional presentation and easy printing.`}
+        </Alert>
       </div>
     </Modal>
   )

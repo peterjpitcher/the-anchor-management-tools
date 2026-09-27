@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Image from 'next/image'
 import { signIn as signInAction } from '@/app/actions/auth'
-import { Button, Field, Input, Spinner } from '@/ds'
-import { toast } from '@/ds'
+import { Button, Field, Input, toast } from '@/ds'
+import { AuthCard, AuthDivider, AuthLink } from '../../_components/AuthCard'
 
 const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
 
@@ -88,121 +87,91 @@ export default function LoginClient() {
 
   if (twoFactorMode) {
     return (
-      <div className="auth">
-        <div className="auth__card">
-          <h1 className="auth__h1">Two-factor authentication</h1>
-          <p className="auth__lead">Enter the 6-digit code from your authenticator app.</p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              /* 2FA verify logic would go here when server supports it */
-              setTwoFactorMode(false)
-            }}
-            className="flex flex-col gap-4"
-          >
-            <Field label="Verification code" required>
-              <Input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                placeholder="000000"
-                value={twoFactorCode}
-                onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
-              />
-            </Field>
-            <Button type="submit" variant="primary" size="lg" className="w-full">
-              Verify
-            </Button>
-            <button
-              type="button"
-              className="auth__link text-center text-sm"
-              onClick={() => setTwoFactorMode(false)}
-            >
-              Back to sign in
-            </button>
-          </form>
-        </div>
-      </div>
+      <AuthCard title="Two-Factor Authentication" lead="Enter the 6-digit code from your authenticator app.">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            /* 2FA verify logic would go here when server supports it */
+            setTwoFactorMode(false)
+          }}
+          className="flex flex-col gap-4"
+        >
+          <Field label="Verification code" required>
+            <Input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={twoFactorCode}
+              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+            />
+          </Field>
+          <Button type="submit" variant="primary" size="lg" className="w-full">
+            Verify
+          </Button>
+          <Button type="button" variant="link" className="self-center text-sm" onClick={() => setTwoFactorMode(false)}>
+            Back to Sign In
+          </Button>
+        </form>
+      </AuthCard>
     )
   }
 
   return (
-    <div className="auth">
-      <div className="auth__card">
-        <div className="auth__brand">
-          <div>
-            <Image
-              src="/orange-jelly/logo-horizontal.png"
-              alt="Orange Jelly"
-              width={1200}
-              height={257}
-              className="w-60 h-auto"
-              priority
-            />
-            <div className="auth__sub">Management Tools</div>
-          </div>
+    <AuthCard
+      title="Sign In"
+      lead="Enter your credentials to continue."
+      footer={<>&copy; {new Date().getFullYear()} Orange Jelly</>}
+    >
+      <form onSubmit={handleSubmit} autoComplete="on" className="flex flex-col gap-4">
+        <Field label="Email address" required>
+          <Input
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </Field>
+
+        <Field label="Password" required>
+          <Input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <AuthLink href="/auth/reset-password">Forgot password?</AuthLink>
+          {redirectTo !== '/dashboard' && (
+            <span className="min-w-0 truncate text-xs text-text-soft">After sign in: {redirectTo}</span>
+          )}
         </div>
 
-        <h1 className="auth__h1">Sign in</h1>
-        <p className="auth__lead">Enter your credentials to continue.</p>
-
-        <form onSubmit={handleSubmit} autoComplete="on" className="flex flex-col gap-4">
-          <Field label="Email address" required>
-            <Input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </Field>
-
-          <Field label="Password" required>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-
-          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-            <a href="/auth/reset-password" className="auth__link text-xs">
-              Forgot password?
-            </a>
-            {redirectTo !== '/dashboard' && (
-              <span className="min-w-0 truncate text-xs text-text-subtle">After sign in: {redirectTo}</span>
-            )}
-          </div>
-
-          <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
-            {loading ? <Spinner size="sm" /> : null}
-            Sign in
-          </Button>
-        </form>
-
-        <div className="auth__divider">or</div>
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="lg"
-          className="w-full"
-          onClick={() => {
-            /* Microsoft SSO placeholder - integrate when available */
-            toast.error('Microsoft SSO is not yet configured')
-          }}
-        >
-          Sign in with Microsoft 365
+        <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
+          Sign In
         </Button>
+      </form>
 
-        <div className="auth__footer">
-          <span className="text-text-subtle text-xs">&copy; {new Date().getFullYear()} Orange Jelly</span>
-        </div>
-      </div>
-    </div>
+      <AuthDivider />
+
+      <Button
+        type="button"
+        variant="secondary"
+        size="lg"
+        className="w-full"
+        onClick={() => {
+          /* Microsoft SSO placeholder - integrate when available */
+          toast.error('Microsoft SSO is not yet configured')
+        }}
+      >
+        Sign In with Microsoft 365
+      </Button>
+    </AuthCard>
   )
 }

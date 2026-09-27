@@ -6,6 +6,11 @@ import { cn } from '@/lib/utils'
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string | boolean
+  /**
+   * A soft problem that does not block saving, such as a date in the past. Draws the field
+   * in amber with the message under it. An error wins when both are set.
+   */
+  warning?: string
   hint?: string
   icon?: React.ReactNode
   /** @deprecated Use `icon` instead */
@@ -21,15 +26,18 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, onWheel, 'aria-describedby': ariaDescribedBy, ...rest }, ref) => {
+  ({ label, error, warning, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, onWheel, 'aria-describedby': ariaDescribedBy, ...rest }, ref) => {
     const resolvedIcon = icon ?? leftIcon
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
+    const warningId = `${id}-warning`
     const hintId = `${id}-hint`
+    const showWarning = !error && Boolean(warning)
     // A description passed in (a Field's hint or error, or the page's own) joins this
-    // field's own error or hint rather than replacing it.
-    const describedBy = [error ? errorId : hint ? hintId : null, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+    // field's own error, warning or hint rather than replacing it.
+    const ownDescriptionId = error ? errorId : showWarning ? warningId : hint ? hintId : null
+    const describedBy = [ownDescriptionId, ariaDescribedBy].filter(Boolean).join(' ') || undefined
 
     // Number inputs change value on scroll-wheel, causing accidental edits when the cursor
     // happens to rest over the field. Blur on wheel so scrolling moves the page instead.
@@ -64,6 +72,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               resolvedIcon && 'pl-9',
               rightElement && 'pr-9',
               error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]',
+              showWarning && 'border-warning focus:border-warning focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-warning)_20%,transparent)]',
               disabled && 'opacity-50 cursor-not-allowed bg-surface-2',
               className
             )}
@@ -82,11 +91,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         </div>
 
         {error && (
-          <p id={errorId} className="text-danger text-xs mt-1" role="alert">
+          <p id={errorId} className="text-danger-fg text-xs mt-1" role="alert">
             {error}
           </p>
         )}
-        {!error && hint && (
+        {showWarning && (
+          // role="status": a warning that appears as the user types is read out politely,
+          // without interrupting them the way an error's role="alert" does.
+          <p id={warningId} className="text-warning-fg text-xs mt-1" role="status">
+            {warning}
+          </p>
+        )}
+        {!error && !showWarning && hint && (
           <p id={hintId} className="text-text-soft text-xs mt-1">
             {hint}
           </p>

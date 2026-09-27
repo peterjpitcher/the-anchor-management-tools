@@ -5,7 +5,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Card,
+  CardBody,
+  CardHeader,
+  Dropdown,
+  DropdownItem,
+  Empty,
   Button,
+  Icon,
   LinkButton,
   Input,
   Select,
@@ -14,6 +20,8 @@ import {
   ConfirmDialog,
   Alert,
   Badge,
+  PageLayout,
+  SubHeading,
   toast,
 } from '@/ds'
 import { formatDateInLondon, formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
@@ -39,12 +47,21 @@ import {
   VOUCHER_EVENT_ACTION_LABELS,
   REMINDER_KIND_LABELS,
   REMINDER_CHANNEL_LABELS,
+  REMINDER_STATUS_LABELS,
   REMINDER_STATUS_TONES,
   formatPence,
   newIdempotencyKey,
 } from '../_shared/voucher-ui'
 
+/** The page chrome from page.tsx, shared with its error state so both show the same header. */
+export interface VoucherDetailLayout {
+  title: string
+  subtitle?: string
+  backButton: { label: string; href: string }
+}
+
 interface VoucherDetailClientProps {
+  layout: VoucherDetailLayout
   detail: VoucherDetail
   staff: HandoutStaffOption[]
 }
@@ -59,7 +76,7 @@ type DialogKind =
   | 'assign'
   | null
 
-export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps) {
+export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClientProps) {
   const router = useRouter()
   const { voucher, type } = detail
   const [dialog, setDialog] = useState<DialogKind>(null)
@@ -166,28 +183,83 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
   const sweepPending = status === 'expired' && voucher.status !== 'expired'
   const canAttachCustomer = ['issued', 'redeemed', 'expired'].includes(status)
 
+  // The record's actions, in the page header: secondary first, then the destructive one, then the
+  // primary action last. More than three collapse the extras into one labelled "More" menu.
+  const headerActions =
+    status === 'generated' ? (
+      <>
+        <Button variant="secondary" size="sm" onClick={() => void handleReprint()}>
+          Reprint
+        </Button>
+        <Button variant="danger" size="sm" onClick={() => openDialog('cancel')}>
+          Cancel Voucher
+        </Button>
+        <LinkButton
+          href={`/vouchers/handout?number=${encodeURIComponent(voucher.voucherNumber)}`}
+          variant="primary"
+          size="sm"
+        >
+          Hand Out
+        </LinkButton>
+      </>
+    ) : status === 'issued' ? (
+      <>
+        <Dropdown
+          width="auto"
+          trigger={
+            <Button type="button" variant="secondary" size="sm" iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
+          }
+        >
+          <DropdownItem icon={<Icon name="edit" size={14} />} onClick={() => openDialog('edit')}>
+            Edit Hand-Out Details
+          </DropdownItem>
+          <DropdownItem icon={<Icon name="refresh" size={14} />} onClick={() => openDialog('replace')}>
+            Replace
+          </DropdownItem>
+          <DropdownItem icon={<Icon name="printer" size={14} />} onClick={() => setReprintConfirmOpen(true)}>
+            Reprint
+          </DropdownItem>
+        </Dropdown>
+        <Button variant="danger" size="sm" onClick={() => openDialog('cancel')}>
+          Cancel Voucher
+        </Button>
+        <Button variant="primary" size="sm" onClick={() => openDialog('redeem')}>
+          Redeem
+        </Button>
+      </>
+    ) : status === 'redeemed' ? (
+      <Button variant="secondary" size="sm" onClick={() => openDialog('undo')}>
+        Undo Redemption
+      </Button>
+    ) : status === 'expired' ? (
+      <>
+        <Button variant="secondary" size="sm" onClick={() => openDialog('edit')}>
+          Edit Expiry
+        </Button>
+        <Button variant="primary" size="sm" onClick={() => openDialog('override')}>
+          Redeem Despite Expiry
+        </Button>
+      </>
+    ) : undefined
+
   return (
-    <div className="space-y-6">
-      {/* ------------------------------------------------ header */}
+    <PageLayout {...layout} headerActions={headerActions}>
+      {/* ------------------------------------------------ summary */}
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-2xl font-semibold text-text">
-                {voucher.voucherNumber}
-              </span>
-              <VoucherStatusBadge status={status} />
-            </div>
-            <div className="mt-1 text-text">{type?.displayTitle ?? voucher.typeId}</div>
-            <div className="mt-2 flex flex-wrap gap-2">
+        <CardHeader title="Summary" action={<VoucherStatusBadge status={status} />} />
+        <CardBody className="space-y-3">
+          {(type?.alcohol || type?.requiresBooking || voucher.valuePence !== null) && (
+            <div className="flex flex-wrap gap-2">
               {type?.alcohol && <Badge tone="warning">18+ alcohol</Badge>}
               {type?.requiresBooking && <Badge tone="info">Booking required</Badge>}
               {voucher.valuePence !== null && (
                 <Badge tone="neutral">{formatPence(voucher.valuePence)} value</Badge>
               )}
             </div>
-          </div>
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+          )}
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:max-w-md">
             {detail.ageLabel && (
               <>
                 <dt className="text-text-muted">Age</dt>
@@ -207,7 +279,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               </Link>
             </dd>
           </dl>
-        </div>
+        </CardBody>
       </Card>
 
       {/* ------------------------------------------------ terminal states */}
@@ -250,113 +322,58 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         </Alert>
       )}
 
-      {/* ------------------------------------------------ actions */}
-      {(status === 'generated' ||
-        status === 'issued' ||
-        status === 'redeemed' ||
-        status === 'expired') && (
-        <Card title="Actions">
-          <div className="flex flex-wrap gap-2">
-            {status === 'generated' && (
-              <>
-                <LinkButton
-                  href={`/vouchers/handout?number=${encodeURIComponent(voucher.voucherNumber)}`}
-                  variant="primary"
-                >
-                  Hand out
-                </LinkButton>
-                <Button variant="secondary" onClick={() => void handleReprint()}>
-                  Reprint
-                </Button>
-                <Button variant="danger" onClick={() => openDialog('cancel')}>
-                  Cancel voucher
-                </Button>
-              </>
-            )}
-            {status === 'issued' && (
-              <>
-                <Button variant="primary" onClick={() => openDialog('redeem')}>
-                  Redeem
-                </Button>
-                <Button variant="secondary" onClick={() => openDialog('edit')}>
-                  Edit hand-out details
-                </Button>
-                <Button variant="secondary" onClick={() => openDialog('replace')}>
-                  Replace
-                </Button>
-                <Button variant="secondary" onClick={() => setReprintConfirmOpen(true)}>
-                  Reprint
-                </Button>
-                <Button variant="danger" onClick={() => openDialog('cancel')}>
-                  Cancel voucher
-                </Button>
-              </>
-            )}
-            {status === 'redeemed' && (
-              <Button variant="secondary" onClick={() => openDialog('undo')}>
-                Undo redemption
-              </Button>
-            )}
-            {status === 'expired' && (
-              <>
-                <Button variant="primary" onClick={() => openDialog('override')}>
-                  Redeem despite expiry
-                </Button>
-                <Button variant="secondary" onClick={() => openDialog('edit')}>
-                  Edit expiry
-                </Button>
-              </>
-            )}
-          </div>
-          {status === 'expired' && (
-            <p className="mt-2 text-sm text-text-muted">
-              {sweepPending
-                ? 'This card is past its expiry date. The nightly tidy-up has not caught up yet, so lists may still show it as active. '
-                : ''}
-              Editing the expiry to a future date puts the voucher back to issued and rebuilds its
-              reminders.
-            </p>
-          )}
-        </Card>
+      {/* An expired card's actions need a word of explanation, which the header cannot hold. */}
+      {status === 'expired' && (
+        <Alert tone="info" role="status">
+          {sweepPending
+            ? 'This card is past its expiry date. The nightly tidy-up has not caught up yet, so lists may still show it as active. '
+            : ''}
+          Editing the expiry to a future date puts the voucher back to issued and rebuilds its
+          reminders.
+        </Alert>
       )}
 
       {/* ------------------------------------------------ hand-out block */}
       {voucher.issuedAt && (
-        <Card title="Hand-out">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            <div>
-              <dt className="text-text-muted">Handed out</dt>
-              <dd className="text-text">{formatDateTime12Hour(voucher.issuedAt)}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">By</dt>
-              <dd className="text-text">{voucher.issuedByName ?? 'Unknown'}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">Won at</dt>
-              <dd className="text-text">
-                {voucher.wonAtLabel ?? ''}
-                {detail.eventName && detail.eventName !== voucher.wonAtLabel
-                  ? ` (${detail.eventName})`
-                  : ''}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">Expiry written on the card</dt>
-              <dd className="text-text">
-                {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
-              </dd>
-            </div>
-          </dl>
+        <Card>
+          <CardHeader title="Hand-Out" />
+          <CardBody>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+              <div>
+                <dt className="text-text-muted">Handed out</dt>
+                <dd className="text-text">{formatDateTime12Hour(voucher.issuedAt)}</dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">By</dt>
+                <dd className="text-text">{voucher.issuedByName ?? 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">Won at</dt>
+                <dd className="text-text">
+                  {voucher.wonAtLabel ?? ''}
+                  {detail.eventName && detail.eventName !== voucher.wonAtLabel
+                    ? ` (${detail.eventName})`
+                    : ''}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">Expiry written on the card</dt>
+                <dd className="text-text">
+                  {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
+                </dd>
+              </div>
+            </dl>
+          </CardBody>
         </Card>
       )}
 
       {/* ------------------------------------------------ customer block */}
-      <Card
-        title="Customer"
-        subtitle="Assigning a customer enables SMS reminders about this voucher"
-      >
-        <div className="space-y-4">
+      <Card>
+        <CardHeader
+          title="Customer"
+          subtitle="Assigning a customer enables SMS reminders about this voucher"
+        />
+        <CardBody className="space-y-4">
           {detail.customer ? (
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -386,7 +403,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               <span className="text-sm text-text-muted">No customer assigned.</span>
               {canAttachCustomer && (
                 <Button variant="secondary" size="sm" onClick={() => openDialog('assign')}>
-                  Assign customer
+                  Assign Customer
                 </Button>
               )}
             </div>
@@ -394,12 +411,12 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
 
           {detail.reminders.length > 0 && (
             <div>
-              <div className="text-sm font-medium text-text mb-2">Reminders</div>
+              <SubHeading className="mb-2">Reminders</SubHeading>
               <ul className="space-y-1 text-sm">
                 {detail.reminders.map((reminder) => (
                   <li key={reminder.id} className="flex flex-wrap items-center gap-2">
                     <Badge tone={REMINDER_STATUS_TONES[reminder.status]}>
-                      {reminder.status}
+                      {REMINDER_STATUS_LABELS[reminder.status]}
                     </Badge>
                     <span className="text-text">
                       {REMINDER_KIND_LABELS[reminder.reminderKind]}
@@ -425,69 +442,79 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               </ul>
             </div>
           )}
-        </div>
+        </CardBody>
       </Card>
 
       {/* ------------------------------------------------ redemption block */}
       {voucher.redeemedAt && (
-        <Card title="Redemption">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            <div>
-              <dt className="text-text-muted">Redeemed</dt>
-              <dd className="text-text">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">By</dt>
-              <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
-            </div>
-            {voucher.transactionRef && (
+        <Card>
+          <CardHeader title="Redemption" />
+          <CardBody>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
               <div>
-                <dt className="text-text-muted">Transaction ref</dt>
-                <dd className="text-text">{voucher.transactionRef}</dd>
+                <dt className="text-text-muted">Redeemed</dt>
+                <dd className="text-text">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
               </div>
-            )}
-            {voucher.bookingRef && (
               <div>
-                <dt className="text-text-muted">Booking ref</dt>
-                <dd className="text-text">{voucher.bookingRef}</dd>
+                <dt className="text-text-muted">By</dt>
+                <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
               </div>
-            )}
-          </dl>
+              {voucher.transactionRef && (
+                <div>
+                  <dt className="text-text-muted">Transaction ref</dt>
+                  <dd className="text-text">{voucher.transactionRef}</dd>
+                </div>
+              )}
+              {voucher.bookingRef && (
+                <div>
+                  <dt className="text-text-muted">Booking ref</dt>
+                  <dd className="text-text">{voucher.bookingRef}</dd>
+                </div>
+              )}
+            </dl>
+          </CardBody>
         </Card>
       )}
 
       {/* ------------------------------------------------ entitlement */}
       {detail.entitlementHtml && (
-        <Card title="What the card entitles" subtitle="From the definition printed on this card">
-          {/* No typography plugin is installed, so `prose` styled nothing here. These
-              descendant utilities give the stored entitlement HTML its spacing and lists. */}
-          <div
-            className="text-sm text-text [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_h3]:font-semibold [&_strong]:font-semibold"
-            dangerouslySetInnerHTML={{ __html: detail.entitlementHtml }}
-          />
+        <Card>
+          <CardHeader title="What the Card Entitles" subtitle="From the definition printed on this card" />
+          <CardBody>
+            {/* No typography plugin is installed, so `prose` styled nothing here. These
+                descendant utilities give the stored entitlement HTML its spacing and lists. */}
+            <div
+              className="text-sm text-text [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_h3]:font-semibold [&_strong]:font-semibold"
+              dangerouslySetInnerHTML={{ __html: detail.entitlementHtml }}
+            />
+          </CardBody>
         </Card>
       )}
 
       {/* ------------------------------------------------ timeline */}
-      <Card title="Timeline">
-        <ul className="space-y-3">
-          {detail.events.map((event) => (
-            <li key={event.id} className="flex gap-3">
-              <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-text-subtle" />
-              <div>
-                <div className="text-sm font-medium text-text">
-                  {VOUCHER_EVENT_ACTION_LABELS[event.action]}
-                </div>
-                <div className="text-xs text-text-muted">
-                  {formatDateTime12Hour(event.at)} · {event.actorName} · {event.source}
-                </div>
-              </div>
-            </li>
-          ))}
-          {detail.events.length === 0 && (
-            <li className="text-sm text-text-muted">No events recorded.</li>
-          )}
-        </ul>
+      <Card>
+        <CardHeader title="Timeline" />
+        {detail.events.length === 0 ? (
+          <Empty size="sm" title="No events recorded" />
+        ) : (
+          <CardBody>
+            <ul className="space-y-3">
+              {detail.events.map((event) => (
+                <li key={event.id} className="flex gap-3">
+                  <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-text-subtle" />
+                  <div>
+                    <div className="text-sm font-medium text-text">
+                      {VOUCHER_EVENT_ACTION_LABELS[event.action]}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {formatDateTime12Hour(event.at)} · {event.actorName} · {event.source}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        )}
       </Card>
 
       {/* ------------------------------------------------ dialogs */}
@@ -496,9 +523,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         onClose={() => setDialog(null)}
         title={`Redeem ${voucher.voucherNumber}`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -518,9 +545,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }
             >
-              Mark as used
+              Mark as Used
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -552,11 +579,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       <Modal
         open={dialog === 'override'}
         onClose={() => setDialog(null)}
-        title={`Redeem ${voucher.voucherNumber} despite expiry`}
+        title={`Redeem ${voucher.voucherNumber} Despite Expiry`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -577,9 +604,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }
             >
-              Redeem anyway
+              Redeem Anyway
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -623,11 +650,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       <Modal
         open={dialog === 'undo'}
         onClose={() => setDialog(null)}
-        title={`Undo the redemption of ${voucher.voucherNumber}`}
+        title={`Undo the Redemption of ${voucher.voucherNumber}`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -645,9 +672,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }
             >
-              Undo redemption
+              Undo Redemption
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -668,11 +695,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       <Modal
         open={dialog === 'cancel'}
         onClose={() => setDialog(null)}
-        title={`Cancel ${voucher.voucherNumber}`}
+        title="Cancel Voucher"
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Keep it
+              Keep Voucher
             </Button>
             <Button
               variant="danger"
@@ -690,14 +717,15 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }
             >
-              Cancel voucher
+              Cancel Voucher
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
           <p className="text-sm text-text-muted">
-            Cancelling is permanent: no reinstatement and no reprint afterwards.
+            Cancel voucher {voucher.voucherNumber}? Cancelling is permanent: no reinstatement and no
+            reprint afterwards.
           </p>
           <Textarea
             label="Reason (required)"
@@ -714,9 +742,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         onClose={() => setDialog(null)}
         title={`Replace ${voucher.voucherNumber}`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -735,9 +763,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }
             >
-              Replace with selected card
+              Replace With Selected Card
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -768,11 +796,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       <Modal
         open={dialog === 'edit'}
         onClose={() => setDialog(null)}
-        title={`Edit hand-out details of ${voucher.voucherNumber}`}
+        title={`Edit Hand-Out Details of ${voucher.voucherNumber}`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setDialog(null)}>
-              Back
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -808,9 +836,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 )
               }}
             >
-              Save changes
+              Save Changes
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -850,7 +878,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       <Modal
         open={dialog === 'assign'}
         onClose={() => setDialog(null)}
-        title={detail.customer ? 'Change the customer' : 'Assign a customer'}
+        title={detail.customer ? 'Change the Customer' : 'Assign a Customer'}
       >
         <div className="space-y-3">
           <Input
@@ -860,30 +888,33 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             autoComplete="off"
           />
           {customerHits.length > 0 && (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {customerHits.map((hit) => (
-                <li key={hit.id}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(
-                        () =>
-                          assignVoucherCustomer({
-                            voucherNumber: voucher.voucherNumber,
-                            customerId: hit.id,
-                          }),
-                        `Voucher assigned to ${hit.name}`
-                      )
-                    }
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset disabled:opacity-50"
-                  >
-                    <span className="text-text">{hit.name}</span>
-                    <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <Card padding="none">
+              <ul className="divide-y divide-border">
+                {customerHits.map((hit) => (
+                  <li key={hit.id}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(
+                          () =>
+                            assignVoucherCustomer({
+                              voucherNumber: voucher.voucherNumber,
+                              customerId: hit.id,
+                            }),
+                          `Voucher assigned to ${hit.name}`
+                        )
+                      }
+                      className="h-auto w-full justify-between rounded-none px-4 py-2.5 text-left font-normal focus-visible:shadow-ring-inset"
+                    >
+                      <span className="text-text">{hit.name}</span>
+                      <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
           <p className="text-xs text-text-muted">
             Reassigning retargets pending reminders. Reminder milestones already sent are never
@@ -905,10 +936,10 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             'Customer removed from the voucher'
           )
         }
-        title="Remove the customer?"
-        message="Pending SMS reminders for this voucher will be cancelled."
-        confirmLabel="Remove customer"
-        tone="warning"
+        title="Remove the Customer"
+        message="Remove the customer from this voucher? Pending SMS reminders for it will be cancelled."
+        confirmLabel="Remove Customer"
+        tone="primary"
       />
 
       <ConfirmDialog
@@ -918,11 +949,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           setReprintConfirmOpen(false)
           void handleReprint()
         }}
-        title="Reprint an issued card?"
-        message="Reprinting an issued card is only allowed when the original is destroyed or unusable."
-        confirmLabel="Original destroyed or unusable, reprint"
-        tone="warning"
+        title="Reprint an Issued Card"
+        message="Reprint this issued card? That is only allowed when the original is destroyed or unusable."
+        confirmLabel="Original Destroyed or Unusable, Reprint"
+        tone="primary"
       />
-    </div>
+    </PageLayout>
   )
 }

@@ -3,8 +3,8 @@ import { render, screen } from '@testing-library/react'
 import type { Event } from '@/types/database'
 import { EventArtworkDownloadsCard } from '../EventArtworkDownloadsCard'
 
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 const EVENT_ID = '3f1d9e2c-7b4a-4c8e-9a11-2d5f6b7c8d90'
@@ -25,7 +25,7 @@ describe('EventArtworkDownloadsCard', () => {
     )
 
     expect(screen.getByText('Table talker (print)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Print sheet \(A4\)/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Print Sheet \(A4\)/ })).toBeEnabled()
   })
 
   it('holds the sheet back while the table talker is unbranded', () => {
@@ -37,7 +37,7 @@ describe('EventArtworkDownloadsCard', () => {
       />
     )
 
-    expect(screen.getByRole('button', { name: /Print sheet \(A4\)/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Print Sheet \(A4\)/ })).toBeDisabled()
   })
 
   it('offers no sheet for any other artwork', () => {
@@ -49,6 +49,6 @@ describe('EventArtworkDownloadsCard', () => {
       />
     )
 
-    expect(screen.queryByRole('button', { name: /Print sheet/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Print Sheet/ })).toBeNull()
   })
 })

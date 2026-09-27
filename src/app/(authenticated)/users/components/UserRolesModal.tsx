@@ -4,13 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Role, UserSummaryWithRoles } from '@/types/rbac';
 import { getUserRoles, assignRolesToUser } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
-import { Modal, ModalActions } from '@/ds';
-import { Button } from '@/ds';
-import { Checkbox } from '@/ds';
-import { Badge } from '@/ds';
-import { Spinner } from '@/ds';
-import { Alert } from '@/ds';
-import toast from 'react-hot-toast';
+import { Alert, Badge, Button, Checkbox, Modal, PageLoading, toast } from '@/ds';
+import { ROLE_SYSTEM_FLAG_TONE } from '../../roles/_shared/status-ui';
 
 type UserSummary = Pick<UserSummaryWithRoles, 'id' | 'email'>;
 
@@ -99,11 +94,11 @@ export default function UserRolesModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title="Manage User Roles"
-      description={user.email ?? undefined}
-      size="md"
+      title="Manage Roles"
+      description={user.email || undefined}
+      width="md"
       footer={
-        <ModalActions>
+        <>
           <Button
             onClick={onClose}
             variant="secondary"
@@ -116,68 +111,58 @@ export default function UserRolesModal({
             disabled={saving || loading || readOnly || !!loadError}
             loading={saving}
           >
-            Save Roles
+            Save Changes
           </Button>
-        </ModalActions>
+        </>
       }
     >
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="lg" />
-        </div>
+        <PageLoading inline label="Loading roles" />
       ) : (
         <div className="space-y-3">
           {readOnly && (
             <Alert
-              variant="info"
+              tone="info"
               title="Read-only access"
-              description="You need the users:manage_roles permission to modify role assignments."
-            />
+            >
+              You need the users:manage_roles permission to modify role assignments.
+            </Alert>
           )}
 
           {loadError && (
             <Alert
-              variant="error"
+              tone="danger"
               title="Unable to load roles"
-              description={loadError}
-            />
+            >
+              {loadError}
+            </Alert>
           )}
 
           {!readOnly && !loadError && allRoles.map((role) => (
-            <div key={role.id} className="flex items-start space-x-3">
+            <div key={role.id} className="flex items-start justify-between gap-3">
               <Checkbox
                 checked={selectedRoles.has(role.id)}
                 onChange={() => toggleRole(role.id)}
                 id={`role-${role.id}`}
+                label={role.name}
+                description={role.description || undefined}
                 disabled={saving}
               />
-              <label
-                htmlFor={`role-${role.id}`}
-                className="flex-1 cursor-pointer"
-              >
-                <div className="flex items-center">
-                  <span className="text-sm font-medium text-text">
-                    {role.name}
-                  </span>
-                  {role.is_system && (
-                    <Badge variant="default" size="sm" className="ml-2">
-                      System
-                    </Badge>
-                  )}
-                </div>
-                {role.description && (
-                  <p className="text-sm text-text-muted mt-0.5">{role.description}</p>
-                )}
-              </label>
+              {role.is_system && (
+                <Badge tone={ROLE_SYSTEM_FLAG_TONE} size="sm">
+                  System
+                </Badge>
+              )}
             </div>
           ))}
 
           {!readOnly && !loadError && allRoles.length === 0 && (
             <Alert
-              variant="info"
+              tone="info"
               title="No roles available"
-              description="Create roles before assigning them to users."
-            />
+            >
+              Create roles before assigning them to users.
+            </Alert>
           )}
         </div>
       )}

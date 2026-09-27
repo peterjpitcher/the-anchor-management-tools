@@ -1,8 +1,5 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
 import { getPayAgeBands, getPayBandRates } from '@/app/actions/pay-bands';
 import PayBandsManager from './PayBandsManager';
 
@@ -16,32 +13,24 @@ export default async function PayBandsPage() {
   const bands = bandsResult.success ? bandsResult.data : [];
 
   // Fetch rates for all bands in parallel
-  const ratesEntries = await Promise.all(
-    bands.map(async band => {
-      const result = await getPayBandRates(band.id);
-      return [band.id, result.success ? result.data : []] as const;
-    }),
+  const ratesResults = await Promise.all(
+    bands.map(async band => [band.id, await getPayBandRates(band.id)] as const),
   );
-  const ratesByBand = Object.fromEntries(ratesEntries);
+  const ratesByBand = Object.fromEntries(
+    ratesResults.map(([bandId, result]) => [bandId, result.success ? result.data : []] as const),
+  );
+  // A band whose rates failed to load must not read as "No rates set yet".
+  const rateErrors = ratesResults.flatMap(([, result]) => (result.success ? [] : [result.error]));
+  const ratesFailedBandIds = ratesResults.flatMap(([bandId, result]) => (result.success ? [] : [bandId]));
 
   return (
-    <PageLayout
-      title="Pay Bands"
-      subtitle="Age-based pay band definitions and effective-dated hourly rates"
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
-    >
-      <Section
-        title="Age Bands &amp; Rates"
-        description="Rates are append-only. Adding a new rate does not change historical payroll calculations."
-      >
-        <Card>
-          <PayBandsManager
-            canManage={canManage}
-            initialBands={bands}
-            initialRates={ratesByBand}
-          />
-        </Card>
-      </Section>
-    </PageLayout>
+    <PayBandsManager
+      canManage={canManage}
+      initialBands={bands}
+      initialRates={ratesByBand}
+      loadError={bandsResult.success ? null : bandsResult.error}
+      ratesLoadError={rateErrors.length > 0 ? rateErrors[0] : null}
+      ratesFailedBandIds={ratesFailedBandIds}
+    />
   );
 }

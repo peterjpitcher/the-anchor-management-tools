@@ -1,18 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  ArrowDownTrayIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline'
 import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
-import toast from 'react-hot-toast'
-import { PageLayout } from '@/ds'
-import { Section } from '@/ds'
-import { Card, CardHeader, CardTitle, CardDescription, CardBody } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Icon, Input, Modal, PageLayout, toast } from '@/ds'
 
 export default function GDPRSettingsPage() {
   const [isExporting, setIsExporting] = useState(false)
@@ -51,6 +41,12 @@ export default function GDPRSettingsPage() {
     }
   }
 
+  const closeDeleteConfirm = () => {
+    if (isDeleting) return
+    setShowDeleteConfirm(false)
+    setDeleteEmail('')
+  }
+
   const handleDeleteData = async () => {
     if (!deleteEmail) {
       toast.error('Please enter your email to confirm')
@@ -78,129 +74,104 @@ export default function GDPRSettingsPage() {
     }
   }
 
-  const breadcrumbs = [
-    { label: 'Settings', href: '/settings' },
-    { label: 'GDPR & Privacy' },
-  ]
-
   return (
     <PageLayout
-      title="GDPR & Privacy Settings"
+      title="GDPR & Privacy"
       subtitle="Manage your personal data in compliance with GDPR regulations"
-      breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
-      <Section className="space-y-6">
-        {/* Data Export Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-text-subtle" />
-              Export Your Data
-            </CardTitle>
-            <CardDescription className="mt-2 max-w-xl">
-              Download a copy of all your personal data stored in our system. 
-              This includes your profile, bookings, messages, and activity logs.
-            </CardDescription>
-          </CardHeader>
-          <CardBody>
-            <Button variant="primary"
-              onClick={handleExportData}
-              loading={isExporting}
-              leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-            >
-              {isExporting ? 'Exporting...' : 'Export My Data'}
+      {/* Data Export Card */}
+      <Card>
+        <CardHeader title="Export Your Data" />
+        <CardBody className="space-y-4">
+          <p className="max-w-xl text-sm text-text-muted">
+            Download a copy of all your personal data stored in our system.
+            This includes your profile, bookings, messages, and activity logs.
+          </p>
+          <Button variant="primary"
+            onClick={handleExportData}
+            loading={isExporting}
+            icon={<Icon name="download" size={16} />}
+          >
+            Export My Data
+          </Button>
+        </CardBody>
+      </Card>
+
+      {/* Data Deletion Card */}
+      <Card>
+        <CardHeader title="Delete Your Data" />
+        <CardBody className="space-y-4">
+          <p className="max-w-xl text-sm text-text-muted">
+            Permanently delete all your personal data from our system.
+            This action cannot be undone.
+          </p>
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            icon={<Icon name="trash" size={16} />}
+          >
+            Request Data Deletion
+          </Button>
+        </CardBody>
+      </Card>
+
+      {/* A confirmation with a field, so a Modal whose footer mirrors ConfirmDialog. */}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={closeDeleteConfirm}
+        title="Request Data Deletion"
+        description="Enter your email address to confirm. This cannot be undone."
+        width="sm"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeDeleteConfirm} disabled={isDeleting}>
+              Cancel
             </Button>
-          </CardBody>
-        </Card>
+            <Button type="submit" form="gdpr-delete-form" variant="danger" loading={isDeleting}>
+              Request Deletion
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="gdpr-delete-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleDeleteData()
+          }}
+        >
+          <Input
+            type="email"
+            label="Your email address"
+            value={deleteEmail}
+            onChange={(e) => setDeleteEmail(e.target.value)}
+            placeholder="your@email.com"
+          />
+        </form>
+      </Modal>
 
-        {/* Data Deletion Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <TrashIcon className="h-5 w-5 mr-2 text-danger" />
-              Delete Your Data
-            </CardTitle>
-            <CardDescription className="mt-2 max-w-xl">
-              Permanently delete all your personal data from our system. 
-              This action cannot be undone.
-            </CardDescription>
-          </CardHeader>
-          <CardBody>
-            {!showDeleteConfirm ? (
-              <Button
-                variant="danger"
-                onClick={() => setShowDeleteConfirm(true)}
-                leftIcon={<TrashIcon className="h-4 w-4" />}
-              >
-                Request Data Deletion
-              </Button>
-            ) : (
-              <Alert
-                variant="error"
-                title="Confirm Data Deletion"
-                description="This will permanently delete all your data. To confirm, please enter your email address."
-              >
-                <div className="mt-4 space-y-4">
-                  <Input
-                    type="email"
-                    value={deleteEmail}
-                    onChange={(e) => setDeleteEmail(e.target.value)}
-                    placeholder="your@email.com"
-                  />
-                  <div className="flex gap-3">
-                    <Button
-                      variant="danger"
-                      onClick={handleDeleteData}
-                      loading={isDeleting}
-                      size="sm"
-                    >
-                      {isDeleting ? 'Processing...' : 'Confirm Deletion'}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setShowDeleteConfirm(false)
-                        setDeleteEmail('')
-                      }}
-                      size="sm"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              </Alert>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Privacy Rights Information */}
-        <Card className="border-info-border bg-info-soft">
-          <CardHeader>
-            <CardTitle>Your Privacy Rights</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="text-sm text-text space-y-2">
-              <p>Under GDPR, you have the following rights:</p>
-              <ul className="list-disc list-inside space-y-1 ml-4">
-                <li>Right to access your personal data</li>
-                <li>Right to rectification of inaccurate data</li>
-                <li>Right to erasure (&quot;right to be forgotten&quot;)</li>
-                <li>Right to data portability</li>
-                <li>Right to object to processing</li>
-                <li>Right to withdraw consent</li>
-              </ul>
-              <p className="mt-4">
-                For more information, please refer to our{' '}
-                <a href="/privacy" className="rounded-sm text-primary underline hover:text-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring">
-                  Privacy Policy
-                </a>
-                .
-              </p>
-            </div>
-          </CardBody>
-        </Card>
-      </Section>
+      {/* Privacy Rights Information */}
+      <Alert tone="info" title="Your Privacy Rights">
+        <div className="space-y-2">
+          <p>Under GDPR, you have the following rights:</p>
+          <ul className="list-disc list-inside space-y-1 ml-4">
+            <li>Right to access your personal data</li>
+            <li>Right to rectification of inaccurate data</li>
+            <li>Right to erasure (&quot;right to be forgotten&quot;)</li>
+            <li>Right to data portability</li>
+            <li>Right to object to processing</li>
+            <li>Right to withdraw consent</li>
+          </ul>
+          <p className="mt-4">
+            For more information, please refer to our{' '}
+            <a href="/privacy" className="rounded-sm text-primary underline hover:text-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
+      </Alert>
     </PageLayout>
   )
 }

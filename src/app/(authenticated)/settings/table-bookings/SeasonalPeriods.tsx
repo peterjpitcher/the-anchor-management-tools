@@ -1,8 +1,26 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
-import { Badge, Button, Card, Checkbox, Input, Section, Select, Textarea } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  Empty,
+  Field,
+  FormFooter,
+  Input,
+  PageLoading,
+  Section,
+  Select,
+  SubHeading,
+  Textarea,
+  toast,
+} from '@/ds'
+import { SEASONAL_PERIOD_STATUS_BADGE, type SeasonalPeriodState } from '../_shared/status-ui'
 import {
   MENU_COURSES,
   MENU_COURSE_ADDON,
@@ -148,11 +166,11 @@ function firstComplaint(draft: PeriodDraft): string | null {
   return null
 }
 
-function statusOf(period: BookingPeriod): { label: string; tone: 'success' | 'neutral' | 'warning' } {
-  if (period.archivedAt) return { label: 'Archived', tone: 'neutral' }
-  if (!period.isActive) return { label: 'Switched off', tone: 'neutral' }
-  if (period.requiresPreorder && !period.menuReady) return { label: 'Live, menu missing', tone: 'warning' }
-  return { label: 'Live', tone: 'success' }
+function stateOf(period: BookingPeriod): SeasonalPeriodState {
+  if (period.archivedAt) return 'archived'
+  if (!period.isActive) return 'off'
+  if (period.requiresPreorder && !period.menuReady) return 'liveMenuMissing'
+  return 'live'
 }
 
 export function SeasonalPeriods() {
@@ -164,6 +182,8 @@ export function SeasonalPeriods() {
   const [draft, setDraft] = useState<PeriodDraft | null>(null)
   const [menuDraft, setMenuDraft] = useState<MenuDraft | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // A list that failed to load is an error, never shown as "no seasonal periods yet".
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -175,13 +195,17 @@ export function SeasonalPeriods() {
       const periodsJson = await periodsRes.json()
       if (!periodsRes.ok) throw new Error(periodsJson.error || 'Failed to load periods')
       const settingsJson = await settingsRes.json()
+      // The deposit kill switch reads these. Unloaded, it would show its default (on) and a click
+      // would save over the real value, so a failure here fails the whole block.
+      if (!settingsRes.ok) throw new Error(settingsJson.error || 'Failed to load deposit settings')
 
       const rows = (periodsJson.data || []) as BookingPeriodRow[]
       setPeriods(rows.map(mapBookingPeriodRow))
       setSettings(settingsJson.data?.settings || {})
       setRevisions(settingsJson.data?.revisions || {})
+      setLoadError(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not load seasonal periods')
+      setLoadError(error instanceof Error ? error.message : 'Could not load seasonal periods')
     } finally {
       setLoading(false)
     }
@@ -281,36 +305,65 @@ export function SeasonalPeriods() {
     }
   }
 
+  const sectionTitle = 'Seasonal Periods'
+  const sectionDescription =
+    'Named windows with their own guest question, deposit and pre-order rules. A period does nothing at all until you switch it on.'
+
   if (loading) {
     return (
-      <Section title="Seasonal periods">
-        <p className="text-sm text-text-muted">Loading…</p>
+      <Section title={sectionTitle} description={sectionDescription}>
+        <PageLoading inline label="Loading seasonal periods" />
+      </Section>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Section title={sectionTitle} description={sectionDescription}>
+        <Alert
+          tone="danger"
+          title="Could not load seasonal periods"
+          actions={
+            <Button size="sm" variant="secondary" onClick={() => void load()}>
+              Try Again
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
       </Section>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <Section
-        title="Seasonal periods"
-        description="Named windows with their own guest question, deposit and pre-order rules. A period does nothing at all until you switch it on."
-      >
-        <Card>
+    <Section
+      title={sectionTitle}
+      description={sectionDescription}
+      actions={
+        !draft ? (
+          <Button size="sm" variant="primary" onClick={() => setDraft({ ...EMPTY_PERIOD })}>
+            New Period
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="space-y-6">
+        <Card padding="none">
           {periods.length === 0 ? (
-            <p className="text-sm text-text-muted">No seasonal periods yet.</p>
+            <Empty size="sm" title="No seasonal periods yet" />
           ) : (
-            <div className="space-y-4">
+            <div className="divide-y divide-border">
               {periods.map((period) => {
-                const status = statusOf(period)
+                const status = SEASONAL_PERIOD_STATUS_BADGE[stateOf(period)]
                 const isOpen = expandedId === period.id
                 return (
-                  <div key={period.id} className="rounded-md border border-border p-4">
+                  <div key={period.id} className="px-pad-card py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-sm font-semibold text-text">{period.name}</h4>
+                          <SubHeading as="h3">{period.name}</SubHeading>
                           <Badge tone={status.tone}>{status.label}</Badge>
-                          <Badge tone="neutral">{PERIOD_KIND_LABELS[period.periodKind]}</Badge>
+                          <Badge>{PERIOD_KIND_LABELS[period.periodKind]}</Badge>
                         </div>
                         <p className="mt-1 text-sm text-text">
                           {period.startsOn} to {period.endsOn} &middot;{' '}
@@ -331,7 +384,7 @@ export function SeasonalPeriods() {
                           variant="secondary"
                           onClick={() => setExpandedId(isOpen ? null : period.id)}
                         >
-                          {isOpen ? 'Hide menu' : `Menu (${period.menuItems.length})`}
+                          {isOpen ? 'Hide Menu' : `Menu (${period.menuItems.length})`}
                         </Button>
                         <Button variant="secondary" onClick={() => setDraft(toDraft(period))} disabled={busy}>
                           Edit
@@ -349,17 +402,17 @@ export function SeasonalPeriods() {
                               )
                             }
                           >
-                            {period.isActive ? 'Switch off' : 'Switch on'}
+                            {period.isActive ? 'Switch Off' : 'Switch On'}
                           </Button>
                         )}
                       </div>
                     </div>
 
                     {period.requiresPreorder && !period.menuReady && (
-                      <p className="mt-3 rounded-md border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
+                      <Alert tone="warning" className="mt-3">
                         This period needs a pre-order and has no menu yet, so it cannot be booked. Add the
                         courses below, then switch it on.
-                      </p>
+                      </Alert>
                     )}
 
                     {period.bookingCount > 0 && (
@@ -372,7 +425,7 @@ export function SeasonalPeriods() {
 
                     {isOpen && (
                       <div className="mt-4 border-t border-border pt-4">
-                        <h5 className="text-sm font-medium text-text">Pre-order menu</h5>
+                        <SubHeading>Pre-order Menu</SubHeading>
                         {/* Verbatim from the shared constant. Four separate wordings for this
                             eventually produce one that implies the guest has already paid. */}
                         {period.menuItems.some((item) => item.course === MENU_COURSE_ADDON) && (
@@ -383,11 +436,11 @@ export function SeasonalPeriods() {
                             No dishes yet. Add them when the menu is published.
                           </p>
                         ) : (
-                          <ul className="mt-2 space-y-2">
+                          <ul className="mt-2 divide-y divide-border rounded-default border border-border">
                             {period.menuItems.map((item) => (
                               <li
                                 key={item.id}
-                                className="flex flex-wrap items-start justify-between gap-2 rounded-sm border border-border p-2 text-sm"
+                                className="flex flex-wrap items-start justify-between gap-2 p-2 text-sm"
                               >
                                 <div className="min-w-0">
                                   <span className="font-medium text-text">{item.name}</span>{' '}
@@ -475,21 +528,27 @@ export function SeasonalPeriods() {
                               />
                             </div>
                             {menuCourseRequiresPrice(menuDraft.course) && (
-                              <div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3 text-xs text-text">
-                                <p className="font-medium text-text">
-                                  An add-on sits alongside the courses, not inside them.
-                                </p>
-                                <p className="mt-1">
+                              <Alert
+                                tone="info"
+                                role="status"
+                                className="sm:col-span-2"
+                                title="An add-on sits alongside the courses, not inside them."
+                              >
+                                <p>
                                   Guests tick it as well as their starter, main and dessert, and may tick more
                                   than one. It never replaces a course and it never stops a booking counting as
                                   complete.
                                 </p>
                                 {/* Verbatim from the shared constant, for the same reason as above. */}
                                 <p className="mt-1">{PREORDER_ADDON_STAFF_NOTE}</p>
-                              </div>
+                              </Alert>
                             )}
-                            <div className="flex gap-2 sm:col-span-2">
+                            <FormFooter className="sm:col-span-2">
+                              <Button variant="secondary" onClick={() => setMenuDraft(null)}>
+                                Cancel
+                              </Button>
                               <Button
+                                variant="primary"
                                 disabled={busy}
                                 onClick={async () => {
                                   if (menuDraft.name.trim().length === 0) {
@@ -522,12 +581,9 @@ export function SeasonalPeriods() {
                                   if (ok) setMenuDraft(null)
                                 }}
                               >
-                                Add dish
+                                Add Dish
                               </Button>
-                              <Button variant="secondary" onClick={() => setMenuDraft(null)}>
-                                Cancel
-                              </Button>
-                            </div>
+                            </FormFooter>
                           </div>
                         ) : (
                           <Button
@@ -544,7 +600,7 @@ export function SeasonalPeriods() {
                               })
                             }
                           >
-                            Add a dish
+                            Add Dish
                           </Button>
                         )}
                       </div>
@@ -555,40 +611,36 @@ export function SeasonalPeriods() {
             </div>
           )}
 
-          {!draft && (
-            <Button className="mt-4" onClick={() => setDraft({ ...EMPTY_PERIOD })}>
-              Add a period
-            </Button>
-          )}
         </Card>
-      </Section>
 
-      {draft && (
-        <PeriodEditor
-          draft={draft}
-          setDraft={setDraft}
-          onSave={savePeriod}
-          busy={busy}
-          collectPeriodDeposits={depositsEnabled}
-        />
-      )}
-
-      <Section
-        title="Deposit collection"
-        description="The kill switch for seasonal deposits. Leave it on unless something is going wrong with payments."
-      >
-        <Card>
-          <Checkbox
-            id="booking_period_deposits_enabled"
-            label="Collect seasonal deposits"
-            description={`Off means a deposit is still worked out and shown to staff, but no money is asked for. The deposit for a party of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.`}
-            checked={depositsEnabled}
-            disabled={busy}
-            onChange={(checked) => void saveDepositSwitch(checked)}
+        {draft && (
+          <PeriodEditor
+            draft={draft}
+            setDraft={setDraft}
+            onSave={savePeriod}
+            busy={busy}
+            collectPeriodDeposits={depositsEnabled}
           />
+        )}
+
+        <Card>
+          <CardHeader title="Deposit Collection" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">
+              The kill switch for seasonal deposits. Leave it on unless something is going wrong with payments.
+            </p>
+            <Checkbox
+              id="booking_period_deposits_enabled"
+              label="Collect seasonal deposits"
+              description={`Off means a deposit is still worked out and shown to staff, but no money is asked for. The deposit for a party of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.`}
+              checked={depositsEnabled}
+              disabled={busy}
+              onChange={(checked) => void saveDepositSwitch(checked)}
+            />
+          </CardBody>
         </Card>
-      </Section>
-    </div>
+      </div>
+    </Section>
   )
 }
 
@@ -681,21 +733,20 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
   }, [draft, collectPeriodDeposits])
 
   return (
-    <Section title={draft.id ? `Edit ${draft.name || 'period'}` : 'New period'}>
-      <Card>
+    <Card>
+      <CardHeader title={draft.id ? 'Edit Period' : 'New Period'} />
+      <CardBody className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Name shown to guests" value={draft.name} onChange={(e) => set('name', e.target.value)} />
           {draft.id ? (
-            <div>
-              <span className="block text-xs font-medium uppercase tracking-wider text-text-muted">Kind and code</span>
-              <p className="mt-1 text-sm text-text">
+            <Field
+              label="Kind and code"
+              hint="Fixed after creation. Rules and bookings already refer to them, so renaming the period is safe but changing these would not be."
+            >
+              <p className="text-sm text-text">
                 {PERIOD_KIND_LABELS[draft.period_kind]} &middot; {draft.code}
               </p>
-              <p className="mt-1 text-xs text-text-muted">
-                Fixed after creation. Rules and bookings already refer to them, so renaming the period is
-                safe but changing these would not be.
-              </p>
-            </div>
+            </Field>
           ) : (
             <>
               <Select
@@ -804,31 +855,30 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
         </div>
 
         {preview && (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
-            <p className="font-medium text-text">What guests would pay</p>
-            <ul className="mt-1 space-y-1 text-text">
+          <Alert tone="info" role="status" title="What guests would pay">
+            <ul className="space-y-1">
               {preview.map((line) => (
                 <li key={line.partySize}>
                   A party of {line.partySize} pays {line.text}.
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-text-muted">
+            <p className="mt-2 text-xs">
               Where the deposit for parties of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is larger, that one
               applies instead. The two are never added together.
             </p>
-          </div>
+          </Alert>
         )}
 
-        <div className="mt-4 flex gap-2">
-          <Button onClick={() => void onSave()} loading={busy}>
-            {draft.id ? 'Save changes' : 'Create, switched off'}
-          </Button>
+        <FormFooter start={draft.id ? undefined : 'A new period starts switched off.'}>
           <Button variant="secondary" onClick={() => setDraft(null)}>
             Cancel
           </Button>
-        </div>
-      </Card>
-    </Section>
+          <Button variant="primary" onClick={() => void onSave()} loading={busy}>
+            {draft.id ? 'Save Changes' : 'Create Period'}
+          </Button>
+        </FormFooter>
+      </CardBody>
+    </Card>
   )
 }

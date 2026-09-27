@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, EmptyState, ConfirmDialog, toast } from '@/ds'
+import { Alert, Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, Empty, ConfirmDialog, Fieldset, FormFooter, Stat, SubHeading, toast } from '@/ds'
+import { eventTicketTypeSaleTone } from '../_shared/status-ui'
 import { resolveTicketTypeSellPrice, type EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { createEventTicketType, updateEventTicketType, deleteEventTicketType } from '@/app/actions/eventTicketTypes'
 import type { TicketSettingsEvent } from './EventTicketSettings'
@@ -76,40 +77,45 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
       router.refresh()
     } catch { setError('Ticket could not be removed. Please try again.'); setRemoveId(null) }
   })
+  const canAdd = canManage && (allowMultiple || types.length === 0) && editing !== 'new'
   return <Card>
-    <CardHeader title="Ticket prices" subtitle="Set the full price here. Online discounts are applied below. Existing bookings keep their agreed price." />
-    <CardBody>
-      <div className="space-y-3">
-        {!types.length && <EmptyState title="No ticket prices yet" description="Add your first ticket to set the entry price." />}
-        {types.map(row => <div key={row.id} className="rounded-default border border-border p-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div><h3 className="font-semibold text-text-strong">{row.name}</h3><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>
-            <Badge tone={row.is_active ? 'success' : 'neutral'}>{row.is_active ? 'On sale' : 'Off sale'}</Badge>
-          </div>
-          <dl className="my-4 grid grid-cols-2 gap-4">
-            <div><dt className="text-xs text-text-muted">Full price</dt><dd className="text-xl font-semibold tabular-nums text-text-strong">{currency(Number(row.base_price))}</dd></div>
-            <div><dt className="text-xs text-text-muted">Online now</dt><dd className="text-xl font-semibold tabular-nums text-text-strong">{event?.payment_mode === 'prepaid' ? currency(resolveTicketTypeSellPrice(Number(row.base_price), event)) : 'Pay on arrival'}</dd></div>
-          </dl>
-          {canManage && <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => edit(row)}>Edit {row.name}</Button>
-            {allowMultiple && <>
-              <Button type="button" variant="secondary" size="sm" disabled={pending || (row.is_active && activeCount <= 1)} onClick={() => toggle(row)}>{row.is_active ? 'Take off sale' : 'Put on sale'}</Button>
-              <Button type="button" variant="ghost" size="sm" disabled={pending || (row.is_active && activeCount <= 1)} onClick={() => setRemoveId(row.id)}>Remove</Button>
-            </>}
-          </div>}
-        </div>)}
-        {canManage && (allowMultiple || types.length === 0) && editing !== 'new' && <Button type="button" variant="secondary" disabled={pending} onClick={() => edit()}>Add ticket type</Button>}
-        {editing && <fieldset disabled={pending} className="space-y-3 rounded-default border border-border p-4">
-          <legend className="px-1 font-semibold text-text-strong">{editing === 'new' ? 'New ticket type' : 'Edit ticket'}</legend>
-          <Input label="Ticket name" maxLength={80} value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
-          <Checkbox label="Free ticket" checked={draft.free} onChange={checked => setDraft(current => ({ ...current, free: checked }))} />
-          {!draft.free && <Input label="Full ticket price (£)" type="number" min="0.01" step="0.01" value={draft.base_price} onChange={event => setDraft(current => ({ ...current, base_price: event.target.value }))} />}
-          {allowMultiple && <Input label="Ticket capacity (blank to share the event capacity)" type="number" min="0" step="1" value={draft.capacity} onChange={event => setDraft(current => ({ ...current, capacity: event.target.value }))} />}
-          <div className="flex gap-2"><Button type="button" onClick={save}>{pending ? 'Saving…' : 'Save ticket'}</Button><Button type="button" variant="secondary" onClick={() => { setEditing(null); setError(null) }}>Cancel</Button></div>
-        </fieldset>}
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      </div>
+    <CardHeader
+      title="Ticket Prices"
+      subtitle="Set the full price here"
+      action={canAdd ? <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => edit()}>Add Ticket Type</Button> : undefined}
+    />
+    <CardBody className="space-y-4">
+      <p className="text-sm text-text-muted">Online discounts are applied below. Existing bookings keep their agreed price.</p>
+      {!types.length && <Empty size="sm" title="No ticket prices yet" description="Add your first ticket to set the entry price." />}
+      {types.map(row => <div key={row.id} className="space-y-4 rounded-default border border-border p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div><SubHeading>{row.name}</SubHeading><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>
+          <Badge tone={eventTicketTypeSaleTone(row.is_active)}>{row.is_active ? 'On sale' : 'Off sale'}</Badge>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Stat label="Full price" value={currency(Number(row.base_price))} />
+          <Stat label="Online now" value={event?.payment_mode === 'prepaid' ? currency(resolveTicketTypeSellPrice(Number(row.base_price), event)) : 'Pay on arrival'} />
+        </div>
+        {canManage && <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => edit(row)}>Edit {row.name}</Button>
+          {allowMultiple && <>
+            <Button type="button" variant="secondary" size="sm" disabled={pending || (row.is_active && activeCount <= 1)} onClick={() => toggle(row)}>{row.is_active ? 'Take Off Sale' : 'Put On Sale'}</Button>
+            <Button type="button" variant="ghost" size="sm" disabled={pending || (row.is_active && activeCount <= 1)} onClick={() => setRemoveId(row.id)}>Remove</Button>
+          </>}
+        </div>}
+      </div>)}
+      {editing && <div className="rounded-default border border-border p-4"><Fieldset legend={editing === 'new' ? 'Add Ticket Type' : 'Edit Ticket Type'} disabled={pending}><div className="space-y-4">
+        <Input label="Ticket name" maxLength={80} value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
+        <Checkbox label="Free ticket" checked={draft.free} onChange={checked => setDraft(current => ({ ...current, free: checked }))} />
+        {!draft.free && <Input label="Full ticket price (£)" type="number" min="0.01" step="0.01" value={draft.base_price} onChange={event => setDraft(current => ({ ...current, base_price: event.target.value }))} />}
+        {allowMultiple && <Input label="Ticket capacity (blank to share the event capacity)" type="number" min="0" step="1" value={draft.capacity} onChange={event => setDraft(current => ({ ...current, capacity: event.target.value }))} />}
+        <FormFooter>
+          <Button type="button" variant="secondary" onClick={() => { setEditing(null); setError(null) }}>Cancel</Button>
+          <Button type="button" variant="primary" onClick={save} loading={pending}>{editing === 'new' ? 'Add Ticket Type' : 'Save Changes'}</Button>
+        </FormFooter>
+      </div></Fieldset></div>}
+      {error && <Alert tone="danger" size="sm">{error}</Alert>}
     </CardBody>
-    <ConfirmDialog open={removeId !== null} onClose={() => setRemoveId(null)} onConfirm={remove} title="Remove ticket from sale" message="Tickets already booked are kept for your records. This type will no longer be offered to new guests." confirmLabel="Remove from sale" tone="danger" />
+    <ConfirmDialog open={removeId !== null} onClose={() => setRemoveId(null)} onConfirm={remove} title="Remove Ticket From Sale" message="Tickets already booked are kept for your records. This type will no longer be offered to new guests." confirmLabel="Remove From Sale" tone="danger" />
   </Card>
 }

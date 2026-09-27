@@ -9,10 +9,7 @@ import {
   type CustomerLabel,
   type CustomerLabelAssignment
 } from '@/app/actions/customer-labels'
-import { TagIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { Button } from '@/ds'
+import { Button, Dropdown, DropdownItem, PageLoading, toast, Icon } from '@/ds'
 
 interface CustomerLabelSelectorProps {
   customerId: string
@@ -32,7 +29,6 @@ export function CustomerLabelSelector({
   const [allLabels, setAllLabels] = useState<CustomerLabel[]>(initialLabels ?? [])
   const [customerLabels, setCustomerLabels] = useState<CustomerLabelAssignment[]>(initialAssignments ?? [])
   const [loading, setLoading] = useState(!(initialLabels && initialAssignments))
-  const [showSelector, setShowSelector] = useState(false)
   const [assigningLabel, setAssigningLabel] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
@@ -70,7 +66,6 @@ export function CustomerLabelSelector({
       } else {
         toast.success('Label assigned')
         await loadData()
-        setShowSelector(false)
       }
     } catch (error) {
       toast.error('Failed to assign label')
@@ -110,12 +105,7 @@ export function CustomerLabelSelector({
   }, [customerId, initialAssignments, initialLabels, loadData, onLabelsChange])
 
   if (loading) {
-    return (
-      <div className="flex items-center space-x-2">
-        <Loader2 className="h-4 w-4 animate-spin text-text-subtle" />
-        <span className="text-sm text-text-muted">Loading labels...</span>
-      </div>
-    )
+    return <PageLoading inline label="Loading labels" className="py-4" />
   }
 
   return (
@@ -135,66 +125,65 @@ export function CustomerLabelSelector({
                 color: label.color
               }}
             >
-              <TagIcon className="h-3 w-3 mr-1" />
+              <Icon name="tag" size={12} className="mr-1" />
               {label.name}
               {assignment.auto_assigned && (
                 <span className="ml-1 text-xs opacity-70">(auto)</span>
               )}
               {canEdit && !assignment.auto_assigned && (
+                // A plain button: it is the remove control inside a chip drawn in the label's
+                // saved colour. The DS has no removable Badge, and even a small DS IconButton is
+                // a full button height, taller than the chip on desktop. (On phones the global
+                // touch floor in globals.css gives every button 44px, this one included.)
                 <button type="button"
                   onClick={() => handleRemoveLabel(label.id)}
                   aria-label={`Remove ${label.name}`}
                   className="ml-1 rounded-full hover:opacity-70 focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
-                  <XMarkIcon className="h-3 w-3" />
+                  <Icon name="x" size={12} className="block" />
                 </button>
               )}
             </span>
           )
         })}
 
-        {/* Add Label Button */}
+        {/* The labels that can be added. The DS Dropdown is portalled, so the Card this sits
+            in cannot clip the menu. */}
         {canEdit && availableLabels.length > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowSelector(!showSelector)}
-            icon={<TagIcon className="h-3 w-3" />}
+          <Dropdown
+            align="left"
+            // auto: label names are staff-chosen, so the menu fits the longest one.
+            width="auto"
+            trigger={
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon={<Icon name="tag" size={12} />}
+                loading={assigningLabel !== null}
+              >
+                Add Label
+              </Button>
+            }
           >
-            Add Label
-          </Button>
+            {availableLabels.map((label) => (
+              <DropdownItem
+                key={label.id}
+                onClick={() => void handleAssignLabel(label.id)}
+                icon={
+                  <span
+                    aria-hidden="true"
+                    className="block h-3 w-3 rounded-full"
+                    style={{ backgroundColor: label.color }}
+                  />
+                }
+              >
+                {label.name}
+              </DropdownItem>
+            ))}
+          </Dropdown>
         )}
       </div>
-
-      {/* Label Selector Dropdown */}
-      {showSelector && canEdit && (
-        <div className="relative">
-          <div className="absolute z-10 mt-1 w-64 overflow-hidden rounded-md border border-border bg-surface shadow-lg">
-            <div className="py-1">
-              {availableLabels.map((label) => (
-                <button type="button"
-                  key={label.id}
-                  onClick={() => handleAssignLabel(label.id)}
-                  disabled={assigningLabel === label.id}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset disabled:opacity-50 flex items-center justify-between"
-                >
-                  <div className="flex items-center">
-                    <div
-                      className="h-4 w-4 rounded-full mr-2"
-                      style={{ backgroundColor: label.color }}
-                    />
-                    <span>{label.name}</span>
-                  </div>
-                  {assigningLabel === label.id && (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

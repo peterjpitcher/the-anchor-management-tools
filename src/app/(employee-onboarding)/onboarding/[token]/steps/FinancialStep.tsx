@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input } from '@/ds';
+import { Alert, Button, Input } from '@/ds';
+import { StepFooter } from './StepParts';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface FinancialData {
@@ -19,9 +20,10 @@ interface FinancialStepProps {
   token: string;
   initialData?: Partial<Omit<FinancialData, 'bank_sort_code_confirm' | 'bank_account_number_confirm'>>;
   onSuccess: (data: Omit<FinancialData, 'bank_sort_code_confirm' | 'bank_account_number_confirm'>) => void;
+  onBack?: () => void;
 }
 
-export default function FinancialStep({ token, initialData, onSuccess }: FinancialStepProps) {
+export default function FinancialStep({ token, initialData, onSuccess, onBack }: FinancialStepProps) {
   const [data, setData] = useState<FinancialData>({
     ni_number: initialData?.ni_number ?? '',
     bank_name: initialData?.bank_name ?? '',
@@ -122,11 +124,13 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
         {field('bank_account_number_confirm', 'Confirm Account Number', 'text', 'numeric')}
       </div>
 
-      {globalError && <p className="text-sm text-danger">{globalError}</p>}
+      {globalError && <Alert tone="danger">{globalError}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? 'Saving...' : 'Save & Continue'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
+        </Button>
+      </StepFooter>
     </form>
   );
 }

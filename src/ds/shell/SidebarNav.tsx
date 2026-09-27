@@ -91,7 +91,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'cashing-up', label: 'Cashing Up', icon: 'cash', href: '/cashing-up/dashboard', permission: { module: 'cashing_up', action: 'view' } },
       { id: 'invoices', label: 'Invoices', icon: 'file', href: '/invoices', permission: { module: 'invoices', action: 'view' } },
-      { id: 'quotes', label: 'Quotes', icon: 'file', href: '/quotes', permission: { module: 'quotes', action: 'view' } },
+      { id: 'quotes', label: 'Quotes', icon: 'file', href: '/quotes', permission: { module: 'invoices', action: 'view' } },
       { id: 'projects', label: 'OJ Projects', icon: 'briefcase', href: '/oj-projects', permission: { module: 'oj_projects', action: 'view' } },
       { id: 'receipts', label: 'Receipts', icon: 'receipt', href: '/receipts', permission: { module: 'receipts', action: 'view' } },
       { id: 'mileage', label: 'Mileage', icon: 'map', href: '/mileage', permission: { module: 'mileage', action: 'view' } },

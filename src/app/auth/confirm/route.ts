@@ -8,8 +8,14 @@ const STATE_COOKIE = 'oj-reset-state'
 const STATE_COOKIE_PATH = '/auth/confirm'
 const FIVE_MINUTES = 60 * 5
 
-/** The card's shadow: the text colour at 8% opacity (hex alpha 14), so the page stays on the stone neutrals. */
-const CARD_SHADOW = `0 10px 30px ${STAFF.text}14`
+/*
+ * The interstitial is a bare HTML response with no app stylesheet, so it is styled inline with the
+ * literal token values from STAFF (pinned to globals.css by tests/ds/brand-palette.test.ts) and
+ * drawn as the sign-in card (src/app/auth/_components/AuthCard.tsx), like global-error.tsx: the
+ * same logo, card, title, lead and full-width primary button, so the reset journey keeps one look.
+ */
+/** --shadow-lg, the sign-in card's shadow. */
+const CARD_SHADOW = '0 12px 28px -8px rgba(15, 23, 42, 0.18)'
 
 function encodeState(state: { token_hash: string; type: EmailOtpType; next: string }) {
   return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url')
@@ -53,16 +59,22 @@ export async function GET(request: NextRequest) {
 
   const response = new NextResponse(
     `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Confirm Password Reset</title>
-<body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: ${STAFF.bg}; color: ${STAFF.text};">
-  <form method="post" style="background: ${STAFF.surface}; padding: 32px; border-radius: 12px; box-shadow: ${CARD_SHADOW}; text-align: center; max-width: 360px; width: 100%;">
-    <h1 style="font-size: 1.5rem; margin-bottom: 0.75rem;">Finish password reset</h1>
-    <p style="margin-bottom: 1.5rem; color: ${STAFF.textMuted};">Click continue to securely confirm your identity and choose a new password.</p>
-    <button type="submit" style="background: ${STAFF.primary}; color: ${STAFF.primaryFg}; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer;">Continue</button>
-    <p style="margin-top: 1rem; font-size: 0.75rem; color: ${STAFF.textMuted};">If you didn’t request this, you can safely close this page.</p>
+<body style="margin: 0; padding: 16px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: ${STAFF.bg}; color: ${STAFF.text}; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <form method="post" style="box-sizing: border-box; width: 100%; max-width: 384px; padding: 36px; background: ${STAFF.surface}; border: 1px solid ${STAFF.border}; border-radius: 14px; box-shadow: ${CARD_SHADOW};">
+    <img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" width="240" height="52" style="display: block; width: 240px; max-width: 100%; height: auto;">
+    <p style="margin: 0 0 24px; font-size: 12px; color: ${STAFF.textMuted};">Management Tools</p>
+    <h1 style="margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -0.015em; color: ${STAFF.textStrong};">Finish Password Reset</h1>
+    <p style="margin: 0 0 20px; font-size: 13px; line-height: 1.5; color: ${STAFF.textMuted};">Click continue to securely confirm your identity and choose a new password.</p>
+    <button type="submit" style="width: 100%; height: 36px; padding: 0 16px; border: 1px solid ${STAFF.primary}; border-radius: 8px; background: ${STAFF.primary}; color: ${STAFF.primaryFg}; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Continue</button>
+    <p style="margin: 28px 0 0; text-align: center; font-size: 12px; color: ${STAFF.textSoft};">If you didn’t request this, you can safely close this page.</p>
   </form>
-</body>`,
+</body>
+</html>`,
     {
       status: 200,
       headers: {

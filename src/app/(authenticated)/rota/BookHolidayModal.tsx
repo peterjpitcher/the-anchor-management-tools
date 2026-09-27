@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Button, FormGroup, Input, Modal } from '@/ds';
+import { Alert, Button, Field, Input, Modal, toast } from '@/ds';
 import { bookApprovedHoliday } from '@/app/actions/leave';
 
 interface BookHolidayModalProps {
@@ -13,15 +12,17 @@ interface BookHolidayModalProps {
   onBooked: (days: { employee_id: string; leave_date: string; request_id: string; status: 'approved' }[]) => void;
 }
 
+// Leave dates are plain days: read as UTC midnights and formatted in UTC, so a day never moves
+// with the browser's zone (and a count across the clock change stays whole).
 function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long',
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
   });
 }
 
 function dayCount(start: string, end: string): number {
-  const s = new Date(start + 'T00:00:00');
-  const e = new Date(end + 'T00:00:00');
+  const s = new Date(start + 'T00:00:00Z');
+  const e = new Date(end + 'T00:00:00Z');
   if (e < s) return 0;
   return Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
 }
@@ -53,7 +54,7 @@ export default function BookHolidayModal({
         note: note || null,
       });
       if (!result.success) { setError(result.error); return; }
-      toast.success(`Holiday booked — ${days} day${days !== 1 ? 's' : ''}`);
+      toast.success(`Holiday booked, ${days} day${days !== 1 ? 's' : ''}`);
       onBooked(result.leaveDays);
     });
   };
@@ -62,33 +63,33 @@ export default function BookHolidayModal({
     <Modal
       open
       onClose={onClose}
-      title={employeeName}
+      title="Book Holiday"
+      description={employeeName}
       width="sm"
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending || days === 0}>
-            {isPending ? 'Booking…' : 'Book holiday'}
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={days === 0} loading={isPending}>
+            Book Holiday
           </Button>
         </>
       }
     >
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">Book holiday</p>
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormGroup label="From" htmlFor="bh-start" required>
+          <Field label="From" htmlFor="bh-start" required>
             <Input id="bh-start" type="date" value={startDate} onChange={e => {
               setStartDate(e.target.value);
               if (e.target.value > endDate) setEndDate(e.target.value);
             }} />
-          </FormGroup>
-          <FormGroup label="To" htmlFor="bh-end" required>
+          </Field>
+          <Field label="To" htmlFor="bh-end" required>
             <Input id="bh-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
-          </FormGroup>
+          </Field>
         </div>
 
         {days > 0 && (
@@ -100,14 +101,14 @@ export default function BookHolidayModal({
           </p>
         )}
 
-        <FormGroup label="Note (optional)" htmlFor="bh-note">
+        <Field label="Note (optional)" htmlFor="bh-note">
           <Input
             id="bh-note"
             placeholder="Optional reason or note"
             value={note}
             onChange={e => setNote(e.target.value)}
           />
-        </FormGroup>
+        </Field>
       </div>
     </Modal>
   );

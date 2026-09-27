@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Button, Badge, Input, Spinner } from '@/ds'
+import { Button, Badge, Input, PageLoading } from '@/ds'
 import { Icon } from '@/ds/icons'
+import { CHECKLIST_PRESENCE_STATUS } from '../_shared/status-ui'
 import type { AttributionCandidate } from '@/app/actions/checklists'
 
 export interface Identity {
@@ -59,8 +60,9 @@ export function AttributionPicker({
         <p className="mt-1 text-xs text-text-muted">Choose who you are, then tick your tasks.</p>
       )}
 
+      {/* The list opens in place, under a divider, inside the sticky bar it belongs to. */}
       {open && (
-        <div className="mt-2 rounded-lg border border-border bg-surface p-2 shadow-sm">
+        <div className="mt-2 border-t border-border pt-2">
           <Input
             type="search"
             placeholder="Search staff by name"
@@ -71,32 +73,34 @@ export function AttributionPicker({
           />
           <div className="mt-2 max-h-72 overflow-y-auto">
             {loading ? (
-              <div className="flex items-center gap-2 p-3 text-sm text-text-muted">
-                <Spinner /> Loading staff
-              </div>
+              <PageLoading inline label="Loading staff" />
             ) : filtered.length === 0 ? (
               <p className="p-3 text-sm text-text-muted">No staff match that search.</p>
             ) : (
               <ul className="divide-y divide-border">
-                {filtered.map((c) => (
-                  <li key={c.employeeId}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelect({ employeeId: c.employeeId, name: c.name })
-                        setQuery('')
-                      }}
-                      className="flex min-h-touch w-full items-center justify-between gap-2 rounded-md px-2 py-3 text-left hover:bg-surface-2 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                    >
-                      <span className="truncate text-sm">{c.name}</span>
-                      {c.clockedIn ? (
-                        <Badge tone="success">Clocked in</Badge>
-                      ) : c.rostered ? (
-                        <Badge tone="info">Rostered</Badge>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
+                {filtered.map((c) => {
+                  const presence = c.clockedIn
+                    ? CHECKLIST_PRESENCE_STATUS.clockedIn
+                    : c.rostered
+                      ? CHECKLIST_PRESENCE_STATUS.rostered
+                      : null
+                  return (
+                    <li key={c.employeeId}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          onSelect({ employeeId: c.employeeId, name: c.name })
+                          setQuery('')
+                        }}
+                        className="h-auto min-h-touch w-full justify-between px-2 py-3 text-left font-normal focus-visible:shadow-ring-inset"
+                      >
+                        <span className="truncate text-sm">{c.name}</span>
+                        {presence && <Badge tone={presence.tone}>{presence.label}</Badge>}
+                      </Button>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>

@@ -1,13 +1,13 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
+import { Alert, Card, Empty, PageLayout, Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import LeaveManagerClient from './LeaveManagerClient';
-import { rotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 import { displayName } from '@/lib/employees/display-name';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
+import { leaveSubtitle } from '../_shared/layout';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,14 +22,16 @@ export default async function LeaveManagementPage() {
   const supabase = await createClient();
 
   // Fetch requests and employees in parallel
-  const [requestsResult, { data: employees }] = await Promise.all([
+  const [requestsResult, { data: employees, error: employeesError }, navItems] = await Promise.all([
     getLeaveRequests(),
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, preferred_name')
       .order('first_name'),
+    getRotaNavItems(),
   ]);
 
+  // A failed load shows the error, never an empty list.
   const requests = requestsResult.success ? requestsResult.data : [];
 
   // Build name lookup
@@ -57,29 +59,35 @@ export default async function LeaveManagementPage() {
 
   return (
     <PageLayout
-      title="Leave Requests"
-      subtitle={pendingCount > 0 ? `${pendingCount} pending approval` : 'All holiday requests'}
-      navItems={rotaNavItems}
+      title="Rota"
+      subtitle={leaveSubtitle(pendingCount)}
+      navItems={navItems}
     >
+      <PartialLoadAlert
+        missing={requestsResult.success && employeesError ? ['staff names'] : []}
+        consequence="requests may show as Unknown employee"
+      />
       <Section
         title="Holiday Requests"
         description="Review and approve employee holiday requests. Approved leave appears as an overlay on the weekly rota."
       >
-        <Card>
-          {requests.length === 0 ? (
-            <p className="text-sm text-text-soft italic py-4 text-center">
-              No leave requests submitted yet.
-            </p>
-          ) : (
-            <LeaveManagerClient
-              initialRequests={requests}
-              employeeMap={employeeMap}
-              canApprove={canApprove}
-              canEdit={canEdit}
-              usageMap={usageMap}
-            />
-          )}
-        </Card>
+        {!requestsResult.success ? (
+          <Alert tone="danger" title="Could not load leave requests">
+            {requestsResult.error}
+          </Alert>
+        ) : requests.length === 0 ? (
+          <Card padding="none">
+            <Empty size="sm" icon="calendar" title="No holiday requests yet" />
+          </Card>
+        ) : (
+          <LeaveManagerClient
+            initialRequests={requests}
+            employeeMap={employeeMap}
+            canApprove={canApprove}
+            canEdit={canEdit}
+            usageMap={usageMap}
+          />
+        )}
       </Section>
     </PageLayout>
   );

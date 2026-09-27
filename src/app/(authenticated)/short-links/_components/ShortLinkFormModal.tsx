@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, Button, Field, Input, Select, Alert } from '@/ds'
+import { Modal, Button, Card, Field, Input, Select, Alert, toast } from '@/ds'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
-import toast from 'react-hot-toast'
 import { applyUtmParams } from './utm-url'
 import type { ShortLink } from '@/types/short-links'
+
+/** Links the dialog's footer Save button to the form in its body. */
+const SHORT_LINK_FORM_ID = 'short-link-form'
 
 const LINK_TYPE_OPTIONS = [
   { value: 'custom', label: 'Custom' },
@@ -81,8 +83,8 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // The footer submit button sits outside the <form>, so the input's own
-    // type="url" validation never runs — validate here instead.
+    // The form skips the browser's own type="url" check (noValidate), so the URL is
+    // validated here and the message shows in the dialog.
     try {
       new URL(destinationUrl)
     } catch {
@@ -124,7 +126,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
             await navigator.clipboard.writeText(result.data.full_url)
             successMessage = 'Link created and copied!'
           } catch {
-            // Clipboard access is best-effort — the link was still created
+            // Clipboard access is best-effort: the link was still created
           }
         }
         toast.success(successMessage)
@@ -142,18 +144,24 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title={link ? 'Edit Short Link' : 'Create Short Link'}
+      title={link ? 'Edit Short Link' : 'New Short Link'}
       width="lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSubmit} loading={submitting} disabled={!destinationUrl}>
-            {link ? 'Save Changes' : 'Create Link'}
+          <Button
+            type="submit"
+            form={SHORT_LINK_FORM_ID}
+            variant="primary"
+            loading={submitting}
+            disabled={!destinationUrl}
+          >
+            {link ? 'Save Changes' : 'Create Short Link'}
           </Button>
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id={SHORT_LINK_FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-4">
         <Field label="Destination URL" required>
           <Input
             type="url"
@@ -197,20 +205,22 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
             size="sm"
             onClick={() => setShowUtm(!showUtm)}
           >
-            {showUtm ? 'Hide UTM parameters' : 'Add UTM parameters'}
+            {showUtm ? 'Hide UTM Parameters' : 'Add UTM Parameters'}
           </Button>
           {showUtm && (
-            <div className="mt-3 space-y-3 p-3 bg-surface-2 rounded-lg">
-              <Field label="UTM Source">
-                <Input value={utmSource} onChange={(e) => setUtmSource(e.target.value)} placeholder="e.g. facebook" />
-              </Field>
-              <Field label="UTM Medium">
-                <Input value={utmMedium} onChange={(e) => setUtmMedium(e.target.value)} placeholder="e.g. social" />
-              </Field>
-              <Field label="UTM Campaign">
-                <Input value={utmCampaign} onChange={(e) => setUtmCampaign(e.target.value)} placeholder="e.g. summer-promo" />
-              </Field>
-            </div>
+            <Card variant="secondary" padding="sm" className="mt-3">
+              <div className="space-y-3">
+                <Field label="UTM Source">
+                  <Input value={utmSource} onChange={(e) => setUtmSource(e.target.value)} placeholder="e.g. facebook" />
+                </Field>
+                <Field label="UTM Medium">
+                  <Input value={utmMedium} onChange={(e) => setUtmMedium(e.target.value)} placeholder="e.g. social" />
+                </Field>
+                <Field label="UTM Campaign">
+                  <Input value={utmCampaign} onChange={(e) => setUtmCampaign(e.target.value)} placeholder="e.g. summer-promo" />
+                </Field>
+              </div>
+            </Card>
           )}
         </div>
 

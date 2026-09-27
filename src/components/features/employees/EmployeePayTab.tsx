@@ -1,14 +1,31 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { PlusIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Alert } from '@/ds';
-import { Badge } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  DescriptionList,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  Select,
+  Stat,
+  SubHeading,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from '@/ds';
+import { RATE_OVERRIDE_TONES, type RateOverrideState } from '@/app/(authenticated)/employees/_shared/status-ui';
 import {
   upsertEmployeePaySettings,
   addEmployeeRateOverride,
@@ -25,6 +42,8 @@ interface EmployeePayTabProps {
   initialOverrides: EmployeeRateOverride[];
   /** Current effective rate resolved by the pay calculator (for display). */
   currentRate: { rate: number; source: 'override' | 'age_band' } | null;
+  /** Why the pay settings or rate overrides could not be loaded. The tab then says so. */
+  loadError?: string | null;
 }
 
 function formatRate(rate: number) {
@@ -35,12 +54,19 @@ function formatDate(iso: string) {
   return formatDateInLondon(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+const RATE_OVERRIDE_LABELS: Record<RateOverrideState, string> = {
+  upcoming: 'Upcoming',
+  current: 'Current',
+  historical: 'Historical',
+};
+
 export default function EmployeePayTab({
   employeeId,
   canEdit,
   initialPaySettings,
   initialOverrides,
   currentRate,
+  loadError,
 }: EmployeePayTabProps) {
   // Pay settings state
   const [payType, setPayType] = useState<'hourly' | 'salaried'>(
@@ -62,6 +88,8 @@ export default function EmployeePayTab({
   const [editOverrideRate, setEditOverrideRate] = useState('');
   const [editOverrideEffectiveFrom, setEditOverrideEffectiveFrom] = useState('');
   const [overrideError, setOverrideError] = useState('');
+  // A row being edited in the table has its own message, so it never shows beside the add form.
+  const [editOverrideError, setEditOverrideError] = useState('');
   const [overrideIsPending, startOverrideTransition] = useTransition();
 
   const handleSaveSettings = () => {
@@ -115,15 +143,15 @@ export default function EmployeePayTab({
     setEditingOverrideId(override.id);
     setEditOverrideRate(String(override.hourly_rate));
     setEditOverrideEffectiveFrom(override.effective_from);
-    setOverrideError('');
+    setEditOverrideError('');
   };
 
   const handleUpdateOverride = () => {
     if (!editingOverrideId) return;
     const rate = parseFloat(editOverrideRate);
-    if (!rate || rate <= 0) { setOverrideError('Enter a valid hourly rate'); return; }
-    if (!editOverrideEffectiveFrom) { setOverrideError('Choose an effective-from date'); return; }
-    setOverrideError('');
+    if (!rate || rate <= 0) { setEditOverrideError('Enter a valid hourly rate'); return; }
+    if (!editOverrideEffectiveFrom) { setEditOverrideError('Choose an effective-from date'); return; }
+    setEditOverrideError('');
 
     startOverrideTransition(async () => {
       const result = await updateEmployeeRateOverride({
@@ -145,142 +173,129 @@ export default function EmployeePayTab({
     });
   };
 
+  const cancelSettings = () => {
+    setSettingsEditing(false);
+    setSettingsError('');
+    setPayType(initialPaySettings?.pay_type ?? 'hourly');
+    setMaxHours(initialPaySettings?.max_weekly_hours?.toString() ?? '');
+  };
+
+  // A failed load says so rather than showing default settings and no overrides, which would
+  // invite an edit that overwrites the real ones.
+  if (loadError) {
+    return (
+      <Card>
+        <CardHeader title="Pay Settings" />
+        <CardBody>
+          <Alert tone="danger" title="Could not load pay details">{loadError}</Alert>
+        </CardBody>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Pay settings header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-text">Pay Settings</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Pay type, max weekly hours guideline, and individual rate overrides.
-          </p>
-        </div>
-        {canEdit && !settingsEditing && (
-          <Button type="button" size="sm" variant="secondary" onClick={() => setSettingsEditing(true)}>
-            Edit
-          </Button>
-        )}
-      </div>
-
-      {/* Current rate banner */}
-      {currentRate && (
-        <div className="rounded-lg bg-success-soft border border-success-border px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-success-fg font-medium uppercase tracking-wide">Current hourly rate</p>
-            <p className="text-2xl font-bold text-success-fg mt-0.5">{formatRate(currentRate.rate)}</p>
-          </div>
-          <Badge variant="success" size="sm">
-            {currentRate.source === 'override' ? 'Individual override' : 'Age band'}
-          </Badge>
-        </div>
-      )}
-
-      {payType === 'salaried' && !settingsEditing && (
-        <div className="rounded-lg bg-surface-2 border border-border px-4 py-3">
-          <p className="text-sm text-text-muted">
-            This employee is <strong>salaried</strong>. They appear in the rota and timeclock but are excluded from hourly pay calculations and payroll exports.
-          </p>
-        </div>
-      )}
-
-      {/* Pay settings form / read view */}
-      <dl className="sm:divide-y sm:divide-border">
-        <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-text-muted">Pay type</dt>
-          <dd className="mt-1 sm:mt-0 sm:col-span-3">
-            {settingsEditing ? (
-              <Select
-                value={payType}
-                onChange={e => setPayType(e.target.value as 'hourly' | 'salaried')}
-                options={[
-                  { value: 'hourly', label: 'Hourly' },
-                  { value: 'salaried', label: 'Salaried' },
-                ]}
-                className="max-w-xs"
-              />
-            ) : (
-              <span className="text-sm text-text capitalize">{payType}</span>
-            )}
-          </dd>
-        </div>
-
-        <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-text-muted">Max weekly hours</dt>
-          <dd className="mt-1 sm:mt-0 sm:col-span-3">
-            {settingsEditing ? (
-              <Input
-                type="number"
-                min="0"
-                step="0.5"
-                placeholder="e.g. 40"
-                value={maxHours}
-                onChange={e => setMaxHours(e.target.value)}
-                className="max-w-xs"
-              />
-            ) : (
-              <span className="text-sm text-text">
-                {initialPaySettings?.max_weekly_hours != null
-                  ? `${initialPaySettings.max_weekly_hours} hrs/week`
-                  : <span className="text-text-soft">Not set</span>}
-              </span>
-            )}
-          </dd>
-        </div>
-
-      </dl>
-
-      {settingsEditing && (
-        <div className="space-y-3">
-          {settingsError && <Alert variant="error">{settingsError}</Alert>}
-          <div className="flex gap-2">
-            <Button type="button" variant="primary" onClick={handleSaveSettings} disabled={settingsIsPending}>
-              {settingsIsPending ? 'Saving…' : 'Save settings'}
+      <Card>
+        <CardHeader
+          title="Pay Settings"
+          subtitle="Pay type, max weekly hours guideline, and individual rate overrides"
+          action={canEdit && !settingsEditing ? (
+            <Button type="button" size="sm" variant="secondary" onClick={() => setSettingsEditing(true)}>
+              Edit
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setSettingsEditing(false);
-                setSettingsError('');
-                setPayType(initialPaySettings?.pay_type ?? 'hourly');
-                setMaxHours(initialPaySettings?.max_weekly_hours?.toString() ?? '');
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Rate overrides section (hourly only) */}
-      {payType === 'hourly' && (
-        <div className="pt-4 border-t border-border">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="text-sm font-medium text-text">Individual Rate Overrides</h4>
-              <p className="text-xs text-text-muted mt-0.5">
-                Override the age-band rate for this employee. Append-only — historical rates are preserved.
-              </p>
+          ) : undefined}
+        />
+        <CardBody className="space-y-4">
+          {currentRate && (
+            <div className="flex items-center justify-between gap-4">
+              {/* Green, as it was before the page contract: the rate in force today. */}
+              <Stat label="Current hourly rate" value={formatRate(currentRate.rate)} tone="success" />
+              <Badge size="sm">
+                {currentRate.source === 'override' ? 'Individual override' : 'Age band'}
+              </Badge>
             </div>
-            {canEdit && (
+          )}
+
+          {payType === 'salaried' && !settingsEditing && (
+            <Alert tone="info" size="sm">
+              This employee is <strong>salaried</strong>. They appear in the rota and timeclock but are excluded from hourly pay calculations and payroll exports.
+            </Alert>
+          )}
+
+          {settingsEditing ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Select
+                  label="Pay type"
+                  value={payType}
+                  onChange={e => setPayType(e.target.value as 'hourly' | 'salaried')}
+                  options={[
+                    { value: 'hourly', label: 'Hourly' },
+                    { value: 'salaried', label: 'Salaried' },
+                  ]}
+                />
+                <Input
+                  label="Max weekly hours"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="e.g. 40"
+                  value={maxHours}
+                  onChange={e => setMaxHours(e.target.value)}
+                />
+              </div>
+              {settingsError && <Alert tone="danger" size="sm">{settingsError}</Alert>}
+              <FormFooter>
+                <Button type="button" variant="secondary" onClick={cancelSettings}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="primary" onClick={handleSaveSettings} loading={settingsIsPending}>
+                  Save Pay Settings
+                </Button>
+              </FormFooter>
+            </>
+          ) : (
+            <DescriptionList
+              items={[
+                { key: 'pay-type', label: 'Pay type', value: <span className="capitalize">{payType}</span> },
+                {
+                  key: 'max-weekly-hours',
+                  label: 'Max weekly hours',
+                  value: initialPaySettings?.max_weekly_hours != null
+                    ? `${initialPaySettings.max_weekly_hours} hrs/week`
+                    : <span className="text-text-soft">Not set</span>,
+                },
+              ]}
+            />
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Rate overrides (hourly only) */}
+      {payType === 'hourly' && (
+        <Card>
+          <CardHeader
+            title="Individual Rate Overrides"
+            subtitle="Override the age-band rate for this employee; historical rates are preserved"
+            action={canEdit ? (
               <Button
                 type="button"
                 size="sm"
-                variant="ghost"
-                leftIcon={<PlusIcon className="h-3.5 w-3.5" />}
+                variant="secondary"
+                icon={<Icon name="plus" size={14} />}
                 onClick={() => setShowOverrideForm(v => !v)}
               >
-                Add override
+                Add Override
               </Button>
-            )}
-          </div>
+            ) : undefined}
+          />
 
           {showOverrideForm && canEdit && (
-            <div className="mb-4 p-3 bg-surface-2 rounded-lg border border-border space-y-3">
-              <p className="text-xs font-medium text-text-muted">New effective-dated rate override</p>
-              {overrideError && <p className="text-xs text-danger-fg">{overrideError}</p>}
-              <div className="grid grid-cols-2 gap-3">
-                <FormGroup label="Hourly rate (£)" htmlFor="override-rate">
+            <CardBody className="space-y-4 border-b border-border">
+              <SubHeading>Add Override</SubHeading>
+              {overrideError && <Alert tone="danger" size="sm">{overrideError}</Alert>}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Hourly rate (£)">
                   <Input
                     id="override-rate"
                     type="number"
@@ -290,84 +305,94 @@ export default function EmployeePayTab({
                     value={overrideRate}
                     onChange={e => setOverrideRate(e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Effective from" htmlFor="override-eff">
+                </Field>
+                <Field label="Effective from">
                   <Input
                     id="override-eff"
                     type="date"
                     value={overrideEffectiveFrom}
                     onChange={e => setOverrideEffectiveFrom(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
               </div>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant="primary" onClick={handleAddOverride} disabled={overrideIsPending}>
-                  {overrideIsPending ? 'Saving…' : 'Save override'}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setShowOverrideForm(false)}>
+              <FormFooter>
+                <Button type="button" variant="secondary" onClick={() => { setShowOverrideForm(false); setOverrideError(''); }}>
                   Cancel
                 </Button>
-              </div>
-            </div>
+                <Button type="button" variant="primary" onClick={handleAddOverride} loading={overrideIsPending}>
+                  Add Override
+                </Button>
+              </FormFooter>
+            </CardBody>
+          )}
+
+          {/* A row being edited in the table says why it cannot be saved, above the table. */}
+          {editingOverrideId && editOverrideError && (
+            <CardBody>
+              <Alert tone="danger" size="sm">{editOverrideError}</Alert>
+            </CardBody>
           )}
 
           {overrides.length === 0 ? (
-            <p className="text-sm text-text-soft italic">No individual overrides set. Rate is calculated from age band.</p>
+            <Empty
+              size="sm"
+              title="No overrides yet"
+              description="The rate comes from the employee's age band."
+            />
           ) : (
-            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-text-muted border-b border-border">
-                  <th scope="col" className="text-left pb-1.5 font-medium">Rate</th>
-                  <th scope="col" className="text-left pb-1.5 font-medium">Effective from</th>
-                  <th scope="col" className="text-left pb-1.5 font-medium">Status</th>
-                  {canEdit && <th scope="col" className="text-right pb-1.5 font-medium">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rate</TableHead>
+                  <TableHead>Effective from</TableHead>
+                  <TableHead>Status</TableHead>
+                  {canEdit && <TableHead align="right">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {overrides.map((ov) => {
                   const today = getTodayIsoDate();
                   const isUpcoming = ov.effective_from > today;
                   const isCurrent = !isUpcoming && overrides.find(o => o.effective_from <= today)?.id === ov.id;
+                  const overrideState: RateOverrideState = isUpcoming ? 'upcoming' : isCurrent ? 'current' : 'historical';
                   return (
-                    <tr key={ov.id} className="border-b border-border">
-                      <td className="py-2 font-medium text-text">
+                    <TableRow key={ov.id}>
+                      <TableCell className="font-medium">
                         {editingOverrideId === ov.id ? (
                           <Input
                             type="number"
                             step="0.01"
                             min="0"
+                            aria-label="Hourly rate (£)"
                             value={editOverrideRate}
                             onChange={e => setEditOverrideRate(e.target.value)}
                           />
                         ) : formatRate(ov.hourly_rate)}
-                      </td>
-                      <td className="py-2 text-text-muted">
+                      </TableCell>
+                      <TableCell className="text-text-muted">
                         {editingOverrideId === ov.id ? (
                           <Input
                             type="date"
+                            aria-label="Effective from"
                             value={editOverrideEffectiveFrom}
                             onChange={e => setEditOverrideEffectiveFrom(e.target.value)}
                           />
                         ) : formatDate(ov.effective_from)}
-                      </td>
-                      <td className="py-2">
-                        {isUpcoming
-                          ? <Badge variant="warning" size="sm">Upcoming</Badge>
-                          : isCurrent
-                          ? <Badge variant="success" size="sm">Current</Badge>
-                          : <span className="text-text-soft text-xs">Historical</span>
-                        }
-                      </td>
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={RATE_OVERRIDE_TONES[overrideState]} size="sm">
+                          {RATE_OVERRIDE_LABELS[overrideState]}
+                        </Badge>
+                      </TableCell>
                       {canEdit && (
-                        <td className="py-2 text-right">
+                        <TableCell align="right">
                           {editingOverrideId === ov.id ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} disabled={overrideIsPending}>
-                                Save
-                              </Button>
-                              <Button type="button" size="sm" variant="ghost" onClick={() => setEditingOverrideId(null)}>
+                              <Button type="button" size="sm" variant="secondary" onClick={() => { setEditingOverrideId(null); setEditOverrideError(''); }}>
                                 Cancel
+                              </Button>
+                              <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} loading={overrideIsPending}>
+                                Save Changes
                               </Button>
                             </div>
                           ) : isUpcoming ? (
@@ -375,16 +400,15 @@ export default function EmployeePayTab({
                               Edit
                             </Button>
                           ) : null}
-                        </td>
+                        </TableCell>
                       )}
-                    </tr>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-            </div>
+              </TableBody>
+            </Table>
           )}
-        </div>
+        </Card>
       )}
     </div>
   );

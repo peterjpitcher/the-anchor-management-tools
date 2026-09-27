@@ -3,18 +3,23 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import type { AttachmentCategory } from '@/app/actions/attachmentCategories'
 import { createAttachmentCategory, deleteAttachmentCategory, listAttachmentCategories, updateAttachmentCategory } from '@/app/actions/attachmentCategories'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  PageLayout,
+  PageLoading,
+} from '@/ds'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
-import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Form } from '@/ds'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
-import { Checkbox } from '@/ds'
-import { Alert } from '@/ds'
-import { Spinner } from '@/ds'
-import { EmptyState } from '@/ds'
 
 type CategoriesClientProps = {
   initialCategories: AttachmentCategory[]
@@ -32,6 +37,9 @@ export default function CategoriesClient({ initialCategories, canManage, initial
   const [editingEmailOnUpload, setEditingEmailOnUpload] = useState(false)
   const [isRefreshing, startRefreshTransition] = useTransition()
   const [isMutating, startMutateTransition] = useTransition()
+  // A list that failed to load is an error, never shown as "no categories".
+  const [loadFailed, setLoadFailed] = useState(initialError !== null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.category_name.localeCompare(b.category_name)),
@@ -44,9 +52,11 @@ export default function CategoriesClient({ initialCategories, canManage, initial
       const result = await listAttachmentCategories()
       if (result.error) {
         setError(result.error)
+        setLoadFailed(true)
         return
       }
 
+      setLoadFailed(false)
       setCategories(result.categories ?? [])
     })
   }
@@ -122,14 +132,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
     })
   }
 
-  const handleDeleteCategory = async (categoryId: string, categoryName: string) => {
-    const confirmed = confirm(
-      `Delete "${categoryName}"? Any attachments using this category will need to be updated.`,
-    )
-    if (!confirmed) {
-      return
-    }
-
+  const handleDeleteCategory = (categoryId: string) => {
     startMutateTransition(async () => {
       const result = await deleteAttachmentCategory(categoryId)
       if (result.error) {
@@ -143,161 +146,176 @@ export default function CategoriesClient({ initialCategories, canManage, initial
   return (
     <PageLayout
       title="Attachment Categories"
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'Categories' },
-      ]}
+      subtitle="Manage categories for employee attachment files"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
-      <div className="space-y-6">
-        <p className="text-sm text-text">
-          Manage categories for employee attachment files.
-        </p>
+      {error && (
+        <Alert tone="danger" title="Error">{error}</Alert>
+      )}
 
-        {error && (
-          <Alert variant="error" title="Error" description={error} />
-        )}
+      {!canManage && (
+        <Alert tone="info">
+          You have read-only access to attachment categories.
+        </Alert>
+      )}
 
-        {!canManage && (
-          <Alert
-            variant="info"
-            description="You have read-only access to attachment categories."
-          />
-        )}
-
-        <Section title="Add New Category">
-          <Card>
-            <Form onSubmit={handleAddCategory}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <Card>
+        <CardHeader title="New Category" />
+        <CardBody>
+          <form onSubmit={handleAddCategory} className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Field label="Name" className="flex-1">
                 <Input
                   type="text"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   placeholder="New category name"
-                  className="flex-1"
                   disabled={!canManage || isMutating}
                 />
-                <Checkbox
-                  label="Email on upload"
-                  checked={newCategoryEmailOnUpload}
-                  onChange={(checked) => setNewCategoryEmailOnUpload(checked)}
-                  disabled={!canManage || isMutating}
-                />
-                <Button
-                  type="submit"
-                  leftIcon={<PlusIcon className="h-4 w-4" />}
-                  disabled={!canManage || isMutating}
-                >
-                  Add Category
-                </Button>
-              </div>
-            </Form>
-          </Card>
-        </Section>
-
-        <Section title="Categories">
-          <Card>
-            {isRefreshing ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner />
-              </div>
-            ) : sortedCategories.length === 0 ? (
-              <EmptyState
-                title="No categories defined"
-                description="Add your first category above to get started."
+              </Field>
+              {/* Level with the field beside it: bottom of the row, at least the field's height.
+                  A minimum, not a fixed height: on a touch screen the label grows to 44px. */}
+              <Checkbox
+                className="min-h-input-h items-center"
+                label="Email on upload"
+                checked={newCategoryEmailOnUpload}
+                onChange={(checked) => setNewCategoryEmailOnUpload(checked)}
+                disabled={!canManage || isMutating}
               />
-            ) : (
-              <div className="divide-y divide-border">
-                {sortedCategories.map((category) => (
-                  <div key={category.category_id} className="px-4 py-4">
-                    {editingId === category.category_id ? (
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <Input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          className="flex-1"
-                          autoFocus
-                        />
+            </div>
+            <FormFooter>
+              <Button
+                type="submit"
+                variant="primary"
+                icon={<Icon name="plus" size={16} />}
+                disabled={!canManage || isMutating}
+              >
+                Create Category
+              </Button>
+            </FormFooter>
+          </form>
+        </CardBody>
+      </Card>
+
+      <Card padding="none">
+        <CardHeader title="Categories" />
+        {isRefreshing ? (
+          <PageLoading inline label="Loading categories" />
+        ) : sortedCategories.length === 0 ? (
+          loadFailed ? null : (
+            <Empty
+              size="sm"
+              title="No categories yet"
+              description="Create the first category above."
+            />
+          )
+        ) : (
+          <div className="divide-y divide-border">
+            {sortedCategories.map((category) => (
+              <div key={category.category_id} className="px-pad-card py-4">
+                {editingId === category.category_id ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <Input
+                      type="text"
+                      aria-label="Category name"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      className="flex-1"
+                      autoFocus
+                    />
+                    <Checkbox
+                      label="Email on upload"
+                      checked={editingEmailOnUpload}
+                      onChange={(checked) => setEditingEmailOnUpload(checked)}
+                      disabled={isMutating}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          setEditingId(null)
+                          setEditingName('')
+                          setEditingEmailOnUpload(false)
+                        }}
+                        variant="secondary"
+                        size="sm"
+                        disabled={isMutating}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => handleUpdateCategory(category.category_id)}
+                        variant="primary"
+                        size="sm"
+                        disabled={isMutating}
+                      >
+                        Save Changes
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">{category.category_name}</p>
+                      <p className="text-xs text-text-muted">
+                        Updated {formatDateTimeInLondon(category.updated_at)}
+                      </p>
+                      {!canManage && (
+                        <p className="text-xs text-text-muted">
+                          Email on upload: {category.email_on_upload ? 'On' : 'Off'}
+                        </p>
+                      )}
+                    </div>
+                    {canManage && (
+                      <div className="flex flex-wrap items-center gap-2">
                         <Checkbox
                           label="Email on upload"
-                          checked={editingEmailOnUpload}
-                          onChange={(checked) => setEditingEmailOnUpload(checked)}
+                          checked={category.email_on_upload}
+                          onChange={(checked) => handleToggleEmailOnUpload(category.category_id, checked, category.category_name)}
                           disabled={isMutating}
                         />
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => handleUpdateCategory(category.category_id)}
-                            variant="primary"
-                            size="sm"
-                            disabled={isMutating}
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setEditingId(null)
-                              setEditingName('')
-                              setEditingEmailOnUpload(false)
-                            }}
-                            variant="secondary"
-                            size="sm"
-                            disabled={isMutating}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-medium">{category.category_name}</p>
-                          <p className="text-xs text-text-muted">
-                            Updated {formatDateTimeInLondon(category.updated_at)}
-                          </p>
-                          {!canManage && (
-                            <p className="text-xs text-text-muted">
-                              Email on upload: {category.email_on_upload ? 'On' : 'Off'}
-                            </p>
-                          )}
-                        </div>
-                        {canManage && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Checkbox
-                              label="Email on upload"
-                              checked={category.email_on_upload}
-                              onChange={(checked) => handleToggleEmailOnUpload(category.category_id, checked, category.category_name)}
-                              disabled={isMutating}
-                            />
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              leftIcon={<PencilIcon className="h-4 w-4" />}
-                              onClick={() => handleStartEdit(category.category_id, category.category_name)}
-                              disabled={isMutating}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              leftIcon={<TrashIcon className="h-4 w-4" />}
-                              onClick={() => handleDeleteCategory(category.category_id, category.category_name)}
-                              disabled={isMutating}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        )}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<Icon name="edit" size={16} />}
+                          onClick={() => handleStartEdit(category.category_id, category.category_name)}
+                          disabled={isMutating}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          icon={<Icon name="trash" size={16} />}
+                          onClick={() => setDeleteTarget({ id: category.category_id, name: category.category_name })}
+                          disabled={isMutating}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     )}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </Card>
-        </Section>
-      </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) handleDeleteCategory(deleteTarget.id)
+        }}
+        tone="danger"
+        title="Delete Category"
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.name}"? Any attachments using this category will need to be updated.`
+            : undefined
+        }
+        confirmLabel="Delete"
+      />
     </PageLayout>
   )
 }

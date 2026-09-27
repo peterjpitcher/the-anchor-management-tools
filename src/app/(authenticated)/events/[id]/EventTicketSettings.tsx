@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardBody, Button, Input, Select, Checkbox, toast } from '@/ds'
+import { Alert, Card, CardHeader, CardBody, Button, Empty, FormFooter, Input, Select, Checkbox, SubHeading, toast } from '@/ds'
 import { saveEventTicketSettings } from '@/app/actions/event-ticket-settings'
 import type { BookingQuestion } from '@/lib/events/booking-questions'
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
@@ -62,40 +62,48 @@ export function EventTicketSettings({ event, canManage }: Props) {
   }
   let expired = false
   try { expired = !!endsAt && Date.parse(londonLocalInputToUtcIso(endsAt) ?? '') <= Date.now() } catch { /* Invalid partial input is reported on save. */ }
+  // One form in three blocks (payment, online discount, guest questions), each its own card,
+  // ending with the one save row.
   return (
-    <Card>
-      <CardHeader title="Payment and guest details" subtitle="Choose how guests pay and what each person needs to tell us." />
-      <CardBody>
-        <fieldset disabled={!canManage || pending} className="space-y-6">
+    <fieldset disabled={!canManage || pending} className="space-y-6">
+      <Card>
+        <CardHeader title="Payment and Guest Details" subtitle="Choose how guests pay and what each person needs to tell us" />
+        <CardBody>
           <Select label="Payment method" value={mode} onChange={event => setMode(event.target.value)} options={[
             { value: 'free', label: 'Free entry' }, { value: 'cash_only', label: 'Pay on arrival' }, { value: 'prepaid', label: 'Pay online' },
           ]} />
-          {mode === 'prepaid' && (
-            <div className="space-y-3 border-t border-border pt-5">
-              <h3 className="font-semibold text-text-strong">Online discount</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Select label="Discount" value={discountType} onChange={event => setDiscountType(event.target.value)} options={[
-                  { value: '', label: 'No discount' }, { value: 'fixed', label: 'Amount off each ticket (£)' }, { value: 'percent', label: 'Percentage off each ticket (%)' },
-                ]} />
-                {discountType && <Input label={discountType === 'fixed' ? 'Amount off (£)' : 'Percentage off (%)'} type="number" min="0.01" step="0.01" value={discount} onChange={event => setDiscount(event.target.value)} />}
-              </div>
-              {discountType && <>
-                <Input label="Discount ends (London time)" type="datetime-local" value={endsAt} onChange={event => setEndsAt(event.target.value)} />
-                <p className="text-sm text-text-muted">Leave blank to keep the discount until bookings close. A guest who starts checkout before the deadline keeps that price until their payment hold expires.</p>
-                {expired && <p className="text-sm text-warning-fg" role="status">This deadline has passed. New bookings pay the full ticket price.</p>}
-              </>}
+        </CardBody>
+      </Card>
+      {mode === 'prepaid' && (
+        <Card>
+          <CardHeader title="Online Discount" />
+          <CardBody className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select label="Discount" value={discountType} onChange={event => setDiscountType(event.target.value)} options={[
+                { value: '', label: 'No discount' }, { value: 'fixed', label: 'Amount off each ticket (£)' }, { value: 'percent', label: 'Percentage off each ticket (%)' },
+              ]} />
+              {discountType && <Input label={discountType === 'fixed' ? 'Amount off (£)' : 'Percentage off (%)'} type="number" min="0.01" step="0.01" value={discount} onChange={event => setDiscount(event.target.value)} />}
             </div>
-          )}
-          {paid && <div className="space-y-4 border-t border-border pt-5">
-            <div><h3 className="font-semibold text-text-strong">Questions for every guest</h3>
-              <p className="mt-1 text-sm text-text-muted">Online-paid tickets collect a name for each person. Adding questions also collects individual names for pay-on-arrival bookings. Leave this empty to keep ordinary reservations simple. Saved bookings keep their original answers.</p></div>
+            {discountType && <>
+              <Input label="Discount ends (London time)" type="datetime-local" value={endsAt} onChange={event => setEndsAt(event.target.value)} />
+              <p className="text-sm text-text-muted">Leave blank to keep the discount until bookings close. A guest who starts checkout before the deadline keeps that price until their payment hold expires.</p>
+              {expired && <Alert tone="warning" size="sm" role="status">This deadline has passed. New bookings pay the full ticket price.</Alert>}
+            </>}
+          </CardBody>
+        </Card>
+      )}
+      {paid && (
+        <Card>
+          <CardHeader title="Questions for Every Guest" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Online-paid tickets collect a name for each person. Adding questions also collects individual names for pay-on-arrival bookings. Leave this empty to keep ordinary reservations simple. Saved bookings keep their original answers.</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any allergies or dietary requirements?')}>Add allergy question</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any accessibility needs we should be aware of?')}>Add accessibility question</Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any allergies or dietary requirements?')}>Add Allergy Question</Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any accessibility needs we should be aware of?')}>Add Accessibility Question</Button>
             </div>
-            {questions.length === 0 && <p className="rounded-default border border-border p-4 text-sm text-text-muted">No extra questions. {mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'}</p>}
+            {questions.length === 0 && <Empty size="sm" title="No extra questions" description={mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'} />}
             {questions.map((question, index) => <div key={question.id} className="space-y-3 rounded-default border border-border p-4">
-              <div className="flex items-center justify-between gap-2"><h4 className="text-sm font-semibold text-text-strong">Guest question {index + 1}</h4>
+              <div className="flex items-center justify-between gap-2"><SubHeading>Guest Question {index + 1}</SubHeading>
                 <div className="flex gap-1">
                   <Button type="button" variant="ghost" size="sm" aria-label={`Move question ${index + 1} up`} disabled={index === 0} onClick={() => moveQuestion(index, -1)}>Up</Button>
                   <Button type="button" variant="ghost" size="sm" aria-label={`Move question ${index + 1} down`} disabled={index === questions.length - 1} onClick={() => moveQuestion(index, 1)}>Down</Button>
@@ -109,12 +117,16 @@ export function EventTicketSettings({ event, canManage }: Props) {
               {question.type === 'choice' && <Input label={`Options for question ${index + 1} (separate with commas)`} value={(question.options ?? []).join(',')} onChange={event => changeQuestion(question.id, { options: event.target.value.split(',') })} />}
               <Checkbox label="Answer required" checked={question.required} onChange={checked => changeQuestion(question.id, { required: checked })} />
             </div>)}
-            <Button type="button" variant="secondary" disabled={questions.length >= 20} onClick={() => addQuestion()}>Add a question</Button>
-          </div>}
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          {canManage && <Button type="button" onClick={save} disabled={pending}>{pending ? 'Saving ticket settings…' : 'Save ticket settings'}</Button>}
-        </fieldset>
-      </CardBody>
-    </Card>
+            <Button type="button" variant="secondary" disabled={questions.length >= 20} onClick={() => addQuestion()}>Add a Question</Button>
+          </CardBody>
+        </Card>
+      )}
+      {error && <Alert tone="danger" size="sm">{error}</Alert>}
+      {canManage && (
+        <FormFooter>
+          <Button type="button" variant="primary" onClick={save} loading={pending}>Save Ticket Settings</Button>
+        </FormFooter>
+      )}
+    </fieldset>
   )
 }

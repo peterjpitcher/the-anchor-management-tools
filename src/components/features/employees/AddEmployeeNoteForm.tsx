@@ -5,9 +5,7 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { addEmployeeNote } from '@/app/actions/employeeActions'
 import type { NoteFormState } from '@/types/actions'
-import { Button } from '@/ds'
-import { Textarea } from '@/ds'
-import { toast } from '@/ds'
+import { Alert, Button, FormFooter, Textarea, toast } from '@/ds'
 
 interface AddEmployeeNoteFormProps {
   employeeId: string
@@ -16,8 +14,8 @@ interface AddEmployeeNoteFormProps {
 function SubmitNoteButton() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant="primary" size="md" disabled={pending} className="w-full sm:w-auto">
-      {pending ? 'Adding Note...' : 'Add Note'}
+    <Button type="submit" variant="primary" loading={pending}>
+      Add Note
     </Button>
   )
 }
@@ -40,40 +38,29 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
   }, [state, router])
 
   return (
-    <form action={dispatch} ref={formRef}>
-      <div>
-        <label htmlFor="note_text" className="sr-only">
-          Add a note
-        </label>
-        <Textarea
-          rows={3}
-          name="note_text"
-          id="note_text"
-          placeholder="Add a time-stamped note..."
-          defaultValue=""
-          error={!!state?.errors?.note_text}
-          fullWidth
-        />
-        {state?.errors?.note_text && (
-          <p className="mt-1 text-sm text-danger">{state.errors.note_text}</p>
-        )}
-      </div>
+    <form action={dispatch} ref={formRef} className="space-y-3">
+      <Textarea
+        rows={3}
+        name="note_text"
+        id="note_text"
+        aria-label="Add a note"
+        placeholder="Add a time-stamped note..."
+        defaultValue=""
+        error={state?.errors?.note_text?.join(' ') || undefined}
+      />
 
       <input type="hidden" name="employee_id" value={employeeId} />
 
       {state?.errors?.general && (
-        <p className="mt-2 text-sm text-danger">{state.errors.general}</p>
+        <Alert tone="danger" size="sm">{state.errors.general.join(' ')}</Alert>
       )}
       {state?.type === 'error' && state.message && !state.errors && (
-        <p className="mt-2 text-sm text-danger">{state.message}</p>
+        <Alert tone="danger" size="sm">{state.message}</Alert>
       )}
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs text-text-muted">
-          Notes are permanently recorded with a timestamp.
-        </span>
+      <FormFooter start={<span className="text-xs">Notes are permanently recorded with a timestamp.</span>}>
         <SubmitNoteButton />
-      </div>
+      </FormFooter>
     </form>
   )
 }

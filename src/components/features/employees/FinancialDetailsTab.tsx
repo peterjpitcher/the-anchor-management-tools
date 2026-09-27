@@ -1,7 +1,7 @@
 'use client';
 
 import type { EmployeeFinancialDetails } from '@/types/database';
-import { LinkButton } from '@/ds';
+import { Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
 
 interface FinancialDetailsTabProps {
   employeeId: string;
@@ -9,42 +9,30 @@ interface FinancialDetailsTabProps {
   canEdit: boolean;
 }
 
-const DetailItem = ({ label, value }: { label: string; value: string | undefined | null }) => (
-  <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4">
-    <dt className="text-sm font-medium text-text-muted">{label}</dt>
-    <dd className="mt-1 text-sm text-text sm:col-span-3 sm:mt-0">{value || 'N/A'}</dd>
-  </div>
-);
-
 export default function FinancialDetailsTab({ employeeId, financialDetails, canEdit }: FinancialDetailsTabProps) {
   const details = [
-    { label: 'NI Number', value: financialDetails?.ni_number },
-    { label: 'Account Name(s)', value: financialDetails?.payee_name },
-    { label: 'Bank / Building Society', value: financialDetails?.bank_name },
-    { label: 'Sort Code', value: financialDetails?.bank_sort_code },
-    { label: 'Account Number', value: financialDetails?.bank_account_number },
-    { label: 'Branch Address', value: financialDetails?.branch_address },
-  ];
+    { key: 'ni_number', label: 'NI Number', value: financialDetails?.ni_number },
+    { key: 'payee_name', label: 'Account Name(s)', value: financialDetails?.payee_name },
+    { key: 'bank_name', label: 'Bank / Building Society', value: financialDetails?.bank_name },
+    { key: 'bank_sort_code', label: 'Sort Code', value: financialDetails?.bank_sort_code },
+    { key: 'bank_account_number', label: 'Account Number', value: financialDetails?.bank_account_number },
+    { key: 'branch_address', label: 'Branch Address', value: financialDetails?.branch_address, span: 2 as const },
+  ].map((item) => ({ ...item, value: item.value || 'N/A' }));
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-text">Financial Details</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Confidential financial and payment information.
-          </p>
-        </div>
-        {canEdit && (
+    <Card>
+      <CardHeader
+        title="Financial Details"
+        subtitle="Confidential financial and payment information"
+        action={canEdit ? (
           <LinkButton href={`/employees/${employeeId}/edit?tab=financial`} variant="secondary" size="sm">
             Edit
           </LinkButton>
-        )}
-      </div>
-      
-      <dl className="sm:divide-y sm:divide-border">
-        {details.map(item => <DetailItem key={item.label} {...item} />)}
-      </dl>
-    </div>
+        ) : undefined}
+      />
+      <CardBody>
+        <DescriptionList items={details} />
+      </CardBody>
+    </Card>
   );
-} 
+}

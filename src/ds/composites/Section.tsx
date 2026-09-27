@@ -41,7 +41,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
       subtitle,
       actions,
       variant = 'default',
-      padding = 'md',
+      padding: paddingProp,
       collapsible = false,
       defaultCollapsed = false,
       icon,
@@ -51,6 +51,9 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
     },
     ref,
   ) => {
+    // A default Section is a heading over a group of cards, so it adds no padding of its own:
+    // its cards line up with every other card on the page. The framed variants still pad.
+    const padding = paddingProp ?? (variant === 'default' ? 'none' : 'md')
     const sectionDescription = description ?? subtitle
     const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
 
@@ -77,7 +80,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 {title && (
-                  <h3 className="text-lg font-medium leading-6 text-text-strong flex items-center gap-2">
+                  <h2 className="text-base font-semibold leading-6 text-text-strong flex items-center gap-2">
                     {icon && <span className="text-text-subtle">{icon}</span>}
                     {title}
                     {collapsible && (
@@ -96,7 +99,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
                         <path d="M19 9l-7 7-7-7" />
                       </svg>
                     )}
-                  </h3>
+                  </h2>
                 )}
                 {sectionDescription && (
                   <p className={cn('text-sm text-text-muted', title && 'mt-1')}>
@@ -114,7 +117,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
             className={cn(
               'section-body',
               padding !== 'none' && paddingClasses[padding],
-              hasHeader && variant === 'default' && 'mt-2',
+              hasHeader && variant === 'default' && 'mt-3',
             )}
           >
             {children}

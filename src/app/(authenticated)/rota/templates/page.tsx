@@ -1,13 +1,12 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
+import { Alert, PageLayout } from '@/ds';
 import { getShiftTemplates } from '@/app/actions/rota-templates';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { getDepartments } from '@/app/actions/budgets';
 import ShiftTemplatesManager from './ShiftTemplatesManager';
-import { rotaNavItems } from '../nav';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,29 +15,48 @@ export default async function ShiftTemplatesPage() {
   if (!canView) redirect('/');
 
   const canEdit = await checkUserPermission('rota', 'edit');
-  const [result, employeesResult, deptResult] = await Promise.all([
+  const [result, employeesResult, deptResult, navItems] = await Promise.all([
     getShiftTemplates(),
     getActiveEmployeesForRota(),
     getDepartments(),
+    getRotaNavItems(),
   ]);
   const templates = result.success ? result.data : [];
+  const layout = {
+    title: 'Rota',
+    subtitle: 'Shift templates: reusable shift blocks for the rota palette',
+    navItems,
+  };
+
+  // A failed load shows the error under the same header, never an empty list.
+  if (!result.success) {
+    return (
+      <PageLayout {...layout}>
+        <Alert tone="danger" title="Could not load shift templates">{result.error}</Alert>
+      </PageLayout>
+    );
+  }
   const employees = employeesResult.success ? employeesResult.data : [];
   const departments = deptResult.success ? deptResult.data : [];
 
+  // ShiftTemplatesManager renders the PageLayout itself: its New Template header action opens
+  // the form it holds in state.
   return (
-    <PageLayout
-      title="Shift Templates"
-      subtitle="Create reusable shift blocks for the rota palette"
-      navItems={rotaNavItems}
-    >
-      <Section
-        title="Templates"
-        description="Active templates appear in the drag-and-drop palette when building the weekly rota. Assign a day of the week to auto-populate shifts; assign an employee to pre-assign instead of creating an open shift."
-      >
-        <Card>
-          <ShiftTemplatesManager canEdit={canEdit} initialTemplates={templates} employees={employees} departments={departments} />
-        </Card>
-      </Section>
-    </PageLayout>
+    <ShiftTemplatesManager
+      layout={layout}
+      notice={
+        <PartialLoadAlert
+          missing={[
+            ...(employeesResult.success ? [] : ['staff list']),
+            ...(deptResult.success ? [] : ['departments']),
+          ]}
+          consequence="the template form may be missing people or departments"
+        />
+      }
+      canEdit={canEdit}
+      initialTemplates={templates}
+      employees={employees}
+      departments={departments}
+    />
   );
 }

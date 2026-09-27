@@ -374,6 +374,8 @@ describe('marketing section', () => {
       expect(result.signals).toEqual([])
       expect(result.headline).toBe('Halloween party (early figures): 90 delivered so far.')
       expect(result.lists[0].title).toBe('Halloween party (customer email, first sent Thu 24 Sep, early figures)')
+      // The campaign's own name and a description, so the page shows it as written.
+      expect(result.lists[0].titleAsWritten).toBe(true)
       expect(result.lists[0].items[0].text).toBe('Delivered 90 of 100 sent so far.')
       expect(result.notes).toEqual(['Early figures for 1 campaign: still sending or first sent in the last 24 hours, so no checks are run on it yet.'])
       expect(result.metrics).toContainEqual(expect.objectContaining({ label: 'Click rate, Halloween party', comparison: 'early figures' }))

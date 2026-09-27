@@ -3,9 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
-import { CheckIcon, XMarkIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
-import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select } from '@/ds';
+import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select, SubHeading, toast, Icon } from '@/ds';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import {
   approveOpenShiftVolunteer,
@@ -17,6 +15,7 @@ import {
   type ReassignQueue,
   type ReassignStaleRequest,
 } from '@/app/actions/rota-reassign';
+import { REASSIGN_ORIGIN_LABEL, REASSIGN_ORIGIN_TONE, REASSIGN_OUTCOME_TONE } from '../_shared/status-ui';
 
 interface EmployeeOption {
   employee_id: string;
@@ -134,14 +133,15 @@ function OpenShiftCard({
           .filter(Boolean)
           .join(' · ')}
         action={
-          <Badge tone={origin.kind === 'rejected' ? 'danger' : 'warning'}>
-            {origin.kind === 'rejected' ? 'Turned down' : 'Open'}
+          <Badge tone={REASSIGN_ORIGIN_TONE[origin.kind]}>
+            {REASSIGN_ORIGIN_LABEL[origin.kind]}
           </Badge>
         }
       />
 
-      <CardBody>
-        <div className="mb-3 rounded-default bg-surface-2 p-3">
+      <CardBody className="space-y-4">
+        {/* Why nobody is on it */}
+        <div>
           {origin.kind === 'rejected' && (
             <>
               <p className="text-xs text-text">
@@ -191,12 +191,10 @@ function OpenShiftCard({
           )}
         </div>
 
-        {shift.notes && <p className="mb-3 text-xs text-text-muted">Shift notes: {shift.notes}</p>}
+        {shift.notes && <p className="text-xs text-text-muted">Shift notes: {shift.notes}</p>}
 
-        <div className="mb-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-            Asked to pick it up
-          </p>
+        <div>
+          <SubHeading className="mb-2">Volunteers</SubHeading>
           {shift.volunteers.length === 0 ? (
             <p className="text-xs italic text-text-muted">Nobody has volunteered yet.</p>
           ) : (
@@ -218,21 +216,22 @@ function OpenShiftCard({
                       <Button
                         type="button"
                         size="sm"
-                        disabled={isPending || !canPublish}
-                        onClick={() => handleApprove(volunteer.request_id, volunteer.employee_name)}
-                        icon={<CheckIcon className="h-4 w-4" />}
+                        variant="secondary"
+                        disabled={isPending}
+                        onClick={() => handleDecline(volunteer.request_id, volunteer.employee_name)}
+                        icon={<Icon name="x" size={16} />}
                       >
-                        Give it to them
+                        No
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        variant="secondary"
-                        disabled={isPending}
-                        onClick={() => handleDecline(volunteer.request_id, volunteer.employee_name)}
-                        icon={<XMarkIcon className="h-4 w-4" />}
+                        variant="primary"
+                        disabled={isPending || !canPublish}
+                        onClick={() => handleApprove(volunteer.request_id, volunteer.employee_name)}
+                        icon={<Icon name="check" size={16} />}
                       >
-                        No
+                        Give It to Them
                       </Button>
                     </div>
                   )}
@@ -268,12 +267,12 @@ function OpenShiftCard({
             className="inline-flex min-h-touch items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
           >
             Open on rota
-            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            <Icon name="externalLink" size={16} />
           </Link>
         </div>
 
         {canEdit && (
-          <p className="mt-2 text-xs text-text-muted">
+          <p className="text-xs text-text-muted">
             Giving it to a volunteer goes live straight away. Assigning somebody yourself is a draft
             change, so publish the week afterwards.
           </p>
@@ -313,9 +312,9 @@ export default function ReassignQueueClient({
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <Section
-        title="Needs somebody"
+        title="Needs Somebody"
         description={
           rejectedCount > 0
             ? `Unfilled shifts from today onwards, across every week. ${rejectedCount} of these were turned down by staff.`
@@ -323,17 +322,16 @@ export default function ReassignQueueClient({
         }
       >
         {queue.openShifts.length === 0 ? (
-          <Card>
-            <CardBody>
-              <Empty
-                icon="calendar"
-                title="Nothing to reassign"
-                description="Every scheduled shift from today onwards has somebody on it."
-              />
-            </CardBody>
+          <Card padding="none">
+            <Empty
+              size="sm"
+              icon="calendar"
+              title="Nothing to reassign"
+              description="Every scheduled shift from today onwards has somebody on it."
+            />
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {queue.openShifts.map(shift => (
               <OpenShiftCard
                 key={shift.shift_id}
@@ -350,103 +348,100 @@ export default function ReassignQueueClient({
 
       {canEdit && queue.staleRequests.length > 0 && (
         <Section
-          title="Loose ends"
+          title="Loose Ends"
           description="Staff asked for these shifts and never got an answer. The shift has since gone, so clearing them stops people waiting on a reply."
         >
-          <Card>
-            <CardBody>
-              <ul className="space-y-2">
-                {queue.staleRequests.map(request => (
-                  <li
-                    key={request.request_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-default border border-border p-2"
+          <Card padding="none">
+            <ul className="divide-y divide-border">
+              {queue.staleRequests.map(request => (
+                <li
+                  key={request.request_id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-pad-card py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text">{request.employee_name}</p>
+                    <p className="text-xs text-text-muted">
+                      {request.shift_date ? formatShiftDay(request.shift_date) : 'Unknown date'}
+                      {request.start_time && request.end_time
+                        ? `, ${formatTime12Hour(request.start_time)} to ${formatTime12Hour(request.end_time)}`
+                        : ''}
+                      {' · '}
+                      {STALE_REASON_LABEL[request.reason]}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={isPending}
+                    onClick={() => handleDismiss(request.request_id)}
                   >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-text">{request.employee_name}</p>
-                      <p className="text-xs text-text-muted">
-                        {request.shift_date ? formatShiftDay(request.shift_date) : 'Unknown date'}
-                        {request.start_time && request.end_time
-                          ? `, ${formatTime12Hour(request.start_time)} to ${formatTime12Hour(request.end_time)}`
-                          : ''}
-                        {' · '}
-                        {STALE_REASON_LABEL[request.reason]}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={isPending}
-                      onClick={() => handleDismiss(request.request_id)}
-                    >
-                      Clear
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
+                    Clear
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </Card>
         </Section>
       )}
 
       <Section
-        title="Recently turned down"
+        title="Recently Turned Down"
         description="Shifts staff rejected in the last 90 days, and what happened to them."
+        actions={
+          queue.covered.length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              aria-expanded={showHistory}
+              onClick={() => setShowHistory(value => !value)}
+            >
+              {showHistory ? 'Hide' : `Show ${queue.covered.length}`}
+            </Button>
+          ) : undefined
+        }
       >
-        <Card>
-          <CardBody>
-            {queue.covered.length === 0 ? (
-              <p className="py-2 text-sm italic text-text-muted">
-                No shifts have been turned down in the last 90 days.
-              </p>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setShowHistory(value => !value)}
+        {queue.covered.length === 0 ? (
+          <Card padding="none">
+            <Empty size="sm" title="No turned-down shifts for this period" description="Nobody has turned down a shift in the last 90 days." />
+          </Card>
+        ) : showHistory ? (
+          <Card padding="none">
+            <ul className="divide-y divide-border">
+              {queue.covered.map(item => (
+                <li
+                  key={item.rejection_id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-pad-card py-3"
                 >
-                  {showHistory ? 'Hide' : `Show ${queue.covered.length}`}
-                </Button>
-                {showHistory && (
-                  <ul className="mt-3 space-y-2">
-                    {queue.covered.map(item => (
-                      <li
-                        key={item.rejection_id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-default border border-border p-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm text-text">
-                            {formatShiftDay(item.shift_date)}, {shiftTimes(item)}, {item.department}
-                          </p>
-                          <p className="text-xs text-text-muted">
-                            Turned down by {item.rejected_by_name} on {formatWhen(item.rejected_at)}
-                            {item.rejection_note ? ` · ${item.rejection_note}` : ''}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Badge tone={item.outcome === 'covered' ? 'success' : 'neutral'}>
-                            {item.outcome === 'covered' && item.covered_by_name
-                              ? item.covered_by_name
-                              : OUTCOME_LABEL[item.outcome]}
-                          </Badge>
-                          <Link
-                            href={rotaLink(item.week_start, item.shift_date, item.shift_id)}
-                            className="inline-flex min-h-touch items-center px-2 text-sm font-medium text-primary hover:underline"
-                          >
-                            View
-                          </Link>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </CardBody>
-        </Card>
+                  <div className="min-w-0">
+                    <p className="text-sm text-text">
+                      {formatShiftDay(item.shift_date)}, {shiftTimes(item)}, {item.department}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Turned down by {item.rejected_by_name} on {formatWhen(item.rejected_at)}
+                      {item.rejection_note ? ` · ${item.rejection_note}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge tone={REASSIGN_OUTCOME_TONE[item.outcome]}>
+                      {item.outcome === 'covered' && item.covered_by_name
+                        ? item.covered_by_name
+                        : OUTCOME_LABEL[item.outcome]}
+                    </Badge>
+                    <Link
+                      href={rotaLink(item.week_start, item.shift_date, item.shift_id)}
+                      className="inline-flex min-h-touch items-center px-2 text-sm font-medium text-primary hover:underline"
+                    >
+                      View
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
       </Section>
-    </div>
+    </>
   );
 }

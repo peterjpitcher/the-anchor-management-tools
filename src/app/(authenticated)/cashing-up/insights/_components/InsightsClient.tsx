@@ -1,21 +1,23 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Card, CardHeader, CardBody, RevenueChart } from '@/ds'
-import { Select, Stat } from '@/ds'
-import { getInsightsDataAction } from '@/app/actions/cashing-up'
 import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+  BarChart,
+  Card,
+  CardHeader,
+  CardBody,
+  ChartTooltipRow,
+  ComboChart,
+  PageLayout,
+  RevenueChart,
+  StatGrid,
+  type ChartSeries,
+  type ChartTooltipItem,
+} from '@/ds'
+import { Alert, Empty, PageLoading, Select, Stat } from '@/ds'
+import { getInsightsDataAction } from '@/app/actions/cashing-up'
 import type { CashupInsightsData, CashupInsightsPeriod } from '@/types/cashing-up'
+import { cashingUpLayout } from '../../_shared/nav'
 
 type InsightsData = CashupInsightsData
 type PeriodSelectValue = `period:${CashupInsightsPeriod}` | `year:${number}`
@@ -53,13 +55,6 @@ const SALES_MIX_COLORS_BY_LABEL: Record<string, string> = {
 }
 
 type SalesMixChartPoint = CashupInsightsData['salesMixMonthly'][number]
-type SalesMixTooltipPayload = Array<{
-  color?: string
-  dataKey?: string
-  name?: string
-  payload?: SalesMixChartPoint
-  value?: number
-}>
 
 function formatCurrency(value: number) {
   return `£${value.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -73,87 +68,50 @@ function formatPercent(value: number) {
   return `${value.toFixed(1)}%`
 }
 
-function SalesMixTooltip({ active, payload, label }: {
-  active?: boolean
-  payload?: SalesMixTooltipPayload
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
-  const point = payload[0]?.payload
-  const salesEntries = payload.filter((entry) => entry.dataKey?.endsWith('Sales'))
-  const percentEntries = payload.filter((entry) => entry.dataKey?.endsWith('Percentage'))
+/** Sales in pounds as bars on the left axis; each category's share of sales as a line on the right. */
+const SALES_MIX_SERIES: ChartSeries[] = [
+  { key: 'drinksSales', label: 'Drinks sales', color: SALES_MIX_COLORS.drinks, format: formatPreciseCurrency },
+  { key: 'foodSales', label: 'Food sales', color: SALES_MIX_COLORS.food, format: formatPreciseCurrency },
+  { key: 'otherSales', label: 'Other sales', color: SALES_MIX_COLORS.other, format: formatPreciseCurrency },
+  { key: 'drinksPercentage', label: 'Drinks %', type: 'line', axis: 'right', color: SALES_MIX_COLORS.drinks, format: formatPercent },
+  { key: 'foodPercentage', label: 'Food %', type: 'line', axis: 'right', color: SALES_MIX_COLORS.food, format: formatPercent },
+  { key: 'otherPercentage', label: 'Other %', type: 'line', axis: 'right', color: SALES_MIX_COLORS.other, format: formatPercent, dashed: true },
+]
 
+/** The tooltip body: the three sales figures, then the three shares, then the month's total. */
+function SalesMixTooltipBody({ row, items }: { row: SalesMixChartPoint; items: ChartTooltipItem[] }) {
+  const sales = items.filter((item) => item.key.endsWith('Sales'))
+  const shares = items.filter((item) => item.key.endsWith('Percentage'))
   return (
-    <div className="bg-surface border border-border rounded-md px-3 py-2 shadow-lg text-xs min-w-[180px]">
-      <p className="text-text-muted mb-2">{label}</p>
-      <div className="space-y-1.5">
-        {salesEntries.map((entry) => (
-          <div key={entry.dataKey} className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5 text-text">
-              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-              {entry.name}
-            </span>
-            <span className="font-mono text-text-strong">{formatPreciseCurrency(Number(entry.value ?? 0))}</span>
-          </div>
+    <>
+      {sales.map((item) => (
+        <ChartTooltipRow key={item.key} color={item.color} label={item.label} value={item.formatted} />
+      ))}
+      <div className="space-y-1 border-t border-border pt-1">
+        {shares.map((item) => (
+          <ChartTooltipRow key={item.key} label={item.label} value={item.formatted} />
         ))}
       </div>
-      <div className="mt-2 border-t border-border pt-2 space-y-1.5">
-        {percentEntries.map((entry) => (
-          <div key={entry.dataKey} className="flex items-center justify-between gap-4">
-            <span className="text-text-muted">{entry.name}</span>
-            <span className="font-mono text-text-strong">{formatPercent(Number(entry.value ?? 0))}</span>
-          </div>
-        ))}
+      <div className="border-t border-border pt-1">
+        <ChartTooltipRow label="Total" value={formatPreciseCurrency(row.totalSales)} />
       </div>
-      {point && (
-        <div className="mt-2 border-t border-border pt-2 flex items-center justify-between gap-4">
-          <span className="text-text-muted">Total</span>
-          <span className="font-mono text-text-strong">{formatPreciseCurrency(point.totalSales)}</span>
-        </div>
-      )}
-    </div>
+    </>
   )
 }
 
 function SalesMixTrendChart({ data }: { data: SalesMixChartPoint[] }) {
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <ComposedChart data={data} margin={{ top: 18, right: 32, bottom: 4, left: 8 }} barCategoryGap="26%">
-        <CartesianGrid stroke="var(--color-border)" vertical={false} />
-        <XAxis
-          dataKey="monthLabel"
-          tick={{ fontSize: 11, fill: 'var(--color-text-subtle)' }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          yAxisId="amount"
-          tick={{ fontSize: 11, fill: 'var(--color-text-subtle)' }}
-          tickFormatter={formatCurrency}
-          axisLine={false}
-          tickLine={false}
-          width={64}
-        />
-        <YAxis
-          yAxisId="percent"
-          orientation="right"
-          domain={[0, 100]}
-          tick={{ fontSize: 11, fill: 'var(--color-text-subtle)' }}
-          tickFormatter={(value) => `${value}%`}
-          axisLine={false}
-          tickLine={false}
-          width={42}
-        />
-        <RechartsTooltip content={<SalesMixTooltip />} cursor={{ fill: 'var(--color-surface-hover)' }} />
-        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-        <Bar yAxisId="amount" dataKey="drinksSales" name="Drinks sales" fill={SALES_MIX_COLORS.drinks} radius={[3, 3, 0, 0]} />
-        <Bar yAxisId="amount" dataKey="foodSales" name="Food sales" fill={SALES_MIX_COLORS.food} radius={[3, 3, 0, 0]} />
-        <Bar yAxisId="amount" dataKey="otherSales" name="Other sales" fill={SALES_MIX_COLORS.other} radius={[3, 3, 0, 0]} />
-        <Line yAxisId="percent" type="monotone" dataKey="drinksPercentage" name="Drinks %" stroke={SALES_MIX_COLORS.drinks} strokeWidth={2} dot={false} />
-        <Line yAxisId="percent" type="monotone" dataKey="foodPercentage" name="Food %" stroke={SALES_MIX_COLORS.food} strokeWidth={2} dot={false} />
-        <Line yAxisId="percent" type="monotone" dataKey="otherPercentage" name="Other %" stroke={SALES_MIX_COLORS.other} strokeWidth={2} dot={false} strokeDasharray="4 3" />
-      </ComposedChart>
-    </ResponsiveContainer>
+    <ComboChart
+      data={data}
+      xKey="monthLabel"
+      series={SALES_MIX_SERIES}
+      height={320}
+      leftAxis={{ format: formatCurrency }}
+      rightAxis={{ format: (value) => `${value}%`, domain: [0, 100] }}
+      barCategoryGap="26%"
+      ariaLabel="Monthly drinks, food and other sales, with each one's share of sales"
+      renderTooltip={({ row, items }) => <SalesMixTooltipBody row={row} items={items} />}
+    />
   )
 }
 
@@ -191,6 +149,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
   const [data, setData] = useState<InsightsData | null>(initialData)
   const [periodValue, setPeriodValue] = useState<PeriodSelectValue>(initialPeriodValue)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | undefined>(error)
 
   const handlePeriodChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextValue = e.target.value as PeriodSelectValue
@@ -200,18 +159,46 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
     try {
       const res = await getInsightsDataAction(undefined, nextPeriod.year, nextPeriod.period)
       setData(res.data ?? null)
+      // A failed read is shown as a failure, never as "no data".
+      setLoadError(res.data ? undefined : res.error)
+    } catch {
+      setData(null)
+      setLoadError('Could not load insights for that period. Try again.')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  if (error || !data) {
+  const layoutProps = cashingUpLayout('Insights: trends in takings, sales mix and payment methods')
+
+  // The period picker stays above every state, so a failed period can be swapped for another.
+  const periodPicker = (
+    <div className="flex flex-wrap items-end gap-3">
+      <Select
+        label="Period"
+        options={periodOptions}
+        value={periodValue}
+        onChange={handlePeriodChange}
+        disabled={loading}
+        className="w-52"
+      />
+    </div>
+  )
+
+  if (loading || loadError || !data) {
     return (
-      <Card>
-        <CardBody>
-          <p className="text-text-muted text-center py-8">{error || 'No insights data available.'}</p>
-        </CardBody>
-      </Card>
+      <PageLayout {...layoutProps}>
+        {periodPicker}
+        {loading ? (
+          <PageLoading inline label="Loading insights" />
+        ) : loadError ? (
+          <Alert tone="danger">{loadError}</Alert>
+        ) : (
+          <Card>
+            <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
+          </Card>
+        )}
+      </PageLayout>
     )
   }
 
@@ -230,18 +217,8 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
   const totalAvgTakings = data.dayOfWeek.reduce((sum, d) => sum + d.avgTakings, 0)
 
   return (
-    <div className="space-y-6">
-      {/* Year picker */}
-      <div className="flex items-center gap-3">
-        <Select
-          label="Period"
-          options={periodOptions}
-          value={periodValue}
-          onChange={handlePeriodChange}
-          disabled={loading}
-          className="w-52"
-        />
-      </div>
+    <PageLayout {...layoutProps}>
+      {periodPicker}
 
       {/* Monthly trend chart */}
       <Card>
@@ -250,7 +227,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
           {chartData.length > 0 ? (
             <RevenueChart data={chartData} />
           ) : (
-            <p className="text-text-muted text-center py-8">No data available</p>
+            <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
           )}
         </CardBody>
       </Card>
@@ -263,7 +240,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
               <SalesMixTrendChart data={salesMixMonthly} />
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {salesMix.map((mix) => (
-                  <div key={mix.label} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                  <div key={mix.label} className="flex items-center justify-between rounded-default border border-border px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-3 h-3 rounded-full shrink-0"
@@ -282,7 +259,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
               </div>
             </div>
           ) : (
-            <p className="text-text-muted text-center py-8">No sales mix data available</p>
+            <Empty size="sm" title="No sales mix for this period" description="No sales split was recorded in this period." />
           )}
         </CardBody>
       </Card>
@@ -292,24 +269,18 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
         <Card>
           <CardHeader title="Average Takings by Day" />
           <CardBody>
-            <div className="space-y-3">
-              {data.dayOfWeek.map((d) => (
-                <div key={d.dayName} className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-text">{d.dayName.substring(0, 3)}</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-32 h-2 bg-surface-hover rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${totalAvgTakings > 0 ? (d.avgTakings / (bestDay?.avgTakings || 1)) * 100 : 0}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-mono text-text-muted w-20 text-right">
-                      {'£'}{d.avgTakings.toFixed(0)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {data.dayOfWeek.length > 0 ? (
+              <BarChart
+                horizontal
+                data={data.dayOfWeek.map((d) => ({ label: d.dayName.substring(0, 3), value: d.avgTakings }))}
+                height={data.dayOfWeek.length * 32 + 40}
+                valueFormatter={formatCurrency}
+                seriesLabel="Average takings"
+                ariaLabel="Average takings by day of the week"
+              />
+            ) : (
+              <Empty size="sm" title="No takings for this period" description="No cash-ups were recorded in this period." />
+            )}
           </CardBody>
         </Card>
 
@@ -340,23 +311,11 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
       </div>
 
       {/* Year-over-year stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardBody>
-            <Stat label="Best Day" value={bestDay?.dayName.substring(0, 3) || '-'} hint={bestDay ? `Avg £${bestDay.avgTakings.toFixed(0)}` : undefined} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Avg Daily Takings" value={`£${(totalAvgTakings / (data.dayOfWeek.length || 1)).toFixed(0)}`} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Payment Methods" value={data.paymentMix.length} />
-          </CardBody>
-        </Card>
-      </div>
-    </div>
+      <StatGrid columns={3}>
+        <Stat label="Best Day" value={bestDay?.dayName.substring(0, 3) || '-'} hint={bestDay ? `Avg £${bestDay.avgTakings.toFixed(0)}` : undefined} />
+        <Stat label="Avg Daily Takings" value={`£${(totalAvgTakings / (data.dayOfWeek.length || 1)).toFixed(0)}`} />
+        <Stat label="Payment Methods" value={data.paymentMix.length} />
+      </StatGrid>
+    </PageLayout>
   )
 }

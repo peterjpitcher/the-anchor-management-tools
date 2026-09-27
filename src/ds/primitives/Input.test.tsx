@@ -54,4 +54,62 @@ describe.each(controls)('$name', ({ renderControl }) => {
     expect(control).not.toHaveClass('focus:shadow-ring')
     expect(control).not.toHaveClass('focus:border-border-focus')
   })
+
+  it('writes the error in the readable danger text colour, as Field does', () => {
+    render(renderControl({ label: 'Notes', error: 'Required' }))
+
+    const error = screen.getByRole('alert')
+    expect(error).toHaveTextContent('Required')
+    expect(error).toHaveClass('text-danger-fg', 'text-xs')
+    expect(error).not.toHaveClass('text-danger')
+  })
+})
+
+const WARNING_HALO = 'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-warning)_20%,transparent)]'
+
+describe('Input warning', () => {
+  it('draws the field in amber with the message under it', () => {
+    render(<Input label="Date" warning="This date is in the past" />)
+
+    const input = screen.getByLabelText('Date')
+    const message = screen.getByText('This date is in the past')
+    expect(input).toHaveClass('border-warning', 'focus:border-warning', WARNING_HALO)
+    expect(input).not.toHaveClass('border-border')
+    expect(input).not.toHaveClass('focus:shadow-ring')
+    expect(input).not.toHaveAttribute('aria-invalid')
+    expect(input).toHaveAccessibleDescription('This date is in the past')
+    expect(message).toHaveClass('text-warning-fg', 'text-xs', 'mt-1')
+    // Announced politely (a status), never interrupting like an error's alert.
+    expect(message).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows the error instead when both are set', () => {
+    render(<Input label="Date" error="Enter a date" warning="This date is in the past" />)
+
+    const input = screen.getByLabelText('Date')
+    expect(screen.queryByText('This date is in the past')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a date')
+    expect(input).toHaveClass('border-danger')
+    expect(input).not.toHaveClass('border-warning')
+    expect(input).toHaveAccessibleDescription('Enter a date')
+  })
+
+  it('replaces the hint while it shows, as an error does', () => {
+    render(<Input label="Covers" hint="Adults and children" warning="More than the room holds" />)
+
+    expect(screen.queryByText('Adults and children')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Covers')).toHaveAccessibleDescription('More than the room holds')
+  })
+
+  it('keeps a description passed in alongside the warning', () => {
+    render(
+      <>
+        <Input label="Covers" warning="More than the room holds" aria-describedby="covers-help" />
+        <p id="covers-help">Staff only</p>
+      </>,
+    )
+
+    expect(screen.getByLabelText('Covers')).toHaveAccessibleDescription('More than the room holds Staff only')
+  })
 })

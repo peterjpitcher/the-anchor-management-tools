@@ -208,7 +208,8 @@ describe('MileageClient', () => {
     const query = { ...DEFAULT_MILEAGE_LIST_QUERY, q: 'shop', driverId: DRIVERS[0].id }
     renderClient({ query })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+    // A header action: PageLayout renders it in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export CSV' })[0])
 
     await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'Mileage_Trips_2026-09-15.csv'))
     expect(mocks.exportMileageListCsv).toHaveBeenCalledWith(query)
@@ -219,7 +220,7 @@ describe('MileageClient', () => {
     mocks.exportMileageListCsv.mockResolvedValue({ error: 'Too many trips to export at once. Narrow the dates and try again.' })
     renderClient()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export CSV' })[0])
 
     await waitFor(() =>
       expect(mocks.toastError).toHaveBeenCalledWith('Too many trips to export at once. Narrow the dates and try again.')
@@ -231,12 +232,12 @@ describe('MileageClient', () => {
     mocks.exportMileageListCsv.mockRejectedValue(new TypeError('Failed to fetch'))
     renderClient()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export CSV' })[0])
 
     await waitFor(() =>
       expect(mocks.toastError).toHaveBeenCalledWith("Couldn't export the trips. Nothing was downloaded. Try again.")
     )
     expect(mocks.downloadBlob).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
+    for (const button of screen.getAllByRole('button', { name: 'Export CSV' })) expect(button).toBeEnabled()
   })
 })

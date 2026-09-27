@@ -3,35 +3,30 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  DocumentTextIcon,
-  EllipsisHorizontalIcon,
-  EnvelopeIcon,
-  ExclamationTriangleIcon,
-  PlusIcon,
-  PrinterIcon,
-  SparklesIcon,
-  TrashIcon,
-  UserPlusIcon,
-} from '@heroicons/react/24/outline'
-import {
+  Alert,
   Badge,
   Button,
   Card,
   CardBody,
   CardHeader,
+  Checkbox,
   ConfirmDialog,
   Drawer,
   Dropdown,
   DropdownItem,
+  Empty,
+  Field,
+  Fieldset,
+  FormFooter,
   Input,
   Modal,
-  PageHeader,
+  PageLayout,
+  PageLoading,
   SearchInput,
-  SectionNav,
   Select,
+  Spinner,
+  Stat,
+  StatGrid,
   Table,
   TableBody,
   TableCell,
@@ -39,12 +34,15 @@ import {
   TableHeader,
   TablePagination,
   TableRow,
+  Tabs,
   Textarea,
+  Icon,
+  type IconName,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import { displayName } from '@/lib/employees/display-name'
 import { formatAvailabilityAnswer } from '@/lib/recruitment/answers'
-import { formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import {
   addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
@@ -87,6 +85,20 @@ import {
   updateRecruitmentPostingAction,
   updateRecruitmentSlotAction,
 } from '@/app/actions/recruitment'
+import {
+  RECRUITMENT_APPOINTMENT_STATUS_TONE,
+  RECRUITMENT_FLAG_TONE,
+  RECRUITMENT_SCORE_LABEL,
+  RECRUITMENT_SCORE_ROW_CLASS,
+  RECRUITMENT_SCORE_TONE,
+  RECRUITMENT_STAGE_TONE,
+  RECRUITMENT_TEMPLATE_TONE,
+  recruitmentCvStatusTone,
+  recruitmentRightToWorkTone,
+  recruitmentScoreBand,
+} from '../_shared/status-ui'
+import { RECRUITMENT_LAYOUT } from '../_shared/layout'
+import { formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 
 type Props = {
   initialData: any
@@ -129,12 +141,37 @@ const completedApplicationStatuses = new Set([
 const pipelineStatusOrder = statusOptions.filter(status => !completedApplicationStatuses.has(status))
 
 const DECISION_CONFIG: Record<'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold', { confirm: string; template: 'rejection'|'offer'|'already_considered' | null; danger?: boolean }> = {
-  reject: { confirm: 'Reject candidate', template: 'rejection', danger: true },
-  offer: { confirm: 'Make offer', template: 'offer' },
-  decline_duplicate: { confirm: 'Decline (already considered)', template: 'already_considered' },
-  withdraw: { confirm: 'Mark withdrawn', template: null },
-  hold: { confirm: 'Put on hold', template: null },
+  reject: { confirm: 'Reject Candidate', template: 'rejection', danger: true },
+  offer: { confirm: 'Make Offer', template: 'offer' },
+  decline_duplicate: { confirm: 'Decline (Already Considered)', template: 'already_considered' },
+  withdraw: { confirm: 'Mark Withdrawn', template: null },
+  hold: { confirm: 'Put on Hold', template: null },
 }
+
+/** Small words stay lower case inside a Title Case label ("Put on Hold", "Back to Roles"). */
+const TITLE_CASE_SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with'])
+
+/** A stored value such as "trial_completed" as a Title Case label ("Trial Completed"). */
+function titleCase(value: string | null | undefined): string {
+  return String(value ?? '')
+    .replaceAll('_', ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word, index) => (
+      index > 0 && TITLE_CASE_SMALL_WORDS.has(word.toLowerCase())
+        ? word.toLowerCase()
+        : word.charAt(0).toUpperCase() + word.slice(1)
+    ))
+    .join(' ')
+}
+
+/** "Mark Trial Completed" back to "Mark trial completed", for the notes the action bar saves. */
+function sentenceCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
+}
+
+/** The small uppercase label over a group of facts, matching the DS field labels. */
+const SUB_LABEL = 'text-xs font-medium uppercase tracking-wider text-text-muted'
 const DECISION_STATUSES = ['rejected', 'offered', 'declined_duplicate', 'withdrawn', 'on_hold']
 
 const DEFAULT_SLOT_DURATION_MS = 2 * 60 * 60 * 1000
@@ -164,6 +201,18 @@ const DRAWER_TABS = [
   { id: 'notes', label: 'Notes' },
 ] as const
 
+const DASHBOARD_TABS = ['pipeline', 'applications', 'postings', 'schedule', 'talent', 'templates', 'communications'] as const
+type DashboardTab = (typeof DASHBOARD_TABS)[number]
+
+/** The icon beside each figure in the action-item row, by item id. */
+const ACTION_ITEM_ICONS: Record<string, IconName> = {
+  new: 'fileText',
+  fast_track: 'checkCircle',
+  manual_review: 'alertTriangle',
+  awaiting_booking: 'mail',
+  appointments: 'clock',
+}
+
 type DrawerTab = (typeof DRAWER_TABS)[number]['id']
 
 function calendarSyncLabel(status: string | null | undefined) {
@@ -191,19 +240,6 @@ function rtwLabel(status: string | null | undefined) {
       return 'failed'
     default:
       return 'not checked'
-  }
-}
-
-function rtwTone(status: string | null | undefined): 'success' | 'warning' | 'danger' | 'info' {
-  switch (status) {
-    case 'verified':
-      return 'success'
-    case 'failed':
-      return 'danger'
-    case 'pending':
-      return 'info'
-    default:
-      return 'warning'
   }
 }
 
@@ -266,18 +302,12 @@ function roleTitle(application: any) {
   return application?.job_posting?.title || 'Talent pool'
 }
 
-function scoreTone(score: number | null | undefined): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (typeof score !== 'number') return 'neutral'
-  if (score >= 70) return 'success'
-  if (score >= 40) return 'warning'
-  return 'danger'
+function scoreTone(score: number | null | undefined) {
+  return RECRUITMENT_SCORE_TONE[recruitmentScoreBand(score)]
 }
 
 function scoreLabel(score: number | null | undefined) {
-  if (typeof score !== 'number') return 'Unscored'
-  if (score >= 70) return 'High'
-  if (score >= 40) return 'Medium'
-  return 'Low'
+  return RECRUITMENT_SCORE_LABEL[recruitmentScoreBand(score)]
 }
 
 function scoreText(score: number | null | undefined) {
@@ -347,16 +377,18 @@ type DrawerStageContext = {
 
 function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
   const reject: DrawerActionSpec | false = ctx.canEdit && { kind: 'decision', label: 'Reject', decision: 'reject', danger: true }
-  const offer: DrawerActionSpec | false = ctx.canManage && { kind: 'decision', label: 'Make offer', decision: 'offer' }
+  const offer: DrawerActionSpec | false = ctx.canManage && { kind: 'decision', label: 'Make Offer', decision: 'offer' }
   const interviewLink: DrawerActionSpec | false = ctx.canSendInterviewLink && {
     kind: 'booking',
-    label: ctx.interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link',
+    label: ctx.interviewInviteSent ? 'Resend Interview Booking Link' : 'Send Interview Booking Link',
     bookingType: 'interview',
   }
-  const bookInterview: DrawerActionSpec | false = ctx.canScheduleInterview && { kind: 'goto', label: 'Book interview directly', tab: 'progress' }
-  const bookTrial: DrawerActionSpec | false = ctx.canScheduleTrial && { kind: 'goto', label: 'Book trial directly', tab: 'progress' }
+  const bookInterview: DrawerActionSpec | false = ctx.canScheduleInterview && { kind: 'goto', label: 'Book Interview Directly', tab: 'progress' }
+  const bookTrial: DrawerActionSpec | false = ctx.canScheduleTrial && { kind: 'goto', label: 'Book Trial Directly', tab: 'progress' }
+  // The saved note keeps its original sentence-case wording ("Mark interviewed from the
+  // action bar"), whatever the button reads.
   const status = (label: string, next: string): DrawerActionSpec | false => ctx.canEdit && {
-    kind: 'status', label, status: next, note: `${label} from the action bar`,
+    kind: 'status', label, status: next, note: `${sentenceCase(label)} from the action bar`,
   }
 
   let ordered: Array<DrawerActionSpec | false> = []
@@ -372,7 +404,7 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
       ordered = [bookInterview, interviewLink, reject]
       break
     case 'interview_scheduled':
-      ordered = [{ kind: 'goto', label: 'Record interview outcome', tab: 'progress' }, status('Mark interviewed', 'interviewed'), reject]
+      ordered = [{ kind: 'goto', label: 'Record Interview Outcome', tab: 'progress' }, status('Mark Interviewed', 'interviewed'), reject]
       break
     // Trials are assigned by staff around the rota, never chosen by the candidate,
     // so there is no trial booking link. Scheduling one emails the confirmation.
@@ -383,30 +415,30 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
       ordered = [bookTrial, reject]
       break
     case 'trial_scheduled':
-      ordered = [{ kind: 'goto', label: 'Record trial outcome', tab: 'progress' }, status('Mark trial completed', 'trial_completed'), reject]
+      ordered = [{ kind: 'goto', label: 'Record Trial Outcome', tab: 'progress' }, status('Mark Trial Completed', 'trial_completed'), reject]
       break
     case 'trial_completed':
       ordered = [offer, reject]
       break
     case 'offered':
       ordered = [
-        ctx.canCreateEmployeeInvite && { kind: 'hire', label: 'Create employee invite' },
-        status('Mark hired', 'hired'),
+        ctx.canCreateEmployeeInvite && { kind: 'hire', label: 'Create Employee Invite' },
+        status('Mark Hired', 'hired'),
       ]
       break
     case 'hired':
       ordered = []
       break
     case 'on_hold':
-      ordered = [status('Reopen as shortlisted', 'shortlisted'), reject]
+      ordered = [status('Reopen as Shortlisted', 'shortlisted'), reject]
       break
     case 'talent_pool':
-      ordered = [status('Reopen as shortlisted', 'shortlisted')]
+      ordered = [status('Reopen as Shortlisted', 'shortlisted')]
       break
     case 'rejected':
     case 'withdrawn':
     case 'declined_duplicate':
-      ordered = [status('Reopen as shortlisted', 'shortlisted')]
+      ordered = [status('Reopen as Shortlisted', 'shortlisted')]
       break
     default:
       ordered = [interviewLink, reject]
@@ -416,11 +448,7 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
 }
 
 function scoreRowClass(score: number | null | undefined) {
-  const tone = scoreTone(score)
-  if (tone === 'success') return 'border-l-4 border-success/70 bg-success-soft/30'
-  if (tone === 'warning') return 'border-l-4 border-warning/70 bg-warning-soft/30'
-  if (tone === 'danger') return 'border-l-4 border-danger/70 bg-danger-soft/30'
-  return 'border-l-4 border-border'
+  return RECRUITMENT_SCORE_ROW_CLASS[recruitmentScoreBand(score)]
 }
 
 function textList(value: unknown) {
@@ -484,13 +512,6 @@ function cvExtractionMessage(candidate: any): string | null {
   return null
 }
 
-function cvStatusTone(status: string | null | undefined): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (status === 'done') return 'success'
-  if (status === 'pending') return 'warning'
-  if (status === 'failed' || status === 'unsupported') return 'danger'
-  return 'neutral'
-}
-
 function todayLocalDateTime(value: string | null | undefined) {
   if (!value) return ''
   const date = new Date(value)
@@ -544,16 +565,6 @@ function postingVisibilityText(posting: any) {
   return posting.is_public ? 'Public' : 'Private'
 }
 
-function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
-  return (
-    <label className="block space-y-1">
-      <span className="text-xs font-semibold uppercase text-text-muted">{label}</span>
-      {children}
-      {help && <span className="block text-xs text-text-muted">{help}</span>}
-    </label>
-  )
-}
-
 function SlotDateTimeInput({
   label,
   name,
@@ -583,9 +594,9 @@ function SlotDateTimeInput({
     }
   }
 
+  // Three controls read as one field: the Fieldset's legend names the group, each control its own.
   return (
-    <div className="space-y-1">
-      <span className="text-ui font-medium text-text">{label}</span>
+    <Fieldset legend={label}>
       <input type="hidden" name={name} value={partsToDateTimeLocal(currentValue)} />
       <div className="grid grid-cols-[minmax(0,1fr)_86px_86px] gap-2">
         <Input
@@ -618,33 +629,16 @@ function SlotDateTimeInput({
           ))}
         </Select>
       </div>
-    </div>
+    </Fieldset>
   )
 }
 
 function ActionStateMessage({ state }: { state: any }) {
   if (!state) return null
   return (
-    <p className={`text-xs ${state.success ? 'text-success-fg' : 'text-danger'}`}>
+    <p className={`text-xs ${state.success ? 'text-success-fg' : 'text-danger-fg'}`}>
       {state.success ? state.message || 'Saved.' : state.error}
     </p>
-  )
-}
-
-function ProfileField({
-  label,
-  children,
-  className,
-}: {
-  label: string
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <label className={['block space-y-1 text-xs font-medium text-text-muted', className].filter(Boolean).join(' ')}>
-      <span>{label}</span>
-      {children}
-    </label>
   )
 }
 
@@ -652,13 +646,18 @@ function SubmitButton({
   children,
   variant = 'primary',
   disabled = false,
+  form,
+  loading,
 }: {
   children: React.ReactNode
   variant?: 'primary' | 'secondary' | 'danger'
   disabled?: boolean
+  /** The id of the form it submits, when it sits outside it (a Modal footer). */
+  form?: string
+  loading?: boolean
 }) {
   return (
-    <Button type="submit" size="sm" variant={variant} disabled={disabled}>
+    <Button type="submit" size="sm" variant={variant} disabled={disabled} form={form} loading={loading}>
       {children}
     </Button>
   )
@@ -671,25 +670,45 @@ function ActionFeedbackForm({
   action,
   children,
   className,
+  id,
   confirmTitle,
   confirmMessage,
+  confirmLabel = 'Confirm',
+  cancelLabel,
+  confirmTone = 'primary',
   successMessage = 'Done.',
   onSuccess,
+  onPendingChange,
 }: {
   action: RecruitmentFormAction
   children: React.ReactNode
   className?: string
+  /** Lets a submit button outside the form (a Modal footer) submit it with `form={id}`. */
+  id?: string
   confirmTitle?: string
   confirmMessage?: string
+  /** The confirm button's words: "Delete" for a delete, "Cancel <Thing>" for a cancellation. */
+  confirmLabel?: string
+  /** The dismiss button's words, "Keep <Thing>" beside a "Cancel <Thing>" confirm. */
+  cancelLabel?: string
+  /** The confirm button's colour: danger only for destructive actions (cancel, delete, erase). */
+  confirmTone?: 'primary' | 'danger'
   successMessage?: string
   onSuccess?: () => void
+  /** For a submit button outside the form, which the form's disabled fieldset cannot reach. */
+  onPendingChange?: (pending: boolean) => void
 }) {
   const [pending, setPending] = useState(false)
   const [state, setState] = useState<{ success?: string; error?: string } | null>(null)
   const [confirmData, setConfirmData] = useState<FormData | null>(null)
 
+  function changePending(next: boolean): void {
+    setPending(next)
+    onPendingChange?.(next)
+  }
+
   async function run(formData: FormData): Promise<void> {
-    setPending(true)
+    changePending(true)
     setState(null)
     try {
       const result = await action(formData)
@@ -702,12 +721,15 @@ function ActionFeedbackForm({
     } catch (error) {
       setState({ error: error instanceof Error ? error.message : 'Action failed.' })
     } finally {
-      setPending(false)
+      changePending(false)
     }
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    // A submit button outside the form is not disabled by the fieldset, so a second press
+    // while the first is still running is ignored here.
+    if (pending) return
     const formData = new FormData(event.currentTarget)
     if (confirmMessage) {
       setConfirmData(formData)
@@ -718,15 +740,15 @@ function ActionFeedbackForm({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className={className}>
+      <form id={id} onSubmit={handleSubmit} className={className}>
         {/* Disable all controls while the action is in flight to prevent double-submit.
             display:contents keeps the fieldset out of the layout so the form's own
             flex/grid classes still apply to the children. */}
         <fieldset disabled={pending} className="contents">
           {children}
         </fieldset>
-        {pending && <p className="text-xs text-text-muted">Working...</p>}
-        {state?.error && <p className="text-xs text-danger">{state.error}</p>}
+        {pending && <p className="flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working…</p>}
+        {state?.error && <p className="text-xs text-danger-fg">{state.error}</p>}
         {state?.success && <p className="text-xs text-success-fg">{state.success}</p>}
       </form>
       <ConfirmDialog
@@ -737,10 +759,11 @@ function ActionFeedbackForm({
           await run(confirmData)
           setConfirmData(null)
         }}
-        title={confirmTitle ?? 'Confirm action'}
+        title={confirmTitle ?? 'Confirm Action'}
         message={confirmMessage}
-        confirmLabel="Confirm"
-        tone="warning"
+        confirmLabel={confirmLabel}
+        cancelLabel={cancelLabel}
+        tone={confirmTone}
       />
     </>
   )
@@ -757,21 +780,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [slotUpdateState, slotUpdateAction] = useActionState(updateRecruitmentSlotAction, null)
   const [templateState, templateAction] = useActionState(saveRecruitmentEmailTemplateAction, null)
   const [scorecardState, scorecardAction] = useActionState(recordRecruitmentScorecardAction, null)
-  const [retentionState, retentionAction] = useActionState(runRecruitmentRetentionAction, null)
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
+  const [activeTab, setActiveTab] = useState<DashboardTab>('pipeline')
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('candidate')
   const [decisionDialog, setDecisionDialog] = useState<null | { decision: 'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold' }>(null)
   const [decisionEmail, setDecisionEmail] = useState<{ subject: string; body: string }>({ subject: '', body: '' })
   const [decisionSendEmail, setDecisionSendEmail] = useState(true)
   const [decisionLoadingPreview, setDecisionLoadingPreview] = useState(false)
-  const [decisionState, decisionFormAction] = useActionState(decideRecruitmentApplicationAction, null)
+  const [decisionState, decisionFormAction, decisionPending] = useActionState(decideRecruitmentApplicationAction, null)
   const [hireDialogOpen, setHireDialogOpen] = useState(false)
   const [stageDialogOpen, setStageDialogOpen] = useState(false)
   // Overflow-menu items are plain buttons, not forms, so they share one confirm
   // dialog and one result banner rather than each carrying their own.
-  const [pendingBarAction, setPendingBarAction] = useState<null | { title: string; message: string; run: () => Promise<unknown> }>(null)
+  const [pendingBarAction, setPendingBarAction] = useState<null | { title: string; message: string; confirmLabel: string; run: () => Promise<unknown> }>(null)
+  const [hirePending, setHirePending] = useState(false)
+  const [stagePending, setStagePending] = useState(false)
   const [barActionState, setBarActionState] = useState<null | { success?: string; error?: string }>(null)
   const [barActionPending, setBarActionPending] = useState(false)
   const [candidateTrail, setCandidateTrail] = useState<{ notes: any[]; systemChanges: any[] }>({ notes: [], systemChanges: [] })
@@ -1075,8 +1099,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     if (!selectedApplication) return
     const applicationId = selectedApplication.id
     setPendingBarAction({
-      title: statusLabel(status),
+      title: titleCase(status),
       message: `Move ${candidateName(selectedApplication.candidate)} to "${statusLabel(status)}"?`,
+      confirmLabel: 'Move',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1092,8 +1117,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     const applicationId = selectedApplication.id
     const label = type === 'interview' ? 'interview' : 'trial'
     setPendingBarAction({
-      title: `Send ${label} booking link`,
+      title: `Send ${titleCase(label)} Booking Link`,
       message: `Email ${candidateName(selectedApplication.candidate)} a ${label} booking link?`,
+      confirmLabel: 'Send',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1107,8 +1133,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     if (!selectedApplication) return
     const applicationId = selectedApplication.id
     setPendingBarAction({
-      title: 'Re-score AI fit',
+      title: 'Re-score AI Fit',
       message: 'Queue this application for a fresh AI score against the current posting?',
+      confirmLabel: 'Re-score',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1122,8 +1149,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     const applicationId = selectedApplication.id
     const archived = Boolean(selectedApplication.archived_at)
     setPendingBarAction({
-      title: archived ? 'Restore application' : 'Archive application',
+      title: archived ? 'Restore Application' : 'Archive Application',
       message: archived ? 'Restore this application?' : 'Archive this application?',
+      confirmLabel: archived ? 'Restore' : 'Archive',
       run: () => {
         const formData = new FormData()
         formData.set('application_id', applicationId)
@@ -1167,6 +1195,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             successMessage="Booking link sent."
             confirmTitle={action.label}
             confirmMessage={`Email ${candidateName(selectedApplication.candidate)} a booking link?`}
+            confirmLabel="Send"
             onSuccess={() => router.refresh()}
           >
             <input type="hidden" name="application_id" value={selectedApplication.id} />
@@ -1343,7 +1372,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         }
       }
     } catch {
-      // best-effort — never block the dialog if the AI draft fails
+      // best-effort: never block the dialog if the AI draft fails
     }
   }
 
@@ -1424,88 +1453,64 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const talentTotalPages = Math.max(1, Math.ceil(talentTotal / TALENT_PAGE_SIZE))
 
   return (
-    <main className="min-h-screen bg-bg">
-      <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-6">
-        <PageHeader
-          breadcrumbs={[{ label: 'People' }, { label: 'Recruitment' }]}
-          title="Recruitment"
-          subtitle="Review applicants, manage roles, schedule interviews and keep candidate communications tidy."
-          className="mb-0"
-          actions={permissions.canManage ? (
-            <div className="flex flex-wrap items-start gap-2">
-              <form action={cvBatchAction}>
-                <input type="hidden" name="limit" value="10" />
-                <Button type="submit" size="sm" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
-                  Retry CV reviews
-                </Button>
-                <ActionStateMessage state={cvBatchState} />
-              </form>
-              <form action={retentionAction}>
-                <Button type="submit" size="sm" variant="secondary" icon={<TrashIcon className="h-4 w-4" />}>
-                  Run retention
-                </Button>
-                <ActionStateMessage state={retentionState} />
-              </form>
-            </div>
-          ) : null}
-        />
+    <PageLayout
+      {...RECRUITMENT_LAYOUT}
+      headerActions={permissions.canManage ? (
+        <>
+          <form action={cvBatchAction}>
+            <input type="hidden" name="limit" value="10" />
+            <Button type="submit" size="sm" variant="secondary" icon={<Icon name="refresh" size={16} />}>
+              Retry CV Reviews
+            </Button>
+            <ActionStateMessage state={cvBatchState} />
+          </form>
+          {/* Irreversible: anonymises candidates and deletes their CVs, so it asks first. */}
+          <ActionFeedbackForm
+            action={() => runRecruitmentRetentionAction()}
+            confirmTitle="Run Retention"
+            confirmLabel="Run"
+            confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details, notes and the text of messages sent to them are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
+            confirmTone="danger"
+            successMessage="Recruitment retention cleanup completed."
+          >
+            <Button type="submit" size="sm" variant="secondary" icon={<Icon name="trash" size={16} />}>
+              Run Retention
+            </Button>
+          </ActionFeedbackForm>
+        </>
+      ) : undefined}
+    >
+        {/* Figures only: the Schedule tab below is the one way to the interviews and trials. */}
+        <StatGrid columns={4}>
+          {(dashboard?.actionItems ?? []).map((item: any) => (
+            <Stat
+              key={item.id}
+              label={item.label}
+              value={item.count}
+              icon={<Icon name={ACTION_ITEM_ICONS[item.id] ?? 'userPlus'} size={20} />}
+            />
+          ))}
+        </StatGrid>
 
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {(dashboard?.actionItems ?? []).map((item: any) => {
-            const inner = (
-              <>
-                <div>
-                  <p className="text-xs font-medium text-text-muted">{item.label}</p>
-                  <p className="mt-1 text-2xl font-semibold text-text-strong">{item.count}</p>
-                </div>
-                <div className="rounded-md border border-border bg-surface-2 p-2">
-                  {item.id === 'new' && <DocumentTextIcon className="h-5 w-5" />}
-                  {item.id === 'fast_track' && <CheckCircleIcon className="h-5 w-5" />}
-                  {item.id === 'manual_review' && <ExclamationTriangleIcon className="h-5 w-5" />}
-                  {item.id === 'awaiting_booking' && <EnvelopeIcon className="h-5 w-5" />}
-                  {item.id === 'appointments' && <ClockIcon className="h-5 w-5" />}
-                  {item.id !== 'new' && item.id !== 'fast_track' && item.id !== 'manual_review' && item.id !== 'awaiting_booking' && item.id !== 'appointments' && <UserPlusIcon className="h-5 w-5" />}
-                </div>
-              </>
-            )
-            return (
-              <Card key={item.id}>
-                <CardBody>
-                  {item.id === 'appointments' ? (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('schedule')}
-                      aria-label="View upcoming interviews and trials"
-                      className="flex w-full items-center justify-between gap-3 text-left"
-                    >
-                      {inner}
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3">{inner}</div>
-                  )}
-                </CardBody>
-              </Card>
-            )
-          })}
-        </section>
-
-        <SectionNav
-          activeId={activeTab}
-          onSelect={(id) => setActiveTab(id as typeof activeTab)}
-          items={[
+        <Tabs
+          aria-label="Recruitment views"
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as DashboardTab)}
+          tabs={[
             { id: 'pipeline', label: 'Pipeline', count: activeApplications.length },
             { id: 'applications', label: 'Applications', count: activeApplications.length },
             { id: 'postings', label: 'Postings', count: postings.length },
             { id: 'schedule', label: 'Schedule', count: appointments.length },
-            { id: 'talent', label: 'Talent pool', count: talentTotal },
+            { id: 'talent', label: 'Talent Pool', count: talentTotal },
             { id: 'templates', label: 'Templates', count: templates.length },
             { id: 'communications', label: 'Comms', count: communications.length },
           ]}
         />
 
         {(activeTab === 'pipeline' || activeTab === 'applications') && (
-          <section className="space-y-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <>
+            {/* The filters, in one row directly above the list they filter. */}
+            <div className="flex flex-wrap items-end gap-3">
               <SearchInput
                 value={search}
                 onChange={(value) => {
@@ -1514,7 +1519,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   setSelectedBulkIds([])
                 }}
                 placeholder="Search candidates, role, status..."
-                className="md:w-80"
+                aria-label="Search applications"
+                className="w-full sm:w-80"
               />
               <Select
                 aria-label="Filter by status"
@@ -1524,52 +1530,52 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   setApplicationPage(1)
                   setSelectedBulkIds([])
                 }}
-                className="md:w-48"
+                className="w-full sm:w-48"
               >
                 <option value="">Active statuses</option>
                 {statusOptions.map(status => (
                   <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                 ))}
               </Select>
-              <label className="flex items-center gap-2 text-sm text-text-muted">
-                <input
-                  type="checkbox"
-                  className="accent-primary"
+              <div className="flex h-input-h items-center">
+                <Checkbox
+                  label="Show archived"
                   checked={showArchived}
-                  onChange={event => {
-                    setShowArchived(event.target.checked)
+                  onChange={checked => {
+                    setShowArchived(checked)
                     setApplicationPage(1)
                     setSelectedBulkIds([])
                   }}
                 />
-                Show archived
-              </label>
-              {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
+              </div>
+              {clientMessage && <p className="flex h-input-h items-center text-xs text-text-muted">{clientMessage}</p>}
             </div>
 
             {activeTab === 'pipeline' && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
                 {pipeline.map(column => (
-                  <div key={column.status} className="rounded-md border border-border bg-surface p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <h2 className="text-xs font-semibold uppercase text-text-muted">{column.status.replaceAll('_', ' ')}</h2>
-                      <span className="text-xs text-text-muted">{column.applications.length}</span>
-                    </div>
-                    <div className="space-y-2">
+                  <Card key={column.status}>
+                    <CardHeader
+                      title={titleCase(column.status)}
+                      action={<span className="text-xs text-text-muted">{column.applications.length}</span>}
+                    />
+                    <CardBody className="space-y-2 p-3">
                       {column.applications.length === 0 && (
-                        <p className="rounded-md border border-dashed border-border bg-surface-2 p-3 text-xs text-text-muted">No applications</p>
+                        <Empty size="sm" title="No applications" />
                       )}
                       {column.applications.map((application: any) => {
                         const upcomingForApp = appointments
                           .filter((ap: any) => ap.application_id === application.id && ap.status === 'scheduled' && toTime(ap.scheduled_start) > Date.now())
                           .sort((a: any, b: any) => toTime(a.scheduled_start) - toTime(b.scheduled_start))
                         const nextAppt = upcomingForApp[0]
+                        // A pipeline card: several lines in one click target. A DS Button is a
+                        // fixed-height control, so the cards of this board stay native buttons.
                         return (
                           <button
                             type="button"
                             key={application.id}
                             onClick={() => openApplicationDetail(application)}
-                            className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
+                            className="w-full rounded-default border border-border bg-surface-2 p-2 text-left hover:border-primary focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
                             <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
                             <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
@@ -1581,15 +1587,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             </div>
                             {nextAppt && (
                               <p className="mt-1 truncate text-xs text-primary">
-                                <ClockIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                                <Icon name="clock" size={12} className="mr-1 inline" />
                                 {nextAppt.type === 'trial_shift' ? 'Trial' : 'Interview'} {formatSlotDateTime(nextAppt.scheduled_start)}
                               </p>
                             )}
                           </button>
                         )
                       })}
-                    </div>
-                  </div>
+                    </CardBody>
+                  </Card>
                 ))}
               </div>
             )}
@@ -1597,29 +1603,29 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             {activeTab === 'applications' && (
               <Card>
                 <CardHeader title="Applications" />
-                <CardBody>
                 {permissions.canEdit && selectedBulkIds.length > 0 && (
                   <ActionFeedbackForm
                     action={bulkFormAction}
-                    className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 p-3"
-                    confirmTitle="Apply bulk action"
+                    className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-pad-card py-3"
+                    confirmTitle="Apply Bulk Action"
                     confirmMessage="Apply this change to the selected applications?"
+                    confirmLabel="Apply"
                     successMessage="Bulk action applied."
                   >
                     {selectedBulkIds.map(id => <input key={id} type="hidden" name="ids" value={id} />)}
                     <span className="text-sm text-text-muted">{selectedBulkIds.length} selected</span>
-                    <Select name="bulk_action" defaultValue="status" className="w-36">
+                    <Select name="bulk_action" defaultValue="status" className="w-36" aria-label="Bulk action">
                       <option value="status">Set status</option>
                       <option value="reject">Reject</option>
                       <option value="archive">Archive</option>
                       <option value="restore">Restore</option>
                     </Select>
-                    <Select name="status" defaultValue="on_hold" className="w-44">
+                    <Select name="status" defaultValue="on_hold" className="w-44" aria-label="Status to set">
                       {statusOptions.map(status => (
                         <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                       ))}
                     </Select>
-                    <Input name="note" placeholder="Note or rejection reason" className="w-56" />
+                    <Input name="note" placeholder="Note or rejection reason" className="w-56" aria-label="Note or rejection reason" />
                     <SubmitButton variant="secondary">Apply</SubmitButton>
                     {permissions.canExport && (
                       <Button type="button" size="sm" variant="secondary" onClick={exportApplicationsCsv}>
@@ -1632,17 +1638,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <TableHeader>
                     <TableRow>
                       <TableHead>
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
+                        <Checkbox
+                          aria-label="Select all applications on this page"
                           checked={paginatedApplications.length > 0 && paginatedApplications.every((application: any) => selectedBulkIds.includes(application.id))}
-                          onChange={event => {
+                          onChange={checked => {
                             const pageIds = paginatedApplications.map((application: any) => application.id)
-                            setSelectedBulkIds((current) => event.target.checked
+                            setSelectedBulkIds((current) => checked
                               ? Array.from(new Set([...current, ...pageIds]))
                               : current.filter((id) => !pageIds.includes(id)))
                           }}
-                          aria-label="Select all applications on this page"
                         />
                       </TableHead>
                       <TableHead>Candidate</TableHead>
@@ -1658,26 +1662,25 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         key={application.id}
                         className={[
                           scoreRowClass(application.ai_score),
-                          selectedApplication?.id === application.id ? 'bg-primary/5' : '',
+                          selectedApplication?.id === application.id ? 'bg-primary-soft' : '',
                         ].filter(Boolean).join(' ')}
                       >
                         <TableCell className="align-top">
-                          <input
-                            type="checkbox"
-                            className="accent-primary"
-                            checked={selectedBulkIds.includes(application.id)}
-                            onChange={event => toggleBulkId(application.id, event.target.checked)}
+                          <Checkbox
                             aria-label={`Select ${candidateName(application.candidate)}`}
+                            checked={selectedBulkIds.includes(application.id)}
+                            onChange={checked => toggleBulkId(application.id, checked)}
                           />
                         </TableCell>
                         <TableCell className="align-top whitespace-normal">
-                          <button
+                          <Button
                             type="button"
-                            className="text-left font-medium text-text-strong hover:text-primary hover:underline"
+                            variant="link"
+                            className="whitespace-normal text-left"
                             onClick={() => openApplicationDetail(application)}
                           >
                             {candidateName(application.candidate)}
-                          </button>
+                          </Button>
                           <p className="text-xs text-text-muted">{application.candidate?.email}</p>
                         </TableCell>
                         <TableCell className="align-top whitespace-normal text-sm text-text">
@@ -1692,7 +1695,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <span className="ml-2 text-xs text-text-muted">{application.ai_recommendation.replaceAll('_', ' ')}</span>
                           )}
                           {application.job_posting?.version && application.ai_scored_against_version && application.ai_scored_against_version !== application.job_posting.version && (
-                            <Badge tone="warning" className="ml-2">stale</Badge>
+                            <Badge tone={RECRUITMENT_FLAG_TONE.stale} className="ml-2">stale</Badge>
                           )}
                         </TableCell>
                         <TableCell className="align-top">
@@ -1703,9 +1706,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   </TableBody>
                 </Table>
                 {filteredApplications.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">
-                    {showArchived ? 'No archived applications match.' : 'No active applications match.'}
-                  </p>
+                  <Empty
+                    size="sm"
+                    title={
+                      search.trim() || statusFilter
+                        ? 'No applications match these filters'
+                        : showArchived ? 'No archived applications yet' : 'No applications yet'
+                    }
+                  />
                 )}
                 {filteredApplications.length > APPLICATION_PAGE_SIZE && (
                   <TablePagination
@@ -1716,14 +1724,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     onPageChange={(page) => setApplicationPage(page)}
                   />
                 )}
-                </CardBody>
               </Card>
             )}
 
             <Drawer
               open={detailDrawerOpen && Boolean(selectedApplication)}
               onClose={() => setDetailDrawerOpen(false)}
-              title={selectedApplication ? candidateName(selectedApplication.candidate) : 'Application detail'}
+              title={selectedApplication ? candidateName(selectedApplication.candidate) : 'Application Detail'}
               width="min(980px, 100vw)"
             >
               {selectedApplication && (
@@ -1734,20 +1741,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {/* The drawer's own title bar already carries the name, so this block
                         stays to two lines. Everything sticky costs screen on a phone. */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">{statusLabel(selectedApplication.status)}</Badge>
+                      <Badge tone={RECRUITMENT_STAGE_TONE}>{statusLabel(selectedApplication.status)}</Badge>
                       <Badge tone={scoreTone(selectedApplication.ai_score)}>AI {selectedApplication.ai_score ?? '-'} · {selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'review'}</Badge>
-                      <Badge tone={rtwTone(selectedApplication.candidate?.right_to_work_status)}>RTW: {rtwLabel(selectedApplication.candidate?.right_to_work_status)}</Badge>
-                      {selectedApplication.archived_at && <Badge tone="warning">Archived</Badge>}
+                      <Badge tone={recruitmentRightToWorkTone(selectedApplication.candidate?.right_to_work_status)}>RTW: {rtwLabel(selectedApplication.candidate?.right_to_work_status)}</Badge>
+                      {selectedApplication.archived_at && <Badge tone={RECRUITMENT_FLAG_TONE.archived}>Archived</Badge>}
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
                       <span>{roleTitle(selectedApplication)} · {selectedApplication.source} · applied {formatDateTime(selectedApplication.created_at)}</span>
                       <span aria-hidden="true">·</span>
                       {selectedApplication.candidate?.email
-                        ? <a className="text-primary hover:underline" href={`mailto:${selectedApplication.candidate.email}`}>{selectedApplication.candidate.email}</a>
+                        ? <a className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring" href={`mailto:${selectedApplication.candidate.email}`}>{selectedApplication.candidate.email}</a>
                         : <span>No email on file</span>}
                       <span aria-hidden="true">·</span>
                       {(selectedApplication.candidate?.phone || selectedApplication.candidate?.phone_e164)
-                        ? <a className="text-primary hover:underline" href={`tel:${selectedApplication.candidate.phone_e164 || selectedApplication.candidate.phone}`}>{selectedApplication.candidate.phone || selectedApplication.candidate.phone_e164}</a>
+                        ? <a className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring" href={`tel:${selectedApplication.candidate.phone_e164 || selectedApplication.candidate.phone}`}>{selectedApplication.candidate.phone || selectedApplication.candidate.phone_e164}</a>
                         : <span>No phone on file</span>}
                     </p>
 
@@ -1756,7 +1763,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {secondaryStageAction && renderStageAction(secondaryStageAction, 'secondary')}
                       <Dropdown
                         trigger={
-                          <Button type="button" size="sm" variant="secondary" icon={<EllipsisHorizontalIcon className="h-4 w-4" />} aria-label="More actions">
+                          <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
                             More
                           </Button>
                         }
@@ -1768,38 +1775,42 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </DropdownItem>
                         ))}
                         {permissions.canEdit && <DropdownItem onClick={() => openDecision('reject')} danger>Reject</DropdownItem>}
-                        {permissions.canManage && <DropdownItem onClick={() => openDecision('offer')}>Make offer</DropdownItem>}
-                        {permissions.canManage && <DropdownItem onClick={() => openDecision('decline_duplicate')}>Already considered</DropdownItem>}
-                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('withdraw')}>Mark withdrawn</DropdownItem>}
-                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('hold')}>Put on hold</DropdownItem>}
-                        {canCreateEmployeeInvite && <DropdownItem onClick={() => setHireDialogOpen(true)}>Create employee invite</DropdownItem>}
-                        {permissions.canEdit && <DropdownItem onClick={() => setStageDialogOpen(true)}>Change stage manually</DropdownItem>}
-                        {permissions.canManage && selectedApplication.job_posting_id && <DropdownItem onClick={queueRescore}>Re-score AI fit</DropdownItem>}
+                        {permissions.canManage && <DropdownItem onClick={() => openDecision('offer')}>Make Offer</DropdownItem>}
+                        {permissions.canManage && <DropdownItem onClick={() => openDecision('decline_duplicate')}>Already Considered</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('withdraw')}>Mark Withdrawn</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('hold')}>Put on Hold</DropdownItem>}
+                        {canCreateEmployeeInvite && <DropdownItem onClick={() => setHireDialogOpen(true)}>Create Employee Invite</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => setStageDialogOpen(true)}>Change Stage Manually</DropdownItem>}
+                        {permissions.canManage && selectedApplication.job_posting_id && <DropdownItem onClick={queueRescore}>Re-score AI Fit</DropdownItem>}
                         {permissions.canEdit && (
                           <DropdownItem onClick={queueArchiveToggle} danger={!selectedApplication.archived_at}>
-                            {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                            {selectedApplication.archived_at ? 'Restore Application' : 'Archive Application'}
                           </DropdownItem>
                         )}
                       </Dropdown>
                     </div>
                     {nextActionHint && <p className="mt-2 text-xs text-text-muted">{nextActionHint}</p>}
-                    {barActionPending && <p className="mt-1 text-xs text-text-muted">Working...</p>}
-                    {barActionState?.error && <p className="mt-1 text-xs text-danger">{barActionState.error}</p>}
+                    {barActionPending && <p className="mt-1 flex items-center gap-1.5 text-xs text-text-muted"><Spinner size="sm" />Working…</p>}
+                    {barActionState?.error && <p className="mt-1 text-xs text-danger-fg">{barActionState.error}</p>}
                     {barActionState?.success && <p className="mt-1 text-xs text-success-fg">{barActionState.success}</p>}
 
                     {/* The border lives on the tab strip, not the sticky wrapper, so the
                         wrapper can carry padding below it. Without that padding, content
                         scrolls up flush against the tabs and reads as clipped. */}
-                    <div role="tablist" className="mt-3 flex flex-wrap gap-1 border-b border-border">
-                      {DRAWER_TABS.map(tab => {
-                        const count = drawerTabCounts[tab.id]
-                        return (
-                          <button key={tab.id} type="button" role="tab" aria-selected={drawerTab === tab.id} onClick={() => setDrawerTab(tab.id)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${drawerTab === tab.id ? 'border-primary text-text-strong' : 'border-transparent text-text-muted hover:text-text'}`}>
-                            {tab.label}
-                            {typeof count === 'number' && count > 0 && <span className="ml-1 text-xs text-text-muted">({count})</span>}
-                          </button>
-                        )
-                      })}
+                    <div className="mt-3">
+                      <Tabs
+                        aria-label="Application details"
+                        activeTab={drawerTab}
+                        onTabChange={(id) => setDrawerTab(id as DrawerTab)}
+                        tabs={DRAWER_TABS.map(tab => {
+                          const count = drawerTabCounts[tab.id]
+                          return {
+                            id: tab.id,
+                            label: tab.label,
+                            count: typeof count === 'number' && count > 0 ? count : undefined,
+                          }
+                        })}
+                      />
                     </div>
                   </div>
 
@@ -1827,7 +1838,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         if (answerRows.length === 0) return null
                         return (
                           <div>
-                            <p className="text-xs font-semibold uppercase text-text-muted">Their answers</p>
+                            <p className={SUB_LABEL}>Their answers</p>
                             <dl className="mt-1 space-y-1 text-sm text-text">
                               {answerRows.map(([label, value]) => (
                                 <div key={label} className="whitespace-pre-wrap"><span className="text-text-muted">{label}:</span> {value}</div>
@@ -1838,58 +1849,53 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       })()}
 
                       {selectedCvExtractionMessage && (
-                        <div className="rounded-sm border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
-                          <p className="font-medium">CV extraction needs review</p>
-                          <p className="mt-1">{selectedCvExtractionMessage}</p>
+                        <Alert tone="warning" title="CV extraction needs review">
+                          <p>{selectedCvExtractionMessage}</p>
                           {selectedApplication.candidate?.cv_file_path && (
                             <ActionFeedbackForm action={cvRetryFormAction} className="mt-2 flex flex-wrap items-center gap-2" successMessage="CV extraction retry queued.">
                               <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
-                              <Button type="submit" size="xs" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
-                                Retry extraction
+                              <Button type="submit" size="xs" variant="secondary" icon={<Icon name="refresh" size={16} />}>
+                                Retry CV
                               </Button>
                             </ActionFeedbackForm>
                           )}
-                        </div>
+                        </Alert>
                       )}
                       <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Rationale</p>
+                        <p className={SUB_LABEL}>Rationale</p>
                         <p className="text-sm text-text">{selectedApplication.ai_rationale || selectedCvProfileSummary || 'No AI rationale recorded.'}</p>
                       </div>
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                         <div>
-                          <p className="text-xs font-semibold uppercase text-text-muted">Strengths</p>
+                          <p className={SUB_LABEL}>Strengths</p>
                           <p className="text-sm text-text">{textList(selectedStrengths)}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase text-text-muted">Concerns</p>
+                          <p className={SUB_LABEL}>Concerns</p>
                           <p className="text-sm text-text">{textList(selectedConcerns)}</p>
                         </div>
                       </div>
                       {/* Read-only context for judging the concerns above. Drafting the
                           follow-up email itself lives in Messages, with every other template. */}
                       <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Role prerequisites</p>
+                        <p className={SUB_LABEL}>Role prerequisites</p>
                         <p className="mt-1 whitespace-pre-wrap text-sm text-text">{selectedApplication.job_posting?.requirements || 'No role prerequisites recorded.'}</p>
                         {selectedApplication.job_posting?.ai_scoring_notes && (
                           <p className="mt-2 whitespace-pre-wrap text-xs text-text-muted">Screening notes: {selectedApplication.job_posting.ai_scoring_notes}</p>
                         )}
                       </div>
                       {extractedProfile(selectedApplication.candidate) && (
-                        <div className="rounded-sm border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">CV profile</p>
-                          <p className="mt-1 text-sm text-text">
-                            Skills: {textList(profileArray(selectedApplication.candidate, 'relevant_skills'))}
-                          </p>
-                          <p className="mt-1 text-sm text-text">
-                            Recommended roles: {textList(profileArray(selectedApplication.candidate, 'recommended_role_types'))}
-                          </p>
-                          <p className="mt-1 text-sm text-text">
-                            Role fit: {roleFitSummary(selectedApplication.candidate)}
-                          </p>
-                        </div>
+                        <Card variant="secondary">
+                          <CardHeader title="CV Profile" />
+                          <CardBody className="space-y-1 text-sm text-text">
+                            <p>Skills: {textList(profileArray(selectedApplication.candidate, 'relevant_skills'))}</p>
+                            <p>Recommended roles: {textList(profileArray(selectedApplication.candidate, 'recommended_role_types'))}</p>
+                            <p>Role fit: {roleFitSummary(selectedApplication.candidate)}</p>
+                          </CardBody>
+                        </Card>
                       )}
                       {selectedApplication.candidate?.cv_file_path && (
-                        <Button type="button" size="sm" variant="secondary" icon={<DocumentTextIcon className="h-4 w-4" />} onClick={() => openCv(selectedApplication.candidate_id)}>
+                        <Button type="button" size="sm" variant="secondary" icon={<Icon name="fileText" size={16} />} onClick={() => openCv(selectedApplication.candidate_id)}>
                           Open CV
                         </Button>
                       )}
@@ -1897,7 +1903,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {/* Compliance facts stay readable without opening the edit form.
                           Right to work also has a chip in the drawer header. */}
                       <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Details</p>
+                        <p className={SUB_LABEL}>Details</p>
                         <dl className="mt-1 space-y-1 text-sm text-text">
                           <div><span className="text-text-muted">Location:</span> {selectedApplication.candidate?.location || 'Not recorded'}</div>
                           <div>
@@ -1920,89 +1926,86 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         const converted = Boolean(candidate?.converted_employee_id)
                         if (otherApplications.length === 0 && !isTalentPool && !converted) return null
                         return (
-                          <div className="space-y-1 rounded-sm border border-border bg-surface-2 p-3">
-                            <p className="text-xs font-semibold uppercase text-text-muted">Elsewhere in recruitment</p>
-                            {converted && <p className="text-sm text-text">Converted to employee</p>}
-                            {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
-                            {otherApplications.length > 0 && (
-                              <div className="text-sm text-text">
-                                <p className="text-xs text-text-muted">Other applications</p>
-                                {otherApplications.map((app: any) => (
-                                  <p key={app.id} className="text-xs text-text-muted">
-                                    {roleTitle(app)} · {statusLabel(app.status)} · {formatDateTime(app.created_at)}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                          <Card variant="secondary">
+                            <CardHeader title="Elsewhere in Recruitment" />
+                            <CardBody className="space-y-1">
+                              {converted && <p className="text-sm text-text">Converted to employee</p>}
+                              {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
+                              {otherApplications.length > 0 && (
+                                <div className="text-sm text-text">
+                                  <p className="text-xs text-text-muted">Other applications</p>
+                                  {otherApplications.map((app: any) => (
+                                    <p key={app.id} className="text-xs text-text-muted">
+                                      {roleTitle(app)} · {statusLabel(app.status)} · {formatDateTime(app.created_at)}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </CardBody>
+                          </Card>
                         )
                       })()}
 
                       {permissions.canEdit && (
-                        <details className="rounded-sm border border-border bg-surface-2 p-3">
-                          <summary className="cursor-pointer text-sm font-medium text-primary">Edit candidate details</summary>
-                          <form action={candidateUpdateAction} className="mt-3 space-y-3 border-t border-border pt-3">
-                            <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <ProfileField label="First name">
-                                <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
-                              </ProfileField>
-                              <ProfileField label="Last name">
-                                <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
-                              </ProfileField>
-                            </div>
-                            <ProfileField label="Email">
-                              <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
-                            </ProfileField>
-                            <ProfileField label="Phone">
-                              <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
-                            </ProfileField>
-                            <ProfileField label="Location">
-                              <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
-                            </ProfileField>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <ProfileField label="Right to work">
-                                <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
-                                  <option value="not_checked">Not checked</option>
-                                  <option value="pending">Pending</option>
-                                  <option value="verified">Verified</option>
-                                  <option value="failed">Failed</option>
-                                </Select>
-                              </ProfileField>
-                              <ProfileField label="Document type">
-                                <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
-                                  <option value="">Not set</option>
-                                  <option value="Passport">Passport</option>
-                                  <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-                                  <option value="Share Code">Share Code</option>
-                                  <option value="List A">List A</option>
-                                  <option value="List B">List B</option>
-                                  <option value="Other">Other</option>
-                                </Select>
-                              </ProfileField>
-                            </div>
-                            <ProfileField label="Right to work checked at">
-                              <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
-                            </ProfileField>
-                            <ProfileField label="Notes for AI context">
-                              <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                            </ProfileField>
-                            <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
-                              <label className="flex items-center gap-2">
-                                <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} className="accent-primary" />
-                                SMS consent
-                              </label>
-                              <label className="flex items-center gap-2">
-                                <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} className="accent-primary" />
-                                Future recruitment consent
-                              </label>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <SubmitButton>Save candidate</SubmitButton>
-                              <ActionStateMessage state={candidateUpdateState} />
-                            </div>
-                          </form>
-                        </details>
+                        <Card variant="secondary">
+                          <details>
+                            <summary className="cursor-pointer rounded-sm text-sm font-medium text-primary focus-visible:outline-hidden focus-visible:shadow-ring">Edit Candidate Details</summary>
+                            <form action={candidateUpdateAction} className="mt-3 space-y-3 border-t border-border pt-3">
+                              <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="First name">
+                                  <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
+                                </Field>
+                                <Field label="Last name">
+                                  <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
+                                </Field>
+                              </div>
+                              <Field label="Email">
+                                <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
+                              </Field>
+                              <Field label="Phone">
+                                <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
+                              </Field>
+                              <Field label="Location">
+                                <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
+                              </Field>
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="Right to work">
+                                  <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
+                                    <option value="not_checked">Not checked</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="verified">Verified</option>
+                                    <option value="failed">Failed</option>
+                                  </Select>
+                                </Field>
+                                <Field label="Document type">
+                                  <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
+                                    <option value="">Not set</option>
+                                    <option value="Passport">Passport</option>
+                                    <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                                    <option value="Share Code">Share Code</option>
+                                    <option value="List A">List A</option>
+                                    <option value="List B">List B</option>
+                                    <option value="Other">Other</option>
+                                  </Select>
+                                </Field>
+                              </div>
+                              <Field label="Right to work checked at">
+                                <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
+                              </Field>
+                              <Field label="Notes for AI context">
+                                <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                              </Field>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <Checkbox name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} label="SMS consent" />
+                                <Checkbox name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} label="Future recruitment consent" />
+                              </div>
+                              <FormFooter start={<ActionStateMessage state={candidateUpdateState} />}>
+                                <SubmitButton>Save Changes</SubmitButton>
+                              </FormFooter>
+                            </form>
+                          </details>
+                        </Card>
                       )}
                     </div>
                   )}
@@ -2011,14 +2014,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Interviews and trials</p>
+                          <p className={SUB_LABEL}>Interviews and trials</p>
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
-                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
+                            <Button type="button" size="xs" variant="secondary" icon={<Icon name="printer" size={16} />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview Kit</Button>
+                            <Button type="button" size="xs" variant="secondary" icon={<Icon name="printer" size={16} />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial Brief</Button>
                           </div>
                         </div>
                         {selectedApplicationAppointments.length === 0 && (
-                          <p className="text-sm text-text-muted">No interview or trial scheduled yet.</p>
+                          <Empty size="sm" title="No interview or trial scheduled yet" />
                         )}
                         {selectedApplicationAppointments.map((apt: any) => {
                           const aptScorecards = scorecards.filter((sc: any) => sc.appointment_id === apt.id)
@@ -2035,10 +2038,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             && !apt.outcome_recorded_at
                             && toTime(apt.scheduled_start) < Date.now()
                           return (
-                            <div key={apt.id} className="space-y-1 rounded-sm border border-border bg-surface-2 p-3">
+                            <Card key={apt.id} variant="secondary" padding="sm">
+                              <div className="space-y-1">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-text-strong">{apt.type === 'trial_shift' ? 'Trial shift' : 'Interview'}</span>
-                                <Badge tone="neutral">{String(apt.status).replaceAll('_', ' ')}</Badge>
+                                <Badge tone={RECRUITMENT_APPOINTMENT_STATUS_TONE}>{String(apt.status).replaceAll('_', ' ')}</Badge>
                               </div>
                               <p className="text-sm text-text">{formatSlotDateTime(apt.scheduled_start)}</p>
                               <p className="text-xs text-text-muted">
@@ -2056,8 +2060,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               ))}
                               {permissions.canEdit && !apt.archived_at && (
                                 <details className="mt-1" open={awaitingOutcome}>
-                                  <summary className="cursor-pointer text-xs font-medium text-primary">
-                                    {awaitingOutcome ? 'Record outcome' : 'Manage'}
+                                  <summary className="cursor-pointer rounded-sm text-xs font-medium text-primary focus-visible:outline-hidden focus-visible:shadow-ring">
+                                    {awaitingOutcome ? 'Record Outcome' : 'Manage'}
                                   </summary>
                                   <div className="mt-2 space-y-3 border-t border-border pt-3">
                                     <form action={outcomeFormAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -2080,18 +2084,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                           <option value="5">5</option>
                                         </Select>
                                       </Field>
-                                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                                        <input type="checkbox" name="meal_provided" defaultChecked={apt.meal_provided === true} className="accent-primary" />
-                                        Meal provided
-                                      </label>
+                                      <Checkbox className="sm:col-span-2" name="meal_provided" defaultChecked={apt.meal_provided === true} label="Meal provided" />
                                       <div className="sm:col-span-2">
                                         <Field label="Notes">
                                           <Textarea name="outcome" defaultValue={apt.outcome ?? ''} rows={2} />
                                         </Field>
                                       </div>
-                                      <div className="sm:col-span-2">
-                                        <SubmitButton variant="secondary">Save outcome</SubmitButton>
-                                      </div>
+                                      <FormFooter className="sm:col-span-2">
+                                        <SubmitButton variant="secondary">Save Outcome</SubmitButton>
+                                      </FormFooter>
                                     </form>
                                     <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                                       {rescheduleSlots.length > 0 && (
@@ -2113,26 +2114,30 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                       <ActionFeedbackForm
                                         action={cancelAppointmentFormAction}
                                         className="flex flex-wrap gap-2"
-                                        confirmTitle="Cancel appointment"
+                                        confirmTitle="Cancel Appointment"
+                                        confirmTone="danger"
                                         confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                                        confirmLabel="Cancel Appointment"
+                                        cancelLabel="Keep Appointment"
                                         successMessage="Appointment cancelled."
                                         onSuccess={() => router.refresh()}
                                       >
                                         <input type="hidden" name="appointment_id" value={apt.id} />
-                                        <Input name="reason" placeholder="Cancel reason" className="w-40" />
-                                        <SubmitButton variant="secondary">Cancel</SubmitButton>
+                                        <Input name="reason" placeholder="Cancel reason" aria-label="Cancel reason" className="w-40" />
+                                        <SubmitButton variant="secondary">Cancel Appointment</SubmitButton>
                                       </ActionFeedbackForm>
                                     </div>
                                   </div>
                                 </details>
                               )}
-                            </div>
+                              </div>
+                            </Card>
                           )
                         })}
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Interview booking link</p>
+                        <p className={SUB_LABEL}>Interview booking link</p>
                         {!candidateHasEmail && permissions.canSend && (
                           <p className="text-xs text-text-muted">Add an email address before sending a booking link.</p>
                         )}
@@ -2141,14 +2146,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <ActionFeedbackForm
                               action={bookingInviteFormAction}
                               successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
-                              confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
+                              confirmTitle={interviewInviteSent ? 'Resend Interview Booking Link' : undefined}
                               confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                              confirmLabel="Resend"
                               onSuccess={() => router.refresh()}
                             >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
                               <input type="hidden" name="type" value="interview" />
                               <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
-                                {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
+                                {interviewInviteSent ? 'Resend Interview Booking Link' : 'Send Interview Booking Link'}
                               </SubmitButton>
                             </ActionFeedbackForm>
                           )}
@@ -2159,8 +2165,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </p>
                       </div>
                       {canScheduleInterviewForCandidate && (
-                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Schedule interview for candidate</p>
+                        <Card variant="secondary">
+                          <CardHeader title="Schedule Interview for Candidate" />
+                          <CardBody className="space-y-2">
                           {selectedApplicationOpenInterviewSlots.length === 0 && (
                             <p className="text-xs text-text-muted">No open interview slots available.</p>
                           )}
@@ -2168,7 +2175,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             action={scheduleInterviewFormAction}
                             className="flex flex-wrap items-center gap-2"
                             successMessage="Interview scheduled."
-                            confirmTitle="Schedule interview"
+                            confirmTitle="Schedule Interview"
+                            confirmLabel="Schedule"
                             confirmMessage={`Schedule an interview for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                             onSuccess={() => router.refresh()}
                           >
@@ -2189,14 +2197,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               variant={selectedApplicationStatus === 'interview_invited' ? 'primary' : 'secondary'}
                               disabled={selectedApplicationOpenInterviewSlots.length === 0}
                             >
-                              Schedule interview
+                              Schedule Interview
                             </SubmitButton>
                           </ActionFeedbackForm>
-                        </div>
+                          </CardBody>
+                        </Card>
                       )}
                       {canScheduleTrialForCandidate && (
-                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Schedule trial shift for candidate</p>
+                        <Card variant="secondary">
+                          <CardHeader title="Schedule Trial Shift for Candidate" />
+                          <CardBody className="space-y-2">
                           {selectedApplicationOpenTrialSlots.length === 0 && (
                             <p className="text-xs text-text-muted">No open trial shift slots available.</p>
                           )}
@@ -2204,7 +2214,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             action={scheduleTrialFormAction}
                             className="flex flex-wrap items-center gap-2"
                             successMessage="Trial shift scheduled."
-                            confirmTitle="Schedule trial shift"
+                            confirmTitle="Schedule Trial Shift"
+                            confirmLabel="Schedule"
                             confirmMessage={`Schedule a trial shift for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                             onSuccess={() => router.refresh()}
                           >
@@ -2225,18 +2236,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               variant={selectedApplicationStatus === 'trial_offered' ? 'primary' : 'secondary'}
                               disabled={selectedApplicationOpenTrialSlots.length === 0}
                             >
-                              Schedule trial shift
+                              Schedule Trial Shift
                             </SubmitButton>
                           </ActionFeedbackForm>
-                        </div>
+                          </CardBody>
+                        </Card>
                       )}
 
                       {/* The end of the pipeline belongs on the pipeline tab, not only in
                           the action bar, which surfaces it as the primary action once an
                           offer is out. */}
                       {permissions.canManage && (
-                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Hire</p>
+                        <Card variant="secondary">
+                          <CardHeader title="Hire" />
+                          <CardBody className="space-y-2">
                           {candidateHasEmail ? (
                             <>
                               <p className="text-sm text-text-muted">
@@ -2246,29 +2259,30 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 type="button"
                                 size="sm"
                                 variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}
-                                icon={<UserPlusIcon className="h-4 w-4" />}
+                                icon={<Icon name="userPlus" size={16} />}
                                 onClick={() => setHireDialogOpen(true)}
                               >
-                                Create employee invite
+                                Create Employee Invite
                               </Button>
                             </>
                           ) : (
                             <p className="text-sm text-text-muted">Add an email address before creating an employee invite.</p>
                           )}
-                        </div>
+                          </CardBody>
+                        </Card>
                       )}
 
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Stage history</p>
+                        <p className={SUB_LABEL}>Stage history</p>
                         {selectedApplicationEvents.length === 0 && (
-                          <p className="text-sm text-text-muted">No stage changes recorded yet.</p>
+                          <Empty size="sm" title="No stage changes recorded yet" />
                         )}
                         {selectedApplicationEvents.map((event: any) => (
-                          <div key={event.id} className="rounded-sm border border-border bg-surface-2 p-2">
+                          <Card key={event.id} variant="secondary" padding="sm">
                             <p className="text-sm font-medium text-text-strong">{statusLabel(event.to_status)}</p>
                             {event.note && <p className="whitespace-pre-wrap text-xs text-text">{event.note}</p>}
                             <p className="text-xs text-text-muted">{formatSlotDateTime(event.created_at)}</p>
-                          </div>
+                          </Card>
                         ))}
                       </div>
                     </div>
@@ -2277,7 +2291,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   {drawerTab === 'messages' && (
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
+                        <p className={SUB_LABEL}>Email composer</p>
                         {permissions.canSend ? (
                           <div className="flex flex-wrap gap-2">
                             {['interview_invite', 'concerns_follow_up', 'rejection', 'already_considered', 'offer'].map(type => (
@@ -2286,38 +2300,38 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 type="button"
                                 size="sm"
                                 variant="secondary"
-                                icon={<SparklesIcon className="h-4 w-4" />}
+                                icon={<Icon name="sparkles" size={16} />}
                                 onClick={() => draftEmail(selectedApplication.id, type)}
                               >
-                                Draft {type.replaceAll('_', ' ')}
+                                Draft {titleCase(type)}
                               </Button>
                             ))}
                           </div>
                         ) : (
                           <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
                         )}
-                        {emailDraft?.error && <p className="text-xs text-danger">{emailDraft.error}</p>}
+                        {emailDraft?.error && <p className="text-xs text-danger-fg">{emailDraft.error}</p>}
                         <ActionStateMessage state={emailSendState} />
                         {emailDraft && !emailDraft.error && (
                           <form key={emailDraft.runId ?? emailDraft.type} action={sendDecisionEmail} className="space-y-2">
                             <input type="hidden" name="application_id" value={selectedApplication.id} />
                             {emailDraft.runId && <input type="hidden" name="ai_run_id" value={emailDraft.runId} />}
-                            <Select name="type" defaultValue={emailDraft.type}>
+                            <Select name="type" defaultValue={emailDraft.type} label="Email type">
                               <option value="interview_invite">Interview invite</option>
                               <option value="concerns_follow_up">Concerns follow-up</option>
                               <option value="rejection">Rejection</option>
                               <option value="already_considered">Already considered</option>
                               <option value="offer">Offer</option>
                             </Select>
-                            <Input name="subject" defaultValue={emailDraft.subject} />
-                            <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
-                            <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
+                            <Input name="subject" defaultValue={emailDraft.subject} label="Subject" />
+                            <Textarea name="body" defaultValue={emailDraft.body} rows={6} label="Body" />
+                            <Input name="offer_terms" placeholder="Offer terms if sending an offer" label="Offer terms" />
                             {duplicateEmailWarning && (
-                              <p className="rounded-sm border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
-                                {duplicateEmailWarning}
-                              </p>
+                              <Alert tone="warning">{duplicateEmailWarning}</Alert>
                             )}
-                            <SubmitButton>Send reviewed email</SubmitButton>
+                            <FormFooter>
+                              <SubmitButton>Send Reviewed Email</SubmitButton>
+                            </FormFooter>
                           </form>
                         )}
                       </div>
@@ -2326,16 +2340,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           with the drawer's data but used to be readable only from the
                           dashboard's global Communications tab. */}
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Sent to this candidate</p>
+                        <p className={SUB_LABEL}>Sent to this candidate</p>
                         {selectedApplicationAllCommunications.length === 0 && (
-                          <p className="text-sm text-text-muted">Nothing has been sent to this candidate yet.</p>
+                          <Empty size="sm" title="Nothing has been sent to this candidate yet" />
                         )}
                         {selectedApplicationAllCommunications.map((communication: any, index: number) => (
-                          <details key={communication.id} open={index === 0} className="rounded-sm border border-border bg-surface-2 p-2">
-                            <summary className="cursor-pointer">
+                          <Card key={communication.id} variant="secondary" padding="sm">
+                          <details open={index === 0}>
+                            <summary className="cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring">
                               <span className="text-sm font-medium text-text-strong">{communication.subject || communication.type?.replaceAll('_', ' ') || communication.channel}</span>
+                              <Badge tone={messageDeliveryStatusTone(communication.delivery_status)} size="sm" className="ml-2">
+                                {messageDeliveryStatusLabel(communication.delivery_status)}
+                              </Badge>
                               <span className="ml-2 text-xs text-text-muted">
-                                {communication.type?.replaceAll('_', ' ')} · {communication.delivery_status} · {formatDateTime(communication.sent_at || communication.created_at)}
+                                {communication.type?.replaceAll('_', ' ')} · {formatDateTime(communication.sent_at || communication.created_at)}
                               </span>
                             </summary>
                             <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap border-t border-border pt-2 text-sm text-text">{communication.final_body}</pre>
@@ -2343,16 +2361,18 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               <ActionFeedbackForm
                                 action={retryCommunicationFormAction}
                                 className="mt-2"
-                                confirmTitle="Retry send"
+                                confirmTitle="Retry Send"
                                 confirmMessage="Try sending this message again?"
+                                confirmLabel="Retry"
                                 successMessage="Communication retry queued."
                                 onSuccess={() => router.refresh()}
                               >
                                 <input type="hidden" name="communication_id" value={communication.id} />
-                                <SubmitButton variant="secondary">Retry send</SubmitButton>
+                                <SubmitButton variant="secondary">Retry Send</SubmitButton>
                               </ActionFeedbackForm>
                             )}
                           </details>
+                          </Card>
                         ))}
                       </div>
                     </div>
@@ -2364,92 +2384,108 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <form action={addNoteAction} className="space-y-2">
                           <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
-                          <Textarea name="content" placeholder="Add an internal note, date-stamped and visible to recruitment staff" rows={2} />
-                          <div className="flex items-center gap-2">
-                            <SubmitButton variant="secondary">Add note</SubmitButton>
-                            <ActionStateMessage state={addNoteState} />
-                          </div>
+                          <Textarea name="content" label="Add a note" placeholder="Add an internal note, date-stamped and visible to recruitment staff" rows={2} />
+                          <FormFooter start={<ActionStateMessage state={addNoteState} />}>
+                            <SubmitButton variant="secondary">Add Note</SubmitButton>
+                          </FormFooter>
                         </form>
                       )}
                       {/* What people wrote comes first. The machine trail is real but noisy,
                           so it sits behind a toggle rather than burying the notes. */}
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Notes</p>
-                        {candidateTrailEvents.notes.length === 0 && <p className="text-sm text-text-muted">No notes yet.</p>}
+                        <p className={SUB_LABEL}>Notes</p>
+                        {candidateTrailEvents.notes.length === 0 && <Empty size="sm" title="No notes yet" />}
                         {candidateTrailEvents.notes.map(ev => (
-                          <div key={ev.key} className="rounded-sm border border-border bg-surface-2 p-2">
+                          <Card key={ev.key} variant="secondary" padding="sm">
                             <p className="whitespace-pre-wrap text-sm text-text">{ev.detail}</p>
                             <p className="mt-1 text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
-                          </div>
+                          </Card>
                         ))}
                       </div>
-                      <details className="rounded-sm border border-border bg-surface-2 p-3">
-                        <summary className="cursor-pointer text-sm font-medium text-primary">
-                          Show system activity ({candidateTrailEvents.system.length})
+                      <Card variant="secondary">
+                      <details>
+                        <summary className="cursor-pointer rounded-sm text-sm font-medium text-primary focus-visible:outline-hidden focus-visible:shadow-ring">
+                          Show System Activity ({candidateTrailEvents.system.length})
                         </summary>
                         <div className="mt-2 space-y-2 border-t border-border pt-3">
-                          {candidateTrailEvents.system.length === 0 && <p className="text-sm text-text-muted">No activity yet.</p>}
+                          {candidateTrailEvents.system.length === 0 && <Empty size="sm" title="No activity yet" />}
                           {candidateTrailEvents.system.map(ev => (
-                            <div key={ev.key} className="rounded-sm border border-border bg-surface p-2">
+                            <Card key={ev.key} padding="sm">
                               <p className="text-sm font-medium text-text-strong">{ev.title}</p>
                               {ev.detail && <p className="whitespace-pre-wrap text-xs text-text">{ev.detail}</p>}
                               <p className="text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
-                            </div>
+                            </Card>
                           ))}
                         </div>
                       </details>
+                      </Card>
                     </div>
                   )}
                   {/* DS Modals rendered inside the drawer, so Headless UI stacks them as nested
-                      dialogs (like the ConfirmDialog below). The buttons stay inside each form so
-                      the submit buttons can read the form's pending state. */}
+                      dialogs (like the ConfirmDialog below). Their buttons sit in the footer and
+                      submit the form in the body through its id; the form reports its pending
+                      state so the footer button shows it. */}
                   {hireDialogOpen && selectedApplication && (
-                    <Modal open onClose={() => setHireDialogOpen(false)} title="Create employee invite" width="md">
-                      <p className="text-xs text-text-muted">
-                        Creates an employee invite for {candidateName(selectedApplication.candidate)} and links it to this application.
-                      </p>
+                    <Modal
+                      open
+                      onClose={() => setHireDialogOpen(false)}
+                      title="Create Employee Invite"
+                      description={`Creates an employee invite for ${candidateName(selectedApplication.candidate)} and links it to this application.`}
+                      width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)} disabled={hirePending}>Cancel</Button>
+                          <SubmitButton form="recruitment-hire-form" loading={hirePending}>Create Employee Invite</SubmitButton>
+                        </>
+                      }
+                    >
                       <ActionFeedbackForm
+                        id="recruitment-hire-form"
                         action={hireFormAction}
-                        className="mt-3 space-y-3"
+                        className="space-y-3"
                         successMessage="Employee invite created."
                         onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
+                        onPendingChange={setHirePending}
                       >
                         <input type="hidden" name="application_id" value={selectedApplication.id} />
-                        <ProfileField label="Job title for the employee invite">
+                        <Field label="Job title for the employee invite">
                           <Input name="job_title" placeholder="e.g. Bar and floor team member" />
-                        </ProfileField>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)}>Cancel</Button>
-                          <SubmitButton>Create employee invite</SubmitButton>
-                        </div>
+                        </Field>
                       </ActionFeedbackForm>
                     </Modal>
                   )}
 
                   {stageDialogOpen && selectedApplication && (
-                    <Modal open onClose={() => setStageDialogOpen(false)} title="Change stage manually" width="md">
-                      <p className="text-xs text-text-muted">
-                        Use this only when the normal actions do not fit. It records a status change with no email to the candidate.
-                      </p>
+                    <Modal
+                      open
+                      onClose={() => setStageDialogOpen(false)}
+                      title="Change Stage Manually"
+                      description="Use this only when the normal actions do not fit. It records a status change with no email to the candidate."
+                      width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)} disabled={stagePending}>Cancel</Button>
+                          <SubmitButton form="recruitment-stage-form" loading={stagePending}>Change Stage</SubmitButton>
+                        </>
+                      }
+                    >
                       <ActionFeedbackForm
+                        id="recruitment-stage-form"
                         action={statusFormAction}
-                        className="mt-3 space-y-3"
+                        className="space-y-3"
                         successMessage="Stage saved."
                         onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
+                        onPendingChange={setStagePending}
                       >
                         <input type="hidden" name="application_id" value={selectedApplication.id} />
                         <input type="hidden" name="note" value="Status changed manually" />
-                        <ProfileField label="Stage">
+                        <Field label="Stage">
                           <Select name="status" defaultValue={selectedApplication.status}>
                             {statusOptions.map(status => (
                               <option key={status} value={status}>{statusLabel(status)}</option>
                             ))}
                           </Select>
-                        </ProfileField>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)}>Cancel</Button>
-                          <SubmitButton>Save stage</SubmitButton>
-                        </div>
+                        </Field>
                       </ActionFeedbackForm>
                     </Modal>
                   )}
@@ -2458,46 +2494,65 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     open={Boolean(pendingBarAction)}
                     onClose={() => setPendingBarAction(null)}
                     onConfirm={runPendingBarAction}
-                    title={pendingBarAction?.title ?? 'Confirm action'}
+                    title={pendingBarAction?.title ?? 'Confirm Action'}
                     message={pendingBarAction?.message ?? ''}
-                    confirmLabel="Confirm"
-                    tone="warning"
+                    confirmLabel={pendingBarAction?.confirmLabel ?? 'Confirm'}
+                    // Status moves, booking links, a re-score and archive (which Restore undoes):
+                    // none is destructive.
+                    tone="primary"
                   />
 
                   {decisionDialog && selectedApplication && (
-                    <Modal open onClose={() => setDecisionDialog(null)} title={DECISION_CONFIG[decisionDialog.decision].confirm} width="md">
-                        <form action={decisionFormAction} className="space-y-3">
+                    <Modal
+                      open
+                      onClose={() => setDecisionDialog(null)}
+                      title={DECISION_CONFIG[decisionDialog.decision].confirm}
+                      width="md"
+                      footer={
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setDecisionDialog(null)} disabled={decisionPending}>Cancel</Button>
+                          <SubmitButton
+                            form="recruitment-decision-form"
+                            variant={DECISION_CONFIG[decisionDialog.decision].danger ? 'danger' : 'primary'}
+                            loading={decisionPending}
+                          >
+                            {DECISION_CONFIG[decisionDialog.decision].confirm}
+                          </SubmitButton>
+                        </>
+                      }
+                    >
+                        <form id="recruitment-decision-form" action={decisionFormAction} className="space-y-3">
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
                           <input type="hidden" name="decision" value={decisionDialog.decision} />
-                          <div>
-                            <label className="text-xs font-semibold uppercase text-text-muted">Internal reason</label>
-                            <Textarea name="reason" rows={2} placeholder="Why? (internal only — saved as a note)" />
-                          </div>
+                          <Textarea name="reason" rows={2} label="Internal reason" placeholder="Why? (internal only, saved as a note)" />
                           {DECISION_CONFIG[decisionDialog.decision].template && (
-                            <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-xs font-semibold uppercase text-text-muted">Email to candidate</p>
-                                <label className="flex items-center gap-1 text-xs text-text">
-                                  <input type="checkbox" name="send_email" checked={decisionSendEmail} disabled={!candidateHasEmail} onChange={e => setDecisionSendEmail(e.target.checked)} className="accent-primary" />
-                                  Send email
-                                </label>
-                              </div>
-                              {!candidateHasEmail && <p className="text-xs text-text-muted">No email on file — the decision will be recorded without emailing.</p>}
-                              {decisionLoadingPreview ? (
-                                <p className="text-xs text-text-muted">Loading proposed email…</p>
-                              ) : (
-                                <>
-                                  <Input name="email_subject" value={decisionEmail.subject} onChange={e => setDecisionEmail(prev => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
-                                  <Textarea name="email_body" rows={6} value={decisionEmail.body} onChange={e => setDecisionEmail(prev => ({ ...prev, body: e.target.value }))} placeholder="Email body" />
-                                  <Button type="button" size="xs" variant="secondary" icon={<SparklesIcon className="h-4 w-4" />} onClick={improveDecisionEmailWithAi}>Improve with AI</Button>
-                                </>
-                              )}
-                            </div>
+                            <Card variant="secondary">
+                              <CardHeader
+                                title="Email to Candidate"
+                                action={
+                                  <Checkbox
+                                    name="send_email"
+                                    label="Send email"
+                                    checked={decisionSendEmail}
+                                    disabled={!candidateHasEmail}
+                                    onChange={checked => setDecisionSendEmail(checked)}
+                                  />
+                                }
+                              />
+                              <CardBody className="space-y-2">
+                                {!candidateHasEmail && <p className="text-xs text-text-muted">No email on file: the decision will be recorded without emailing.</p>}
+                                {decisionLoadingPreview ? (
+                                  <PageLoading inline label="Loading proposed email" className="py-6" />
+                                ) : (
+                                  <>
+                                    <Input name="email_subject" value={decisionEmail.subject} onChange={e => setDecisionEmail(prev => ({ ...prev, subject: e.target.value }))} placeholder="Subject" aria-label="Email subject" />
+                                    <Textarea name="email_body" rows={6} value={decisionEmail.body} onChange={e => setDecisionEmail(prev => ({ ...prev, body: e.target.value }))} placeholder="Email body" aria-label="Email body" />
+                                    <Button type="button" size="xs" variant="secondary" icon={<Icon name="sparkles" size={16} />} onClick={improveDecisionEmailWithAi}>Improve with AI</Button>
+                                  </>
+                                )}
+                              </CardBody>
+                            </Card>
                           )}
-                          <div className="flex items-center justify-end gap-2">
-                            <Button type="button" variant="secondary" onClick={() => setDecisionDialog(null)}>Cancel</Button>
-                            <SubmitButton variant={DECISION_CONFIG[decisionDialog.decision].danger ? 'danger' : 'primary'}>{DECISION_CONFIG[decisionDialog.decision].confirm}</SubmitButton>
-                          </div>
                           <ActionStateMessage state={decisionState} />
                         </form>
                     </Modal>
@@ -2508,50 +2563,44 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
             {activeTab === 'applications' && permissions.canCreate && (
               <Card>
-                <CardHeader title="Add Application" />
+                <CardHeader title="New Application" />
                 <CardBody>
-                  <form action={applicationAction} className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                    <Input name="first_name" placeholder="First name" />
-                    <Input name="last_name" placeholder="Last name" />
-                    <Input name="email" type="email" placeholder="Email" />
-                    <Input name="phone" placeholder="Phone" />
-                    <Select name="job_posting_id">
+                  <form action={applicationAction} className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    <Input name="first_name" label="First name" placeholder="First name" />
+                    <Input name="last_name" label="Last name" placeholder="Last name" />
+                    <Input name="email" type="email" label="Email" placeholder="Email" />
+                    <Input name="phone" label="Phone" placeholder="Phone" />
+                    <Select name="job_posting_id" label="Posting">
                       <option value="">Talent pool</option>
                       {postings.map((posting: any) => (
                         <option key={posting.id} value={posting.id}>{posting.title}</option>
                       ))}
                     </Select>
-                    <Input name="start_availability" placeholder="Start availability" />
-                    <input name="cv" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" className="rounded-default border border-border bg-surface px-3 py-2 text-ui md:col-span-2" />
+                    <Input name="start_availability" label="Start availability" placeholder="Start availability" />
+                    <div className="md:col-span-2">
+                      <Input name="cv" type="file" label="CV" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" className="py-1.5" />
+                    </div>
                     <div className="md:col-span-4">
-                      <Textarea name="cover_note" placeholder="Cover note" rows={3} />
+                      <Textarea name="cover_note" label="Cover note" placeholder="Cover note" rows={3} />
                     </div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" name="sms_consent" defaultChecked className="accent-primary" />
-                      SMS consent
-                    </label>
+                    <Checkbox name="sms_consent" defaultChecked label="SMS consent" />
                     <input type="hidden" name="sms_consent" value="false" />
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" name="future_recruitment_consent" defaultChecked className="accent-primary" />
-                      Future recruitment consent
-                    </label>
+                    <Checkbox name="future_recruitment_consent" defaultChecked label="Future recruitment consent" />
                     <input type="hidden" name="future_recruitment_consent" value="false" />
-                    <div className="md:col-span-4 flex items-center gap-3">
-                      <Button type="submit" variant="primary" icon={<PlusIcon className="h-4 w-4" />}>Add application</Button>
-                      <ActionStateMessage state={applicationState} />
-                    </div>
+                    <FormFooter className="md:col-span-4" start={<ActionStateMessage state={applicationState} />}>
+                      <Button type="submit" variant="primary">Create Application</Button>
+                    </FormFooter>
                   </form>
                 </CardBody>
               </Card>
             )}
-          </section>
+          </>
         )}
 
         {activeTab === 'postings' && (
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             <Card className="xl:col-span-2">
               <CardHeader title="Postings" />
-              <CardBody>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2566,16 +2615,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {postings.map((posting: any) => (
                       <TableRow
                         key={posting.id}
-                        className={selectedPosting?.id === posting.id ? 'bg-primary/5' : ''}
+                        className={selectedPosting?.id === posting.id ? 'bg-primary-soft' : ''}
                       >
                         <TableCell className="align-top whitespace-normal">
-                          <button
+                          <Button
                             type="button"
-                            className="text-left font-medium text-text-strong hover:text-primary hover:underline"
+                            variant="link"
+                            className="whitespace-normal text-left"
                             onClick={() => openPostingDetail(posting)}
                           >
                             {posting.title}
-                          </button>
+                          </Button>
                           <p className="text-xs text-text-muted">{posting.slug}</p>
                         </TableCell>
                         <TableCell className="align-top">{posting.status}</TableCell>
@@ -2586,36 +2636,36 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     ))}
                   </TableBody>
                 </Table>
-              </CardBody>
+                {postings.length === 0 && <Empty size="sm" title="No postings yet" />}
             </Card>
 
             <Drawer
               open={postingDrawerOpen && Boolean(selectedPosting)}
               onClose={() => setPostingDrawerOpen(false)}
-              title={selectedPosting ? selectedPosting.title : 'Posting detail'}
+              title={selectedPosting ? selectedPosting.title : 'Posting Detail'}
               width="min(760px, 100vw)"
             >
               {selectedPosting && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
                     <div>
-                      <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                      <p className={SUB_LABEL}>Status</p>
                       <p className="text-text-strong">{selectedPosting.status}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase text-text-muted">Visibility</p>
+                      <p className={SUB_LABEL}>Visibility</p>
                       <p className="text-text-strong">{postingVisibilityText(selectedPosting)}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase text-text-muted">Version</p>
+                      <p className={SUB_LABEL}>Version</p>
                       <p className="text-text-strong">v{selectedPosting.version}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase text-text-muted">Openings</p>
+                      <p className={SUB_LABEL}>Openings</p>
                       <p className="text-text-strong">{selectedPosting.positions_available ?? 1}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase text-text-muted">Closes</p>
+                      <p className={SUB_LABEL}>Closes</p>
                       <p className="text-text-strong">{formatDateOnly(selectedPosting.application_closing_date)}</p>
                     </div>
                   </div>
@@ -2627,7 +2677,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <Field label="Job title">
                           <Input name="title" defaultValue={selectedPosting.title} required />
                         </Field>
-                        <Field label="Website slug" help="Used by the website URL and application form.">
+                        <Field label="Website slug" hint="Used by the website URL and application form.">
                           <Input name="slug" defaultValue={selectedPosting.slug} required />
                         </Field>
                         <Field label="Role type">
@@ -2646,7 +2696,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <option value="casual">Casual</option>
                           </Select>
                         </Field>
-                        <Field label="Status" help="Only open and public postings show on the website.">
+                        <Field label="Status" hint="Only open and public postings show on the website.">
                           <Select name="status" defaultValue={selectedPosting.status}>
                             <option value="draft">Draft</option>
                             <option value="open">Open</option>
@@ -2662,7 +2712,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             defaultValue={selectedPosting.positions_available ?? 1}
                           />
                         </Field>
-                        <Field label="Application closing date" help="The last date applicants can apply. After this date it drops off the website.">
+                        <Field label="Application closing date" hint="The last date applicants can apply. After this date it drops off the website.">
                           <Input
                             name="application_closing_date"
                             type="date"
@@ -2676,36 +2726,32 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <Field label="Website requirements">
                         <Textarea name="requirements" defaultValue={selectedPosting.requirements} required rows={5} />
                       </Field>
-                      <Field label="AI scoring notes" help="Internal guidance only. Applicants do not see this.">
+                      <Field label="AI scoring notes" hint="Internal guidance only. Applicants do not see this.">
                         <Textarea
                           name="ai_scoring_notes"
                           defaultValue={selectedPosting.ai_scoring_notes ?? ''}
                           rows={5}
                         />
                       </Field>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="is_public" defaultChecked={selectedPosting.is_public === true} />
-                        Public on website
-                      </label>
+                      <Checkbox name="is_public" defaultChecked={selectedPosting.is_public === true} label="Public on website" />
                       <input type="hidden" name="is_public" value="false" />
-                      <div className="flex items-center gap-3">
-                        <SubmitButton>Save posting</SubmitButton>
-                        <ActionStateMessage state={postingUpdateState} />
-                      </div>
+                      <FormFooter start={<ActionStateMessage state={postingUpdateState} />}>
+                        <SubmitButton>Save Changes</SubmitButton>
+                      </FormFooter>
                     </form>
                   ) : (
                     <div className="space-y-3 text-sm text-text">
                       <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Description</p>
+                        <p className={SUB_LABEL}>Description</p>
                         <p className="whitespace-pre-wrap">{selectedPosting.description}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Requirements</p>
+                        <p className={SUB_LABEL}>Requirements</p>
                         <p className="whitespace-pre-wrap">{selectedPosting.requirements}</p>
                       </div>
                       {selectedPosting.ai_scoring_notes && (
                         <div>
-                          <p className="text-xs font-semibold uppercase text-text-muted">AI scoring notes</p>
+                          <p className={SUB_LABEL}>AI scoring notes</p>
                           <p className="whitespace-pre-wrap">{selectedPosting.ai_scoring_notes}</p>
                         </div>
                       )}
@@ -2716,7 +2762,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <form action={postingDuplicateAction} className="border-t border-border pt-4">
                       <input type="hidden" name="id" value={selectedPosting.id} />
                       <div className="flex flex-wrap items-center gap-3">
-                        <SubmitButton variant="secondary">Duplicate posting</SubmitButton>
+                        <SubmitButton variant="secondary">Duplicate Posting</SubmitButton>
                         <ActionStateMessage state={postingDuplicateState} />
                       </div>
                       <p className="mt-2 text-xs text-text-muted">Creates a private draft copy with a new slug.</p>
@@ -2734,7 +2780,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Field label="Job title">
                       <Input name="title" required />
                     </Field>
-                    <Field label="Website slug" help="Lowercase letters, numbers and hyphens only.">
+                    <Field label="Website slug" hint="Lowercase letters, numbers and hyphens only.">
                       <Input name="slug" required />
                     </Field>
                     <Field label="Role type">
@@ -2764,7 +2810,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Field label="Positions available">
                       <Input name="positions_available" type="number" min="1" defaultValue="1" />
                     </Field>
-                    <Field label="Application closing date" help="The last date applicants can apply. Leave blank if there is no date yet.">
+                    <Field label="Application closing date" hint="The last date applicants can apply. Leave blank if there is no date yet.">
                       <Input name="application_closing_date" type="date" />
                     </Field>
                     <Field label="Website description">
@@ -2773,31 +2819,27 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <Field label="Website requirements">
                       <Textarea name="requirements" required rows={4} />
                     </Field>
-                    <Field label="AI scoring notes" help="Internal guidance only. Applicants do not see this.">
+                    <Field label="AI scoring notes" hint="Internal guidance only. Applicants do not see this.">
                       <Textarea name="ai_scoring_notes" rows={3} />
                     </Field>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" name="is_public" />
-                      Public on website
-                    </label>
-                    <Button type="submit" variant="primary">Create posting</Button>
-                    <ActionStateMessage state={postingState} />
+                    <Checkbox name="is_public" label="Public on website" />
+                    <FormFooter start={<ActionStateMessage state={postingState} />}>
+                      <Button type="submit" variant="primary">Create Posting</Button>
+                    </FormFooter>
                   </form>
                 </CardBody>
               </Card>
             )}
-          </section>
+          </div>
         )}
 
         {activeTab === 'schedule' && (
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             <Card className="xl:col-span-2">
-              <CardHeader title="Slots" />
-              <CardBody>
-                <label className="mb-3 flex items-center gap-2 text-sm text-text-muted">
-                  <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
-                  Show archived
-                </label>
+              <CardHeader
+                title="Slots"
+                action={<Checkbox label="Show archived" checked={showArchived} onChange={setShowArchived} />}
+              />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2813,9 +2855,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {filteredSlots.map((slot: any) => (
                       <TableRow key={slot.id} className={slot.archived_at ? 'opacity-60' : ''}>
                         <TableCell>
-                          <button type="button" className="text-left font-medium hover:text-primary hover:underline" onClick={() => openSlotDetail(slot)}>
+                          <Button type="button" variant="link" className="whitespace-normal text-left" onClick={() => openSlotDetail(slot)}>
                             {slot.type.replaceAll('_', ' ')}
-                          </button>
+                          </Button>
                         </TableCell>
                         <TableCell>{formatSlotDateTime(slot.starts_at)}</TableCell>
                         <TableCell>{formatSlotDateTime(slot.ends_at)}</TableCell>
@@ -2831,8 +2873,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                   </Button>
                                   <ActionFeedbackForm
                                     action={cancelSlotFormAction}
-                                    confirmTitle="Delete slot"
+                                    confirmTitle="Delete Slot"
+                                    confirmTone="danger"
                                     confirmMessage="Delete this slot? It will no longer be available for booking."
+                                    confirmLabel="Delete"
                                     successMessage="Slot deleted."
                                     onSuccess={() => router.refresh()}
                                   >
@@ -2843,14 +2887,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               )}
                               {!slot.archived_at && slot.status === 'booked' && (
                                 <Button type="button" size="sm" variant="secondary" onClick={() => openBookedSlotAppointment(slot)}>
-                                  Manage booking
+                                  Manage Booking
                                 </Button>
                               )}
                               {slot.archived_at && (
                                 <ActionFeedbackForm
                                   action={restoreSlotFormAction}
-                                  confirmTitle="Restore slot"
+                                  confirmTitle="Restore Slot"
                                   confirmMessage="Restore this slot?"
+                                  confirmLabel="Restore"
                                   successMessage="Slot restored."
                                   onSuccess={() => router.refresh()}
                                 >
@@ -2866,9 +2911,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   </TableBody>
                 </Table>
                 {filteredSlots.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">No slots to show.</p>
+                  <Empty size="sm" title="No slots to show" />
                 )}
-              </CardBody>
             </Card>
 
             {permissions.canCreate && (
@@ -2876,7 +2920,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <CardHeader title="New Slot" />
                 <CardBody>
                   <form action={slotAction} className="space-y-3">
-                    <Select name="type" defaultValue="interview">
+                    <Select name="type" defaultValue="interview" label="Type">
                       <option value="interview">Interview</option>
                       <option value="trial_shift">Trial shift</option>
                     </Select>
@@ -2895,9 +2939,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       value={newSlotEndsAt}
                       onChange={setNewSlotEndsAt}
                     />
-                    <Input name="location" defaultValue="The Anchor" />
-                    <Button type="submit" variant="primary">Create slot</Button>
-                    <ActionStateMessage state={slotState} />
+                    <Input name="location" defaultValue="The Anchor" label="Location" />
+                    <FormFooter start={<ActionStateMessage state={slotState} />}>
+                      <Button type="submit" variant="primary">Create Slot</Button>
+                    </FormFooter>
                   </form>
                 </CardBody>
               </Card>
@@ -2905,7 +2950,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
             <Card className="xl:col-span-3">
               <CardHeader title="Appointments" />
-              <CardBody>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2920,16 +2964,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {filteredAppointments.map((appointment: any) => (
                       <TableRow key={appointment.id} className={appointment.archived_at ? 'opacity-60' : ''}>
                         <TableCell className="align-top whitespace-normal">
-                          <button type="button" className="text-left font-medium text-text-strong hover:text-primary hover:underline" onClick={() => openAppointmentDetail(appointment)}>
+                          <Button type="button" variant="link" className="whitespace-normal text-left" onClick={() => openAppointmentDetail(appointment)}>
                             {candidateName(appointment.candidate)}
-                          </button>
+                          </Button>
                           <p className="text-xs text-text-muted">{appointment.application?.job_posting?.title || 'Talent pool'}</p>
                         </TableCell>
                         <TableCell className="align-top">{appointment.type?.replaceAll('_', ' ')}</TableCell>
                         <TableCell className="align-top">{formatDateTime(appointment.scheduled_start)}</TableCell>
                         <TableCell className="align-top whitespace-normal">
                           <span className="text-xs text-text-muted">{appointment.calendar_sync_status}</span>
-                          {appointment.calendar_last_error && <p className="max-w-xs truncate text-xs text-danger">{appointment.calendar_last_error}</p>}
+                          {appointment.calendar_last_error && <p className="max-w-xs truncate text-xs text-danger-fg">{appointment.calendar_last_error}</p>}
                         </TableCell>
                         <TableCell className="align-top whitespace-normal">
                           {permissions.canEdit ? (
@@ -2943,28 +2987,27 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   </TableBody>
                 </Table>
                 {filteredAppointments.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">No appointments to show.</p>
+                  <Empty size="sm" title="No appointments to show" />
                 )}
-              </CardBody>
             </Card>
-          </section>
+          </div>
         )}
 
         <Drawer
           open={slotDrawerOpen && Boolean(selectedSlot)}
           onClose={() => setSlotDrawerOpen(false)}
-          title={selectedSlot ? `${selectedSlot.type?.replaceAll('_', ' ')} slot` : 'Slot'}
+          title={selectedSlot ? `${titleCase(selectedSlot.type)} Slot` : 'Slot'}
           width="min(620px, 100vw)"
         >
           {selectedSlot && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p className={SUB_LABEL}>When</p>
                   <p>{formatDateTime(selectedSlot.starts_at)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                  <p className={SUB_LABEL}>Status</p>
                   <p>{selectedSlot.archived_at ? 'archived' : selectedSlot.status}</p>
                 </div>
               </div>
@@ -2982,37 +3025,39 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <Field label="Location">
                     <Input name="location" defaultValue={selectedSlot.location} />
                   </Field>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SubmitButton>Save slot</SubmitButton>
-                    <ActionStateMessage state={slotUpdateState} />
-                  </div>
+                  <FormFooter start={<ActionStateMessage state={slotUpdateState} />}>
+                    <SubmitButton>Save Changes</SubmitButton>
+                  </FormFooter>
                 </form>
               )}
               {!selectedSlot.archived_at && selectedSlot.status === 'booked' && (
-                <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
-                  <p>This slot is booked. Reschedule or cancel the appointment before changing the slot.</p>
-                  {selectedSlotAppointment && (
+                <Alert
+                  tone="info"
+                  actions={selectedSlotAppointment ? (
                     <Button
                       type="button"
                       size="sm"
                       variant="secondary"
-                      className="mt-3"
                       onClick={() => {
                         setSlotDrawerOpen(false)
                         openAppointmentDetail(selectedSlotAppointment)
                       }}
                     >
-                      Manage booking
+                      Manage Booking
                     </Button>
-                  )}
-                </div>
+                  ) : undefined}
+                >
+                  This slot is booked. Reschedule or cancel the appointment before changing the slot.
+                </Alert>
               )}
               {permissions.canEdit && !selectedSlot.archived_at && selectedSlot.status === 'open' && (
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <ActionFeedbackForm
                     action={cancelSlotFormAction}
-                    confirmTitle="Delete slot"
+                    confirmTitle="Delete Slot"
+                    confirmTone="danger"
                     confirmMessage="Delete this slot? It will no longer be available for booking."
+                    confirmLabel="Delete"
                     successMessage="Slot deleted."
                     onSuccess={() => {
                       setSlotDrawerOpen(false)
@@ -3020,7 +3065,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     }}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="danger">Delete slot</SubmitButton>
+                    <SubmitButton variant="danger">Delete</SubmitButton>
                   </ActionFeedbackForm>
                 </div>
               )}
@@ -3028,13 +3073,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <ActionFeedbackForm
                     action={restoreSlotFormAction}
-                    confirmTitle="Restore slot"
+                    confirmTitle="Restore Slot"
                     confirmMessage="Restore this slot?"
+                    confirmLabel="Restore"
                     successMessage="Slot restored."
                     onSuccess={() => router.refresh()}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="secondary">Restore slot</SubmitButton>
+                    <SubmitButton variant="secondary">Restore</SubmitButton>
                   </ActionFeedbackForm>
                 </div>
               )}
@@ -3049,22 +3095,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           width="min(760px, 100vw)"
         >
           {selectedAppointment && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Type</p>
+                  <p className={SUB_LABEL}>Type</p>
                   <p>{selectedAppointment.type?.replaceAll('_', ' ')}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p className={SUB_LABEL}>When</p>
                   <p>{formatDateTime(selectedAppointment.scheduled_start)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                  <p className={SUB_LABEL}>Status</p>
                   <p>{selectedAppointment.archived_at ? 'archived' : selectedAppointment.status}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Calendar</p>
+                  <p className={SUB_LABEL}>Calendar</p>
                   <p>{selectedAppointment.calendar_sync_status}</p>
                 </div>
               </div>
@@ -3090,29 +3136,30 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <option value="5">5</option>
                     </Select>
                   </Field>
-                  <label className="mt-6 flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="meal_provided" defaultChecked={selectedAppointment.meal_provided === true} />
-                    Meal provided
-                  </label>
+                  <div className="flex items-end md:h-full">
+                    <div className="flex h-input-h items-center">
+                      <Checkbox name="meal_provided" defaultChecked={selectedAppointment.meal_provided === true} label="Meal provided" />
+                    </div>
+                  </div>
                   <div className="md:col-span-4">
                     <Field label="Notes">
                       <Textarea name="outcome" defaultValue={selectedAppointment.outcome ?? ''} rows={3} />
                     </Field>
                   </div>
-                  <div className="md:col-span-4">
-                    <SubmitButton>Save outcome</SubmitButton>
-                  </div>
+                  <FormFooter className="md:col-span-4">
+                    <SubmitButton>Save Outcome</SubmitButton>
+                  </FormFooter>
                 </form>
               )}
 
               {permissions.canEdit && (
                 <form action={scorecardAction} className="space-y-3 border-t border-border pt-4">
                   <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
-                  <p className="text-xs font-semibold uppercase text-text-muted">Scorecard</p>
+                  <p className={SUB_LABEL}>Scorecard</p>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     {['experience', 'attitude', 'availability'].map(label => (
                       <div key={label} className="space-y-2">
-                        <Field label={`${label} rating`}>
+                        <Field label={`${titleCase(label)} rating`}>
                           <Select name={`${label}_rating`} defaultValue="">
                             <option value="">-</option>
                             <option value="1">1</option>
@@ -3122,7 +3169,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <option value="5">5</option>
                           </Select>
                         </Field>
-                        <Textarea name={`${label}_notes`} placeholder="Notes" rows={2} />
+                        <Textarea name={`${label}_notes`} placeholder="Notes" aria-label={`${titleCase(label)} notes`} rows={2} />
                       </div>
                     ))}
                   </div>
@@ -3147,21 +3194,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       </Select>
                     </Field>
                   </div>
-                  <Textarea name="comments" placeholder="Scorecard comments" rows={3} />
-                  <div className="flex items-center gap-2">
-                    <SubmitButton variant="secondary">Save scorecard</SubmitButton>
-                    <ActionStateMessage state={scorecardState} />
-                  </div>
+                  <Textarea name="comments" label="Comments" placeholder="Scorecard comments" rows={3} />
+                  <FormFooter start={<ActionStateMessage state={scorecardState} />}>
+                    <SubmitButton variant="secondary">Save Scorecard</SubmitButton>
+                  </FormFooter>
                 </form>
               )}
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase text-text-muted">Scorecards</p>
+                <p className={SUB_LABEL}>Scorecards</p>
                 {scorecards.filter((scorecard: any) => scorecard.appointment_id === selectedAppointment.id).map((scorecard: any) => (
-                  <div key={scorecard.id} className="rounded-sm border border-border bg-surface-2 p-3 text-sm">
-                    <p className="font-medium">{scorecard.recommendation?.replaceAll('_', ' ')} · {scorecard.overall_rating ?? '-'}/5</p>
-                    <p className="mt-1 whitespace-pre-wrap text-text-muted">{scorecard.comments || 'No comments'}</p>
-                  </div>
+                  <Card key={scorecard.id} variant="secondary" padding="sm">
+                    <p className="text-sm font-medium">{scorecard.recommendation?.replaceAll('_', ' ')} · {scorecard.overall_rating ?? '-'}/5</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-text-muted">{scorecard.comments || 'No comments'}</p>
+                  </Card>
                 ))}
               </div>
 
@@ -3169,7 +3215,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <ActionFeedbackForm action={rescheduleAppointmentFormAction} className="flex flex-wrap gap-2" successMessage="Appointment rescheduled.">
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
-                    <Select name="slot_id" className="w-56">
+                    <Select name="slot_id" className="w-56" aria-label="Reschedule slot">
                       {slots.filter((slot: any) => !slot.archived_at && slot.status === 'open' && slot.type === selectedAppointment.type).map((slot: any) => (
                         <option key={slot.id} value={slot.id}>{formatDateTime(slot.starts_at)}</option>
                       ))}
@@ -3179,18 +3225,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <ActionFeedbackForm
                     action={cancelAppointmentFormAction}
                     className="flex flex-wrap gap-2"
-                    confirmTitle="Cancel appointment"
+                    confirmTitle="Cancel Appointment"
+                    confirmTone="danger"
                     confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                    confirmLabel="Cancel Appointment"
+                    cancelLabel="Keep Appointment"
                     successMessage="Appointment cancelled."
                   >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
-                    <Input name="reason" placeholder="Cancel reason" className="w-44" />
-                    <SubmitButton variant="secondary">Cancel</SubmitButton>
+                    <Input name="reason" placeholder="Cancel reason" aria-label="Cancel reason" className="w-44" />
+                    <SubmitButton variant="secondary">Cancel Appointment</SubmitButton>
                   </ActionFeedbackForm>
                   <ActionFeedbackForm
                     action={selectedAppointment.archived_at ? restoreAppointmentFormAction : archiveAppointmentFormAction}
-                    confirmTitle={selectedAppointment.archived_at ? 'Restore appointment' : 'Archive appointment'}
+                    confirmTitle={selectedAppointment.archived_at ? 'Restore Appointment' : 'Archive Appointment'}
                     confirmMessage={selectedAppointment.archived_at ? 'Restore this appointment?' : 'Archive this appointment?'}
+                    confirmLabel={selectedAppointment.archived_at ? 'Restore' : 'Archive'}
                     successMessage={selectedAppointment.archived_at ? 'Appointment restored.' : 'Appointment archived.'}
                   >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
@@ -3203,18 +3253,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         </Drawer>
 
         {activeTab === 'talent' && (
-          <section>
             <Card>
-              <CardHeader title="Talent pool" />
+              <CardHeader title="Talent Pool" />
               <CardBody className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-end gap-3">
                   <SearchInput
                     value={talentSearch}
                     onChange={handleTalentSearch}
                     placeholder="Search name or email..."
-                    className="sm:w-80"
+                    aria-label="Search the talent pool"
+                    className="w-full sm:w-80"
                   />
-                  <div className="flex flex-wrap gap-2">
                     <Select
                       aria-label="Filter by CV status"
                       value={talentStatusFilter}
@@ -3243,10 +3292,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         { value: 'other', label: 'Other' },
                       ]}
                     />
-                  </div>
                 </div>
 
                 {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
+              </CardBody>
 
                 <Table>
                   <TableHeader>
@@ -3264,14 +3313,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {talentCandidates.map((candidate: any) => (
                       <TableRow key={candidate.id}>
                         <TableCell className="align-top whitespace-normal">
-                          <button type="button" className="text-left font-medium text-text-strong hover:text-primary hover:underline" onClick={() => openTalentDetail(candidate)}>
+                          <Button type="button" variant="link" className="whitespace-normal text-left" onClick={() => openTalentDetail(candidate)}>
                             {candidateName(candidate)}
-                          </button>
+                          </Button>
                           <p className="text-xs text-text-muted">{candidate.email}</p>
                         </TableCell>
                         <TableCell className="align-top">
                           <div className="flex items-center gap-2">
-                            <Badge tone={cvStatusTone(candidate.cv_extraction_status)}>
+                            <Badge tone={recruitmentCvStatusTone(candidate.cv_extraction_status)}>
                               {candidate.cv_extraction_status?.replaceAll('_', ' ') ?? 'no cv'}
                             </Badge>
                             {candidate.cv_file_path && (
@@ -3283,7 +3332,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               <ActionFeedbackForm action={cvRetryFormAction} successMessage="CV retry queued.">
                                 <input type="hidden" name="candidate_id" value={candidate.id} />
                                 <Button type="submit" size="xs" variant="secondary">
-                                  Retry
+                                  Retry CV
                                 </Button>
                               </ActionFeedbackForm>
                             )}
@@ -3304,12 +3353,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           {permissions.canManage && (
                             <ActionFeedbackForm action={matchFormAction} className="flex gap-2" successMessage="Candidate matched.">
                               <input type="hidden" name="candidate_id" value={candidate.id} />
-                              <Select name="job_posting_id" className="w-36">
+                              <Select name="job_posting_id" className="w-36" aria-label="Posting to match">
                                 {postings.map((posting: any) => (
                                   <option key={posting.id} value={posting.id}>{posting.title}</option>
                                 ))}
                               </Select>
-                              <SubmitButton variant="secondary">Match</SubmitButton>
+                              <SubmitButton variant="secondary">Match to Posting</SubmitButton>
                             </ActionFeedbackForm>
                           )}
                         </TableCell>
@@ -3318,12 +3367,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <ActionFeedbackForm
                               action={erasureFormAction}
                               className="flex gap-2"
-                              confirmTitle="Erase candidate"
+                              confirmTitle="Erase Candidate"
+                              confirmTone="danger"
                               confirmMessage="This permanently anonymises the candidate record. Continue?"
+                              confirmLabel="Erase"
                               successMessage="Candidate erased."
                             >
                               <input type="hidden" name="candidate_id" value={candidate.id} />
-                              <Input name="reason" placeholder="Reason" className="w-32" />
+                              <Input name="reason" placeholder="Reason" aria-label="Erasure reason" className="w-32" />
                               <SubmitButton variant="danger">Erase</SubmitButton>
                             </ActionFeedbackForm>
                           ) : candidate.anonymised_at ? 'Anonymised' : '-'}
@@ -3334,9 +3385,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 </Table>
 
                 {talentCandidates.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">
-                    {talentLoading ? 'Loading candidates…' : 'No candidates match your filters.'}
-                  </p>
+                  talentLoading
+                    ? <PageLoading inline label="Loading candidates" />
+                    : <Empty size="sm" title="No candidates match these filters" />
                 )}
 
                 <TablePagination
@@ -3346,9 +3397,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   pageSize={TALENT_PAGE_SIZE}
                   onPageChange={handleTalentPageChange}
                 />
-              </CardBody>
             </Card>
-          </section>
         )}
 
         <Drawer
@@ -3358,17 +3407,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           width="min(760px, 100vw)"
         >
           {selectedTalentCandidate && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase text-text-muted">Candidate</p>
+                    <p className={SUB_LABEL}>Candidate</p>
                     <p className="text-base font-semibold text-text-strong">{candidateName(selectedTalentCandidate)}</p>
                     <p className="text-sm text-text-muted">{selectedTalentCandidate.email || 'No email'}</p>
                     <p className="text-sm text-text-muted">{selectedTalentCandidate.phone_e164 || selectedTalentCandidate.phone || 'No phone'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase text-text-muted">CV</p>
+                    <p className={SUB_LABEL}>CV</p>
                     <p className="text-sm text-text">{selectedTalentCandidate.cv_extraction_status?.replaceAll('_', ' ') ?? 'no cv'}</p>
                     <p className="mt-1 text-sm text-text-muted">{profileSummary(selectedTalentCandidate) ?? 'No AI profile summary.'}</p>
                   </div>
@@ -3388,49 +3437,49 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   {permissions.canManage && (
                     <ActionFeedbackForm action={matchFormAction} className="flex flex-wrap gap-2" successMessage="Candidate matched.">
                       <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
-                      <Select name="job_posting_id" className="w-56">
+                      <Select name="job_posting_id" className="w-56" aria-label="Posting to match">
                         {postings.map((posting: any) => (
                           <option key={posting.id} value={posting.id}>{posting.title}</option>
                         ))}
                       </Select>
-                      <SubmitButton variant="secondary">Match to posting</SubmitButton>
+                      <SubmitButton variant="secondary">Match to Posting</SubmitButton>
                     </ActionFeedbackForm>
                   )}
                 </div>
 
                 <form action={candidateUpdateAction} className="space-y-3">
                   <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
-                  <p className="text-xs font-semibold uppercase text-text-muted">Profile</p>
+                  <p className={SUB_LABEL}>Profile</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <ProfileField label="First name">
+                    <Field label="First name">
                       <Input name="first_name" defaultValue={selectedTalentCandidate.first_name ?? ''} placeholder="First name" />
-                    </ProfileField>
-                    <ProfileField label="Last name">
+                    </Field>
+                    <Field label="Last name">
                       <Input name="last_name" defaultValue={selectedTalentCandidate.last_name ?? ''} placeholder="Last name" />
-                    </ProfileField>
+                    </Field>
                   </div>
-                  <ProfileField label="Email">
+                  <Field label="Email">
                     <Input name="email" defaultValue={selectedTalentCandidate.email ?? ''} placeholder="Email" />
-                  </ProfileField>
-                  <ProfileField label="Phone">
+                  </Field>
+                  <Field label="Phone">
                     <Input name="phone" defaultValue={selectedTalentCandidate.phone ?? ''} placeholder="Phone" />
-                  </ProfileField>
-                  <ProfileField label="Phone E164">
+                  </Field>
+                  <Field label="Phone E164">
                     <Input name="phone_e164" defaultValue={selectedTalentCandidate.phone_e164 ?? ''} placeholder="Phone E164" />
-                  </ProfileField>
-                  <ProfileField label="Location">
+                  </Field>
+                  <Field label="Location">
                     <Input name="location" defaultValue={selectedTalentCandidate.location ?? ''} placeholder="Location" />
-                  </ProfileField>
+                  </Field>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <ProfileField label="Right to work">
+                    <Field label="Right to work">
                       <Select name="right_to_work_status" defaultValue={selectedTalentCandidate.right_to_work_status ?? 'not_checked'}>
                         <option value="not_checked">Not checked</option>
                         <option value="pending">Pending</option>
                         <option value="verified">Verified</option>
                         <option value="failed">Failed</option>
                       </Select>
-                    </ProfileField>
-                    <ProfileField label="Document type">
+                    </Field>
+                    <Field label="Document type">
                       <Select name="right_to_work_document_type" defaultValue={selectedTalentCandidate.right_to_work_document_type ?? ''}>
                         <option value="">Not set</option>
                         <option value="Passport">Passport</option>
@@ -3440,28 +3489,21 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <option value="List B">List B</option>
                         <option value="Other">Other</option>
                       </Select>
-                    </ProfileField>
+                    </Field>
                   </div>
-                  <ProfileField label="Right to work checked at">
+                  <Field label="Right to work checked at">
                     <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedTalentCandidate.right_to_work_checked_at)} />
-                  </ProfileField>
-                  <ProfileField label="Recruitment notes">
+                  </Field>
+                  <Field label="Recruitment notes">
                     <Textarea name="notes" defaultValue={selectedTalentCandidate.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                  </ProfileField>
-                  <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" name="sms_consent" defaultChecked={selectedTalentCandidate.sms_consent === true} />
-                      SMS consent
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} />
-                      Future recruitment consent
-                    </label>
+                  </Field>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Checkbox name="sms_consent" defaultChecked={selectedTalentCandidate.sms_consent === true} label="SMS consent" />
+                    <Checkbox name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} label="Future recruitment consent" />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SubmitButton>Save candidate</SubmitButton>
-                    <ActionStateMessage state={candidateUpdateState} />
-                  </div>
+                  <FormFooter start={<ActionStateMessage state={candidateUpdateState} />}>
+                    <SubmitButton>Save Changes</SubmitButton>
+                  </FormFooter>
                 </form>
               </div>
 
@@ -3469,13 +3511,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <ActionFeedbackForm
                   action={erasureFormAction}
                   className="flex flex-wrap gap-2 border-t border-border pt-4"
-                  confirmTitle="Erase candidate"
+                  confirmTitle="Erase Candidate"
+                  confirmTone="danger"
                   confirmMessage="This permanently anonymises the candidate record. Continue?"
+                  confirmLabel="Erase"
                   successMessage="Candidate erased."
                 >
                   <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
-                  <Input name="reason" placeholder="Erasure reason" className="w-64" />
-                  <SubmitButton variant="danger">Erase candidate data</SubmitButton>
+                  <Input name="reason" placeholder="Erasure reason" aria-label="Erasure reason" className="w-64" />
+                  <SubmitButton variant="danger">Erase</SubmitButton>
                 </ActionFeedbackForm>
               )}
             </div>
@@ -3483,15 +3527,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         </Drawer>
 
         {activeTab === 'templates' && (
-          <section>
             <Card>
-              <CardHeader title="Email templates" />
+              <CardHeader title="Email Templates" />
               <CardBody className="space-y-4">
                 {templates.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">No templates found.</p>
+                  <Empty size="sm" title="No templates yet" />
                 )}
                 {templates.map((template: any) => (
-                  <form key={template.id} action={templateAction} className="rounded-md border border-border bg-surface-2 p-4">
+                  <Card key={template.id} variant="secondary">
+                  <form action={templateAction}>
                     <input type="hidden" name="id" value={template.id} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                       <Field label="Type">
@@ -3508,38 +3552,40 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <option value="manager_alert">Manager alert</option>
                         </Select>
                       </Field>
-                      <Field label="Subject">
-                        <Input name="subject" defaultValue={template.subject} className="md:col-span-3" />
+                      <Field label="Subject" className="md:col-span-3">
+                        <Input name="subject" defaultValue={template.subject} />
                       </Field>
                       <div className="md:col-span-4">
                         <Field label="Body">
                           <Textarea name="body" defaultValue={template.body} rows={6} />
                         </Field>
                       </div>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="is_active" defaultChecked={template.is_active === true} />
-                        Active
-                      </label>
+                      <Checkbox name="is_active" defaultChecked={template.is_active === true} label="Active" />
                       <input type="hidden" name="is_active" value="false" />
-                      <div className="md:col-span-4 flex flex-wrap items-center gap-3">
-                        {permissions.canManage && <SubmitButton>Save template</SubmitButton>}
-                        <Badge tone={template.is_active ? 'success' : 'neutral'}>{template.is_active ? 'active' : 'inactive'}</Badge>
-                        <span className="text-xs text-text-muted">Updated {formatDateTime(template.updated_at)}</span>
-                      </div>
+                      <FormFooter
+                        className="md:col-span-4"
+                        start={
+                          <span className="flex flex-wrap items-center gap-3">
+                            <Badge tone={RECRUITMENT_TEMPLATE_TONE[template.is_active ? 'active' : 'inactive']}>{template.is_active ? 'active' : 'inactive'}</Badge>
+                            <span className="text-xs text-text-muted">Updated {formatDateTime(template.updated_at)}</span>
+                          </span>
+                        }
+                      >
+                        {permissions.canManage && <SubmitButton>Save Changes</SubmitButton>}
+                      </FormFooter>
                     </div>
                   </form>
+                  </Card>
                 ))}
                 <ActionStateMessage state={templateState} />
               </CardBody>
             </Card>
-          </section>
         )}
 
         {activeTab === 'communications' && (
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader title="Recent Communications" />
-              <CardBody>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -3554,12 +3600,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {filteredCommunications.map((communication: any) => (
                       <TableRow key={communication.id}>
                         <TableCell>
-                          <button type="button" className="text-left font-medium hover:text-primary hover:underline" onClick={() => openCommunicationDetail(communication)}>
+                          <Button type="button" variant="link" className="whitespace-normal text-left" onClick={() => openCommunicationDetail(communication)}>
                             {communication.type?.replaceAll('_', ' ')}
-                          </button>
+                          </Button>
                         </TableCell>
                         <TableCell>{communication.channel}</TableCell>
-                        <TableCell>{communication.delivery_status}</TableCell>
+                        <TableCell>
+                          <Badge tone={messageDeliveryStatusTone(communication.delivery_status)}>
+                            {messageDeliveryStatusLabel(communication.delivery_status)}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="whitespace-normal">
                           <p className="max-w-md truncate">{communication.subject || communication.final_body}</p>
                         </TableCell>
@@ -3569,14 +3619,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   </TableBody>
                 </Table>
                 {filteredCommunications.length === 0 && (
-                  <p className="py-6 text-center text-sm text-text-muted">No communications yet.</p>
+                  <Empty size="sm" title="No communications yet" />
                 )}
-              </CardBody>
             </Card>
 
             <Card>
               <CardHeader title="AI Runs" />
-              <CardBody>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -3599,43 +3647,45 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     ))}
                   </TableBody>
                 </Table>
-              </CardBody>
+                {aiRuns.length === 0 && <Empty size="sm" title="No AI runs yet" />}
             </Card>
-          </section>
+          </div>
         )}
 
         <Drawer
           open={communicationDrawerOpen && Boolean(selectedCommunication)}
           onClose={() => setCommunicationDrawerOpen(false)}
-          title={selectedCommunication ? selectedCommunication.type?.replaceAll('_', ' ') : 'Communication'}
+          title={selectedCommunication ? titleCase(selectedCommunication.type) : 'Communication'}
           width="min(720px, 100vw)"
         >
           {selectedCommunication && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Channel</p>
+                  <p className={SUB_LABEL}>Channel</p>
                   <p>{selectedCommunication.channel}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
-                  <p>{selectedCommunication.delivery_status}</p>
+                  <p className={SUB_LABEL}>Status</p>
+                  <Badge tone={messageDeliveryStatusTone(selectedCommunication.delivery_status)}>
+                    {messageDeliveryStatusLabel(selectedCommunication.delivery_status)}
+                  </Badge>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">Provider</p>
+                  <p className={SUB_LABEL}>Provider</p>
                   <p>{selectedCommunication.provider || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p className={SUB_LABEL}>When</p>
                   <p>{formatDateTime(selectedCommunication.sent_at || selectedCommunication.created_at)}</p>
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase text-text-muted">Subject</p>
+                <p className={SUB_LABEL}>Subject</p>
                 <p className="text-sm text-text-strong">{selectedCommunication.subject || '-'}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase text-text-muted">Body</p>
+                <p className={SUB_LABEL}>Body</p>
                 <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-2 p-3 text-sm text-text">
                   {selectedCommunication.final_body}
                 </pre>
@@ -3643,13 +3693,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               {permissions.canSend && (
                 <ActionFeedbackForm action={retryCommunicationFormAction} successMessage="Communication retry queued.">
                   <input type="hidden" name="communication_id" value={selectedCommunication.id} />
-                  <SubmitButton variant="secondary">Retry / resend</SubmitButton>
+                  <SubmitButton variant="secondary">Retry Send</SubmitButton>
                 </ActionFeedbackForm>
               )}
             </div>
           )}
         </Drawer>
-      </div>
-    </main>
+    </PageLayout>
   )
 }

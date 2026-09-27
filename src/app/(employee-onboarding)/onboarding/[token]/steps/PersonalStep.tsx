@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Field, Input, Textarea } from '@/ds';
+import { Alert, Button, Field, Input, Textarea } from '@/ds';
+import { StepFooter } from './StepParts';
 import { checkPreferredNameAvailability, saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface PersonalData {
@@ -15,17 +16,14 @@ interface PersonalData {
   mobile_number: string;
 }
 
-// A clash is a warning, not an error: the field keeps the DS focus pattern in the warning tone.
-const PREFERRED_NAME_WARNING_CLASSES =
-  'border-warning focus:border-warning focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-warning)_20%,transparent)]';
-
 interface PersonalStepProps {
   token: string;
   initialData?: Partial<PersonalData>;
   onSuccess: (data: PersonalData) => void;
+  onBack?: () => void;
 }
 
-export default function PersonalStep({ token, initialData, onSuccess }: PersonalStepProps) {
+export default function PersonalStep({ token, initialData, onSuccess, onBack }: PersonalStepProps) {
   const [data, setData] = useState<PersonalData>({
     first_name: initialData?.first_name ?? '',
     last_name: initialData?.last_name ?? '',
@@ -113,32 +111,24 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
         {field('first_name', 'First Name', 'text', true)}
         {field('last_name', 'Last Name', 'text', true)}
       </div>
-      <div>
-        <Field label="Preferred Name">
-          <Input
-            id="preferred_name"
-            type="text"
-            value={data.preferred_name}
-            onChange={(e) => {
-              setData({ ...data, preferred_name: e.target.value });
-              if (preferredNameWarning) setPreferredNameWarning('');
-            }}
-            onBlur={handlePreferredNameBlur}
-            aria-invalid={preferredNameWarning ? true : undefined}
-            aria-describedby="preferred_name-help"
-            className={preferredNameWarning ? PREFERRED_NAME_WARNING_CLASSES : undefined}
-          />
-        </Field>
-        {preferredNameWarning && (
-          <p className="mt-1 text-sm text-warning-fg" role="status">
-            {preferredNameWarning}
-          </p>
-        )}
-        <p id="preferred_name-help" className="mt-1 text-xs text-text-muted">
-          What you would like the team to call you. Leave blank to use your first name. If someone
-          here already goes by the same name, add your first initial, for example &quot;Jacob H&quot;.
-        </p>
-      </div>
+      {/* A clash is a warning, not an error: it does not stop saving here (the server still
+          enforces the rule), so the field draws in amber with the message under it. */}
+      <Field
+        label="Preferred Name"
+        hint={'What you would like the team to call you. Leave blank to use your first name. If someone here already goes by the same name, add your first initial, for example "Jacob H".'}
+      >
+        <Input
+          id="preferred_name"
+          type="text"
+          value={data.preferred_name}
+          onChange={(e) => {
+            setData({ ...data, preferred_name: e.target.value });
+            if (preferredNameWarning) setPreferredNameWarning('');
+          }}
+          onBlur={handlePreferredNameBlur}
+          warning={preferredNameWarning || undefined}
+        />
+      </Field>
       {field('date_of_birth', 'Date of Birth', 'date')}
       <Field label="Address">
         <Textarea
@@ -152,11 +142,13 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
       {field('phone_number', 'Phone Number', 'tel')}
       {field('mobile_number', 'Mobile Number', 'tel')}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? 'Saving...' : 'Save & Continue'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
+        </Button>
+      </StepFooter>
     </form>
   );
 }

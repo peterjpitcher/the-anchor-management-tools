@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Card, CardHeader, CardBody, Checkbox, Badge, toast } from '@/ds'
+import { Alert, Card, CardHeader, CardBody, Checkbox, Badge, Empty, LinkButton, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import type { ChecklistTodoItem } from '@/lib/event-checklist'
 import { formatRelativeDue, summariseTodos, formatSummaryLine } from './eventTodosWidget.helpers'
+import { eventTodoUrgencyBorderClass, eventTodoUrgencyTone } from '../_shared/status-ui'
 
 interface EventTodosWidgetProps {
   initialTodos: ChecklistTodoItem[]
@@ -55,34 +56,41 @@ export default function EventTodosWidget({
         <CardHeader
           title="Outstanding Todos"
           subtitle={!loadError && todos.length > 0 ? summary : undefined}
+          action={
+            <LinkButton href="/events/todo" variant="ghost" size="sm">
+              View All
+            </LinkButton>
+          }
         />
         <CardBody className="max-h-96 xl:max-h-[calc(100vh-7rem)] overflow-y-auto">
           {loadError ? (
-            <p className="py-6 text-center text-sm text-text-muted">
+            <Alert tone="danger" size="sm">
               Outstanding todos could not be loaded.
-            </p>
+            </Alert>
           ) : todos.length === 0 ? (
-            <p className="py-6 text-center text-sm text-text-muted">
-              You&apos;re all caught up — no outstanding todos.
-            </p>
+            <Empty size="sm" title="All caught up" description="No outstanding todos." />
           ) : (
             <ul className={cn('flex flex-col gap-1', isPending && 'opacity-50')}>
               {todos.map((item) => (
                 <li
                   key={`${item.eventId}:${item.key}`}
                   className={cn(
-                    'flex items-start gap-2 border-l-4 pl-3 py-2',
-                    item.status === 'overdue' ? 'border-danger' : 'border-warning',
+                    // gap-3.5 (14px): the tick's 44px touch area reaches 14px past its 16px box,
+                    // so the link beside it starts where that area ends. Any closer and a tap on
+                    // the start of the link would complete the todo instead of opening the event.
+                    'flex items-start gap-3.5 border-l-4 pl-3 py-2',
+                    eventTodoUrgencyBorderClass(item.status),
                   )}
                 >
                   {canManage && (
-                    <label className="-m-3.5 inline-flex shrink-0 cursor-pointer p-3.5">
-                      <Checkbox
-                        aria-label={`Mark "${item.label}" complete`}
-                        checked={false}
-                        onChange={() => handleComplete(item)}
-                      />
-                    </label>
+                    // The todo's name beside it is a link to the event, not the checkbox's label,
+                    // so it is named by aria-label and touchTarget gives it the 44px tap area.
+                    <Checkbox
+                      aria-label={`Mark "${item.label}" complete`}
+                      touchTarget
+                      checked={false}
+                      onChange={() => handleComplete(item)}
+                    />
                   )}
                   <Link href={`/events/${item.eventId}`} className="group block min-w-0 flex-1 rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring-inset">
                     <span className="block truncate text-sm text-text group-hover:underline">
@@ -92,7 +100,7 @@ export default function EventTodosWidget({
                       <span className="max-w-[10rem] truncate text-xs text-text-muted">
                         {item.eventName}
                       </span>
-                      <Badge tone={item.status === 'overdue' ? 'danger' : 'warning'}>
+                      <Badge tone={eventTodoUrgencyTone(item.status)}>
                         {formatRelativeDue(item.dueDate, todayIso)}
                       </Badge>
                       <span className="text-xs text-text-soft">{item.channel}</span>

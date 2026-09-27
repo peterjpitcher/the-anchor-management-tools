@@ -6,7 +6,7 @@ import { SeoHealthIndicator } from '../SeoHealthIndicator'
 
 function makeProps(overrides: Record<string, unknown> = {}) {
   return {
-    metaTitle: 'Live Music — Jessica Lovelock',   // 32 chars
+    metaTitle: 'Live Music - Jessica Lovelock',   // 32 chars
     metaDescription: 'Join us for free live music at The Anchor with Jessica Lovelock on 23 May! Book now.',  // < 155
     shortDescription: 'Free live music at The Anchor featuring Jessica Lovelock. Enjoy Motown and soul on 23 May from 8pm. Book your table now for a great night out!', // ~140 chars
     longDescription: [
@@ -41,13 +41,13 @@ describe('SeoHealthIndicator', () => {
 
   it('scores 100 when all checks pass', () => {
     render(<SeoHealthIndicator {...makeProps()} />)
-    expect(screen.getByText('100/100 — Good')).toBeTruthy()
+    expect(screen.getByText('100/100 · Good')).toBeTruthy()
   })
 
   it('fails meta title check when over 60 chars', () => {
     render(<SeoHealthIndicator {...makeProps({ metaTitle: 'A'.repeat(61) })} />)
     // Score should be less than 100 (lost 8 points for title length, possibly also keyword check)
-    expect(screen.queryByText('100/100 — Good')).toBeNull()
+    expect(screen.queryByText('100/100 · Good')).toBeNull()
   })
 
   it('passes keyword checks when no keywords configured', () => {
@@ -56,7 +56,7 @@ describe('SeoHealthIndicator', () => {
       secondaryKeywords: [],
       localSeoKeywords: [],
     })} />)
-    // Should not penalise for keyword checks — but will lose image alt text keyword (5 pts),
+    // Should not penalise for keyword checks, but will lose image alt text keyword (5 pts),
     // primary in title (8 pts), primary in desc (7 pts), primary in first 100 (8 pts), slug (5 pts)
     // Total possible without keywords: 100 - 8 - 7 - 8 - 5 - 5 = 67
     // Secondary/local pass (empty = true), so those 15 pts still count

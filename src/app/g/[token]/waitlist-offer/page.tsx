@@ -1,20 +1,23 @@
 import { headers } from 'next/headers'
-import { Check, Clock } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getWaitlistOfferPreviewByRawToken } from '@/lib/events/waitlist-offers'
 import {
   DetailRow,
+  GuestAmount,
   GuestBadge,
   GuestBlockedState,
   GuestButton,
   GuestCard,
+  GuestHelpLine,
+  GuestIntro,
+  GuestPhoneLink,
   GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
+  GuestStatusMark,
+  GUEST_BADGE_TONE_FOR,
+  GUEST_MESSAGE_CLASS,
+  GUEST_MUTED_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
@@ -88,17 +91,9 @@ function getBlockedReasonMessage(reason: string | undefined): string {
 /** The closing "Need help?" line every waitlist screen ends on. */
 function HelpLine(): React.JSX.Element {
   return (
-    <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-      Need help? Call{' '}
-      <a
-        href={GUEST_CONTACT.telHref}
-        referrerPolicy="no-referrer"
-        className="font-semibold text-guest-accent-text underline underline-offset-[3px]"
-      >
-        {GUEST_CONTACT.phoneDisplay}
-      </a>
-      .
-    </p>
+    <GuestHelpLine>
+      Need help? Call <GuestPhoneLink />.
+    </GuestHelpLine>
   )
 }
 
@@ -141,48 +136,26 @@ function ResultPanel({
   badgeLabel: string
   body: string
 }): React.JSX.Element {
-  const success = tone === 'success'
-  const Icon = success ? Check : Clock
-
   return (
     <GuestShell>
-      <section className="flex flex-col gap-[18px]">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>{heading}</h1>
-          <p className={GUEST_LEAD_CLASS}>{lead}</p>
-        </div>
+      <GuestIntro kicker={KICKER} title={heading} lead={lead} />
 
-        <GuestCard variant="accent">
-          <div className="flex flex-col gap-[14px]">
-            <div className="flex items-center gap-3">
-              <span
-                aria-hidden="true"
-                className={
-                  success
-                    ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12]'
-                    : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-gold/[0.14]'
-                }
-              >
-                <Icon
-                  className={
-                    success ? 'h-4 w-4 text-anchor-success' : 'h-4 w-4 text-guest-accent-text'
-                  }
-                />
-              </span>
-              <GuestBadge tone={success ? 'success' : 'outstanding'}>{badgeLabel}</GuestBadge>
-            </div>
-
-            <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">{body}</p>
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
+          <div className="flex items-center gap-3">
+            <GuestStatusMark tone={tone} />
+            <GuestBadge tone={GUEST_BADGE_TONE_FOR[tone]}>{badgeLabel}</GuestBadge>
           </div>
-        </GuestCard>
 
-        <HelpLine />
+          <p className={GUEST_MESSAGE_CLASS}>{body}</p>
+        </div>
+      </GuestCard>
 
-        <GuestButton as="a" href={WHATS_ON_URL} variant="outline" fullWidth>
-          Back to The Anchor
-        </GuestButton>
-      </section>
+      <HelpLine />
+
+      <GuestButton as="a" href={WHATS_ON_URL} variant="outline" fullWidth>
+        Back to The Anchor
+      </GuestButton>
     </GuestShell>
   )
 }
@@ -261,62 +234,49 @@ export default async function WaitlistOfferPage({
 
   return (
     <GuestShell>
-      <section className="flex flex-col gap-[18px]">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>Confirm your waitlist offer</h1>
-          <p className={GUEST_LEAD_CLASS}>
-            {formatGuestGreeting(guestFirstName, 'your waitlist offer details are below.')}
-          </p>
-        </div>
+      <GuestIntro
+        kicker={KICKER}
+        title="Confirm your waitlist offer"
+        lead={formatGuestGreeting(guestFirstName, 'your waitlist offer details are below.')}
+      />
 
-        <GuestCard variant="accent">
-          <div className="flex flex-col gap-4">
-            {/*
-              The hold is the statement this page exists to make, so it leads
-              the card. GuestAmount is the money variant at 48/60px; the
-              handoff sets the seat count at 42px, so it is composed here from
-              the same tokens.
-            */}
-            <div className="flex flex-col gap-[5px]">
-              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
-                We are holding
-              </span>
-              <span className="font-anchor-display text-[42px] font-normal leading-none tracking-[-0.02em] text-guest-text-strong">
-                {seats} {seatWord}
-              </span>
-              <span className="font-anchor-body text-guest-lead leading-[1.5] text-guest-text-muted">
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
+          {/* The hold is the statement this page exists to make, so it leads the card. */}
+          <GuestAmount
+            label="We are holding"
+            value={`${seats} ${seatWord}`}
+            sub={
+              <>
                 for <span className="font-semibold text-guest-text">{eventName}</span>.
-              </span>
+              </>
+            }
+          />
+
+          {(eventStart || expiresAt) && (
+            <div>
+              {eventStart && <DetailRow label="Event time" value={eventStart} />}
+              {expiresAt && (
+                <DetailRow label="Offer expires" value={expiresAt} emphasis="deadline" />
+              )}
             </div>
+          )}
 
-            {(eventStart || expiresAt) && (
-              <div>
-                {eventStart && <DetailRow label="Event time" value={eventStart} />}
-                {expiresAt && (
-                  <DetailRow label="Offer expires" value={expiresAt} emphasis="deadline" />
-                )}
-              </div>
-            )}
+          <p className={GUEST_MUTED_CLASS}>{paymentNote}</p>
 
-            <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-              {paymentNote}
-            </p>
+          {/*
+            Server-rendered POST, deliberately. Confirming has to work with
+            no JavaScript on a weak signal, so this stays a plain form.
+          */}
+          <form method="post" action={`/g/${token}/waitlist-offer/confirm`}>
+            <GuestButton as="button" type="submit" variant="primary" size="lg" fullWidth>
+              Confirm seats
+            </GuestButton>
+          </form>
+        </div>
+      </GuestCard>
 
-            {/*
-              Server-rendered POST, deliberately. Confirming has to work with
-              no JavaScript on a weak signal, so this stays a plain form.
-            */}
-            <form method="post" action={`/g/${token}/waitlist-offer/confirm`}>
-              <GuestButton as="button" type="submit" variant="primary" size="lg" fullWidth>
-                Confirm seats
-              </GuestButton>
-            </form>
-          </div>
-        </GuestCard>
-
-        <HelpLine />
-      </section>
+      <HelpLine />
     </GuestShell>
   )
 }

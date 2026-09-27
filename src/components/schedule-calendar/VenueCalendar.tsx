@@ -7,8 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { CalendarDaysIcon, EnvelopeIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
-import { Modal, Button, FormGroup, Input, Textarea, toast } from '@/ds'
+import { Alert, ConfirmDialog, Modal, Button, Field, Fieldset, Input, Textarea, toast, Icon } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -291,7 +290,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <CalendarDaysIcon className="h-3.5 w-3.5" />
+          <Icon name="calendar" size={14} />
           <span>Event</span>
         </div>
         <div className="whitespace-pre-wrap">{td.name}</div>
@@ -329,7 +328,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <LockClosedIcon className="h-3.5 w-3.5" />
+          <Icon name="lock" size={14} />
           <span>Private booking{entry.statusLabel ? ` · ${entry.statusLabel}` : ''}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
@@ -352,7 +351,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <LockClosedIcon className="h-3.5 w-3.5" />
+          <Icon name="lock" size={14} />
           <span>Private booking balance due</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
@@ -413,7 +412,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <TruckIcon className="h-3.5 w-3.5" />
+          <Icon name="truck" size={14} />
           <span>Parking</span>
         </div>
         {td.reference && (
@@ -446,7 +445,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <EnvelopeIcon className="h-3.5 w-3.5" />
+          <Icon name="mail" size={14} />
           <span>Marketing email · {td.statusLabel}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.name}</div>
@@ -728,12 +727,11 @@ export function VenueCalendar({
   }, [events, calendarNotes, privateBookings, balanceDueDates, employeeBirthdays, specialHours, parkingBookings, marketingSends, skippedCount])
 
   return (
-    <div className={className}>
+    <div className={cn('space-y-3', className)}>
       {header}
 
       {showFilters && (
         <CalendarFilterBar
-          className="mb-3"
           filters={filters}
           onChange={setFilters}
           availableKinds={legendKinds}
@@ -773,33 +771,69 @@ export function VenueCalendar({
       />
 
       {hiddenCount > 0 && (
-        <p className="mt-2 text-xs text-text-muted">{hiddenCount} without a date (not shown)</p>
+        <p className="text-xs text-text-muted">{hiddenCount} without a date (not shown)</p>
       )}
 
       {datasetWarnings.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {datasetWarnings.map((warning) => (
-            <p key={warning} className="text-xs text-warning-fg">
-              {warning}
-            </p>
-          ))}
-        </div>
+        <Alert tone="warning" size="sm">
+          <ul className="space-y-1">
+            {datasetWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </Alert>
       )}
 
       {canManageCalendarNotes && noteEditor && (
         <Modal
           open
           onClose={closeNoteModal}
-          title={noteEditor.mode === 'edit' ? 'Edit calendar note' : 'Add calendar note'}
+          title={noteEditor.mode === 'edit' ? 'Edit Calendar Note' : 'Add Calendar Note'}
           description={
             noteEditor.mode === 'edit'
               ? 'Changes also update the shared Pub Ops calendar.'
-              : `Adding a note for ${format(new Date(noteEditor.note_date + 'T00:00:00'), 'EEE d MMM yyyy')}`
+              : noteEditor.note_date
+                ? `Adding a note for ${formatDateInLondon(noteEditor.note_date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
+                : // The start date can be cleared while typing; never format an empty date.
+                  'Adding a note'
+          }
+          footer={
+            <>
+              {noteEditor.mode === 'edit' && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="text-danger-fg hover:bg-danger-soft hover:text-danger-fg sm:mr-auto"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={isSavingNote || isDeletingNote}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={closeNoteModal}
+                disabled={isSavingNote || isDeletingNote}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="calendar-note-form"
+                variant="primary"
+                loading={isSavingNote}
+                disabled={isDeletingNote}
+                icon={<Icon name="calendar" size={16} />}
+              >
+                {noteEditor.mode === 'edit' ? 'Save Changes' : 'Add Note'}
+              </Button>
+            </>
           }
         >
-          <form onSubmit={handleNoteSubmit} className="space-y-4">
+          <form id="calendar-note-form" onSubmit={handleNoteSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormGroup label="Start date" required>
+              <Field label="Start date" required>
                 <Input
                   type="date"
                   value={noteEditor.note_date}
@@ -814,8 +848,8 @@ export function VenueCalendar({
                   }}
                   required
                 />
-              </FormGroup>
-              <FormGroup label="End date" required>
+              </Field>
+              <Field label="End date" required>
                 <Input
                   type="date"
                   value={noteEditor.end_date}
@@ -825,9 +859,9 @@ export function VenueCalendar({
                   }
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
-            <FormGroup label="Title" required>
+            <Field label="Title" required>
               <Input
                 type="text"
                 placeholder="e.g. St Patrick's Day"
@@ -837,44 +871,42 @@ export function VenueCalendar({
                 required
                 autoFocus
               />
-            </FormGroup>
-            <FormGroup label="Colour">
+            </Field>
+            <Fieldset legend="Colour">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {CALENDAR_COLOUR_OPTIONS.map((option) => {
                   const selected = noteEditor.color.toUpperCase() === option.value
+                  // A pick-one toggle, as on the calendar filter bar: primary when chosen.
                   return (
-                    <button
+                    <Button
                       key={option.value}
                       type="button"
+                      variant={selected ? 'primary' : 'secondary'}
                       aria-pressed={selected}
                       onClick={() => setNoteEditor((f) => (f ? { ...f, color: option.value } : f))}
-                      className={cn(
-                        'flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors',
-                        'focus-visible:outline-hidden focus-visible:shadow-ring',
-                        selected
-                          ? 'border-primary bg-primary-soft text-text-strong ring-2 ring-primary ring-offset-1'
-                          : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
-                      )}
+                      className="min-h-touch justify-start"
+                      icon={
+                        <span
+                          className="h-5 w-5 shrink-0 rounded-sm border border-border-strong"
+                          style={{ backgroundColor: option.value }}
+                          aria-hidden="true"
+                        />
+                      }
                     >
-                      <span
-                        className="h-5 w-5 shrink-0 rounded-sm border border-border-strong"
-                        style={{ backgroundColor: option.value }}
-                        aria-hidden="true"
-                      />
                       {option.label}
-                    </button>
+                    </Button>
                   )
                 })}
               </div>
               {!CALENDAR_COLOUR_OPTIONS.some(
                 (option) => option.value === noteEditor.color.toUpperCase(),
               ) && (
-                <p className="mt-2 text-xs text-text-muted">
+                <p className="text-xs text-text-muted">
                   This note uses a colour outside the palette. It is kept unless you pick a new one.
                 </p>
               )}
-            </FormGroup>
-            <FormGroup label="Notes">
+            </Fieldset>
+            <Field label="Notes">
               <Textarea
                 rows={3}
                 placeholder="Optional detail."
@@ -882,68 +914,22 @@ export function VenueCalendar({
                 onChange={(e) => setNoteEditor((f) => (f ? { ...f, notes: e.target.value } : f))}
                 maxLength={4000}
               />
-            </FormGroup>
-
-            {confirmingDelete && (
-              <div className="rounded-md border border-danger-border bg-danger-soft p-3 text-xs text-danger-fg">
-                <p className="font-medium">Delete this note permanently?</p>
-                <p className="mt-1">
-                  This cannot be undone, and it also removes the entry from the shared Pub Ops
-                  calendar.
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    loading={isDeletingNote}
-                    onClick={handleNoteDelete}
-                  >
-                    Delete permanently
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={isDeletingNote}
-                    onClick={() => setConfirmingDelete(false)}
-                  >
-                    Keep it
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap justify-end gap-2 pt-2">
-              {noteEditor.mode === 'edit' && !confirmingDelete && (
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="mr-auto text-danger-fg"
-                  onClick={() => setConfirmingDelete(true)}
-                  disabled={isSavingNote || isDeletingNote}
-                >
-                  Delete
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={closeNoteModal}
-                disabled={isSavingNote || isDeletingNote}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                loading={isSavingNote}
-                disabled={isDeletingNote}
-                leftIcon={<CalendarDaysIcon className="h-4 w-4" />}
-              >
-                {noteEditor.mode === 'edit' ? 'Save changes' : 'Add note'}
-              </Button>
-            </div>
+            </Field>
           </form>
+
+          {/* Rendered inside the note dialog so it stacks above it as a nested dialog. It stays
+              open while the delete runs, and after a failed one, so the note is never lost. */}
+          <ConfirmDialog
+            open={confirmingDelete}
+            onClose={() => setConfirmingDelete(false)}
+            onConfirm={handleNoteDelete}
+            title="Delete Calendar Note"
+            message="This cannot be undone, and it also removes the entry from the shared Pub Ops calendar."
+            confirmLabel="Delete"
+            tone="danger"
+            closeOnConfirm={false}
+            loading={isDeletingNote}
+          />
         </Modal>
       )}
     </div>

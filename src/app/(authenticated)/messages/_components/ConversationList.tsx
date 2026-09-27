@@ -2,8 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 
-import { Avatar, Button, Empty, SearchInput, Select, Spinner } from '@/ds'
-import { Icon } from '@/ds/icons'
+import { Alert, Avatar, Badge, Button, Empty, SearchInput, Select, Spinner } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { ConversationSummary } from '@/app/actions/messagesActions'
 import type { CommunicationChannel } from '@/types/communications'
@@ -122,6 +121,7 @@ export function ConversationList({
             value={searchQuery}
             onChange={onSearchChange}
             placeholder="Search name, phone or email..."
+            aria-label="Search conversations"
           />
           {searching && (
             <span className="absolute right-9 top-1/2 -translate-y-1/2" aria-hidden="true">
@@ -130,30 +130,21 @@ export function ConversationList({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {/* A toggle: pressed shows only conversations with unread messages. */}
+          <Button
             type="button"
+            variant={unreadOnly ? 'primary' : 'secondary'}
             aria-pressed={unreadOnly}
             onClick={() => onUnreadOnlyChange(!unreadOnly)}
-            className={cn(
-              'inline-flex h-input-h flex-shrink-0 items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
-              'focus-visible:outline-hidden focus-visible:shadow-ring',
-              unreadOnly
-                ? 'border-primary bg-primary text-primary-fg'
-                : 'border-border bg-surface text-text-muted hover:bg-surface-hover',
-            )}
+            className="flex-shrink-0"
           >
             Unread
             {unreadCount > 0 && (
-              <span
-                className={cn(
-                  'inline-flex h-4 min-w-4 items-center justify-center rounded-pill px-1 text-2xs leading-none',
-                  unreadOnly ? 'bg-surface/20 text-primary-fg' : 'bg-info-soft text-info-fg',
-                )}
-              >
+              <Badge tone="info" size="sm">
                 {formatUnreadCount(unreadCount, unreadIsCapped)}
-              </span>
+              </Badge>
             )}
-          </button>
+          </Button>
           {/* Select renders its own flex-col wrapper, so the flex sizing has to
               go on an element outside it or the control shrinks to content. */}
           <div className="min-w-0 flex-1">
@@ -171,18 +162,15 @@ export function ConversationList({
         {error ? (
           // An outage must never look like an empty queue. Staff have missed
           // inbound work because "No conversations" was shown after a failure.
-          <div className="p-6">
-            <Empty
-              size="sm"
-              icon={<Icon name="alertTriangle" size={40} className="text-warning" />}
-              title="Could not load conversations"
-              description={error}
-              action={
-                <Button variant="secondary" size="md" onClick={onRetry}>
-                  Try again
+          <div className="p-3">
+            <Alert tone="danger" title="Could not load conversations">
+              {error}
+              <div className="mt-3">
+                <Button variant="secondary" size="sm" onClick={onRetry}>
+                  Try Again
                 </Button>
-              }
-            />
+              </div>
+            </Alert>
           </div>
         ) : loading && conversations.length === 0 ? (
           <ConversationSkeleton />
@@ -190,7 +178,7 @@ export function ConversationList({
           <div className="p-6">
             <Empty
               size="sm"
-              title={isFiltered ? 'No matching conversations' : 'No conversations'}
+              title={isFiltered ? 'No conversations match these filters' : 'No conversations yet'}
               description={
                 isFiltered
                   ? 'Try a different search or clear the filters.'
@@ -274,11 +262,11 @@ export function ConversationList({
                             {preview}
                           </span>
                           {unread && (
-                            <span
-                              aria-hidden="true"
-                              className="inline-flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-pill bg-info px-1 text-2xs font-semibold leading-none text-white"
-                            >
-                              {conversation.unreadCount}
+                            // The count is already in the row's accessible name.
+                            <span aria-hidden="true" className="flex-shrink-0">
+                              <Badge tone="info" size="sm">
+                                {conversation.unreadCount}
+                              </Badge>
                             </span>
                           )}
                         </span>

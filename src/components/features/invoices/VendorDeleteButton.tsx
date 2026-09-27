@@ -1,7 +1,7 @@
 'use client'
 
-import { TrashIcon } from '@heroicons/react/24/outline'
-import { IconButton } from '@/ds'
+import { useRef, useState } from 'react'
+import { ConfirmDialog, IconButton, Icon } from '@/ds'
 
 interface VendorDeleteButtonProps {
   vendorName: string
@@ -10,19 +10,30 @@ interface VendorDeleteButtonProps {
 }
 
 export function VendorDeleteButton({ vendorName, vendorId, deleteAction }: VendorDeleteButtonProps) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
   return (
-    <form action={deleteAction} className="inline">
+    <form ref={formRef} action={deleteAction} className="inline">
       <input type="hidden" name="vendorId" value={vendorId} />
       <IconButton
-        type="submit"
+        type="button"
         label={`Delete ${vendorName}`}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
         className="text-danger hover:text-danger-fg"
-        onClick={(e) => {
-          if (!confirm(`Are you sure you want to delete "${vendorName}"? This action cannot be undone.`)) {
-            e.preventDefault()
-          }
+        onClick={() => setConfirmOpen(true)}
+      />
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          // Submits the form to the server action exactly as the button did before the confirm step.
+          formRef.current?.requestSubmit()
         }}
+        title="Delete Vendor"
+        message={`Are you sure you want to delete "${vendorName}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
       />
     </form>
   )

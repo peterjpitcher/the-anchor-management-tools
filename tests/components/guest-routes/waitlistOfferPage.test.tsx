@@ -89,7 +89,7 @@ describe('waitlist-offer page', () => {
     expect(submit).toHaveAttribute('type', 'submit')
     expect(form?.contains(submit)).toBe(true)
     // lg: this is the one page where confirming is the whole purpose.
-    expect(submit.className).toContain('min-h-[56px]')
+    expect(submit.className).toContain('min-h-guest-control-lg')
   })
 
   it('shows the prepaid payment note when the event requires payment', async () => {

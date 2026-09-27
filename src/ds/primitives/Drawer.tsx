@@ -2,6 +2,7 @@
 
 import { Fragment } from 'react'
 import {
+  Description,
   Dialog,
   DialogBackdrop,
   DialogPanel,
@@ -15,8 +16,11 @@ export interface DrawerProps {
   open: boolean
   onClose: () => void
   title?: string
-  /** @deprecated Accepted for backward compatibility */
-  description?: string
+  /**
+   * One short line under the title (muted, sentence case). The drawer names it as its
+   * description (`aria-describedby`), so screen readers read it with the title.
+   */
+  description?: React.ReactNode
   children: React.ReactNode
   /** @deprecated Accepted for backward compatibility */
   footer?: React.ReactNode
@@ -49,7 +53,7 @@ export function Drawer({
   open,
   onClose,
   title,
-  description: _description,
+  description,
   children,
   footer,
   side,
@@ -99,11 +103,27 @@ export function Drawer({
               )}
               style={isBottom ? undefined : { width: resolvedWidth, maxWidth: '100vw' }}
             >
-              {title && (
+              {(title || description) && (
                 <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
-                  <DialogTitle className="min-w-0 truncate text-base font-semibold text-text-strong">
-                    {title}
-                  </DialogTitle>
+                  {description ? (
+                    <div className="min-w-0">
+                      {title && (
+                        <DialogTitle className="truncate text-base font-semibold text-text-strong">
+                          {title}
+                        </DialogTitle>
+                      )}
+                      <Description
+                        as={typeof description === 'string' ? 'p' : 'div'}
+                        className={cn('text-sm text-text-muted', title && 'mt-1')}
+                      >
+                        {description}
+                      </Description>
+                    </div>
+                  ) : (
+                    <DialogTitle className="min-w-0 truncate text-base font-semibold text-text-strong">
+                      {title}
+                    </DialogTitle>
+                  )}
                   <button
                     type="button"
                     onClick={onClose}

@@ -2,7 +2,11 @@
 
 import { useCallback, useState } from 'react'
 import { createDepositPaymentOrderByToken } from '@/app/actions/portalPayPalActions'
-import { GuestAlert, GuestButton } from '@/components/features/guest'
+// Imported file by file rather than through the `guest` barrel, which would pull
+// the guest webfont module into this client bundle.
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GuestButton } from '@/components/features/guest/GuestButton'
+import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
 
 interface FreshPayPalLinkClientProps {
   portalToken: string
@@ -40,11 +44,11 @@ export function FreshPayPalLinkClient({ portalToken }: FreshPayPalLinkClientProp
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="flex flex-col gap-[3px]">
-        <p className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
+      <div className="flex flex-col gap-guest-3xs">
+        <p className="font-anchor-body text-guest-body font-semibold leading-guest-snug text-guest-text">
           Deposit payment link
         </p>
-        <p className="font-anchor-body text-xs leading-[1.6] text-guest-text-muted">
+        <p className={GUEST_NOTE_CLASS}>
           PayPal links usually expire after 6 hours. Use this button to create a fresh link.
         </p>
       </div>
@@ -53,12 +57,13 @@ export function FreshPayPalLinkClient({ portalToken }: FreshPayPalLinkClientProp
         variant="primary"
         size="md"
         fullWidth
-        disabled={loading}
+        loading={loading}
+        loadingText="Creating link..."
         onClick={() => {
           if (!loading) void createFreshLink()
         }}
       >
-        {loading ? 'Creating link...' : 'Pay deposit via PayPal'}
+        Pay deposit via PayPal
       </GuestButton>
 
       {errorMessage && <GuestAlert tone="problem">{errorMessage}</GuestAlert>}

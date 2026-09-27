@@ -1,15 +1,14 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Badge, Button, IconButton } from '@/ds';
+import { Badge, Button, Checkbox, Fieldset, Modal, Select, toast, Icon } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
 import { rotaDepartmentClasses } from '@/lib/rota/status-ui';
+import { ADD_SHIFTS_ASSIGNEE_TONE, ADD_SHIFTS_ITEM_TONE } from './_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,8 +56,9 @@ function formatPaidHours(start: string, end: string, breakMins: number): string 
 }
 
 function formatDayHeader(isoDate: string): string {
-  const d = new Date(isoDate + 'T00:00:00');
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  // A plain date: read as a UTC midnight and formatted in UTC, so it never moves a day.
+  const d = new Date(isoDate + 'T00:00:00Z');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 function empName(emp: RotaEmployee): string {
@@ -232,7 +232,7 @@ export default function AddShiftsModal({
       if (result.opened > 0) parts.push(`${result.opened} left open, staff on leave`);
       if (result.skipped > 0) parts.push(`${result.skipped} already existed and skipped`);
       if (parts.length) toast.success(parts.join(' · '));
-      else toast('No new shifts were added', { icon: 'ℹ️' });
+      else toast.info('No new shifts were added');
       onShiftsAdded(result.shifts);
       onClose();
     });
@@ -241,6 +241,19 @@ export default function AddShiftsModal({
   // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
+
+  function renderAssignee(emp: RotaEmployee, opensForLeave: boolean) {
+    return (
+      <Badge
+        size="sm"
+        tone={ADD_SHIFTS_ASSIGNEE_TONE[opensForLeave ? 'on_leave' : 'assigned']}
+        icon={<Icon name="user" size={12} />}
+      >
+        {empName(emp)}
+        {opensForLeave && ', on leave, will be added as open'}
+      </Badge>
+    );
+  }
 
   function renderScheduledDay(dayIndex: number) {
     const date = weekDates[dayIndex];
@@ -251,24 +264,25 @@ export default function AddShiftsModal({
     const noneScheduled = dayScheduledTemplates.length === 0;
 
     return (
-      <div key={dayIndex} className="border-b border-border last:border-b-0">
-        {/* Day header */}
-        <div className="sticky top-0 z-10 flex items-center gap-2 px-5 py-2 bg-surface-2 border-b border-border">
-          <span className="text-xs font-semibold text-text uppercase tracking-wide">
+      <div key={dayIndex}>
+        {/* Day header: sticks to the top of the dialog's scrolling body. */}
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface-2 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-text">
             {DAY_NAMES[dayIndex]}
           </span>
           <span className="text-xs text-text-soft">{formatDayHeader(date)}</span>
           {allExist && (
-            <span className="ml-auto text-xs text-success-fg font-medium">
-              ✓ All scheduled templates already added
+            <span className="ml-auto flex items-center gap-1 text-xs font-medium text-success-fg">
+              <Icon name="check" size={12} />
+              All scheduled templates already added
             </span>
           )}
         </div>
 
         {/* Rows */}
         {noneScheduled ? (
-          <p className="px-5 py-2 text-xs text-text-soft italic">
-            No templates scheduled for {DAY_NAMES[dayIndex]}s — use &ldquo;Other templates&rdquo; below to add manually.
+          <p className="px-3 py-2 text-xs italic text-text-soft">
+            No templates scheduled for {DAY_NAMES[dayIndex]}s. Use &ldquo;Other templates&rdquo; below to add manually.
           </p>
         ) : (
           dayItems.map((item) => {
@@ -282,55 +296,44 @@ export default function AddShiftsModal({
               <div
                 key={`${item.template.id}-${item.date}`}
                 onClick={() => !isDisabled && toggleScheduled(globalIdx)}
-                className={`flex items-center gap-3 px-5 py-2.5 transition-colors ${
+                className={`flex items-center gap-3 border-b border-border px-3 py-2.5 transition-colors last:border-b-0 ${
                   isDisabled
-                    ? 'opacity-45 cursor-default'
-                    : 'hover:bg-surface-2 cursor-pointer'
+                    ? 'cursor-default opacity-50'
+                    : 'cursor-pointer hover:bg-surface-hover'
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={item.checked}
-                  disabled={isDisabled}
-                  onChange={() => toggleScheduled(globalIdx)}
-                  onClick={e => e.stopPropagation()}
-                  className="h-4 w-4 accent-primary shrink-0"
-                  aria-label={`${item.template.name} on ${DAY_NAMES[dayIndex]}`}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                {/* The row toggles on click too, so the box keeps its own click from reaching it. */}
+                <span className="shrink-0" onClick={e => e.stopPropagation()}>
+                  <Checkbox
+                    checked={item.checked}
+                    disabled={isDisabled}
+                    onChange={() => toggleScheduled(globalIdx)}
+                    aria-label={`${item.template.name} on ${DAY_NAMES[dayIndex]}`}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
                     <Badge size="sm" className={rotaDepartmentClasses(item.template.department)}>
                       {item.template.department}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-text-muted">
                       {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                       {' · '}
                       {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                     </span>
-                    {emp && (
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded-full ${
-                          opensForLeave
-                            ? 'bg-warning-soft text-warning-fg'
-                            : 'bg-surface-hover text-text-muted'
-                        }`}
-                      >
-                        👤 {empName(emp)}
-                        {opensForLeave && ', on leave, will be added as open'}
-                      </span>
-                    )}
+                    {emp && renderAssignee(emp, opensForLeave)}
                   </div>
                 </div>
                 {item.state === 'recommended' && (
-                  <Badge tone="info" size="sm" className="shrink-0 uppercase tracking-wide">
+                  <Badge tone={ADD_SHIFTS_ITEM_TONE.recommended} size="sm" className="shrink-0">
                     Recommended
                   </Badge>
                 )}
                 {item.state === 'exists' && (
-                  <Badge tone="neutral" size="sm" className="shrink-0 uppercase tracking-wide">
+                  <Badge tone={ADD_SHIFTS_ITEM_TONE.exists} size="sm" className="shrink-0">
                     Already added
                   </Badge>
                 )}
@@ -346,65 +349,66 @@ export default function AddShiftsModal({
   // Main render
   // ---------------------------------------------------------------------------
 
+  const weekSummary = [
+    weekDates[0] && weekDates[6]
+      ? `Week of ${formatDayHeader(weekDates[0])} – ${formatDayHeader(weekDates[6])}`
+      : '',
+    recommendedCount > 0 ? `${recommendedCount} recommended` : '',
+    existsCount > 0 ? `${existsCount} already scheduled` : '',
+  ].filter(Boolean).join(' · ');
+
   return (
-    // Kept as its own sheet rather than the DS Modal: the day headers stick to the top of
-    // the scrolling list and the footer carries the running count, which the DS Modal's
-    // padded body cannot hold.
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-overlay"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface w-full sm:rounded-xl shadow-lg sm:max-w-xl flex flex-col max-h-[90vh]"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
-          <div>
-            <p className="text-base font-semibold text-text-strong">Add Shifts</p>
-            <p className="text-xs text-text-muted mt-0.5">
-              {weekDates[0] && weekDates[6]
-                ? `Week of ${formatDayHeader(weekDates[0])} – ${formatDayHeader(weekDates[6])}`
-                : ''
-              }
-              {recommendedCount > 0 && ` · ${recommendedCount} recommended`}
-              {existsCount > 0 && ` · ${existsCount} already scheduled`}
-            </p>
-          </div>
-          <IconButton
+    <Modal
+      open
+      onClose={onClose}
+      title="Add Shifts"
+      description={weekSummary || undefined}
+      width="lg"
+      footer={
+        <>
+          {/* Left on desktop, under the buttons on phones: how many shifts will be added. */}
+          <p className="self-center text-sm text-text-muted sm:mr-auto">
+            <strong className="text-text-strong">{totalSelected}</strong>{' '}
+            {totalSelected === 1 ? 'shift' : 'shifts'} selected
+          </p>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
             type="button"
-            size="sm"
-            onClick={onClose}
-            label="Close"
-            icon={<XMarkIcon className="h-5 w-5" />}
-          />
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={totalSelected === 0 || floatingValidationError}
+            loading={isPending}
+          >
+            {`Add ${totalSelected} Shift${totalSelected !== 1 ? 's' : ''}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* Scheduled templates grouped by day. overflow-clip rounds the corners without
+            becoming a scroll box, so the day headers still stick. */}
+        <div className="overflow-clip rounded-lg border border-border">
+          {Array.from({ length: 7 }, (_, i) => renderScheduledDay(i))}
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Scheduled templates grouped by day */}
-          {Array.from({ length: 7 }, (_, i) => renderScheduledDay(i))}
-
-          {/* Floating templates */}
-          {floating.length > 0 && (
-            <div className="bg-warning-soft border-t border-warning-border px-5 py-3">
-              <p className="text-xs font-semibold text-warning-fg uppercase tracking-wide mb-2">
-                ⚡ Other templates — no assigned day
-              </p>
+        {/* Floating templates */}
+        {floating.length > 0 && (
+          <Fieldset legend="Other templates, no assigned day">
+            <div className="overflow-clip rounded-lg border border-border">
               {floating.map((item, idx) => {
                 const emp = item.template.employee_id ? empMap.get(item.template.employee_id) : undefined;
                 const opensForLeave = willBeOpenedForLeave(item.template, item.day, approvedLeave, weekDates);
                 return (
-                  <div key={item.template.id} className="flex items-center gap-3 mb-2 last:mb-0">
-                    <input
-                      type="checkbox"
+                  <div key={item.template.id} className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
+                    <Checkbox
                       checked={item.checked}
                       onChange={() => toggleFloating(idx)}
-                      className="h-4 w-4 accent-primary shrink-0"
                       aria-label={item.template.name}
                     />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
                         <Badge size="sm" className={rotaDepartmentClasses(item.template.department)}>
                           {item.template.department}
@@ -414,60 +418,33 @@ export default function AddShiftsModal({
                           {' · '}
                           {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                         </span>
-                        {emp && (
-                          <span className="text-xs bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded-full">
-                            👤 {empName(emp)}
-                            {opensForLeave && ', on leave, will be added as open'}
-                          </span>
-                        )}
+                        {emp && renderAssignee(emp, opensForLeave)}
                       </div>
                     </div>
-                    <select
-                      value={item.day}
-                      onChange={e => setFloatingDay(idx, e.target.value)}
-                      disabled={!item.checked}
-                      className={`text-xs border rounded-md px-2 py-1.5 shrink-0 min-w-[110px] outline-hidden focus:border-border-focus focus:shadow-ring ${
-                        item.checked && !item.day
-                          ? 'border-danger bg-danger-soft'
-                          : 'border-border-strong bg-surface'
-                      } disabled:opacity-50`}
-                      aria-label={`Pick a day for ${item.template.name}`}
-                    >
-                      <option value="">Pick a day…</option>
-                      {weekDates.map((d, i) => (
-                        <option key={d} value={d}>
-                          {DAY_NAMES[i]} {formatDayHeader(d)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="w-36 shrink-0">
+                      <Select
+                        value={item.day}
+                        onChange={e => setFloatingDay(idx, e.target.value)}
+                        disabled={!item.checked}
+                        error={item.checked && !item.day}
+                        aria-label={`Pick a day for ${item.template.name}`}
+                        className="h-btn-h-sm text-xs"
+                      >
+                        <option value="">Pick a day…</option>
+                        {weekDates.map((d, i) => (
+                          <option key={d} value={d}>
+                            {DAY_NAMES[i]} {formatDayHeader(d)}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-border shrink-0 bg-surface">
-          <p className="text-sm text-text-muted">
-            <strong className="text-text-strong">{totalSelected}</strong>{' '}
-            {totalSelected === 1 ? 'shift' : 'shifts'} selected
-          </p>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={handleSubmit}
-              disabled={isPending || totalSelected === 0 || floatingValidationError}
-            >
-              {isPending ? 'Adding…' : `Add ${totalSelected} shift${totalSelected !== 1 ? 's' : ''}`}
-            </Button>
-          </div>
-        </div>
+          </Fieldset>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

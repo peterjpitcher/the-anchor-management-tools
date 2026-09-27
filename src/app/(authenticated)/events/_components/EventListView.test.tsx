@@ -57,4 +57,43 @@ describe('EventListView selection checkboxes', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(new Set(['evt-2']))
   })
+
+  it('selects from a table row checkbox without opening the event, and the row still opens it', () => {
+    const onSelectionChange = vi.fn()
+    const onEventClick = vi.fn()
+    render(
+      <EventListView
+        events={events}
+        pagination={{ totalCount: 2, currentPage: 1, pageSize: 25, totalPages: 1 }}
+        selectedIds={new Set()}
+        onSelectionChange={onSelectionChange}
+        onEventClick={onEventClick}
+        onEditEvent={vi.fn()}
+        onPageChange={vi.fn()}
+        onDeleteSelected={vi.fn()}
+      />,
+    )
+
+    // [0] is the desktop table row; the row itself opens the event on click.
+    const checkbox = screen.getAllByRole('checkbox', { name: 'Select Quiz Night on 2 October 2026' })[0]
+    fireEvent.click(checkbox)
+
+    expect(onSelectionChange).toHaveBeenCalledWith(new Set(['evt-1']))
+    expect(onEventClick).not.toHaveBeenCalled()
+
+    fireEvent.click(checkbox.closest('tr') as HTMLElement)
+    expect(onEventClick).toHaveBeenCalledWith(events[0])
+  })
+
+  it('gives the phone list checkbox the DS 44px tap area, with no hand-made label wrapper', () => {
+    const onSelectionChange = renderList()
+
+    // [1] is the phone list card.
+    const checkbox = screen.getAllByRole('checkbox', { name: 'Select Quiz Night on 2 October 2026' })[1]
+    expect(checkbox).toHaveClass('pointer-coarse:h-touch', 'pointer-coarse:w-touch')
+    expect(checkbox.closest('label')).toBeNull()
+
+    fireEvent.click(checkbox)
+    expect(onSelectionChange).toHaveBeenCalledWith(new Set(['evt-1']))
+  })
 })

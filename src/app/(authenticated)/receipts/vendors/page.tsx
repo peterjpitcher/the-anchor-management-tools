@@ -2,12 +2,14 @@ import { getReceiptVendorReviews, getReceiptVendorWatchlist } from '@/app/action
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 export const runtime = 'nodejs'
 
 export default async function ReceiptsVendorsPage() {
-  const canView = await checkUserPermission('receipts', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('receipts', 'view'),
+    checkUserPermission('receipts', 'manage'),
+  ])
   if (!canView) {
     redirect('/unauthorized')
   }
@@ -19,13 +21,6 @@ export default async function ReceiptsVendorsPage() {
     getReceiptVendorReviews(),
   ])
 
-  return (
-    <ReceiptsPageChrome
-      title="Vendor spending trends"
-      subtitle="See which suppliers are rising in cost and where spend is stable."
-      navState={{ view: 'vendors' }}
-    >
-      <VendorSummaryGrid initialWatchlist={watchlist} initialReviews={reviews} />
-    </ReceiptsPageChrome>
-  )
+  // VendorSummaryGrid renders the Receipts chrome, so its comparison switch can sit in the header.
+  return <VendorSummaryGrid initialWatchlist={watchlist} initialReviews={reviews} canManage={canManage} />
 }

@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Input } from '@/ds';
+import { Input, Icon } from '@/ds';
 import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { IconButton } from '@/ds';
-import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
+import { Card } from '@/ds';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -100,10 +100,10 @@ export function RecipeIngredientRow({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+    <Card padding="sm">
       {/* Compact row: ingredient, quantity, unit, expand/remove */}
       <div className="flex flex-wrap items-end gap-2">
-        <FormGroup label="Ingredient" required className="min-w-0 flex-1">
+        <Field label="Ingredient" required className="min-w-0 flex-1">
           <Select
             value={row.ingredient_id}
             onChange={(e) => handleIngredientChange(e.target.value)}
@@ -117,9 +117,9 @@ export function RecipeIngredientRow({
               </option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Qty" required className="w-24 shrink-0">
+        <Field label="Qty" required className="w-24 shrink-0">
           <Input
             type="number"
             min="0.0001"
@@ -128,9 +128,9 @@ export function RecipeIngredientRow({
             onChange={(e) => onChange(index, { quantity: e.target.value })}
             required
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Unit" required className="w-32 shrink-0">
+        <Field label="Unit" required className="w-32 shrink-0">
           <Select
             value={row.unit}
             onChange={(e) => onChange(index, { unit: e.target.value })}
@@ -141,7 +141,7 @@ export function RecipeIngredientRow({
               </option>
             ))}
           </Select>
-        </FormGroup>
+        </Field>
 
         {/* Field height, so the buttons line up with the inputs beside them. */}
         <div className="flex shrink-0 items-center gap-1">
@@ -151,9 +151,9 @@ export function RecipeIngredientRow({
             label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
             icon={
               expanded ? (
-                <ChevronUpIcon className="h-4 w-4" />
+                <Icon name="chevronUp" size={16} />
               ) : (
-                <ChevronDownIcon className="h-4 w-4" />
+                <Icon name="chevronDown" size={16} />
               )
             }
             className="text-text-subtle hover:text-text-muted"
@@ -164,7 +164,7 @@ export function RecipeIngredientRow({
             onClick={() => onRemove(index)}
             disabled={!canRemove}
             label="Remove ingredient"
-            icon={<TrashIcon className="h-4 w-4" />}
+            icon={<Icon name="trash" size={16} />}
             className="text-text-subtle hover:bg-danger-soft hover:text-danger"
           />
         </div>
@@ -173,7 +173,7 @@ export function RecipeIngredientRow({
       {/* Expanded: advanced fields */}
       {expanded && (
         <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
-          <FormGroup label="Yield %">
+          <Field label="Yield %">
             <Input
               type="number"
               min="0"
@@ -182,9 +182,9 @@ export function RecipeIngredientRow({
               value={row.yield_pct}
               onChange={(e) => onChange(index, { yield_pct: e.target.value })}
             />
-          </FormGroup>
+          </Field>
 
-          <FormGroup label="Wastage %">
+          <Field label="Wastage %">
             <Input
               type="number"
               min="0"
@@ -193,9 +193,9 @@ export function RecipeIngredientRow({
               value={row.wastage_pct}
               onChange={(e) => onChange(index, { wastage_pct: e.target.value })}
             />
-          </FormGroup>
+          </Field>
 
-          <FormGroup label="Cost override (£)">
+          <Field label="Cost override (£)">
             <Input
               type="number"
               min="0"
@@ -203,16 +203,16 @@ export function RecipeIngredientRow({
               value={row.cost_override}
               onChange={(e) => onChange(index, { cost_override: e.target.value })}
             />
-          </FormGroup>
+          </Field>
 
-          <FormGroup label="Notes">
+          <Field label="Notes">
             <Input
               value={row.notes}
               onChange={(e) => onChange(index, { notes: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

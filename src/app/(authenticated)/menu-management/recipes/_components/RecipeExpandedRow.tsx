@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge } from '@/ds';
+import { Badge, Card, Empty, Section } from '@/ds';
+import { menuActiveLabel, menuActiveTone } from '../../_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types (shared with page and drawer)
@@ -68,17 +69,16 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
   const hasUsage = recipe.usage.length > 0;
 
   if (!hasIngredients && !hasUsage) {
-    return <p className="text-sm text-text-muted">No ingredients or dishes linked to this recipe yet.</p>;
+    return <Empty size="sm" title="No ingredients or dishes linked to this recipe yet" />;
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {hasIngredients && (
-        <div>
-          <h4 className="text-sm font-semibold text-text">Ingredient breakdown</h4>
-          <div className="mt-2 grid gap-3 md:grid-cols-2">
+        <Section title="Ingredient Breakdown">
+          <div className="grid gap-3 md:grid-cols-2">
             {recipe.ingredients.map((ingredient) => (
-              <div key={ingredient.ingredient_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+              <Card key={ingredient.ingredient_id} padding="sm">
                 <div className="font-medium text-text">{ingredient.ingredient_name}</div>
                 <div className="text-xs text-text-muted">
                   Qty {ingredient.quantity} {ingredient.unit || ingredient.default_unit || ''}
@@ -94,24 +94,23 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                 {ingredient.notes && (
                   <div className="mt-1 text-xs text-text-muted">Notes: {ingredient.notes}</div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
-        </div>
+        </Section>
       )}
       {hasUsage && (
-        <div>
-          <h4 className="text-sm font-semibold text-text">Used in dishes</h4>
-          <div className="mt-2 space-y-2">
+        <Section title="Used in Dishes">
+          <div className="space-y-3">
             {recipe.usage.map((usageRow) => (
-              <div key={usageRow.dish_id} className="rounded-sm border border-border p-3 text-sm">
+              <Card key={usageRow.dish_id} padding="sm" className="text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-medium text-text">{usageRow.dish_name}</div>
                     <div className="text-xs text-text-muted">Qty per dish: {usageRow.quantity}</div>
                   </div>
-                  <Badge variant={usageRow.dish_is_active ? 'success' : 'neutral'}>
-                    {usageRow.dish_is_active ? 'Active' : 'Inactive'}
+                  <Badge tone={menuActiveTone(usageRow.dish_is_active)}>
+                    {menuActiveLabel(usageRow.dish_is_active)}
                   </Badge>
                 </div>
                 {usageRow.assignments.length > 0 && (
@@ -119,7 +118,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                     {usageRow.assignments.map((assignment, idx) => (
                       <Badge
                         key={`${assignment.menu_code}-${assignment.category_code}-${idx}`}
-                        variant="neutral"
+                        tone="neutral"
                         size="sm"
                       >
                         {assignment.menu_code}:{assignment.category_code}
@@ -127,10 +126,10 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                     ))}
                   </div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
-        </div>
+        </Section>
       )}
     </div>
   );

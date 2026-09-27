@@ -5,14 +5,16 @@ import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
+  Alert,
   Card,
+  PageLayout,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
-  Pagination,
+  TablePagination,
   Badge,
   Button,
   SearchInput,
@@ -25,10 +27,10 @@ import {
   ConfirmDialog,
   RowActions,
   Checkbox,
+  Segmented,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
-import { Segmented } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getEntries, updateEntry, deleteEntry, createTimeEntry, createMileageEntry, createOneOffCharge } from '@/app/actions/oj-projects/entries'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
@@ -36,6 +38,11 @@ import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
+import { ojProjectsLayout } from '../../_shared/nav'
+import { ojBillable, ojEntryStatus, ojEntryType } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('entries')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -66,6 +73,8 @@ interface EntriesClientProps {
   initialTotal: number
   initialPage: number
   pageSize: number
+  /** Set when a load failed, so the page says so rather than showing an empty list. */
+  loadError?: string
 }
 
 function createBlankEntryForm(vendorId = '') {
@@ -91,6 +100,7 @@ export function EntriesClient({
   initialTotal,
   initialPage,
   pageSize,
+  loadError,
 }: EntriesClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -383,24 +393,6 @@ export function EntriesClient({
     return Number(entry.amount_ex_vat_snapshot || 0)
   }
 
-  const typeTone = (type: string): 'info' | 'warning' | 'neutral' => {
-    switch (type) {
-      case 'time': return 'info'
-      case 'mileage': return 'warning'
-      default: return 'neutral'
-    }
-  }
-
-  const statusTone = (status: string): 'success' | 'info' | 'warning' | 'neutral' => {
-    switch (status) {
-      case 'paid': return 'success'
-      case 'billed': return 'info'
-      case 'billing_pending': return 'neutral'
-      case 'unbilled': return 'warning'
-      default: return 'neutral'
-    }
-  }
-
   function isEntryEditable(entry: any): boolean {
     if (entry.status === 'unbilled') return true
     if (!['billed', 'billing_pending'].includes(String(entry.status))) return false
@@ -437,88 +429,114 @@ export function EntriesClient({
   const deleteEntryTarget = deleteId ? entries.find((entry) => entry.id === deleteId) : null
   const totalPages = Math.max(1, Math.ceil(entriesTotal / pageSize))
 
+  if (loadError) {
+    return (
+      <PageLayout {...LAYOUT}>
+        <Alert tone="danger" title="Could not load entries">
+          {loadError}
+        </Alert>
+      </PageLayout>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-3 items-center flex-1 w-full sm:w-auto flex-wrap">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search descriptions..."
-            className="flex-1 min-w-[220px] sm:max-w-xs"
-          />
-          <Select
-            value={clientFilter}
-            onChange={(e) => {
-              const vendorId = e.target.value
-              setClientFilter(vendorId)
-              setLastCreateVendorId(vendorId === 'all' ? '' : vendorId)
-              setProjectFilter('all')
-            }}
-            options={[
-              { label: 'All clients', value: 'all' },
-              ...vendors.map((v) => ({ label: v.name, value: v.id })),
-            ]}
-            className="w-44"
-          />
-          <Select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            options={[
-              { label: 'All projects', value: 'all' },
-              ...filterProjectOptions.map((p: any) => ({
-                label: p.project_code ? `${p.project_code} - ${p.project_name}` : p.project_name || 'Unknown project',
-                value: p.id,
-              })),
-            ]}
-            className="w-52"
-          />
-          <Input
-            value={invoiceFilter}
-            onChange={(e) => setInvoiceFilter(e.target.value)}
-            placeholder="Invoice no."
-            className="w-36"
-          />
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            options={statusOptions}
-            className="w-36"
-          />
-          <Select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            options={typeOptions}
-            className="w-32"
-          />
-          <Select
-            value={billingFilter}
-            onChange={(e) => setBillingFilter(e.target.value)}
-            options={billingOptions}
-            className="w-36"
-          />
-        </div>
-        {canCreate && (
+    <PageLayout
+      {...LAYOUT}
+      headerActions={
+        canCreate ? (
           <Button
             variant="primary"
+            size="sm"
             icon={<Icon name="plus" size={16} />}
             onClick={openCreate}
           >
             New Entry
           </Button>
-        )}
+        ) : undefined
+      }
+    >
+      {/* Filters, directly above the list they filter */}
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search descriptions..."
+          aria-label="Search descriptions"
+          className="min-w-[220px] flex-1 sm:max-w-xs"
+        />
+        <Select
+          aria-label="Client"
+          value={clientFilter}
+          onChange={(e) => {
+            const vendorId = e.target.value
+            setClientFilter(vendorId)
+            setLastCreateVendorId(vendorId === 'all' ? '' : vendorId)
+            setProjectFilter('all')
+          }}
+          options={[
+            { label: 'All clients', value: 'all' },
+            ...vendors.map((v) => ({ label: v.name, value: v.id })),
+          ]}
+          className="w-44"
+        />
+        <Select
+          aria-label="Project"
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          options={[
+            { label: 'All projects', value: 'all' },
+            ...filterProjectOptions.map((p: any) => ({
+              label: p.project_code ? `${p.project_code} - ${p.project_name}` : p.project_name || 'Unknown project',
+              value: p.id,
+            })),
+          ]}
+          className="w-52"
+        />
+        <Input
+          aria-label="Invoice number"
+          value={invoiceFilter}
+          onChange={(e) => setInvoiceFilter(e.target.value)}
+          placeholder="Invoice no."
+          className="w-36"
+        />
+        <Select
+          aria-label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={statusOptions}
+          className="w-36"
+        />
+        <Select
+          aria-label="Type"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          options={typeOptions}
+          className="w-32"
+        />
+        <Select
+          aria-label="Billing"
+          value={billingFilter}
+          onChange={(e) => setBillingFilter(e.target.value)}
+          options={billingOptions}
+          className="w-36"
+        />
       </div>
 
-      {/* Table */}
-      <Card>
+      <Card padding="none">
         {entries.length === 0 ? (
-          <Empty title="No entries" description="No entries match your filters." />
+          search.trim() ||
+          invoiceFilter.trim() ||
+          [clientFilter, projectFilter, statusFilter, typeFilter, billingFilter].some((value) => value !== 'all') ? (
+            <Empty size="sm" title="No entries match these filters" description="Clear a filter or the search to see more entries." />
+          ) : (
+            <Empty size="sm" title="No entries yet" description="Time, mileage and one-off entries show here once logged." />
+          )
         ) : (
           <>
-            <div className={loadingPage ? 'opacity-60' : undefined}>
+            {/* While another page loads, the current rows stay and dim. */}
+            <div aria-busy={loadingPage} className={loadingPage ? 'opacity-60' : undefined}>
               {/* Mobile card list */}
-              <div className="divide-y divide-border md:hidden">
+              <div className="divide-y divide-border px-pad-card py-3 md:hidden">
                 {entries.map((entry) => {
                   const cardBillable = isEntryBillable(entry)
                   let cardValue = ''
@@ -538,7 +556,7 @@ export function EntriesClient({
                             {entry.project?.project_code ? ` · ${entry.project.project_code}` : ''}
                           </p>
                         </div>
-                        <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
+                        <Badge tone={ojEntryType(entry.entry_type).tone}>{ojEntryType(entry.entry_type).label}</Badge>
                       </div>
                       {entry.description && (
                         <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
@@ -546,10 +564,8 @@ export function EntriesClient({
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                         {cardValue && <span className="text-text-muted">{cardValue}</span>}
                         <span className="font-medium">{formatCurrency(entryAmount(entry))}</span>
-                        <Badge tone={cardBillable ? 'success' : 'neutral'}>
-                          {cardBillable ? 'Billable' : 'Non-billable'}
-                        </Badge>
-                        <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                        <Badge tone={ojBillable(cardBillable).tone}>{ojBillable(cardBillable).label}</Badge>
+                        <Badge tone={ojEntryStatus(entry.status).tone}>{ojEntryStatus(entry.status).label}</Badge>
                         {entry.invoice?.invoice_number && (
                           <Link href={`/invoices/${entry.invoice.id}`} className="touch-target inline-flex items-center text-xs text-primary hover:underline">
                             {entry.invoice.invoice_number}
@@ -616,7 +632,7 @@ export function EntriesClient({
                           {entry.description || '-'}
                         </TableCell>
                         <TableCell>
-                          <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
+                          <Badge tone={ojEntryType(entry.entry_type).tone}>{ojEntryType(entry.entry_type).label}</Badge>
                         </TableCell>
                         <TableCell>
                           {entry.entry_type === 'time'
@@ -629,13 +645,11 @@ export function EntriesClient({
                           {formatCurrency(entryAmount(entry))}
                         </TableCell>
                         <TableCell>
-                          <Badge tone={billable ? 'success' : 'neutral'}>
-                            {billable ? 'Billable' : 'Non-billable'}
-                          </Badge>
+                          <Badge tone={ojBillable(billable).tone}>{ojBillable(billable).label}</Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                            <Badge tone={ojEntryStatus(entry.status).tone}>{ojEntryStatus(entry.status).label}</Badge>
                             {entry.invoice?.invoice_number && (
                               <Link
                                 href={`/invoices/${entry.invoice.id}`}
@@ -674,12 +688,11 @@ export function EntriesClient({
               </Table>
             </div>
             {entriesTotal > pageSize && (
-              <Pagination
-                currentPage={entryPage}
+              <TablePagination
+                page={entryPage}
                 totalPages={totalPages}
-                itemsPerPage={pageSize}
+                pageSize={pageSize}
                 totalItems={entriesTotal}
-                className="border-t border-border px-3 py-4"
                 onPageChange={(page) => {
                   void goToEntriesPage(page)
                 }}
@@ -694,8 +707,18 @@ export function EntriesClient({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="New Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-entry-create-form" variant="primary" loading={saving}>
+              Create Entry
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+        <form id="oj-entry-create-form" onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
           <Segmented
             options={[
               { id: 'time', label: 'Time' },
@@ -705,6 +728,7 @@ export function EntriesClient({
             value={createType}
             onChange={(id) => setCreateType(id as 'time' | 'mileage' | 'one_off')}
             size="sm"
+            aria-label="Entry type"
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -831,15 +855,6 @@ export function EntriesClient({
             checked={createForm.billable}
             onChange={(checked) => setCreateForm({ ...createForm, billable: checked })}
           />
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              Create Entry
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -848,8 +863,22 @@ export function EntriesClient({
         open={editOpen}
         onClose={() => setEditOpen(false)}
         title="Edit Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-entry-edit-form" variant="primary" loading={saving}>
+              {editForm.linked_invoice_number
+                ? editForm.linked_invoice_status === 'draft'
+                  ? 'Save and Recalculate Draft'
+                  : 'Save and Create Replacement Draft'
+                : 'Save Changes'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+        <form id="oj-entry-edit-form" onSubmit={handleEditSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Entry Type">
               <Input value={editForm.entry_type} disabled />
@@ -980,19 +1009,6 @@ export function EntriesClient({
             checked={editForm.billable}
             onChange={(checked) => setEditForm({ ...editForm, billable: checked })}
           />
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {editForm.linked_invoice_number
-                ? editForm.linked_invoice_status === 'draft'
-                  ? 'Save and Recalculate Draft'
-                  : 'Save and Create Replacement Draft'
-                : 'Save Changes'}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -1005,11 +1021,11 @@ export function EntriesClient({
         message={
           deleteEntryTarget?.invoice?.invoice_number
             ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
-            : 'Are you sure you want to delete this entry? This cannot be undone.'
+            : 'Delete this entry? This cannot be undone.'
         }
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

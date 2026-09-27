@@ -14,11 +14,7 @@ import {
   qrStripRect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
-import toast from 'react-hot-toast'
-
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
-}))
+import { toast } from '@/ds'
 
 // The preview QR is a placement guide, so the real encoder is not needed and a
 // stub keeps the suite off a PNG encoder it does not assert anything about.
@@ -76,6 +72,8 @@ vi.mock('@dnd-kit/core', async () => {
 vi.mock('@/ds', async () => {
   const React = await import('react')
   return {
+    toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+    Icon: () => null,
     Button: ({
       children,
       onClick,
@@ -103,6 +101,144 @@ vi.mock('@/ds', async () => {
       size?: string
     }) =>
       React.createElement('button', { type: 'button', onClick, disabled, 'aria-label': label }),
+    // The editor is a DS Modal: a named dialog with its description, body and footer of buttons.
+    Modal: ({
+      open,
+      title,
+      description,
+      children,
+      footer,
+    }: {
+      open: boolean
+      title?: string
+      description?: React.ReactNode
+      children: React.ReactNode
+      footer?: React.ReactNode
+      onClose: () => void
+      width?: string
+    }) =>
+      open
+        ? React.createElement(
+            'div',
+            { role: 'dialog', 'aria-label': title },
+            description ? React.createElement('p', null, description) : null,
+            children,
+            footer
+          )
+        : null,
+    // The pick-one rows are the DS Segmented control: a radio group of buttons, named as the
+    // real one is.
+    Segmented: ({
+      options,
+      value,
+      onChange,
+      'aria-label': ariaLabel,
+    }: {
+      options: { id: string; label: string }[]
+      value: string
+      onChange: (id: string) => void
+      className?: string
+      'aria-label'?: string
+    }) =>
+      React.createElement(
+        'div',
+        { role: 'radiogroup', 'aria-label': ariaLabel },
+        options.map((option) =>
+          React.createElement(
+            'button',
+            {
+              key: option.id,
+              type: 'button',
+              role: 'radio',
+              'aria-checked': option.id === value,
+              onClick: () => onChange(option.id),
+            },
+            option.label
+          )
+        )
+      ),
+    Checkbox: ({
+      label,
+      checked,
+      onChange,
+    }: {
+      label?: string
+      checked?: boolean
+      onChange?: (checked: boolean) => void
+    }) =>
+      React.createElement(
+        'label',
+        null,
+        React.createElement('input', {
+          type: 'checkbox',
+          checked: Boolean(checked),
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange?.(event.target.checked),
+        }),
+        label
+      ),
+    // Field and Input keep the label wiring the real ones have, so fields are found by label.
+    Field: ({ label, hint, children }: { label?: React.ReactNode; hint?: string; children: React.ReactElement<{ id?: string }> }) =>
+      React.createElement(
+        'div',
+        null,
+        React.createElement('label', { htmlFor: children.props.id }, label),
+        children,
+        hint ? React.createElement('p', null, hint) : null
+      ),
+    Input: ({ label, id, ...rest }: { label?: string; id?: string } & React.InputHTMLAttributes<HTMLInputElement>) =>
+      React.createElement(
+        'div',
+        null,
+        label ? React.createElement('label', { htmlFor: id }, label) : null,
+        React.createElement('input', { id, ...rest })
+      ),
+    Alert: ({ children, tone, actions }: { children: React.ReactNode; tone?: string; actions?: React.ReactNode }) =>
+      React.createElement('div', { role: 'alert', 'data-tone': tone }, children, actions),
+    Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
+    SubHeading: ({ as, children }: { as?: 'h3' | 'h4'; children: React.ReactNode }) =>
+      React.createElement(as ?? 'h4', null, children),
+    // The image tiles' pickers: a DS Button over a hidden file input, as the real FileButton is.
+    FileButton: ({
+      children,
+      onFiles,
+      disabled,
+      accept,
+    }: {
+      children: React.ReactNode
+      onFiles: (files: File[]) => void
+      disabled?: boolean
+      accept?: string
+    }) =>
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement('input', {
+          type: 'file',
+          hidden: true,
+          accept,
+          disabled,
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+            onFiles(Array.from(event.target.files ?? [])),
+        }),
+        React.createElement('button', { type: 'button', disabled }, children)
+      ),
+    LinkButton: ({
+      href,
+      download,
+      children,
+    }: {
+      href: string
+      download?: boolean | string
+      children: React.ReactNode
+    }) =>
+      React.createElement(
+        'a',
+        { href, download: typeof download === 'string' ? download : download ? '' : undefined },
+        children
+      ),
+    Card: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+    PageLoading: ({ label }: { label?: string }) => React.createElement('div', { role: 'status' }, label),
+    Spinner: () => null,
     ConfirmDialog: ({
       open,
       title,
@@ -248,6 +384,19 @@ afterEach(() => {
 })
 
 describe('ArtworkBrandingModal, logo placement', () => {
+  it('names each pick-one row, and describes the artwork under the title', () => {
+    renderModal()
+
+    expect(screen.getByRole('radiogroup', { name: 'Logo placement mode' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Logo corner' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Logo colour' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Logo' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Booking QR Code' })).toBeInTheDocument()
+    expect(
+      screen.getByText(`${POSTER_W} x ${POSTER_H} px. The logo is stamped on the saved file.`)
+    ).toBeInTheDocument()
+  })
+
   it('sets the placement from the corner picker and previews the geometry rect', async () => {
     const user = userEvent.setup()
     renderModal()
@@ -384,7 +533,7 @@ describe('ArtworkBrandingModal, QR code', () => {
 
     // A typed value outside the range is pulled back in rather than posted.
     fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '99' } })
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
@@ -401,7 +550,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     expect((screen.getByLabelText('QR width (%)') as HTMLInputElement).value).toBe('10')
     fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '9' } })
     expect(slider.value).toBe('10')
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
     expect(body.qr.widthFrac).toBe(0.1)
@@ -439,7 +588,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '12' } })
     expect((screen.getByLabelText('QR size') as HTMLInputElement).value).toBe('17')
 
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
     expect(body.variant).toBe('table_talker')
@@ -452,7 +601,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     fireEvent.change(screen.getByLabelText('QR X (%)'), { target: { value: '90' } })
     fireEvent.change(screen.getByLabelText('QR Y (%)'), { target: { value: '95' } })
 
-    expect(screen.getByRole('button', { name: /Save branding/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Save Branding/ })).toBeDisabled()
     expect(screen.getByText('The QR code is too close to the logo.')).toBeInTheDocument()
   })
 })
@@ -587,7 +736,7 @@ describe('ArtworkBrandingModal, saving', () => {
     const user = userEvent.setup()
     const { onApplied, onClose } = renderModal()
 
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
@@ -626,7 +775,7 @@ describe('ArtworkBrandingModal, saving', () => {
     fireEvent.change(screen.getByLabelText('Logo Y (%)'), { target: { value: '60' } })
     await user.click(screen.getByRole('checkbox', { name: /Put a QR code on the poster/ }))
 
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
@@ -644,7 +793,7 @@ describe('ArtworkBrandingModal, saving', () => {
     renderModal()
 
     await user.click(screen.getByRole('radio', { name: 'No logo' }))
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
@@ -659,7 +808,7 @@ describe('ArtworkBrandingModal, saving', () => {
     fetchMock.mockResolvedValue(errorResponse(422, { code: 'poster_link_blocked', detail }))
 
     const { onClose } = renderModal()
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(detail)
     expect(onClose).not.toHaveBeenCalled()
@@ -670,7 +819,7 @@ describe('ArtworkBrandingModal, saving', () => {
     fetchMock.mockResolvedValue(errorResponse(403, {}))
 
     renderModal()
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to brand event artwork.'
@@ -683,15 +832,35 @@ describe('ArtworkBrandingModal, revert', () => {
     const user = userEvent.setup()
     renderModal()
 
-    await user.click(screen.getByRole('button', { name: 'Revert to original' }))
+    await user.click(screen.getByRole('button', { name: 'Revert to Original' }))
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: 'Revert to original' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Revert to Original' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Revert' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
     expect(body).toEqual({ variant: 'print_poster', action: 'revert' })
+  })
+})
+
+describe('EventImagePanel failed load', () => {
+  it('reports the failure, never an empty set of tiles, and loads again on Try Again', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getEventImageVariants).mockResolvedValueOnce({ error: 'Network error' })
+    render(<EventImagePanel eventId={EVENT_ID} />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-tone', 'danger')
+    expect(alert).toHaveTextContent('The images for this event could not be loaded.')
+    expect(screen.queryByRole('button', { name: /^Add / })).toBeNull()
+
+    vi.mocked(getEventImageVariants).mockResolvedValueOnce({ data: [] })
+    await user.click(screen.getByRole('button', { name: 'Try Again' }))
+
+    await waitFor(() => expect(getEventImageVariants).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole('heading', { name: 'Event Artwork' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
@@ -806,7 +975,7 @@ describe('ArtworkBrandingModal, reopening on branded artwork', () => {
       },
     })
 
-    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await user.click(screen.getByRole('button', { name: /Save Branding/ }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
@@ -870,7 +1039,7 @@ describe('EventImagePanel branded indicator', () => {
 
     render(<EventImagePanel eventId={EVENT_ID} />)
 
-    expect(await screen.findByText('Event artwork')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Event Artwork' })).toBeInTheDocument()
     expect(screen.queryByText('Branded')).toBeNull()
   })
 })
@@ -921,8 +1090,8 @@ describe('EventImagePanel table talker print sheet', () => {
 
     render(<EventImagePanel eventId={EVENT_ID} />)
 
-    const button = await screen.findByRole('button', { name: 'Print sheet' })
-    expect(screen.getAllByRole('button', { name: 'Print sheet' })).toHaveLength(1)
+    const button = await screen.findByRole('button', { name: 'Print Sheet' })
+    expect(screen.getAllByRole('button', { name: 'Print Sheet' })).toHaveLength(1)
     expect(button).toBeDisabled()
     expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent('Brand it to print the A4 sheet.')
   })
@@ -939,7 +1108,7 @@ describe('EventImagePanel table talker print sheet', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
     render(<EventImagePanel eventId={EVENT_ID} />)
-    const button = await screen.findByRole('button', { name: 'Print sheet' })
+    const button = await screen.findByRole('button', { name: 'Print Sheet' })
     expect(button).toBeEnabled()
     expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent(
       'Print the sheet at 100%, then cut as needed.'
@@ -963,7 +1132,7 @@ describe('EventImagePanel table talker print sheet', () => {
     fetchMock.mockResolvedValue(errorResponse(422, { error: refusal, code: 'resolution_too_low' }))
 
     render(<EventImagePanel eventId={EVENT_ID} />)
-    await user.click(await screen.findByRole('button', { name: 'Print sheet' }))
+    await user.click(await screen.findByRole('button', { name: 'Print Sheet' }))
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith(refusal))
     expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
@@ -976,7 +1145,7 @@ describe('EventImagePanel table talker print sheet', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
     render(<EventImagePanel eventId={EVENT_ID} />)
-    const button = await screen.findByRole('button', { name: 'Print sheet' })
+    const button = await screen.findByRole('button', { name: 'Print Sheet' })
     await user.click(button)
 
     await waitFor(() =>
@@ -986,7 +1155,7 @@ describe('EventImagePanel table talker print sheet', () => {
     )
     expect(click).not.toHaveBeenCalled()
     // Usable again straight away, not stuck on Preparing.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Print sheet' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Print Sheet' })).toBeEnabled())
     click.mockRestore()
   })
 

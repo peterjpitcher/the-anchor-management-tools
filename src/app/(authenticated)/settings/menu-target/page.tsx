@@ -3,9 +3,7 @@
 import { redirect } from 'next/navigation';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { getMenuTargetGp } from '@/app/actions/menu-settings';
-import { PageLayout } from '@/ds';
-import { Section } from '@/ds';
-import { Card } from '@/ds';
+import { Card, CardBody, CardHeader, PageLayout } from '@/ds';
 import { MenuTargetForm } from './MenuTargetForm';
 
 export default async function MenuTargetSettingsPage() {
@@ -19,17 +17,19 @@ export default async function MenuTargetSettingsPage() {
   return (
     <PageLayout
       title="Menu GP Target"
-      subtitle="Set the standard GP% target applied across every dish."
+      subtitle="Set the standard GP% target applied across every dish"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
+      containerSize="md"
     >
-      <Section
-        title="Standard target"
-        subtitle="Adjusting this value updates all dishes and future GP calculations."
-      >
-        <Card>
+      <Card>
+        <CardHeader
+          title="Standard Target"
+          subtitle="Adjusting this value updates all dishes and future GP calculations"
+        />
+        <CardBody>
           <MenuTargetForm initialTarget={currentTarget} />
-        </Card>
-      </Section>
+        </CardBody>
+      </Card>
     </PageLayout>
   );
 }

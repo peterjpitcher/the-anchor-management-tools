@@ -1,10 +1,12 @@
 import {
   GuestAlert,
+  GuestChoice,
   GuestField,
+  GuestInput,
+  GuestSection,
+  GuestSelect,
   guestFieldControlProps,
-  GUEST_CHOICE_ROW_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INPUT_INVALID_CLASS,
+  GUEST_BODY_CLASS,
   GUEST_SUNK_BOX_CLASS,
 } from '@/components/features/guest'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
@@ -29,7 +31,7 @@ import {
   type PreorderCourse,
   type PreorderCover,
 } from '@/types/preorders'
-import { GUEST_SUBMIT_PRIMARY_CLASS, PREORDER_SEAT_BLOCK_CLASS } from './formStyles'
+import { PREORDER_SEAT_BLOCK_CLASS } from './formStyles'
 import type { BookerPreorderView } from './preorder-data'
 
 /**
@@ -109,10 +111,10 @@ function addonCountPhrase(count: number): string {
 
 /** Seat title, shared by the editable fieldset legend and the read-only row. */
 const SEAT_TITLE_CLASS =
-  'font-anchor-body text-sm font-bold leading-[1.4] text-guest-text-strong'
+  'font-anchor-body text-guest-body font-bold leading-guest-snug text-guest-text-strong'
 
-/** Small print inside a seat block: the read-only choices and dietary lines. */
-const SEAT_TEXT_CLASS = 'font-anchor-body text-sm leading-[1.6] text-guest-text'
+/** Secondary lines under a control: the cut-off time and the saved add-on total. */
+const SMALL_MUTED_CLASS = 'font-anchor-body text-guest-small text-guest-text-muted'
 
 export function PreorderSection({
   order,
@@ -135,37 +137,25 @@ export function PreorderSection({
   const savedOrderAddons = summariseOrderAddons(order)
 
   return (
-    <section
-      aria-labelledby="preorder-heading"
-      className="flex flex-col gap-[14px] border-t border-guest-border-strong pt-5"
+    <GuestSection
+      title="Your food choices"
+      titleId="preorder-heading"
+      description={
+        order.covers.some(cover => cover.courseCount != null)
+          ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
+          : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`
+      }
     >
-      <div className="flex flex-col gap-2">
-        <h2
-          id="preorder-heading"
-          className="font-anchor-display text-[22px] font-normal leading-[1.25] text-guest-text-strong"
-        >
-          Your food choices
-        </h2>
-        <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-          {order.covers.some(cover => cover.courseCount != null)
-            ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
-            : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`}
-        </p>
-      </div>
-
       {hasAddons && (
-        <p
-          id={ADDON_NOTE_ID}
-          className="rounded-guest-card border border-anchor-gold/[0.35] bg-anchor-gold/[0.07] px-[15px] py-[13px] font-anchor-body text-ui leading-[1.6] text-guest-text"
-        >
+        <GuestAlert id={ADDON_NOTE_ID} tone="notice">
           {PREORDER_ADDON_GUEST_NOTE}
-        </p>
+        </GuestAlert>
       )}
 
       {cutoff.editable ? (
         <>
           {cutoff.at && (
-            <p className="font-anchor-body text-ui leading-[1.55] text-guest-text-muted">
+            <p className={SMALL_MUTED_CLASS}>
               You can change these until {formatDateTime12Hour(cutoff.at)}.
             </p>
           )}
@@ -178,12 +168,12 @@ export function PreorderSection({
             </GuestAlert>
           )}
 
-          <form method="post" action={actionUrl} className="flex flex-col gap-5">
+          <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
             <input type="hidden" name="action" value="preorder" />
 
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
-              if (cover?.courseCount === 1) return <p key={ordinal}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              if (cover?.courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
               const withdrawn = withdrawnChoices(cover)
               const hasError = errorSeat === ordinal
               const noteIds = [
@@ -203,39 +193,30 @@ export function PreorderSection({
                 <fieldset key={ordinal} className={PREORDER_SEAT_BLOCK_CLASS}>
                   <legend className={cn('px-1', SEAT_TITLE_CLASS)}>{seatLabel(cover, ordinal)}</legend>
 
-                  <div className="flex flex-col gap-[14px]">
-                    {/*
-                      `GuestAlert` carries no id of its own, so the id each seat's controls point
-                      `aria-describedby` at lives on this wrapper. The described text is the same
-                      either way, and the alert keeps its own role.
-                    */}
+                  <div className="flex flex-col gap-guest-md">
+                    {/* Each seat's controls point `aria-describedby` at these alerts by id. */}
                     {withdrawn.length > 0 && (
-                      <div id={`seat-${ordinal}-withdrawn`}>
-                        <GuestAlert tone="notice">
-                          {withdrawn.join(' and ')} is no longer on the menu. Please choose again.
-                        </GuestAlert>
-                      </div>
+                      <GuestAlert id={`seat-${ordinal}-withdrawn`} tone="notice">
+                        {withdrawn.join(' and ')} is no longer on the menu. Please choose again.
+                      </GuestAlert>
                     )}
 
                     {hasError && (
-                      <div id={`seat-${ordinal}-error`}>
-                        <GuestAlert tone="problem">
-                          We could not save this seat. The dish you chose may have come off the menu. Please
-                          choose again, or call us on {contactPhone}.
-                        </GuestAlert>
-                      </div>
+                      <GuestAlert id={`seat-${ordinal}-error`} tone="problem">
+                        We could not save this seat. The dish you chose may have come off the menu. Please
+                        choose again, or call us on {contactPhone}.
+                      </GuestAlert>
                     )}
 
-                    <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-guest-md sm:grid-cols-2">
                       <GuestField id={`seat-${ordinal}-name`} label="Name (optional)">
-                        <input
+                        <GuestInput
                           {...guestFieldControlProps({ id: `seat-${ordinal}-name` })}
                           name={`seat_${ordinal}_name`}
                           type="text"
                           maxLength={100}
                           autoComplete="off"
                           defaultValue={cover?.guestName ?? ''}
-                          className={GUEST_INPUT_CLASS}
                         />
                       </GuestField>
 
@@ -252,13 +233,13 @@ export function PreorderSection({
                             id={courseId}
                             label={`${PREORDER_COURSE_LABELS[course]}${course === 'main' ? '' : ' (optional)'}`}
                           >
-                            <select
+                            <GuestSelect
                               {...guestFieldControlProps({ id: courseId })}
                               name={`seat_${ordinal}_${course}`}
                               defaultValue={chosenId}
                               aria-invalid={hasError || undefined}
                               aria-describedby={describedBy}
-                              className={cn(GUEST_INPUT_CLASS, hasError && GUEST_INPUT_INVALID_CLASS)}
+                              invalid={hasError}
                             >
                               <option value="">
                                 {course === 'main' ? 'Please choose' : 'None, thank you'}
@@ -268,17 +249,17 @@ export function PreorderSection({
                                   {item.name}
                                 </option>
                               ))}
-                            </select>
+                            </GuestSelect>
                           </GuestField>
                         )
                       })}
 
                       {hasAddons && (
                         <fieldset
-                          className="rounded-guest-field border border-guest-border bg-guest-sunk px-[14px] py-3 sm:col-span-2"
+                          className="rounded-guest-field border border-guest-border bg-guest-sunk px-guest-md py-3 sm:col-span-2"
                           aria-describedby={ADDON_NOTE_ID}
                         >
-                          <legend className="px-1 font-anchor-body text-ui font-semibold leading-[1.4] text-guest-text">
+                          <legend className="px-1 font-anchor-body text-guest-small font-semibold leading-guest-snug text-guest-text">
                             Add-ons for seat {ordinal} (optional)
                           </legend>
 
@@ -290,37 +271,23 @@ export function PreorderSection({
                           <input type="hidden" name={`seat_${ordinal}_addons_present`} value="1" />
 
                           <ul>
-                            {addons.map((addon) => {
-                              const inputId = `seat-${ordinal}-addon-${addon.id}`
-                              return (
-                                <li key={addon.id}>
-                                  {/*
-                                    No size utility on the box: `.guest-theme` sizes every tick and
-                                    radio at 20px, and the row carries the 44px target.
-                                  */}
-                                  <label htmlFor={inputId} className={GUEST_CHOICE_ROW_CLASS}>
-                                    <input
-                                      id={inputId}
-                                      name={`seat_${ordinal}_addon`}
-                                      type="checkbox"
-                                      value={addon.id}
-                                      defaultChecked={tickedAddonIds.has(addon.id)}
-                                      aria-invalid={hasError || undefined}
-                                      aria-describedby={describedBy}
-                                    />
-                                    <span>
-                                      {addon.name}, {formatPreorderAddonPrice(addon.priceGbp)}
-                                    </span>
-                                  </label>
-                                </li>
-                              )
-                            })}
+                            {addons.map((addon) => (
+                              <li key={addon.id}>
+                                <GuestChoice
+                                  type="checkbox"
+                                  id={`seat-${ordinal}-addon-${addon.id}`}
+                                  name={`seat_${ordinal}_addon`}
+                                  value={addon.id}
+                                  defaultChecked={tickedAddonIds.has(addon.id)}
+                                  aria-invalid={hasError || undefined}
+                                  aria-describedby={describedBy}
+                                  label={`${addon.name}, ${formatPreorderAddonPrice(addon.priceGbp)}`}
+                                />
+                              </li>
+                            ))}
                           </ul>
 
-                          <p
-                            aria-live="polite"
-                            className="mt-2 font-anchor-body text-ui leading-[1.55] text-guest-text-muted"
-                          >
+                          <p aria-live="polite" className={cn('mt-2', SMALL_MUTED_CLASS)}>
                             {seatAddons.count === 0
                               ? 'No add-ons saved for this seat yet.'
                               : `Saved for this seat: ${addonCountPhrase(seatAddons.count)}, ${addonMoneyPhrase(seatAddons)}.`}{' '}
@@ -334,7 +301,7 @@ export function PreorderSection({
                         label="Dietary requirement (optional)"
                         className="sm:col-span-2"
                       >
-                        <input
+                        <GuestInput
                           {...guestFieldControlProps({ id: `seat-${ordinal}-note` })}
                           name={`seat_${ordinal}_note`}
                           type="text"
@@ -342,7 +309,6 @@ export function PreorderSection({
                           autoComplete="off"
                           defaultValue={cover?.dietaryNote ?? ''}
                           placeholder="For example, no dairy"
-                          className={GUEST_INPUT_CLASS}
                         />
                       </GuestField>
                     </div>
@@ -369,9 +335,7 @@ export function PreorderSection({
             </div>
 
             <div>
-              <GuestSubmitButton className={GUEST_SUBMIT_PRIMARY_CLASS} loadingText="Saving...">
-                Save food choices
-              </GuestSubmitButton>
+              <GuestSubmitButton loadingText="Saving...">Save food choices</GuestSubmitButton>
             </div>
           </form>
         </>
@@ -382,10 +346,10 @@ export function PreorderSection({
             needs to change.
           </p>
 
-          <ul className="flex flex-col gap-[14px]">
+          <ul className="flex flex-col gap-guest-md">
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
-              if (cover?.courseCount === 1) return <p key={ordinal}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              if (cover?.courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
               const chosen = PREORDER_COURSES.map((course) => {
                 const selection = cover ? getCoverCourse(cover, course) : null
                 return selection ? `${PREORDER_COURSE_LABELS[course]}: ${selection.itemName}` : null
@@ -398,7 +362,7 @@ export function PreorderSection({
                 : { count: 0, totalGbp: 0, hasUnpricedAddon: false, items: [] }
 
               return (
-                <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, SEAT_TEXT_CLASS)}>
+                <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, GUEST_BODY_CLASS)}>
                   <p className={SEAT_TITLE_CLASS}>{seatLabel(cover, ordinal)}</p>
                   {chosen.length > 0 ? (
                     <ul className="mt-1">
@@ -440,6 +404,6 @@ export function PreorderSection({
           )}
         </>
       )}
-    </section>
+    </GuestSection>
   )
 }

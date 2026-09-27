@@ -2,7 +2,19 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Button, Card, CardBody, Input, Select, Textarea, toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  FormFooter,
+  Input,
+  LinkButton,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
 import { createMaintenanceItem } from '@/app/actions/maintenance'
 import {
   MAINTENANCE_KINDS,
@@ -147,7 +159,8 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
+    // The form is the page body, so it keeps the page's 24px rhythm between its blocks.
+    <form onSubmit={handleSubmit} noValidate className="space-y-6">
       {formError && (
         <div ref={errorRef} tabIndex={-1}>
           <Alert tone="danger" title="Could not save this">
@@ -157,8 +170,9 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
       )}
 
       <Card>
+        <CardHeader title="Details" />
         <CardBody>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select
               label="Type"
               value={form.kind}
@@ -218,23 +232,26 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
       </Card>
 
       <Card>
-        <CardBody>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowMore(current => !current)}
-            aria-expanded={showMore}
-            aria-controls="maintenance-more-detail"
-          >
-            {showMore ? 'Hide the extra detail' : 'Add more detail'}
-          </Button>
-
-          <div
-            id="maintenance-more-detail"
-            hidden={!showMore}
-            className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
-          >
+        <CardHeader
+          title="More Detail"
+          subtitle="Optional, and can be added later on the item"
+          // Closed, the header is the whole card, so it drops its bottom rule.
+          className={showMore ? undefined : 'border-b-0'}
+          action={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowMore(current => !current)}
+              aria-expanded={showMore}
+              aria-controls="maintenance-more-detail"
+            >
+              {showMore ? 'Hide More Detail' : 'Add More Detail'}
+            </Button>
+          }
+        />
+        <div id="maintenance-more-detail" hidden={!showMore}>
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Textarea
                 label="Description"
@@ -294,23 +311,20 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
               onChange={event => set('contractorContact', event.target.value)}
               maxLength={200}
             />
-          </div>
-        </CardBody>
+          </CardBody>
+        </div>
       </Card>
 
-      <p className="text-ui text-text-muted">
-        Save this first, then add photos on the item itself. That way a photo that
-        will not upload can never lose what you have written.
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-          Save and open
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => router.push('/maintenance')}>
+      <FormFooter
+        start="Save this first, then add photos on the item itself. That way a photo that will not upload can never lose what you have written."
+      >
+        <LinkButton href="/maintenance" variant="secondary">
           Cancel
+        </LinkButton>
+        <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+          Log an Issue
         </Button>
-      </div>
+      </FormFooter>
     </form>
   )
 }

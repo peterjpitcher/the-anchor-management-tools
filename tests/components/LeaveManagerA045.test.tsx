@@ -3,11 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LeaveManagerClient from '@/app/(authenticated)/rota/leave/LeaveManagerClient'
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave'
 
-vi.mock('react-hot-toast', () => ({
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock('@/app/actions/leave', () => ({
@@ -58,7 +55,7 @@ describe('LeaveManagerClient A-045', () => {
 
     expect(reviewLeaveRequest).not.toHaveBeenCalled()
 
-    const dialog = await screen.findByRole('dialog', { name: 'Approve holiday request?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Approve Holiday Request' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }))
 
     await waitFor(() => expect(reviewLeaveRequest).toHaveBeenCalledWith(request.id, 'approved', undefined))
@@ -68,13 +65,35 @@ describe('LeaveManagerClient A-045', () => {
     renderManager()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Alex Rowe holiday request' }))
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-07-22' } })
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-07-23' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save dates' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Dates' })
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: '2026-07-22' } })
+    fireEvent.change(within(dialog).getByLabelText('End date'), { target: { value: '2026-07-23' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(updateLeaveRequestDates).toHaveBeenCalledWith(request.id, '2026-07-22', '2026-07-23')
     })
+  })
+
+  it('shows the shared status wording and the submitted day as a real date', () => {
+    renderManager()
+
+    expect(screen.getByText('Pending approval')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Alex Rowe'))
+
+    expect(screen.getByText('24 Jun 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
+  })
+
+  it('words the status filter exactly as the status badges', () => {
+    renderManager()
+
+    const filter = screen.getByRole('radiogroup', { name: 'Show requests' })
+    expect(within(filter).getByText('Pending approval (1)')).toBeInTheDocument()
+    expect(within(filter).getByText('Approved')).toBeInTheDocument()
+    expect(within(filter).getByText('Declined')).toBeInTheDocument()
+    expect(within(filter).queryByText(/^Pending( \(\d+\))?$/)).not.toBeInTheDocument()
   })
 
   it('confirms delete before removing the request', async () => {
@@ -84,7 +103,7 @@ describe('LeaveManagerClient A-045', () => {
 
     expect(deleteLeaveRequest).not.toHaveBeenCalled()
 
-    const dialog = await screen.findByRole('dialog', { name: 'Delete holiday request?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Holiday Request' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(deleteLeaveRequest).toHaveBeenCalledWith(request.id))

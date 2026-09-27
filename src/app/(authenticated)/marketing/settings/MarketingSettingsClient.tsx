@@ -4,13 +4,14 @@ import { useState } from 'react'
 
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardBody,
   CardHeader,
   ConfirmDialog,
   Field,
+  Fieldset,
+  FormFooter,
   Input,
   PageLayout,
   Select,
@@ -23,11 +24,13 @@ import type { MarketingSettings } from '@/types/marketing'
 import {
   HOUR_OPTIONS,
   ISO_DAY_OPTIONS,
-  MARKETING_SECTION_NAV,
+  ProviderReadyBadge,
+  SendSwitchBadge,
   formatDateTimeInLondon,
   formatHour,
   formatSendDays,
 } from '../_shared/marketing-ui'
+import { marketingLayout } from '../_shared/nav'
 
 export type MarketingReadiness =
   | { ok: true; from: string; replyTo: string | null }
@@ -135,45 +138,31 @@ export function MarketingSettingsClient({
   }
 
   return (
-    <PageLayout
-      title="Marketing"
-      subtitle="Settings for campaign email"
-      navItems={MARKETING_SECTION_NAV}
-    >
-      <div className="space-y-6">
-        <Card
-          className={
-            settings.sendsEnabled
-              ? 'border-2 border-success'
-              : 'border-2 border-warning bg-warning-soft'
-          }
-        >
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl font-semibold text-text">Campaign sending</h2>
-                <Badge tone={settings.sendsEnabled ? 'success' : 'warning'}>
-                  {settings.sendsEnabled ? 'On' : 'Off'}
-                </Badge>
+    <PageLayout {...marketingLayout('settings', { canManageSettings: true })} containerSize="md">
+        <Card>
+          <CardHeader title="Campaign Sending" action={<SendSwitchBadge enabled={settings.sendsEnabled} />} />
+          <CardBody>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0 space-y-2">
+                <p className="text-sm text-text">
+                  Turning this off stops all campaign sending immediately, including a campaign
+                  that is part way through. Transactional email such as booking confirmations is
+                  not affected.
+                </p>
+                <p className="text-xs text-text-muted">
+                  Last changed {formatDateTimeInLondon(settings.updatedAt)}.
+                </p>
               </div>
-              <p className="text-sm text-text">
-                Turning this off stops all campaign sending immediately, including a campaign
-                that is part way through. Transactional email such as booking confirmations is
-                not affected.
-              </p>
-              <p className="text-xs text-text-muted">
-                Last changed {formatDateTimeInLondon(settings.updatedAt)}.
-              </p>
+              <div className="shrink-0">
+                <Switch
+                  label={settings.sendsEnabled ? 'Sending is on' : 'Sending is off'}
+                  checked={settings.sendsEnabled}
+                  onChange={handleSwitchChange}
+                  disabled={savingSwitch}
+                />
+              </div>
             </div>
-            <div className="shrink-0">
-              <Switch
-                label={settings.sendsEnabled ? 'Sending is on' : 'Sending is off'}
-                checked={settings.sendsEnabled}
-                onChange={handleSwitchChange}
-                disabled={savingSwitch}
-              />
-            </div>
-          </div>
+          </CardBody>
         </Card>
 
         {!settings.sendsEnabled && (
@@ -185,11 +174,11 @@ export function MarketingSettingsClient({
 
         <Card>
           <CardHeader
-            title="When campaigns can go out"
+            title="When Campaigns Can Go Out"
             subtitle="Emails are only sent on these days, inside these hours, London time"
           />
           <CardBody>
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Send window starts">
                   <Select
@@ -213,8 +202,8 @@ export function MarketingSettingsClient({
                 </Field>
               </div>
 
-              <Field
-                label="Days"
+              <Fieldset
+                legend="Days"
                 hint="A scheduled campaign waits for the next allowed day if it falls outside these."
               >
                 <div className="flex flex-wrap gap-2">
@@ -234,7 +223,7 @@ export function MarketingSettingsClient({
                     )
                   })}
                 </div>
-              </Field>
+              </Fieldset>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
@@ -263,15 +252,18 @@ export function MarketingSettingsClient({
                 />
               </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="min-w-0 text-sm text-text-muted">
-                  Currently {formatHour(settings.sendWindowStartHour)} to{' '}
-                  {formatHour(settings.sendWindowEndHour)} on {formatSendDays(settings.sendDays)}.
-                </p>
+              <FormFooter
+                start={
+                  <>
+                    Currently {formatHour(settings.sendWindowStartHour)} to{' '}
+                    {formatHour(settings.sendWindowEndHour)} on {formatSendDays(settings.sendDays)}.
+                  </>
+                }
+              >
                 <Button variant="primary" onClick={handleSaveWindow} loading={savingWindow}>
-                  Save send window
+                  Save Send Window
                 </Button>
-              </div>
+              </FormFooter>
             </div>
           </CardBody>
         </Card>
@@ -279,7 +271,7 @@ export function MarketingSettingsClient({
         <Card>
           <CardHeader
             title="Configuration"
-            subtitle="Read-only. These come from the environment and need a deploy to change."
+            subtitle="Read-only: these come from the environment and need a deploy to change"
           />
           <CardBody>
             {readiness.ok ? (
@@ -287,7 +279,7 @@ export function MarketingSettingsClient({
                 <div className="flex flex-col gap-1 sm:flex-row sm:gap-3">
                   <dt className="w-40 shrink-0 text-text-muted">Provider</dt>
                   <dd className="min-w-0 break-words text-text">
-                    Resend <Badge tone="success">Ready</Badge>
+                    Resend <ProviderReadyBadge />
                   </dd>
                 </div>
                 <div className="flex flex-col gap-1 sm:flex-row sm:gap-3">
@@ -324,7 +316,6 @@ export function MarketingSettingsClient({
             )}
           </CardBody>
         </Card>
-      </div>
 
       <ConfirmDialog
         open={confirmEnable}
@@ -333,10 +324,10 @@ export function MarketingSettingsClient({
           await applySendsEnabled(true)
           setConfirmEnable(false)
         }}
-        title="Turn campaign sending on?"
+        title="Turn Campaign Sending On"
         message="Any campaign already scheduled for a time that has passed will start going out at the next send window. Check the campaign list first if you are not sure what is queued."
-        confirmLabel="Turn sending on"
-        tone="warning"
+        confirmLabel="Turn Sending On"
+        tone="primary"
       />
     </PageLayout>
   )

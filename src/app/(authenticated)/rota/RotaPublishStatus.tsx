@@ -2,9 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Button, toast } from '@/ds';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
@@ -28,18 +26,7 @@ export default function RotaPublishStatus({
   // Deletions leave no live tile to flag, so also count shifts removed since publish.
   const removedShifts = getRemovedPublishedShifts(shifts, week, publishedShifts);
   const hasAnyUnpublished = unpublishedShifts.length > 0 || removedShifts.length > 0;
-  const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
   const isPublished = week.status === 'published' && !hasAnyUnpublished;
-  const isDraft = !isPublished && !hasAnyPublished;
-  const label = isPublished
-    ? 'Published'
-    : isDraft
-      ? 'Draft'
-      : 'Unpublished changes';
-  const Icon = isPublished ? CheckCircleIcon : ExclamationTriangleIcon;
-  const statusClasses = isPublished
-    ? 'border-success-border bg-success-soft text-success-fg'
-    : 'border-warning-border bg-warning-soft text-warning-fg';
 
   const handlePublish = () => {
     startPublishTransition(async () => {
@@ -53,22 +40,18 @@ export default function RotaPublishStatus({
     });
   };
 
+  // Rendered last in the page's header actions: the primary Publish button, while the week has
+  // anything unpublished. The week's status shows as the Badge on the Schedule card, not here.
+  if (isPublished || !canPublish) return null;
   return (
-    <div className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${statusClasses}`}>
-      <Icon className="h-4 w-4 shrink-0" />
-      <span>{label}</span>
-      {!isPublished && canPublish && (
-        <Button
-          type="button"
-          variant="primary"
-          size="xs"
-          onClick={handlePublish}
-          disabled={publishPending}
-          className="ml-1"
-        >
-          {publishPending ? 'Publishing...' : 'Publish'}
-        </Button>
-      )}
-    </div>
+    <Button
+      type="button"
+      variant="primary"
+      size="sm"
+      onClick={handlePublish}
+      loading={publishPending}
+    >
+      Publish
+    </Button>
   );
 }

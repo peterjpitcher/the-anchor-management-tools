@@ -2,15 +2,21 @@
 
 import { useState, useEffect } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
-import { Modal, ModalActions } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Checkbox } from '@/ds'
+import {
+    Alert,
+    Button,
+    Checkbox,
+    ConfirmDialog,
+    Field,
+    Fieldset,
+    Icon,
+    Input,
+    Modal,
+    Select,
+    SubHeading,
+    Textarea,
+} from '@/ds'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
 interface CateringPackageModalProps {
     open: boolean
@@ -27,8 +33,10 @@ export function CateringPackageModal({
 }: CateringPackageModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [confirmingDelete, setConfirmingDelete] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [selectedPricingModel, setSelectedPricingModel] = useState<string>('per_head')
+    const formId = 'catering-package-form'
 
     // Reset state when opening/closing
     useEffect(() => {
@@ -118,7 +126,7 @@ export function CateringPackageModal({
     }
 
     const handleDelete = async () => {
-        if (!packageToEdit || !confirm('Are you sure you want to delete this package? This cannot be undone.')) return
+        if (!packageToEdit) return
 
         setIsDeleting(true)
         try {
@@ -167,45 +175,68 @@ export function CateringPackageModal({
         <Modal
             open={open}
             onClose={onClose}
-            title={isEditing ? 'Edit Package' : 'Add New Package'}
+            title={isEditing ? 'Edit Package' : 'New Package'}
             size="lg"
+            footer={
+                <>
+                    {/* Left on desktop: the destructive action, confirmed in its own dialog. */}
+                    {isEditing && (
+                        <Button
+                            type="button"
+                            variant="danger"
+                            onClick={() => setConfirmingDelete(true)}
+                            disabled={isSubmitting || isDeleting}
+                            icon={<Icon name="trash" size={16} />}
+                            className="sm:mr-auto"
+                        >
+                            Delete
+                        </Button>
+                    )}
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting || isDeleting}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" form={formId} variant="primary" loading={isSubmitting} disabled={isDeleting}>
+                        {isEditing ? 'Save Changes' : 'Create Package'}
+                    </Button>
+                </>
+            }
         >
-            <form action={handleSubmit} className="space-y-6">
+            <form id={formId} action={handleSubmit} className="space-y-6">
                 {error && (
-                    <div className="bg-danger-soft text-danger-fg border border-danger-border p-3 rounded-md text-sm">
+                    <Alert tone="danger" size="sm">
                         {error}
-                    </div>
+                    </Alert>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormGroup label="Package Name" required className="md:col-span-2">
+                    <Field label="Package Name" required className="md:col-span-2">
                         <Input
                             name="name"
                             defaultValue={packageToEdit?.name}
                             required
                             placeholder="e.g., Classic Buffet"
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Category" required>
+                    <Field label="Category" required>
                         <Select
                             name="category"
                             defaultValue={packageToEdit?.category || 'food'}
                             required
                             options={categoryOptions}
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Serving Style" required>
+                    <Field label="Serving Style" required>
                         <Select
                             name="serving_style"
                             defaultValue={packageToEdit?.serving_style || 'buffet'}
                             required
                             options={servingStyleOptions}
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup
+                    <Field
                         label={['variable', 'menu_priced'].includes(selectedPricingModel) ? "Default / Estimate Price (£) (Optional)" : "Price (£)"}
                         required={!['variable', 'menu_priced', 'free'].includes(selectedPricingModel)}
                         className={selectedPricingModel === 'free' ? 'opacity-50 pointer-events-none' : ''}
@@ -220,9 +251,9 @@ export function CateringPackageModal({
                             placeholder={['variable', 'menu_priced'].includes(selectedPricingModel) ? "0.00" : "25.00"}
                             disabled={selectedPricingModel === 'free'}
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Pricing Model" required>
+                    <Field label="Pricing Model" required>
                         <Select
                             name="pricing_model"
                             defaultValue={packageToEdit?.pricing_model || 'per_head'}
@@ -232,9 +263,9 @@ export function CateringPackageModal({
                                 setSelectedPricingModel(e.target.value)
                             }}
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Minimum Guests">
+                    <Field label="Minimum Guests">
                         <Input
                             type="number"
                             name="minimum_guests"
@@ -242,9 +273,9 @@ export function CateringPackageModal({
                             min="0"
                             placeholder="20"
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="VAT Rate (%)" help="Stored prices are net; VAT is applied on top at this rate">
+                    <Field label="VAT Rate (%)" hint="Stored prices are net; VAT is applied on top at this rate">
                         <Input
                             type="number"
                             name="vat_rate"
@@ -253,7 +284,7 @@ export function CateringPackageModal({
                             step="0.01"
                             placeholder="20"
                         />
-                    </FormGroup>
+                    </Field>
 
                     <div className="flex items-center pt-6">
                         <Checkbox
@@ -264,9 +295,8 @@ export function CateringPackageModal({
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Compliance</h3>
-
+                <Fieldset legend="Compliance">
+                    <div className="space-y-4">
                     <Checkbox
                         name="requires_waiver"
                         label="Requires self-catering waiver"
@@ -287,91 +317,78 @@ export function CateringPackageModal({
                         description="This package is only available during certain times of the year"
                         defaultChecked={packageToEdit?.seasonal ?? false}
                     />
-                </div>
+                    </div>
+                </Fieldset>
 
+                {/* The dialog title is the h2, so this part of the form is an h3. */}
                 <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Package Details</h3>
-
-                    <FormGroup label="Summary" help="One-line overview shown to staff">
+                    <SubHeading as="h3">Package Details</SubHeading>
+                    <Field label="Summary" hint="One-line overview shown to staff">
                         <Textarea
                             name="summary"
                             defaultValue={packageToEdit?.summary || ''}
                             rows={2}
                             placeholder="e.g. A hearty BBQ spread served buffet-style."
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Includes" help="What guests receive">
+                    <Field label="Includes" hint="What guests receive">
                         <Textarea
                             name="includes"
                             defaultValue={packageToEdit?.includes || ''}
                             rows={2}
                             placeholder="e.g. Beef burger, chicken drumstick, pork sausage, potato salad, coleslaw and fresh leaf salad."
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Served" help="How the food is presented or served">
+                    <Field label="Served" hint="How the food is presented or served">
                         <Textarea
                             name="served"
                             defaultValue={packageToEdit?.served || ''}
                             rows={2}
-                            placeholder="e.g. Buffet-style — guests help themselves."
+                            placeholder="e.g. Buffet-style: guests help themselves."
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Good to Know" help="Dietary options, advance notice requirements, etc.">
+                    <Field label="Good to Know" hint="Dietary options, advance notice requirements, etc.">
                         <Textarea
                             name="good_to_know"
                             defaultValue={packageToEdit?.good_to_know || ''}
                             rows={2}
                             placeholder="e.g. Vegetarian option available at the same price. Advance notice required."
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Guest-Friendly Description" help="Shown to customers on the booking form">
+                    <Field label="Guest-Friendly Description" hint="Shown to customers on the booking form">
                         <Textarea
                             name="guest_description"
                             defaultValue={packageToEdit?.guest_description || ''}
                             rows={3}
-                            placeholder="e.g. Enjoy a delicious spread of BBQ classics including burgers, chicken, sausages and fresh salads — all laid out for guests to help themselves."
+                            placeholder="e.g. Enjoy a delicious spread of BBQ classics including burgers, chicken, sausages and fresh salads, all laid out for guests to help themselves."
                         />
-                    </FormGroup>
+                    </Field>
 
-                    <FormGroup label="Dietary Notes" help="Allergen information or dietary flags for the kitchen">
+                    <Field label="Dietary Notes" hint="Allergen information or dietary flags for the kitchen">
                         <Textarea
                             name="dietary_notes"
                             defaultValue={packageToEdit?.dietary_notes || ''}
                             rows={2}
                             placeholder="e.g. Contains gluten, dairy. Vegan option available on request."
                         />
-                    </FormGroup>
+                    </Field>
                 </div>
 
-                <ModalActions align="between">
-                    {isEditing ? (
-                        <Button
-                            type="button"
-                            variant="danger"
-                            onClick={handleDelete}
-                            disabled={isSubmitting || isDeleting}
-                            leftIcon={<TrashIcon className="h-4 w-4" />}
-                        >
-                            Delete
-                        </Button>
-                    ) : (
-                        <div /> /* Spacer */
-                    )}
-
-                    <div className="flex gap-3">
-                        <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting || isDeleting}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" loading={isSubmitting} disabled={isSubmitting || isDeleting}>
-                            {isEditing ? 'Save Changes' : 'Create Package'}
-                        </Button>
-                    </div>
-                </ModalActions>
             </form>
+
+            <ConfirmDialog
+                open={confirmingDelete}
+                onClose={() => setConfirmingDelete(false)}
+                onConfirm={handleDelete}
+                title="Delete Package"
+                message="This removes the package from the catering list. This cannot be undone."
+                confirmLabel="Delete"
+                tone="danger"
+            />
         </Modal>
     )
 }

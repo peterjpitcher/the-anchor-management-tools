@@ -1,15 +1,14 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
+import { Alert, PageLayout } from '@/ds';
 import { getTimeclockSessionsForWeek } from '@/app/actions/timeclock';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { ensurePayrollPeriodsAhead, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import TimeclockManager from './TimeclockManager';
-import { rotaNavItems } from '../nav';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
+import { getRotaNavItems } from '../_shared/nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,15 +28,30 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   const month = params.month ? parseInt(params.month) : defaultPeriod.month;
 
   // Fetch the pay period and employees in parallel, then sessions using period dates
-  const [period, employeesResult] = await Promise.all([
+  const [period, employeesResult, navItems] = await Promise.all([
     availablePeriods.find(availablePeriod => availablePeriod.year === year && availablePeriod.month === month)
       ?? getOrCreatePayrollPeriod(year, month),
     getActiveEmployeesForRota(),
+    getRotaNavItems(),
   ]);
 
   const result = await getTimeclockSessionsForWeek(period.period_start, period.period_end);
-  const sessions = result.success ? result.data : [];
   const employees = employeesResult.success ? employeesResult.data : [];
+
+  const layout = {
+    title: 'Rota',
+    subtitle: 'Timeclock: review and correct clock-in and clock-out times',
+    navItems,
+  };
+
+  // A failed load shows the error under the same header, never an empty list.
+  if (!result.success) {
+    return (
+      <PageLayout {...layout}>
+        <Alert tone="danger" title="Could not load timeclock sessions">{result.error}</Alert>
+      </PageLayout>
+    );
+  }
 
   // A viewer holding only `payroll:approve` (not `timeclock:edit`) is a
   // D6-sanctioned editor of timeclock sessions. Pass the flag so the server
@@ -47,30 +61,26 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
 
   const monthOptions = buildPayrollMonthOptions(defaultPeriod);
 
+  // TimeclockManager renders the PageLayout itself: its Add Entry header action opens the form
+  // it holds in state.
   return (
-    <PageLayout
-      title="Timeclock"
-      subtitle="Review and correct clock-in/out times"
-      navItems={rotaNavItems}
-    >
-      <Section
-        title="Sessions"
-        description="Edit times to correct mistakes or fill in missed clock-outs before payroll is run."
-      >
-        <Card>
-          <TimeclockManager
-            key={`${year}-${month}`}
-            sessions={sessions}
-            employees={employees}
-            periodStart={period.period_start}
-            periodEnd={period.period_end}
-            year={year}
-            month={month}
-            monthOptions={monthOptions}
-            allowPayrollApprove={allowPayrollApprove}
-          />
-        </Card>
-      </Section>
-    </PageLayout>
+    <TimeclockManager
+      key={`${year}-${month}`}
+      layout={layout}
+      notice={
+        <PartialLoadAlert
+          missing={employeesResult.success ? [] : ['staff list']}
+          consequence="nobody can be picked in a manual entry"
+        />
+      }
+      sessions={result.data}
+      employees={employees}
+      periodStart={period.period_start}
+      periodEnd={period.period_end}
+      year={year}
+      month={month}
+      monthOptions={monthOptions}
+      allowPayrollApprove={allowPayrollApprove}
+    />
   );
 }

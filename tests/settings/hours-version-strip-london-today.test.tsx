@@ -74,14 +74,14 @@ describe('hours version strip London today', () => {
     renderStrip()
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs.map(tab => tab.textContent)).toEqual(['Current hours'])
-    expect(screen.getByRole('button', { name: 'Show 1 past schedule' })).toBeInTheDocument()
+    expect(tabs.map(tab => tab.textContent)).toEqual(['Current Hours'])
+    expect(screen.getByRole('button', { name: 'Show 1 Past Schedule' })).toBeInTheDocument()
   })
 
   it('offers London tomorrow as the earliest first day of a new schedule', async () => {
     renderStrip()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule a change' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule a Change' }))
     await screen.findByText('First day these hours apply')
 
     const dateInput = document.querySelector('input[type="date"]')

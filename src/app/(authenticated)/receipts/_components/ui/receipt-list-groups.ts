@@ -72,7 +72,9 @@ export function getValueHeatColour(
 ) {
   const level = getValueHeatLevel(value, minimum, maximum)
   const clampedStrength = Math.min(1, Math.max(0, strength))
-  const low = { red: 25, green: 95, blue: 235 }
+  // The channels of the --color-info and --color-danger tokens (globals.css), which the legend
+  // draws as a gradient. Mixed as numbers here because a row needs one solid colour per value.
+  const low = { red: 2, green: 132, blue: 199 }
   const high = { red: 220, green: 38, blue: 38 }
 
   const mix = (lowChannel: number, highChannel: number) => {

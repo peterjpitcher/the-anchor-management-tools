@@ -8,7 +8,7 @@ export default async function TimeclockPage() {
   const supabase = createAdminClient()
 
   // Fetch active employees using admin client (public page, no auth session)
-  const [{ data: employees }, sessionsResult] = await Promise.all([
+  const [{ data: employees, error: employeesError }, sessionsResult] = await Promise.all([
     supabase
       .from('employees')
       // preferred_name so the kiosk cards read as the name the team actually
@@ -39,7 +39,18 @@ export default async function TimeclockPage() {
     }),
   )
 
+  // A failed load is shown as a failure, never as an empty grid or everyone "Not clocked in".
+  if (employeesError) console.error('[timeclock] Failed to load employees:', employeesError.message)
+  if (!sessionsResult.success) console.error('[timeclock] Failed to load open sessions:', sessionsResult.error)
+
   // No page-level <Toaster>: the root layout already renders one, and a second on the default
   // toaster id showed every kiosk toast twice.
-  return <TimeclockClient employees={activeEmployees} openSessions={openSessions} />
+  return (
+    <TimeclockClient
+      employees={activeEmployees}
+      openSessions={openSessions}
+      employeesLoadFailed={Boolean(employeesError)}
+      sessionsLoadFailed={!sessionsResult.success}
+    />
+  )
 }

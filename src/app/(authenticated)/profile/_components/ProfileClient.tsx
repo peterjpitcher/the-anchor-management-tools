@@ -1,24 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 
 import {
-  PageHeader,
-  Card,
-  CardHeader,
-  CardBody,
-} from '@/ds'
-import {
-  Button,
   Avatar,
-  Field,
-  Input,
-  Switch,
-  PageLoading,
-  Empty,
-  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
   ConfirmDialog,
+  Field,
+  FileButton,
+  FormFooter,
+  Input,
+  LinkButton,
+  PageLayout,
+  SubHeading,
+  Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { toast } from '@/ds'
@@ -53,8 +51,13 @@ interface Profile {
 /*  ProfileClient                                                      */
 /* ------------------------------------------------------------------ */
 
-export function ProfileClient() {
-  const router = useRouter()
+/** One header for every state, so the title never moves while the profile loads or fails. */
+const layoutProps = {
+  title: 'My Profile',
+  subtitle: 'Manage your account details',
+} as const
+
+export function ProfileClient(): React.JSX.Element {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -63,7 +66,6 @@ export function ProfileClient() {
   const [fullName, setFullName] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false)
-  const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchProfile = useCallback(async () => {
     setLoading(true)
@@ -104,11 +106,11 @@ export function ProfileClient() {
     }
   }
 
-  async function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadAvatar(files: File[]) {
+    const file = files[0]
+    if (!file) return
     try {
       setUploading(true)
-      if (!event.target.files || event.target.files.length === 0) return
-      const file = event.target.files[0]
       const formData = new FormData()
       formData.append('avatar', file)
       const result = await uploadAvatar(formData)
@@ -121,7 +123,6 @@ export function ProfileClient() {
     } catch {
       toast.error('Failed to upload avatar')
     } finally {
-      event.target.value = ''
       setUploading(false)
     }
   }
@@ -197,52 +198,33 @@ export function ProfileClient() {
     }
   }
 
-  /* ---- Loading state ---- */
+  /* ---- Loading and failure states ---- */
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader
-          breadcrumbs={[{ label: 'Profile' }]}
-          title="My Profile"
-          subtitle="Manage your account details"
-        />
-        <PageLoading className="min-h-0 py-16" />
-      </div>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading your profile" />
   }
 
   if (!profile) {
     return (
-      <div>
-        <PageHeader
-          breadcrumbs={[{ label: 'Profile' }]}
-          title="My Profile"
-        />
-        <Card>
-          <Empty title="Profile not found" description="We could not load your profile information." />
-        </Card>
-      </div>
+      <PageLayout
+        {...layoutProps}
+        error="We could not load your profile information."
+        onRetry={() => void fetchProfile()}
+      />
     )
   }
 
   /* ---- Main render ---- */
 
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[{ label: 'Profile' }]}
-        title="My Profile"
-        subtitle="Manage your account details"
-      />
-
+    <PageLayout {...layoutProps}>
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={requestAccountDeletion}
         title="Request Account Deletion"
-        message="Are you sure you want to request account deletion? This action cannot be undone."
+        message="Request the deletion of your account? We will contact you within 48 hours to process it. This cannot be undone."
         confirmLabel="Request Deletion"
         tone="danger"
       />
@@ -280,7 +262,7 @@ export function ProfileClient() {
                   />
                 </Field>
 
-                <div className="flex justify-end">
+                <FormFooter>
                   <Button
                     variant="primary"
                     onClick={() => void handleUpdateProfile()}
@@ -288,7 +270,7 @@ export function ProfileClient() {
                   >
                     Save Changes
                   </Button>
-                </div>
+                </FormFooter>
               </div>
             </CardBody>
           </Card>
@@ -303,13 +285,9 @@ export function ProfileClient() {
                     <p className="text-ui font-medium text-text-strong">Password</p>
                     <p className="text-xs text-text-muted">Change your account password</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => router.push('/profile/change-password')}
-                  >
+                  <LinkButton href="/profile/change-password" variant="secondary" size="sm">
                     Change Password
-                  </Button>
+                  </LinkButton>
                 </div>
               </div>
             </CardBody>
@@ -398,22 +376,22 @@ export function ProfileClient() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-text-strong">
-                    {profile.full_name || profile.email}
-                  </h3>
+                  {/* The card has no CardHeader, so the name is its heading (h3). */}
+                  <SubHeading as="h3">{profile.full_name || profile.email}</SubHeading>
                   <p className="text-xs text-text-muted">{profile.email}</p>
                 </div>
 
                 {/* Upload controls */}
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  <Button
+                  <FileButton
                     variant="secondary"
                     size="sm"
+                    accept="image/*"
                     loading={uploading}
-                    onClick={() => avatarInputRef.current?.click()}
+                    onFiles={(files) => void handleUploadAvatar(files)}
                   >
                     Change Photo
-                  </Button>
+                  </FileButton>
                   {profile.avatar_url ? (
                     <Button
                       variant="danger"
@@ -424,15 +402,6 @@ export function ProfileClient() {
                       Remove Photo
                     </Button>
                   ) : null}
-                  <input
-                    ref={avatarInputRef}
-                    id="avatar-upload-ds"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(e) => void handleUploadAvatar(e)}
-                    disabled={uploading}
-                  />
                 </div>
 
                 {/* Account stats */}
@@ -463,6 +432,6 @@ export function ProfileClient() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

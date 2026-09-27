@@ -2,15 +2,8 @@
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import {
-  ArrowDownTrayIcon,
-  CheckIcon,
-  ClipboardDocumentIcon,
-  DocumentIcon,
-  PhotoIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
-import { Button, ConfirmDialog, IconButton } from '@/ds'
+  Alert, Badge, Button, Card, ConfirmDialog, FileButton, IconButton, LinkButton, PageLoading, Spinner, SubHeading, toast, Icon,
+} from '@/ds'
 import { cn } from '@/lib/utils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -106,7 +99,6 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
   const [talkerPixels, setTalkerPixels] = useState<
     { url: string; width: number; height: number } | null
   >(null)
-  const inputRefs = useRef<Partial<Record<EventImageVariant, HTMLInputElement | null>>>({})
   const inFlight = useRef(0)
 
   const tileFor = (variant: EventImageVariant): TileState => tiles[variant] ?? EMPTY_TILE
@@ -212,11 +204,10 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       const dimensions = await readImageDimensions(file)
       const validationError = validateEventImageFile(variant, file, dimensions)
 
-      // A rejected file must not disturb the tile at all.
+      // A rejected file must not disturb the tile at all. (FileButton clears its own input
+      // after every pick, so the same file can be chosen again.)
       if (validationError) {
         toast.error(validationError)
-        const input = inputRefs.current[variant]
-        if (input) input.value = ''
         return
       }
 
@@ -225,9 +216,6 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         dimensions,
         previewUrl: URL.createObjectURL(file),
       }
-
-      const input = inputRefs.current[variant]
-      if (input) input.value = ''
 
       // Nothing to upload against yet, so hold it until the event exists.
       if (!eventId) {
@@ -315,16 +303,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     return (
       <div className="space-y-3">
         <PanelHeading />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {EVENT_IMAGE_VARIANT_ORDER.map((variant) => (
-            <div
-              key={variant}
-              className="h-40 animate-pulse rounded-lg bg-surface-hover"
-              aria-hidden="true"
-            />
-          ))}
-        </div>
-        <p className="sr-only" role="status">Loading event images</p>
+        <PageLoading inline label="Loading event images" />
       </div>
     )
   }
@@ -335,17 +314,22 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     return (
       <div className="space-y-3">
         <PanelHeading />
-        <div className="rounded-md border border-warning-border bg-warning-soft p-4 text-sm text-warning-fg">
-          <p>The images for this event could not be loaded.</p>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => eventId && load(eventId)}
-            className="mt-2 min-h-touch"
-          >
-            Try again
-          </Button>
-        </div>
+        <Alert
+          tone="danger"
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => eventId && load(eventId)}
+              className="min-h-touch"
+            >
+              Try Again
+            </Button>
+          }
+        >
+          The images for this event could not be loaded.
+        </Alert>
       </div>
     )
   }
@@ -355,9 +339,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       <PanelHeading />
 
       {!eventId && (
-        <p className="rounded-md border border-info-border bg-info-soft p-3 text-sm text-info-fg">
+        <Alert tone="info" size="sm" role="status">
           Pick your artwork now. It uploads automatically when you save the event.
-        </p>
+        </Alert>
       )}
 
       <VariantPromptBox />
@@ -435,7 +419,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   social render as the same shape and the cue is lost. */}
               <div className="mt-2 flex h-20 w-full items-center justify-center">
               <div
-                className="relative h-full max-w-full overflow-hidden rounded-md bg-surface-2"
+                className="relative h-full max-w-full overflow-hidden rounded-default bg-surface-2"
                 style={{ aspectRatio: `${config.targetWidth} / ${config.targetHeight}` }}
               >
                 {previewUrl && !isPdf && (
@@ -457,7 +441,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
                 {isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
-                    <DocumentIcon className="h-8 w-8 text-text-subtle" />
+                    <Icon name="file" size={32} className="text-text-subtle" />
                     <span className="mt-1 break-all text-xs text-text-muted">
                       {state?.fileName ?? 'PDF'}
                     </span>
@@ -465,35 +449,33 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
                 {!previewUrl && !isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
-                    <PhotoIcon className="h-8 w-8 text-text-subtle" aria-hidden="true" />
+                    <Icon name="image" size={32} className="text-text-subtle" />
                     <span className="text-xs text-text-soft">Drop a file here</span>
                   </div>
                 )}
                 {dragOver === variant && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-success-soft/90 text-xs font-medium text-success-fg">
+                  <div className="absolute inset-0 flex items-center justify-center bg-success-soft text-xs font-medium text-success-fg">
                     Drop
                   </div>
                 )}
                 {tile.uploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-xs font-medium text-text">
-                    Uploading...
+                  <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-surface/80 text-xs font-medium text-text">
+                    <Spinner size="sm" />
+                    Uploading
                   </div>
                 )}
                 {/* So a manager can see at a glance which artwork already
                     carries the logo, without opening the editor on each tile. */}
                 {isBranded && (
-                  <span
-                    data-testid={`branded-badge-${variant}`}
-                    className="absolute left-1 top-1 rounded-sm bg-text-strong/70 px-1.5 py-0.5 text-2xs font-medium leading-none text-on-dark"
-                  >
-                    Branded
+                  <span data-testid={`branded-badge-${variant}`} className="absolute left-1 top-1">
+                    <Badge size="sm">Branded</Badge>
                   </span>
                 )}
               </div>
               </div>
 
               <div className="mt-2 min-h-[1.25rem] text-xs" aria-live="polite">
-                {tile.error && <span className="text-danger">{tile.error}</span>}
+                {tile.error && <span className="text-danger-fg">{tile.error}</span>}
                 {!tile.error && tile.queued && (
                   <span className="text-info-fg">Uploads when you save</span>
                 )}
@@ -510,39 +492,30 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               {/* mt-auto keeps the controls on the tile's bottom edge, so they
                   line up across a row whatever shape the preview above is. */}
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-                {/* The input sits before its label so the label, which is what
-                    staff see and press, can show the input's keyboard focus. */}
-                <input
+                {/* Replacing an existing file still goes through the confirm below, because
+                    startUpload asks before it deletes anything. */}
+                <FileButton
                   id={inputId}
-                  ref={(element) => {
-                    inputRefs.current[variant] = element
-                  }}
-                  type="file"
                   accept={acceptAttribute(variant)}
-                  className="peer sr-only"
+                  variant="secondary"
                   disabled={tile.uploading}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) void startUpload(variant, file)
-                  }}
-                />
-                <label
-                  htmlFor={inputId}
-                  className="inline-flex min-h-touch cursor-pointer items-center justify-center rounded-default border border-border-strong bg-surface px-3 text-ui font-semibold text-text hover:bg-surface-hover peer-focus-visible:shadow-ring peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+                  className="min-h-touch"
+                  onFiles={(files) => void startUpload(variant, files[0])}
                 >
                   {previewUrl ? 'Replace' : 'Add'}
                   <span className="sr-only"> {config.label}</span>
-                </label>
+                </FileButton>
 
                 {state?.url && (
-                  <a
+                  <LinkButton
                     href={buildEventImageDownloadUrl(state.url, state.fileName)}
-                    download={state.fileName ?? undefined}
-                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-default border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                    download={state.fileName ?? true}
+                    variant="secondary"
+                    icon={<Icon name="download" size={16} />}
+                    className="min-h-touch min-w-touch px-2"
                   >
-                    <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
-                    <span className="sr-only">Download {config.label}</span>
-                  </a>
+                    <span className="sr-only">Download {config.label.toLowerCase()}</span>
+                  </LinkButton>
                 )}
 
                 {/* Inherited artwork belongs to the category and is shared with
@@ -553,9 +526,10 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     variant="secondary"
                     onClick={() => setPendingDelete(variant)}
                     disabled={tile.uploading}
-                    icon={<TrashIcon className="h-4 w-4" aria-hidden="true" />}
-                    label={`Delete ${config.label}`}
-                    className="min-h-touch min-w-touch text-danger hover:bg-danger-soft"
+                    icon={<Icon name="trash" size={16} />}
+                    // Icon-only buttons are named in sentence case ("Delete square").
+                    label={`Delete ${config.label.toLowerCase()}`}
+                    className="min-h-touch min-w-touch text-danger-fg hover:bg-danger-soft"
                   />
                 )}
 
@@ -589,7 +563,8 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         setSheetBusy(false)
                       }
                     }}
-                    disabled={!canPrintSheet || sheetBusy || tile.uploading}
+                    disabled={!canPrintSheet || tile.uploading}
+                    loading={sheetBusy}
                     title={
                       canPrintSheet
                         ? 'Three to an A4 sheet. Print at actual size (100%), then cut as needed.'
@@ -597,7 +572,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     }
                     className="min-h-touch"
                   >
-                    {sheetBusy ? 'Preparing...' : 'Print sheet'}
+                    Print Sheet
                   </Button>
                 )}
               </div>
@@ -607,7 +582,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               {isTableTalker && previewUrl && !isPdf && (
                 <p className="mt-2 text-xs" data-testid="table-talker-print-note">
                   {talkerDpi !== null && talkerDpi < MIN_PRINT_DPI ? (
-                    <span className="text-danger">
+                    <span className="text-danger-fg">
                       Prints at {Math.floor(talkerDpi)} dpi, too soft to print. Upload one at least{' '}
                       {MIN_PRINT_WIDTH_PX} px wide.
                     </span>
@@ -639,7 +614,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
-        title="Delete image"
+        title="Delete Image"
         message={`Remove the ${pendingDelete ? EVENT_IMAGE_VARIANTS[pendingDelete].label.toLowerCase() : ''} artwork? The file is deleted and cannot be recovered here.`}
         confirmLabel="Delete"
         tone="danger"
@@ -650,7 +625,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         open={pendingReplace !== null}
         onClose={cancelReplace}
         onConfirm={confirmReplace}
-        title="Replace image"
+        title="Replace Image"
         message="The current file is deleted and cannot be recovered here. Continue?"
         confirmLabel="Replace"
         tone="danger"
@@ -706,7 +681,7 @@ function VariantPromptBox() {
   }
 
   return (
-    <div className="rounded-md border border-border bg-surface-2 p-3">
+    <Card variant="secondary" padding="sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-text">Prompt for the other sizes</p>
@@ -720,9 +695,9 @@ function VariantPromptBox() {
           onClick={copy}
           icon={
             copied ? (
-              <CheckIcon className="h-4 w-4 text-success" aria-hidden="true" />
+              <Icon name="check" size={16} className="text-success" />
             ) : (
-              <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+              <Icon name="copy" size={16} />
             )
           }
           className="min-h-touch shrink-0"
@@ -736,14 +711,14 @@ function VariantPromptBox() {
       <span aria-live="polite" className="sr-only">
         {copied ? 'Prompt copied to clipboard' : ''}
       </span>
-    </div>
+    </Card>
   )
 }
 
 function PanelHeading() {
   return (
     <div>
-      <p className="text-sm font-medium text-text sm:text-base">Event artwork</p>
+      <SubHeading>Event Artwork</SubHeading>
       <p className="text-sm text-text-muted">
         Drag a file onto a tile, or click it to browse. The square, landscape and
         social images appear on the website. The story, A4 poster and table talker

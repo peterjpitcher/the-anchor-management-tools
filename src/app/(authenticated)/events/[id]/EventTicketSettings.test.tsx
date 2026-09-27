@@ -17,9 +17,9 @@ describe('Ticket setup', () => {
   it('saves a London deadline and a required question for each guest', async () => {
     render(<EventTicketSettings event={event} canManage />)
     fireEvent.change(screen.getByLabelText('Discount ends (London time)'), { target: { value: '2026-09-20T18:00' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add allergy question' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Allergy Question' }))
     fireEvent.click(screen.getByLabelText('Answer required'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save ticket settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Ticket Settings' }))
     await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('event', expect.objectContaining({
       online_discount_ends_at: '2026-09-20T17:00:00.000Z',
       booking_questions: [expect.objectContaining({ label: 'Do you have any allergies or dietary requirements?', required: true })],
@@ -28,20 +28,20 @@ describe('Ticket setup', () => {
   it('sends explicit nulls when removing an online discount', async () => {
     render(<EventTicketSettings event={event} canManage />)
     fireEvent.change(screen.getByLabelText('Discount'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save ticket settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Ticket Settings' }))
     await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('event', expect.objectContaining({ online_discount_type: null, online_discount_value: null, online_discount_ends_at: null })))
   })
   it('shows the server failure and retains entered guest questions', async () => {
     mocks.save.mockResolvedValue({ error: 'Ticket settings could not be saved' })
     render(<EventTicketSettings event={event} canManage />)
-    fireEvent.click(screen.getByRole('button', { name: 'Add accessibility question' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save ticket settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Accessibility Question' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Ticket Settings' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Ticket settings could not be saved')
     expect(screen.getByLabelText('Question 1')).toHaveValue('Do you have any accessibility needs we should be aware of?')
   })
   it('keeps free event settings simple', () => {
     render(<EventTicketSettings event={{ id: 'free', payment_mode: 'free' }} canManage />)
-    expect(screen.queryByRole('button', { name: 'Add a question' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add a Question' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Discount')).not.toBeInTheDocument()
   })
   it('shows full and discounted prices and rejects an empty paid price', async () => {
@@ -50,7 +50,7 @@ describe('Ticket setup', () => {
     expect(screen.getByText('£40.00')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit Standard' }))
     fireEvent.change(screen.getByLabelText('Full ticket price (£)'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save ticket' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a ticket price above £0, or choose Free ticket')
     expect(mocks.update).not.toHaveBeenCalled()
   })
@@ -59,7 +59,7 @@ describe('Ticket setup', () => {
     render(<EventTicketTypesCard eventId="event" initialTicketTypes={[type]} canManage event={event} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edit Standard' }))
     fireEvent.click(screen.getByLabelText('Free ticket'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save ticket' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('standard', expect.objectContaining({ base_price: 0, is_free_ticket: true })))
   })
 })

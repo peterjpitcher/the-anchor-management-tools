@@ -52,7 +52,7 @@ describe('Deposit to be confirmed on the booking page', () => {
 
     expect(screen.getByText('Deposit to be confirmed')).toBeInTheDocument()
     expect(screen.getByText(/The guest has not been told a deposit yet/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
 
     expect(screen.getByLabelText(/Deposit amount/)).toHaveValue(250)
     expect(screen.getByText('The guest will be asked to pay by Friday, 25 September 2026.')).toBeInTheDocument()
@@ -65,21 +65,21 @@ describe('Deposit to be confirmed on the booking page', () => {
     })
     const { onConfirmed } = renderPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and Send' }))
 
     expect(await screen.findByText(/the email failed \(Resend 503\) and the text failed too \(Twilio 500\)/)).toBeInTheDocument()
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Nothing was sent'))
     expect(onConfirmed).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Confirm and send' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm and Send' })).toBeInTheDocument()
   })
 
   it('shows staff a failure when the request never reaches the server', async () => {
     mockConfirm.mockRejectedValue(new Error('Failed to fetch'))
     renderPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and Send' }))
 
     expect(await screen.findByText(/Nothing was sent: the request did not reach the server/)).toBeInTheDocument()
   })
@@ -91,8 +91,8 @@ describe('Deposit to be confirmed on the booking page', () => {
     })
     const { onConfirmed } = renderPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and Send' }))
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1))
     expect(toast.success).toHaveBeenCalledWith('Deposit confirmed at £250, due by 25 September 2026. The deposit request was emailed to the guest.')
@@ -104,8 +104,8 @@ describe('Deposit to be confirmed on the booking page', () => {
     mockConfirm.mockReturnValue(new Promise((r) => { resolve = r }))
     renderPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
-    const send = screen.getByRole('button', { name: 'Confirm and send' })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
+    const send = screen.getByRole('button', { name: 'Confirm and Send' })
     fireEvent.click(send)
     fireEvent.click(send)
     resolve({ success: true, data: { status: 'sent', channel: 'email', message: 'Deposit confirmed.' } })
@@ -118,23 +118,23 @@ describe('Deposit to be confirmed on the booking page', () => {
     mockConfirm.mockResolvedValue({ success: true, data: { status: 'sent', channel: 'sms', message: 'ok' } })
     renderPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
     fireEvent.change(screen.getByLabelText(/Deposit amount/), { target: { value: '150' } })
     fireEvent.change(screen.getByLabelText(/Reason for the reduced deposit/), { target: { value: 'Repeat corporate client' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and Send' }))
 
     await waitFor(() => expect(mockConfirm).toHaveBeenCalledWith('booking-1', { amount: '150', reductionReason: 'Repeat corporate client' }))
   })
 
   it('a booking with no firm date says there is no deadline yet', () => {
     renderPanel({ isDateTbd: true, holdExpiryPreview: null })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm deposit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Deposit' }))
     expect(screen.getByText('No deadline yet: the event date is still to be confirmed.')).toBeInTheDocument()
   })
 
   it('staff who cannot manage deposits see the state but no button', () => {
     renderPanel({ canConfirm: false })
-    expect(screen.queryByRole('button', { name: 'Confirm deposit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Confirm Deposit' })).not.toBeInTheDocument()
     expect(screen.getByText('Someone who manages deposits can confirm it.')).toBeInTheDocument()
   })
 })

@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { Alert, Badge, LinkButton } from '@/ds';
+import { Alert, Badge, Card, CardHeader, Empty, LinkButton, Stat, StatGrid } from '@/ds';
+import { StandalonePageHeader } from '@/components/shells/StandaloneShell';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';
 import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
 import { getHolidayYear } from '@/lib/leave/working-days';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +22,6 @@ function daysBetween(start: string, end: string): number {
   const ms = new Date(end + 'T00:00:00').getTime() - new Date(start + 'T00:00:00').getTime();
   return Math.round(ms / 86400000) + 1;
 }
-
-const STATUS_TONE: Record<string, 'warning' | 'success' | 'danger'> = {
-  pending: 'warning',
-  approved: 'success',
-  declined: 'danger',
-};
 
 export default async function MyLeavePage() {
   const supabase = await createClient();
@@ -42,12 +38,12 @@ export default async function MyLeavePage() {
 
   if (!employee) {
     return (
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-text-strong">My Holiday</h2>
-        <p className="text-sm text-text-muted">
+      <>
+        <StandalonePageHeader title="My Holiday" subtitle="My holiday: your holiday requests and allowance" />
+        <Alert tone="warning">
           Your account is not linked to an employee profile. Please contact your manager.
-        </p>
-      </div>
+        </Alert>
+      </>
     );
   }
 
@@ -67,65 +63,71 @@ export default async function MyLeavePage() {
   ].filter(Boolean);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-text-strong">My Holiday</h2>
-        <LinkButton href="/portal/leave/new" variant="primary">
-          Request holiday
-        </LinkButton>
-      </div>
+    <>
+      <StandalonePageHeader
+        title="My Holiday"
+        subtitle="My holiday: your holiday requests and allowance"
+        actions={
+          <LinkButton href="/portal/leave/new" variant="primary" size="sm">
+            Request Holiday
+          </LinkButton>
+        }
+      />
 
       {loadErrors.length > 0 && (
         <Alert tone="danger">{loadErrors.join(' ')}</Alert>
       )}
 
-      {/* Days used */}
-      <div className="bg-surface rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-text">
-            {holidayYear}/{String(holidayYear + 1).slice(2)} holiday taken
-          </span>
-          <span className="font-semibold text-text">
-            {usedDays} day{usedDays !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
+      {/* A failed count shows a dash, never a made-up zero. */}
+      <StatGrid columns={2}>
+        <Stat
+          label={`${holidayYear}/${String(holidayYear + 1).slice(2)} holiday taken`}
+          value={usageResult.success ? `${usedDays} day${usedDays !== 1 ? 's' : ''}` : '-'}
+        />
+      </StatGrid>
 
-      {/* Request list */}
-      {requests.length === 0 ? (
-        <p className="text-sm text-text-soft italic py-4 text-center">
-          No holiday requests yet. Use the button above to request time off.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-text">Your requests</h3>
-          {requests.map((req: LeaveRequest) => {
-            const days = daysBetween(req.start_date, req.end_date);
-            return (
-              <div key={req.id} className="bg-surface border border-border rounded-lg p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-text">
-                      {formatDate(req.start_date)}
-                      {req.start_date !== req.end_date && ` – ${formatDate(req.end_date)}`}
-                    </p>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {days} day{days !== 1 ? 's' : ''}
-                    </p>
-                    {req.note && (
-                      <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
-                    )}
-                  </div>
-                  <Badge tone={STATUS_TONE[req.status] ?? 'neutral'} size="sm">
-                    {req.status}
-                  </Badge>
-                </div>
-                {req.status === 'pending' && <CancelLeaveRequestButton requestId={req.id} />}
-              </div>
-            );
-          })}
-        </div>
+      {/* A failed list shows only the error above, never an empty list. */}
+      {requestsResult.success && (
+        <Card>
+          <CardHeader title="Your Requests" />
+          {requests.length === 0 ? (
+            <Empty
+              size="sm"
+              title="No holiday requests yet"
+              description="Ask for time off with Request Holiday."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {requests.map((req: LeaveRequest) => {
+                const days = daysBetween(req.start_date, req.end_date);
+                return (
+                  <li key={req.id} className="p-pad-card">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-text">
+                          {formatDate(req.start_date)}
+                          {req.start_date !== req.end_date && ` – ${formatDate(req.end_date)}`}
+                        </p>
+                        <p className="text-xs text-text-muted mt-0.5">
+                          {days} day{days !== 1 ? 's' : ''}
+                        </p>
+                        {req.note && (
+                          <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
+                        )}
+                      </div>
+                      {/* The same colours and words as every manager screen that lists a holiday request. */}
+                      <Badge tone={rotaLeaveStatusTone(req.status)} size="sm">
+                        {rotaLeaveStatusLabel(req.status)}
+                      </Badge>
+                    </div>
+                    {req.status === 'pending' && <CancelLeaveRequestButton requestId={req.id} />}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
       )}
-    </div>
+    </>
   );
 }

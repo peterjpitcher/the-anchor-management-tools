@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { SmsQueueActionForm, type SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 
 const toast = vi.hoisted(() => ({
@@ -37,7 +37,9 @@ describe('SmsQueueActionForm', () => {
       <SmsQueueActionForm
         action={action}
         smsId="sms-123"
+        confirmTitle="Approve Message"
         confirmMessage="Approve?"
+        confirmLabel="Approve"
         successMessage="Approved!"
       >
         Approve
@@ -50,7 +52,9 @@ describe('SmsQueueActionForm', () => {
     expect(await screen.findByText('Approve?')).toBeInTheDocument()
     expect(action).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    // The dialog is named for the action and confirms with the action's own word.
+    const dialog = screen.getByRole('dialog', { name: 'Approve Message' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }))
 
     await waitFor(() => {
       expect(action).toHaveBeenCalledTimes(1)
@@ -71,7 +75,9 @@ describe('SmsQueueActionForm', () => {
       <SmsQueueActionForm
         action={action}
         smsId="sms-456"
+        confirmTitle="Reject Message"
         confirmMessage="Reject?"
+        confirmLabel="Reject"
         successMessage="Rejected"
       >
         Reject
@@ -80,7 +86,7 @@ describe('SmsQueueActionForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
     expect(await screen.findByText('Reject?')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Reject Message' })).getByRole('button', { name: 'Reject' }))
 
     await waitFor(() => {
       expect(action).toHaveBeenCalledTimes(1)
@@ -97,7 +103,9 @@ describe('SmsQueueActionForm', () => {
       <SmsQueueActionForm
         action={action}
         smsId="sms-789"
+        confirmTitle="Send Message"
         confirmMessage="Send?"
+        confirmLabel="Send Now"
         successMessage="Sent"
         disabled
       >
@@ -122,13 +130,21 @@ describe('SmsQueueActionForm', () => {
     }))
 
     render(
-      <SmsQueueActionForm action={action} smsId="sms-900" confirmMessage="Send?" successMessage="SMS sent">
+      <SmsQueueActionForm
+        action={action}
+        smsId="sms-900"
+        confirmTitle="Send Message"
+        confirmMessage="Send?"
+        confirmLabel="Send Now"
+        successMessage="SMS sent"
+      >
         Send Now
       </SmsQueueActionForm>
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Send Now' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Send Message' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send Now' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Sent by email: the guest has a usable email address')

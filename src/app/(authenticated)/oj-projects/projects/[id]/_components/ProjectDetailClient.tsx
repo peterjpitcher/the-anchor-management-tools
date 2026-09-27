@@ -3,9 +3,14 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  Alert,
   Card,
   CardHeader,
   CardBody,
+  DescriptionList,
+  PageLayout,
+  Stat,
+  StatGrid,
   Table,
   TableHeader,
   TableBody,
@@ -29,6 +34,16 @@ import { removeProjectContact } from '@/app/actions/oj-projects/project-contacts
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
+import { ojProjectDetailLayout } from '../../../_shared/nav'
+import {
+  OJ_MONEY_TEXT,
+  ojBalanceText,
+  ojBudgetTone,
+  ojEntryStatus,
+  ojEntryType,
+  ojProjectStatus,
+  ojReceivedTone,
+} from '../../../_shared/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -43,6 +58,10 @@ interface ProjectDetailClientProps {
   entries: any[]
   contacts: any[]
   payments: any | null
+  /** Set when the entries failed to load, so the page says so rather than showing none. */
+  entriesError?: string
+  /** Set when the tagged contacts failed to load. */
+  contactsError?: string
 }
 
 export function ProjectDetailClient({
@@ -50,6 +69,8 @@ export function ProjectDetailClient({
   entries,
   contacts,
   payments,
+  entriesError,
+  contactsError,
 }: ProjectDetailClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -58,6 +79,9 @@ export function ProjectDetailClient({
 
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null)
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  // The tagged contact waiting on the Remove confirm. There is no way to tag a contact back from
+  // this page, so removing one is confirmed first, as every danger action is.
+  const [removeContact, setRemoveContact] = useState<{ id: string; name: string } | null>(null)
 
   const totals = useMemo(() => {
     const t = { hours: 0, totalExVat: 0, unbilled: 0, billed: 0, paid: 0 }
@@ -149,15 +173,6 @@ export function ProjectDetailClient({
     }
   }
 
-  const statusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
-    switch (status) {
-      case 'active': return 'success'
-      case 'paused': return 'warning'
-      case 'completed': return 'info'
-      default: return 'neutral'
-    }
-  }
-
   const statusOptions = [
     { label: 'Active', value: 'active' },
     { label: 'Paused', value: 'paused' },
@@ -165,111 +180,89 @@ export function ProjectDetailClient({
     { label: 'Archived', value: 'archived' },
   ]
 
+  const projectStatus = ojProjectStatus(project.status)
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* Breadcrumb-style back link */}
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={<Icon name="chevronLeft" size={16} />}
-        onClick={() => router.push('/oj-projects/projects')}
-      >
-        Back to Projects
-      </Button>
-
-      {/* Title row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-text">{project.project_name}</h2>
-          <p className="text-sm text-text-muted">{project.project_code} &middot; {project.vendor?.name || 'Unknown Client'}</p>
-        </div>
-        <div className="flex gap-2">
-          {canEdit && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => router.push(`/oj-projects/projects?edit=${project.id}`)}
-            >
-              Edit Project
-            </Button>
-          )}
-          {canDelete && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setDeleteProjectOpen(true)}
-            >
-              Delete
-            </Button>
-          )}
-        </div>
-      </div>
-
+    <PageLayout
+      {...ojProjectDetailLayout(
+        project.project_name,
+        `${project.project_code} · ${project.vendor?.name || 'Unknown Client'}`,
+      )}
+      headerActions={
+        canEdit || canDelete ? (
+          <>
+            {canEdit && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => router.push(`/oj-projects/projects?edit=${project.id}`)}
+              >
+                Edit
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setDeleteProjectOpen(true)}
+              >
+                Delete
+              </Button>
+            )}
+          </>
+        ) : undefined
+      }
+    >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main column */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Budget Card */}
-          <Card>
-            <CardHeader title="Budget" />
-            <CardBody>
-              <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-text-muted">Total (ex VAT)</p>
-                  <p className="text-lg font-semibold">{formatCurrency(totals.totalExVat)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Hours Logged</p>
-                  <p className="text-lg font-semibold">{totals.hours.toFixed(1)}h</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Budget</p>
-                  <p className="text-lg font-semibold">{budget != null ? formatCurrency(budget) : 'Not set'}</p>
-                </div>
-              </div>
-              {budget != null && budget > 0 && (
-                <div className="mb-4">
-                  <ProgressBar
-                    value={budgetProgress}
-                    tone={budgetProgress > 90 ? 'danger' : 'primary'}
-                  />
-                  <p className="text-xs text-text-muted mt-1">
-                    {formatCurrency(totals.totalExVat)} of {formatCurrency(budget)} used
-                  </p>
-                </div>
-              )}
-              {budgetHours != null && budgetHours > 0 && (
-                <div className="mb-4">
-                  <ProgressBar
-                    value={hoursProgress}
-                    tone={hoursProgress > 90 ? 'danger' : 'primary'}
-                  />
-                  <p className="text-xs text-text-muted mt-1">
-                    {totals.hours.toFixed(1)}h of {budgetHours.toFixed(1)}h used
-                  </p>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-text-muted">Unbilled</p>
-                  <p className="font-medium">{formatCurrency(totals.unbilled)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Billed</p>
-                  <p className="font-medium text-info-fg">{formatCurrency(totals.billed)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Paid</p>
-                  <p className="font-medium text-success-fg">{formatCurrency(totals.paid)}</p>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+        <div className="lg:col-span-2 space-y-6">
+          <StatGrid columns={3}>
+            <Stat label="Total (ex VAT)" value={formatCurrency(totals.totalExVat)} />
+            <Stat label="Hours Logged" value={`${totals.hours.toFixed(1)}h`} />
+            <Stat label="Budget" value={budget != null ? formatCurrency(budget) : 'Not set'} />
+          </StatGrid>
+
+          {((budget != null && budget > 0) || (budgetHours != null && budgetHours > 0)) && (
+            <Card>
+              <CardHeader title="Budget Used" />
+              <CardBody className="space-y-4">
+                {budget != null && budget > 0 && (
+                  <div>
+                    <ProgressBar value={budgetProgress} tone={ojBudgetTone(budgetProgress)} />
+                    <p className="text-xs text-text-muted mt-1">
+                      {formatCurrency(totals.totalExVat)} of {formatCurrency(budget)} used
+                    </p>
+                  </div>
+                )}
+                {budgetHours != null && budgetHours > 0 && (
+                  <div>
+                    <ProgressBar value={hoursProgress} tone={ojBudgetTone(hoursProgress)} />
+                    <p className="text-xs text-text-muted mt-1">
+                      {totals.hours.toFixed(1)}h of {budgetHours.toFixed(1)}h used
+                    </p>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
+
+          <StatGrid columns={3}>
+            <Stat label="Unbilled" value={formatCurrency(totals.unbilled)} />
+            <Stat label="Billed" value={formatCurrency(totals.billed)} />
+            <Stat label="Paid" value={formatCurrency(totals.paid)} tone={ojReceivedTone(totals.paid)} />
+          </StatGrid>
 
           {/* Entries Table */}
           <Card>
             <CardHeader title={`Entries (${entries.length})`} />
-            {entries.length === 0 ? (
-              <Empty title="No entries" description="No entries recorded yet." />
+            {entriesError ? (
+              <CardBody>
+                <Alert tone="danger" title="Could not load the entries">
+                  {entriesError}
+                </Alert>
+              </CardBody>
+            ) : entries.length === 0 ? (
+              <Empty size="sm" title="No entries yet" description="Entries logged against this project show here." />
             ) : (
               <>
                 <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -279,8 +272,8 @@ export function ProjectDetailClient({
                       : entry.entry_type === 'mileage'
                         ? Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
                         : Number(entry.amount_ex_vat_snapshot || 0)
-                    const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
-                    const statusEntryTone = entry.status === 'paid' ? 'success' : entry.status === 'billed' ? 'info' : 'warning'
+                    const entryType = ojEntryType(entry.entry_type)
+                    const entryStatus = ojEntryStatus(entry.status)
                     const value = entry.entry_type === 'time'
                       ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
                       : entry.entry_type === 'mileage'
@@ -311,10 +304,10 @@ export function ProjectDetailClient({
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <Badge tone={typeTone}>{entry.entry_type}</Badge>
+                          <Badge tone={entryType.tone}>{entryType.label}</Badge>
                           {value && <span className="text-text-muted">{value}</span>}
                           <span className="font-medium">{formatCurrency(amount)}</span>
-                          <Badge tone={statusEntryTone}>{entry.status}</Badge>
+                          <Badge tone={entryStatus.tone}>{entryStatus.label}</Badge>
                         </div>
                       </div>
                     )
@@ -343,13 +336,13 @@ export function ProjectDetailClient({
                       amount = Number(entry.amount_ex_vat_snapshot || 0)
                     }
 
-                    const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
-                    const statusEntryTone = entry.status === 'paid' ? 'success' : entry.status === 'billed' ? 'info' : 'warning'
+                    const entryType = ojEntryType(entry.entry_type)
+                    const entryStatus = ojEntryStatus(entry.status)
 
                     return (
                       <TableRow key={entry.id}>
                         <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
-                        <TableCell><Badge tone={typeTone}>{entry.entry_type}</Badge></TableCell>
+                        <TableCell><Badge tone={entryType.tone}>{entryType.label}</Badge></TableCell>
                         <TableCell>
                           {entry.entry_type === 'time'
                             ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
@@ -361,7 +354,7 @@ export function ProjectDetailClient({
                         <TableCell className="max-w-[200px] truncate text-text-muted">
                           {entry.description || '-'}
                         </TableCell>
-                        <TableCell><Badge tone={statusEntryTone}>{entry.status}</Badge></TableCell>
+                        <TableCell><Badge tone={entryStatus.tone}>{entryStatus.label}</Badge></TableCell>
                         <TableCell>
                           {entry.status === 'unbilled' && canDelete && (
                             <RowActions
@@ -388,15 +381,16 @@ export function ProjectDetailClient({
         </div>
 
         {/* Sidebar */}
-        <div className="flex flex-col gap-6">
+        <div className="space-y-6">
           {/* Status Card */}
           <Card>
             <CardHeader title="Status" />
             <CardBody>
-              <div className="flex flex-col gap-3">
-                <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+              <div className="flex flex-col items-start gap-3">
+                <Badge tone={projectStatus.tone}>{projectStatus.label}</Badge>
                 {canEdit && (
                   <Select
+                    aria-label="Project status"
                     value={project.status}
                     onChange={(e) => handleStatusChange(e.target.value)}
                     options={statusOptions}
@@ -409,13 +403,19 @@ export function ProjectDetailClient({
           {/* Contacts Card */}
           <Card>
             <CardHeader title="Contacts" />
-            {taggedContacts.length === 0 ? (
-              <Empty title="No contacts tagged" />
-            ) : (
+            {contactsError ? (
               <CardBody>
-                <div className="flex flex-col gap-2">
+                <Alert tone="danger" title="Could not load the contacts">
+                  {contactsError}
+                </Alert>
+              </CardBody>
+            ) : taggedContacts.length === 0 ? (
+              <Empty size="sm" title="No contacts tagged" />
+            ) : (
+              <CardBody className="py-0">
+                <div className="divide-y divide-border">
                   {taggedContacts.map((tc: any) => (
-                    <div key={tc.id} className="flex items-start justify-between gap-2 p-2 rounded-lg bg-surface-2">
+                    <div key={tc.id} className="flex items-start justify-between gap-2 py-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{tc.contact?.name || 'Unknown'}</p>
                         <p className="text-xs text-text-muted truncate">{tc.contact?.email || ''}</p>
@@ -428,7 +428,7 @@ export function ProjectDetailClient({
                               label: 'Remove',
                               icon: <Icon name="trash" size={16} />,
                               tone: 'danger',
-                              onSelect: () => handleRemoveContact(tc.id),
+                              onSelect: () => setRemoveContact({ id: tc.id, name: tc.contact?.name || 'this contact' }),
                             },
                           ]}
                         />
@@ -448,25 +448,29 @@ export function ProjectDetailClient({
                 subtitle="This project's share of each client invoice, inc VAT"
               />
               <CardBody>
-                <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-3">
-                  <div>
-                    <p className="text-xs text-text-muted">Billed</p>
-                    <p className="text-sm font-semibold">{formatCurrency(payments.totals.totalBilled)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted">Paid</p>
-                    <p className="text-sm font-semibold text-success-fg">{formatCurrency(payments.totals.totalPaid)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted">Outstanding</p>
-                    <p className={`text-sm font-semibold ${payments.totals.totalOutstanding > 0 ? 'text-danger' : 'text-success-fg'}`}>
-                      {formatCurrency(payments.totals.totalOutstanding)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2">
+                <DescriptionList
+                  columns={3}
+                  items={[
+                    { key: 'billed', label: 'Billed', value: formatCurrency(payments.totals.totalBilled) },
+                    {
+                      key: 'paid',
+                      label: 'Paid',
+                      value: <span className={OJ_MONEY_TEXT.received}>{formatCurrency(payments.totals.totalPaid)}</span>,
+                    },
+                    {
+                      key: 'outstanding',
+                      label: 'Outstanding',
+                      value: (
+                        <span className={ojBalanceText(payments.totals.totalOutstanding)}>
+                          {formatCurrency(payments.totals.totalOutstanding)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+                <div className="mt-3 divide-y divide-border border-t border-border">
                   {payments.invoices.map((item: any) => (
-                    <div key={item.invoice.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-surface-2">
+                    <div key={item.invoice.id} className="flex items-center justify-between py-3 text-sm">
                       <div>
                         <p className="font-medium">{item.invoice.number}</p>
                         <p className="text-xs text-text-muted">{item.invoice.date ? formatDateDdMmmmYyyy(item.invoice.date) : '-'}</p>
@@ -497,7 +501,7 @@ export function ProjectDetailClient({
         onClose={() => setDeleteEntryId(null)}
         onConfirm={handleDeleteEntry}
         title="Delete Entry"
-        message="Are you sure you want to delete this entry? This cannot be undone."
+        message="Delete this entry? This cannot be undone."
         confirmLabel="Delete"
         tone="danger"
       />
@@ -506,10 +510,21 @@ export function ProjectDetailClient({
         onClose={() => setDeleteProjectOpen(false)}
         onConfirm={handleDeleteProject}
         title="Delete Project"
-        message="Are you sure? You can only delete projects with no entries."
+        message="Delete this project? Only a project with no entries can be deleted."
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+      <ConfirmDialog
+        open={removeContact !== null}
+        onClose={() => setRemoveContact(null)}
+        onConfirm={async () => {
+          if (removeContact) await handleRemoveContact(removeContact.id)
+        }}
+        title="Remove Contact"
+        message={`Remove ${removeContact?.name ?? 'this contact'} from this project?`}
+        confirmLabel="Remove"
+        tone="danger"
+      />
+    </PageLayout>
   )
 }

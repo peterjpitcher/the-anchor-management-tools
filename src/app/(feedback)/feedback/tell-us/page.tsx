@@ -3,7 +3,7 @@ import { GuestShell } from '@/components/features/guest'
 import { sanitizeFeedbackSource } from '@/app/api/feedback/source'
 
 export const metadata = {
-  title: 'Tell us about your visit',
+  title: 'Tell us about your visit - The Anchor',
 }
 
 interface TellUsPageProps {

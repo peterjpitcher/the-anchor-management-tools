@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, Input, Textarea } from '@/ds'
+import { Button, Card, Empty, Input, SubHeading, Textarea } from '@/ds'
 
 interface FaqItem {
   question: string
@@ -55,9 +55,9 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-text">
+        <SubHeading>
           FAQs{faqs.length > 0 ? ` (${faqs.length})` : ''}
-        </span>
+        </SubHeading>
         <Button
           type="button"
           variant="link"
@@ -70,18 +70,13 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
 
       {/* Empty state */}
       {faqs.length === 0 && (
-        <p className="text-sm italic text-text-soft">
-          No FAQs yet. Generate with AI or add manually.
-        </p>
+        <Empty size="sm" title="No FAQs yet" description="Generate with AI or add manually." />
       )}
 
       {/* FAQ cards */}
       <div className="space-y-3">
         {faqs.map((faq, index) => (
-          <div
-            key={index}
-            className="rounded-lg border border-border bg-surface p-4 space-y-3"
-          >
+          <Card key={index}>
             <div className="flex items-start justify-between gap-3">
               <span className="text-xs font-medium text-text-muted mt-0.5 shrink-0">
                 Q{index + 1}
@@ -107,12 +102,12 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
                 variant="link"
                 onClick={() => handleRemove(index)}
                 aria-label={`Remove FAQ ${index + 1}`}
-                className="shrink-0 text-danger"
+                className="shrink-0 text-danger-fg"
               >
                 Remove
               </Button>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

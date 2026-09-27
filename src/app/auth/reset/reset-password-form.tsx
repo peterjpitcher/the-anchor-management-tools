@@ -47,7 +47,7 @@ export default function ResetPasswordForm({ email }: Props) {
   }
 
   return (
-    <AuthCard title="Set a new password" lead={email ? `Signed in as ${email}` : undefined}>
+    <AuthCard title="Set a New Password" lead={email ? `Signed in as ${email}` : undefined}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Field label="New password" required hint="Minimum 8 characters">
           <Input
@@ -72,7 +72,7 @@ export default function ResetPasswordForm({ email }: Props) {
         </Field>
 
         <Button type="submit" variant="primary" size="lg" loading={isSubmitting} disabled={isSubmitting} className="w-full">
-          Save password
+          Save Password
         </Button>
       </form>
     </AuthCard>

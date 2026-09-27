@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Button, Input } from '@/ds'
+import { Alert, Button, Card, Input } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { FohVoucherLookupItem } from '../lib'
 import { statusLabel } from './voucher-status'
@@ -37,11 +37,8 @@ export function NumberSearch({
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-text">
-        {label}
-      </label>
       <form
-        className="mt-1 flex gap-2"
+        className="flex items-end gap-2"
         onSubmit={(event) => {
           event.preventDefault()
           onSearch()
@@ -51,6 +48,7 @@ export function NumberSearch({
         <div className="min-w-0 flex-1">
           <Input
             id={inputId}
+            label={label}
             type="text"
             inputMode="text"
             autoComplete="off"
@@ -67,45 +65,48 @@ export function NumberSearch({
           type="submit"
           variant="primary"
           size="lg"
-          disabled={searching}
+          loading={searching}
           className="h-14 shrink-0 px-5 text-base"
         >
-          {searching ? 'Finding...' : 'Find'}
+          Find
         </Button>
       </form>
 
       <div aria-live="polite">
         {message && (
-          <p role="status" className="mt-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
+          <Alert tone="warning" role="status" className="mt-2">
             {message}
-          </p>
+          </Alert>
         )}
 
         {results && results.length > 1 && (
-          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
-            {results.map((item) => (
-              <li key={item.number}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(item)}
-                  className={cn(
-                    'flex min-h-touch w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset',
-                    selectedNumber === item.number && 'bg-primary-soft'
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block font-mono text-base font-semibold text-text">
-                      {item.number}
+          <Card padding="none" className="mt-2">
+            <ul className="divide-y divide-border">
+              {results.map((item) => (
+                <li key={item.number}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onSelect(item)}
+                    className={cn(
+                      'h-auto w-full min-h-touch justify-between gap-3 rounded-none px-4 py-3 text-left font-normal focus-visible:shadow-ring-inset',
+                      selectedNumber === item.number && 'bg-primary-soft'
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-mono text-base font-semibold text-text">
+                        {item.number}
+                      </span>
+                      <span className="block truncate text-sm text-text-muted">{item.typeTitle}</span>
                     </span>
-                    <span className="block truncate text-sm text-text-muted">{item.typeTitle}</span>
-                  </span>
-                  <span className="shrink-0 text-sm font-medium text-text">
-                    {statusLabel(item.status)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                    <span className="shrink-0 text-sm font-medium text-text">
+                      {statusLabel(item.status)}
+                    </span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
     </div>

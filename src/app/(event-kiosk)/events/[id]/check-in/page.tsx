@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { Alert } from '@/ds'
+import { KioskShell } from '@/components/shells/KioskShell'
 import EventCheckInClient from './EventCheckInClient'
 
 type PageProps = {
@@ -42,8 +44,16 @@ export default async function EventCheckInPage({ params }: PageProps) {
     .eq('id', id)
     .maybeSingle()
 
+  // A failed load says so instead of showing the page as not found.
   if (error) {
     console.error('Failed to load event for check-in:', error)
+    return (
+      <KioskShell title="Event Check-In" width="narrow">
+        <Alert tone="danger" title="Could not load this event">
+          Refresh the page to try again.
+        </Alert>
+      </KioskShell>
+    )
   }
 
   if (!event) {

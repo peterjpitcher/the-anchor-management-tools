@@ -11,8 +11,7 @@
  */
 
 import { useState } from 'react'
-import { ShieldExclamationIcon } from '@heroicons/react/24/outline'
-import { Section, FormGroup, Input, Select, Textarea } from '@/ds'
+import { Card, CardBody, CardHeader, Checkbox, Field, Input, Select, Textarea } from '@/ds'
 import type { BookingLayout } from '@/types/private-bookings'
 
 interface EventDetailsRiskSectionProps {
@@ -41,10 +40,11 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
   const [barTabRequired, setBarTabRequired] = useState<boolean>(!!defaults?.barTabRequired)
 
   return (
-    <Section title="Event details & risk" icon={<ShieldExclamationIcon className="h-5 w-5" />}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
-          <FormGroup label="Layout">
+    <Card>
+      <CardHeader title="Event Details & Risk" />
+      <CardBody className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Field label="Layout">
             <Select
               id="layout"
               name="layout"
@@ -56,8 +56,8 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
                 { value: 'mixed', label: 'Mixed' },
               ]}
             />
-          </FormGroup>
-          <FormGroup label="Adults">
+          </Field>
+          <Field label="Adults">
             <Input
               type="number"
               id="guest_count_adults"
@@ -66,8 +66,8 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               defaultValue={toDefaultString(defaults?.guestCountAdults)}
               placeholder="0"
             />
-          </FormGroup>
-          <FormGroup label="Under 18s">
+          </Field>
+          <Field label="Under 18s">
             <Input
               type="number"
               id="guest_count_under_18"
@@ -76,25 +76,21 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               defaultValue={toDefaultString(defaults?.guestCountUnder18)}
               placeholder="0"
             />
-          </FormGroup>
+          </Field>
         </div>
 
-        <div className="rounded-md border border-border bg-surface-2 p-3 space-y-3">
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-text">
-            <input
-              type="checkbox"
-              id="bar_tab_required"
-              name="bar_tab_required"
-              value="true"
-              checked={barTabRequired}
-              onChange={(e) => setBarTabRequired(e.target.checked)}
-              className="h-4 w-4 accent-primary"
-            />
-            <span>Bar tab required</span>
-          </label>
+        <div className="space-y-3">
+          <Checkbox
+            id="bar_tab_required"
+            name="bar_tab_required"
+            value="true"
+            checked={barTabRequired}
+            onChange={setBarTabRequired}
+            label="Bar tab required"
+          />
           {barTabRequired && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
-              <FormGroup label="Bar tab limit (£)">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Field label="Bar tab limit (£)">
                 <Input
                   type="number"
                   id="bar_tab_limit"
@@ -104,8 +100,8 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
                   defaultValue={toDefaultString(defaults?.barTabLimit)}
                   placeholder="e.g. 500"
                 />
-              </FormGroup>
-              <FormGroup label="Pre-paid amount (£)">
+              </Field>
+              <Field label="Pre-paid amount (£)">
                 <Input
                   type="number"
                   id="bar_tab_prepaid_amount"
@@ -115,8 +111,8 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
                   defaultValue={toDefaultString(defaults?.barTabPrepaidAmount)}
                   placeholder="e.g. 200"
                 />
-              </FormGroup>
-              <FormGroup label="Pre-auth reference">
+              </Field>
+              <Field label="Pre-auth reference">
                 <Input
                   type="text"
                   id="bar_tab_preauth_reference"
@@ -124,57 +120,42 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
                   defaultValue={defaults?.barTabPreauthReference ?? ''}
                   placeholder="Card pre-auth reference"
                 />
-              </FormGroup>
+              </Field>
             </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="outside_food"
-              name="outside_food"
-              value="true"
-              defaultChecked={!!defaults?.outsideFood}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">Outside food</span>
-              <span className="block text-xs text-text-muted">Requires the self-catering waiver.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="high_power_equipment"
-              name="high_power_equipment"
-              value="true"
-              defaultChecked={!!defaults?.highPowerEquipment}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">High-power / amplified equipment</span>
-              <span className="block text-xs text-text-muted">£25 electricity charge applies; needs approval.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="dogs_expected"
-              name="dogs_expected"
-              value="true"
-              defaultChecked={!!defaults?.dogsExpected}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">Dogs expected</span>
-            </span>
-          </label>
+          <Checkbox
+            id="outside_food"
+            name="outside_food"
+            value="true"
+            defaultChecked={!!defaults?.outsideFood}
+            label="Outside food"
+            description="Requires the self-catering waiver."
+            className="rounded-default border border-border p-3"
+          />
+          <Checkbox
+            id="high_power_equipment"
+            name="high_power_equipment"
+            value="true"
+            defaultChecked={!!defaults?.highPowerEquipment}
+            label="High-power / amplified equipment"
+            description="£25 electricity charge applies; needs approval."
+            className="rounded-default border border-border p-3"
+          />
+          <Checkbox
+            id="dogs_expected"
+            name="dogs_expected"
+            value="true"
+            defaultChecked={!!defaults?.dogsExpected}
+            label="Dogs expected"
+            className="rounded-default border border-border p-3"
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-          <FormGroup label="Communication preference">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Communication preference">
             <Select
               id="communication_preference"
               name="communication_preference"
@@ -187,18 +168,18 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
                 { value: 'text', label: 'Text' },
               ]}
             />
-          </FormGroup>
-          <FormGroup label="Clear-down time" help="Standard is one hour after the event.">
+          </Field>
+          <Field label="Clear-down time" hint="Standard is one hour after the event.">
             <Input
               type="time"
               id="cleardown_time"
               name="cleardown_time"
               defaultValue={(defaults?.cleardownTime ?? '').slice(0, 5)}
             />
-          </FormGroup>
+          </Field>
         </div>
 
-        <FormGroup label="Decorations plan">
+        <Field label="Decorations plan">
           <Textarea
             id="decorations_plan"
             name="decorations_plan"
@@ -206,9 +187,9 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
             defaultValue={defaults?.decorationsPlan ?? ''}
             placeholder="Balloons, banners, who is putting them up and taking them down..."
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Special risk notes">
+        <Field label="Special risk notes">
           <Textarea
             id="special_risk_notes"
             name="special_risk_notes"
@@ -216,8 +197,8 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
             defaultValue={defaults?.specialRiskNotes ?? ''}
             placeholder="Anything that needs a risk assessment or extra care on the day..."
           />
-        </FormGroup>
-      </div>
-    </Section>
+        </Field>
+      </CardBody>
+    </Card>
   )
 }

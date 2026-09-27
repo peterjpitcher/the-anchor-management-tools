@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState, useTransition } from 'react'
-import { Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast } from '@/ds'
+import { Button, Card, CardBody, CardHeader, Field, Fieldset, FormFooter, Input, Select, toast } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import { createEventManualBooking } from '@/app/actions/events'
@@ -213,10 +213,8 @@ export function AddManualBookingForm({
   return (
     <Card>
       <CardHeader title="Add Manual Booking" />
-      <CardBody>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">Customer</label>
+      <CardBody className="space-y-4">
+          <Field label="Customer">
             <CustomerSearchInput
               onCustomerSelect={(customer) => {
                 if (customer) {
@@ -235,11 +233,10 @@ export function AddManualBookingForm({
               selectedCustomerId={selectedCustomerId}
               placeholder="Search by name or phone..."
             />
-          </div>
+          </Field>
 
           {!selectedCustomerId && (
-            <div>
-              <p className="text-xs font-medium text-text-muted mb-2">Or add a new customer</p>
+            <Fieldset legend="Or add a new customer">
               <div className="grid gap-3 sm:grid-cols-3">
                 <Input
                   label="Phone number"
@@ -268,62 +265,60 @@ export function AddManualBookingForm({
                   placeholder="Last name"
                 />
               </div>
-            </div>
+            </Fieldset>
           )}
 
           {useBasket ? (
             <div>
-              <p className="text-xs font-medium text-text-muted mb-1">Tickets</p>
-              <div className="space-y-2">
-                {basketTypes.map((type) => {
-                  const quantityValue = quantities[type.id] ?? ''
-                  const currentQuantity = Number(quantityValue.trim() || 0)
-                  return (
-                    <div
-                      key={type.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text">{type.name}</p>
-                        <p className="text-xs text-text-muted">{formatCurrency(type.price)}</p>
+              <Fieldset legend="Tickets" error={basketErrorToShow || undefined}>
+                <div className="space-y-2">
+                  {basketTypes.map((type) => {
+                    const quantityValue = quantities[type.id] ?? ''
+                    const currentQuantity = Number(quantityValue.trim() || 0)
+                    return (
+                      <div
+                        key={type.id}
+                        className="flex items-center justify-between gap-2 rounded-default border border-border p-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-text">{type.name}</p>
+                          <p className="text-xs text-text-muted">{formatCurrency(type.price)}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Remove one ${type.name} ticket`}
+                            onClick={() => adjustQuantity(type.id, -1)}
+                            disabled={isPending || currentQuantity <= 0}
+                          >
+                            −
+                          </Button>
+                          <Input
+                            inputMode="numeric"
+                            aria-label={`${type.name} quantity`}
+                            className="w-12 text-center"
+                            value={quantityValue}
+                            onChange={(e) => setQuantity(type.id, e.target.value)}
+                            placeholder="0"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Add one ${type.name} ticket`}
+                            onClick={() => adjustQuantity(type.id, 1)}
+                            disabled={isPending}
+                          >
+                            +
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          aria-label={`Remove one ${type.name} ticket`}
-                          onClick={() => adjustQuantity(type.id, -1)}
-                          disabled={isPending || currentQuantity <= 0}
-                        >
-                          −
-                        </Button>
-                        <Input
-                          inputMode="numeric"
-                          aria-label={`${type.name} quantity`}
-                          className="w-12 text-center"
-                          value={quantityValue}
-                          onChange={(e) => setQuantity(type.id, e.target.value)}
-                          placeholder="0"
-                        />
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          aria-label={`Add one ${type.name} ticket`}
-                          onClick={() => adjustQuantity(type.id, 1)}
-                          disabled={isPending}
-                        >
-                          +
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              {basketErrorToShow && (
-                <p className="mt-1.5 text-xs text-danger" role="alert">{basketErrorToShow}</p>
-              )}
+                    )
+                  })}
+                </div>
+              </Fieldset>
               <p className="mt-2 text-sm font-medium text-text">
                 {basketSummary.error === null
                   ? `${basketSummary.totalSeats} ${basketSummary.totalSeats === 1 ? 'seat' : 'seats'} · ${formatCurrency(basketSummary.totalAmount)}`
@@ -331,10 +326,12 @@ export function AddManualBookingForm({
               </p>
 
               {totalSeats > 0 && totalSeats <= MAX_MANUAL_BOOKING_SEATS && (
-                <div className="mt-3">
-                  <p className="text-xs font-medium text-text-muted mb-1">
-                    Ticket names (optional — name every ticket or leave blank)
-                  </p>
+                <Fieldset
+                  legend="Ticket names (optional)"
+                  hint="Name every ticket or leave them all blank."
+                  error={errors.names}
+                  className="mt-3"
+                >
                   <div className="grid gap-2 sm:grid-cols-2">
                     {Array.from({ length: totalSeats }).map((_, index) => (
                       <Input
@@ -346,10 +343,7 @@ export function AddManualBookingForm({
                       />
                     ))}
                   </div>
-                  {errors.names && (
-                    <p className="mt-1.5 text-xs text-danger" role="alert">{errors.names}</p>
-                  )}
-                </div>
+                </Fieldset>
               )}
             </div>
           ) : (
@@ -385,16 +379,16 @@ export function AddManualBookingForm({
             </div>
           )}
 
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            disabled={isPending}
-            icon={isPending ? <Spinner className="h-4 w-4" /> : <Icon name="plus" size={14} />}
-            className="w-full sm:w-auto"
-          >
-            Add Booking
-          </Button>
-        </div>
+          <FormFooter>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              loading={isPending}
+              icon={<Icon name="plus" size={14} />}
+            >
+              Add Booking
+            </Button>
+          </FormFooter>
       </CardBody>
     </Card>
   )

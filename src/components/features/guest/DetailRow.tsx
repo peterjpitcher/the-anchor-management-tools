@@ -8,7 +8,11 @@ type DetailRowProps = {
    * balance due date: a small, deliberate emphasis, not a full alert.
    */
   emphasis?: 'default' | 'deadline'
-  className?: string
+}
+
+const VALUE_TONE_CLASS: Record<NonNullable<DetailRowProps['emphasis']>, string> = {
+  default: 'text-guest-text',
+  deadline: 'text-guest-accent-text',
 }
 
 /**
@@ -17,26 +21,14 @@ type DetailRowProps = {
  * Rows carry their own top border and stack with no wrapper border, so the
  * separators draw themselves.
  */
-export function DetailRow({
-  label,
-  value,
-  emphasis = 'default',
-  className,
-}: DetailRowProps): React.JSX.Element {
+export function DetailRow({ label, value, emphasis = 'default' }: DetailRowProps): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        'flex items-baseline justify-between gap-4 border-t border-guest-border py-2.5',
-        className
-      )}
-    >
-      <span className="font-anchor-body text-ui leading-[1.5] text-guest-text-muted">
-        {label}
-      </span>
+    <div className="flex items-baseline justify-between gap-4 border-t border-guest-border py-2.5">
+      <span className="font-anchor-body text-guest-small text-guest-text-muted">{label}</span>
       <span
         className={cn(
-          'text-right font-anchor-body text-sm font-semibold leading-[1.4]',
-          emphasis === 'deadline' ? 'text-guest-accent-text' : 'text-guest-text'
+          'text-right font-anchor-body text-guest-body font-semibold leading-guest-snug',
+          VALUE_TONE_CLASS[emphasis]
         )}
       >
         {value}

@@ -11,11 +11,8 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-vi.mock('react-hot-toast', () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock('@/contexts/PermissionContext', () => ({
@@ -96,9 +93,9 @@ describe('Receipts A-040', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '×' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete receipt.pdf' }))
 
-    expect(screen.getByRole('dialog', { name: 'Delete receipt file' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Delete Receipt File' })).toBeInTheDocument()
     expect(deleteReceiptFile).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
@@ -106,7 +103,7 @@ describe('Receipts A-040', () => {
     await waitFor(() => expect(deleteReceiptFile).toHaveBeenCalledWith('file-1'))
   })
 
-  it('renders mobile workspace controls as a separate mobile block', () => {
+  it('renders the upload and export controls once, in one grid for every screen size', () => {
     render(
       <ReceiptsClient
         canExport
@@ -139,9 +136,11 @@ describe('Receipts A-040', () => {
       />,
     )
 
-    expect(screen.getAllByText('Receipt upload control')).toHaveLength(2)
-    expect(screen.getAllByText('Receipt export control')).toHaveLength(2)
-    expect(screen.getAllByText('Receipt reclassify control')).toHaveLength(2)
+    // They used to be drawn twice, once for phones and once for desktop. "Re-classify Untagged"
+    // is a page header action now, rendered by the page rather than the workspace client.
+    expect(screen.getAllByText('Receipt upload control')).toHaveLength(1)
+    expect(screen.getAllByText('Receipt export control')).toHaveLength(1)
+    expect(screen.queryByText('Receipt reclassify control')).not.toBeInTheDocument()
     expect(screen.getByText('Receipt rules')).toBeInTheDocument()
   })
 })

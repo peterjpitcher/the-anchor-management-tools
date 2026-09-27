@@ -1,15 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, ModalActions, ConfirmDialog } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Checkbox } from '@/ds'
+import { Button, Card, Checkbox, ConfirmDialog, Icon, Input, Modal, SubHeading, toast } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
 /** Minutes since midnight from "HH:MM" or "HH:MM:SS". Null when unparseable. */
 function toMinutes(value: string | null | undefined): number | null {
@@ -315,7 +310,7 @@ export function SpecialHoursModal({
     })
 
     if (dropped.length > 0) {
-      toast(
+      toast.info(
         `${dropped.length === 1 ? 'One service was' : `${dropped.length} services were`} removed because they fall outside these hours: ${dropped.join(', ')}.`,
         { duration: 8000 }
       )
@@ -349,46 +344,44 @@ export function SpecialHoursModal({
       open={showDeleteConfirm}
       onClose={() => setShowDeleteConfirm(false)}
       onConfirm={handleDeleteConfirmed}
-      title="Revert to Regular Hours"
-      message="Remove this exception and revert to regular hours for this date?"
-      confirmLabel="Remove Exception"
-      variant="danger"
+      title="Delete Exception"
+      message="This date goes back to the regular weekly hours. This cannot be undone."
+      confirmLabel="Delete"
+      tone="danger"
       loading={loading}
     />
     <Modal
       open={isOpen}
       onClose={onClose}
-      title={`Edit Hours: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
-      size="lg"
+      title={`${initialData ? 'Edit Exception' : 'New Exception'}: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
+      width="lg"
       footer={
-        <ModalActions align="between">
-          <div>
-            {initialData && (
-              <Button
-                type="button"
-                variant="danger"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={loading || !canManage}
-              >
-                <TrashIcon className="w-4 h-4 mr-2" />
-                Revert to Regular
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
-              Cancel
+        <>
+          {initialData ? (
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={loading || !canManage}
+              icon={<Icon name="trash" size={16} />}
+              className="sm:mr-auto"
+            >
+              Delete
             </Button>
-            <Button type="submit" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
-              Save Changes
-            </Button>
-          </div>
-        </ModalActions>
+          ) : null}
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
+            {initialData ? 'Save Changes' : 'Create Exception'}
+          </Button>
+        </>
       }
     >
       <div className="space-y-6">
         {/* Main Status Toggles */}
-        <div className="flex flex-wrap gap-6 bg-surface-2 p-4 rounded-lg border border-border">
+        <Card variant="secondary">
+          <div className="flex flex-wrap gap-6">
           <Checkbox
             label="Venue Closed"
             checked={isClosed}
@@ -415,13 +408,14 @@ export function SpecialHoursModal({
                disabled={!canManage || isClosed}
              />
           )}
-        </div>
+          </div>
+        </Card>
 
         {/* Venue Hours */}
         {!isClosed && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div>
-                <h4 className="text-sm font-medium text-text mb-2">Venue Hours</h4>
+                <SubHeading as="h3" className="mb-2">Venue Hours</SubHeading>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -445,7 +439,7 @@ export function SpecialHoursModal({
              </div>
 
              <div>
-                <h4 className="text-sm font-medium text-text mb-2">Kitchen Hours</h4>
+                <SubHeading as="h3" className="mb-2">Kitchen Hours</SubHeading>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -472,8 +466,8 @@ export function SpecialHoursModal({
 
         {/* Sunday Lunch Hours (Only show if Sunday) */}
         {!isClosed && isSunday && (
-          <div className="rounded-lg border border-cat-5/20 bg-cat-5-soft p-4">
-             <h4 className="text-sm font-medium text-cat-5-fg mb-2">Sunday Lunch Service</h4>
+          <Card className="bg-cat-5-soft">
+             <SubHeading as="h3" className="mb-2 text-cat-5-fg">Sunday Lunch Service</SubHeading>
              <div className="flex gap-4 items-end">
                 <div className="flex-1">
                   <Input
@@ -497,7 +491,7 @@ export function SpecialHoursModal({
              <p className="text-xs text-cat-5-fg mt-2">
                Controls the &quot;Sunday Lunch&quot; booking slot availability.
              </p>
-          </div>
+          </Card>
         )}
 
         {/* Note */}

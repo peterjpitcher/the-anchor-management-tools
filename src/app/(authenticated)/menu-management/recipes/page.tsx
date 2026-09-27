@@ -3,19 +3,20 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/ds';
-import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
 import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
-import { FilterPanel, type FilterDefinition } from '@/ds';
-import { Pagination } from '@/ds';
-import { EmptyState } from '@/ds';
+import { TablePagination } from '@/ds';
+import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { useTablePipeline } from '../_components/useTablePipeline';
+import { MenuTableFilters, type MenuFilterDefinition } from '../_components/MenuTableFilters';
+import { MENU_NAV, MENU_TITLE } from '../_shared/nav';
+import { menuActiveLabel, menuActiveTone } from '../_shared/status-ui';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
 import { RecipeExpandedRow, type RecipeListItem } from './_components/RecipeExpandedRow';
 import { RecipeDrawer } from './_components/RecipeDrawer';
@@ -84,6 +85,37 @@ function mapApiRecipe(raw: Record<string, unknown>): RecipeListItem {
 }
 
 // ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+type RecipeRow = Record<string, unknown>;
+
+function asRecipe(row: RecipeRow): RecipeListItem {
+  return row as unknown as RecipeListItem;
+}
+
+function getRecipeRowKey(row: RecipeRow): string {
+  return asRecipe(row).id;
+}
+
+/**
+ * Column sorts the pipeline applies to the whole filtered list before it is cut into pages (the
+ * table is sorted under control, so a header click never sorts just the 25 rows on screen). Name
+ * and cost compare their own field; the counts and the status need their own rule.
+ */
+const RECIPE_SORT_FNS: Record<string, (a: RecipeRow, b: RecipeRow) => number> = {
+  portion_cost: (a, b) => asRecipe(a).portion_cost - asRecipe(b).portion_cost,
+  ingredients_count: (a, b) => asRecipe(a).ingredients.length - asRecipe(b).ingredients.length,
+  usage_count: (a, b) => asRecipe(a).usage.length - asRecipe(b).usage.length,
+  // Active recipes first.
+  status: (a, b) => {
+    const activeA = asRecipe(a).is_active;
+    const activeB = asRecipe(b).is_active;
+    return activeA === activeB ? 0 : activeA ? -1 : 1;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Filter definitions
 // ---------------------------------------------------------------------------
 
@@ -97,8 +129,8 @@ const USAGE_OPTIONS = [
   { value: 'unused', label: 'Not used in dishes' },
 ];
 
-const filterDefinitions: FilterDefinition[] = [
-  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
+const filterDefinitions: MenuFilterDefinition[] = [
+  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS },
   { id: 'usage', label: 'Used in dishes', type: 'select', options: USAGE_OPTIONS },
 ];
 
@@ -201,6 +233,7 @@ export default function MenuRecipesPage(): React.ReactElement {
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
     filterFn: recipeFilterFn,
+    sortFns: RECIPE_SORT_FNS,
   });
 
   // ---- Actions ----
@@ -256,11 +289,6 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Cost / portion',
         align: 'right' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.portion_cost - rb.portion_cost;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return <span className="font-semibold">£{Number(recipe.portion_cost ?? 0).toFixed(2)}</span>;
@@ -271,14 +299,9 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Ingredients',
         align: 'center' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.ingredients.length - rb.ingredients.length;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
-          return <Badge variant="secondary">{recipe.ingredients.length}</Badge>;
+          return <Badge tone="neutral">{recipe.ingredients.length}</Badge>;
         },
       },
       {
@@ -286,25 +309,15 @@ export default function MenuRecipesPage(): React.ReactElement {
         header: 'Dishes',
         align: 'center' as const,
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.usage.length - rb.usage.length;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
-          return <Badge variant="secondary">{recipe.usage.length}</Badge>;
+          return <Badge tone="neutral">{recipe.usage.length}</Badge>;
         },
       },
       {
         key: 'status',
         header: 'Status',
         sortable: true,
-        sortFn: (a, b) => {
-          const ra = a as unknown as RecipeListItem;
-          const rb = b as unknown as RecipeListItem;
-          return ra.is_active === rb.is_active ? 0 : ra.is_active ? -1 : 1;
-        },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
           return canManage ? (
@@ -315,8 +328,8 @@ export default function MenuRecipesPage(): React.ReactElement {
               onToggled={() => void loadData()}
             />
           ) : (
-            <Badge tone={recipe.is_active ? 'success' : 'neutral'}>
-              {recipe.is_active ? 'Active' : 'Inactive'}
+            <Badge tone={menuActiveTone(recipe.is_active)}>
+              {menuActiveLabel(recipe.is_active)}
             </Badge>
           );
         },
@@ -345,16 +358,14 @@ export default function MenuRecipesPage(): React.ReactElement {
 
   // ---- Header actions ----
 
-  const headerActions = (
-    <div className="flex items-center gap-2">
-      {canManage && <Button onClick={openCreate}>Add Recipe</Button>}
-      {canManage && (
-        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
-          Menu Target
-        </LinkButton>
-      )}
-    </div>
-  );
+  const headerActions = canManage ? (
+    <>
+      <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
+        Menu Target
+      </LinkButton>
+      <Button variant="primary" size="sm" onClick={openCreate}>New Recipe</Button>
+    </>
+  ) : undefined;
 
   // ---- Ingredient options for drawer ----
 
@@ -372,83 +383,77 @@ export default function MenuRecipesPage(): React.ReactElement {
 
   // ---- Render ----
 
+  // One set of header props for every state, so the title, tabs and actions never move.
+  const layoutProps = {
+    title: MENU_TITLE,
+    subtitle: 'Recipes: prep built once from ingredients, reused across dishes',
+    navItems: MENU_NAV,
+    headerActions,
+  };
+
   return (
     <PageLayout
-      title="Menu Recipes"
-      subtitle="Build prep recipes from ingredients once, then reuse them across multiple dishes."
-      backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
-      navItems={[
-        { label: 'Overview', href: '/menu-management' },
-        { label: 'Dishes', href: '/menu-management/dishes' },
-        { label: 'Recipes', href: '/menu-management/recipes' },
-        { label: 'Ingredients', href: '/menu-management/ingredients' },
-      ]}
-      headerActions={headerActions}
+      {...layoutProps}
       loading={loading}
-      loadingLabel="Loading recipes..."
+      loadingLabel="Loading recipes"
       error={error}
       onRetry={loadData}
     >
-      <Section>
-        {/* Filter panel with integrated search */}
-        <FilterPanel
-          filters={filterDefinitions}
-          values={pipeline.filters}
-          onChange={pipeline.setFilters}
-          showSearch
-          searchValue={pipeline.searchQuery}
-          onSearchChange={pipeline.setSearchQuery}
-          searchPlaceholder="Search recipes..."
-          layout="horizontal"
-          onReset={pipeline.clearFilters}
-        />
+      <MenuTableFilters
+        filters={filterDefinitions}
+        values={pipeline.filters}
+        onChange={pipeline.setFilters}
+        searchValue={pipeline.searchQuery}
+        onSearchChange={pipeline.setSearchQuery}
+        searchPlaceholder="Search recipes..."
+        searchLabel="Search recipes"
+        onClear={pipeline.clearFilters}
+      />
 
-        {/* Data table */}
-        <Card className="mt-4">
-          {!loading && recipes.length === 0 ? (
-            <EmptyState
-              title="No recipes yet"
-              description="Create a recipe to combine ingredients into reusable prep items."
-              icon="inbox"
-              action={
-                canManage ? (
-                  <Button onClick={openCreate}>Add Recipe</Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <DataTable
-              data={pipeline.pageData}
-              columns={columns}
-              getRowKey={(row) => (row as unknown as RecipeListItem).id}
-              emptyMessage={
-                pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                  ? 'No recipes match your filters'
-                  : 'No recipes configured yet'
-              }
-              expandable
-              renderExpandedContent={(row) => (
-                <RecipeExpandedRow recipe={row as unknown as RecipeListItem} />
-              )}
-            />
-          )}
-        </Card>
-
-        {/* Pagination */}
-        {pipeline.totalPages > 1 && (
-          <Pagination
-            currentPage={pipeline.currentPage}
-            totalPages={pipeline.totalPages}
-            totalItems={pipeline.totalItems}
-            itemsPerPage={pipeline.itemsPerPage}
-            onPageChange={pipeline.setCurrentPage}
-            onItemsPerPageChange={pipeline.setItemsPerPage}
-            showItemsPerPage
-            showItemCount
-            className="mt-2"
+      <Card padding="none">
+        {!loading && recipes.length === 0 ? (
+          <Empty
+            size="sm"
+            title="No recipes yet"
+            description="Create a recipe to combine ingredients into reusable prep items."
+            icon="inbox"
+            action={
+              canManage ? (
+                <Button variant="primary" size="sm" onClick={openCreate}>New Recipe</Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <DataTable
+            data={pipeline.pageData}
+            columns={columns}
+            getRowKey={getRecipeRowKey}
+            sortKey={pipeline.sortKey || null}
+            sortDirection={pipeline.sortDirection}
+            onSortChange={pipeline.setSort}
+            bordered={false}
+            emptyMessage={
+              pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
+                ? 'No recipes match these filters'
+                : 'No recipes yet'
+            }
+            expandable
+            renderExpandedContent={(row) => (
+              <RecipeExpandedRow recipe={row as unknown as RecipeListItem} />
+            )}
           />
         )}
-      </Section>
+
+        {pipeline.totalPages > 1 && (
+          <TablePagination
+            page={pipeline.currentPage}
+            totalPages={pipeline.totalPages}
+            onPageChange={pipeline.setCurrentPage}
+            pageSize={pipeline.itemsPerPage}
+            totalItems={pipeline.totalItems}
+          />
+        )}
+      </Card>
 
       {/* Recipe drawer (create / edit) */}
       <RecipeDrawer
@@ -465,16 +470,14 @@ export default function MenuRecipesPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(recipeToDelete)}
-        title="Delete recipe?"
+        title="Delete Recipe"
         message={
           recipeToDelete
             ? `This removes ${recipeToDelete.name} from every dish that uses it.`
             : undefined
         }
-        confirmText="Delete"
-        type="danger"
-        confirmVariant="danger"
-        destructive
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setRecipeToDelete(null)}
         onConfirm={handleDelete}
       />

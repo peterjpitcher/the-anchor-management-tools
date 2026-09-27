@@ -51,7 +51,13 @@ describe('CommunicationsTab', () => {
 
   it('shows history empty state when no messages sent', () => {
     render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} />)
-    expect(screen.getByText('No messages sent yet')).toBeInTheDocument()
+    expect(screen.getByText('No messages yet')).toBeInTheDocument()
+  })
+
+  it('shows a failed history read as an error, never as no messages', () => {
+    render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} historyError="permission denied" />)
+    expect(screen.getByText('Messages could not be loaded: permission denied')).toBeInTheDocument()
+    expect(screen.queryByText('No messages yet')).not.toBeInTheDocument()
   })
 
   it('renders scheduled list with resolved preview bodies', () => {
@@ -87,7 +93,7 @@ describe('CommunicationsTab', () => {
     render(<CommunicationsTab history={[]} scheduled={scheduled} isDateTbd={false} />)
 
     expect(
-      screen.getByText("Won't send — feature disabled in production."),
+      screen.getByText("Won't send: feature disabled in production."),
     ).toBeInTheDocument()
     expect(screen.getByText('Already sent this cycle.')).toBeInTheDocument()
     // Both items show "Will not fire"
@@ -110,7 +116,7 @@ describe('CommunicationsTab', () => {
   it('shows generic empty state for scheduled when date is not TBD', () => {
     render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} />)
 
-    expect(screen.getByText('Nothing scheduled')).toBeInTheDocument()
+    expect(screen.getByText('No reminders scheduled')).toBeInTheDocument()
   })
 
   it('shows twilio SID on sent history rows only', () => {
@@ -123,5 +129,29 @@ describe('CommunicationsTab', () => {
 
     expect(screen.getByText(/SM-sent/)).toBeInTheDocument()
     expect(screen.queryByText(/SM-failed/)).not.toBeInTheDocument()
+  })
+
+  it('words texts and emails with the shared delivery status map', () => {
+    const history = [
+      historyRow({ id: 'pending-row', status: 'pending' }),
+      historyRow({ id: 'email-row', status: 'sent', delivered_by: 'email' }),
+    ]
+    const emails = [
+      { id: 'e1', created_at: '2026-04-18T10:00:00Z', comm_type: 'confirmation', subject: 'Booked', status: 'complained', to_address: 'sam@example.com', error: 'Marked as spam by the recipient' },
+      { id: 'e2', created_at: '2026-04-17T10:00:00Z', comm_type: 'reminder', subject: 'Reminder', status: 'delivered', to_address: 'sam@example.com', error: 'stale error' },
+    ]
+
+    render(<CommunicationsTab history={history} scheduled={[]} isDateTbd={false} emails={emails} />)
+
+    const texts = within(screen.getByRole('list', { name: 'SMS message history' })).getAllByRole('listitem')
+    expect(within(texts[0]).getByText('Waiting')).toBeInTheDocument()
+    expect(within(texts[1]).getByText('Sent by email')).toBeInTheDocument()
+
+    const sent = within(screen.getByRole('list', { name: 'Email history' })).getAllByRole('listitem')
+    expect(within(sent[0]).getByText('Marked as spam')).toBeInTheDocument()
+    // An email that did not arrive shows its error; a delivered one never does.
+    expect(within(sent[0]).getByText('Marked as spam by the recipient')).toBeInTheDocument()
+    expect(within(sent[1]).getByText('Delivered')).toBeInTheDocument()
+    expect(within(sent[1]).queryByText('stale error')).not.toBeInTheDocument()
   })
 })

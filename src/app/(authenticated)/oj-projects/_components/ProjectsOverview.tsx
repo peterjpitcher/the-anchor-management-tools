@@ -4,9 +4,14 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
+  Alert,
   Stat,
+  StatGrid,
   Card,
+  CardBody,
   CardHeader,
+  PageLayout,
+  PageLoading,
   Table,
   TableHeader,
   TableBody,
@@ -45,6 +50,11 @@ import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-pr
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { clearPendingNavigation, rememberPendingNavigation } from '@/lib/navigation-recovery'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
+import { ojProjectsLayout } from '../_shared/nav'
+import { ojBillable, ojBudgetTone, ojEntryStatus, ojEntryType, ojProjectStatus } from '../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('overview')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -77,6 +87,8 @@ interface ProjectsOverviewProps {
   workHistoryDays: WorkHistoryRangeDays
   /** Every unbilled billable entry, not just this month's. */
   billableUnbilledCount: number
+  /** Set when a load failed, so the page says so rather than showing empty lists. */
+  loadError?: string
 }
 
 function createBlankEntryForm(vendorId = '') {
@@ -103,6 +115,7 @@ export function ProjectsOverview({
   workHistory,
   workHistoryDays,
   billableUnbilledCount,
+  loadError,
 }: ProjectsOverviewProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -391,24 +404,6 @@ export function ProjectsOverview({
     return Math.round(total * 100) / 100
   }, [visibleProjects])
 
-  const statusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
-    switch (status) {
-      case 'active': return 'success'
-      case 'paused': return 'warning'
-      case 'completed': return 'info'
-      default: return 'neutral'
-    }
-  }
-
-  const entryStatusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
-    switch (status) {
-      case 'paid': return 'success'
-      case 'billed': return 'info'
-      case 'unbilled': return 'warning'
-      default: return 'neutral'
-    }
-  }
-
   function isEntryEditable(entry: any): boolean {
     if (entry.status === 'unbilled') return true
     if (!['billed', 'billing_pending'].includes(String(entry.status))) return false
@@ -428,35 +423,45 @@ export function ProjectsOverview({
     return Number(entry.amount_ex_vat_snapshot || 0)
   }
 
+  const newEntryButton = canCreate ? (
+    <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openCreate}>
+      New Entry
+    </Button>
+  ) : undefined
+
+  if (loadError) {
+    return (
+      <PageLayout {...LAYOUT}>
+        <Alert tone="danger" title="Could not load OJ Projects">
+          {loadError}
+        </Alert>
+      </PageLayout>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        {/* Stats row */}
-        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
-          <Stat label="Hours This Month" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
-          <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
-          <Stat label="Billable Unbilled" value={String(billableUnbilledCount)} icon={<Icon name="clock" size={20} />} hint="All unbilled work, not just this month" />
-        </div>
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end lg:ml-4">
-          <Select
-            label="Client"
-            value={clientFilterValue}
-            onChange={(e) => handleClientFilterChange(e.target.value)}
-            disabled={isPending}
-            options={[
-              { label: 'All clients', value: '' },
-              ...vendors.map((v) => ({ label: v.name, value: v.id })),
-            ]}
-            className="min-w-[220px]"
-          />
-          {canCreate && (
-            <Button variant="primary" icon={<Icon name="plus" size={16} />} onClick={openCreate} className="self-start sm:self-auto">
-              New Entry
-            </Button>
-          )}
-        </div>
+    <PageLayout {...LAYOUT} headerActions={newEntryButton}>
+      {/* The client filter drives every figure, chart and list below it. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Select
+          label="Client"
+          value={clientFilterValue}
+          onChange={(e) => handleClientFilterChange(e.target.value)}
+          disabled={isPending}
+          options={[
+            { label: 'All clients', value: '' },
+            ...vendors.map((v) => ({ label: v.name, value: v.id })),
+          ]}
+          className="min-w-[220px]"
+        />
       </div>
+
+      <StatGrid columns={4}>
+        <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
+        <Stat label="Hours This Month" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
+        <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
+        <Stat label="Billable Unbilled" value={String(billableUnbilledCount)} icon={<Icon name="clock" size={20} />} hint="All unbilled work, not just this month" />
+      </StatGrid>
 
       <Card>
         <CardHeader
@@ -473,49 +478,52 @@ export function ProjectsOverview({
               iconRight={<Icon name={historyOpen ? 'chevronUp' : 'chevronDown'} size={14} />}
               onClick={() => setHistoryOpen((open) => !open)}
             >
-              {historyOpen ? 'Hide chart' : 'Show chart'}
+              {historyOpen ? 'Hide Chart' : 'Show Chart'}
             </Button>
           )}
         />
         {historyOpen && (
-          <div id="oj-projects-work-history" className="flex flex-col gap-3 p-pad-card">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-ui font-medium text-text">Period</span>
-              <Segmented
-                options={WORK_HISTORY_RANGES.map((range) => ({ id: String(range.days), label: range.label }))}
-                value={String(workHistoryDays)}
-                onChange={(id) => applyFilters({ days: Number(id) as WorkHistoryRangeDays })}
-                size="sm"
-              />
-            </div>
-            {isPending ? (
-              <Empty title="Loading work history" size="sm" variant="minimal" />
-            ) : hasLoggedHours ? (
-              <figure
-                aria-label={`${workHistoryDescription} for ${selectedVendorName || 'all clients'}`}
-              >
-                <RevenueChart
-                  data={workHistory}
-                  height={240}
-                  barSize={workHistoryRange.granularity === 'day' ? 18 : 28}
-                  valueFormatter={(value) => `${value.toLocaleString('en-GB', { maximumFractionDigits: 2 })}h`}
+          <div id="oj-projects-work-history">
+            <CardBody className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span id="oj-projects-work-history-period" className="text-ui font-medium text-text">Period</span>
+                <Segmented
+                  options={WORK_HISTORY_RANGES.map((range) => ({ id: String(range.days), label: range.label }))}
+                  value={String(workHistoryDays)}
+                  onChange={(id) => applyFilters({ days: Number(id) as WorkHistoryRangeDays })}
+                  size="sm"
+                  aria-labelledby="oj-projects-work-history-period"
                 />
-                <figcaption className="sr-only">
-                  {workHistory
-                    .filter((bucket) => bucket.amount > 0)
-                    .map((bucket) => `${bucket.day}: ${bucket.amount} hours`)
-                    .join(', ')}
-                </figcaption>
-              </figure>
-            ) : (
-              <Empty
-                icon="chart"
-                title="No hours logged"
-                description={`There are no time entries for this view in the last ${workHistoryRange.label}.`}
-                size="sm"
-                variant="minimal"
-              />
-            )}
+              </div>
+              {isPending ? (
+                <PageLoading inline label="Loading work history" />
+              ) : hasLoggedHours ? (
+                <figure
+                  aria-label={`${workHistoryDescription} for ${selectedVendorName || 'all clients'}`}
+                >
+                  <RevenueChart
+                    data={workHistory}
+                    height={240}
+                    barSize={workHistoryRange.granularity === 'day' ? 18 : 28}
+                    valueFormatter={(value) => `${value.toLocaleString('en-GB', { maximumFractionDigits: 2 })}h`}
+                  />
+                  <figcaption className="sr-only">
+                    {workHistory
+                      .filter((bucket) => bucket.amount > 0)
+                      .map((bucket) => `${bucket.day}: ${bucket.amount} hours`)
+                      .join(', ')}
+                  </figcaption>
+                </figure>
+              ) : (
+                <Empty
+                  icon="chart"
+                  title="No hours for this period"
+                  description={`There are no time entries for this view in the last ${workHistoryRange.label}.`}
+                  size="sm"
+                  variant="minimal"
+                />
+              )}
+            </CardBody>
           </div>
         )}
       </Card>
@@ -524,7 +532,7 @@ export function ProjectsOverview({
       <Card>
         <CardHeader title="Active Projects" />
         {activeProjects.length === 0 ? (
-          <Empty title="No active projects" description="No projects are currently active." />
+          <Empty size="sm" title="No active projects" description="No projects are currently active." />
         ) : (
           <>
             <div className="divide-y divide-border px-pad-card py-3 md:hidden">
@@ -553,7 +561,7 @@ export function ProjectsOverview({
                         </Link>
                         <p className="text-xs text-text-muted">{project.vendor?.name || 'Unknown'}</p>
                       </div>
-                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                      <Badge tone={ojProjectStatus(project.status).tone}>{ojProjectStatus(project.status).label}</Badge>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <span><span className="text-text-muted">Billed:</span> {formatCurrency(billedThisMonth)}</span>
@@ -561,7 +569,7 @@ export function ProjectsOverview({
                     </div>
                     {hasBudget ? (
                       <div className="flex flex-col gap-1">
-                        <ProgressBar value={progress} tone={progress > 90 ? 'danger' : 'primary'} />
+                        <ProgressBar value={progress} tone={ojBudgetTone(progress)} />
                         <span className="text-xs text-text-muted">
                           {budgetHours > 0
                             ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
@@ -576,64 +584,64 @@ export function ProjectsOverview({
               })}
             </div>
             <Table className="hidden md:block">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Billed This Month</TableHead>
-                <TableHead>Hours Used</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activeProjects.map((project) => {
-                const budgetHours = Number(project.budget_hours || 0)
-                const usedHours = Number(project.total_hours_used || 0)
-                const budgetMoney = Number(project.budget_ex_vat || 0)
-                const spentMoney = Number(project.total_spend_ex_vat || 0)
-                const billedThisMonth = Number(project.billed_this_month_ex_vat || 0)
-                const hasBudget = budgetHours > 0 || budgetMoney > 0
-                const progress = budgetHours > 0
-                  ? Math.min((usedHours / budgetHours) * 100, 100)
-                  : budgetMoney > 0
-                    ? Math.min((spentMoney / budgetMoney) * 100, 100)
-                    : 0
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Budget</TableHead>
+                  <TableHead>Billed This Month</TableHead>
+                  <TableHead>Hours Used</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activeProjects.map((project) => {
+                  const budgetHours = Number(project.budget_hours || 0)
+                  const usedHours = Number(project.total_hours_used || 0)
+                  const budgetMoney = Number(project.budget_ex_vat || 0)
+                  const spentMoney = Number(project.total_spend_ex_vat || 0)
+                  const billedThisMonth = Number(project.billed_this_month_ex_vat || 0)
+                  const hasBudget = budgetHours > 0 || budgetMoney > 0
+                  const progress = budgetHours > 0
+                    ? Math.min((usedHours / budgetHours) * 100, 100)
+                    : budgetMoney > 0
+                      ? Math.min((spentMoney / budgetMoney) * 100, 100)
+                      : 0
 
-                return (
-                  <TableRow
-                    key={project.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/oj-projects/projects/${project.id}`)}
-                  >
-                    <TableCell className="font-medium">{project.project_name}</TableCell>
-                    <TableCell>{project.vendor?.name || 'Unknown'}</TableCell>
-                    <TableCell>
-                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {hasBudget ? (
-                        <div className="flex flex-col gap-1 min-w-[140px]">
-                          <ProgressBar
-                            value={progress}
-                            tone={progress > 90 ? 'danger' : 'primary'}
-                          />
-                          <span className="text-xs text-text-muted">
-                            {budgetHours > 0
-                              ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
-                              : `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney)}`}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-text-muted italic">No budget</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">{formatCurrency(billedThisMonth)}</TableCell>
-                    <TableCell>{usedHours.toFixed(1)}h</TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
+                  return (
+                    <TableRow
+                      key={project.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/oj-projects/projects/${project.id}`)}
+                    >
+                      <TableCell className="font-medium">{project.project_name}</TableCell>
+                      <TableCell>{project.vendor?.name || 'Unknown'}</TableCell>
+                      <TableCell>
+                        <Badge tone={ojProjectStatus(project.status).tone}>{ojProjectStatus(project.status).label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {hasBudget ? (
+                          <div className="flex flex-col gap-1 min-w-[140px]">
+                            <ProgressBar
+                              value={progress}
+                              tone={ojBudgetTone(progress)}
+                            />
+                            <span className="text-xs text-text-muted">
+                              {budgetHours > 0
+                                ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
+                                : `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney)}`}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-text-muted italic">No budget</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{formatCurrency(billedThisMonth)}</TableCell>
+                      <TableCell>{usedHours.toFixed(1)}h</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
             </Table>
           </>
         )}
@@ -643,10 +651,11 @@ export function ProjectsOverview({
       <Card>
         <CardHeader title="Recent Entries" subtitle="This month" />
         {isPending ? (
-          <Empty title="Loading entries" />
+          <PageLoading inline label="Loading entries" />
         ) : entries.length === 0 ? (
           <Empty
-            title="No entries"
+            size="sm"
+            title="No entries for this period"
             description={
               selectedVendorId
                 ? 'No entries recorded for this client this month.'
@@ -657,7 +666,7 @@ export function ProjectsOverview({
           <>
             <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {entries.map((entry) => {
-                const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
+                const entryType = ojEntryType(entry.entry_type)
                 const valueDisplay = entry.entry_type === 'time'
                   ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
                   : entry.entry_type === 'mileage'
@@ -696,13 +705,11 @@ export function ProjectsOverview({
                       <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <Badge tone={typeTone}>{entry.entry_type}</Badge>
+                      <Badge tone={entryType.tone}>{entryType.label}</Badge>
                       <span className="text-text-muted">{valueDisplay}</span>
                       <span className="font-medium">{formatCurrency(entryAmount(entry))}</span>
-                      <Badge tone={billable ? 'success' : 'neutral'}>
-                        {billable ? 'Billable' : 'Non-billable'}
-                      </Badge>
-                      <Badge tone={entryStatusTone(entry.status)}>{entry.status}</Badge>
+                      <Badge tone={ojBillable(billable).tone}>{ojBillable(billable).label}</Badge>
+                      <Badge tone={ojEntryStatus(entry.status).tone}>{ojEntryStatus(entry.status).label}</Badge>
                       {entry.invoice?.invoice_number && (
                         <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
                           {entry.invoice.invoice_number}
@@ -742,7 +749,7 @@ export function ProjectsOverview({
             </TableHeader>
             <TableBody>
               {entries.map((entry) => {
-                const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
+                const entryType = ojEntryType(entry.entry_type)
                 let valueDisplay = ''
                 if (entry.entry_type === 'time') {
                   valueDisplay = `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
@@ -764,21 +771,19 @@ export function ProjectsOverview({
                       {entry.vendor?.name || 'Unknown'}
                     </TableCell>
                     <TableCell>
-                      <Badge tone={typeTone}>{entry.entry_type}</Badge>
+                      <Badge tone={entryType.tone}>{entryType.label}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">{valueDisplay}</TableCell>
                     <TableCell className="font-medium">{formatCurrency(entryAmount(entry))}</TableCell>
                     <TableCell>
-                      <Badge tone={billable ? 'success' : 'neutral'}>
-                        {billable ? 'Billable' : 'Non-billable'}
-                      </Badge>
+                      <Badge tone={ojBillable(billable).tone}>{ojBillable(billable).label}</Badge>
                     </TableCell>
                     <TableCell className="whitespace-normal [overflow-wrap:anywhere] text-text-muted">
                       {entry.description || '-'}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        <Badge tone={entryStatusTone(entry.status)}>{entry.status}</Badge>
+                        <Badge tone={ojEntryStatus(entry.status).tone}>{ojEntryStatus(entry.status).label}</Badge>
                         {entry.invoice?.invoice_number && (
                           <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
                             {entry.invoice.invoice_number}
@@ -817,8 +822,22 @@ export function ProjectsOverview({
       </Card>
 
       {/* Create Entry Modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="New Entry">
-        <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-overview-entry-create-form" variant="primary" loading={saving}>
+              Create Entry
+            </Button>
+          </>
+        }
+      >
+        <form id="oj-overview-entry-create-form" onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
           <Segmented
             options={[
               { id: 'time', label: 'Time' },
@@ -828,6 +847,7 @@ export function ProjectsOverview({
             value={createType}
             onChange={(id) => setCreateType(id as 'time' | 'mileage' | 'one_off')}
             size="sm"
+            aria-label="Entry type"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Client" required>
@@ -947,20 +967,30 @@ export function ProjectsOverview({
             checked={createForm.billable}
             onChange={(checked) => setCreateForm({ ...createForm, billable: checked })}
           />
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              Create Entry
-            </Button>
-          </div>
         </form>
       </Modal>
 
       {/* Edit Entry Modal */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Entry">
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Entry"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-overview-entry-edit-form" variant="primary" loading={saving}>
+              {editForm.linked_invoice_number
+                ? editForm.linked_invoice_status === 'draft'
+                  ? 'Save and Recalculate Draft'
+                  : 'Save and Create Replacement Draft'
+                : 'Save Changes'}
+            </Button>
+          </>
+        }
+      >
+        <form id="oj-overview-entry-edit-form" onSubmit={handleEditSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Entry Type">
               <Input value={editForm.entry_type} disabled />
@@ -1090,19 +1120,6 @@ export function ProjectsOverview({
             checked={editForm.billable}
             onChange={(checked) => setEditForm({ ...editForm, billable: checked })}
           />
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {editForm.linked_invoice_number
-                ? editForm.linked_invoice_status === 'draft'
-                  ? 'Save and Recalculate Draft'
-                  : 'Save and Create Replacement Draft'
-                : 'Save Changes'}
-            </Button>
-          </div>
         </form>
       </Modal>
       <ConfirmDialog
@@ -1113,11 +1130,11 @@ export function ProjectsOverview({
         message={
           deleteEntryTarget?.invoice?.invoice_number
             ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
-            : 'Are you sure you want to delete this entry? This cannot be undone.'
+            : 'Delete this entry? This cannot be undone.'
         }
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

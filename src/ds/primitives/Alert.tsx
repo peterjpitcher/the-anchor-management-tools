@@ -9,11 +9,7 @@ type AlertTone = 'success' | 'warning' | 'danger' | 'info'
 
 interface AlertProps {
   tone?: AlertTone
-  /** @deprecated Use `tone` instead */
-  variant?: string
   title?: string
-  /** @deprecated Use children instead */
-  description?: string
   /** @deprecated Accepted for backward compatibility */
   actions?: React.ReactNode
   icon?: React.ReactNode
@@ -36,20 +32,10 @@ const toneStyles: Record<AlertTone, string> = {
   info: 'border-l-info bg-info-soft text-info-fg',
 }
 
-const variantToTone: Record<string, AlertTone> = {
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  error: 'danger',
-  info: 'info',
-}
-
-export function Alert({ tone, variant, title, description, actions, icon, children, className, closable = false, onClose, size, role = 'alert' }: AlertProps) {
+export function Alert({ tone = 'info', title, actions, icon, children, className, closable = false, onClose, size, role = 'alert' }: AlertProps) {
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
 
-  const resolvedTone: AlertTone = tone ?? variantToTone[variant ?? ''] ?? 'info'
-  const content = children ?? description
   const small = size === 'sm'
   const textSize = small ? 'text-ui' : 'text-sm'
 
@@ -66,7 +52,7 @@ export function Alert({ tone, variant, title, description, actions, icon, childr
       className={cn(
         'flex gap-3 border-l-4 rounded-default',
         small ? 'px-3 py-2' : 'p-4',
-        toneStyles[resolvedTone],
+        toneStyles[tone],
         className
       )}
       role={role}
@@ -78,7 +64,7 @@ export function Alert({ tone, variant, title, description, actions, icon, childr
       )}
       <div className="flex-1 min-w-0">
         {title && <p className={cn('font-bold', textSize)}>{title}</p>}
-        {content && <div className={cn(textSize, title && 'mt-1')}>{content}</div>}
+        {children && <div className={cn(textSize, title && 'mt-1')}>{children}</div>}
         {actions && <div className="mt-2">{actions}</div>}
       </div>
       {closable && (

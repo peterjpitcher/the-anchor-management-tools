@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { revokeEmployeeAccess, resendInvite } from '@/app/actions/employeeInvite';
 import {
@@ -10,9 +10,12 @@ import {
   type EmployeeSeparationShift,
   type SeparationShiftPolicy,
 } from '@/app/actions/employeeSeparation';
-import { Badge, Button, ConfirmDialog, Input, Modal, Textarea, toast } from '@/ds';
+import { Alert, Badge, Button, ConfirmDialog, Empty, Fieldset, Input, Modal, PageLoading, Radio, SubHeading, Textarea, toast } from '@/ds';
 import { formatDateFull, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
+import { SEPARATION_SHIFT_DECISION_TONES } from '@/app/(authenticated)/employees/_shared/status-ui';
+import { ROTA_WEEK_PUBLISH_LABEL, ROTA_WEEK_PUBLISH_TONE } from '@/app/(authenticated)/rota/_shared/status-ui';
+import { EmployeeActionButton, type EmployeeHeaderAction } from './employeeHeaderActions';
 
 interface EmployeeStatusActionsProps {
   employeeId: string;
@@ -33,12 +36,17 @@ function acceptanceLabel(status: EmployeeSeparationShift['acceptanceStatus']): s
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export default function EmployeeStatusActions({
+/**
+ * The status actions for an employee (Resend Invite, Begin Separation, Mark as Former) and the
+ * dialogs they open. Returned separately so the page can show the actions as buttons or as items
+ * in the phone "More" menu while the dialogs stay mounted outside that menu.
+ */
+export function useEmployeeStatusActions({
   employeeId,
   status,
   canEdit,
   employmentStartDate,
-}: EmployeeStatusActionsProps) {
+}: EmployeeStatusActionsProps): { actions: EmployeeHeaderAction[]; dialogs: ReactNode } {
   const router = useRouter();
   const dateInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
@@ -73,7 +81,7 @@ export default function EmployeeStatusActions({
     if (showConfirm === 'separation' && !previewLoading) dateInputRef.current?.focus();
   }, [previewLoading, showConfirm]);
 
-  if (!canEdit) return null;
+  if (!canEdit) return { actions: [], dialogs: null };
 
   const closeSeparation = () => {
     if (loading) return;
@@ -181,133 +189,108 @@ export default function EmployeeStatusActions({
     || Boolean(dateError)
     || !shiftPolicy;
 
-  return (
+  // No shift choice until the remaining rota has loaded.
+  const shiftPolicyDisabled = previewLoading || Boolean(previewError);
+
+  const actions: EmployeeHeaderAction[] = [];
+  if (status === 'Onboarding') {
+    actions.push({
+      key: 'resend-invite',
+      label: 'Resend Invite',
+      onSelect: handleResendInvite,
+      loading,
+    });
+  }
+  if (status === 'Active') {
+    actions.push({
+      key: 'begin-separation',
+      label: 'Begin Separation',
+      onSelect: openSeparation,
+      disabled: loading,
+    });
+  }
+  if (status === 'Started Separation') {
+    actions.push({
+      key: 'mark-former',
+      label: 'Mark as Former',
+      onSelect: () => setShowConfirm('revoke'),
+      loading,
+      tone: 'danger',
+    });
+  }
+
+  const dialogs = (
     <>
-      {status === 'Onboarding' && (
-        <Button
-          type="button"
-          onClick={handleResendInvite}
-          loading={loading}
-          size="sm"
-          variant="secondary"
-        >
-          {loading ? 'Sending...' : 'Resend Invite'}
-        </Button>
-      )}
-
-      {status === 'Active' && (
-        <Button
-          type="button"
-          onClick={openSeparation}
-          disabled={loading}
-          size="sm"
-          variant="secondary"
-        >
-          Begin Separation
-        </Button>
-      )}
-
-      {status === 'Started Separation' && (
-        <Button
-          type="button"
-          onClick={() => setShowConfirm('revoke')}
-          loading={loading}
-          size="sm"
-          variant="danger"
-        >
-          {loading ? 'Processing...' : 'Mark as Former'}
-        </Button>
-      )}
-
       {/* The DS Modal traps focus and closes on Escape or a click outside, through closeSeparation,
           which refuses while the separation is being saved (as the hand-built dialog did). */}
       <Modal
         open={showConfirm === 'separation'}
         onClose={closeSeparation}
         title="Begin Separation"
+        description="Review the remaining rota before starting the separation process. System access is not affected yet."
         width="lg"
         footer={
           <>
             <Button type="button" variant="secondary" onClick={closeSeparation} disabled={loading}>
               Cancel
             </Button>
-            <Button type="button" variant="primary" onClick={handleBeginSeparation} disabled={confirmDisabled}>
-              {loading ? 'Starting...' : 'Confirm separation'}
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleBeginSeparation}
+              disabled={confirmDisabled}
+              loading={loading}
+            >
+              Begin Separation
             </Button>
           </>
         }
       >
-        <p className="mb-6 text-sm text-text-muted">
-          Review the remaining rota before starting the separation process. System access is not affected yet.
-        </p>
+        <div className="space-y-4">
+          <Input
+            ref={dateInputRef}
+            id="separation-end-date"
+            label="Last working day"
+            type="date"
+            value={separationEndDate}
+            min={minimumEndDate ?? undefined}
+            onChange={(event) => setSeparationEndDate(event.target.value)}
+            error={dateError ?? undefined}
+            required
+          />
 
-        <div className="space-y-5">
-          <div>
-            <label htmlFor="separation-end-date" className="block text-sm font-medium text-text">
-              Last working day
-            </label>
-            <Input
-              ref={dateInputRef}
-              id="separation-end-date"
-              type="date"
-              value={separationEndDate}
-              min={minimumEndDate ?? undefined}
-              onChange={(event) => setSeparationEndDate(event.target.value)}
-              aria-describedby={dateError ? 'separation-date-error' : undefined}
-              aria-invalid={Boolean(dateError)}
-              className="mt-1"
-              required
+          {/* The DS Radio's label is the tap target, 44px tall on a touch screen, so the options
+              need no hand-built label or card around them. The fieldset disables the inputs; each
+              Radio is told as well, because its drawn circle and label only dim from its own prop. */}
+          <Fieldset
+            legend="What should happen to remaining shifts?"
+            required
+            disabled={shiftPolicyDisabled}
+          >
+            <Radio
+              name="separation-shift-policy"
+              value="work_remaining"
+              checked={shiftPolicy === 'work_remaining'}
+              onChange={() => setShiftPolicy('work_remaining')}
+              disabled={shiftPolicyDisabled}
+              label="Work agreed shifts"
+              description="Keep shifts through the last working day and open any later shifts."
             />
-            {dateError && (
-              <p id="separation-date-error" className="mt-1 text-sm text-danger-fg">
-                {dateError}
-              </p>
-            )}
-          </div>
+            <Radio
+              name="separation-shift-policy"
+              value="release_remaining"
+              checked={shiftPolicy === 'release_remaining'}
+              onChange={() => setShiftPolicy('release_remaining')}
+              disabled={shiftPolicyDisabled}
+              label="Release all remaining shifts"
+              description="Open every shift which has not started, including later today."
+            />
+          </Fieldset>
 
-          <fieldset disabled={previewLoading || Boolean(previewError)}>
-            <legend className="text-sm font-medium text-text">What should happen to remaining shifts?</legend>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border-strong p-4 has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
-                <input
-                  type="radio"
-                  name="separation-shift-policy"
-                  value="work_remaining"
-                  checked={shiftPolicy === 'work_remaining'}
-                  onChange={() => setShiftPolicy('work_remaining')}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-text">Work agreed shifts</span>
-                  <span className="mt-1 block text-sm text-text-muted">
-                    Keep shifts through the last working day and open any later shifts.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-3 rounded-lg border border-border-strong p-4 has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
-                <input
-                  type="radio"
-                  name="separation-shift-policy"
-                  value="release_remaining"
-                  checked={shiftPolicy === 'release_remaining'}
-                  onChange={() => setShiftPolicy('release_remaining')}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-text">Release all remaining shifts</span>
-                  <span className="mt-1 block text-sm text-text-muted">
-                    Open every shift which has not started, including later today.
-                  </span>
-                </span>
-              </label>
-            </div>
-          </fieldset>
-
-          <section aria-labelledby="remaining-shifts-heading">
+          <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <h4 id="remaining-shifts-heading" className="text-sm font-medium text-text">
-                Remaining scheduled shifts
-              </h4>
+              {/* h3: the dialog title is the h2. */}
+              <SubHeading as="h3">Remaining Scheduled Shifts</SubHeading>
               {preview && (
                 <span className="text-xs text-text-muted">
                   {preview.shifts.length} shift{preview.shifts.length === 1 ? '' : 's'}
@@ -315,19 +298,21 @@ export default function EmployeeStatusActions({
               )}
             </div>
 
-            {previewLoading && <p className="mt-2 text-sm text-text-muted">Loading scheduled shifts...</p>}
+            {previewLoading && <PageLoading inline label="Loading scheduled shifts…" className="py-6" />}
             {previewError && (
-              <p role="alert" className="mt-2 rounded-md border border-danger-border bg-danger-soft p-3 text-sm text-danger-fg">
+              <Alert tone="danger" size="sm">
                 {previewError}
-              </p>
+              </Alert>
             )}
             {preview && preview.shifts.length === 0 && (
-              <p className="mt-2 rounded-md bg-surface-2 p-3 text-sm text-text-muted">
-                There are no assigned shifts which have not started.
-              </p>
+              <Empty
+                size="sm"
+                title="No remaining shifts"
+                description="There are no assigned shifts which have not started."
+              />
             )}
             {preview && preview.shifts.length > 0 && (
-              <ul className="mt-2 max-h-56 divide-y divide-border overflow-y-auto rounded-md border border-border">
+              <ul className="max-h-56 divide-y divide-border overflow-y-auto rounded-default border border-border">
                 {preview.shifts.map((shift) => {
                   const willRelease = releasedShifts.some((released) => released.id === shift.id);
                   const decision = shiftPolicy ? (willRelease ? 'Will become open' : 'Will stay assigned') : null;
@@ -344,8 +329,8 @@ export default function EmployeeStatusActions({
                           </p>
                         </div>
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          <Badge tone={shift.weekStatus === 'published' ? 'success' : 'neutral'}>
-                            {shift.weekStatus === 'published' ? 'Published' : 'Draft'}
+                          <Badge tone={ROTA_WEEK_PUBLISH_TONE[shift.weekStatus]}>
+                            {ROTA_WEEK_PUBLISH_LABEL[shift.weekStatus]}
                           </Badge>
                           {acceptance && shift.acceptanceStatus && (
                             <Badge className={rotaShiftStatusClasses(shift.acceptanceStatus)}>
@@ -353,7 +338,7 @@ export default function EmployeeStatusActions({
                             </Badge>
                           )}
                           {decision && (
-                            <Badge tone={willRelease ? 'warning' : 'success'}>
+                            <Badge tone={SEPARATION_SHIFT_DECISION_TONES[willRelease ? 'released' : 'retained']}>
                               {decision}
                             </Badge>
                           )}
@@ -364,35 +349,30 @@ export default function EmployeeStatusActions({
                 })}
               </ul>
             )}
-          </section>
+          </div>
 
           {preview && shiftPolicy && (
-            <p className="rounded-md border border-info-border bg-info-soft p-3 text-sm text-info-fg" aria-live="polite">
+            <Alert tone="info" size="sm" role="status">
               {retainedShifts.length} shift{retainedShifts.length === 1 ? '' : 's'} will stay assigned.{' '}
               {releasedShifts.length} shift{releasedShifts.length === 1 ? '' : 's'} will become open.
-            </p>
+            </Alert>
           )}
 
           {leaveAfterEndDate.length > 0 && (
-            <p className="rounded-md border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
+            <Alert tone="warning" size="sm">
               There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. Cancel {leaveAfterEndDate.length === 1 ? 'it' : 'them'} separately before finalising the employee.
-            </p>
+            </Alert>
           )}
 
-          <div>
-            <label htmlFor="separation-note" className="block text-sm font-medium text-text">
-              Note
-            </label>
-            <Textarea
-              id="separation-note"
-              value={separationNote}
-              onChange={(event) => setSeparationNote(event.target.value)}
-              rows={3}
-              maxLength={500}
-              className="mt-1"
-              placeholder="Optional reason or handover note"
-            />
-          </div>
+          <Textarea
+            id="separation-note"
+            label="Note"
+            value={separationNote}
+            onChange={(event) => setSeparationNote(event.target.value)}
+            rows={3}
+            maxLength={500}
+            placeholder="Optional reason or handover note"
+          />
         </div>
       </Modal>
 
@@ -400,11 +380,26 @@ export default function EmployeeStatusActions({
         open={showConfirm === 'revoke'}
         onClose={() => setShowConfirm(null)}
         onConfirm={handleRevokeAccess}
-        title="Mark as Former and Revoke Access"
-        message={'This will set the employee status to "Former", set their employment end date to today, and remove all their system permissions. This cannot be undone automatically. Continue?'}
-        confirmLabel="Confirm"
+        title="Mark as Former"
+        message={'This sets the employee status to "Former", sets their employment end date to today and revokes all their system permissions. This cannot be undone automatically.'}
+        confirmLabel="Mark as Former"
         tone="danger"
       />
+    </>
+  );
+
+  return { actions, dialogs };
+}
+
+/** The status actions as buttons, with their dialogs. */
+export default function EmployeeStatusActions(props: EmployeeStatusActionsProps): React.JSX.Element {
+  const { actions, dialogs } = useEmployeeStatusActions(props);
+  return (
+    <>
+      {actions.map((action) => (
+        <EmployeeActionButton key={action.key} action={action} />
+      ))}
+      {dialogs}
     </>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Spinner } from '@/ds';
+import { Button, Input, Spinner } from '@/ds';
 import { useInlineEdit } from './useInlineEdit';
 
 interface EditableCurrencyCellProps {
@@ -43,7 +43,7 @@ export function EditableCurrencyCell({
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1">
           <span className="text-sm text-text-muted">£</span>
-          <input
+          <Input
             ref={inputRef}
             type="number"
             step="0.01"
@@ -57,7 +57,7 @@ export function EditableCurrencyCell({
                 cancelEditing();
               }
             }}
-            className="w-20 rounded-sm border border-border-strong bg-surface px-3 py-1 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring"
+            className="w-24"
             aria-label={`Edit ${fieldLabel} for ${entityName}`}
           />
         </div>
@@ -70,7 +70,7 @@ export function EditableCurrencyCell({
           </Button>
         </div>
         {error && (
-          <span className="text-xs text-danger">{error}</span>
+          <span className="text-xs text-danger-fg">{error}</span>
         )}
       </div>
     );
@@ -78,16 +78,19 @@ export function EditableCurrencyCell({
 
   return (
     <div className="flex flex-col gap-1">
-      <button
+      {/* A compact ghost button showing the price: clicking it opens the inline editor. */}
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         onClick={startEditing}
-        className="rounded-sm px-1 py-0.5 text-left text-sm hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
+        className="h-auto justify-start self-start px-1 py-0.5 text-sm font-normal"
         aria-label={`Edit ${fieldLabel} for ${entityName}`}
       >
         £{value.toFixed(2)}
-      </button>
+      </Button>
       {error && (
-        <span className="text-xs text-danger">{error}</span>
+        <span className="text-xs text-danger-fg">{error}</span>
       )}
     </div>
   );

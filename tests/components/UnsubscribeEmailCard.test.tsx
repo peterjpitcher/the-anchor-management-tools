@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const unsubscribeMarketingEmailAddress = vi.hoisted(() => vi.fn())
@@ -17,7 +17,7 @@ describe('UnsubscribeEmailCard', () => {
   it('explains that only marketing email is stopped', () => {
     render(<UnsubscribeEmailCard />)
 
-    expect(screen.getByText('Unsubscribe an email address')).toBeInTheDocument()
+    expect(screen.getByText('Unsubscribe an Email Address')).toBeInTheDocument()
     expect(
       screen.getByText('Marketing only. Booking confirmations and reminders will still be sent.'),
     ).toBeInTheDocument()
@@ -40,6 +40,10 @@ describe('UnsubscribeEmailCard', () => {
     const input = screen.getByLabelText('Email address')
     fireEvent.change(input, { target: { value: 'person@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: 'Unsubscribe' }))
+    // The red button asks first: nothing is sent until the dialog is confirmed.
+    const dialog = await screen.findByRole('dialog')
+    expect(unsubscribeMarketingEmailAddress).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unsubscribe' }))
 
     await waitFor(() => {
       expect(unsubscribeMarketingEmailAddress).toHaveBeenCalledWith('person@example.com')
@@ -57,6 +61,10 @@ describe('UnsubscribeEmailCard', () => {
     const input = screen.getByLabelText('Email address')
     fireEvent.change(input, { target: { value: 'person@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: 'Unsubscribe' }))
+    // The red button asks first: nothing is sent until the dialog is confirmed.
+    const dialog = await screen.findByRole('dialog')
+    expect(unsubscribeMarketingEmailAddress).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unsubscribe' }))
 
     await waitFor(() => {
       expect(unsubscribeMarketingEmailAddress).toHaveBeenCalled()

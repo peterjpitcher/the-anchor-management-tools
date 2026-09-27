@@ -1,8 +1,6 @@
 import { getAllRoles, getAllPermissions, checkUserPermission } from '@/app/actions/rbac'
 import RoleList from './components/RoleList'
-import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
-import { LinkButton } from '@/ds'
+import { Alert, LinkButton, PageLayout } from '@/ds'
 import { redirect } from 'next/navigation'
 
 export default async function RolesPage() {
@@ -36,9 +34,8 @@ export default async function RolesPage() {
 
   return (
     <PageLayout
-      title="Role Management"
-      subtitle="Manage roles and permissions for your organization"
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
+      title="Roles"
+      subtitle="Manage roles and permissions for your organisation"
       headerActions={
         canManage ? (
           <LinkButton href="/roles/new" variant="primary" size="sm">
@@ -48,14 +45,15 @@ export default async function RolesPage() {
       }
     >
       {errorMessage && (
-        <Alert
-          variant="error"
-          title="Error loading data"
-          description={errorMessage}
-        />
+        <Alert tone="danger" title="Error loading data">
+          {errorMessage}
+        </Alert>
       )}
 
-      <RoleList roles={roles} permissions={permissions} canManage={!!canManage} />
+      {/* A failed roles load shows the error only, never an empty list. */}
+      {!rolesResult.error && (
+        <RoleList roles={roles} permissions={permissions} canManage={!!canManage} />
+      )}
     </PageLayout>
   )
 }

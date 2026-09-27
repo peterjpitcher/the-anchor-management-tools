@@ -11,9 +11,15 @@ import {
   CardBody,
   CardHeader,
   Field,
+  Fieldset,
+  FileButton,
+  FormFooter,
+  Icon,
   Input,
+  LinkButton,
   PageLayout,
-  Spinner,
+  PageLoading,
+  Stat,
   Textarea,
   toast,
 } from '@/ds'
@@ -26,7 +32,7 @@ import { previewMarketingAudience } from '@/app/actions/marketing-contacts'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import type { AudiencePreview, MarketingTagCount } from '@/types/marketing'
 
-import { MARKETING_SECTION_NAV } from '../../_shared/marketing-ui'
+import { MARKETING_BACK } from '../../_shared/nav'
 
 interface NewCampaignClientProps {
   tags: MarketingTagCount[]
@@ -242,15 +248,14 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
 
   return (
     <PageLayout
-      title="New campaign"
+      title="New Campaign"
       subtitle="Paste the content, choose who it goes to, then save or schedule"
-      navItems={MARKETING_SECTION_NAV}
-      backButton={{ label: 'Campaigns', href: '/marketing' }}
+      backButton={MARKETING_BACK}
+      containerSize="md"
     >
-      <div className="space-y-6">
         <Card>
           <CardHeader
-            title="The basics"
+            title="The Basics"
             subtitle="The subject and preheader are what people see in their inbox"
           />
           <CardBody>
@@ -286,26 +291,22 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
           />
           <CardBody>
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    type="file"
-                    accept=".json,application/json"
-                    label="Upload a .json file"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (file) void handleJsonFile(file)
-                    }}
-                    fullWidth
-                  />
-                </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FileButton
+                  variant="secondary"
+                  accept=".json,application/json"
+                  icon={<Icon name="upload" size={14} />}
+                  onFiles={(files) => void handleJsonFile(files[0])}
+                >
+                  Upload a JSON File
+                </FileButton>
                 <Button
                   variant="secondary"
                   onClick={handleCheckContent}
                   loading={checking}
                   disabled={!contentJson.trim()}
                 >
-                  Check content
+                  Check Content
                 </Button>
               </div>
 
@@ -365,12 +366,12 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
 
         <Card>
           <CardHeader
-            title="Who it goes to"
-            subtitle="Pick tags to include. Leave them all unpicked to reach every eligible contact."
+            title="Who It Goes To"
+            subtitle="Pick tags to include, or leave them all unpicked to reach every eligible contact"
           />
           <CardBody>
-            <div className="space-y-5">
-              <Field label="Include these tags">
+            <div className="space-y-4">
+              <Fieldset legend="Include these tags">
                 {tags.length === 0 ? (
                   <p className="text-sm text-text-muted">
                     No tags yet. Add tags to contacts first, or leave this empty to reach
@@ -392,10 +393,10 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
                     ))}
                   </div>
                 )}
-              </Field>
+              </Fieldset>
 
-              <Field
-                label="Leave out these tags"
+              <Fieldset
+                legend="Leave out these tags"
                 hint="Anyone with one of these tags is removed, even if an include tag matched."
               >
                 {tags.length === 0 ? (
@@ -416,28 +417,18 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
                     ))}
                   </div>
                 )}
-              </Field>
+              </Fieldset>
 
-              <div className="rounded-lg border border-border bg-surface-2 p-4">
+              <Card variant="secondary">
                 {previewLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-text-muted">
-                    <Spinner size="sm" />
-                    Working out who this reaches…
-                  </div>
+                  <PageLoading inline label="Working out who this reaches" className="py-4" />
                 ) : previewError ? (
                   <Alert tone="warning" title="Could not count the audience">
                     {previewError}
                   </Alert>
                 ) : preview ? (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="text-3xl font-semibold text-text">
-                        {preview.eligibleCount}
-                      </span>
-                      <span className="text-sm text-text-muted">
-                        {preview.eligibleCount === 1 ? 'contact would get this' : 'contacts would get this'}
-                      </span>
-                    </div>
+                    <Stat label="Contacts who would get this" value={preview.eligibleCount} />
                     <div className="flex flex-wrap gap-2">
                       <Badge tone="neutral">
                         Not marked eligible: {preview.excludedCounts.notEligible}
@@ -460,49 +451,49 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
                     )}
                   </div>
                 ) : null}
-              </div>
+              </Card>
             </div>
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader
-            title="When it goes out"
-            subtitle="London time. It still waits for the send window and the send switch."
+            title="When It Goes Out"
+            subtitle="London time: it still waits for the send window and the send switch"
           />
           <CardBody>
-            <div className="space-y-4">
-              <Input
-                type="datetime-local"
-                label="Send at"
-                value={scheduledLocal}
-                onChange={(event) => setScheduledLocal(event.target.value)}
-                fullWidth
-              />
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button variant="secondary" onClick={handleSaveDraft} loading={saving}>
-                  Save as draft
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleSaveAndSchedule}
-                  loading={saving}
-                  disabled={!canSend || !scheduledLocal}
-                >
-                  Save and schedule
-                </Button>
-              </div>
-
-              {!canSend && (
-                <p className="text-sm text-text-muted">
-                  You can save a draft, but scheduling needs the marketing send permission.
-                </p>
-              )}
-            </div>
+            <Input
+              type="datetime-local"
+              label="Send at"
+              value={scheduledLocal}
+              onChange={(event) => setScheduledLocal(event.target.value)}
+              fullWidth
+            />
           </CardBody>
         </Card>
-      </div>
+
+        <FormFooter
+          start={
+            !canSend
+              ? 'You can save a draft, but scheduling needs the marketing send permission.'
+              : undefined
+          }
+        >
+          <LinkButton href={MARKETING_BACK.href} variant="secondary">
+            Cancel
+          </LinkButton>
+          <Button variant="secondary" onClick={handleSaveDraft} loading={saving}>
+            Save as Draft
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSaveAndSchedule}
+            loading={saving}
+            disabled={!canSend || !scheduledLocal}
+          >
+            Save and Schedule
+          </Button>
+        </FormFooter>
     </PageLayout>
   )
 }

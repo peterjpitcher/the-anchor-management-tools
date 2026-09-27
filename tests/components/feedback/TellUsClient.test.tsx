@@ -44,6 +44,16 @@ describe('TellUsClient', () => {
     expect(screen.queryByRole('textbox', { name: 'Company' })).toBeNull()
   })
 
+  it('names the star buttons by the question in one group, not two nested ones', () => {
+    renderForm()
+
+    const groups = screen.getAllByRole('group')
+    const ratingGroups = groups.filter((group) => group.querySelector('button[aria-label="1 star"]'))
+    expect(ratingGroups).toHaveLength(1)
+    expect(ratingGroups[0]).toHaveAccessibleName('How would you rate your visit?')
+    expect(screen.getByRole('button', { name: '1 star' }).parentElement).toBe(ratingGroups[0])
+  })
+
   it('keeps the sr-only label on the comments box', () => {
     renderForm()
     const comments = screen.getByLabelText('Tell us what happened')

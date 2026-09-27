@@ -139,6 +139,8 @@ export function ChecklistMidShiftPrompt() {
   if (!open || prompts.length === 0) return null
 
   return (
+    // Shown on the FOH kiosk page, which the owner keeps exactly as it is (26 Sep 2026), so
+    // its wording stays as the floor staff know it rather than following the Title Case rule.
     <Modal
       open={open}
       onClose={handleLater}
@@ -161,7 +163,7 @@ export function ChecklistMidShiftPrompt() {
         {/* The closing list is 22 tasks. One line for the lot, rather than a modal that
             needs scrolling before anyone can act on it. */}
         {closePrompts.length > 0 && (
-          <li className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+          <li className="flex items-center justify-between gap-3 rounded-default border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">
               Closing checklist
             </span>
@@ -171,7 +173,7 @@ export function ChecklistMidShiftPrompt() {
           </li>
         )}
         {otherPrompts.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+          <li key={p.id} className="flex items-center justify-between gap-3 rounded-default border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">{p.title}</span>
             <span className="shrink-0 text-xs text-text-muted">{p.slot}</span>
           </li>

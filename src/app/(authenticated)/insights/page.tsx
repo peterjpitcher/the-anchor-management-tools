@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { Alert, PageHeader } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
 import { currentUserCanViewInsights } from '@/lib/insights/access'
 import { buildWeeklyInsights } from '@/lib/insights/registry'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { InsightsReport } from '@/lib/insights/types'
 import { InsightsReportView } from './_components/InsightsReportView'
+import { INSIGHTS_LAYOUT } from './_shared/layout'
 
 // Built from live data on every load: the page is the day-to-day view, so it never serves a cached report.
 export const dynamic = 'force-dynamic'
@@ -38,12 +39,11 @@ export default async function InsightsPage(): Promise<React.JSX.Element> {
 
   if (!report) {
     return (
-      <div className="space-y-6">
-        <PageHeader breadcrumbs={[{ label: 'Insights' }]} title="Insights" className="mb-0" />
+      <PageLayout {...INSIGHTS_LAYOUT}>
         <Alert tone="danger" title="Insights are unavailable">
           {failure}
         </Alert>
-      </div>
+      </PageLayout>
     )
   }
 

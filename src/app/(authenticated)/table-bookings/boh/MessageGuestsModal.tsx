@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Modal, Button, Textarea, Select, Input, Radio, toast } from '@/ds'
+import { Alert, Fieldset, Modal, Button, Textarea, Select, Input, Radio, Spinner, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   previewTableBookingGuests,
@@ -139,30 +139,31 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
     <Modal
       open={open}
       onClose={onClose}
-      title="Message guests"
-      width="md"
-      footer={
-        // The modal renders outside BOH's data-touch-targets wrapper, so it opts in again: on a
-        // touch screen (the bar iPad) its controls get the 44px floor (owner decision D6).
-        <div className="contents" data-touch-targets>
-          <Button variant="ghost" onClick={onClose} disabled={isSending}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSend} loading={isSending} disabled={!canSend}>
-            {eligible > 0 ? `Send to ${eligible} guest${eligible === 1 ? '' : 's'}` : 'Send'}
-          </Button>
-        </div>
-      }
-    >
-      <div className="space-y-4" data-touch-targets>
-        <p className="text-sm text-text-muted">
+      title="Message Guests"
+      description={
+        <>
           {emailOption ? 'Send a message' : 'Send a text'} to guests booked on{' '}
           <span className="font-medium text-text">
             {formatDateInLondon(bookingDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </span>
           . Only confirmed bookings are included.
-        </p>
-
+        </>
+      }
+      width="md"
+      // The DS Modal panel carries data-touch-targets, so on a touch screen (the bar iPad) these
+      // controls get the 44px floor (owner decision D6).
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={isSending}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSend} loading={isSending} disabled={!canSend}>
+            {eligible > 0 ? `Send to ${eligible} Guest${eligible === 1 ? '' : 's'}` : 'Send'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         <Select
           label="Time"
           value={time}
@@ -178,8 +179,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
         </Select>
 
         {emailOption && (
-          <fieldset className="space-y-2">
-            <legend className="text-ui font-medium text-text mb-1">Send by</legend>
+          <Fieldset legend="Send by">
             <Radio
               name="message-guests-channel"
               value="email_first"
@@ -196,7 +196,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
               onChange={() => setChannel('sms')}
               disabled={isSending}
             />
-          </fieldset>
+          </Fieldset>
         )}
 
         {emailFirst && (
@@ -219,49 +219,56 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
           disabled={isSending}
         />
 
-        <div className="rounded-default bg-surface-2 border border-border p-3 text-sm">
-          {loadingPreview ? (
-            <span className="text-text-soft">Checking who can be reached…</span>
-          ) : previewError ? (
-            <span className="text-danger">Couldn&apos;t load guests: {previewError}</span>
-          ) : preview && preview.total > 0 && emailFirst && emailOption ? (
-            <ul className="space-y-1 text-text-muted">
+        {loadingPreview ? (
+          <Alert tone="info" role="status">
+            <span className="inline-flex items-center gap-2">
+              <Spinner size="sm" />
+              Checking who can be reached…
+            </span>
+          </Alert>
+        ) : previewError ? (
+          <Alert tone="danger">Couldn&apos;t load guests: {previewError}</Alert>
+        ) : preview && preview.total > 0 && emailFirst && emailOption ? (
+          <Alert tone="info" role="status">
+            <ul className="space-y-1">
               <li>
-                <span className="font-medium text-text">{emailOption.emailable}</span> will be emailed and{' '}
-                <span className="font-medium text-text">{emailOption.textOnly}</span> texted, of {plural(preview.total, 'guest')}.
+                <span className="font-semibold">{emailOption.emailable}</span> will be emailed and{' '}
+                <span className="font-semibold">{emailOption.textOnly}</span> texted, of {plural(preview.total, 'guest')}.
               </li>
               {preview.total - emailOption.reachable > 0 && (
-                <li className="text-text-soft">
+                <li>
                   {preview.total - emailOption.reachable} can&apos;t be reached (no usable email address and no mobile with SMS opt-in).
                 </li>
               )}
               {emailOption.noName > 0 && (
-                <li className="text-text-soft">
+                <li>
                   {emailOption.noName} have no name on file and will be greeted as &apos;there&apos;.
                 </li>
               )}
             </ul>
-          ) : preview && preview.total > 0 ? (
-            <ul className="space-y-1 text-text-muted">
+          </Alert>
+        ) : preview && preview.total > 0 ? (
+          <Alert tone="info" role="status">
+            <ul className="space-y-1">
               <li>
-                <span className="font-medium text-text">{preview.eligible}</span> of {preview.total} guest
+                <span className="font-semibold">{preview.eligible}</span> of {preview.total} guest
                 {preview.total === 1 ? '' : 's'} will be texted.
               </li>
               {preview.unreachable > 0 && (
-                <li className="text-text-soft">
+                <li>
                   {preview.unreachable} can&apos;t be reached (no mobile, opted out, or deactivated).
                 </li>
               )}
               {preview.noName > 0 && (
-                <li className="text-text-soft">
+                <li>
                   {preview.noName} have no name on file and will be greeted as &apos;there&apos;.
                 </li>
               )}
             </ul>
-          ) : (
-            <span className="text-text-soft">No guests found for this selection.</span>
-          )}
-        </div>
+          </Alert>
+        ) : (
+          <Alert tone="info" role="status">No guests found for this selection.</Alert>
+        )}
       </div>
     </Modal>
   )

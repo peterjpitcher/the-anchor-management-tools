@@ -3,6 +3,22 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
+// Touch screens (pointer: coarse): the label grows to the 44px touch target, 13px of padding
+// above and below one 18px line of text-ui, so callers never need their own <label> around
+// the control to make it easier to tap. The box column takes the same padding, so the box
+// stays level with the first line of the label whatever the row's alignment, and the real
+// input stretches over that column too. A mouse sees the compact layout unchanged.
+// Each class is written out in full so Tailwind can find it.
+const TOUCH_LABEL = 'pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+const TOUCH_BOX_COLUMN = 'pointer-coarse:box-content pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+const TOUCH_BOX_INPUT = 'pointer-coarse:h-full'
+const TOUCH_BOX_FACE = 'pointer-coarse:inset-y-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+// A checkbox named only by aria-label (a row selector, a "mark done" tick) has no label to grow,
+// so with `touchTarget` the invisible input itself becomes a 44px square centred on the 16px box
+// on touch screens. Nothing around it moves: only the area a finger can hit grows.
+const TOUCH_TARGET_INPUT =
+  'pointer-coarse:h-touch pointer-coarse:w-touch pointer-coarse:top-[calc((1rem_-_var(--spacing-touch))/2)] pointer-coarse:left-[calc((1rem_-_var(--spacing-touch))/2)]'
+
 interface CheckboxProps {
   label?: string
   'aria-label'?: string
@@ -15,6 +31,15 @@ interface CheckboxProps {
   id?: string
   name?: string
   value?: string
+  /**
+   * For a checkbox with no visible label (named by `aria-label`): on touch screens its tap area
+   * grows to a 44px square around the box, the touch row a visible label would give it, without
+   * moving anything. Use it instead of wrapping the checkbox in a <label> to make it easier to
+   * tap. A checkbox with a visible label already gets its touch row from the label. The area
+   * reaches 14px past each side of the box and sits above its neighbours, so leave 14px (gap-3.5)
+   * before a link or button beside it, or the checkbox takes that control's first taps.
+   */
+  touchTarget?: boolean
   /** @deprecated Accepted for backward compatibility */
   error?: boolean
   className?: string
@@ -33,6 +58,7 @@ export function Checkbox({
   id: idProp,
   name,
   value,
+  touchTarget = false,
   error: _error,
   className,
   children,
@@ -53,7 +79,7 @@ export function Checkbox({
 
   return (
     <div className={cn('flex gap-3 items-start', className)}>
-      <div className="relative mt-0.5 h-4 w-4 shrink-0">
+      <div className={cn('relative mt-0.5 h-4 w-4 shrink-0', displayLabel && TOUCH_BOX_COLUMN)}>
         <input
           ref={inputRef}
           id={id}
@@ -72,12 +98,16 @@ export function Checkbox({
             }
             onChange?.(nextChecked)
           }}
-          className="peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          className={cn(
+            'peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed',
+            displayLabel ? TOUCH_BOX_INPUT : touchTarget && TOUCH_TARGET_INPUT
+          )}
         />
         <span
           aria-hidden="true"
           className={cn(
             'absolute inset-0 rounded-sm border transition-[background,border-color,box-shadow] duration-[120ms]',
+            displayLabel && TOUCH_BOX_FACE,
             // The real input is invisible, so the focus pattern is drawn on this box.
             'peer-focus-visible:outline-hidden peer-focus-visible:shadow-ring',
             resolvedChecked || indeterminate
@@ -88,7 +118,7 @@ export function Checkbox({
         />
         {(resolvedChecked || indeterminate) && (
           <svg
-            className="pointer-events-none absolute inset-0 h-4 w-4 text-primary-fg"
+            className={cn('pointer-events-none absolute inset-0 h-4 w-4 text-primary-fg', displayLabel && TOUCH_BOX_FACE)}
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -109,6 +139,7 @@ export function Checkbox({
               htmlFor={id}
               className={cn(
                 'text-ui text-text cursor-pointer',
+                TOUCH_LABEL,
                 disabled && 'cursor-not-allowed opacity-50'
               )}
             >

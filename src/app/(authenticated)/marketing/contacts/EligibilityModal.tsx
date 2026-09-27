@@ -12,7 +12,11 @@ import type {
   SubscriberType,
 } from '@/types/marketing'
 
-import { MARKETING_BASIS_LABELS, SUBSCRIBER_TYPE_LABELS } from '../_shared/marketing-ui'
+import {
+  MARKETING_BASIS_LABELS,
+  SUBSCRIBER_SUGGESTION_TONES,
+  SUBSCRIBER_TYPE_LABELS,
+} from '../_shared/marketing-ui'
 
 interface EligibilityModalProps {
   /** One contact, or a selection being reviewed together. */
@@ -100,17 +104,17 @@ export function EligibilityModal({ contacts, onClose, onSaved }: EligibilityModa
     <Modal
       open
       onClose={onClose}
-      title={isBulk ? `Set eligibility for ${contacts.length} contacts` : 'Set eligibility'}
+      title={isBulk ? `Set Eligibility for ${contacts.length} Contacts` : 'Set Eligibility'}
       width="lg"
       footer={
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} loading={saving}>
-            {isBulk ? `Save for ${contacts.length} contacts` : 'Save eligibility'}
+            {isBulk ? `Save for ${contacts.length} Contacts` : 'Save Eligibility'}
           </Button>
-        </div>
+        </>
       }
     >
       <div className="space-y-4">
@@ -139,7 +143,7 @@ export function EligibilityModal({ contacts, onClose, onSaved }: EligibilityModa
           )
         ) : (
           <Alert
-            tone={suggestions[0].confidence === 'high' ? 'info' : 'warning'}
+            tone={SUBSCRIBER_SUGGESTION_TONES[suggestions[0].confidence]}
             title={
               suggestions[0].suggestion === 'corporate'
                 ? 'Suggested: a company'

@@ -1,13 +1,10 @@
 'use client'
 
 import type { ScheduledSmsPreview, ScheduledSmsSuppressionReason } from '@/services/private-bookings/scheduled-sms'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, Badge, Card, CardBody, CardHeader, Empty, Icon } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
-import { ChatBubbleLeftRightIcon, ClockIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
+import { SCHEDULED_REMINDER_TONE } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 export type CommunicationsHistoryRow = {
   id: string
@@ -32,44 +29,17 @@ export type CommunicationsEmailRow = {
   error: string | null
 }
 
-const UNDELIVERED_EMAIL_STATUSES = new Set(['bounced', 'complained', 'failed', 'suppressed'])
-
-function emailStatusVariant(status: string): StatusVariant {
-  if (UNDELIVERED_EMAIL_STATUSES.has(status)) return 'error'
-  if (status === 'delivered' || status === 'opened' || status === 'clicked') return 'success'
-  if (status === 'sent' || status === 'queued') return 'info'
-  return 'default'
-}
-
-type StatusVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'neutral'
-
-function statusVariant(status: string): StatusVariant {
-  switch (status) {
-    case 'sent':
-      return 'success'
-    case 'approved':
-    case 'pending':
-      return 'info'
-    case 'failed':
-      return 'error'
-    case 'cancelled':
-      return 'neutral'
-    default:
-      return 'default'
-  }
-}
-
-function statusLabel(status: string): string {
-  if (!status) return 'Unknown'
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
+// Texts and emails take their delivery tone and words from the one shared map
+// (MESSAGE_DELIVERY_STATUS_TONE and MESSAGE_DELIVERY_STATUS_LABEL in src/lib/messages/status-ui.ts).
+/** An email that did not arrive (failed, bounced, marked as spam, suppressed): its error is shown. */
+const isUndelivered = (status: string): boolean => messageDeliveryStatusTone(status) === 'danger'
 
 function labelForSuppression(reason: ScheduledSmsSuppressionReason): string {
   switch (reason) {
     case 'feature_flag_disabled':
-      return "Won't send — feature disabled in production."
+      return "Won't send: feature disabled in production."
     case 'date_tbd':
-      return 'No date-based reminders — booking date is TBD.'
+      return 'No date-based reminders: booking date is TBD.'
     case 'already_sent':
       return 'Already sent this cycle.'
     case 'stop_opt_out':
@@ -87,28 +57,37 @@ export function CommunicationsTab({
   isDateTbd,
   emails = [],
   emailsError = null,
+  historyError = null,
 }: {
   history: CommunicationsHistoryRow[]
   scheduled: ScheduledSmsPreview[]
   isDateTbd: boolean
   emails?: CommunicationsEmailRow[]
   emailsError?: string | null
+  /** A failed read of the SMS history: shown as an error, never as "no messages". */
+  historyError?: string | null
 }) {
+  // Three cards, passed straight to the page's PageLayout, which spaces them.
   return (
-    <div className="space-y-8">
-      <Section
-        id="sms-history"
-        title="History"
-        description="Messages already sent or queued for this booking (most recent first)."
-      >
-        <Card>
-          {history.length === 0 ? (
-            <EmptyState
-              icon={<ChatBubbleLeftRightIcon className="h-10 w-10" aria-hidden="true" />}
-              title="No messages sent yet"
+    <>
+      <Card>
+        <CardHeader
+          title="History"
+          subtitle="Messages already sent or queued for this booking (most recent first)."
+        />
+          {historyError ? (
+            <CardBody>
+              <Alert tone="danger">{`Messages could not be loaded: ${historyError}`}</Alert>
+            </CardBody>
+          ) : history.length === 0 ? (
+            <Empty
+              size="sm"
+              icon={<Icon name="message" size={40} />}
+              title="No messages yet"
               description="Once a message is queued or sent, it will appear here."
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="SMS message history">
               {history.map((row) => (
                 <li key={row.id} className="py-4 first:pt-0 last:pb-0">
@@ -117,8 +96,8 @@ export function CommunicationsTab({
                       <span className="text-sm font-medium text-text">
                         {row.trigger_type ?? row.template_key ?? 'Manual'}
                       </span>
-                      <Badge variant={statusVariant(row.status)} size="sm">
-                        {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : statusLabel(row.status)}
+                      <Badge tone={messageDeliveryStatusTone(row.status)} size="sm">
+                        {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : messageDeliveryStatusLabel(row.status)}
                       </Badge>
                     </div>
                     <time
@@ -141,33 +120,36 @@ export function CommunicationsTab({
                 </li>
               ))}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
+      </Card>
 
-      <Section
-        id="email-history"
-        title="Emails"
-        description="Emails sent about this booking (most recent first), with their delivery status."
-      >
-        <Card>
+      <Card>
+        <CardHeader
+          title="Emails"
+          subtitle="Emails sent about this booking (most recent first), with their delivery status."
+        />
           {emailsError ? (
-            <Alert variant="error" description={`Emails could not be loaded: ${emailsError}`} />
+            <CardBody>
+              <Alert tone="danger">{`Emails could not be loaded: ${emailsError}`}</Alert>
+            </CardBody>
           ) : emails.length === 0 ? (
-            <EmptyState
-              icon={<EnvelopeIcon className="h-10 w-10" aria-hidden="true" />}
-              title="No emails sent yet"
+            <Empty
+              size="sm"
+              icon={<Icon name="mail" size={40} />}
+              title="No emails yet"
               description="Emails about this booking will appear here."
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="Email history">
               {emails.map((email) => (
                 <li key={email.id} className="py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-text">{email.subject || '(no subject)'}</span>
-                      <Badge variant={emailStatusVariant(email.status)} size="sm">
-                        {statusLabel(email.status)}
+                      <Badge tone={messageDeliveryStatusTone(email.status)} size="sm">
+                        {messageDeliveryStatusLabel(email.status)}
                       </Badge>
                     </div>
                     <time className="text-xs text-text-muted" dateTime={email.created_at}>
@@ -178,29 +160,29 @@ export function CommunicationsTab({
                     {email.comm_type ?? 'email'}
                     {email.to_address ? ` to ${email.to_address}` : ''}
                   </p>
-                  {email.error && UNDELIVERED_EMAIL_STATUSES.has(email.status) && (
+                  {email.error && isUndelivered(email.status) && (
                     <p className="mt-1 text-xs text-danger-fg">{email.error}</p>
                   )}
                 </li>
               ))}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
+      </Card>
 
-      <Section
-        id="sms-scheduled"
-        title="Scheduled"
-        description="Automated reminders that would fire for this booking based on current eligibility."
-      >
-        <Card>
+      <Card>
+        <CardHeader
+          title="Scheduled"
+          subtitle="Automated reminders that would fire for this booking based on current eligibility."
+        />
           {scheduled.length === 0 ? (
-            <EmptyState
-              icon={<ClockIcon className="h-10 w-10" aria-hidden="true" />}
+            <Empty
+              size="sm"
+              icon={<Icon name="clock" size={40} />}
               title={
                 isDateTbd
                   ? 'No date-based reminders scheduled'
-                  : 'Nothing scheduled'
+                  : 'No reminders scheduled'
               }
               description={
                 isDateTbd
@@ -209,6 +191,7 @@ export function CommunicationsTab({
               }
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="Scheduled SMS reminders">
               {scheduled.map((item) => {
                 const suppressed = Boolean(item.suppression_reason)
@@ -223,9 +206,9 @@ export function CommunicationsTab({
                           {item.trigger_type}
                         </span>
                         {suppressed ? (
-                          <Badge variant="warning" size="sm">Suppressed</Badge>
+                          <Badge tone={SCHEDULED_REMINDER_TONE.suppressed} size="sm">Suppressed</Badge>
                         ) : (
-                          <Badge variant="info" size="sm">Eligible</Badge>
+                          <Badge tone={SCHEDULED_REMINDER_TONE.eligible} size="sm">Eligible</Badge>
                         )}
                       </div>
                       <span className="text-xs text-text-muted">
@@ -239,18 +222,19 @@ export function CommunicationsTab({
                     </p>
                     {item.suppression_reason && (
                       <Alert
-                        variant="warning"
+                        tone="warning"
                         className="mt-2"
-                        description={labelForSuppression(item.suppression_reason)}
-                      />
+                      >
+                        {labelForSuppression(item.suppression_reason)}
+                      </Alert>
                     )}
                   </li>
                 )
               })}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
-    </div>
+      </Card>
+    </>
   )
 }

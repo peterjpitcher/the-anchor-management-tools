@@ -6,31 +6,33 @@ import type { BackgroundJob, BackgroundJobFilters, BackgroundJobSummary } from '
 import { listBackgroundJobs, retryBackgroundJob, deleteBackgroundJob } from '@/app/actions/backgroundJobs'
 import { runCronJob } from '@/app/actions/cronJobs'
 import { formatDate, formatDateTimeInLondon } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
 import {
-  ClockIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ExclamationCircleIcon,
-  ArrowPathIcon,
-  TrashIcon,
-  PlayIcon,
-} from '@heroicons/react/24/outline'
-import { PageLayout } from '@/ds'
-import { Section } from '@/ds'
-import { Card } from '@/ds'
-import { Button, IconButton } from '@/ds'
-import { Badge } from '@/ds'
-import { DataTable } from '@/ds'
-import { EmptyState } from '@/ds'
-import { Select } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Pagination } from '@/ds'
-import { Stat } from '@/ds'
-import { Spinner } from '@/ds'
-import { Alert } from '@/ds'
-import { DescriptionList } from '@/ds'
-import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  DataTable,
+  DescriptionList,
+  Dropdown,
+  DropdownItem,
+  Empty,
+  Field,
+  Icon,
+  IconButton,
+  PageLayout,
+  PageLoading,
+  Select,
+  Spinner,
+  Stat,
+  StatGrid,
+  TablePagination,
+  toast,
+} from '@/ds'
+import type { DescriptionListItem } from '@/ds'
+import { backgroundJobStatusTone } from '../_shared/status-ui'
 
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',
@@ -77,6 +79,7 @@ export default function BackgroundJobsClient({
   const [isProcessingEngagement, setIsProcessingEngagement] = useState(false)
   const [isProcessingCommsMonitor, setIsProcessingCommsMonitor] = useState(false)
   const [isProcessingCommsRetention, setIsProcessingCommsRetention] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     setJobs(initialJobs)
@@ -109,36 +112,19 @@ export default function BackgroundJobsClient({
     fetchJobs(next)
   }
 
-  const getStatusVariant = (status: string): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' => {
-    switch (status) {
-      case 'pending':
-        return 'warning'
-      case 'processing':
-        return 'info'
-      case 'completed':
-        return 'success'
-      case 'failed':
-        return 'error'
-      case 'cancelled':
-        return 'default'
-      default:
-        return 'default'
-    }
-  }
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <ClockIcon className="h-4 w-4" />
+        return <Icon name="clock" size={16} />
       case 'processing':
-        return <ArrowPathIcon className="h-4 w-4 animate-spin" />
+        return <Spinner size="sm" />
       case 'completed':
-        return <CheckCircleIcon className="h-4 w-4" />
+        return <Icon name="checkCircle" size={16} />
       case 'failed':
       case 'cancelled':
-        return <XCircleIcon className="h-4 w-4" />
+        return <Icon name="xCircle" size={16} />
       default:
-        return <ExclamationCircleIcon className="h-4 w-4" />
+        return <Icon name="alertCircle" size={16} />
     }
   }
 
@@ -254,11 +240,6 @@ export default function BackgroundJobsClient({
   }
 
   const handleDelete = (jobId: string) => {
-    const confirmed = confirm('Delete this job? This cannot be undone.')
-    if (!confirmed) {
-      return
-    }
-
     startMutateTransition(async () => {
       const result = await deleteBackgroundJob(jobId)
       if (result.error) {
@@ -276,7 +257,7 @@ export default function BackgroundJobsClient({
       key: 'status',
       header: 'Status',
       cell: (job: BackgroundJob) => (
-        <Badge variant={getStatusVariant(job.status)} icon={getStatusIcon(job.status)}>
+        <Badge tone={backgroundJobStatusTone(job.status)} icon={getStatusIcon(job.status)}>
           {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
         </Badge>
       ),
@@ -331,19 +312,19 @@ export default function BackgroundJobsClient({
               title="Retry job"
               disabled={isMutating}
             >
-              <ArrowPathIcon className="h-4 w-4" />
+              <Icon name="refresh" size={16} />
             </IconButton>
           )}
           {canManage && (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') && (
             <IconButton
               variant="secondary"
               size="sm"
-              onClick={() => handleDelete(job.id)}
+              onClick={() => setDeleteTargetId(job.id)}
               label="Delete job"
               title="Delete job"
               disabled={isMutating}
             >
-              <TrashIcon className="h-4 w-4" />
+              <Icon name="trash" size={16} />
             </IconButton>
           )}
         </div>
@@ -351,58 +332,50 @@ export default function BackgroundJobsClient({
     },
   ]
 
-  const breadcrumbs = [
-    { label: 'Settings', href: '/settings' },
-    { label: 'Background Jobs' },
-  ]
-
+  // Four actions, so the three occasional runs sit in a labelled More menu and Process Jobs,
+  // the page's main action, stays a button (UI_UX.md, Wording and small patterns).
   const headerActions = canManage ? (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processCommunicationsMonitor}
-        disabled={!canManage || isProcessingCommsMonitor}
-        loading={isProcessingCommsMonitor}
-        leftIcon={!isProcessingCommsMonitor && <PlayIcon />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+    <>
+      <Dropdown
+        width="auto"
+        trigger={
+          <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
+            More
+          </Button>
+        }
       >
-        {isProcessingCommsMonitor ? 'Running Monitor...' : 'Run Comms Monitor'}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processCommunicationsRetention}
-        disabled={!canManage || isProcessingCommsRetention}
-        loading={isProcessingCommsRetention}
-        leftIcon={!isProcessingCommsRetention && <PlayIcon />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
-      >
-        {isProcessingCommsRetention ? 'Running Retention...' : 'Run Comms Retention'}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={processEventGuestEngagement}
-        disabled={!canManage || isProcessingEngagement}
-        loading={isProcessingEngagement}
-        leftIcon={!isProcessingEngagement && <PlayIcon />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
-      >
-        {isProcessingEngagement ? 'Running Event Messaging...' : 'Run Event Messaging'}
-      </Button>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processCommunicationsMonitor}
+          disabled={isProcessingCommsMonitor}
+        >
+          Run Comms Monitor
+        </DropdownItem>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processCommunicationsRetention}
+          disabled={isProcessingCommsRetention}
+        >
+          Run Comms Retention
+        </DropdownItem>
+        <DropdownItem
+          icon={<Icon name="play" size={16} />}
+          onClick={processEventGuestEngagement}
+          disabled={isProcessingEngagement}
+        >
+          Run Event Messaging
+        </DropdownItem>
+      </Dropdown>
       <Button
         variant="primary"
         size="sm"
         onClick={processJobs}
-        disabled={!canManage || isProcessing}
         loading={isProcessing}
-        leftIcon={!isProcessing && <PlayIcon />}
-        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+        leftIcon={!isProcessing && <Icon name="play" size={16} />}
       >
-        {isProcessing ? 'Processing...' : 'Process Jobs'}
+        Process Jobs
       </Button>
-    </div>
+    </>
   ) : undefined
 
   const selectedJobDetails = selectedJob ? jobs.find((j) => j.id === selectedJob) : null
@@ -411,176 +384,180 @@ export default function BackgroundJobsClient({
     <PageLayout
       title="Background Jobs"
       subtitle="Monitor and manage background job processing"
-      breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       headerActions={headerActions}
     >
-      <div className="space-y-6">
-        {error && <Alert variant="error" title="Error" description={error} />}
+      {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
-        <Section id="summary" title="Summary">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <Stat label="Total Jobs" value={summary.total} />
-            <Stat label="Pending" value={summary.pending} color="warning" />
-            <Stat label="Completed" value={summary.completed} color="success" />
-            <Stat
-              label="Failed"
-              value={summary.failed}
-              color={summary.failed > 0 ? 'error' : 'default'}
+      <StatGrid columns={4}>
+        <Stat label="Total Jobs" value={summary.total} />
+        <Stat label="Pending" value={summary.pending} tone={summary.pending > 0 ? 'warning' : 'default'} />
+        <Stat label="Completed" value={summary.completed} tone="success" />
+        <Stat label="Failed" value={summary.failed} tone={summary.failed > 0 ? 'danger' : 'default'} />
+      </StatGrid>
+
+      <Card padding="none">
+        <CardHeader title="Jobs" />
+        <CardBody className="flex flex-wrap items-end gap-3 border-b border-border">
+          <Field label="Status Filter" className="w-full sm:w-48">
+            <Select
+              value={filters.status || ''}
+              onChange={(e) => handleFilterChange({ ...filters, status: e.target.value || undefined })}
+              options={[
+                { value: '', label: 'All Statuses' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'processing', label: 'Processing' },
+                { value: 'completed', label: 'Completed' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]}
             />
-          </div>
-        </Section>
+          </Field>
 
-        <Section title="Filters">
-          <Card>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Status Filter">
-                <Select
-                  value={filters.status || ''}
-                  onChange={(e) => handleFilterChange({ ...filters, status: e.target.value || undefined })}
-                  options={[
-                    { value: '', label: 'All Statuses' },
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'processing', label: 'Processing' },
-                    { value: 'completed', label: 'Completed' },
-                    { value: 'failed', label: 'Failed' },
-                    { value: 'cancelled', label: 'Cancelled' },
-                  ]}
-                />
-              </FormGroup>
+          <Field label="Type Filter" className="w-full sm:w-64">
+            <Select
+              value={filters.type || ''}
+              onChange={(e) => handleFilterChange({ ...filters, type: e.target.value || undefined })}
+              options={[
+                { value: '', label: 'All Types' },
+                ...Object.entries(jobTypeLabels).map(([value, label]) => ({ value, label })),
+              ]}
+            />
+          </Field>
 
-              <FormGroup label="Type Filter">
-                <Select
-                  value={filters.type || ''}
-                  onChange={(e) => handleFilterChange({ ...filters, type: e.target.value || undefined })}
-                  options={[
-                    { value: '', label: 'All Types' },
-                    ...Object.entries(jobTypeLabels).map(([value, label]) => ({ value, label })),
-                  ]}
-                />
-              </FormGroup>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <Button variant="secondary" onClick={() => handleFilterChange({})} disabled={isRefreshing}>
-                Clear Filters
-              </Button>
-            </div>
-          </Card>
-        </Section>
+          <Button variant="secondary" onClick={() => handleFilterChange({})} disabled={isRefreshing}>
+            Clear Filters
+          </Button>
+        </CardBody>
 
-        <Section id="jobs" title="Jobs">
-          <Card>
-            {isRefreshing ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner />
-              </div>
-            ) : pagedJobs.length === 0 ? (
-              <EmptyState
-                icon={<ExclamationCircleIcon />}
-                title="No jobs found"
-                description="No background jobs match your current filters."
+        {isRefreshing ? (
+          <PageLoading inline label="Loading jobs" />
+        ) : pagedJobs.length === 0 ? (
+          // A failed load is reported by the error above, never shown as an empty list.
+          error ? null : (
+            filters.status || filters.type ? (
+              <Empty
+                size="sm"
+                icon={<Icon name="alertCircle" size={48} />}
+                title="No jobs match these filters"
+                description="Clear the filters to see every job."
                 action={
-                  (filters.status || filters.type) && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleFilterChange({})}
-                      disabled={isRefreshing}
-                    >
-                      Clear Filters
-                    </Button>
-                  )
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleFilterChange({})}
+                    disabled={isRefreshing}
+                  >
+                    Clear Filters
+                  </Button>
                 }
               />
             ) : (
-              <DataTable data={pagedJobs} columns={columns} getRowKey={(job) => job.id} />
-            )}
-          </Card>
-        </Section>
+              <Empty
+                size="sm"
+                icon={<Icon name="alertCircle" size={48} />}
+                title="No jobs yet"
+                description="Jobs appear here when the app queues work to run in the background."
+              />
+            )
+          )
+        ) : (
+          <DataTable data={pagedJobs} columns={columns} getRowKey={(job) => job.id} bordered={false} />
+        )}
 
         {pagedJobs.length > 0 && (
-          <Pagination
-            currentPage={page}
+          <TablePagination
+            page={page}
             totalPages={totalPages}
             totalItems={jobs.length}
-            itemsPerPage={PAGE_SIZE}
+            pageSize={PAGE_SIZE}
             onPageChange={setPage}
-            position="end"
           />
         )}
+      </Card>
 
-        {selectedJobDetails && (
-          <Section id="job-details" title="Job Details">
-            <Card>
-              <DescriptionList
-                items={[
-                  {
-                    key: 'id',
-                    label: 'Job ID',
-                    value: <span className="font-mono">{selectedJobDetails.id}</span>,
-                  },
-                  {
-                    key: 'priority',
-                    label: 'Priority',
-                    value: <Badge variant="secondary">{selectedJobDetails.priority}</Badge>,
-                  },
-                  ...(selectedJobDetails.started_at
-                    ? [{
-                        key: 'started_at',
-                        label: 'Started At',
-                        value: formatDateTimeInLondon(selectedJobDetails.started_at),
-                      }]
-                    : []),
-                  ...(selectedJobDetails.completed_at
-                    ? [{
-                        key: 'completed_at',
-                        label: 'Completed At',
-                        value: formatDateTimeInLondon(selectedJobDetails.completed_at),
-                      }]
-                    : []),
-                  ...(selectedJobDetails.error_message
-                    ? [{
-                        key: 'error',
-                        label: 'Error',
-                        value: <span className="whitespace-pre-wrap text-danger">{selectedJobDetails.error_message}</span>,
-                        span: 2,
-                      } satisfies DescriptionListItem]
-                    : []),
-                ]}
-              />
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails && (
+        <Card>
+          <CardHeader title="Job Details" />
+          <CardBody>
+            <DescriptionList
+              items={[
+                {
+                  key: 'id',
+                  label: 'Job ID',
+                  value: <span className="font-mono">{selectedJobDetails.id}</span>,
+                },
+                {
+                  key: 'priority',
+                  label: 'Priority',
+                  value: <Badge>{selectedJobDetails.priority}</Badge>,
+                },
+                ...(selectedJobDetails.started_at
+                  ? [{
+                      key: 'started_at',
+                      label: 'Started At',
+                      value: formatDateTimeInLondon(selectedJobDetails.started_at),
+                    }]
+                  : []),
+                ...(selectedJobDetails.completed_at
+                  ? [{
+                      key: 'completed_at',
+                      label: 'Completed At',
+                      value: formatDateTimeInLondon(selectedJobDetails.completed_at),
+                    }]
+                  : []),
+                ...(selectedJobDetails.error_message
+                  ? [{
+                      key: 'error',
+                      label: 'Error',
+                      value: <span className="whitespace-pre-wrap text-danger-fg">{selectedJobDetails.error_message}</span>,
+                      span: 2,
+                    } satisfies DescriptionListItem]
+                  : []),
+              ]}
+            />
+          </CardBody>
+        </Card>
+      )}
 
-        {selectedJobDetails?.status === 'failed' && selectedJobDetails.error_message && (
-          <Section title="Error Message">
-            <Card>
-              <pre className="text-sm text-danger whitespace-pre-wrap bg-danger-soft p-3 rounded-sm">
-                {selectedJobDetails.error_message}
-              </pre>
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails?.status === 'failed' && selectedJobDetails.error_message && (
+        <Alert tone="danger" title="Error Message">
+          <pre className="whitespace-pre-wrap text-sm">{selectedJobDetails.error_message}</pre>
+        </Alert>
+      )}
 
-        {selectedJobDetails?.payload && (
-          <Section title="Payload">
-            <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
-                {JSON.stringify(selectedJobDetails.payload, null, 2)}
-              </pre>
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails?.payload && (
+        <Card>
+          <CardHeader title="Payload" />
+          <CardBody>
+            <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
+              {JSON.stringify(selectedJobDetails.payload, null, 2)}
+            </pre>
+          </CardBody>
+        </Card>
+      )}
 
-        {selectedJobDetails?.result && (
-          <Section title="Result">
-            <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
-                {JSON.stringify(selectedJobDetails.result, null, 2)}
-              </pre>
-            </Card>
-          </Section>
-        )}
-      </div>
+      {selectedJobDetails?.result && (
+        <Card>
+          <CardHeader title="Result" />
+          <CardBody>
+            <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
+              {JSON.stringify(selectedJobDetails.result, null, 2)}
+            </pre>
+          </CardBody>
+        </Card>
+      )}
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={() => {
+          if (deleteTargetId) handleDelete(deleteTargetId)
+        }}
+        tone="danger"
+        title="Delete Job"
+        message="Delete this job? This cannot be undone."
+        confirmLabel="Delete"
+      />
     </PageLayout>
   )
 }

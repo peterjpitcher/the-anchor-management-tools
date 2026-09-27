@@ -4,7 +4,7 @@
  * Private-booking SOP workflow panels for the detail page.
  *
  * These panels render against the workflow server actions in
- * `@/app/actions/privateBookingWorkflow`. Money never moves here — the
+ * `@/app/actions/privateBookingWorkflow`. Money never moves here: the
  * deductions panel only records the manager's decision; refunds still go
  * through the existing refund flow.
  *
@@ -16,37 +16,44 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  ShieldCheckIcon,
-  TruckIcon,
-  BanknotesIcon,
-  ChatBubbleBottomCenterTextIcon,
-  LockClosedIcon,
-  LockOpenIcon,
-  PlusIcon,
-  PencilIcon,
-} from '@heroicons/react/24/outline'
-import {
-  Section,
-  Card,
+  Alert,
+  Badge,
   Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FileUpload,
+  Icon,
   IconButton,
   Input,
-  Select,
-  Textarea,
-  Badge,
   Modal,
-  FormGroup,
-  Form,
-  EmptyState,
+  PageLoading,
+  Select,
+  SubHeading,
+  Textarea,
   toast,
 } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import type {
   PrivateBookingWithDetails,
-  WaiverStatus,
   RiskStatus,
 } from '@/types/private-bookings'
+import {
+  COMPLAINT_STATUS_TONE,
+  DEDUCTION_STATUS_TONE,
+  FINAL_DETAILS_STATUS_TONE,
+  POST_EVENT_STATUS_TONE,
+  RECORD_LOCKED_TONE,
+  RISK_STATUS_TONE,
+  SUPPLIER_ROW_STATUS_TONE,
+  SUPPLIER_STATUS_TONE,
+  WAIVER_STATUS_TONE,
+  type PrivateBookingBadgeTone,
+} from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 import {
   listDeductions,
   proposeDeduction,
@@ -74,91 +81,14 @@ import {
 } from '@/app/actions/privateBookingWorkflow'
 
 // ---------------------------------------------------------------------------
-// Shared badge helpers
+// Shared helpers. Badge tones come from the named maps in the private bookings status-ui file.
 // ---------------------------------------------------------------------------
-
-type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info'
 
 const humanise = (value: string): string =>
   value
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
-
-function StatusBadge({
-  variant,
-  children,
-}: {
-  variant: BadgeVariant
-  children: React.ReactNode
-}) {
-  return <Badge variant={variant}>{children}</Badge>
-}
-
-const WAIVER_VARIANT: Record<WaiverStatus, BadgeVariant> = {
-  not_required: 'default',
-  required: 'error',
-  sent: 'warning',
-  signed: 'success',
-  overdue: 'error',
-}
-
-const RISK_VARIANT: Record<RiskStatus, BadgeVariant> = {
-  low: 'success',
-  normal: 'default',
-  high: 'error',
-  gm_approval_required: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const SUPPLIER_BOOKING_VARIANT: Record<string, BadgeVariant> = {
-  not_applicable: 'default',
-  requested: 'warning',
-  incomplete: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const SUPPLIER_ROW_VARIANT: Record<WorkflowSupplierStatus, BadgeVariant> = {
-  requested: 'warning',
-  incomplete: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const FINAL_DETAILS_VARIANT: Record<string, BadgeVariant> = {
-  not_requested: 'default',
-  requested: 'warning',
-  complete: 'success',
-  incomplete: 'warning',
-  overdue: 'error',
-  manager_reviewed: 'success',
-}
-
-const POST_EVENT_VARIANT: Record<string, BadgeVariant> = {
-  awaiting_inspection: 'warning',
-  inspection_complete: 'info',
-  deduction_discussion: 'warning',
-  refund_processed: 'info',
-  complete: 'success',
-}
-
-const DEDUCTION_VARIANT: Record<DeductionStatus, BadgeVariant> = {
-  proposed: 'warning',
-  discussed: 'info',
-  approved: 'success',
-  rejected: 'error',
-  applied: 'info',
-}
-
-const COMPLAINT_VARIANT: Record<ComplaintStatus, BadgeVariant> = {
-  open: 'error',
-  acknowledged: 'warning',
-  responded: 'info',
-  resolved: 'success',
-  closed: 'default',
-}
 
 // ---------------------------------------------------------------------------
 // 2. Workflow status panel
@@ -176,21 +106,21 @@ export function WorkflowStatusPanel({
   const postEvent = booking.post_event_status
   const isLocked = !!booking.locked_at
 
-  const rows: { label: string; variant: BadgeVariant; text: string }[] = []
+  const rows: { label: string; tone: PrivateBookingBadgeTone; text: string }[] = []
   if (waiver && waiver !== 'not_required') {
-    rows.push({ label: 'Self-catering waiver', variant: WAIVER_VARIANT[waiver], text: humanise(waiver) })
+    rows.push({ label: 'Self-catering waiver', tone: WAIVER_STATUS_TONE[waiver], text: humanise(waiver) })
   }
   if (supplier && supplier !== 'not_applicable') {
-    rows.push({ label: 'Suppliers', variant: SUPPLIER_BOOKING_VARIANT[supplier] ?? 'default', text: humanise(supplier) })
+    rows.push({ label: 'Suppliers', tone: SUPPLIER_STATUS_TONE[supplier] ?? 'neutral', text: humanise(supplier) })
   }
   if (risk && risk !== 'normal') {
-    rows.push({ label: 'Risk review', variant: RISK_VARIANT[risk] ?? 'default', text: humanise(risk) })
+    rows.push({ label: 'Risk review', tone: RISK_STATUS_TONE[risk] ?? 'neutral', text: humanise(risk) })
   }
   if (finalDetails) {
-    rows.push({ label: 'Final details', variant: FINAL_DETAILS_VARIANT[finalDetails] ?? 'default', text: humanise(finalDetails) })
+    rows.push({ label: 'Final details', tone: FINAL_DETAILS_STATUS_TONE[finalDetails] ?? 'neutral', text: humanise(finalDetails) })
   }
   if (postEvent) {
-    rows.push({ label: 'Post-event', variant: POST_EVENT_VARIANT[postEvent] ?? 'default', text: humanise(postEvent) })
+    rows.push({ label: 'Post-event', tone: POST_EVENT_STATUS_TONE[postEvent] ?? 'neutral', text: humanise(postEvent) })
   }
 
   if (rows.length === 0 && !isLocked) {
@@ -198,12 +128,13 @@ export function WorkflowStatusPanel({
   }
 
   return (
-    <Section id="workflow-status" title="Workflow Status">
-      <Card>
+    <Card>
+      <CardHeader title="Workflow Status" />
+      <CardBody className="space-y-3">
         {isLocked && (
-          <div className="mb-3 flex items-center gap-2">
-            <LockClosedIcon className="h-4 w-4 text-danger" aria-hidden="true" />
-            <StatusBadge variant="error">Record locked</StatusBadge>
+          <div className="flex items-center gap-2">
+            <Icon name="lock" size={16} className="text-danger" />
+            <Badge tone={RECORD_LOCKED_TONE}>Record locked</Badge>
           </div>
         )}
         {rows.length === 0 ? (
@@ -214,14 +145,14 @@ export function WorkflowStatusPanel({
               <div key={row.label} className="flex items-center justify-between gap-3">
                 <dt className="text-sm text-text-muted">{row.label}</dt>
                 <dd>
-                  <StatusBadge variant={row.variant}>{row.text}</StatusBadge>
+                  <Badge tone={row.tone}>{row.text}</Badge>
                 </dd>
               </div>
             ))}
           </dl>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -232,17 +163,9 @@ export function WorkflowStatusPanel({
 export function RecordLockBanner({ booking }: { booking: PrivateBookingWithDetails }) {
   if (!booking.locked_at) return null
   return (
-    <div className="mb-6 rounded-lg border border-danger-soft bg-danger-soft p-4">
-      <div className="flex items-start gap-2">
-        <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-danger-fg" aria-hidden="true" />
-        <div>
-          <p className="text-sm font-medium text-danger-fg">Record locked</p>
-          <p className="text-sm text-danger-fg">
-            {booking.locked_reason || 'No reason recorded'}. Deletion and edits are restricted.
-          </p>
-        </div>
-      </div>
-    </div>
+    <Alert tone="danger" title="Record locked" icon={<Icon name="lock" size={20} />}>
+      {booking.locked_reason || 'No reason recorded'}. Deletion and edits are restricted.
+    </Alert>
   )
 }
 
@@ -292,36 +215,49 @@ export function RecordLockControl({
   }
 
   return (
-    <Section id="record-lock" title="Record Lock">
-      <Card>
+    <Card>
+      <CardHeader title="Record Lock" />
+      <CardBody>
         {isLocked ? (
           <div className="space-y-3">
             <p className="text-sm text-text-muted">
               This record is locked ({booking.locked_reason || 'no reason recorded'}).
             </p>
-            <Button type="button" variant="secondary" onClick={handleUnlock} loading={busy} disabled={busy}>
-              <LockOpenIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Unlock record
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleUnlock}
+              loading={busy}
+              disabled={busy}
+              icon={<Icon name="lockOpen" size={16} />}
+            >
+              Unlock Record
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            <FormGroup label="Reason for locking" help="Locking restricts deletion and edits (SOP §27).">
+            <Field label="Reason for locking" hint="Locking restricts deletion and edits (SOP §27).">
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 placeholder="e.g. Dispute under investigation"
               />
-            </FormGroup>
-            <Button type="button" variant="secondary" onClick={handleLock} loading={busy} disabled={busy}>
-              <LockClosedIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Lock record
+            </Field>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleLock}
+              loading={busy}
+              disabled={busy}
+              icon={<Icon name="lock" size={16} />}
+            >
+              Lock Record
             </Button>
           </div>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -403,34 +339,38 @@ export function WaiverRiskPanel({
   if (!waiverApplies && risk === 'normal' && !canManage) return null
 
   return (
-    <Section id="waiver-risk" title="Waiver & Risk">
-      <Card>
-        <div className="space-y-6">
+    <Card>
+      <CardHeader title="Waiver & Risk" />
+      <CardBody>
+        <div className="space-y-4">
           {waiverApplies && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-text">Self-catering waiver</h3>
-                <StatusBadge variant={WAIVER_VARIANT[waiver]}>{humanise(waiver)}</StatusBadge>
+                <SubHeading>Self-Catering Waiver</SubHeading>
+                <Badge tone={WAIVER_STATUS_TONE[waiver]}>{humanise(waiver)}</Badge>
               </div>
               {canManage && (
                 <>
-                  <FormGroup label="Upload signed waiver" help="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB.">
-                    <input
-                      type="file"
+                  <Field label="Upload signed waiver">
+                    <FileUpload
                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
-                      onChange={(e) => setWaiverFile(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-text hover:file:bg-surface-hover"
+                      onFiles={(files) => setWaiverFile(files[0] ?? null)}
+                      hint="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB."
                     />
-                  </FormGroup>
+                  </Field>
+                  {waiverFile && (
+                    <p className="text-xs text-text-muted">Selected: {waiverFile.name}</p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
+                      variant="primary"
                       onClick={handleUploadWaiver}
                       loading={uploadingWaiver}
                       disabled={uploadingWaiver || !waiverFile}
                     >
-                      Upload signed waiver
+                      Upload Signed Waiver
                     </Button>
                     {waiver !== 'sent' && (
                       <Button
@@ -441,7 +381,7 @@ export function WaiverRiskPanel({
                         loading={settingWaiver}
                         disabled={settingWaiver}
                       >
-                        Mark as sent
+                        Mark as Sent
                       </Button>
                     )}
                     {waiver !== 'required' && (
@@ -453,7 +393,7 @@ export function WaiverRiskPanel({
                         loading={settingWaiver}
                         disabled={settingWaiver}
                       >
-                        Mark as required
+                        Mark as Required
                       </Button>
                     )}
                   </div>
@@ -464,12 +404,12 @@ export function WaiverRiskPanel({
 
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium text-text">Risk review</h3>
-              <StatusBadge variant={RISK_VARIANT[risk]}>{humanise(risk)}</StatusBadge>
+              <SubHeading>Risk Review</SubHeading>
+              <Badge tone={RISK_STATUS_TONE[risk]}>{humanise(risk)}</Badge>
             </div>
             {canManage && (
               <div className="space-y-3">
-                <FormGroup label="Risk decision">
+                <Field label="Risk decision">
                   <Select
                     value={riskDecision}
                     onChange={(e) => setRiskDecision(e.target.value as RiskStatus)}
@@ -480,31 +420,32 @@ export function WaiverRiskPanel({
                       { value: 'rejected', label: 'Reject (GM)' },
                     ]}
                   />
-                </FormGroup>
-                <FormGroup label="Reason" help="Recorded against the booking. Approving or rejecting is a GM decision.">
+                </Field>
+                <Field label="Reason" hint="Recorded against the booking. Approving or rejecting is a GM decision.">
                   <Textarea
                     value={riskReason}
                     onChange={(e) => setRiskReason(e.target.value)}
                     rows={2}
                     placeholder="e.g. High-power equipment approved by GM"
                   />
-                </FormGroup>
+                </Field>
                 <Button
                   type="button"
                   size="sm"
+                  variant="primary"
                   onClick={handleSetRisk}
                   loading={settingRisk}
                   disabled={settingRisk}
+                  icon={<Icon name="shieldCheck" size={16} />}
                 >
-                  <ShieldCheckIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                  Update risk status
+                  Save Risk Review
                 </Button>
               </div>
             )}
           </div>
         </div>
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -581,6 +522,16 @@ function SupplierModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    try {
+      await saveSupplier()
+    } catch (error) {
+      // The old compat Form showed a thrown action (a dropped connection); keep the user told.
+      setSaving(false)
+      toast.error(error instanceof Error ? error.message : 'An unexpected error occurred')
+    }
+  }
+
+  const saveSupplier = async () => {
     if (!form.name.trim()) {
       toast.error('Supplier name is required')
       return
@@ -610,45 +561,52 @@ function SupplierModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={supplier ? 'Edit Supplier' : 'Add Supplier'} size="lg">
-      <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Name" required>
-          <Input value={form.name} onChange={(e) => update('name', e.target.value)} required placeholder="e.g. Sound & Light Co." />
-        </FormGroup>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormGroup label="Type">
-            <Input value={form.supplierType} onChange={(e) => update('supplierType', e.target.value)} placeholder="DJ, caterer, florist..." />
-          </FormGroup>
-          <FormGroup label="Contact details">
-            <Input value={form.contactDetails} onChange={(e) => update('contactDetails', e.target.value)} placeholder="Name / phone / email" />
-          </FormGroup>
-          <FormGroup label="Arrival time">
-            <Input type="time" value={form.arrivalTime} onChange={(e) => update('arrivalTime', e.target.value)} />
-          </FormGroup>
-          <FormGroup label="Departure time">
-            <Input type="time" value={form.departureTime} onChange={(e) => update('departureTime', e.target.value)} />
-          </FormGroup>
-        </div>
-        <FormGroup label="Power requirements">
-          <Input value={form.powerRequirements} onChange={(e) => update('powerRequirements', e.target.value)} placeholder="e.g. 2x 13A sockets" />
-        </FormGroup>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormGroup label="Documents required" help="Comma-separated (e.g. PLI, PAT).">
-            <Input value={form.documentsRequired} onChange={(e) => update('documentsRequired', e.target.value)} placeholder="PLI, PAT certificate" />
-          </FormGroup>
-          <FormGroup label="Documents received" help="Comma-separated.">
-            <Input value={form.documentsReceived} onChange={(e) => update('documentsReceived', e.target.value)} placeholder="PLI" />
-          </FormGroup>
-        </div>
-        <div className="flex justify-end gap-3 pt-2">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={supplier ? 'Edit Supplier' : 'Add Supplier'}
+      size="lg"
+      footer={
+        <>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={saving} disabled={saving}>
-            {supplier ? 'Save changes' : 'Add supplier'}
+          <Button type="submit" form="pb-supplier-form" variant="primary" loading={saving}>
+            {supplier ? 'Save Changes' : 'Add Supplier'}
           </Button>
+        </>
+      }
+    >
+      <form id="pb-supplier-form" onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Name" required>
+          <Input value={form.name} onChange={(e) => update('name', e.target.value)} required placeholder="e.g. Sound & Light Co." />
+        </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Type">
+            <Input value={form.supplierType} onChange={(e) => update('supplierType', e.target.value)} placeholder="DJ, caterer, florist..." />
+          </Field>
+          <Field label="Contact details">
+            <Input value={form.contactDetails} onChange={(e) => update('contactDetails', e.target.value)} placeholder="Name / phone / email" />
+          </Field>
+          <Field label="Arrival time">
+            <Input type="time" value={form.arrivalTime} onChange={(e) => update('arrivalTime', e.target.value)} />
+          </Field>
+          <Field label="Departure time">
+            <Input type="time" value={form.departureTime} onChange={(e) => update('departureTime', e.target.value)} />
+          </Field>
         </div>
-      </Form>
+        <Field label="Power requirements">
+          <Input value={form.powerRequirements} onChange={(e) => update('powerRequirements', e.target.value)} placeholder="e.g. 2x 13A sockets" />
+        </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Documents required" hint="Comma-separated (e.g. PLI, PAT).">
+            <Input value={form.documentsRequired} onChange={(e) => update('documentsRequired', e.target.value)} placeholder="PLI, PAT certificate" />
+          </Field>
+          <Field label="Documents received" hint="Comma-separated.">
+            <Input value={form.documentsReceived} onChange={(e) => update('documentsReceived', e.target.value)} placeholder="PLI" />
+          </Field>
+        </div>
+      </form>
     </Modal>
   )
 }
@@ -668,6 +626,8 @@ export function SuppliersPanel({
 }) {
   const [suppliers, setSuppliers] = useState<PrivateBookingSupplier[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No suppliers yet".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PrivateBookingSupplier | null>(null)
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null)
@@ -677,7 +637,9 @@ export function SuppliersPanel({
     const result = await listBookingSuppliers(bookingId)
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setSuppliers(result.data ?? [])
     }
     setLoading(false)
@@ -701,35 +663,41 @@ export function SuppliersPanel({
   }
 
   return (
-    <Section
-      id="suppliers"
-      title="Suppliers"
-      actions={
-        canEdit ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setEditing(null)
-              setModalOpen(true)
-            }}
-          >
-            <PlusIcon className="mr-1 h-4 w-4" aria-hidden="true" />
-            Add supplier
-          </Button>
-        ) : null
-      }
-    >
-      <Card>
+    <Card>
+      <CardHeader
+        title="Suppliers"
+        action={
+          canEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                setEditing(null)
+                setModalOpen(true)
+              }}
+              icon={<Icon name="plus" size={16} />}
+            >
+              Add Supplier
+            </Button>
+          ) : undefined
+        }
+      />
         {loading ? (
-          <p className="text-sm text-text-muted">Loading suppliers…</p>
+          <PageLoading inline label="Loading suppliers…" />
+        ) : loadError ? (
+          <CardBody>
+            <Alert tone="danger">{`Suppliers could not be loaded: ${loadError}`}</Alert>
+          </CardBody>
         ) : suppliers.length === 0 ? (
-          <EmptyState
-            icon={<TruckIcon className="h-12 w-12 text-text-subtle" />}
+          <Empty
+            size="sm"
+            icon={<Icon name="truck" size={48} />}
             title="No suppliers yet"
             description={canEdit ? 'Add each supplier attending the event (SOP §20).' : 'Suppliers will appear here once added.'}
           />
         ) : (
+          <CardBody>
           <ul className="divide-y divide-border">
             {suppliers.map((supplier) => (
               <li key={supplier.id} className="py-3 first:pt-0 last:pb-0">
@@ -737,7 +705,7 @@ export function SuppliersPanel({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium text-text">{supplier.name}</p>
-                      <StatusBadge variant={SUPPLIER_ROW_VARIANT[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
+                      <Badge tone={SUPPLIER_ROW_STATUS_TONE[supplier.status]}>{humanise(supplier.status)}</Badge>
                     </div>
                     <div className="mt-1 space-y-0.5 text-xs text-text-muted">
                       {supplier.supplier_type && <p>Type: {supplier.supplier_type}</p>}
@@ -768,7 +736,7 @@ export function SuppliersPanel({
                       }}
                       className="shrink-0 text-text-muted"
                       label={`Edit supplier ${supplier.name}`}
-                      icon={<PencilIcon className="h-4 w-4" />}
+                      icon={<Icon name="edit" size={16} />}
                     />
                   )}
                 </div>
@@ -783,7 +751,7 @@ export function SuppliersPanel({
                         loading={statusBusyId === supplier.id}
                         disabled={statusBusyId === supplier.id}
                       >
-                        Mark incomplete
+                        Mark Incomplete
                       </Button>
                     )}
                     {canManage && supplier.status !== 'approved' && (
@@ -815,8 +783,8 @@ export function SuppliersPanel({
               </li>
             ))}
           </ul>
+          </CardBody>
         )}
-      </Card>
 
       {canEdit && (
         <SupplierModal
@@ -830,7 +798,7 @@ export function SuppliersPanel({
           }}
         />
       )}
-    </Section>
+    </Card>
   )
 }
 
@@ -849,18 +817,24 @@ export function DeductionsPanel({
 }) {
   const [deductions, setDeductions] = useState<PrivateBookingDeduction[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No deductions proposed".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [proposing, setProposing] = useState(false)
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Rejecting is a final GM decision, so the red button confirms first.
+  const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     const result = await listDeductions(bookingId)
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setDeductions(result.data ?? [])
     }
     setLoading(false)
@@ -928,29 +902,33 @@ export function DeductionsPanel({
   }
 
   return (
-    <Section id="deductions" title="Deposit Deductions">
-      <Card>
-        <p className="mb-4 text-xs text-text-muted">
+    <Card>
+      <CardHeader title="Deposit Deductions" />
+      <CardBody className="space-y-4">
+        <p className="text-xs text-text-muted">
           Records the deduction decision only (SOP §25). Money is moved via the existing refund flow, never here.
         </p>
 
         {loading ? (
-          <p className="text-sm text-text-muted">Loading deductions…</p>
+          <PageLoading inline label="Loading deductions…" />
+        ) : loadError ? (
+          <Alert tone="danger">{`Deductions could not be loaded: ${loadError}`}</Alert>
         ) : deductions.length === 0 ? (
-          <EmptyState
-            icon={<BanknotesIcon className="h-12 w-12 text-text-subtle" />}
-            title="No deductions proposed"
+          <Empty
+            size="sm"
+            icon={<Icon name="cash" size={48} />}
+            title="No deductions yet"
             description="Damage or extra-cost deductions from the deposit will appear here."
           />
         ) : (
-          <ul className="space-y-4">
+          <ul className="divide-y divide-border">
             {deductions.map((deduction) => {
               const decided =
                 deduction.status === 'approved' ||
                 deduction.status === 'rejected' ||
                 deduction.status === 'applied'
               return (
-                <li key={deduction.id} className="rounded-lg border border-border p-3">
+                <li key={deduction.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text">{formatCurrency(deduction.amount)}</p>
@@ -961,12 +939,12 @@ export function DeductionsPanel({
                         </p>
                       )}
                     </div>
-                    <StatusBadge variant={DEDUCTION_VARIANT[deduction.status]}>{humanise(deduction.status)}</StatusBadge>
+                    <Badge tone={DEDUCTION_STATUS_TONE[deduction.status]}>{humanise(deduction.status)}</Badge>
                   </div>
 
                   {!decided && canManage && (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">
-                      <FormGroup label="Record customer discussion">
+                      <Field label="Record customer discussion">
                         <Textarea
                           value={noteDrafts[deduction.id] ?? ''}
                           onChange={(e) =>
@@ -975,7 +953,7 @@ export function DeductionsPanel({
                           rows={2}
                           placeholder="What was agreed with the customer"
                         />
-                      </FormGroup>
+                      </Field>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
@@ -985,11 +963,12 @@ export function DeductionsPanel({
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
                         >
-                          Record discussion
+                          Record Discussion
                         </Button>
                         <Button
                           type="button"
                           size="sm"
+                          variant="primary"
                           onClick={() => handleDecide(deduction.id, 'approved')}
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
@@ -1000,7 +979,7 @@ export function DeductionsPanel({
                           type="button"
                           size="sm"
                           variant="danger"
-                          onClick={() => handleDecide(deduction.id, 'rejected')}
+                          onClick={() => setConfirmRejectId(deduction.id)}
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
                         >
@@ -1016,10 +995,10 @@ export function DeductionsPanel({
         )}
 
         {canManage && (
-          <div className="mt-4 space-y-3 border-t border-border pt-4">
-            <h3 className="text-sm font-medium text-text">Propose a deduction</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormGroup label="Amount (£)">
+          <div className="space-y-3 border-t border-border pt-4">
+            <SubHeading>Propose a Deduction</SubHeading>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Amount (£)">
                 <Input
                   type="number"
                   min="0"
@@ -1028,24 +1007,35 @@ export function DeductionsPanel({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                 />
-              </FormGroup>
+              </Field>
               <div className="sm:col-span-2">
-                <FormGroup label="Reason">
+                <Field label="Reason">
                   <Input
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="e.g. Damage to furniture"
                   />
-                </FormGroup>
+                </Field>
               </div>
             </div>
-            <Button type="button" size="sm" onClick={handlePropose} loading={proposing} disabled={proposing}>
-              Propose deduction
+            <Button type="button" size="sm" variant="primary" onClick={handlePropose} loading={proposing} disabled={proposing}>
+              Propose Deduction
             </Button>
           </div>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+      <ConfirmDialog
+        open={confirmRejectId !== null}
+        onClose={() => setConfirmRejectId(null)}
+        onConfirm={async () => {
+          if (confirmRejectId) await handleDecide(confirmRejectId, 'rejected')
+        }}
+        title="Reject Deduction"
+        message="Reject this proposed deduction? This is a GM decision and cannot be undone."
+        confirmLabel="Reject (GM)"
+        tone="danger"
+      />
+    </Card>
   )
 }
 
@@ -1097,7 +1087,7 @@ function ComplaintRow({
   }
 
   return (
-    <li className="rounded-lg border border-border p-3">
+    <li className="py-3 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-text whitespace-pre-wrap">{complaint.summary}</p>
@@ -1106,24 +1096,24 @@ function ComplaintRow({
             Received {formatDateTime12Hour(complaint.received_at)}
           </p>
         </div>
-        <StatusBadge variant={COMPLAINT_VARIANT[complaint.status]}>{humanise(complaint.status)}</StatusBadge>
+        <Badge tone={COMPLAINT_STATUS_TONE[complaint.status]}>{humanise(complaint.status)}</Badge>
       </div>
 
       <div className="mt-3 space-y-3 border-t border-border pt-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormGroup label="Status">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Status">
             <Select
               value={status}
               onChange={(e) => setStatus(e.target.value as ComplaintStatus)}
               options={COMPLAINT_STATUS_OPTIONS}
             />
-          </FormGroup>
-          <FormGroup label="Resolution">
+          </Field>
+          <Field label="Resolution">
             <Input value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="How it was resolved" />
-          </FormGroup>
+          </Field>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={handleSave} loading={saving} disabled={saving}>
-          Save complaint
+          Save Changes
         </Button>
         {!canManage && (
           <p className="text-xs text-text-muted">Resolving or closing a complaint is a manager decision.</p>
@@ -1144,6 +1134,8 @@ export function ComplaintsPanel({
 }) {
   const [complaints, setComplaints] = useState<PrivateBookingComplaint[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No complaints logged".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [channel, setChannel] = useState('')
   const [summary, setSummary] = useState('')
   const [logging, setLogging] = useState(false)
@@ -1153,7 +1145,9 @@ export function ComplaintsPanel({
     const result = await listComplaints({ bookingId })
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setComplaints(result.data ?? [])
     }
     setLoading(false)
@@ -1182,22 +1176,26 @@ export function ComplaintsPanel({
   }
 
   return (
-    <Section id="complaints" title="Complaints">
-      <Card>
-        <p className="mb-4 text-xs text-text-muted">
+    <Card>
+      <CardHeader title="Complaints" />
+      <CardBody className="space-y-4">
+        <p className="text-xs text-text-muted">
           Acknowledge within 3 working days and respond within 10 working days (SOP §26).
         </p>
 
         {loading ? (
-          <p className="text-sm text-text-muted">Loading complaints…</p>
+          <PageLoading inline label="Loading complaints…" />
+        ) : loadError ? (
+          <Alert tone="danger">{`Complaints could not be loaded: ${loadError}`}</Alert>
         ) : complaints.length === 0 ? (
-          <EmptyState
-            icon={<ChatBubbleBottomCenterTextIcon className="h-12 w-12 text-text-subtle" />}
-            title="No complaints logged"
+          <Empty
+            size="sm"
+            icon={<Icon name="message" size={48} />}
+            title="No complaints yet"
             description="Any complaint about this booking will appear here."
           />
         ) : (
-          <ul className="space-y-4">
+          <ul className="divide-y divide-border">
             {complaints.map((complaint) => (
               <ComplaintRow
                 key={complaint.id}
@@ -1209,23 +1207,23 @@ export function ComplaintsPanel({
           </ul>
         )}
 
-        <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <h3 className="text-sm font-medium text-text">Log a complaint</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <FormGroup label="Channel">
+        <div className="space-y-3 border-t border-border pt-4">
+          <SubHeading>Log a Complaint</SubHeading>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Channel">
               <Select value={channel} onChange={(e) => setChannel(e.target.value)} options={COMPLAINT_CHANNEL_OPTIONS} />
-            </FormGroup>
+            </Field>
             <div className="sm:col-span-2">
-              <FormGroup label="Summary">
+              <Field label="Summary">
                 <Input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="What the customer complained about" />
-              </FormGroup>
+              </Field>
             </div>
           </div>
-          <Button type="button" size="sm" onClick={handleLog} loading={logging} disabled={logging}>
-            Log complaint
+          <Button type="button" size="sm" variant="primary" onClick={handleLog} loading={logging} disabled={logging}>
+            Log Complaint
           </Button>
         </div>
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }

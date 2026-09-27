@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
+  Alert,
   Card,
+  PageLayout,
   Table,
   TableHeader,
   TableBody,
@@ -35,6 +37,11 @@ import {
 } from '@/app/actions/oj-projects/projects'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
+import { ojProjectsLayout } from '../../_shared/nav'
+import { ojBudgetTone, ojProjectStatus } from '../../_shared/status-ui'
+
+/** This tab's page chrome: the same title, subtitle and tabs in every state. */
+const LAYOUT = ojProjectsLayout('projects')
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -66,9 +73,11 @@ const emptyForm: ProjectForm = {
 interface ProjectsClientProps {
   initialProjects: any[]
   clients: OJClientSummary[]
+  /** Set when the projects or clients failed to load, so the page says so. */
+  loadError?: string
 }
 
-export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps): React.ReactElement {
+export function ProjectsClient({ initialProjects, clients, loadError }: ProjectsClientProps): React.ReactElement {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
@@ -200,15 +209,6 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
     }
   }
 
-  const statusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
-    switch (status) {
-      case 'active': return 'success'
-      case 'paused': return 'warning'
-      case 'completed': return 'info'
-      default: return 'neutral'
-    }
-  }
-
   const statusOptions = [
     { label: 'All', value: 'all' },
     { label: 'Active', value: 'active' },
@@ -217,38 +217,55 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
     { label: 'Archived', value: 'archived' },
   ]
 
+  if (loadError) {
+    return (
+      <PageLayout {...LAYOUT}>
+        <Alert tone="danger" title="Could not load projects">
+          {loadError}
+        </Alert>
+      </PageLayout>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-3 items-center flex-1 w-full sm:w-auto">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search projects..."
-            className="flex-1 sm:max-w-xs"
-          />
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            options={statusOptions}
-            className="w-36"
-          />
-        </div>
-        {canCreate && (
-          <Button onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
+    <PageLayout
+      {...LAYOUT}
+      headerActions={
+        canCreate ? (
+          <Button variant="primary" onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
             New Project
           </Button>
-        )}
+        ) : undefined
+      }
+    >
+      {/* Filters, directly above the list they filter */}
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search projects..."
+          aria-label="Search projects"
+          className="min-w-[220px] flex-1 sm:max-w-xs"
+        />
+        <Select
+          aria-label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={statusOptions}
+          className="w-36"
+        />
       </div>
 
-      {/* Table */}
-      <Card>
+      <Card padding="none">
         {filtered.length === 0 ? (
-          <Empty title="No projects" description="No projects match your filters." />
+          projects.length > 0 ? (
+            <Empty size="sm" title="No projects match these filters" description="Clear the search or pick another status to see more projects." />
+          ) : (
+            <Empty size="sm" title="No projects yet" description="Projects you create show here." />
+          )
         ) : (
           <>
-            <div className="divide-y divide-border md:hidden">
+            <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {filtered.map((project) => {
                 const budgetHours = Number(project.budget_hours || 0)
                 const usedHours = Number(project.total_hours_used || 0)
@@ -294,7 +311,7 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
                       />
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                      <Badge tone={ojProjectStatus(project.status).tone}>{ojProjectStatus(project.status).label}</Badge>
                       <span className="text-text-muted">{usedHours.toFixed(1)}h logged</span>
                       <span className="text-text-muted">
                         Updated {project.updated_at ? formatDateDdMmmmYyyy(project.updated_at) : '-'}
@@ -302,7 +319,7 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
                     </div>
                     {hasBudget ? (
                       <div className="flex flex-col gap-1">
-                        <ProgressBar value={progress} tone={progress > 90 ? 'danger' : 'primary'} />
+                        <ProgressBar value={progress} tone={ojBudgetTone(progress)} />
                         <span className="text-xs text-text-muted">
                           {budgetHours > 0 && budgetMoney === 0
                             ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
@@ -355,14 +372,14 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
                     </TableCell>
                     <TableCell>{project.vendor?.name || 'Unknown'}</TableCell>
                     <TableCell>
-                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                      <Badge tone={ojProjectStatus(project.status).tone}>{ojProjectStatus(project.status).label}</Badge>
                     </TableCell>
                     <TableCell>
                       {hasBudget ? (
                         <div className="flex flex-col gap-1 min-w-[160px]">
                           <ProgressBar
                             value={progress}
-                            tone={progress > 90 ? 'danger' : 'primary'}
+                            tone={ojBudgetTone(progress)}
                           />
                           <span className="text-xs text-text-muted">
                             {budgetHours > 0 && budgetMoney === 0
@@ -411,8 +428,18 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={isEditing ? 'Edit Project' : 'New Project'}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="oj-project-form" variant="primary" loading={saving}>
+              {isEditing ? 'Save Changes' : 'Create Project'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form id="oj-project-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Field label="Project Name" required>
             <Input
               value={form.project_name}
@@ -481,14 +508,6 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
               placeholder="Project overview..."
             />
           </Field>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {isEditing ? 'Save Changes' : 'Create Project'}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -498,10 +517,10 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
         title="Delete Project"
-        message="Are you sure? You can only delete projects with no entries."
+        message="Delete this project? Only a project with no entries can be deleted."
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

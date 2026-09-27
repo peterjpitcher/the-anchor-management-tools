@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
+import { eventCapacityFillClass } from '../_shared/status-ui'
 
 interface BarMiniProps {
   /** Ratio of booked/capacity (0 to 1+) */
@@ -11,12 +12,7 @@ interface BarMiniProps {
 export function BarMini({ value, className }: BarMiniProps) {
   const clampedWidth = Math.min(value * 100, 100)
 
-  const fillColor =
-    value >= 1
-      ? 'bg-danger'
-      : value >= 0.8
-        ? 'bg-warning'
-        : 'bg-success'
+  const fillColor = eventCapacityFillClass(value)
 
   return (
     <div

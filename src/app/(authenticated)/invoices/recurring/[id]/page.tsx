@@ -3,19 +3,26 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getRecurringInvoice, deleteRecurringInvoice, toggleRecurringInvoiceStatus, generateInvoiceFromRecurring } from '@/app/actions/recurring-invoices'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Alert } from '@/ds'
-import { Badge } from '@/ds'
-import { toast } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-react'
-import { DataTable } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Alert,
+  Badge,
+  DataTable,
+  DescriptionList,
+  ConfirmDialog,
+  toast,
+} from '@/ds'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
+import { BACK_TO_RECURRING } from '../../_shared/nav'
+import { recurringScheduleLabel, recurringScheduleTone } from '../../_shared/status-ui'
+import { DetailHeaderActions, type DetailHeaderAction } from '../../_components/DetailHeaderActions'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -186,21 +193,14 @@ export default function RecurringInvoiceDetailPage() {
     return recurringInvoice.next_invoice_date
   }
 
+  const layoutProps = {
+    title: 'Recurring Invoice',
+    subtitle: 'View recurring invoice template',
+    backButton: BACK_TO_RECURRING,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Recurring Invoice"
-        subtitle="View recurring invoice template"
-        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        navItems={[
-          { label: 'Catalog', href: '/invoices/catalog' },
-          { label: 'Vendors', href: '/invoices/vendors' },
-          { label: 'Recurring', href: '/invoices/recurring' },
-        ]}
-        loading
-        loadingLabel="Loading recurring invoice..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading recurring invoice" />
   }
 
   if (!canView) {
@@ -208,19 +208,7 @@ export default function RecurringInvoiceDetailPage() {
   }
 
   if (error || !recurringInvoice) {
-    return (
-      <PageLayout
-        title="Recurring Invoice"
-        subtitle="View recurring invoice template"
-        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        navItems={[
-          { label: 'Catalog', href: '/invoices/catalog' },
-          { label: 'Vendors', href: '/invoices/vendors' },
-          { label: 'Recurring', href: '/invoices/recurring' },
-        ]}
-        error={error || 'Recurring invoice not found'}
-      />
-    )
+    return <PageLayout {...layoutProps} error={error || 'Recurring invoice not found'} />
   }
 
   const nextInvoiceDate = getNextInvoiceDate()
@@ -239,302 +227,269 @@ export default function RecurringInvoiceDetailPage() {
   const invoiceDiscountAmount = totals.subtotal * (recurringInvoice.invoice_discount_percentage / 100)
   const finalSubtotal = totals.subtotal - invoiceDiscountAmount
   const finalTotal = finalSubtotal + totals.vat
+  const lastInvoiceLabel = recurringInvoice.last_invoice
+    ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
+    : null
 
-  const headerActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      {canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-          leftIcon={<Edit2 className="h-4 w-4" />}
-        >
-          Edit
-        </Button>
-      )}
-      {canEdit && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleToggleStatus}
-          disabled={actionLoading}
-          leftIcon={recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        >
-          {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
-        </Button>
-      )}
-      {canCreate && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleGenerateNow}
-          disabled={!recurringInvoice.is_active || actionLoading}
-          loading={actionLoading}
-          leftIcon={<FileText className="h-4 w-4" />}
-          title={
-            !recurringInvoice.is_active
-              ? 'Activate this template before generating.'
-              : undefined
-          }
-        >
-          Generate Now
-        </Button>
-      )}
-    </div>
-  )
+  // Page-level actions in priority order: the first ones show, the rest go in the "More" menu
+  // (DetailHeaderActions), with Generate Now, the next step, always last.
+  const headerActions: DetailHeaderAction[] = [
+    ...(canEdit
+      ? [{ key: 'edit', label: 'Edit', icon: 'edit' as const, href: `/invoices/recurring/${recurringInvoice.id}/edit` }]
+      : []),
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: 'trash',
+      tone: 'danger',
+      onSelect: () => setShowDeleteDialog(true),
+      disabled: !canDelete,
+      title: !canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined,
+    },
+    ...(canEdit
+      ? [{
+        key: 'toggle',
+        label: recurringInvoice.is_active ? 'Deactivate' : 'Activate',
+        icon: recurringInvoice.is_active ? 'pause' as const : 'play' as const,
+        onSelect: () => void handleToggleStatus(),
+        disabled: actionLoading,
+      }]
+      : []),
+    ...(canCreate
+      ? [{
+        key: 'generate',
+        label: 'Generate Now',
+        icon: 'fileText' as const,
+        tone: 'primary' as const,
+        onSelect: () => void handleGenerateNow(),
+        disabled: !recurringInvoice.is_active || actionLoading,
+        loading: actionLoading,
+        title: !recurringInvoice.is_active ? 'Activate this template before generating.' : undefined,
+      }]
+      : []),
+  ]
 
   return (
-    <PageLayout
-      title="Recurring Invoice Details"
-      subtitle={`Template for ${recurringInvoice.vendor?.name || 'Unknown Vendor'}`}
-      backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-      navItems={[
-        { label: 'Catalog', href: '/invoices/catalog' },
-        { label: 'Vendors', href: '/invoices/vendors' },
-        { label: 'Recurring', href: '/invoices/recurring' },
-      ]}
-      headerActions={headerActions}
-    >
+    <PageLayout {...layoutProps} headerActions={<DetailHeaderActions actions={headerActions} />}>
       {isReadOnly && (
-        <Alert
-          variant="info"
-          description="You have read-only access to this recurring invoice. Management actions are disabled."
-          className="mb-6"
-        />
+        <Alert tone="info">
+          You have read-only access to this recurring invoice. Management actions are disabled.
+        </Alert>
       )}
 
-      <div className="space-y-6">
-        <Card title="Template Information">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <div className="text-sm text-text-muted">Status</div>
-              <div className="mt-1">
-                <Badge tone={recurringInvoice.is_active ? 'success' : 'neutral'} size="sm">
-                  {recurringInvoice.is_active ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-            </div>
+      <Card>
+        <CardHeader title="Template Information" />
+        <CardBody>
+          <DescriptionList
+            items={[
+              {
+                key: 'status',
+                label: 'Status',
+                value: (
+                  <Badge tone={recurringScheduleTone(recurringInvoice.is_active)} size="sm">
+                    {recurringScheduleLabel(recurringInvoice.is_active)}
+                  </Badge>
+                ),
+              },
+              {
+                key: 'vendor',
+                label: 'Vendor',
+                value: <span className="font-medium">{recurringInvoice.vendor?.name || 'Unknown'}</span>,
+              },
+              {
+                key: 'frequency',
+                label: 'Frequency',
+                value: (
+                  <span className="flex items-center gap-2">
+                    <Icon name="calendar" size={16} className="text-text-subtle" />
+                    <span className="capitalize">{recurringInvoice.frequency}</span>
+                  </span>
+                ),
+              },
+              {
+                key: 'terms',
+                label: 'Payment Terms',
+                value: (
+                  <span className="flex items-center gap-2">
+                    <Icon name="clock" size={16} className="text-text-subtle" />
+                    <span>{recurringInvoice.days_before_due} days</span>
+                  </span>
+                ),
+              },
+              { key: 'start', label: 'Start Date', value: formatDateInLondon(recurringInvoice.start_date) },
+              {
+                key: 'end',
+                label: 'End Date',
+                value: recurringInvoice.end_date ? formatDateInLondon(recurringInvoice.end_date) : 'Ongoing',
+              },
+              ...(recurringInvoice.reference
+                ? [{ key: 'reference', label: 'Reference', value: recurringInvoice.reference }]
+                : []),
+              {
+                key: 'next',
+                label: 'Next Invoice Date',
+                value: (
+                  <span className="font-medium">
+                    {nextInvoiceDate ? formatDateInLondon(nextInvoiceDate) : 'N/A'}
+                  </span>
+                ),
+              },
+              ...(recurringInvoice.last_invoice
+                ? [{
+                  key: 'last_generated',
+                  label: 'Last Generated',
+                  value: formatDateInLondon(recurringInvoice.last_invoice.invoice_date),
+                }]
+                : []),
+              { key: 'last_invoice', label: 'Last Invoice', value: lastInvoiceLabel ?? 'None' },
+            ]}
+          />
+        </CardBody>
+      </Card>
 
-            <div>
-              <div className="text-sm text-text-muted">Vendor</div>
-              <div className="mt-1 font-medium">{recurringInvoice.vendor?.name || 'Unknown'}</div>
-            </div>
+      <Card>
+        <CardHeader title="Line Items" />
+        <DataTable
+          data={recurringInvoice.line_items || []}
+          getRowKey={(item) => `${item.description}-${item.unit_price}-${item.quantity}-${item.vat_rate}-${item.discount_percentage}`}
+          bordered={false}
+          columns={[
+            {
+              key: 'description',
+              header: 'Description',
+              cell: (item: any) => (
+                <span className="text-sm text-text">{item.description}</span>
+              ),
+            },
+            {
+              key: 'quantity',
+              header: 'Qty',
+              align: 'right',
+              cell: (item: any) => (
+                <span className="text-sm text-text">{item.quantity}</span>
+              ),
+            },
+            {
+              key: 'unit_price',
+              header: 'Unit Price',
+              align: 'right',
+              cell: (item: any) => (
+                <span className="text-sm text-text">£{item.unit_price.toFixed(2)}</span>
+              ),
+            },
+            {
+              key: 'discount_percentage',
+              header: 'Discount',
+              align: 'right',
+              cell: (item: any) => (
+                <span className="text-sm text-text">{item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}</span>
+              ),
+            },
+            {
+              key: 'vat_rate',
+              header: 'VAT',
+              align: 'right',
+              cell: (item: any) => (
+                <span className="text-sm text-text">{item.vat_rate}%</span>
+              ),
+            },
+            {
+              key: 'total',
+              header: 'Total',
+              align: 'right',
+              cell: (item: any) => {
+                const lineSubtotal = item.quantity * item.unit_price
+                const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+                const lineAfterDiscount = lineSubtotal - lineDiscount
+                const lineVat = lineAfterDiscount * (item.vat_rate / 100)
+                const lineTotal = lineAfterDiscount + lineVat
+                return <span className="text-sm font-medium text-text">£{lineTotal.toFixed(2)}</span>
+              },
+            },
+          ]}
+          emptyMessage="No line items"
+        />
+      </Card>
 
-            <div>
-              <div className="text-sm text-text-muted">Frequency</div>
-              <div className="mt-1 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-text-subtle" />
-                <span className="capitalize">{recurringInvoice.frequency}</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm text-text-muted">Payment Terms</div>
-              <div className="mt-1 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-text-subtle" />
-                <span>{recurringInvoice.days_before_due} days</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm text-text-muted">Start Date</div>
-              <div className="mt-1">{formatDateInLondon(recurringInvoice.start_date)}</div>
-            </div>
-
-            <div>
-              <div className="text-sm text-text-muted">End Date</div>
-              <div className="mt-1">
-                {recurringInvoice.end_date
-                  ? formatDateInLondon(recurringInvoice.end_date)
-                  : 'Ongoing'}
-              </div>
-            </div>
-
-            {recurringInvoice.reference && (
-              <div>
-                <div className="text-sm text-text-muted">Reference</div>
-                <div className="mt-1">{recurringInvoice.reference}</div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-sm text-text-muted">Next Invoice Date</div>
-              <div className="mt-1 font-medium">
-                {nextInvoiceDate
-                  ? formatDateInLondon(nextInvoiceDate)
-                  : 'N/A'}
-              </div>
-            </div>
-
-            {recurringInvoice.last_invoice && (
-              <div>
-                <div className="text-sm text-text-muted">Last Generated</div>
-                <div className="mt-1">
-                  {formatDateInLondon(recurringInvoice.last_invoice.invoice_date)}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-sm text-text-muted">Last Invoice</div>
-              <div className="mt-1">
-                {recurringInvoice.last_invoice
-                  ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
-                  : 'None'}
-              </div>
-            </div>
+      <Card>
+        <CardHeader title="Summary" />
+        <CardBody className="space-y-2">
+          <div className="flex justify-between">
+            <span>Subtotal:</span>
+            <span>£{totals.subtotal.toFixed(2)}</span>
           </div>
-        </Card>
+          {recurringInvoice.invoice_discount_percentage > 0 && (
+            <div className="flex justify-between text-sm">
+              <span>Invoice Discount ({recurringInvoice.invoice_discount_percentage}%):</span>
+              <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span>VAT:</span>
+            <span>£{totals.vat.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
+            <span>Total:</span>
+            <span>£{finalTotal.toFixed(2)}</span>
+          </div>
+        </CardBody>
+      </Card>
 
-        <Card title="Line Items">
-          <DataTable
-            data={recurringInvoice.line_items || []}
-            getRowKey={(item) => `${item.description}-${item.unit_price}-${item.quantity}-${item.vat_rate}-${item.discount_percentage}`}
-            columns={[
+      {(recurringInvoice.notes || recurringInvoice.internal_notes) && (
+        <Card>
+          <CardHeader title="Notes" />
+          <CardBody>
+            <DescriptionList
+              columns={1}
+              items={[
+                ...(recurringInvoice.notes
+                  ? [{
+                    key: 'notes',
+                    label: 'Customer Notes',
+                    value: <span className="whitespace-pre-wrap">{recurringInvoice.notes}</span>,
+                  }]
+                  : []),
+                ...(recurringInvoice.internal_notes
+                  ? [{
+                    key: 'internal_notes',
+                    label: 'Internal Notes',
+                    value: <span className="whitespace-pre-wrap">{recurringInvoice.internal_notes}</span>,
+                  }]
+                  : []),
+              ]}
+            />
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader
+          title="Last Invoice Generated"
+          subtitle="Track the latest invoice produced by this schedule"
+        />
+        <CardBody>
+          <DescriptionList
+            items={[
               {
-                key: 'description',
-                header: 'Description',
-                cell: (item: any) => (
-                  <span className="text-sm text-text">{item.description}</span>
-                ),
+                key: 'last_generated_invoice',
+                label: 'Last generated invoice',
+                value: <span className="text-base font-medium">{lastInvoiceLabel ?? 'Not yet generated'}</span>,
               },
               {
-                key: 'quantity',
-                header: 'Qty',
-                align: 'right',
-                cell: (item: any) => (
-                  <span className="text-sm text-text">{item.quantity}</span>
+                key: 'generated_on',
+                label: 'Generated on',
+                value: (
+                  <span className="text-base font-medium">
+                    {recurringInvoice.last_invoice
+                      ? new Date(recurringInvoice.last_invoice.invoice_date).toLocaleDateString('en-GB')
+                      : 'Not yet generated'}
+                  </span>
                 ),
-              },
-              {
-                key: 'unit_price',
-                header: 'Unit Price',
-                align: 'right',
-                cell: (item: any) => (
-                  <span className="text-sm text-text">£{item.unit_price.toFixed(2)}</span>
-                ),
-              },
-              {
-                key: 'discount_percentage',
-                header: 'Discount',
-                align: 'right',
-                cell: (item: any) => (
-                  <span className="text-sm text-text">{item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}</span>
-                ),
-              },
-              {
-                key: 'vat_rate',
-                header: 'VAT',
-                align: 'right',
-                cell: (item: any) => (
-                  <span className="text-sm text-text">{item.vat_rate}%</span>
-                ),
-              },
-              {
-                key: 'total',
-                header: 'Total',
-                align: 'right',
-                cell: (item: any) => {
-                  const lineSubtotal = item.quantity * item.unit_price
-                  const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-                  const lineAfterDiscount = lineSubtotal - lineDiscount
-                  const lineVat = lineAfterDiscount * (item.vat_rate / 100)
-                  const lineTotal = lineAfterDiscount + lineVat
-                  return <span className="text-sm font-medium text-text">£{lineTotal.toFixed(2)}</span>
-                },
               },
             ]}
-            emptyMessage="No line items"
           />
-        </Card>
-
-        <Card title="Summary">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>£{totals.subtotal.toFixed(2)}</span>
-            </div>
-            {recurringInvoice.invoice_discount_percentage > 0 && (
-              <div className="flex justify-between text-sm">
-                <span>Invoice Discount ({recurringInvoice.invoice_discount_percentage}%):</span>
-                <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span>VAT:</span>
-              <span>£{totals.vat.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
-              <span>Total:</span>
-              <span>£{finalTotal.toFixed(2)}</span>
-            </div>
-          </div>
-        </Card>
-
-        {(recurringInvoice.notes || recurringInvoice.internal_notes) && (
-          <Card title="Notes">
-            {recurringInvoice.notes && (
-              <div className="mb-4">
-                <div className="mb-1 text-sm text-text-muted">Customer Notes</div>
-                <div className="whitespace-pre-wrap text-text">{recurringInvoice.notes}</div>
-              </div>
-            )}
-            {recurringInvoice.internal_notes && (
-              <div>
-                <div className="mb-1 text-sm text-text-muted">Internal Notes</div>
-                <div className="whitespace-pre-wrap text-text">{recurringInvoice.internal_notes}</div>
-              </div>
-            )}
-          </Card>
-        )}
-
-        <Card title="Last invoice generated">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-text-muted">Track the latest invoice produced by this schedule.</p>
-            <Button
-              variant="secondary"
-              onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-              leftIcon={<Edit2 className="h-4 w-4" />}
-              disabled={!canEdit}
-            >
-              Edit schedule
-            </Button>
-          </div>
-
-          <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-text-muted">Last generated invoice</dt>
-              <dd className="text-base font-medium text-text">
-                {recurringInvoice.last_invoice
-                  ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
-                  : 'Not yet generated'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-text-muted">Generated on</dt>
-              <dd className="text-base font-medium text-text">
-                {recurringInvoice.last_invoice
-                  ? new Date(recurringInvoice.last_invoice.invoice_date).toLocaleDateString('en-GB')
-                  : 'Not yet generated'}
-              </dd>
-            </div>
-          </dl>
-        </Card>
-
-        <Card>
-          <div className="flex justify-end">
-            <Button
-              variant="danger"
-              onClick={() => setShowDeleteDialog(true)}
-              leftIcon={<Trash2 className="h-4 w-4" />}
-              disabled={!canDelete}
-              title={!canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined}
-            >
-              Delete Template
-            </Button>
-          </div>
-        </Card>
-      </div>
+        </CardBody>
+      </Card>
 
       <ConfirmDialog
         open={showDeleteDialog}
@@ -542,9 +497,9 @@ export default function RecurringInvoiceDetailPage() {
         onConfirm={handleDelete}
         title="Delete Recurring Invoice"
         message="Are you sure you want to delete this recurring invoice template? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        type="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        tone="danger"
       />
     </PageLayout>
   )

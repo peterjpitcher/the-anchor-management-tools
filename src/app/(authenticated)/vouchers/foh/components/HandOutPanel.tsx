@@ -1,8 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Button, Input } from '@/ds'
-import { cn } from '@/lib/utils'
+import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Input } from '@/ds'
 import { EXPIRY_PRESET_DAYS } from '@/lib/vouchers/constants'
 import {
   addDaysToIso,
@@ -18,7 +17,6 @@ import { useVoucherLookup } from './useVoucherLookup'
 import { NumberSearch } from './NumberSearch'
 import { VoucherCard, isActionable } from './VoucherCard'
 import { CustomerAttach } from './CustomerAttach'
-import { ConfirmDialog } from './ConfirmDialog'
 
 type HandOutPanelProps = {
   canEdit: boolean
@@ -198,41 +196,34 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
     canEdit && staffId && selected && isActionable(selected, 'handout') && expiryValid && contextValid
   )
 
-  // One selected-chip look across the voucher screens (Won at, expiry and the ledger filters).
-  const chipClass = (selectedChip: boolean) =>
-    cn(
-      'min-h-touch rounded-pill border px-4 py-2 text-base font-medium focus-visible:outline-hidden focus-visible:shadow-ring',
-      selectedChip
-        ? 'border-primary bg-primary-soft text-primary-soft-fg'
-        : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
-    )
-
+  // Blocks flow straight into the screen's own stack (VouchersFohClient).
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-base font-semibold text-text">Where was it won?</h3>
-        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event won at">
-          {events.map((event) => (
-            <button
-              key={event.id}
-              type="button"
-              onClick={() => setEventId(eventId === event.id ? null : event.id)}
-              aria-pressed={eventId === event.id}
-              className={chipClass(eventId === event.id)}
-            >
-              {event.name}
-            </button>
-          ))}
-          {eventsLoaded && events.length === 0 && (
-            <p className="text-base text-text-muted">No events today. Type where it was won below.</p>
-          )}
-        </div>
-        <div className="mt-2">
-          <label htmlFor="foh-handout-label" className="mb-1 block text-sm font-medium text-text">
-            Or type it (used when no event is picked)
-          </label>
+    <>
+      {/* Choices are toggle buttons: the pressed one is filled. */}
+      <Card>
+        <CardHeader title="Where Was It Won?" />
+        <CardBody className="space-y-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Event won at">
+            {events.map((event) => (
+              <Button
+                key={event.id}
+                type="button"
+                size="lg"
+                variant={eventId === event.id ? 'primary' : 'secondary'}
+                onClick={() => setEventId(eventId === event.id ? null : event.id)}
+                aria-pressed={eventId === event.id}
+                className="min-h-touch text-base"
+              >
+                {event.name}
+              </Button>
+            ))}
+            {eventsLoaded && events.length === 0 && (
+              <p className="text-base text-text-muted">No events today. Type where it was won below.</p>
+            )}
+          </div>
           <Input
             id="foh-handout-label"
+            label="Or type it (used when no event is picked)"
             type="text"
             autoComplete="off"
             placeholder="e.g. Quiz Night raffle"
@@ -241,51 +232,57 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             onChange={(event) => setFreeLabel(event.target.value)}
             className="h-12 text-base"
           />
-        </div>
+        </CardBody>
+      </Card>
 
-        <h3 className="mt-4 text-base font-semibold text-text">Expiry date (required)</h3>
-        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Expiry date">
-          {EXPIRY_PRESET_DAYS.map((days) => (
-            <button
-              key={days}
+      <Card>
+        <CardHeader title="Expiry Date (Required)" />
+        <CardBody className="space-y-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Expiry date">
+            {EXPIRY_PRESET_DAYS.map((days) => (
+              <Button
+                key={days}
+                type="button"
+                size="lg"
+                variant={expiryMode === String(days) ? 'primary' : 'secondary'}
+                onClick={() => setExpiryMode(String(days) as ExpiryMode)}
+                aria-pressed={expiryMode === String(days)}
+                className="min-h-touch text-base"
+              >
+                +{days} days
+              </Button>
+            ))}
+            <Button
               type="button"
-              onClick={() => setExpiryMode(String(days) as ExpiryMode)}
-              aria-pressed={expiryMode === String(days)}
-              className={chipClass(expiryMode === String(days))}
+              size="lg"
+              variant={expiryMode === 'custom' ? 'primary' : 'secondary'}
+              onClick={() => setExpiryMode('custom')}
+              aria-pressed={expiryMode === 'custom'}
+              className="min-h-touch text-base"
             >
-              +{days} days
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setExpiryMode('custom')}
-            aria-pressed={expiryMode === 'custom'}
-            className={chipClass(expiryMode === 'custom')}
-          >
-            Custom
-          </button>
-          {expiryMode === 'custom' && (
-            <div>
-              <label htmlFor="foh-handout-custom-expiry" className="sr-only">
-                Custom expiry date
-              </label>
+              Custom
+            </Button>
+            {expiryMode === 'custom' && (
               <Input
                 id="foh-handout-custom-expiry"
+                aria-label="Custom expiry date"
                 type="date"
                 min={todayIso}
                 value={customExpiry}
                 onChange={(event) => setCustomExpiry(event.target.value)}
                 className="h-12 w-auto text-base"
               />
-            </div>
+            )}
+          </div>
+          {expiryDate && expiryValid && (
+            <Alert
+              tone="success"
+              role="status"
+              title={`Write this date on the card: ${formatIsoDateLong(expiryDate)}`}
+            />
           )}
-        </div>
-        {expiryDate && expiryValid && (
-          <p className="mt-2 rounded-md border border-success-border bg-success-soft px-3 py-2 text-base font-semibold text-success-fg">
-            Write this date on the card: {formatIsoDateLong(expiryDate)}
-          </p>
-        )}
-      </div>
+        </CardBody>
+      </Card>
 
       <NumberSearch
         idPrefix="foh-handout"
@@ -302,37 +299,42 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-base text-info-fg">
+          <Alert tone="info" role="status">
             {outcome}
-          </p>
+          </Alert>
         )}
       </div>
 
       {success && (
-        <div className="rounded-lg border border-success-border bg-success-soft p-4">
-          <p className="text-xl font-bold text-success-fg">Handed out</p>
-          <p className="mt-1 text-base text-success-fg">
+        <Alert
+          tone="success"
+          role="status"
+          title="Handed out"
+          actions={
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              onClick={() => {
+                setSuccess(null)
+                setOutcome(null)
+                lookup.reset()
+              }}
+              className="h-14 w-full text-lg"
+            >
+              Hand Out Another
+            </Button>
+          }
+        >
+          <p>
             <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
             {success.contextLabel ? ` (${success.contextLabel})` : ''}, expires{' '}
             {formatIsoDateLong(success.expiryDate)}.
           </p>
-          <p className="mt-2 rounded-md border border-success bg-surface px-3 py-2 text-base font-semibold text-success-fg">
+          <p className="mt-2 font-semibold">
             Write the expiry date, the event and your name on the card before you hand it over.
           </p>
-          <Button
-            type="button"
-            variant="primary"
-            size="lg"
-            onClick={() => {
-              setSuccess(null)
-              setOutcome(null)
-              lookup.reset()
-            }}
-            className="mt-3 h-14 w-full text-lg"
-          >
-            Hand out another
-          </Button>
-        </div>
+        </Alert>
       )}
 
       {selected && !success && (
@@ -354,24 +356,24 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               />
 
               {!canEdit && (
-                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-text">
+                <Alert tone="info" role="status">
                   You have view-only access. Ask a manager to hand out vouchers.
-                </p>
+                </Alert>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <Alert tone="warning" role="status">
                   Choose your name at the top before handing out.
-                </p>
+                </Alert>
               )}
               {canEdit && staffId && !contextValid && (
-                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <Alert tone="warning" role="status">
                   Pick an event or type where the voucher was won.
-                </p>
+                </Alert>
               )}
               {canEdit && staffId && contextValid && !expiryValid && (
-                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <Alert tone="warning" role="status">
                   Pick an expiry date (today or later) before handing out.
-                </p>
+                </Alert>
               )}
 
               {canEdit && (
@@ -383,7 +385,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
                   disabled={!canHandOut}
                   className="h-14 w-full text-xl font-bold"
                 >
-                  Hand out this voucher
+                  Hand Out This Voucher
                 </Button>
               )}
             </div>
@@ -393,24 +395,26 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Hand out this voucher?"
-        confirmLabel="Yes, hand it out"
-        busy={submitting}
+        onClose={() => setConfirmOpen(false)}
         onConfirm={confirmIssue}
-        onCancel={() => setConfirmOpen(false)}
-      >
-        {selected && expiryDate && (
-          <div className="space-y-1">
-            <p>
-              <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
-            </p>
-            <p>Won at: {contextLabel || 'not set'}</p>
-            <p>Expires: {formatIsoDateLong(expiryDate)}</p>
-            <p>Handed out by: {staffName ?? 'not set'}</p>
-            {customer && <p>Customer: {customer.name}</p>}
-          </div>
-        )}
-      </ConfirmDialog>
-    </div>
+        title="Hand Out This Voucher"
+        confirmLabel="Yes, Hand It Out"
+        tone="primary"
+        message={
+          selected && expiryDate ? (
+            <>
+              <span className="block">Hand out this voucher?</span>
+              <span className="block">
+                <span className="font-mono font-semibold">{selected.number}</span> - {selected.typeTitle}
+              </span>
+              <span className="block">Won at: {contextLabel || 'not set'}</span>
+              <span className="block">Expires: {formatIsoDateLong(expiryDate)}</span>
+              <span className="block">Handed out by: {staffName ?? 'not set'}</span>
+              {customer && <span className="block">Customer: {customer.name}</span>}
+            </>
+          ) : undefined
+        }
+      />
+    </>
   )
 }

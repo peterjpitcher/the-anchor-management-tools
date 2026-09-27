@@ -1,6 +1,6 @@
 'use client'
 
-import { Alert, Button, Card, Input } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Input } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { DAY_NAMES, type BusinessHours } from '@/types/business-hours'
 import {
@@ -43,14 +43,13 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
   }
 
   return (
-    <div className="space-y-3 p-4">
-      <div>
-        <h3 className="text-sm font-semibold text-text">Food service times</h3>
-        <p className="mt-1 text-sm text-text-muted">
+    <>
+      <CardHeader title="Food Service Times" className="border-t" />
+      <CardBody className="space-y-3">
+        <p className="text-sm text-text-muted">
           When food can be booked, inside the kitchen hours above. Add a second service on a
           day that has a break in the middle. A time in a gap cannot be booked.
         </p>
-      </div>
 
       {ordered.map(day => {
         if (day.is_closed || day.is_kitchen_closed) return null
@@ -86,13 +85,13 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
                     ])
                   }
                 >
-                  Add a service
+                  Add a Service
                 </Button>
               )}
             </div>
 
             {generalProblem && (
-              <Alert variant="warning" className="mb-2">
+              <Alert tone="warning" className="mb-2">
                 {generalProblem.message}
               </Alert>
             )}
@@ -157,7 +156,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
                           </Button>
                         )}
                       </div>
-                      {problem && <p className="text-xs text-danger">{problem.message}</p>}
+                      {problem && <p className="text-xs text-danger-fg">{problem.message}</p>}
                     </div>
                   )
                 })}
@@ -172,6 +171,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
           </Card>
         )
       })}
-    </div>
+      </CardBody>
+    </>
   )
 }

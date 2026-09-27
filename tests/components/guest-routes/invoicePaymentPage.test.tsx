@@ -107,6 +107,22 @@ describe('invoice payment page', () => {
     expect(screen.queryByText('Secure payment via PayPal')).not.toBeInTheDocument()
   })
 
+  it('says the invoice could not be loaded when the database fails, not that the link is wrong', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {}
+    chain.eq = vi.fn(() => chain)
+    chain.is = vi.fn(() => chain)
+    chain.maybeSingle = vi.fn(async () => ({ data: null, error: { message: 'connection reset' } }))
+    select.mockReturnValue(chain)
+
+    await renderPage()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('We could not load this invoice just now.')
+    expect(screen.queryByRole('button', { name: 'Pay invoice' })).not.toBeInTheDocument()
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
   it('mounts capture recovery after the vendor is disabled', async () => {
     invoiceRow = invoice(false)
 

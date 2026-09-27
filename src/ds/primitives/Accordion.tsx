@@ -2,8 +2,8 @@
 
 import { useState, ReactNode, createContext, useContext } from 'react'
 import { cn } from '@/lib/utils'
-import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import { Transition } from '@headlessui/react'
+import { Icon, type IconName } from '../icons'
 
 interface AccordionItem {
   key: string
@@ -76,9 +76,9 @@ export function Accordion({
   }
 
   const sizeClasses = {
-    sm: { header: 'px-3 py-2 text-sm', content: 'px-3 py-2 text-sm', icon: 'h-4 w-4' },
-    md: { header: 'px-4 py-3', content: 'px-4 py-3', icon: 'h-5 w-5' },
-    lg: { header: 'px-5 py-4 text-lg', content: 'px-5 py-4', icon: 'h-6 w-6' },
+    sm: { header: 'px-3 py-2 text-sm', content: 'px-3 py-2 text-sm', icon: 'h-4 w-4', iconSize: 16 },
+    md: { header: 'px-4 py-3', content: 'px-4 py-3', icon: 'h-5 w-5', iconSize: 20 },
+    lg: { header: 'px-5 py-4 text-lg', content: 'px-5 py-4', icon: 'h-6 w-6', iconSize: 24 },
   }
 
   const variantClasses = {
@@ -123,10 +123,10 @@ export function Accordion({
       >
         {items.map((item) => {
           const isExpanded = activeKeys.includes(item.key)
-          const ArrowIcon = showArrow
+          const arrowIcon: IconName | null = showArrow
             ? iconPosition === 'start'
-              ? ChevronRightIcon
-              : ChevronDownIcon
+              ? 'chevronRight'
+              : 'chevronDown'
             : null
 
           return (
@@ -162,7 +162,7 @@ export function Accordion({
                             isExpanded && 'rotate-90',
                           )}
                         >
-                          {expandIcon || (ArrowIcon && <ArrowIcon />)}
+                          {expandIcon || (arrowIcon && <Icon name={arrowIcon} size={currentSize.iconSize} className="block" />)}
                         </span>
                       )}
                       {item.icon && (
@@ -180,7 +180,7 @@ export function Accordion({
                             isExpanded && 'rotate-180',
                           )}
                         >
-                          {expandIcon || (ArrowIcon && <ArrowIcon />)}
+                          {expandIcon || (arrowIcon && <Icon name={arrowIcon} size={currentSize.iconSize} className="block" />)}
                         </span>
                       )}
                     </div>

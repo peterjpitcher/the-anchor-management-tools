@@ -49,7 +49,7 @@ describe('MileageFilters', () => {
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-04-03' } })
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-04-20' } })
     expect(onChange).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Apply dates' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply Dates' }))
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_MILEAGE_LIST_QUERY, from: '2026-04-03', to: '2026-04-20', page: 1 })
   })
 
@@ -80,12 +80,12 @@ describe('MileageFilters', () => {
 
   it('clears every filter but keeps the sort', () => {
     const onChange = renderFilters({ ...DEFAULT_MILEAGE_LIST_QUERY, q: 'shop', sort: 'miles', dir: 'asc' })
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }))
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_MILEAGE_LIST_QUERY, sort: 'miles', dir: 'asc' })
   })
 
   it('offers no clear button when nothing is filtered', () => {
     renderFilters({ ...DEFAULT_MILEAGE_LIST_QUERY, sort: 'miles' })
-    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear Filters' })).not.toBeInTheDocument()
   })
 })

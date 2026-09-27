@@ -10,10 +10,14 @@ import {
   GuestBadge,
   GuestBlockedState,
   GuestCard,
+  GuestCardHeader,
+  GuestEmailLink,
+  GuestIntro,
+  GuestLink,
+  GuestPhoneLink,
   GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
+  GUEST_MUTED_CLASS,
+  GUEST_NOTE_CLASS,
   GUEST_SUNK_BOX_CLASS,
   guestBadgeToneForStatus,
   TrustLine,
@@ -41,13 +45,12 @@ const statusLabels: Record<BookingStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-/**
- * Card headings on this page are labels, not headings, so they use Outfit at
- * 12px rather than the display serif. Kept local: the other guest routes lead
- * with the page `h1` and have no equivalent.
- */
-const CARD_LABEL_CLASS =
-  'font-anchor-body text-xs font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted'
+/** The deposit line's badge, by where the deposit stands. */
+const DEPOSIT_BADGE: Record<'notRequired' | 'paid' | 'outstanding', { tone: GuestBadgeTone; label: string }> = {
+  notRequired: { tone: 'success', label: 'Not required' },
+  paid: { tone: 'success', label: 'Paid' },
+  outstanding: { tone: 'outstanding', label: 'Outstanding' },
+}
 
 interface BookingRow {
   id: string
@@ -77,7 +80,7 @@ interface BookingRow {
 
 function InvalidToken(): React.JSX.Element {
   return (
-    <GuestShell bodyClassName="gap-4">
+    <GuestShell>
       <GuestBlockedState
         kicker="Private hire"
         heading="Link not valid"
@@ -92,7 +95,7 @@ function InvalidToken(): React.JSX.Element {
 
 function BookingNotFound(): React.JSX.Element {
   return (
-    <GuestShell bodyClassName="gap-4">
+    <GuestShell>
       <GuestBlockedState
         kicker="Private hire"
         heading="Booking not found"
@@ -126,18 +129,16 @@ interface PaymentRowProps {
 function PaymentRow({ name, sub, amount, badge }: PaymentRowProps): React.JSX.Element {
   return (
     <div className="flex items-start justify-between gap-4 py-3">
-      <div className="flex min-w-0 flex-col gap-[3px]">
-        <p className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
+      <div className="flex min-w-0 flex-col gap-guest-3xs">
+        <p className="font-anchor-body text-guest-body font-semibold leading-guest-snug text-guest-text">
           {name}
         </p>
-        {sub ? (
-          <p className="font-anchor-body text-xs leading-[1.5] text-guest-text-muted">{sub}</p>
-        ) : null}
+        {sub ? <p className={GUEST_NOTE_CLASS}>{sub}</p> : null}
       </div>
 
       <div className="flex shrink-0 flex-col items-end gap-1.5">
         {/* DM Serif Display is weight 400 only: never embolden the figure. */}
-        <p className="font-anchor-display text-[22px] font-normal leading-none tracking-[-0.02em] text-guest-text-strong">
+        <p className="font-anchor-display text-guest-h2 font-normal leading-guest-flat text-guest-text-strong">
           {amount}
         </p>
         {badge ? <GuestBadge tone={badge.tone}>{badge.label}</GuestBadge> : null}
@@ -228,20 +229,13 @@ export default async function BookingPortalPage({
   ])
 
   return (
-    <GuestShell bodyClassName="gap-4">
-      {/* Intro */}
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>Private hire</p>
-        <h1 className={GUEST_H1_CLASS}>
-          {b.event_type ? b.event_type : 'Private Event'} - {customerName}
-        </h1>
+    <GuestShell>
+      <GuestIntro kicker="Private hire" title={`${b.event_type ? b.event_type : 'Private Event'} - ${customerName}`}>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <GuestBadge tone={statusTone}>{statusLabel}</GuestBadge>
-          <span className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-            Your booking summary
-          </span>
+          <span className={GUEST_MUTED_CLASS}>Your booking summary</span>
         </div>
-      </div>
+      </GuestIntro>
 
       {/* PayPal capture: active capture on return from PayPal */}
       <PayPalCaptureClient portalToken={token} depositPaid={depositPaid} />
@@ -255,15 +249,15 @@ export default async function BookingPortalPage({
 
       {/* Event details */}
       <GuestCard>
-        <h2 className={CARD_LABEL_CLASS}>Event Details</h2>
-        <DetailGrid className="mt-4" items={eventDetails} />
+        <GuestCardHeader title="Event details" />
+        <DetailGrid items={eventDetails} />
       </GuestCard>
 
       {/* Payment status */}
       <GuestCard variant="accent">
-        <h2 className={CARD_LABEL_CLASS}>Payment Status</h2>
+        <GuestCardHeader title="Payment status" />
 
-        <div className="mt-4 divide-y divide-guest-border">
+        <div className="divide-y divide-guest-border">
           {/* Deposit row */}
           <PaymentRow
             name="Deposit"
@@ -275,10 +269,7 @@ export default async function BookingPortalPage({
                   : 'Not yet received'
             }
             amount={depositRequired ? formatCurrency(b.deposit_amount) : 'None'}
-            badge={{
-              tone: !depositRequired || depositPaid ? 'success' : 'outstanding',
-              label: !depositRequired ? 'Not required' : depositPaid ? 'Paid' : 'Outstanding',
-            }}
+            badge={DEPOSIT_BADGE[!depositRequired ? 'notRequired' : depositPaid ? 'paid' : 'outstanding']}
           />
 
           {/* Pay now, between the deposit and total rows */}
@@ -286,27 +277,14 @@ export default async function BookingPortalPage({
             <div className="flex flex-col gap-2.5 py-3">
               <FreshPayPalLinkClient portalToken={token} />
               <TrustLine />
-              <p className="font-anchor-body text-xs leading-[1.6] text-guest-text-muted">
+              <p className={GUEST_NOTE_CLASS}>
                 Paying the deposit confirms that you accept the booking terms and conditions in the
                 contract we&apos;ve sent to your email address. If you haven&apos;t received it,
-                please contact us on {GUEST_CONTACT.phoneDisplay} or{' '}
-                <a
-                  href={GUEST_CONTACT.emailHref}
-                  referrerPolicy="no-referrer"
-                  className="text-guest-accent-text underline"
-                >
-                  {GUEST_CONTACT.email}
-                </a>{' '}
-                before paying. How we use your data:{' '}
-                <a
-                  href="https://www.the-anchor.pub/privacy-policy"
-                  className="text-guest-accent-text underline"
-                  rel="noopener noreferrer"
-                  target="_blank"
-                  referrerPolicy="no-referrer"
-                >
+                please contact us on {GUEST_CONTACT.phoneDisplay} or <GuestEmailLink /> before
+                paying. How we use your data:{' '}
+                <GuestLink href="https://www.the-anchor.pub/privacy-policy" external>
                   privacy notice
-                </a>
+                </GuestLink>
                 .
               </p>
             </div>
@@ -325,26 +303,26 @@ export default async function BookingPortalPage({
               name="Balance remaining"
               sub={b.balance_due_date ? `Due by ${formatDateFull(b.balance_due_date)}` : null}
               amount={formatCurrency(balanceRemaining)}
-              badge={{ tone: 'outstanding', label: 'Outstanding' }}
+              badge={DEPOSIT_BADGE.outstanding}
             />
           )}
         </div>
 
         {/* Fully paid banner */}
         {balancePaid && (
-          <GuestAlert tone="success" className="mt-4">
-            Paid in full, thank you!
-          </GuestAlert>
+          <div className="mt-guest-md">
+            <GuestAlert tone="success">Paid in full, thank you!</GuestAlert>
+          </div>
         )}
       </GuestCard>
 
       {/* Special requests: only if present */}
       {b.customer_requests && (
         <GuestCard>
-          <h2 className={CARD_LABEL_CLASS}>Your Requests</h2>
+          <GuestCardHeader title="Your requests" />
           {/* One column: free text needs the full width, unlike the paired event facts. */}
           <DetailGrid
-            className="mt-4 min-[380px]:grid-cols-1"
+            columns="single"
             items={[
               {
                 label: 'Special requests',
@@ -356,27 +334,12 @@ export default async function BookingPortalPage({
       )}
 
       {/* Contact block */}
-      <div className={cn(GUEST_SUNK_BOX_CLASS, 'p-[18px] text-center')}>
-        <p className="text-sm font-bold leading-[1.4] text-guest-text-strong">
+      <div className={cn(GUEST_SUNK_BOX_CLASS, 'text-center')}>
+        <p className="font-anchor-body text-guest-body font-bold leading-guest-snug text-guest-text-strong">
           Questions about your booking?
         </p>
-        <p className="mt-1.5 text-sm leading-[1.6] text-guest-text">
-          Call us on{' '}
-          <a
-            href={GUEST_CONTACT.telHref}
-            referrerPolicy="no-referrer"
-            className="font-medium text-guest-accent-text underline"
-          >
-            {GUEST_CONTACT.phoneDisplay}
-          </a>{' '}
-          or email{' '}
-          <a
-            href={GUEST_CONTACT.emailHref}
-            referrerPolicy="no-referrer"
-            className="font-medium text-guest-accent-text underline"
-          >
-            {GUEST_CONTACT.email}
-          </a>
+        <p className="mt-1.5 font-anchor-body text-guest-body text-guest-text">
+          Call us on <GuestPhoneLink /> or email <GuestEmailLink />
         </p>
       </div>
     </GuestShell>

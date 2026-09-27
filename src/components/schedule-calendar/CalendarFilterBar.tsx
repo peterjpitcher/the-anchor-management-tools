@@ -1,7 +1,6 @@
 'use client'
 
-import { cn } from '@/lib/utils'
-import { Button } from '@/ds'
+import { Button, Card } from '@/ds'
 import {
     CONTENT_GAP_LABELS,
     EMPTY_CALENDAR_FILTERS,
@@ -34,6 +33,10 @@ interface CalendarFilterBarProps {
 
 const GAPS: CalendarContentGap[] = ['image', 'brief', 'description']
 
+/**
+ * One filter toggle. It is interactive, so it is a DS Button (primary when on, secondary when
+ * off) that reports its state with aria-pressed, not a Badge.
+ */
 function Chip({
     active,
     onClick,
@@ -46,31 +49,27 @@ function Chip({
     swatch?: string
 }) {
     return (
-        <button
+        <Button
             type="button"
+            size="sm"
+            variant={active ? 'primary' : 'secondary'}
             onClick={onClick}
             aria-pressed={active}
-            className={cn(
-                // 44px min height: this bar is used on the iPad behind the bar.
-                // Do NOT reintroduce `sm:min-h-0` here. sm: starts at 640px and an
-                // iPad is 768px, so it cancelled the target on the one device the
-                // comment names.
-                'inline-flex min-h-touch items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                'focus-visible:outline-hidden focus-visible:shadow-ring',
-                active
-                    ? 'border-primary bg-primary text-primary-fg'
-                    : 'border-border bg-surface text-text hover:bg-surface-hover'
-            )}
+            // 44px min height: this bar is used on the iPad behind the bar, where the DS
+            // Button's own touch floor (below 821px) does not reach a landscape iPad.
+            className="min-h-touch"
+            icon={
+                swatch ? (
+                    <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                        style={{ background: swatch }}
+                        aria-hidden="true"
+                    />
+                ) : undefined
+            }
         >
-            {swatch && (
-                <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-sm"
-                    style={{ background: swatch }}
-                    aria-hidden="true"
-                />
-            )}
             {children}
-        </button>
+        </Button>
     )
 }
 
@@ -102,7 +101,8 @@ export function CalendarFilterBar({
     }
 
     return (
-        <div className={cn('flex flex-col gap-2 rounded-md border border-border bg-surface p-3', className)}>
+        <Card padding="sm" className={className}>
+        <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-text-muted">Show</span>
                 {availableKinds.map((kind) => (
@@ -134,7 +134,7 @@ export function CalendarFilterBar({
                     active={filters.hideCancelled}
                     onClick={() => onChange({ ...filters, hideCancelled: !filters.hideCancelled })}
                 >
-                    Hide cancelled
+                    Hide Cancelled
                 </Chip>
                 <Chip
                     active={filters.showCancelledPrivateHire}
@@ -145,7 +145,7 @@ export function CalendarFilterBar({
                         })
                     }
                 >
-                    Show cancelled private hire
+                    Show Cancelled Private Hire
                 </Chip>
             </div>
 
@@ -164,11 +164,12 @@ export function CalendarFilterBar({
                             type="button"
                             onClick={() => onChange(EMPTY_CALENDAR_FILTERS)}
                         >
-                            Clear filters
+                            Clear Filters
                         </Button>
                     )}
                 </div>
             )}
         </div>
+        </Card>
     )
 }

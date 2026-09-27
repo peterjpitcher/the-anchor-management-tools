@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ConfirmDialog, Input, toast } from '@/ds'
+import { Alert, ConfirmDialog, Input, PageLoading, toast } from '@/ds'
 import type { EventBookingRow } from '@/app/actions/events'
 import { getEventBookingRefundInfo, refundEventBookingManual } from '@/app/actions/events'
 
@@ -25,7 +25,7 @@ function formatCurrency(amount: number): string {
 
 /**
  * After-the-fact refund for a paid (confirmed or cancelled) event booking.
- * Amount defaults to — and is capped at — the refundable amount; the server
+ * Amount defaults to (and is capped at) the refundable amount; the server
  * re-validates, so the cap here is a courtesy, not the safety net.
  */
 export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingDialogProps) {
@@ -121,13 +121,13 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
       message={
         <div className="space-y-3">
           {infoLoading ? (
-            <p className="text-sm text-text-muted">Checking payment…</p>
+            <PageLoading inline label="Checking payment" className="py-4" />
           ) : (
             <>
               {info && !info.canRefund ? (
-                <p className="text-sm text-warning-fg">
+                <Alert tone="warning" size="sm">
                   Only a manager can issue refunds on this booking.
-                </p>
+                </Alert>
               ) : (
                 <p className="text-sm text-text-muted">
                   {maxRefundable > 0

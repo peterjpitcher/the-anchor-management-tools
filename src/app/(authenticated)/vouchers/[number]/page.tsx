@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getVoucherDetail, getHandoutContext } from '@/app/actions/vouchers'
-import { PageLayout, Alert, LinkButton } from '@/ds'
-import { VOUCHER_SECTION_NAV } from '../_shared/voucher-ui'
-import { VoucherDetailClient } from './VoucherDetailClient'
+import { PageLayout, Alert } from '@/ds'
+import { VoucherDetailClient, type VoucherDetailLayout } from './VoucherDetailClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,41 +15,36 @@ export default async function VoucherDetailPage({
   if (!canManage) redirect('/unauthorized')
 
   const { number } = await params
+  const voucherNumber = decodeURIComponent(number)
   const [detailResult, contextResult] = await Promise.all([
-    getVoucherDetail(decodeURIComponent(number)),
+    getVoucherDetail(voucherNumber),
     getHandoutContext(),
   ])
 
+  // The voucher number is the title whether or not it loaded. A child page: no tab row, and
+  // the back button returns to the ledger (the All Vouchers tab, titled Vouchers) it was opened
+  // from. The loaded page adds the voucher's actions to this header (VoucherDetailClient).
+  const layoutProps: VoucherDetailLayout = {
+    title: detailResult.data?.voucher.voucherNumber ?? voucherNumber,
+    subtitle: detailResult.data?.type?.displayTitle ?? detailResult.data?.voucher.typeId,
+    backButton: { label: 'Back to Vouchers', href: '/vouchers/all' },
+  }
+
   if (detailResult.error || !detailResult.data) {
     return (
-      <PageLayout
-        title="Voucher"
-        navItems={VOUCHER_SECTION_NAV}
-        backButton={{ label: 'Back to the ledger', href: '/vouchers/all' }}
-      >
-        <div className="space-y-4">
-          <Alert tone="danger" title="Could not load this voucher">
-            {detailResult.error ?? 'Something went wrong. Refresh to try again.'}
-          </Alert>
-          <LinkButton href="/vouchers/all" variant="secondary">
-            Back to the ledger
-          </LinkButton>
-        </div>
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Could not load this voucher">
+          {detailResult.error ?? 'Something went wrong. Refresh to try again.'}
+        </Alert>
       </PageLayout>
     )
   }
 
   return (
-    <PageLayout
-      title={detailResult.data.voucher.voucherNumber}
-      subtitle={detailResult.data.type?.displayTitle}
-      navItems={VOUCHER_SECTION_NAV}
-      backButton={{ label: 'Back to the ledger', href: '/vouchers/all' }}
-    >
-      <VoucherDetailClient
-        detail={detailResult.data}
-        staff={contextResult.data?.staff ?? []}
-      />
-    </PageLayout>
+    <VoucherDetailClient
+      layout={layoutProps}
+      detail={detailResult.data}
+      staff={contextResult.data?.staff ?? []}
+    />
   )
 }

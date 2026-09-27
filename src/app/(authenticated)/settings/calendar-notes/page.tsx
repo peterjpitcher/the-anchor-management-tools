@@ -4,8 +4,6 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { canViewCalendarNotes, listCalendarNotes } from '@/app/actions/calendar-notes'
 import { PageLayout } from '@/ds'
-import { Section } from '@/ds'
-import { Card } from '@/ds'
 import CalendarNotesManager from './CalendarNotesManager'
 
 export default async function CalendarNotesSettingsPage() {
@@ -26,26 +24,15 @@ export default async function CalendarNotesSettingsPage() {
   return (
     <PageLayout
       title="Calendar Notes"
-      subtitle="Manage important dates and generate AI-assisted notes. Saved notes sync to the shared Pub Ops Google Calendar."
+      subtitle="Important dates, synced to the shared Pub Ops Google Calendar"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
-      <Section
-        title={canGenerate ? 'Notes & AI generation' : 'Notes'}
-        subtitle={
-          canGenerate
-            ? 'Create manual notes, or generate important dates between two dates with AI.'
-            : 'Create and manage manual notes.'
-        }
-      >
-        <Card>
-          <CalendarNotesManager
-            initialNotes={notesResult.data ?? []}
-            initialError={notesResult.error ?? null}
-            canManage={canManage || canGenerate}
-            canGenerate={canGenerate}
-          />
-        </Card>
-      </Section>
+      <CalendarNotesManager
+        initialNotes={notesResult.data ?? []}
+        initialError={notesResult.error ?? null}
+        canManage={canManage || canGenerate}
+        canGenerate={canGenerate}
+      />
     </PageLayout>
   )
 }

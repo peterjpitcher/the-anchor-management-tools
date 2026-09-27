@@ -1,13 +1,8 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
-import { Select } from '@/ds'
-import { Spinner } from '@/ds'
-import { toast } from '@/ds'
-import { ClipboardDocumentIcon, ArrowDownTrayIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Icon, PageLoading, Select, SubHeading, toast } from '@/ds'
+import { eventLinkTypeTone } from '@/app/(authenticated)/events/_shared/status-ui'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import { generateSingleMarketingLink } from '@/app/actions/event-marketing-links'
 import {
@@ -188,7 +183,7 @@ export function EventMarketingLinksCard({
     return (
       <div
         key={channel.key}
-        className="flex flex-col justify-between rounded-lg border border-border p-4"
+        className="flex flex-col justify-between rounded-default border border-border p-4"
       >
         <div>
           <div className="flex items-center justify-between gap-3">
@@ -206,10 +201,10 @@ export function EventMarketingLinksCard({
               <img
                 src={link.qrCode}
                 alt={`${link.label} QR`}
-                className="h-28 w-28 rounded-md border border-border bg-surface object-contain p-2"
+                className="h-28 w-28 rounded-default border border-border bg-surface object-contain p-2"
               />
             ) : (
-              <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-text-soft">
+              <div className="flex h-28 w-28 items-center justify-center rounded-default border border-dashed border-border-strong text-xs text-text-soft">
                 QR unavailable
               </div>
             )}
@@ -220,15 +215,15 @@ export function EventMarketingLinksCard({
                   size="xs"
                   variant="secondary"
                   onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                  leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                  icon={<Icon name="copy" size={16} />}
                 >
-                  Copy link
+                  Copy Link
                 </Button>
                 <Button
                   size="xs"
                   variant="secondary"
                   onClick={() => handleDownloadQr(link)}
-                  leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                  icon={<Icon name="download" size={16} />}
                   disabled={!link.qrCode}
                 >
                   Download QR
@@ -243,7 +238,7 @@ export function EventMarketingLinksCard({
               size="xs"
               variant="ghost"
               onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-              leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+              icon={<Icon name="copy" size={16} />}
             >
               Copy URL
             </Button>
@@ -263,27 +258,14 @@ export function EventMarketingLinksCard({
   }
 
   return (
-    <Card padding="lg" className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-text">Marketing Links &amp; QR Codes</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Tracked links and QR assets for event promotion.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {missingQrPlacements.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleGenerateAllQr}
-              disabled={loading || generatingAllQr}
-              leftIcon={<ArrowPathIcon className="h-4 w-4" />}
-            >
-              {generatingAllQr ? 'Generating QR links…' : 'Generate missing QR links'}
-            </Button>
-          )}
-          {onRegenerate && (
+    <Card>
+      <CardHeader
+        title="Marketing Links & QR Codes"
+        subtitle="Tracked links and QR assets for event promotion"
+        // Refresh covers every link, so it sits in the header. Generating the missing QR links
+        // sits with the QR placements below, beside the count of placements that are ready.
+        action={
+          onRegenerate ? (
             <Button
               variant="secondary"
               size="sm"
@@ -292,79 +274,85 @@ export function EventMarketingLinksCard({
                 await onRegenerate()
               }}
               disabled={loading}
-              leftIcon={<ArrowPathIcon className="h-4 w-4" />}
+              icon={<Icon name="refresh" size={16} />}
             >
-              Refresh links
+              Refresh Links
             </Button>
-          )}
-        </div>
-      </div>
-
+          ) : undefined
+        }
+      />
+      <CardBody>
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Spinner />
-        </div>
+        <PageLoading inline label="Loading marketing links" />
       ) : error ? (
-        <div className="rounded-md border border-danger-border bg-danger-soft p-4 text-sm text-danger-fg">
-          {error}
-        </div>
+        <Alert tone="danger">{error}</Alert>
       ) : (
         <div className="space-y-8">
           {missingCreatableChannels.length > 0 && (
-            <section className="rounded-lg border border-border bg-surface-hover/40 p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-60 flex-1">
-                  <Select
-                    label="Create tracked link"
-                    value={selectedChannel}
-                    onChange={(event) => setSelectedChannel(event.target.value as EventMarketingChannelKey | '')}
-                    placeholder="Choose a link or QR type"
-                    disabled={Boolean(generatingChannels.size) || generatingAllQr}
-                  >
-                    {missingQrCreateChannels.length > 0 && (
-                      <optgroup label="QR code placements">
-                        {missingQrCreateChannels.map(channel => (
-                          <option key={channel.key} value={channel.key}>
-                            {channel.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {missingDigitalCreateChannels.length > 0 && (
-                      <optgroup label="Digital links">
-                        {missingDigitalCreateChannels.map(channel => (
-                          <option key={channel.key} value={channel.key}>
-                            {channel.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </Select>
-                </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleGenerateSelected}
-                  disabled={!selectedChannel || selectedChannelIsGenerating || generatingAllQr}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-60 flex-1">
+                <Select
+                  label="Create tracked link"
+                  value={selectedChannel}
+                  onChange={(event) => setSelectedChannel(event.target.value as EventMarketingChannelKey | '')}
+                  placeholder="Choose a link or QR type"
+                  disabled={Boolean(generatingChannels.size) || generatingAllQr}
                 >
-                  {selectedChannelIsGenerating ? 'Creating…' : 'Create'}
-                </Button>
+                  {missingQrCreateChannels.length > 0 && (
+                    <optgroup label="QR code placements">
+                      {missingQrCreateChannels.map(channel => (
+                        <option key={channel.key} value={channel.key}>
+                          {channel.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {missingDigitalCreateChannels.length > 0 && (
+                    <optgroup label="Digital links">
+                      {missingDigitalCreateChannels.map(channel => (
+                        <option key={channel.key} value={channel.key}>
+                          {channel.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </Select>
               </div>
-            </section>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleGenerateSelected}
+                disabled={!selectedChannel || generatingAllQr}
+                loading={selectedChannelIsGenerating}
+              >
+                Create
+              </Button>
+            </div>
           )}
 
           {/* Section 1: QR code placements */}
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">QR code placements</h3>
-              <Badge tone="neutral" size="sm">
-                {readyQrPlacementChannels.length}/{qrPlacementChannels.length} ready
-              </Badge>
+              <SubHeading>QR Code Placements</SubHeading>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="neutral" size="sm">
+                  {readyQrPlacementChannels.length}/{qrPlacementChannels.length} ready
+                </Badge>
+                {missingQrPlacements.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleGenerateAllQr}
+                    loading={generatingAllQr}
+                    icon={<Icon name="refresh" size={16} />}
+                  >
+                    Generate Missing QR Links
+                  </Button>
+                )}
+              </div>
             </div>
             {readyQrPlacementChannels.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border-strong bg-surface-hover/40 p-4 text-sm text-text-muted">
-                No QR placement links created yet.
-              </p>
+              <Empty size="sm" variant="dashed" title="No QR placement links yet" />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {readyQrPlacementChannels.map(renderQrPlacementCard)}
@@ -374,10 +362,10 @@ export function EventMarketingLinksCard({
 
           {/* Section 2: Always-on digital */}
           <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted mb-3">Digital channels</h3>
+            <SubHeading className="mb-3">Digital Channels</SubHeading>
             <div className="space-y-3">
               {alwaysOnLinks.map((link) => (
-                <div key={link.id} className="rounded-lg border border-border p-4">
+                <div key={link.id} className="rounded-default border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-text">{link.label}</p>
@@ -385,7 +373,7 @@ export function EventMarketingLinksCard({
                         <p className="text-xs text-text-muted">{link.description}</p>
                       )}
                     </div>
-                    <Badge tone="info" size="sm">Digital</Badge>
+                    <Badge tone={eventLinkTypeTone('digital')} size="sm">Digital</Badge>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -394,9 +382,9 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      icon={<Icon name="copy" size={16} />}
                     >
-                      Copy link
+                      Copy Link
                     </Button>
                   </div>
 
@@ -406,7 +394,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>
@@ -427,14 +415,12 @@ export function EventMarketingLinksCard({
 
           {/* Section 3: On-demand digital */}
           <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted mb-3">Optional digital channels</h3>
+            <SubHeading className="mb-3">Optional Digital Channels</SubHeading>
             <div className="space-y-3">
               {onDemandDigitalLinks.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-border-strong bg-surface-hover/40 p-4 text-sm text-text-muted">
-                  No optional digital links created yet.
-                </p>
+                <Empty size="sm" variant="dashed" title="No optional digital links yet" />
               ) : onDemandDigitalLinks.map((link) => (
-                <div key={link.id} className="rounded-lg border border-border p-4">
+                <div key={link.id} className="rounded-default border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-text">{link.label}</p>
@@ -442,7 +428,7 @@ export function EventMarketingLinksCard({
                         <p className="text-xs text-text-muted">{link.description}</p>
                       )}
                     </div>
-                    <Badge tone="info" size="sm">Digital</Badge>
+                    <Badge tone={eventLinkTypeTone('digital')} size="sm">Digital</Badge>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -451,9 +437,9 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      icon={<Icon name="copy" size={16} />}
                     >
-                      Copy link
+                      Copy Link
                     </Button>
                   </div>
 
@@ -463,7 +449,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      icon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>
@@ -484,6 +470,7 @@ export function EventMarketingLinksCard({
 
         </div>
       )}
+      </CardBody>
     </Card>
   )
 }

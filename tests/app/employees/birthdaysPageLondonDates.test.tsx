@@ -56,9 +56,9 @@ function employeesQuery(rows: unknown[]) {
   return { select: vi.fn().mockReturnValue({ in: inStatus }) }
 }
 
-/** Month headings and employee names, in the order the page shows them. */
+/** Month headings (each month is a card titled by its CardHeader) and employee names, in page order. */
 function pageOutline(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll('h2 > span:first-of-type, a[href^="/employees/0"]'))
+  return Array.from(container.querySelectorAll('h3, a[href^="/employees/0"]'))
     .map(element => element.textContent ?? '')
 }
 

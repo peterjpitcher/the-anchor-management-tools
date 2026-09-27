@@ -3,21 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { StarRating } from '@/components/features/feedback/StarRating'
-import {
-  GUEST_CHOICE_ROW_CLASS,
-  GUEST_H1_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
-  GUEST_TEXTAREA_CLASS,
-  GuestAlert,
-  GuestButton,
-  GuestCard,
-  GuestField,
-  guestFieldControlProps,
-} from '@/components/features/guest'
-import { cn } from '@/lib/utils'
+// Imported file by file rather than through the `guest` barrel, which would pull
+// the guest webfont module into this client bundle. GuestShell stays on the server page.
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GuestButton } from '@/components/features/guest/GuestButton'
+import { GuestCard } from '@/components/features/guest/GuestCard'
+import { GuestChoice } from '@/components/features/guest/GuestChoice'
+import { GuestInput, GuestTextarea } from '@/components/features/guest/GuestControls'
+import { GuestField, guestFieldControlProps } from '@/components/features/guest/GuestField'
+import { GuestIntro } from '@/components/features/guest/GuestIntro'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -105,18 +99,16 @@ export function TellUsClient({ src }: TellUsClientProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-[18px]">
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-guest-lg">
       {/* Warm, empathetic header */}
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>The Anchor</p>
-        <h1 className={GUEST_H1_CLASS}>We&apos;re sorry it wasn&apos;t quite right</h1>
-        <p className={GUEST_LEAD_CLASS}>
-          Thank you for telling us. We care when something has not gone as it should, and your
-          feedback helps us understand what happened and improve.
-        </p>
-      </div>
+      <GuestIntro
+        kicker="The Anchor"
+        title="We're sorry it wasn't quite right"
+        lead="Thank you for telling us. We care when something has not gone as it should, and your feedback helps us understand what happened and improve."
+      />
 
-      {/* Honeypot, visually hidden, still submitted */}
+      {/* Honeypot, visually hidden, still submitted. It stays a raw label and
+          input on purpose: it must look like an ordinary field to a bot. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
@@ -134,106 +126,85 @@ export function TellUsClient({ src }: TellUsClientProps) {
         />
       </div>
 
-      <GuestCard variant="accent" className="flex flex-col gap-[18px]">
-        {/* Star rating */}
-        <div className="flex flex-col gap-2">
-          <label
-            id="rating-label"
-            className="font-anchor-body text-guest-lead font-semibold text-guest-text"
-          >
-            How would you rate your visit?
-          </label>
-          <div aria-labelledby="rating-label">
-            <StarRating value={rating} onChange={setRating} />
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-lg">
+          {/* Star rating: a group of buttons, named by the question above it. */}
+          <div className="flex flex-col gap-2">
+            <p id="rating-label" className="font-anchor-body text-guest-lead font-semibold text-guest-text">
+              How would you rate your visit?
+            </p>
+            <StarRating value={rating} onChange={setRating} aria-labelledby="rating-label" />
           </div>
-        </div>
 
-        {/* Comments */}
-        <div>
-          <label htmlFor="comments" className="sr-only">
-            Tell us what happened
-          </label>
-          <textarea
-            id="comments"
-            name="comments"
-            rows={5}
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            placeholder="Tell us what happened, what could have been better, or anything you'd like us to understand."
-            className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS, 'min-h-[118px]')}
-          />
-        </div>
+          {/* Comments: the card says what this box is for, so its label is for screen readers. */}
+          <GuestField id="comments" label="Tell us what happened" labelHidden>
+            <GuestTextarea
+              id="comments"
+              name="comments"
+              rows={5}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              placeholder="Tell us what happened, what could have been better, or anything you'd like us to understand."
+            />
+          </GuestField>
 
-        {/* Optional contact details */}
-        <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => setShowContact((v) => !v)}
-            aria-expanded={showContact}
-            aria-controls="contact-details"
-            className="self-start text-left font-anchor-body text-sm font-semibold text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
-          >
-            {showContact ? 'Hide contact details' : 'Add your contact details if you\'d like us to follow up'}
-          </button>
+          {/* Optional contact details */}
+          <div className="flex flex-col gap-3">
+            <GuestButton
+              variant="link"
+              onClick={() => setShowContact((v) => !v)}
+              aria-expanded={showContact}
+              aria-controls="contact-details"
+            >
+              {showContact ? 'Hide contact details' : 'Add your contact details if you\'d like us to follow up'}
+            </GuestButton>
 
-          {showContact && (
-            <div id="contact-details" className="flex flex-col gap-3">
-              <GuestField id="customerName" label="Name">
-                <input
-                  {...guestFieldControlProps({ id: 'customerName' })}
-                  name="customerName"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className={GUEST_INPUT_CLASS}
-                />
-              </GuestField>
+            {showContact && (
+              <div id="contact-details" className="flex flex-col gap-3">
+                <GuestField id="customerName" label="Name">
+                  <GuestInput
+                    {...guestFieldControlProps({ id: 'customerName' })}
+                    name="customerName"
+                    type="text"
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </GuestField>
 
-              <GuestField id="customerEmail" label="Email">
-                <input
-                  {...guestFieldControlProps({ id: 'customerEmail' })}
-                  name="customerEmail"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={GUEST_INPUT_CLASS}
-                />
-              </GuestField>
+                <GuestField id="customerEmail" label="Email">
+                  <GuestInput
+                    {...guestFieldControlProps({ id: 'customerEmail' })}
+                    name="customerEmail"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </GuestField>
 
-              <GuestField id="customerPhone" label="Phone">
-                <input
-                  {...guestFieldControlProps({ id: 'customerPhone' })}
-                  name="customerPhone"
-                  type="tel"
-                  autoComplete="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={GUEST_INPUT_CLASS}
-                />
-              </GuestField>
+                <GuestField id="customerPhone" label="Phone">
+                  <GuestInput
+                    {...guestFieldControlProps({ id: 'customerPhone' })}
+                    name="customerPhone"
+                    type="tel"
+                    autoComplete="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </GuestField>
 
-              {/* The tick box is sized globally inside `.guest-theme`; the row
-                  class is what keeps the tap target at 44px. */}
-              <label
-                htmlFor="contactConsent"
-                className={cn(GUEST_CHOICE_ROW_CLASS, 'text-ui leading-[1.55]')}
-              >
-                <input
+                <GuestChoice
+                  type="checkbox"
                   id="contactConsent"
                   name="contactConsent"
-                  type="checkbox"
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
+                  label="Leave your details only if you're happy for us to contact you about your feedback."
                 />
-                <span>
-                  Leave your details only if you&apos;re happy for us to contact you about your
-                  feedback.
-                </span>
-              </label>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </GuestCard>
 
@@ -243,29 +214,20 @@ export function TellUsClient({ src }: TellUsClientProps) {
         </GuestAlert>
       )}
 
-      {/* Post button */}
-      <div className="flex justify-end">
-        <GuestButton
-          as="button"
-          type="submit"
-          variant="primary"
-          size="md"
-          disabled={submitting || rating < 1}
-          className="w-full gap-2 sm:w-auto"
-        >
-          {submitting && (
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-          )}
-          {submitting ? 'Sending…' : 'Send feedback'}
-        </GuestButton>
-      </div>
+      {/* Post button: full width on a phone, label width and left-aligned from 640px,
+          like the submit of every other guest form. */}
+      <GuestButton
+        as="button"
+        type="submit"
+        variant="primary"
+        size="md"
+        disabled={rating < 1}
+        loading={submitting}
+        loadingText="Sending…"
+        fullWidth="mobile"
+      >
+        Send feedback
+      </GuestButton>
     </form>
   )
 }

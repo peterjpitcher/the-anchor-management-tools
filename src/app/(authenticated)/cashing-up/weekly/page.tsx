@@ -20,9 +20,12 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
   const weekStart = paramWeek || defaultWeek
 
   let weeklyData: unknown[] = []
+  let loadError: string | undefined
   if (siteId) {
     const res = await getWeeklyDataAction(siteId, weekStart)
     if (res.data) weeklyData = res.data
+    // A failed read is shown as a failure, never as a week with no takings.
+    else if (res.error) loadError = res.error
   }
 
   return (
@@ -30,6 +33,7 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
       siteId={siteId || ''}
       weekStart={weekStart}
       initialData={weeklyData}
+      initialError={loadError}
     />
   )
 }

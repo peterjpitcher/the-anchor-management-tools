@@ -3,14 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Card } from '@/ds'
-import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { invoiceReplyToAddress } from '@/lib/email/invoice-sender'
+import { Alert, Card } from '@/ds'
 import { cn } from '@/lib/utils'
 import { InvoicePayClient } from './InvoicePayClient'
 import { InvoicePayCaptureClient } from './InvoicePayCaptureClient'
-import { OrangeJellyShell } from './OrangeJellyShell'
-import { StatusNote } from './StatusNote'
+import { OrangeJellyShell } from '@/components/shells/OrangeJellyShell'
+import { InvoiceQuestions } from './InvoiceQuestions'
 
 // Public, and its content changes with every payment, so it must never be
 // cached or prerendered.
@@ -25,16 +23,6 @@ export const metadata = {
 
 function formatMoney(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
-}
-
-/**
- * Where invoice questions go: the Orange Jelly reply-to mailbox the invoice emails use, or the
- * company record when that is not configured. Never an invented address.
- */
-function questionsEmail(): string {
-  const configured = invoiceReplyToAddress()
-  if (!configured) return GUEST_CONTACT.email
-  return configured.match(/<([^<>]+)>/)?.[1]?.trim() ?? configured
 }
 
 function InvoiceRow({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
@@ -63,12 +51,29 @@ export default async function InvoicePortalPage({
   if (!invoiceId) notFound()
 
   const admin = createAdminClient()
-  const { data: invoice } = await admin
+  const { data: invoice, error: loadError } = await admin
     .from('invoices')
     .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name, paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)')
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
+
+  // Our own failure is never shown as "we could not find an invoice for this link": that tells
+  // the customer their link is wrong when it is fine.
+  if (loadError) {
+    console.error('[invoice-portal] Failed to load invoice', { invoiceId, error: loadError.message })
+    return (
+      <OrangeJellyShell>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight text-text-strong">Your invoice</h1>
+        </div>
+        <Alert tone="danger">
+          We could not load this invoice just now. Please try again in a few minutes.
+        </Alert>
+        <InvoiceQuestions />
+      </OrangeJellyShell>
+    )
+  }
 
   if (!invoice) notFound()
 
@@ -133,8 +138,6 @@ export default async function InvoicePortalPage({
   // portal token in the path. The one in the query string is always PayPal's.
   const paypalOrderId = typeof query.token === 'string' ? query.token : null
 
-  const contactEmail = questionsEmail()
-
   return (
     <OrangeJellyShell>
       <div className="flex flex-col gap-1">
@@ -181,25 +184,25 @@ export default async function InvoicePortalPage({
 
         <div className="mt-4 flex flex-col gap-3">
           {settled && (
-            <StatusNote tone="success">
+            <Alert tone="success" role="status">
               {creditTotal > 0 ? 'This invoice is settled, including the credits shown above. Thank you.' : 'This invoice is paid in full. Thank you.'}
-            </StatusNote>
+            </Alert>
           )}
           {withdrawn && (
-            <StatusNote tone="notice">
+            <Alert tone="warning" role="status">
               This invoice has been cancelled, so there is nothing to pay. If you
               were expecting to pay something, please get in touch.
-            </StatusNote>
+            </Alert>
           )}
           {notYetIssued && (
-            <StatusNote tone="notice">
+            <Alert tone="warning" role="status">
               This invoice has not been issued yet.
-            </StatusNote>
+            </Alert>
           )}
           {paymentUnavailable && (
-            <StatusNote tone="notice">
+            <Alert tone="warning" role="status">
               Online payment is not available for this invoice.
-            </StatusNote>
+            </Alert>
           )}
           {payable && <InvoicePayClient token={token} amountDue={outstanding} />}
         </div>
@@ -212,13 +215,7 @@ export default async function InvoicePortalPage({
         )}
       </Card>
 
-      <p className="text-center text-ui leading-relaxed text-text-muted">
-        Questions about this invoice? Email{' '}
-        <a href={`mailto:${contactEmail}`} className="text-primary underline underline-offset-2">
-          {contactEmail}
-        </a>{' '}
-        or call {GUEST_CONTACT.phoneDisplay}.
-      </p>
+      <InvoiceQuestions />
     </OrangeJellyShell>
   )
 }
