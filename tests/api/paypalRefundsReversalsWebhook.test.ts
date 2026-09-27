@@ -462,6 +462,8 @@ describe('event ticket refund made inside PayPal', () => {
     expect(webhookStatuses('WH-E8a')).toEqual(['received', 'manual_review'])
     expect(reportPaymentAlert).toHaveBeenCalledTimes(1)
     expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].title).toContain('needs recording')
+    // Everything that is not an invoice keeps going to the general staff alert inbox.
+    expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].to).toBeUndefined()
     expectNoCustomerMessage()
   })
 
@@ -515,6 +517,8 @@ describe('invoice refund made inside PayPal', () => {
     ])
     expect(reportPaymentAlert).toHaveBeenCalledTimes(1)
     expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].title).toContain('credit note')
+    // Invoice credit notes are the owner's call, so only the manager inbox hears about them.
+    expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].to).toBe('manager@the-anchor.pub')
     expectNoCustomerMessage()
   })
 
@@ -804,6 +808,7 @@ describe('reversals and chargebacks (PAYMENT.CAPTURE.REVERSED)', () => {
     expect(rows('audit_logs')).toEqual([expect.objectContaining({ operation_type: 'paypal_capture_reversed', resource_id: 'inv-1' })])
     expect(reportPaymentAlert).toHaveBeenCalledTimes(1)
     expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].summary).toContain('issue a credit note')
+    expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].to).toBe('manager@the-anchor.pub')
     expectNoCustomerMessage()
   })
 
