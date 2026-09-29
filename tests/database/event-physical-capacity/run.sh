@@ -15,14 +15,14 @@ export PGHOST="$fixture_dir" PGPORT=55449 PGDATABASE=postgres
 export EVENT_CAPACITY_PSQL="$pg_bin/psql"
 "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -f "$repo_root/tests/database/event-physical-capacity/setup.sql"
 "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -f "$repo_root/tests/database/event-physical-capacity/preservation-negative.sql"
-if "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -1 -f "$repo_root/supabase/migrations/20260920200647_event_physical_capacity.sql" > "$fixture_dir/negative.log" 2>&1; then
+if "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -1 -f "$repo_root/supabase/migrations/20260921074304_event_physical_capacity.sql" > "$fixture_dir/negative.log" 2>&1; then
   echo 'ERROR: preservation guard failed to reject an unexpected booking mutation' >&2
   exit 1
 fi
 rg -q 'event_capacity_existing_rows_changed: bookings' "$fixture_dir/negative.log"
 "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -c 'DROP TRIGGER fixture_mutate_existing_booking ON events; DROP FUNCTION fixture_mutate_existing_booking();'
 echo 'Migration rejected and rolled back an unexpected existing-booking trigger mutation'
-"$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -1 -f "$repo_root/supabase/migrations/20260920200647_event_physical_capacity.sql"
+"$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -1 -f "$repo_root/supabase/migrations/20260921074304_event_physical_capacity.sql"
 "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -f "$repo_root/tests/database/event-physical-capacity/assertions.sql"
 python3 "$repo_root/tests/database/event-physical-capacity/concurrency.py"
 "$pg_bin/psql" -X -q -v ON_ERROR_STOP=1 -f "$repo_root/tasks/event-capacity-rollback.sql"
