@@ -874,6 +874,16 @@ export async function generateEventPromotionContent(input: EventPromotionInput):
         response_format: { type: 'json_schema', json_schema: { name: schemaName, strict: true, schema } },
         max_tokens: maxTokens,
       })
+      // The chosen action is application state, so supply it directly when the writer omits it.
+      // Keep the full result subject to length checks and factual review after adding the line.
+      if (ctaUrl && draft && typeof draft === 'object' && 'description' in draft && typeof draft.description === 'string') {
+        const reference = contentType === 'facebook_event' ? 'event link' : 'post button'
+        const closingParagraph = draft.description.trim().split(/\n\s*\n/).at(-1) ?? ''
+        if (!closingParagraph.toLowerCase().includes(reference)) {
+          const closingLine = bookingDestination ? `Book using the ${reference}.` : `See the event details using the ${reference}.`
+          draft.description = `${draft.description.trim()}\n\n${closingLine}`
+        }
+      }
       const checked = validatePromotionCopy(contentType, draft, ctaUrl ? (contentType === 'facebook_event' ? 'event link' : 'post button') : undefined, omitConditionalSnowball)
       const issues = [...checked.issues]
       if (checked.content) {
