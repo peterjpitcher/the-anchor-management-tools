@@ -9,6 +9,13 @@ function copy(channel: PromotionChannel, description: string): typeof facebook |
 }
 
 describe('validatePromotionCopy', () => {
+  it('rejects conditional Snowball claims while retaining cash bingo and the final jackpot', () => {
+    const unsafe = { title: 'Cash Bingo', description: 'Try for the £160 Snowball prize.' }
+    expect(validatePromotionCopy('google_business_profile_event', unsafe, undefined, true).content).toBeNull()
+    expect(validatePromotionCopy('google_business_profile_event', { ...unsafe, description: 'Ten games of cash bingo and a growing final jackpot.' }, undefined, true).issues).toEqual([])
+    expect(validatePromotionCopy('google_business_profile_event', unsafe).content).not.toBeNull()
+  })
+
   it('requires the selected link in the closing paragraph', () => {
     expect(validatePromotionCopy('facebook_event', facebook, 'event link').content).toBeNull()
     expect(validatePromotionCopy('facebook_event', { ...facebook, description: 'Use the event link.\n\nCome along.' }, 'event link').content).toBeNull()

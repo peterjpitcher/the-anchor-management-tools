@@ -957,3 +957,9 @@ CI release check: run 36602223673 passed 10,954 tests but the unchanged design-s
 - [x] Added conditional-prize guidance and regression checks for reviewer configuration and closing-link placement.
 - [x] Both full generation paths passed real-provider checks against the live brief; no event records were written. 65 focused unit/UI tests passed.
 - [ ] Verify the final production release through both browser buttons.
+
+### Conditional prize safeguard
+- [x] Live GBP output quoted the projected £160 Snowball without its conditions.
+- [x] Added a direct source-aware check that omits optional Snowball details from short listings when the source contains changing amounts or attendance qualifications. Cash bingo and the final jackpot remain explicit.
+- [x] Both complete real-provider generation paths passed with the live brief and no Snowball claim. 67 focused tests pass, including the observed unsafe sentence and its repair path.
+- [ ] Verify this final safeguard on production through both Generate buttons.

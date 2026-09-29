@@ -78,6 +78,15 @@ describe('generateEventPromotionContent', () => {
     expect(JSON.parse(mocks.fetch.mock.calls[1][1].body).model).toBe('review-model')
   })
 
+  it('repairs conditional Snowball copy before the AI review', async () => {
+    mocks.single.mockResolvedValue({ data: { ...event, brief: 'Snowball is projected to be £160 if unclaimed. Open to attendees of the last three nights.' }, error: null })
+    queue({ ...draft, description: draft.description + ' Try for the £160 Snowball prize.' }, draft, { issues: [] })
+    expect(await generateEventPromotionContent(input)).toMatchObject({ success: true, data: { content: draft } })
+    expect(request(0).messages[0].content).toContain('Do not mention the optional Snowball')
+    expect(request(1).messages.at(-1)?.content).toContain('Omit the optional Snowball')
+    expect(mocks.fetch).toHaveBeenCalledTimes(3)
+  })
+
   it('repairs a factual hallucination then checks the repaired draft independently', async () => {
     queue({ ...draft, description: draft.description.replace('£10', '£15') }, { issues: ['Price must be £10.00, not £15.'] }, draft, { issues: [] })
     expect(await generateEventPromotionContent(input)).toMatchObject({ success: true, data: { content: draft } })
