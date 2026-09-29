@@ -941,3 +941,5 @@ Goal: keep the Facebook and GBP event formats while validating drafts, checking 
 No changes to event records, publishing, messages, the separate website SEO generator, deposits or database schema. No migrations.
 
 Validation: lint, app and test type checks, 72 focused tests, full London and UTC suites (1,161 files, 10,955 passed and 2 skipped in each), and production build passed. Browser and deployment verification remains the final release step.
+
+CI release check: run 36602223673 passed 10,954 tests but the unchanged design-system test combining three dialog flows exceeded its 5s timeout. Split those independent flows into three tests, keeping every existing assertion and the same timeout. Local covered before/after checks verify each flow. The application code is unchanged by this test repair.
