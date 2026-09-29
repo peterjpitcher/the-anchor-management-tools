@@ -87,6 +87,14 @@ describe('generateEventPromotionContent', () => {
     expect(mocks.fetch).toHaveBeenCalledTimes(3)
   })
 
+  it('supplies a missing selected-link closing line before checking facts', async () => {
+    queue({ ...draft }, { issues: [] })
+    const result = await generateEventPromotionContent({ ...input, ctaUrl: 'https://example.com/event' })
+    expect(result).toMatchObject({ success: true, data: { content: { description: draft.description + '\n\nSee the event details using the event link.' } } })
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(request(1).messages[1].content).draft.description).toContain('using the event link.')
+  })
+
   it('repairs a factual hallucination then checks the repaired draft independently', async () => {
     queue({ ...draft, description: draft.description.replace('£10', '£15') }, { issues: ['Price must be £10.00, not £15.'] }, draft, { issues: [] })
     expect(await generateEventPromotionContent(input)).toMatchObject({ success: true, data: { content: draft } })

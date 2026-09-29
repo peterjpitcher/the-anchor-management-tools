@@ -963,3 +963,9 @@ CI release check: run 36602223673 passed 10,954 tests but the unchanged design-s
 - [x] Added a direct source-aware check that omits optional Snowball details from short listings when the source contains changing amounts or attendance qualifications. Cash bingo and the final jackpot remain explicit.
 - [x] Both complete real-provider generation paths passed with the live brief and no Snowball claim. 67 focused tests pass, including the observed unsafe sentence and its repair path.
 - [ ] Verify this final safeguard on production through both Generate buttons.
+
+### Reliable closing link
+- [x] Observed two live Facebook attempts omit the selected link despite the repair instruction.
+- [x] Supply the missing closing line directly from the selected channel and booking/details destination, before length checks and factual review.
+- [x] Both real-provider generation paths pass; 68 focused tests, app typecheck and targeted lint pass.
+- [ ] Verify both final browser paths after deployment.
