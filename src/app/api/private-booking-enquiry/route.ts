@@ -53,6 +53,7 @@ const EnquirySchema = z.object({
 })
 
 const privateBookingEnquiryLimiter = createRateLimiter({
+  name: 'private-booking-enquiry',
   windowMs: 5 * 60 * 1000,
   max: 20,
   message: 'Too many private booking enquiries. Please try again shortly.'
