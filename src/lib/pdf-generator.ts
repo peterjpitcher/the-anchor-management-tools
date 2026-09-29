@@ -53,7 +53,22 @@ const LOCAL_CHROMIUM_ARGS = [
   '--disable-gpu',
 ]
 
-let cachedChromiumExecutablePath: string | null = null
+// The promise is cached, not the resolved path. Under Fluid compute one instance serves several
+// requests at once, and @sparticuz/chromium reports the path as soon as the file exists, even
+// while it is still being written. Sharing one in-flight unpack stops a second cold render from
+// unpacking over the first or launching a half-written binary. A failed unpack is forgotten so
+// the next render retries instead of inheriting the rejection.
+let cachedChromiumExecutablePath: Promise<string> | null = null
+
+function getChromiumExecutablePath(chromium: { executablePath: () => Promise<string> }): Promise<string> {
+  if (!cachedChromiumExecutablePath) {
+    cachedChromiumExecutablePath = chromium.executablePath().catch((error: unknown) => {
+      cachedChromiumExecutablePath = null
+      throw error
+    })
+  }
+  return cachedChromiumExecutablePath
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -96,7 +111,7 @@ export async function createPdfBrowser(): Promise<PdfGeneratorBrowser> {
   const useSparticuzChromium = Boolean(process.env.VERCEL) && process.platform === 'linux'
 
   const executablePath = useSparticuzChromium
-    ? (cachedChromiumExecutablePath ??= await chromium.executablePath())
+    ? await getChromiumExecutablePath(chromium)
     : puppeteer.executablePath()
 
   return puppeteer.launch({

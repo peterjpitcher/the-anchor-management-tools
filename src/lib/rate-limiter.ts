@@ -23,6 +23,7 @@ async function checkRateLimit(
   config: RateLimitConfig
 ): Promise<RateLimitResult> {
   const limiter = createRateLimiter({
+    name: 'legacy-wrapper',
     windowMs: config.windowMs,
     max: config.maxRequests,
     keyGenerator: () => (config.keyPrefix ? `${config.keyPrefix}:${identifier}` : identifier)
