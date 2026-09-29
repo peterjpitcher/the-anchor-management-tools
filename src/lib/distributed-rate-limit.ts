@@ -68,6 +68,7 @@ export async function applyDistributedRateLimit(
 
   if (!limiter) {
     const localLimiter = createRateLimiter({
+      name: 'distributed-fallback',
       windowMs: options.localWindowMs ?? 60 * 60 * 1000,
       max: options.max,
       message,

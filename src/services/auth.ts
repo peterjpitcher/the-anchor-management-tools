@@ -6,7 +6,7 @@ import { headers } from 'next/headers';
 export class AuthService {
   static async signIn(email: string, password: string) {
     // Rate limit auth attempts by IP
-    await checkRateLimit('api', 5); // 5 attempts per minute
+    await checkRateLimit('login', 5); // 5 attempts per minute
     
     const supabase = await createClient();
     

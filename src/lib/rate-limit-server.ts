@@ -15,11 +15,17 @@ function resolveIdentifier(headersList: Headers): string {
   return forwardedFor?.split(',')[0] || realIp || '127.0.0.1'
 }
 
-export async function checkRateLimit(action: 'api' | 'sms' = 'api', customLimit?: number) {
+// A custom limit names its own operation so, for example, login attempts and employee uploads from
+// the same IP keep separate counters instead of sharing one allowance.
+export async function checkRateLimit(
+  action: 'api' | 'sms' | 'login' | 'employee-upload' = 'api',
+  customLimit?: number
+) {
   const headersList = await headers()
   const identifier = resolveIdentifier(headersList)
   const limiter = customLimit
     ? createRateLimiter({
+        name: action,
         windowMs: 60 * 1000,
         max: customLimit,
         message: 'Too many requests. Please try again later.'
