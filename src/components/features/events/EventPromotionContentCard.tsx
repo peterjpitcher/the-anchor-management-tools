@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Icon, Input, SubHeading, Textarea, toast } from '@/ds'
 import { generateEventPromotionContent, type EventPromotionContentType } from '@/app/actions/event-content'
 import { Select } from '@/ds'
@@ -32,7 +32,7 @@ const CONTENT_TYPES: Array<{ value: EventPromotionContentType; label: string; he
   {
     value: 'facebook_event',
     label: 'Facebook Event',
-    help: 'Event name + description formatted for Facebook Events.',
+    help: 'Name and description for a Facebook Event listing. Feed posts and adverts need separate copy.',
   },
   {
     value: 'google_business_profile_event',
@@ -96,6 +96,8 @@ export function EventPromotionContentCard({
   )
   const [isGenerating, setIsGenerating] = useState(false)
   const [resultsByType, setResultsByType] = useState<PromotionResultsByType>({})
+  const [generationError, setGenerationError] = useState<string | null>(null)
+  const [warningsByType, setWarningsByType] = useState<Partial<Record<EventPromotionContentType, string[]>>>({})
   const [aiUnavailableMessage, setAiUnavailableMessage] = useState<string | null>(null)
 
   const existingSavedResults = useMemo<PromotionResultsByType>(() => {
@@ -193,13 +195,30 @@ export function EventPromotionContentCard({
     return selectedMarketingLink?.shortUrl ?? null
   }, [ctaState, selectedMarketingLink])
 
+  const previousCtaByType = useRef<Partial<Record<EventPromotionContentType, string>>>({})
+  useEffect(() => {
+    if (!ctaState.selectedLinkId) return
+    const signature = JSON.stringify([selectedCtaUrl, selectedMarketingLink?.destinationUrl ?? null])
+    const previous = previousCtaByType.current[contentType]
+    previousCtaByType.current[contentType] = signature
+    if (previous !== undefined && previous !== signature) {
+      setResultsByType(results => ({ ...results, [contentType]: undefined }))
+      setWarningsByType(warnings => ({ ...warnings, [contentType]: [] }))
+    }
+  }, [contentType, ctaState.selectedLinkId, selectedCtaUrl, selectedMarketingLink?.destinationUrl])
+
   const handleGenerate = async () => {
     setAiUnavailableMessage(null)
+    setGenerationError(null)
+    setResultsByType(previous => ({ ...previous, [contentType]: undefined }))
+    setWarningsByType(previous => ({ ...previous, [contentType]: [] }))
     setIsGenerating(true)
     try {
       const response = await generateEventPromotionContent({
         eventId,
         contentType,
+        ctaUrl: selectedCtaUrl,
+        ctaDestinationUrl: selectedMarketingLink?.destinationUrl ?? selectedCtaUrl,
       })
 
       if (!response.success) {
@@ -214,11 +233,13 @@ export function EventPromotionContentCard({
             'AI copy generation is unavailable. Check the OpenAI API key on the Settings page.'
           )
         }
+        setGenerationError(errorMessage)
         toast.error(errorMessage)
         return
       }
 
       const data = response.data
+      setWarningsByType(previous => ({ ...previous, [data.type]: data.warnings }))
       switch (data.type) {
         case 'facebook_event':
           setResultsByType((previous) => ({ ...previous, facebook_event: data.content as FacebookEventContent }))
@@ -231,9 +252,10 @@ export function EventPromotionContentCard({
           break
       }
 
-      toast.success('Copy ready')
+      toast.success('Draft checked and ready to review')
     } catch (error) {
       console.error('Failed to generate promotional content', error)
+      setGenerationError('Failed to generate content. Please try again.')
       toast.error('Failed to generate content')
     } finally {
       setIsGenerating(false)
@@ -272,6 +294,7 @@ export function EventPromotionContentCard({
         id="content_type"
         label="Content type"
         hint={selectedTypeMeta?.help}
+        disabled={isGenerating}
         value={contentType}
         onChange={(event) => setContentType(event.target.value as EventPromotionContentType)}
       >
@@ -289,6 +312,7 @@ export function EventPromotionContentCard({
               id="cta_link_option"
               label="CTA link"
               hint="Defaults to the best-fit UTM link for this channel. The URL is not included in the generated copy."
+              disabled={isGenerating}
               value={ctaState.selectedLinkId}
               onChange={(event) =>
                 setCtaStateByType((previous) => ({
@@ -313,6 +337,7 @@ export function EventPromotionContentCard({
             hint={orderedDigitalLinks.length ? undefined : 'No marketing links yet. Refresh links above or enter a custom URL.'}
             aria-label="Custom booking link"
             type="url"
+            disabled={isGenerating}
             value={ctaState.customUrl}
             onChange={(event) =>
               setCtaStateByType((previous) => ({
@@ -362,7 +387,7 @@ export function EventPromotionContentCard({
 
       <div className="flex flex-col items-start gap-3 border-t border-border pt-4">
         <p className="text-sm text-text-muted">
-          Generates fresh copy every time. Run it again if you need a new angle.
+          Checks length, formatting and claims against the event details. Review the draft before publishing.
         </p>
         <Button
           type="button"
@@ -378,9 +403,15 @@ export function EventPromotionContentCard({
         </Button>
       </div>
 
+      {generationError && !aiUnavailableMessage && <Alert tone="danger">{generationError}</Alert>}
+
       {aiUnavailableMessage && (
         <Alert tone="warning">{aiUnavailableMessage}</Alert>
       )}
+
+      {(warningsByType[contentType] ?? []).map(warning => (
+        <Alert key={warning} tone="warning">{warning}</Alert>
+      ))}
 
       {currentResult && (
         <div className="space-y-6">
