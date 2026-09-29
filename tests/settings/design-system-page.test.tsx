@@ -76,23 +76,26 @@ describe('the design system reference page', () => {
     expect(screen.getAllByText('14px').length).toBeGreaterThan(0)
   })
 
-  // Three dialogs opened by accessible-name lookups across the whole reference page. About 1.2 s
-  // locally but 5.8 to 6 s in CI with coverage on and the full suite in parallel, so the default
-  // 5 s timeout failed main's CI on four of five runs (27 Sep 2026). The test is right; the budget
-  // was not.
-  it('shows the Modal description and both ConfirmDialog tones', { timeout: 15_000 }, () => {
+  it('shows the Modal description', () => {
     render(<DesignSystemPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Modal' }))
     const modal = screen.getByRole('dialog', { name: 'Edit Day Note' })
     expect(modal).toHaveAccessibleDescription('Shown to staff on the rota for this day')
     fireEvent.click(within(modal).getByRole('button', { name: 'Cancel' }))
+  })
 
+  // Each dialog has its own test budget: all three in one test exceeded 5s under CI coverage.
+  it('uses the primary tone for the Publish Rota confirmation', () => {
+    render(<DesignSystemPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Publish Rota' }))
     const publish = screen.getByRole('dialog', { name: 'Publish Rota' })
     expect(within(publish).getByRole('button', { name: 'Publish' })).toHaveClass('bg-primary')
     fireEvent.click(within(publish).getByRole('button', { name: 'Cancel' }))
+  })
 
+  it('uses the danger tone for the Delete Shift confirmation', () => {
+    render(<DesignSystemPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Delete Shift' }))
     const remove = screen.getByRole('dialog', { name: 'Delete Shift' })
     expect(within(remove).getByRole('button', { name: 'Delete' })).toHaveClass('bg-danger')

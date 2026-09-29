@@ -21,7 +21,11 @@
  *     being created.
  *
  * Migration 20260828120356 removed the defaults and installed an event
- * trigger. This script is the thing that notices if that ever stops working.
+ * trigger. Neither closed the built-in PUBLIC EXECUTE grant on new invoker
+ * functions: the trigger covers SECURITY DEFINER routines only, and the
+ * per-schema ALTER DEFAULT PRIVILEGES cannot remove a global default. Migration
+ * 20260929120545 closes it with the global form. This script is the thing that
+ * notices if any of that ever stops working.
  *
  * The checks live in the database, in `public.v_anon_surface_report`, so the
  * SQL stays next to the catalogues it inspects and this file stays a thin
