@@ -76,7 +76,11 @@ describe('the design system reference page', () => {
     expect(screen.getAllByText('14px').length).toBeGreaterThan(0)
   })
 
-  it('shows the Modal description and both ConfirmDialog tones', () => {
+  // Three dialogs opened by accessible-name lookups across the whole reference page. About 1.2 s
+  // locally but 5.8 to 6 s in CI with coverage on and the full suite in parallel, so the default
+  // 5 s timeout failed main's CI on four of five runs (27 Sep 2026). The test is right; the budget
+  // was not.
+  it('shows the Modal description and both ConfirmDialog tones', { timeout: 15_000 }, () => {
     render(<DesignSystemPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Modal' }))
