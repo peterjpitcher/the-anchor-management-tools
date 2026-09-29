@@ -9,6 +9,13 @@ function copy(channel: PromotionChannel, description: string): typeof facebook |
 }
 
 describe('validatePromotionCopy', () => {
+  it('requires the selected link in the closing paragraph', () => {
+    expect(validatePromotionCopy('facebook_event', facebook, 'event link').content).toBeNull()
+    expect(validatePromotionCopy('facebook_event', { ...facebook, description: 'Use the event link.\n\nCome along.' }, 'event link').content).toBeNull()
+    expect(validatePromotionCopy('facebook_event', { ...facebook, description: 'See details using the event link.' }, 'event link').issues).toEqual([])
+    expect(validatePromotionCopy('google_business_profile_event', { ...google, description: 'See details using the post button.' }, 'post button').issues).toEqual([])
+  })
+
   it('accepts and trims valid copy for each channel', () => {
     expect(validatePromotionCopy('facebook_event', { ...facebook, name: ' Quiz Night ' }).content).toEqual(facebook)
     expect(validatePromotionCopy('google_business_profile_event', google)).toEqual({ content: google, issues: [] })

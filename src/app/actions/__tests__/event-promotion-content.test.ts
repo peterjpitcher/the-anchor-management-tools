@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('generateEventPromotionContent', () => {
   it('denies permission before contacting the model or database', async () => {
@@ -68,6 +68,14 @@ describe('generateEventPromotionContent', () => {
     expect(review.facts).toContain('Event date: Wednesday, 30 September 2026 (2026-09-30)')
     expect(review.facts).toContain('Price: £10.00')
     expect(mocks.retry).toHaveBeenCalledWith(expect.any(Function), { maxAttempts: 1 })
+  })
+
+  it('uses a separate configurable factual reviewer', async () => {
+    vi.stubEnv('OPENAI_EVENT_REVIEW_MODEL', 'review-model')
+    queue(draft, { issues: [] })
+    expect(await generateEventPromotionContent(input)).toMatchObject({ success: true })
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).model).toBe('test-model')
+    expect(JSON.parse(mocks.fetch.mock.calls[1][1].body).model).toBe('review-model')
   })
 
   it('repairs a factual hallucination then checks the repaired draft independently', async () => {
@@ -136,7 +144,7 @@ describe('generateEventPromotionContent', () => {
     [{ ctaUrl: 'https://short.example/link', ctaDestinationUrl: 'https://example.com/event' }, 'A details link is selected.'],
     [{ ctaUrl: null }, 'No link selected.'],
   ])('uses the selected CTA destination %j', async (cta, expected) => {
-    queue(draft, { issues: [] })
+    queue({ ...draft, description: draft.description + (cta.ctaUrl ? '\n\nSee the event link.' : '') }, { issues: [] })
     await generateEventPromotionContent({ ...input, ...cta })
     expect(request(0).messages[1].content).toContain(expected)
     expect(request(1).messages[1].content).toContain(expected)
