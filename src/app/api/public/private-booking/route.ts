@@ -69,6 +69,7 @@ const DEPRECATION_HEADERS = {
 } as const;
 
 const privateBookingPublicLimiter = createRateLimiter({
+    name: 'private-booking-public',
     windowMs: 5 * 60 * 1000,
     max: 20,
     message: 'Too many private booking requests. Please try again shortly.'

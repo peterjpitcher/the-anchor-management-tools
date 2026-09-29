@@ -46,6 +46,7 @@ import { ConsentService } from '@/services/consent'
 // bookings in an hour the eleventh guest was refused and could not book at all. Authenticated
 // callers are exempted below and limited per guest and per API key instead.
 const tableBookingIpLimiter = createRateLimiter({
+  name: 'table-booking-ip',
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: 'Too many booking requests from this address. Please try again later.'
@@ -58,6 +59,7 @@ const tableBookingIpLimiter = createRateLimiter({
 // twenty attempts an hour from one number is nobody genuine.
 const TABLE_BOOKING_GUEST_MAX_PER_HOUR = 20
 const tableBookingGuestLimiter = createRateLimiter({
+  name: 'table-booking-guest',
   windowMs: 60 * 60 * 1000, // 1 hour
   max: TABLE_BOOKING_GUEST_MAX_PER_HOUR
 })
