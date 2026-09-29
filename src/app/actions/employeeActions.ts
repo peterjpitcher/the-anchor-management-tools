@@ -786,7 +786,7 @@ export async function addEmployeeAttachment(
 ): Promise<AttachmentFormState> {
   try {
     const { checkRateLimit } = await import('@/lib/rate-limit-server')
-    await checkRateLimit('api', 10) // 10 uploads per minute
+    await checkRateLimit('employee-upload', 10) // 10 uploads per minute
   } catch (error) {
     if (error instanceof Error && getErrorMessage(error).includes('Too many requests')) {
       return { type: 'error', message: 'Too many file uploads. Please try again later.' };
