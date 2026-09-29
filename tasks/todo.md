@@ -943,3 +943,9 @@ No changes to event records, publishing, messages, the separate website SEO gene
 Validation: lint, app and test type checks, 72 focused tests, full London and UTC suites (1,161 files, 10,955 passed and 2 skipped in each), and production build passed. Browser and deployment verification remains the final release step.
 
 CI release check: run 36602223673 passed 10,954 tests but the unchanged design-system test combining three dialog flows exceeded its 5s timeout. Split those independent flows into three tests, keeping every existing assertion and the same timeout. Local covered before/after checks verify each flow. The application code is unchanged by this test repair.
+
+### Live reviewer correction, 29 September 2026
+- [x] Reproduced a false weekday rejection twice through the live Facebook Generate button.
+- [x] Clarified that matching facts are successful checks, with correct and incorrect weekday examples.
+- [x] Real configured provider probe accepted a correct draft and rejected an incorrect weekday and price; 63 focused tests and targeted lint passed.
+- [ ] Release the correction and repeat both live channel paths.
