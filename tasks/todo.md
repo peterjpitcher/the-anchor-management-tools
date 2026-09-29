@@ -926,3 +926,20 @@ Scope: compact navigation for Peter and Bill. Centre icons only in the collapsed
 Complexity: L, split into independently reviewable navigation behaviour and discovery increments. Existing business routes, records and permissions remain unchanged. No database migrations.
 
 Navigation result: local browser checks passed, including 0px collapsed icon offset and a scroll-free rail at 1280 x 720. Lint, cold type check, both time-zone suites, final focused navigation tests and production build passed. See docs/reviews/2026-09-19-navigation-refresh.md for file inventory, exact counts and limitations. Orange Jelly design tokens remain pending owner input.
+
+
+## 29 September 2026: channel-specific event copy checks
+
+Goal: keep the Facebook and GBP event formats while validating drafts, checking claims against stored facts and matching the CTA to the selected link. Complexity: M, one cohesive change, no schema changes.
+
+- [x] Add output validation and boundary/error tests in `src/lib/event-promotion-validation.ts` and its unit test. Reject invalid copy without truncating it.
+- [x] Update `src/app/actions/event-content.ts`: validate inputs, pass CTA context, check factual support with a separate structured review, allow one repair, and fail closed. Return GBP policy notices without disguising cash bingo as another activity.
+- [x] Update `src/components/features/events/EventPromotionContentCard.tsx`: send chosen link context, show notices, clear outdated results when the link changes, and explain that Facebook output is an event listing.
+- [x] Exercise the action and UI with mocked external dependencies, including unsupported claims, oversize drafts, repair failure and changed links. Run lint, both type checks, tests in London and UTC, and build.
+- [ ] Verify the actual generation flow, then commit and carry the approved change through push, merge and deployment verification if all checks pass.
+
+No changes to event records, publishing, messages, the separate website SEO generator, deposits or database schema. No migrations.
+
+Validation: lint, app and test type checks, 72 focused tests, full London and UTC suites (1,161 files, 10,955 passed and 2 skipped in each), and production build passed. Browser and deployment verification remains the final release step.
+
+CI release check: run 36602223673 passed 10,954 tests but the unchanged design-system test combining three dialog flows exceeded its 5s timeout. Split those independent flows into three tests, keeping every existing assertion and the same timeout. Local covered before/after checks verify each flow. The application code is unchanged by this test repair.
