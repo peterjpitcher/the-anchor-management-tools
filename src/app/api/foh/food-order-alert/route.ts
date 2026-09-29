@@ -8,6 +8,7 @@ import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 const FOOD_ORDER_ALERT_NUMBER = '+447956315214'
 const FOOD_ORDER_ALERT_MESSAGE = 'Food order'
 const foodOrderAlertLimiter = createRateLimiter({
+  name: 'foh-food-order-alert',
   windowMs: 30 * 1000,
   max: 8,
   message: 'Too many food order alerts. Please wait before sending another alert.'

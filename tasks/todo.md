@@ -926,3 +926,46 @@ Scope: compact navigation for Peter and Bill. Centre icons only in the collapsed
 Complexity: L, split into independently reviewable navigation behaviour and discovery increments. Existing business routes, records and permissions remain unchanged. No database migrations.
 
 Navigation result: local browser checks passed, including 0px collapsed icon offset and a scroll-free rail at 1280 x 720. Lint, cold type check, both time-zone suites, final focused navigation tests and production build passed. See docs/reviews/2026-09-19-navigation-refresh.md for file inventory, exact counts and limitations. Orange Jelly design tokens remain pending owner input.
+
+
+## 29 September 2026: channel-specific event copy checks
+
+Goal: keep the Facebook and GBP event formats while validating drafts, checking claims against stored facts and matching the CTA to the selected link. Complexity: M, one cohesive change, no schema changes.
+
+- [x] Add output validation and boundary/error tests in `src/lib/event-promotion-validation.ts` and its unit test. Reject invalid copy without truncating it.
+- [x] Update `src/app/actions/event-content.ts`: validate inputs, pass CTA context, check factual support with a separate structured review, allow one repair, and fail closed. Return GBP policy notices without disguising cash bingo as another activity.
+- [x] Update `src/components/features/events/EventPromotionContentCard.tsx`: send chosen link context, show notices, clear outdated results when the link changes, and explain that Facebook output is an event listing.
+- [x] Exercise the action and UI with mocked external dependencies, including unsupported claims, oversize drafts, repair failure and changed links. Run lint, both type checks, tests in London and UTC, and build.
+- [ ] Verify the actual generation flow, then commit and carry the approved change through push, merge and deployment verification if all checks pass.
+
+No changes to event records, publishing, messages, the separate website SEO generator, deposits or database schema. No migrations.
+
+Validation: lint, app and test type checks, 72 focused tests, full London and UTC suites (1,161 files, 10,955 passed and 2 skipped in each), and production build passed. Browser and deployment verification remains the final release step.
+
+CI release check: run 36602223673 passed 10,954 tests but the unchanged design-system test combining three dialog flows exceeded its 5s timeout. Split those independent flows into three tests, keeping every existing assertion and the same timeout. Local covered before/after checks verify each flow. The application code is unchanged by this test repair.
+
+### Live reviewer correction, 29 September 2026
+- [x] Reproduced a false weekday rejection twice through the live Facebook Generate button.
+- [x] Clarified that matching facts are successful checks, with correct and incorrect weekday examples.
+- [x] Real configured provider probe accepted a correct draft and rejected an incorrect weekday and price; 63 focused tests and targeted lint passed.
+- [ ] Release the correction and repeat both live channel paths.
+
+### Review reliability and CTA follow-up
+- [x] Reproduced reviewer false positives using the complete live brief, including equivalently formatted times and first names.
+- [x] Separated the factual reviewer model, documented OPENAI_EVENT_REVIEW_MODEL (default gpt-4.1), and aligned its instructions with house style.
+- [x] Made the selected CTA an application instruction and directly checked its reference in the closing paragraph.
+- [x] Added conditional-prize guidance and regression checks for reviewer configuration and closing-link placement.
+- [x] Both full generation paths passed real-provider checks against the live brief; no event records were written. 65 focused unit/UI tests passed.
+- [ ] Verify the final production release through both browser buttons.
+
+### Conditional prize safeguard
+- [x] Live GBP output quoted the projected £160 Snowball without its conditions.
+- [x] Added a direct source-aware check that omits optional Snowball details from short listings when the source contains changing amounts or attendance qualifications. Cash bingo and the final jackpot remain explicit.
+- [x] Both complete real-provider generation paths passed with the live brief and no Snowball claim. 67 focused tests pass, including the observed unsafe sentence and its repair path.
+- [ ] Verify this final safeguard on production through both Generate buttons.
+
+### Reliable closing link
+- [x] Observed two live Facebook attempts omit the selected link despite the repair instruction.
+- [x] Supply the missing closing line directly from the selected channel and booking/details destination, before length checks and factual review.
+- [x] Both real-provider generation paths pass; 68 focused tests, app typecheck and targeted lint pass.
+- [ ] Verify both final browser paths after deployment.
