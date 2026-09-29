@@ -21,6 +21,7 @@ export function validatePromotionCopy(
   channel: PromotionChannel,
   value: unknown,
   closingReference?: 'event link' | 'post button',
+  omitConditionalSnowball = false,
 ): { content: PromotionContent | null; issues: string[] } {
   const result = schemas[channel].safeParse(value)
   if (!result.success) {
@@ -34,6 +35,9 @@ export function validatePromotionCopy(
   const title = 'name' in content ? content.name : content.title
   const combined = `${title}\n${content.description}`
   const issues: string[] = []
+  if (omitConditionalSnowball && /\bsnowball\b/i.test(combined)) {
+    issues.push('Omit the optional Snowball detail from this short listing because its source contains changing amounts or attendance conditions. Keep the cash bingo event type and final jackpot.')
+  }
   const closingParagraph = content.description.trim().split(/\n\s*\n/).at(-1) ?? ''
   if (closingReference && !closingParagraph.toLowerCase().includes(closingReference)) {
     issues.push(`End with a clear invitation using the ${closingReference}.`)
