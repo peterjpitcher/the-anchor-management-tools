@@ -20,6 +20,10 @@ setInterval(() => {
 }, 60000) // Clean every minute
 
 export interface RateLimitConfig {
+  // Stable name of the operation this limiter protects (e.g. 'login', 'sms'). Every limiter shares
+  // one store, so the name keeps each operation's counter separate: without it, staff behind the
+  // pub's single IP would spend one allowance across login, uploads, SMS and bulk sends.
+  name: string
   windowMs: number // Time window in milliseconds
   max: number // Maximum requests per window
   message?: string // Error message
@@ -28,6 +32,7 @@ export interface RateLimitConfig {
 
 export function createRateLimiter(config: RateLimitConfig) {
   const {
+    name,
     windowMs,
     max,
     message = 'Too many requests, please try again later.',
@@ -41,10 +46,10 @@ export function createRateLimiter(config: RateLimitConfig) {
 
   // `explicitKey` lets a caller count against something the request cannot supply on its own,
   // e.g. a normalised phone number parsed out of the body. Existing callers pass only `req` and
-  // keep the IP-derived key. Note the store is shared across every limiter built here, so an
-  // explicit key must be namespaced by its caller to avoid colliding with another limiter's.
+  // keep the IP-derived key. The limiter's name prefixes whichever subject is used, so the
+  // subject itself (IP, phone, token) is unchanged and only collisions between operations go.
   return async function rateLimit(req: NextRequest, explicitKey?: string): Promise<NextResponse | null> {
-    const key = explicitKey ?? keyGenerator(req)
+    const key = `${name}:${explicitKey ?? keyGenerator(req)}`
     const now = Date.now()
     
     // Get or create rate limit data for this key
@@ -89,6 +94,7 @@ export function createRateLimiter(config: RateLimitConfig) {
 export const rateLimiters = {
   // SMS operations: 10 requests per minute per IP
   sms: createRateLimiter({
+    name: 'sms',
     windowMs: 60 * 1000, // 1 minute
     max: 10,
     message: 'Too many SMS requests. Please wait before sending more messages.'
@@ -96,6 +102,7 @@ export const rateLimiters = {
   
   // Bulk operations: 5 requests per hour per IP
   bulk: createRateLimiter({
+    name: 'bulk',
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 5,
     message: 'Too many bulk operations. Please wait before performing more bulk actions.'
@@ -103,6 +110,7 @@ export const rateLimiters = {
   
   // Authentication: 20 attempts per 15 minutes per IP (increased for production issues)
   auth: createRateLimiter({
+    name: 'auth',
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // Increased from 5 to handle shared IPs
     message: 'Too many login attempts. Please try again later.'
@@ -110,6 +118,7 @@ export const rateLimiters = {
   
   // API general: 100 requests per minute per IP
   api: createRateLimiter({
+    name: 'api',
     windowMs: 60 * 1000, // 1 minute
     max: 100,
     message: 'Too many API requests. Please slow down.'
@@ -117,6 +126,7 @@ export const rateLimiters = {
   
   // Webhook endpoints: 1000 requests per minute (higher for external services)
   webhook: createRateLimiter({
+    name: 'webhook',
     windowMs: 60 * 1000, // 1 minute
     max: 1000,
     message: 'Too many webhook requests.'

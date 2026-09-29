@@ -9,6 +9,7 @@ import { validationError, buildCustomerName } from '../shared'
 
 // Light protection for the shared kiosk account (spec section 4, F32).
 const lookupLimiter = createRateLimiter({
+  name: 'foh-voucher-lookup',
   windowMs: 60 * 1000,
   max: 120,
   message: 'Too many voucher lookups. Please wait a moment and try again.'
