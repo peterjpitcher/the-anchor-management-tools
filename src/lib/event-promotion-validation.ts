@@ -20,6 +20,7 @@ const markdownPattern = /(?:^\s{0,3}(?:#{1,6}\s|>\s|[-*+]\s|\d+[.)]\s)|\*{1,2}[^
 export function validatePromotionCopy(
   channel: PromotionChannel,
   value: unknown,
+  closingReference?: 'event link' | 'post button',
 ): { content: PromotionContent | null; issues: string[] } {
   const result = schemas[channel].safeParse(value)
   if (!result.success) {
@@ -33,6 +34,10 @@ export function validatePromotionCopy(
   const title = 'name' in content ? content.name : content.title
   const combined = `${title}\n${content.description}`
   const issues: string[] = []
+  const closingParagraph = content.description.trim().split(/\n\s*\n/).at(-1) ?? ''
+  if (closingReference && !closingParagraph.toLowerCase().includes(closingReference)) {
+    issues.push(`End with a clear invitation using the ${closingReference}.`)
+  }
   if (/<\/?[a-z][^>]*>|<!--|<!doctype/i.test(combined)) issues.push('Remove HTML and use plain text.')
   if (markdownPattern.test(combined)) issues.push('Remove markdown formatting and use plain text paragraphs.')
   if (urlPattern.test(combined)) issues.push('Remove URLs and domains; use the separate CTA link field.')
