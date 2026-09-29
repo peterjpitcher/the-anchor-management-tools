@@ -949,3 +949,11 @@ CI release check: run 36602223673 passed 10,954 tests but the unchanged design-s
 - [x] Clarified that matching facts are successful checks, with correct and incorrect weekday examples.
 - [x] Real configured provider probe accepted a correct draft and rejected an incorrect weekday and price; 63 focused tests and targeted lint passed.
 - [ ] Release the correction and repeat both live channel paths.
+
+### Review reliability and CTA follow-up
+- [x] Reproduced reviewer false positives using the complete live brief, including equivalently formatted times and first names.
+- [x] Separated the factual reviewer model, documented OPENAI_EVENT_REVIEW_MODEL (default gpt-4.1), and aligned its instructions with house style.
+- [x] Made the selected CTA an application instruction and directly checked its reference in the closing paragraph.
+- [x] Added conditional-prize guidance and regression checks for reviewer configuration and closing-link placement.
+- [x] Both full generation paths passed real-provider checks against the live brief; no event records were written. 65 focused unit/UI tests passed.
+- [ ] Verify the final production release through both browser buttons.
