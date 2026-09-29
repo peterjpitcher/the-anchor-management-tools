@@ -12,8 +12,10 @@ import path from 'node:path'
  * Why it exists: pg_default_acl handed anon rights on every new object in public,
  * and nothing failed loudly when it did. In summer 2026 that put weekly takings,
  * dish cost prices and customer bookings behind the public key, and made new RPCs
- * anon callable on every build. Migration 20260828120356 removed the defaults;
- * this test is what notices if that ever stops working.
+ * anon callable on every build. Migration 20260828120356 removed the per-schema
+ * defaults, but new functions still took Postgres's built-in PUBLIC EXECUTE
+ * (which anon inherits) until migration 20260929120545 revoked it globally;
+ * this test is what notices if any of that ever stops working.
  *
  * It needs a direct Postgres connection: the catalogue is not reachable through
  * PostgREST, so the service role key alone cannot answer the question. Set
