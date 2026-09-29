@@ -30,7 +30,10 @@
  * The checks live in the database, in `public.v_anon_surface_report`, so the
  * SQL stays next to the catalogues it inspects and this file stays a thin
  * runner. Both directions are asserted: nothing newly exposed, and the twelve
- * tables plus three RPCs the public website needs are still reachable.
+ * tables plus three RPCs the report treats as the public website's are still
+ * reachable. The website itself has no Supabase client and reads through this
+ * app's API as the service role (checked 29 September 2026), so losing one of
+ * those grants would not blank a page; the check stops them changing unnoticed.
  */
 
 import dotenv from 'dotenv'
@@ -56,9 +59,9 @@ const EXPLANATIONS: Record<string, string> = {
   anon_in_default_privileges_for_new_tables:
     'The default privileges grant anon on new tables again, so every table created from now on inherits access nobody asked for.',
   website_tables_still_anon_readable:
-    'The public website reads these twelve tables with the anon key and one has lost access, so pages will be blank. Add an explicit GRANT SELECT ... TO anon in the migration that created or recreated it.',
+    'One of the twelve tables this report treats as the public website\'s has lost its anon SELECT grant. The website does not read the database with the anon key, so no page should break, but the grant changed without the report being updated. Restore it with GRANT SELECT ... TO anon in the migration that removed it, or, if the change was deliberate, update public.v_anon_surface_report in a migration.',
   website_rpcs_still_anon_callable:
-    'The public website calls these three functions with the anon key and one has lost access. A CREATE OR REPLACE must re-issue GRANT EXECUTE ... TO anon in the same migration.',
+    'One of the three functions this report treats as the public website\'s has lost its anon EXECUTE grant (a drop and recreate starts again from the default privileges, which no longer grant anon). The website does not call them with the anon key, so no page should break. Re-issue GRANT EXECUTE ... TO anon in that migration, or, if the change was deliberate, update public.v_anon_surface_report in a migration.',
   public_objects_not_owned_by_postgres:
     'Something in public is owned by another role. The default-privileges fix only governs objects postgres creates, and supabase_admin still grants anon full table privileges by default.',
 }
