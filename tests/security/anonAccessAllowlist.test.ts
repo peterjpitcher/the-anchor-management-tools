@@ -28,7 +28,8 @@ import path from 'node:path'
  *
  * Sibling: scripts/security/assert-anon-surface.ts asserts the aggregate
  * invariants (nothing SECURITY DEFINER is anon callable, no anon writes, no view
- * without security_invoker, the website's own access intact). That script answers
+ * without security_invoker, the twelve tables and three functions it treats as
+ * the website's still reachable). That script answers
  * "has a rule been broken". This test answers "has the surface grown".
  */
 
@@ -207,7 +208,7 @@ export function formatUnexpected(unexpected: SurfaceDiff['unexpected']): string 
   lines.push(
     'DO NOT widen the allowlist to make this pass. That is the move that caused the original incidents.',
     'Add the explicit REVOKE above to the migration that created the object, in the same migration, and re-run.',
-    'Only if the public website genuinely needs the object: add the narrowest possible GRANT to that same migration,',
+    'Only if a client genuinely needs the object with the anon key (today none does): add the narrowest possible GRANT to that same migration,',
     'confirm RLS is enabled with a policy that scopes the rows, then add the object to the allowlist with a reason.',
     'Postgres grants EXECUTE on every new function to PUBLIC, so a new function is anon callable unless its migration revokes it.',
     'Then run: npx tsx scripts/security/assert-anon-surface.ts',
