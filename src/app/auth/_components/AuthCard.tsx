@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Icon, type IconName } from '@/ds'
 import { cn } from '@/lib/utils'
+import { AuthCredit } from './AuthCredit'
 
 type AuthIconTone = 'danger' | 'warning' | 'success'
 
@@ -29,7 +30,7 @@ type AuthCardProps = {
  * landing on an error) stays in one visual system.
  *
  * Phones get the card full width without its frame; from the shell breakpoint up it is a framed
- * 384px card centred on the page.
+ * 384px card centred on the page. On the /auth screens the Orange Jelly credit sits under it.
  */
 export function AuthCard({ title, lead, icon, footer, children }: AuthCardProps): React.JSX.Element {
   const centred = Boolean(icon)
@@ -71,6 +72,8 @@ export function AuthCard({ title, lead, icon, footer, children }: AuthCardProps)
 
         {footer ? <div className="mt-7 text-center text-xs text-text-soft">{footer}</div> : null}
       </div>
+
+      <AuthCredit />
     </div>
   )
 }
