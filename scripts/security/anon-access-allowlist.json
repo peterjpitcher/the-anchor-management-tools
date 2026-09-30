@@ -5,7 +5,7 @@
     "WHAT IT IS FOR. tests/security/anonAccessAllowlist.test.ts reads the live catalogue and fails naming anything anon can reach that is not listed here. It is the tripwire for the workspace's top recurring security defect: pg_default_acl handed anon rights on every new object in public, and nothing failed loudly when it did. In summer 2026 that put weekly takings, dish cost prices and customer bookings behind the public key, and made new RPCs anon callable on every build. Migration 20260828120356 removed the defaults and added an event trigger; this file is what notices if that ever stops working.",
     "",
     "HOW TO UPDATE IT. Do not widen the allowlist to make a red test go green. That is the exact move that caused the original incidents. The correct order is:",
-    "  1. Decide whether anon genuinely needs the object. Almost always it does not: only the public website reads this database with the anon key.",
+    "  1. Decide whether anon genuinely needs the object. Almost always it does not: nothing reads this database with the anon key today. The public website (OJ-The-Anchor.pub) has no Supabase client and goes through this app's API as the service role (checked 29 September 2026).",
     "  2. If it does not, add the REVOKE to the migration that created the object, in the same migration:",
     "       REVOKE ALL ON TABLE public.new_table FROM anon, authenticated;",
     "       REVOKE EXECUTE ON FUNCTION public.new_fn(uuid) FROM PUBLIC, anon;",
@@ -15,11 +15,11 @@
     "",
     "A GRANT IS NOT THE SAME AS READABLE DATA. RLS is the second gate. Most of the tables listed here grant anon SELECT but every row is withheld by policy, verified against production on 2026-09-04: anon gets HTTP 200 and zero rows from employees, payments, cashup_sessions, menu_ingredient_prices, private_bookings, invoices, audit_logs and receipt_transactions. That is defence working, not a reason to leave the grant in place. The grant is one bad policy away from being the whole story, so the list is expected to shrink over time.",
     "",
-    "WHY THE FUNCTION LIST IS SO LONG. Postgres grants EXECUTE on every new function to PUBLIC, and anon inherits it. 119 of the 122 functions here are anon callable for that reason alone and nobody chose it. None is SECURITY DEFINER, so each runs with the caller's own rights and RLS still applies, which is why this is a hardening backlog rather than an open door. Only three carry a deliberate grant: business_hours_for_date, event_ticket_type_unit_price and is_active_event_booking_for_capacity_v01, which the public website calls. Any new function should ship with REVOKE EXECUTE ON FUNCTION ... FROM PUBLIC, anon; in its own migration.",
+    "WHY THE FUNCTION LIST IS SO LONG. Until migration 20260929120545 Postgres granted EXECUTE on every new function to PUBLIC, which anon inherits, and until 28 August the default privileges also granted anon EXECUTE directly. Nobody chose most of these grants. On 29 September 2026, of the 123 anon callable functions, 120 carried PUBLIC and 118 of those also held a direct anon grant from the old default; only maintenance_format_reference and the trigger function maintenance_items_normalise reached anon through PUBLIC alone. None is SECURITY DEFINER, so each runs with the caller's own rights and RLS still applies, which is why this is a hardening backlog rather than an open door. Only three carry a deliberate grant: business_hours_for_date, event_ticket_type_unit_price and is_active_event_booking_for_capacity_v01, which were granted for the public website; the website has no Supabase client, so nothing calls them with the anon key today. A new function now gets neither grant by default, but one that must stay private should still ship with REVOKE EXECUTE ON FUNCTION ... FROM PUBLIC, anon; in its own migration.",
     "",
     "RECORDED, NOT APPROVED. public.profiles is readable in practice, not just granted: the policy 'Allow public read access to profiles' uses (auth.role() = 'authenticated' OR auth.role() = 'anon'), so the anon key returns rows. Verified against production on 2026-09-04. That is 23 staff rows carrying full_name, first_name, last_name and email. It is listed here to record the state truthfully and to stop it drifting further, and it is the first thing to fix, not an endorsement.",
     "",
-    "SIBLINGS. scripts/security/assert-anon-surface.ts asserts the aggregate invariants (nothing SECURITY DEFINER is anon callable, no anon writes, no view without security_invoker, the website's own access intact) by reading public.v_anon_surface_report. That script answers 'has a rule been broken'. This allowlist answers 'has the surface grown'. Run both after any migration that adds a table, a view or a function.",
+    "SIBLINGS. scripts/security/assert-anon-surface.ts asserts the aggregate invariants (nothing SECURITY DEFINER is anon callable, no anon writes, no view without security_invoker, the twelve tables and three functions it treats as the website's still reachable) by reading public.v_anon_surface_report. That script answers 'has a rule been broken'. This allowlist answers 'has the surface grown'. Run both after any migration that adds a table, a view or a function.",
     "",
     "RUNNING THE TEST. It needs a direct Postgres connection because the catalogue is not reachable through PostgREST. Set ANON_SURFACE_DB_URL (or SUPABASE_DB_URL) to a connection string and have psql on PATH. Without it the test skips and says so, so CI without secrets does not fail spuriously. Deliberately not PGURL or DATABASE_URL: CI already uses PGURL for the throwaway contract database in .github/workflows/ci.yml, and pointing this check at an empty database would report the whole allowlist as stale."
   ],
@@ -62,8 +62,8 @@
     ],
     "openItems": [
       "public.profiles returns rows to the anon key. See RECORDED, NOT APPROVED above.",
-      "119 functions are anon callable only through the built in PUBLIC EXECUTE grant. See WHY THE FUNCTION LIST IS SO LONG above.",
-      "205 of the 217 tables listed grant anon SELECT with no website need. Each one is a candidate for REVOKE ALL ON TABLE ... FROM anon in a future migration."
+      "Most anon callable functions hold grants nobody chose (PUBLIC, and a direct anon grant from the pre-28-August default). See WHY THE FUNCTION LIST IS SO LONG above.",
+      "205 of the 217 tables listed grant anon SELECT with no website need, and the other 12 are not read with the anon key either (the website has no Supabase client). Each one is a candidate for REVOKE ALL ON TABLE ... FROM anon in a future migration."
     ]
   },
   "anon": {
