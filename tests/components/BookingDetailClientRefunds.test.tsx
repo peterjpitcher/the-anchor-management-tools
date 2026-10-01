@@ -155,6 +155,38 @@ describe('BookingDetailClient after a deposit refund', () => {
     expect(await screen.findByText('Refunded: £50.00')).toBeInTheDocument()
   })
 
+  it('offers the rest of a part-refunded deposit, against what was actually taken', () => {
+    render(
+      page(makeBooking({ payment_status: 'partial_refund' }), [{ id: 'refund-1', amount: 50, status: 'completed' }]),
+    )
+
+    expect(screen.getByRole('button', { name: 'Process Refund' })).toBeInTheDocument()
+    expect(refundDialog.props).toMatchObject({ originalAmount: 150, totalRefunded: 50, totalPending: 0 })
+  })
+
+  it('measures a part refund against the locked amount, as the refund actions do', () => {
+    // deposit_amount can move after capture (a party size change); the locked amount is what PayPal took.
+    render(
+      page(makeBooking({ payment_status: 'partial_refund', deposit_amount: 180, deposit_amount_locked: 150 }), [
+        { id: 'refund-1', amount: 50, status: 'completed' },
+      ]),
+    )
+
+    expect(refundDialog.props).toMatchObject({ originalAmount: 150, totalRefunded: 50 })
+  })
+
+  it('does not offer a refund once the ledger shows the whole deposit has gone back', () => {
+    // The payment status can lag the ledger: two refunds recorded, booking not yet reconciled.
+    render(
+      page(makeBooking({ payment_status: 'partial_refund' }), [
+        { id: 'refund-1', amount: 75, status: 'completed' },
+        { id: 'refund-2', amount: 75, status: 'completed' },
+      ]),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Process Refund' })).not.toBeInTheDocument()
+  })
+
   it('counts a refund that is still pending at PayPal, when the payment status has not moved', async () => {
     const { rerender } = render(page(makeBooking(), []))
     expect(refundDialog.props).toMatchObject({ totalRefunded: 0, totalPending: 0 })
