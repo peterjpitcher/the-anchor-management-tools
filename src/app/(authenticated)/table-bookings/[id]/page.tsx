@@ -13,7 +13,7 @@ import SeasonalPreorderSection, {
   type PreorderMenuOption,
 } from '@/components/features/table-bookings/preorder/SeasonalPreorderSection'
 import { PREORDER_SELECTION_COURSES } from '@/types/preorders'
-import BookingDetailClient, { type Booking } from './BookingDetailClient'
+import BookingDetailClient, { type Booking, type BookingDepositRefund } from './BookingDetailClient'
 import { resolveCustomerStaffEmailOption } from '@/lib/messaging/staff-email-option'
 
 interface Props {
@@ -122,7 +122,10 @@ export default async function BookingDetailPage({ params }: Props) {
     audit_trail: auditTrail,
   } as unknown as Booking
 
-  const seasonalPreorder = await loadSeasonalPreorder(rawBooking, canEdit)
+  const [seasonalPreorder, depositRefunds] = await Promise.all([
+    loadSeasonalPreorder(rawBooking, canEdit),
+    loadDepositRefunds(rawBooking.id),
+  ])
   // P7: the guest message card offers email when the option is on (and defaults to it for a
   // guest with a usable address). Read only for staff who can send, who are the only ones shown it.
   const emailOption = canEdit ? await resolveCustomerStaffEmailOption(customer?.id ?? null) : undefined
@@ -134,10 +137,42 @@ export default async function BookingDetailPage({ params }: Props) {
       canEdit={canEdit}
       canManage={canManage}
       canRefund={canRefund || canManage}
+      depositRefunds={depositRefunds}
       seasonalPreorder={seasonalPreorder}
       emailOption={emailOption}
     />
   )
+}
+
+/**
+ * The refunds recorded against this booking's deposit, or null when they cannot be read.
+ *
+ * Loaded here with the booking, not fetched by the client, so the page shows a refund as soon as
+ * the refund dialog's router.refresh() re-runs this. Null rather than an empty list on failure: an
+ * empty list would show a returned deposit as still held and offer to refund it again.
+ *
+ * payment_refunds is service-role only under RLS, so the read goes through the admin client.
+ * Permission was proven at the top of the page, and the booking was read as the user.
+ */
+async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefund[] | null> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('payment_refunds')
+    .select('id, amount, status')
+    .eq('source_type', 'table_booking')
+    .eq('source_id', bookingId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Error loading booking refunds:', error)
+    return null
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    amount: Number(row.amount),
+    status: row.status as BookingDepositRefund['status'],
+  }))
 }
 
 /**

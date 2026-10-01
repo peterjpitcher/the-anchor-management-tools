@@ -354,11 +354,23 @@ export interface Booking {
   audit_trail: BookingAuditEntry[]
 }
 
+/** A refund recorded against the booking's deposit: a payment_refunds row, cut down to what this page needs. */
+export type BookingDepositRefund = {
+  id: string
+  amount: number
+  status: 'completed' | 'pending' | 'failed'
+}
+
 interface Props {
   booking: Booking
   canEdit: boolean
   canManage: boolean
   canRefund: boolean
+  /**
+   * Every refund recorded against the deposit, loaded by the page with the booking. Null when they
+   * could not be read, in which case no refund is offered.
+   */
+  depositRefunds: BookingDepositRefund[] | null
   /** The seasonal pre-order block, rendered on the server and slotted in. Null when the booking has none. */
   seasonalPreorder?: ReactNode
   /**
@@ -399,7 +411,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder, emailOption }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -421,7 +433,22 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [messageChannel, setMessageChannel] = useState<StaffMessageChannel>(() => defaultStaffMessageChannel(emailOption))
   const [emailSubject, setEmailSubject] = useState(STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT)
   const [showRefundDialog, setShowRefundDialog] = useState(false)
-  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
+
+  // From the server-loaded refunds, so the badge, the Process Refund button, the dialog's balance
+  // and the Refund History card all change together when router.refresh() follows a refund. These
+  // were fetched once into client state, and only while payment_status was 'completed', which a
+  // completed refund itself moves to 'refunded' or 'partial_refund'.
+  const refundTotals = useMemo(
+    () => ({
+      totalRefunded: (depositRefunds ?? [])
+        .filter((refund) => refund.status === 'completed')
+        .reduce((sum, refund) => sum + refund.amount, 0),
+      totalPending: (depositRefunds ?? [])
+        .filter((refund) => refund.status === 'pending')
+        .reduce((sum, refund) => sum + refund.amount, 0),
+    }),
+    [depositRefunds],
+  )
 
   const assignedTables = useMemo(
     () => booking.table_booking_tables.map((assignment) => assignment.table).filter((table): table is BookingTableInner => Boolean(table)),
@@ -478,10 +505,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     },
     booking.party_size ?? 0,
   )
+  // A deposit that was taken and has not all gone back: staff may refund it, or the rest of it.
+  const depositCanBeRefunded = booking.payment_status === 'completed' || booking.payment_status === 'partial_refund'
   const refundableDepositAmount =
     booking.payment_status === 'completed'
       ? Math.max(0, canonicalDepositAmount)
-      : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
+      : booking.payment_status === 'partial_refund'
+        ? // The ceiling the refund actions enforce: the locked amount is what PayPal captured, and
+          // deposit_amount can move after capture (a party size change).
+          Math.max(0, Number(booking.deposit_amount_locked ?? booking.deposit_amount ?? 0))
+        : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
 
   const notes = [
     { label: 'Special requirements', value: normaliseNote(booking.special_requirements) },
@@ -535,26 +568,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     canEdit &&
     preorderItems.length > 0 &&
     (!booking.sunday_preorder_cutoff_at || new Date(booking.sunday_preorder_cutoff_at).getTime() > Date.now())
-
-  useEffect(() => {
-    if (!booking.id || booking.payment_status !== 'completed') return
-    let cancelled = false
-    import('@/app/actions/refundActions').then(({ getRefundHistory }) =>
-      getRefundHistory('table_booking', booking.id).then((result) => {
-        if (cancelled || !result.data) return
-        const completed = result.data
-          .filter((r: any) => r.status === 'completed')
-          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
-        const pending = result.data
-          .filter((r: any) => r.status === 'pending')
-          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
-        setRefundTotals({ totalRefunded: completed, totalPending: pending })
-      })
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [booking.id, booking.payment_status])
 
   async function runAction<T>(
     key: string,
@@ -1312,7 +1325,14 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </Badge>
                 )}
 
-                {canRefund && booking.payment_status === 'completed' && refundTotals.totalRefunded < refundableDepositAmount && (
+                {depositRefunds === null && (
+                  <Alert tone="warning">
+                    The refunds on this booking could not be loaded, so this card may not show money already returned.
+                    Reload the page before refunding the deposit.
+                  </Alert>
+                )}
+
+                {canRefund && depositRefunds !== null && depositCanBeRefunded && refundTotals.totalRefunded < refundableDepositAmount && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1324,9 +1344,15 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               </CardBody>
             </Card>
 
-            {/* Its own card, titled Refund History, beside the payment card rather than nested in it. */}
-            {booking.payment_status === 'completed' && (
-              <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
+            {/* Its own card, titled Refund History, beside the payment card rather than nested in it.
+                Shown whenever there is a refund to list, whatever the payment status has become. It
+                fetches its own rows once, so the key remounts it when a refund is added or settles. */}
+            {depositRefunds !== null && depositRefunds.length > 0 && (
+              <RefundHistoryTable
+                key={depositRefunds.map((refund) => `${refund.id}:${refund.status}`).join('|')}
+                sourceType="table_booking"
+                sourceId={booking.id}
+              />
             )}
 
             <Card>
@@ -1729,7 +1755,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           </div>
         </Modal>
 
-        {canRefund && booking.payment_status === 'completed' && (
+        {canRefund && depositRefunds !== null && depositCanBeRefunded && (
           <RefundDialog
             open={showRefundDialog}
             onOpenChange={setShowRefundDialog}

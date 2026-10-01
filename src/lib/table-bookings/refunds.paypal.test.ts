@@ -57,6 +57,28 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }))
 
+// payment_refunds is service-role only, so the ledger row goes through the admin client.
+const refundRowInserts: Record<string, unknown>[] = []
+const refundRowUpdates: { values: Record<string, unknown>; paypalRefundId: unknown }[] = []
+let refundInsertError: { code?: string; message: string } | null = null
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: () => ({
+      insert: async (values: Record<string, unknown>) => {
+        refundRowInserts.push(values)
+        return { error: refundInsertError }
+      },
+      update: (values: Record<string, unknown>) => ({
+        eq: async (_column: string, paypalRefundId: unknown) => {
+          refundRowUpdates.push({ values, paypalRefundId })
+          return { error: null }
+        },
+      }),
+    }),
+  }),
+}))
+
 const { refundTableBookingDeposit } = await import('./refunds')
 
 /** 30 days out, so the sliding tier is a full refund and the maths is unambiguous. */
@@ -69,6 +91,9 @@ function farFutureDate(): Date {
 beforeEach(() => {
   vi.clearAllMocks()
   bookingUpdates.length = 0
+  refundRowInserts.length = 0
+  refundRowUpdates.length = 0
+  refundInsertError = null
   paymentRow = null
   bookingRow = null
   refundPayPalPayment.mockResolvedValue({
@@ -239,5 +264,116 @@ describe('refundTableBookingDeposit, PayPal deposits', () => {
     const result = await refundTableBookingDeposit('booking-1', farFutureDate())
 
     expect(result).toMatchObject({ refunded: false, reason: 'refund_failed', depositOwed: true })
+  })
+})
+
+/**
+ * THE REFUND GOES IN THE LEDGER WHEN IT IS MADE.
+ *
+ * `payment_refunds` is what the booking page's Refund History and the staff refund dialog read. A
+ * cancellation refund wrote nothing to it: the row only arrived later, if the PayPal webhook was
+ * delivered, and labelled as a refund made in the PayPal dashboard. Until then the ledger said the
+ * whole deposit was still held.
+ */
+describe('refundTableBookingDeposit, the refund ledger', () => {
+  function paidBooking(): BookingRow {
+    return {
+      paypal_deposit_capture_id: 'CAP-1',
+      deposit_amount_locked: 150,
+      deposit_amount: null,
+      payment_status: 'completed',
+      deposit_refund_status: null,
+      booking_date: null,
+      deposit_refund_cutoff_days: null,
+      booking_period_code: null,
+    }
+  }
+
+  /** Four days out: the sliding tier returns half. */
+  function fourDaysOut(): Date {
+    const d = new Date()
+    d.setDate(d.getDate() + 4)
+    return d
+  }
+
+  it('records a full refund against the booking, with the PayPal refund id', async () => {
+    bookingRow = paidBooking()
+
+    await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(refundRowInserts).toHaveLength(1)
+    expect(refundRowInserts[0]).toMatchObject({
+      source_type: 'table_booking',
+      source_id: 'booking-1',
+      paypal_capture_id: 'CAP-1',
+      paypal_refund_id: 'REF123',
+      paypal_status: 'COMPLETED',
+      refund_method: 'paypal',
+      amount: 150,
+      original_amount: 150,
+      status: 'completed',
+      initiated_by: null,
+      initiated_by_type: 'system',
+    })
+    expect(refundRowInserts[0].completed_at).toEqual(expect.any(String))
+    expect(refundRowInserts[0].reason).toMatch(/cancelled/i)
+  })
+
+  it('records a half refund as half of what was paid', async () => {
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', fourDaysOut())
+
+    expect(result).toMatchObject({ refunded: true, amountPence: 7500, tier: 'half' })
+    expect(refundRowInserts).toHaveLength(1)
+    expect(refundRowInserts[0]).toMatchObject({ amount: 75, original_amount: 150, status: 'completed' })
+  })
+
+  it('records a refund PayPal has not settled yet as pending', async () => {
+    refundPayPalPayment.mockResolvedValue({ refundId: 'REF123', status: 'PENDING', amount: '150.00', currency: 'GBP' })
+    bookingRow = paidBooking()
+
+    await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(refundRowInserts[0]).toMatchObject({ status: 'pending', paypal_status: 'PENDING', completed_at: null })
+  })
+
+  it('writes nothing to the ledger when PayPal refuses the refund', async () => {
+    refundPayPalPayment.mockRejectedValue(new Error('PayPal 422'))
+    bookingRow = paidBooking()
+
+    await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(refundRowInserts).toHaveLength(0)
+  })
+
+  it('still reports the refund when the ledger write fails, because the money has gone back', async () => {
+    refundInsertError = { code: '42501', message: 'permission denied' }
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(result).toMatchObject({ refunded: true, amountPence: 15000, refundId: 'REF123' })
+    // The booking is still reconciled, and a person is told the ledger is short.
+    expect(bookingUpdates[0]).toMatchObject({ payment_status: 'refunded' })
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'table_booking.refund_paypal_success_ledger_failed' }),
+    )
+  })
+
+  it('keeps the one row when the PayPal webhook recorded the refund first, and names it correctly', async () => {
+    // One PayPal refund id is one row (unique index). Losing that race is not a failure.
+    refundInsertError = { code: '23505', message: 'duplicate key value violates unique constraint' }
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(result).toMatchObject({ refunded: true })
+    expect(refundRowUpdates).toHaveLength(1)
+    expect(refundRowUpdates[0].paypalRefundId).toBe('REF123')
+    expect(refundRowUpdates[0].values.reason).toMatch(/cancelled/i)
+    expect(logAuditEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'table_booking.refund_paypal_success_ledger_failed' }),
+    )
   })
 })
