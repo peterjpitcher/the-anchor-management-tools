@@ -1,4 +1,4 @@
-import { Alert, Stat, StatGrid } from '@/ds'
+import { Alert, LinkButton, Stat, StatGrid } from '@/ds'
 import type { ReceiptWorkspaceSummary, AIUsageBreakdown } from '@/app/actions/receipts'
 
 /** OpenAI charges in US dollars, and the figure is stored as charged. It is not pounds. */
@@ -48,10 +48,25 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
           These could not be retried automatically. Use Re-classify Untagged at the top of the page to try them again.
         </Alert>
       )}
-      <StatGrid columns={6}>
+      {(summary.completedWithoutReceipt ?? 0) > 0 && (
+        <Alert tone="info" role="status" title={`${summary.completedWithoutReceipt} completed ${summary.completedWithoutReceipt === 1 ? 'transaction has' : 'transactions have'} no receipt and no reason`}>
+          They were marked as done before a reason was asked for.{' '}
+          <LinkButton href="/receipts?noReceipt=1" variant="secondary" size="sm" className="mt-2">
+            Review Them
+          </LinkButton>
+        </Alert>
+      )}
+      {/* Seven figures: two rows of four on a wide screen, not a seventh alone under six. */}
+      <StatGrid columns={4}>
         <Stat label="AI spend (US dollars)" value={summary.aiUsageBreakdown ? formatUsd(summary.openAICost) : '?'} hint={aiSpendHint(summary.aiUsageBreakdown)} />
         <Stat label="Pending" value={countValue(summary.totals.pending)} hint={countHint(summary.totals.pending)} />
         <Stat label="Completed" value={countValue(summary.totals.completed)} hint={countHint(summary.totals.completed)} />
+        <Stat
+          label="Completed, no receipt"
+          value={summary.completedWithoutReceipt ?? '?'}
+          hint={summary.completedWithoutReceipt === null ? 'Could not load' : summary.completedWithoutReceipt === 0 ? 'All clear' : 'No file and no reason'}
+          tone={(summary.completedWithoutReceipt ?? 0) > 0 ? 'warning' : 'default'}
+        />
         <Stat label="Auto completed" value={countValue(summary.totals.autoCompleted)} hint={countHint(summary.totals.autoCompleted)} />
         <Stat label="No receipt required" value={countValue(summary.totals.noReceiptRequired)} hint={countHint(summary.totals.noReceiptRequired)} />
         <Stat label="Can't find" value={countValue(summary.totals.cantFind)} hint={countHint(summary.totals.cantFind)} />

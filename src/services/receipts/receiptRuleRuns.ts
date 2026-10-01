@@ -262,6 +262,128 @@ export async function performPreviewReceiptRuleRun(
   return preview
 }
 
+// ---------------------------------------------------------------------------
+// A run a person started that is not a rule run: bulk apply, "accept all"
+// ---------------------------------------------------------------------------
+
+/** One planned change of a recorded run. */
+export type RecordedRunChange = {
+  transaction_id: string
+  /** The payment's version when the plan was made. A payment changed since is skipped. */
+  expected_updated_at: string
+  after: Record<string, string | boolean | null>
+  logs: Array<{ action_type: string; note: string }>
+}
+
+export type RecordedRunResult = {
+  /** Present once the run exists. It is listed under Recent runs and can be undone there. */
+  runId?: string
+  applied: number
+  skippedChanged: number
+  skippedLocked: number
+  /**
+   * `not_recorded`: nothing was written at all. `stale`: the lock date changed while it ran.
+   * `stopped`: it stopped part-way. In the last two, what was applied is recorded and undoable.
+   */
+  failure?: 'not_recorded' | 'stale' | 'stopped'
+}
+
+const MAX_RECORDED_RUN_STEPS = 50
+
+/**
+ * Records a set of changes as a run and applies it, the way a rule run is applied: each payment
+ * is written only if it is unchanged and not behind the lock date, with its history row, and
+ * what it replaced is kept so the run can be undone.
+ */
+export async function performRecordedRun(
+  supabase: AdminClient,
+  userId: string,
+  input: {
+    kind: 'bulk_apply' | 'ai_accept_all'
+    label: string
+    lockDate: string | null
+    /** How many payments were looked at to make the plan. */
+    reviewed: number
+    changes: RecordedRunChange[]
+  }
+): Promise<RecordedRunResult> {
+  const client = supabase as any
+  const nothing = { applied: 0, skippedChanged: 0, skippedLocked: 0 }
+
+  const { data: run, error: runError } = await client
+    .from('receipt_rule_runs')
+    .insert({
+      kind: input.kind,
+      label: input.label,
+      scope: 'all',
+      lock_date: input.lockDate,
+      status: 'drafting',
+      reviewed_count: input.reviewed,
+      matched_count: input.changes.length,
+      planned_count: input.changes.length,
+      created_by: userId,
+    })
+    .select('id')
+    .single()
+
+  if (runError || !run) {
+    console.error('Failed to record a run', runError)
+    return { ...nothing, failure: 'not_recorded' }
+  }
+
+  const runId = run.id as string
+  for (let index = 0; index < input.changes.length; index += CHANGE_INSERT_CHUNK) {
+    const rows = input.changes.slice(index, index + CHANGE_INSERT_CHUNK).map((change) => ({ run_id: runId, ...change }))
+    const { error } = await client.from('receipt_rule_run_changes').insert(rows)
+    if (error) {
+      console.error('Failed to store the changes of a run', error)
+      await client.from('receipt_rule_runs').delete().eq('id', runId)
+      return { ...nothing, failure: 'not_recorded' }
+    }
+  }
+
+  const { error: readyError } = await client
+    .from('receipt_rule_runs')
+    .update({ status: 'previewed' })
+    .eq('id', runId)
+    .eq('status', 'drafting')
+  if (readyError) {
+    console.error('Failed to start a run', readyError)
+    await client.from('receipt_rule_runs').delete().eq('id', runId)
+    return { ...nothing, failure: 'not_recorded' }
+  }
+
+  let applied = 0
+  let skippedChanged = 0
+  let skippedLocked = 0
+  for (let step = 0; step < MAX_RECORDED_RUN_STEPS; step += 1) {
+    const { data, error } = await client.rpc('apply_receipt_rule_run', {
+      p_run_id: runId,
+      p_user: userId,
+      p_limit: RULE_RUN_STEP_SIZE,
+    })
+    if (error || !data || (data.outcome !== 'in_progress' && data.outcome !== 'completed')) {
+      console.error('A recorded run stopped', error ?? data)
+      return {
+        runId,
+        applied,
+        skippedChanged,
+        skippedLocked,
+        failure: data?.outcome === 'stale_preview' ? 'stale' : 'stopped',
+      }
+    }
+    applied = Number(data.applied_total ?? 0)
+    skippedChanged = Number(data.skipped_changed_total ?? 0)
+    skippedLocked = Number(data.skipped_locked_total ?? 0)
+    if (data.outcome === 'completed') {
+      return { runId, applied, skippedChanged, skippedLocked }
+    }
+  }
+
+  // More steps than a run should ever need: say it stopped, never that it finished.
+  return { runId, applied, skippedChanged, skippedLocked, failure: 'stopped' }
+}
+
 export type RuleRunRecord = {
   id: string
   kind: 'rule_run' | 'bulk_apply' | 'ai_accept_all'

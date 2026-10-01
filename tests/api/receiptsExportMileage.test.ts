@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => {
   function resolvedChain(data: unknown) {
     const chain: Record<string, unknown> = {}
-    for (const method of ['select', 'gte', 'lte', 'order', 'eq']) chain[method] = vi.fn(() => chain)
+    for (const method of ['select', 'gte', 'lte', 'order', 'eq', 'range']) chain[method] = vi.fn(() => chain)
     chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
       Promise.resolve({ data, error: null }).then(resolve, reject)
     return chain
@@ -17,10 +17,12 @@ const mocks = vi.hoisted(() => {
     getUser: vi.fn(),
     buildQuarterMileageFiles: vi.fn(),
     appendClaimSummaryPdf: vi.fn(),
+    logAuditEvent: vi.fn(),
   }
 })
 
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: mocks.checkUserPermission }))
+vi.mock('@/app/actions/audit', () => ({ logAuditEvent: mocks.logAuditEvent }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({ auth: { getUser: mocks.getUser } }) }))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({

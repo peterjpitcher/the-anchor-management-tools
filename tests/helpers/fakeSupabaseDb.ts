@@ -129,6 +129,11 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this
   }
 
+  lt(column: string, value: string | number) {
+    this.filters.push((row) => (row[column] as string | number) < value)
+    return this
+  }
+
   ilike(column: string, pattern: string) {
     const matches = likeMatcher(pattern)
     this.filters.push((row) => matches(row[column]))

@@ -16,6 +16,7 @@ interface ReceiptFiltersProps {
     groupByVendor: boolean
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
+    completedWithoutReceipt: boolean
     search: string
     month?: string
   }
@@ -57,6 +58,7 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
     filters.groupByVendor,
     filters.missingVendorOnly,
     filters.missingExpenseOnly,
+    filters.completedWithoutReceipt,
     filters.search,
     filters.month,
   ])
@@ -130,10 +132,19 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
       direction: nextFilters.direction,
       source: nextFilters.sourceType,
       cardMember: nextFilters.cardMember || null,
-      outstanding: nextFilters.showOnlyOutstanding ? null : '0',
+      // Written only when it differs from what the page would choose by itself: pending only on
+      // the main list, every status on the Needs tabs and the review of completed transactions.
+      outstanding:
+        nextFilters.showOnlyOutstanding ===
+        !(nextFilters.missingVendorOnly || nextFilters.missingExpenseOnly || nextFilters.completedWithoutReceipt)
+          ? null
+          : nextFilters.showOnlyOutstanding
+            ? '1'
+            : '0',
       groupByVendor: nextFilters.groupByVendor ? null : '0',
       needsVendor: nextFilters.missingVendorOnly ? '1' : null,
       needsExpense: nextFilters.missingExpenseOnly ? '1' : null,
+      noReceipt: nextFilters.completedWithoutReceipt ? '1' : null,
       search: nextFilters.search.trim() || null,
       month: nextFilters.month ?? null,
     })
@@ -228,7 +239,7 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
           <Input
             label="Search"
             name="search"
-            placeholder="Search description or type"
+            placeholder="Description, vendor, note or amount"
             value={localFilters.search ?? ''}
             onChange={(event) => setLocalFilters((current) => ({ ...current, search: event.target.value }))}
             className="sm:w-64"
@@ -245,6 +256,18 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
             label="Group by vendor"
             checked={localFilters.groupByVendor}
             onChange={handleGroupByVendorToggle}
+          />
+          <Checkbox
+            label="Completed without a receipt"
+            checked={localFilters.completedWithoutReceipt}
+            onChange={(checked) =>
+              applyFilters({
+                ...localFilters,
+                completedWithoutReceipt: checked,
+                // The review is of completed transactions, so the status filters step aside.
+                ...(checked ? { status: 'all' as const, showOnlyOutstanding: false } : { showOnlyOutstanding: true }),
+              })
+            }
           />
           {/* Missing vendor and missing expense are the Needs Vendor and Needs Expense tabs, not
               filters here: the filters keep whichever of them is on while the others change. */}

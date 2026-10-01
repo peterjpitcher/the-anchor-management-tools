@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import archiver, { type ArchiverError } from 'archiver'
 import { PassThrough } from 'stream'
-import Papa from 'papaparse'
+import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { createClient } from '@/lib/supabase/server'
 import { receiptQuarterExportSchema } from '@/lib/validation'
-import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
 import { appendOjProjectInvoices, loadOjProjectInvoicesPaidInQuarter } from '@/lib/receipts/export/oj-project-invoices'
 import {
   buildQuarterMileageFiles,
@@ -15,32 +15,61 @@ import {
   appendExpenseImages,
   appendClaimSummaryPdf,
 } from '@/lib/receipts/export'
-import { buildReceiptFileName } from '@/lib/receipts/export/receipt-file-name'
+import {
+  buildExportManifest,
+  buildManifestCsv,
+  buildMissingFilesText,
+  buildReceiptsSummaryCsv,
+  manifestFingerprint,
+  type ExportPayment,
+  type MissingFile,
+} from '@/lib/receipts/export/manifest'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-/**
- * Prefixes formula-injection trigger characters (=, +, -, @) with a tab
- * so spreadsheet applications treat the cell as text rather than a formula.
- * Only applied to free-text string columns — numbers and dates are left as-is.
- */
-function escapeCsvCell(value: string): string {
-  if (!value || typeof value !== 'string') return value
-  if (['=', '+', '-', '@'].includes(value[0])) {
-    return '\t' + value
-  }
-  return value
-}
-
 const RECEIPT_BUCKET = 'receipts'
 const DOWNLOAD_CONCURRENCY = 4
 
-type ReceiptTransactionRow = ReceiptTransaction & {
-  receipt_files?: ReceiptFile[] | null
+type AdminClient = ReturnType<typeof createAdminClient>
+type QuarterRange = { startDate: string; endDate: string }
+
+/**
+ * The quarter's payments with their files, read in pages on a unique order. One request returns
+ * at most 1,000 rows and says nothing when it stops there, so the unpaged read this replaces
+ * would have shipped a short pack for a busy quarter.
+ */
+async function loadQuarterPayments(supabase: AdminClient, range: QuarterRange): Promise<ExportPayment[]> {
+  return fetchAllRows<ExportPayment>(
+    (from, to) =>
+      supabase
+        .from('receipt_transactions')
+        .select('*, receipt_files(*)')
+        .gte('transaction_date', range.startDate)
+        .lte('transaction_date', range.endDate)
+        .order('transaction_date', { ascending: false })
+        .order('details', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    { label: 'receipt transactions for export' }
+  )
 }
 
-type QuarterRange = { startDate: string; endDate: string }
+/** The ids of the quarter's payments and files, read again to see that nothing moved. */
+async function loadQuarterFingerprint(supabase: AdminClient, range: QuarterRange): Promise<string> {
+  const rows = await fetchAllRows<{ id: string; receipt_files: Array<{ id: string }> | null }>(
+    (from, to) =>
+      supabase
+        .from('receipt_transactions')
+        .select('id, receipt_files(id)')
+        .gte('transaction_date', range.startDate)
+        .lte('transaction_date', range.endDate)
+        .order('id', { ascending: true })
+        .range(from, to),
+    { label: 'receipt transactions for the export re-check' }
+  )
+  return manifestFingerprint(rows)
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,38 +88,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 400 })
     }
 
-    const { startDate, endDate } = deriveQuarterRange(parsed.data.year, parsed.data.quarter)
+    const period = { year: parsed.data.year, quarter: parsed.data.quarter }
+    const range = deriveQuarterRange(period.year, period.quarter)
+    const { startDate, endDate } = range
 
     // Super admins also get the expenses and MGD CSVs, expense receipt images and the claim
     // summary PDF. The mileage files follow mileage.view instead (spec 6.4).
-    const [isSuperAdmin, canViewOjProjects, canViewMileage] = await Promise.all([
-      checkIsSuperAdmin(),
+    const [actor, canViewOjProjects, canViewMileage] = await Promise.all([
+      loadExportActor(),
       checkUserPermission('oj_projects', 'view'),
       checkUserPermission('mileage', 'view'),
     ])
+    const isSuperAdmin = actor.isSuperAdmin
 
     const supabase = createAdminClient()
-    const { data: transactions, error } = await supabase
-      .from('receipt_transactions')
-      .select('*, receipt_files(*)')
-      .gte('transaction_date', startDate)
-      .lte('transaction_date', endDate)
-      .order('transaction_date', { ascending: false })
-      .order('details', { ascending: true })
 
-    if (error) {
+    // The manifest: everything this pack will ship, read once. The summary and the files are
+    // both built from it, so they cannot disagree.
+    let payments: ExportPayment[]
+    try {
+      payments = await loadQuarterPayments(supabase, range)
+    } catch (error) {
       console.error('Failed to fetch receipt transactions for export:', error)
       return NextResponse.json({ error: 'Failed to load transactions for export.' }, { status: 500 })
     }
+    const manifest = buildExportManifest(payments)
 
     // Mileage files come from one dataset call, before any receipt downloads. A failure throws, so
     // the whole pack fails rather than leaving mileage out (spec 6.4).
     const mileageFiles = canViewMileage
-      ? await buildQuarterMileageFiles(supabase, parsed.data.year, parsed.data.quarter as 1 | 2 | 3 | 4)
+      ? await buildQuarterMileageFiles(supabase, period.year, period.quarter as 1 | 2 | 3 | 4)
       : null
 
-    const rows = (transactions ?? []) as ReceiptTransactionRow[]
-    const summaryCsv = await buildSummaryCsv(rows, parsed.data.year, parsed.data.quarter)
     const ojProjectInvoices = canViewOjProjects
       ? await loadOjProjectInvoicesPaidInQuarter(supabase, startDate, endDate)
       : []
@@ -122,39 +151,34 @@ export async function GET(request: NextRequest) {
       passthrough.on('error', reject)
     })
 
-    // Append summary CSV
-    archive.append(summaryCsv, {
-      name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
-    })
-
-    // Append receipt files with concurrency limit
-    const downloadTasks: Array<() => Promise<void>> = []
-
-    for (const transaction of rows) {
-      const files = transaction.receipt_files ?? []
-      if (!files?.length) continue
-
-      for (const [index, file] of files.entries()) {
-        downloadTasks.push(async () => {
-          const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
-          if (download.error || !download.data) {
-            console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
-            return
-          }
-
-          const buffer = await normaliseToBuffer(download.data)
-          const name = buildReceiptFileName(transaction, file, index)
-
-          archive.append(buffer, { name })
-        })
+    // Every file in the manifest is either added to the pack or recorded as missing. A file that
+    // could not be read used to be skipped with a console warning and nothing else.
+    const missing: MissingFile[] = []
+    const downloadTasks = manifest.files.map((file) => async () => {
+      try {
+        const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storagePath)
+        if (download.error || !download.data) {
+          console.error(`Failed to download receipt ${file.storagePath}:`, download.error)
+          missing.push({ file, reason: download.error?.message || 'The file is not in storage.' })
+          return
+        }
+        const buffer = await normaliseToBuffer(download.data)
+        if (!buffer.length) {
+          missing.push({ file, reason: 'The stored file is empty.' })
+          return
+        }
+        archive.append(buffer, { name: file.zipPath })
+      } catch (error) {
+        console.error(`Failed to download receipt ${file.storagePath}:`, error)
+        missing.push({ file, reason: error instanceof Error ? error.message : 'The file could not be read.' })
       }
-    }
+    })
 
     await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
 
     await appendOjProjectInvoices(archive, ojProjectInvoices, {
-      year: parsed.data.year,
-      quarter: parsed.data.quarter,
+      year: period.year,
+      quarter: period.quarter,
       startDate,
       endDate,
     })
@@ -165,9 +189,10 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Enhanced bundle for super_admin users ---
+    const missingExpenseImages: Array<{ name: string; reason: string }> = []
     if (isSuperAdmin) {
-      const q = parsed.data.quarter as 1 | 2 | 3 | 4
-      const y = parsed.data.year
+      const q = period.quarter as 1 | 2 | 3 | 4
+      const y = period.year
 
       // Generate expenses and MGD CSVs in parallel
       const [expensesResult, mgdResult] = await Promise.all([
@@ -185,7 +210,9 @@ export async function GET(request: NextRequest) {
 
       // Append expense receipt images using the same IDs from the CSV generation
       // to ensure CSV and images represent the same snapshot of data
-      const expenseImageCount = await appendExpenseImages(supabase, expensesResult.summary.expenseIds, archive)
+      const expenseImageCount = await appendExpenseImages(supabase, expensesResult.summary.expenseIds, archive, {
+        onMissing: (name, reason) => missingExpenseImages.push({ name, reason }),
+      })
 
       // Generate and append Claim Summary PDF
       await appendClaimSummaryPdf(archive, {
@@ -201,7 +228,42 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    if (!rows.length && !ojProjectInvoices.length && !isSuperAdmin && !mileageFiles) {
+    // Still the quarter that was read at the start? A payment added, removed or given a file
+    // while the pack was being built would make the summary and the files disagree.
+    let fingerprintNow: string
+    try {
+      fingerprintNow = await loadQuarterFingerprint(supabase, range)
+    } catch (error) {
+      console.error('Failed to re-check the quarter before finishing the export:', error)
+      archive.abort()
+      return NextResponse.json({ error: 'Failed to load transactions for export.' }, { status: 500 })
+    }
+    if (fingerprintNow !== manifestFingerprint(payments)) {
+      archive.abort()
+      return NextResponse.json(
+        { error: 'The quarter changed while the pack was being built. Please try again.' },
+        { status: 409 }
+      )
+    }
+
+    const now = new Date()
+    archive.append(buildReceiptsSummaryCsv(manifest, period, { now, missing }), {
+      name: `Receipts_Q${period.quarter}_${period.year}.csv`,
+    })
+    if (manifest.payments.length > 0) {
+      archive.append(buildManifestCsv(manifest, period, { now, missing }), { name: 'MANIFEST.csv' })
+    }
+    if (missing.length > 0 || missingExpenseImages.length > 0) {
+      let text = missing.length > 0 ? buildMissingFilesText(missing, period) : ''
+      if (missingExpenseImages.length > 0) {
+        text += `${text ? '\n' : ''}Expense receipt images that could not be included:\n`
+        text += missingExpenseImages.map((image) => `- ${image.name}\n    why: ${image.reason}`).join('\n')
+        text += '\n'
+      }
+      archive.append(Buffer.from(text, 'utf-8'), { name: 'MISSING_FILES.txt' })
+    }
+
+    if (!payments.length && !ojProjectInvoices.length && !isSuperAdmin && !mileageFiles) {
       const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
       archive.append(placeholder, { name: 'README.txt' })
     }
@@ -211,13 +273,41 @@ export async function GET(request: NextRequest) {
 
     const zipBuffer = Buffer.concat(chunks)
 
+    // One entry for the pack: who took it, for which quarter, and what it held.
+    try {
+      await logAuditEvent({
+        user_id: actor.userId ?? undefined,
+        user_email: actor.email ?? undefined,
+        operation_type: 'export',
+        resource_type: 'receipts_quarter_pack',
+        resource_id: `${period.year}-Q${period.quarter}`,
+        operation_status: 'success',
+        additional_info: {
+          year: period.year,
+          quarter: period.quarter,
+          transactions: manifest.payments.length,
+          files_listed: manifest.files.length,
+          files_included: manifest.files.length - missing.length,
+          files_missing: missing.length,
+          expense_images_missing: missingExpenseImages.length,
+          oj_project_invoices: ojProjectInvoices.length,
+          included_mileage: Boolean(mileageFiles),
+          included_claim_summary: isSuperAdmin,
+          bytes: zipBuffer.length,
+        },
+      })
+    } catch (auditError) {
+      console.error('Failed to record the receipts export in the audit log:', auditError)
+    }
+
     return new NextResponse(zipBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="receipts_q${parsed.data.quarter}_${parsed.data.year}.zip"`,
+        'Content-Disposition': `attachment; filename="receipts_q${period.quarter}_${period.year}.zip"`,
         'Cache-Control': 'no-store',
         'Content-Length': String(zipBuffer.length),
+        'X-Receipts-Missing-Files': String(missing.length + missingExpenseImages.length),
       },
     })
   } catch (err) {
@@ -226,143 +316,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function buildSummaryCsv(
-  transactions: ReceiptTransactionRow[],
-  year: number,
-  quarter: number
-): Promise<Buffer> {
-  const statusCounts: Record<ReceiptTransaction['status'], number> = {
-    pending: 0,
-    completed: 0,
-    auto_completed: 0,
-    no_receipt_required: 0,
-    cant_find: 0,
-  }
-
-  transactions.forEach((tx) => {
-    statusCounts[tx.status] += 1
-  })
-
-  const totalIn = totalAmount(transactions, 'amount_in')
-  const totalOut = totalAmount(transactions, 'amount_out')
-
-  const summaryRows: string[][] = [
-    ['Quarter', `Q${quarter} ${year}`],
-    ['Generated at', new Date().toISOString()],
-    ['Total transactions', String(transactions.length)],
-    ['Total in (GBP)', formatCurrency(totalIn)],
-    ['Total out (GBP)', formatCurrency(totalOut)],
-    ['Completed', String(statusCounts.completed)],
-    ['Auto-completed', String(statusCounts.auto_completed)],
-    ['No receipt required', String(statusCounts.no_receipt_required)],
-    ["Can't find", String(statusCounts.cant_find)],
-    ['Pending', String(statusCounts.pending)],
-    [],
-  ]
-
-  const headerRow = [
-    'Date',
-    'Details',
-    'Transaction type',
-    'Vendor',
-    'Vendor source',
-    'Expense category',
-    'Expense category source',
-    'AI confidence',
-    'Amount in (GBP)',
-    'Amount out (GBP)',
-    'Status',
-    'Notes',
-    'Source',
-    'Cardholder',
-  ]
-
-  const dataRows = transactions.map((tx) => {
-    const amountIn = typeof tx.amount_in === 'number' ? tx.amount_in.toFixed(2) : ''
-    const amountOut = typeof tx.amount_out === 'number' ? tx.amount_out.toFixed(2) : ''
-    const notes = sanitiseMultiline(tx.notes)
-
-    return [
-      formatDate(tx.transaction_date),
-      escapeCsvCell(tx.details ?? ''),
-      escapeCsvCell(tx.transaction_type ?? ''),
-      escapeCsvCell(tx.vendor_name ?? ''),
-      friendlySource(tx.vendor_source),
-      escapeCsvCell(tx.expense_category ?? ''),
-      friendlySource(tx.expense_category_source),
-      tx.ai_confidence != null ? String(tx.ai_confidence) : '',
-      amountIn,
-      amountOut,
-      friendlyStatus(tx.status),
-      escapeCsvCell(notes),
-      friendlySourceType(tx.source_type),
-      escapeCsvCell(tx.card_member ?? ''),
-    ]
-  })
-
-  const csvRows = [...summaryRows, headerRow, ...dataRows]
-  const csv = Papa.unparse(csvRows, { newline: '\n' })
-  return Buffer.from(`\ufeff${csv}`, 'utf-8')
-}
-
-function sanitiseMultiline(value: string | null): string {
-  if (!value) return ''
-  return value.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
 function deriveQuarterRange(year: number, quarter: number): QuarterRange {
   const startMonth = (quarter - 1) * 3 + 1
-  const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`
   const endMonth = startMonth + 2
-  const endDate = new Date(Date.UTC(year, endMonth, 0))
-  const endDateIso = endDate.toISOString().slice(0, 10)
+  // The last day of the quarter's last month: day zero of the month after it.
+  const lastDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate()
+  const pad = (value: number) => String(value).padStart(2, '0')
 
-  return { startDate, endDate: endDateIso }
-}
-
-function friendlySource(source: string | null | undefined): string {
-  switch (source) {
-    case 'ai': return 'AI'
-    case 'manual': return 'Manual'
-    case 'rule': return 'Rule'
-    case 'import': return 'Import'
-    default: return ''
+  return {
+    startDate: `${year}-${pad(startMonth)}-01`,
+    endDate: `${year}-${pad(endMonth)}-${pad(lastDay)}`,
   }
-}
-
-function friendlySourceType(sourceType: ReceiptTransaction['source_type'] | null | undefined): string {
-  return sourceType === 'amex' ? 'Amex' : 'Bank'
-}
-
-function friendlyStatus(status: ReceiptTransaction['status']) {
-  switch (status) {
-    case 'completed':
-      return 'Completed'
-    case 'auto_completed':
-      return 'Auto completed'
-    case 'no_receipt_required':
-      return 'No receipt required'
-    case 'cant_find':
-      return "Can't find"
-    default:
-      return 'Pending'
-  }
-}
-
-function formatDate(value: string) {
-  if (!value) return ''
-  return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
-}
-
-function formatCurrency(value: number) {
-  return value.toLocaleString('en-GB', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-function totalAmount(transactions: ReceiptTransactionRow[], key: 'amount_in' | 'amount_out') {
-  return transactions.reduce((sum, tx) => sum + (tx[key] ?? 0), 0)
 }
 
 async function normaliseToBuffer(data: unknown): Promise<Buffer> {
@@ -404,15 +368,14 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
 }
 
 /**
- * Checks whether the current authenticated user has the super_admin role.
- * Uses the cookie-based auth client to identify the user, then queries
- * user_roles + roles via the admin client.
+ * Who is taking the pack, and whether they are a super admin. The cookie-based client says who
+ * the user is; their roles are read with the admin client.
  */
-async function checkIsSuperAdmin(): Promise<boolean> {
+async function loadExportActor(): Promise<{ userId: string | null; email: string | null; isSuperAdmin: boolean }> {
   try {
     const authClient = await createClient()
     const { data: { user } } = await authClient.auth.getUser()
-    if (!user) return false
+    if (!user) return { userId: null, email: null, isSuperAdmin: false }
 
     const admin = createAdminClient()
     const { data: roles, error } = await admin
@@ -420,12 +383,13 @@ async function checkIsSuperAdmin(): Promise<boolean> {
       .select('roles!inner ( name )')
       .eq('user_id', user.id)
 
-    if (error || !roles) return false
+    const isSuperAdmin =
+      !error &&
+      Boolean(roles) &&
+      (roles ?? []).some((r) => (r as unknown as { roles: { name: string } }).roles?.name === 'super_admin')
 
-    return roles.some(
-      (r) => (r as unknown as { roles: { name: string } }).roles?.name === 'super_admin'
-    )
+    return { userId: user.id, email: user.email ?? null, isSuperAdmin }
   } catch {
-    return false
+    return { userId: null, email: null, isSuperAdmin: false }
   }
 }

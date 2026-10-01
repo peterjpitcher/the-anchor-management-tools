@@ -7,9 +7,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Archiver } from 'archiver'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 
 const EXPENSE_RECEIPTS_BUCKET = 'expense-receipts'
 const EXPENSE_IMAGE_CONCURRENCY = 8
+const EXPENSE_ID_BATCH = 200
 
 interface ExpenseJoin {
   expense_date: string
@@ -35,24 +37,39 @@ interface ExpenseFileRow {
 export async function appendExpenseImages(
   supabase: SupabaseClient,
   expenseIds: string[],
-  archive: Archiver
+  archive: Archiver,
+  options: { /** Told about each image that could not be read, so the pack can list it. */ onMissing?: (name: string, reason: string) => void } = {}
 ): Promise<number> {
   if (expenseIds.length === 0) return 0
 
-  // Fetch all files for the given expense IDs
-  const { data: files, error } = await supabase
-    .from('expense_files')
-    .select('id, expense_id, storage_path, file_name, mime_type, expense:expenses!expense_files_expense_id_fkey ( expense_date, company_ref, amount )')
-    .in('expense_id', expenseIds)
-    .order('expense_id', { ascending: true })
-    .order('uploaded_at', { ascending: true })
-
-  if (error) {
+  // Every file for the given expenses, read in pages, a batch of expenses at a time so the list
+  // of ids never outgrows a request.
+  const rows: ExpenseFileRow[] = []
+  try {
+    for (let index = 0; index < expenseIds.length; index += EXPENSE_ID_BATCH) {
+      const batch = expenseIds.slice(index, index + EXPENSE_ID_BATCH)
+      rows.push(
+        ...(await fetchAllRows<ExpenseFileRow>(
+          (from, to) =>
+            supabase
+              .from('expense_files')
+              .select('id, expense_id, storage_path, file_name, mime_type, expense:expenses!expense_files_expense_id_fkey ( expense_date, company_ref, amount )')
+              .in('expense_id', batch)
+              .order('expense_id', { ascending: true })
+              .order('uploaded_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to) as unknown as PromiseLike<{ data: ExpenseFileRow[] | null; error: { message: string } | null }>,
+          { label: 'expense files for export' }
+        ))
+      )
+    }
+  } catch (error) {
+    // Returning nothing here read as "there are no expense receipts", and the pack went out
+    // without them. The pack fails instead.
     console.error('Failed to fetch expense files for export:', error)
-    return 0
+    throw new Error('Failed to load expense receipt files for export.')
   }
 
-  const rows = (files ?? []) as ExpenseFileRow[]
   if (rows.length === 0) return 0
 
   // Build filenames, handling duplicates
@@ -69,6 +86,7 @@ export async function appendExpenseImages(
 
       if (download.error || !download.data) {
         console.warn(`Skipping expense receipt ${file.storage_path}: ${download.error?.message ?? 'no data'}`)
+        options.onMissing?.(fileNameMap.get(file.id) ?? file.file_name, download.error?.message ?? 'no data returned')
         return
       }
 
@@ -80,6 +98,7 @@ export async function appendExpenseImages(
       }
     } catch (err) {
       console.warn(`Failed to download expense receipt ${file.storage_path}:`, err)
+      options.onMissing?.(fileNameMap.get(file.id) ?? file.file_name, err instanceof Error ? err.message : 'download failed')
     }
   })
 

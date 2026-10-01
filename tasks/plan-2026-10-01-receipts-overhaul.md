@@ -109,7 +109,15 @@ Built before Release 4, which needs its per-field output, run records and lock d
 
 ## Release 6: files, export, workspace and invoices
 
-- [ ] 10.1 to 10.6
+- [x] 10.1 files: duplicate warning, stored bytes read back, HEIC converted in the browser, atomic delete, daily sweep
+- [x] 10.2 status: completed needs a file or a reason; review tile, alert and filter; history
+- [x] 10.3 export: manifest, MISSING_FILES.txt, re-check with 409, audit entry, paged reads
+- [x] 10.4 workspace: one layout, pages of 100, server group totals, snapshot restore, wider search; bulk apply by ids as a recorded run; atomic invoice ledger
+- [x] 10.5 housekeeping: grants, permissions, dead code, shared row hook, note separator, bounded-reads guard
+- [x] 10.6 invoice copies attached by a queued job, with refresh
+- [x] Migration `20261001190000` written and run on a throwaway Postgres 15. NOT applied to production.
+- [ ] Not done: the export ZIP is still buffered (by design); a change still refreshes the page's server queries (WRK-06, in part); the mutation and query files are still large (CODE-01, in part)
+- Results and what was not verified: spec 10.7 and 14
 
 ## Found along the way, outside this build
 

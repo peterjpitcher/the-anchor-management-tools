@@ -15,6 +15,7 @@ import {
   FormFooter,
   Icon,
   Input,
+  Modal,
   Select,
   SubHeading,
   toast,
@@ -32,6 +33,8 @@ import { RECEIPT_STATUS_LABEL, RECEIPT_SUGGESTION_SOURCE_LABEL, RECEIPT_SUGGESTI
 import { NewVendorDialog, type VendorConfirmationPrompt } from './ui/NewVendorDialog'
 import { RuleRunDialog } from './ui/RuleRunDialog'
 import { escapeRuleKeyword } from '@/lib/receipts/rule-matching'
+import { NO_CATEGORY_LABEL, NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
+import type { BulkApplyPreview } from '@/services/receipts/receiptBulkApply'
 import type { RuleRunPreview } from '@/services/receipts/receiptRuleRuns'
 
 const STATUS_LABELS = RECEIPT_STATUS_LABEL
@@ -48,6 +51,20 @@ const RULE_DIRECTION_OPTIONS: Array<{ value: 'in' | 'out' | 'both'; label: strin
 ]
 
 type BulkStatus = ReceiptTransaction['status']
+
+/** What is sent for one group: its transactions and what to set on them. */
+type BulkApplyRequest = {
+  details: string
+  transactionIds: string[]
+  vendorName?: string | null
+  expenseCategory?: ReceiptExpenseCategory | null
+  noCategoryApplies?: boolean
+  createVendor?: boolean
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
 
 type RuleDraft = {
   name: string
@@ -163,6 +180,13 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   })
 
   const [createdRules, setCreatedRules] = useState<Record<string, { id: string; name: string }>>({})
+  // A bulk apply that has been worked out and is waiting for a yes. Nothing is written until then.
+  const [applyPrompt, setApplyPrompt] = useState<{
+    details: string
+    request: BulkApplyRequest
+    preview: BulkApplyPreview
+    includeDecided: boolean
+  } | null>(null)
   // A typed vendor that is not on the list: which action asked, for which group.
   const [vendorPrompt, setVendorPrompt] = useState<{
     action: 'apply' | 'rule'
@@ -267,12 +291,16 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
   const statusesLabel = localStatuses.map((status) => STATUS_LABELS[status]).join(', ')
 
+  // Step one: work out what would change. Nothing is written.
   // `vendorName` and `createVendor` come from the new-vendor dialog.
   const handleApplyGroup = (details: string, vendorChoice: { vendorName?: string; createVendor?: boolean } = {}) => {
     if (!canManageReceipts) {
       toast.error(managePermissionMessage)
       return
     }
+    const group = initialData.groups.find((item) => item.details === details)
+    if (!group) return
+
     const vendorEnabled = applyVendor[details]
     const expenseEnabled = applyExpense[details]
     if (!vendorEnabled && !expenseEnabled) {
@@ -280,41 +308,46 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       return
     }
 
-    const payload: {
-      details: string
-      statuses?: BulkStatus[]
-      vendorName?: string | null
-      expenseCategory?: ReceiptExpenseCategory | null
-      createVendor?: boolean
-    } = {
-      details,
-    }
+    // The group's own transactions are sent, not its description: a fuzzy group's transactions
+    // do not all share one description, and used to be missed.
+    const request: BulkApplyRequest = { details, transactionIds: group.transactionIds }
 
-    if (initialData.config.statuses?.length) {
-      payload.statuses = initialData.config.statuses
-    }
-
+    // An empty vendor box, or "Leave unset", means leave it as it is. Both boxes start ticked for
+    // a group that needs them, and an empty one used to be sent as "clear it" on every
+    // transaction in the group.
     if (vendorEnabled) {
       const value = (vendorChoice.vendorName ?? vendorDrafts[details] ?? '').trim()
-      payload.vendorName = value.length ? value : null
-      if (vendorChoice.createVendor) payload.createVendor = true
+      if (value.length) {
+        request.vendorName = value
+        if (vendorChoice.createVendor) request.createVendor = true
+      }
     }
 
     if (expenseEnabled) {
       const value = (expenseDrafts[details] ?? '').trim()
-      payload.expenseCategory = value.length ? (value as ReceiptExpenseCategory) : null
+      if (value === NO_CATEGORY_VALUE) {
+        request.expenseCategory = null
+        request.noCategoryApplies = true
+      } else if (value.length) {
+        request.expenseCategory = value as ReceiptExpenseCategory
+      }
+    }
+
+    if (request.vendorName === undefined && request.expenseCategory === undefined) {
+      toast.error('Enter a vendor or choose a category to apply')
+      return
     }
 
     setActiveApplyGroup(details)
     startApply(async () => {
-      const result = await applyReceiptGroupClassification(payload)
+      const result = await applyReceiptGroupClassification(request)
       setActiveApplyGroup(null)
       if (result?.error) {
         toast.error(result.error)
         return
       }
       // The name is not on the vendor list. Nothing was changed: ask before adding a vendor.
-      if ('vendorConfirmation' in result && result.vendorConfirmation) {
+      if (result.vendorConfirmation) {
         setVendorPrompt({ action: 'apply', details, confirmation: result.vendorConfirmation })
         return
       }
@@ -322,7 +355,43 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       if (vendorChoice.vendorName) {
         setVendorDrafts((prev) => ({ ...prev, [details]: vendorChoice.vendorName as string }))
       }
-      toast.success(`Applied to ${result.updated ?? 0} transactions`)
+      if (!result.preview) {
+        toast.error('The group could not be checked. Nothing was changed.')
+        return
+      }
+      if (result.preview.willChange === 0 && result.preview.decidedByPerson === 0) {
+        toast.success('Nothing to change: these transactions already have this.')
+        return
+      }
+      // The vendor now exists, so the confirmed call does not ask again.
+      setApplyPrompt({ details, request: { ...request, createVendor: false }, preview: result.preview, includeDecided: false })
+    })
+  }
+
+  // Step two: the person has seen the numbers and said yes.
+  const handleConfirmApply = () => {
+    if (!applyPrompt || !canManageReceipts) return
+    const { details, request, includeDecided } = applyPrompt
+
+    setActiveApplyGroup(details)
+    startApply(async () => {
+      const result = await applyReceiptGroupClassification({ ...request, includeDecided, confirm: true })
+      setActiveApplyGroup(null)
+      setApplyPrompt(null)
+
+      const applied = result.applied ?? 0
+      const left: string[] = []
+      if ((result.skippedChanged ?? 0) > 0) left.push(`${result.skippedChanged} had changed and were left`)
+      if ((result.skippedLocked ?? 0) > 0) left.push(`${result.skippedLocked} are on or before the lock date`)
+      const detail = left.length ? ` ${left.join('; ')}.` : ''
+
+      if (result.error) {
+        toast.error(applied > 0 ? `${result.error} ${applied} were changed first.${detail}` : result.error)
+      } else if (applied === 0) {
+        toast.success(`Nothing was changed.${detail}`)
+      } else {
+        toast.success(`Changed ${plural(applied, 'transaction', 'transactions')}.${detail} Undo it from Recent runs in the rules section.`)
+      }
       router.refresh()
     })
   }
@@ -569,6 +638,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                               value: option,
                               label: option,
                             })),
+                            { value: NO_CATEGORY_VALUE, label: NO_CATEGORY_LABEL },
                           ]}
                         />
                       </div>
@@ -600,12 +670,6 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       </div>
                     </div>
                   </div>
-                )}
-
-                {localFuzzyGrouping && (
-                  <Alert tone="warning" size="sm" role="status">
-                    Fuzzy mode is on: &ldquo;Apply Classification&rdquo; will only update transactions whose description matches exactly &ldquo;{group.details}&rdquo;.
-                  </Alert>
                 )}
 
                 <FormFooter>
@@ -727,6 +791,69 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           runRetro(preview, ruleId)
         }}
       />
+      {applyPrompt && (
+        <Modal
+          open
+          onClose={isApplying ? () => undefined : () => setApplyPrompt(null)}
+          title="Apply classification"
+          description={applyPrompt.details}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setApplyPrompt(null)} disabled={isApplying}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleConfirmApply}
+                loading={isApplying}
+                disabled={applyPrompt.preview.willChange === 0 && !applyPrompt.includeDecided}
+              >
+                Apply
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p>
+              <span className="font-medium text-text-strong">
+                {plural(applyPrompt.preview.willChange, 'transaction', 'transactions')} will change
+              </span>{' '}
+              out of {applyPrompt.preview.total}.
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              {applyPrompt.preview.unchanged > 0 && (
+                <li>{plural(applyPrompt.preview.unchanged, 'already has', 'already have')} this and will be left.</li>
+              )}
+              {applyPrompt.preview.decidedByPerson > 0 && (
+                <li>
+                  {plural(applyPrompt.preview.decidedByPerson, 'was', 'were')} decided by a person and will not change.
+                </li>
+              )}
+              {applyPrompt.preview.locked > 0 && (
+                <li>{plural(applyPrompt.preview.locked, 'is', 'are')} on or before the lock date and will not change.</li>
+              )}
+              {applyPrompt.preview.incomingSkipped > 0 && (
+                <li>
+                  {plural(applyPrompt.preview.incomingSkipped, 'is', 'are')} money in, which takes no expense category.
+                </li>
+              )}
+            </ul>
+            {applyPrompt.preview.decidedByPerson > 0 && (
+              <Checkbox
+                label={`Also change the ${applyPrompt.preview.decidedByPerson} a person decided`}
+                checked={applyPrompt.includeDecided}
+                onChange={(checked) => setApplyPrompt((current) => (current ? { ...current, includeDecided: checked } : current))}
+                disabled={isApplying}
+              />
+            )}
+            <p className="text-sm text-text-muted">
+              Statuses are not changed. This is recorded as a run, and can be undone from Recent runs in the rules
+              section.
+            </p>
+          </div>
+        </Modal>
+      )}
       <NewVendorDialog
         prompt={vendorPrompt?.confirmation ?? null}
         pending={isApplying || isCreatingRule}

@@ -23,7 +23,6 @@ vi.mock('@/app/actions/receipts', () => ({
   getReceiptSignedUrl: vi.fn(),
   markReceiptTransaction: vi.fn(),
   updateReceiptClassification: vi.fn(),
-  uploadReceiptForTransaction: vi.fn(),
 }))
 
 // Figure colours dropped in the page-contract pass, restored with the DS Stat tone and delta.

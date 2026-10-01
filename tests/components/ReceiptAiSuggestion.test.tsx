@@ -102,7 +102,7 @@ const renderers: Array<[string, RenderRow]> = [
       render(
         <table>
           <tbody>
-            <ReceiptTableRow transaction={transaction} vendorOptions={['BT']} onUpdate={onUpdate} onRemove={vi.fn()} onRuleSuggestion={vi.fn()} />
+            <ReceiptTableRow transaction={transaction} vendorOptions={['BT']} onUpdate={onUpdate} onRuleSuggestion={vi.fn()} />
           </tbody>
         </table>
       )

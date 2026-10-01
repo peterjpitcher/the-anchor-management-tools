@@ -103,7 +103,7 @@ describe.each([
       render(
         <table>
           <tbody>
-            <ReceiptTableRow transaction={transaction} vendorOptions={['Tesco']} onUpdate={onUpdate} onRemove={vi.fn()} onRuleSuggestion={vi.fn()} />
+            <ReceiptTableRow transaction={transaction} vendorOptions={['Tesco']} onUpdate={onUpdate} onRuleSuggestion={vi.fn()} />
           </tbody>
         </table>
       ),

@@ -40,9 +40,17 @@ test:release-5-rules.test.sql
 # Release 4. It replaces functions Release 5 created, so it is applied after it.
 migration:20261001180000_receipts_release_4_ai.sql
 test:release-4-ai.test.sql
-# The earlier tests still hold once every migration is in.
+# Release 6. It replaces two Release 1 functions and uses the lock date from Release 5.
+migration:20261001190000_receipts_release_6_files_status_invoices.sql
+test:release-6-files.test.sql
+# The earlier tests still hold once every migration is in. The Release 1 grants test is left
+# out: it names complete_receipt_upload by its old argument list, which Release 6 replaces, and
+# the Release 6 test checks the grants on the new one.
+test:release-1-upload.test.sql
+test:release-1-invoice-match.test.sql
 test:release-3-vendors.test.sql
 test:release-5-rules.test.sql
+test:release-4-ai.test.sql
 "
 
 ENGINE=""

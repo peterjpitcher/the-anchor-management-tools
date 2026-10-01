@@ -258,6 +258,8 @@ export interface ReceiptTransaction {
   marked_method: string | null;
   rule_applied_id: string | null;
   auto_completed_reason: string | null;
+  /** Why the payment is completed with no file on it. */
+  completed_reason?: string | null;
   vendor_id: string | null;
   vendor_name: string | null;
   vendor_source: ReceiptClassificationSource | null;
@@ -287,6 +289,12 @@ export interface ReceiptFile {
   hash_verified_at: string | null;
   uploaded_by: string | null;
   uploaded_at: string;
+  /** Uploaded by a person, or a copy of one of our own invoices. */
+  source?: 'upload' | 'invoice';
+  /** The invoice this is a copy of, when `source` is `invoice`. */
+  invoice_id?: string | null;
+  /** Worked out for the list, not stored: other payments that carry a file with the same bytes. */
+  shared_with?: number;
 }
 
 export interface ReceiptTransactionLog {

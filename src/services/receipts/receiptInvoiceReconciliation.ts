@@ -9,6 +9,8 @@ import { normalizeVendorInput } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
 import { recordReceiptClassificationSignals } from './receiptGovernance'
 import { resolveReceiptVendor } from './receiptVendors'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
+import { enqueueMissingInvoiceAttachments } from './receiptInvoiceFiles'
 import {
   pairInvoiceByAmountAndDate,
   type PairableInvoice,
@@ -92,6 +94,10 @@ type ReconciliationSummary = {
   referenceFreeTiebroken: number
   /** Matched several invoices with none settleable, so left for a human. */
   referenceFreeAmbiguous: number
+  /** The bank payment's amount was already spoken for by other invoices: left for a person. */
+  overAllocated: number
+  /** Invoice copies queued to be attached to their payments. */
+  attachmentsQueued: number
   samples: Array<{
     transactionId: string
     invoiceNumber: string
@@ -128,25 +134,26 @@ async function fetchCandidateTransactions(
   supabase: AdminClient,
   transactionIds?: string[]
 ): Promise<ReceiptTransaction[]> {
-  let query = supabase
-    .from('receipt_transactions')
-    .select('*')
-    .not('amount_in', 'is', null)
-    .gt('amount_in', 0)
-    .ilike('details', '%INV-%')
-    .order('transaction_date', { ascending: false })
+  // Paged: one request returns at most 1,000 rows and says nothing when it stops there.
+  const rows = await fetchAllRows<ReceiptTransaction>(
+    (from, to) => {
+      let query = supabase
+        .from('receipt_transactions')
+        .select('*')
+        .not('amount_in', 'is', null)
+        .gt('amount_in', 0)
+        .ilike('details', '%INV-%')
+        .order('transaction_date', { ascending: false })
+        .order('id', { ascending: true })
 
-  if (transactionIds?.length) {
-    query = query.in('id', transactionIds)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    throw new Error(`Failed to load invoice payment receipt transactions: ${error.message}`)
-  }
-
-  return (data ?? []) as ReceiptTransaction[]
+      if (transactionIds?.length) {
+        query = query.in('id', transactionIds)
+      }
+      return query.range(from, to)
+    },
+    { label: 'invoice payment receipt transactions' }
+  )
+  return rows
 }
 
 async function loadInvoicesByNumber(
@@ -239,52 +246,6 @@ async function ensureReceiptVendorLinkedToInvoiceVendor(
   return linked
 }
 
-async function findExistingPaymentForTransaction(
-  supabase: AdminClient,
-  transactionId: string
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('receipt_invoice_matches')
-    .select('invoice_payment_id')
-    .eq('receipt_transaction_id', transactionId)
-    .not('invoice_payment_id', 'is', null)
-    .limit(1)
-
-  if (error) {
-    console.warn('Failed to check existing receipt invoice match payment', error)
-    return null
-  }
-
-  return (data?.[0]?.invoice_payment_id as string | undefined) ?? null
-}
-
-async function recordInvoicePayment(
-  supabase: AdminClient,
-  transaction: ReceiptTransaction,
-  invoice: InvoiceRow,
-  amount: number
-): Promise<string | null> {
-  const existingPaymentId = await findExistingPaymentForTransaction(supabase, transaction.id)
-  if (existingPaymentId) return existingPaymentId
-
-  const { data, error } = await supabase.rpc('record_invoice_payment_transaction', {
-    p_payment_data: {
-      invoice_id: invoice.id,
-      payment_date: transaction.transaction_date,
-      amount,
-      payment_method: 'bank_transfer',
-      reference: transaction.details,
-      notes: `Auto-matched from receipt transaction ${transaction.id}`,
-    },
-  })
-
-  if (error) {
-    throw new Error(`Failed to record invoice payment for ${invoice.invoice_number}: ${error.message}`)
-  }
-
-  return (data as { id?: string } | null)?.id ?? null
-}
-
 type StoredInvoiceMatchStatus = (typeof STORED_INVOICE_MATCH_STATUSES)[number]
 
 /**
@@ -308,40 +269,91 @@ async function applyInvoiceMatch(
     /** The receipts vendor for the invoice's customer. Null when it could not be resolved. */
     receiptVendor: LinkedReceiptVendor | null
     initiatedBy: string | null
+    /**
+     * Record this much of the bank payment against the invoice, in the same database
+     * transaction as the match. The status stored is then `payment_recorded`.
+     */
+    recordPaymentAmount?: number
   }
-): Promise<{ statusUpdated: boolean; classificationUpdated: boolean }> {
+): Promise<{
+  statusUpdated: boolean
+  classificationUpdated: boolean
+  /** A ledger entry was written by this call (false on a retry that found one). */
+  paymentRecorded: boolean
+  /** The bank payment has no amount left to give this invoice. Nothing was stored. */
+  overAllocated?: { available: number; allocated: number; requested: number }
+}> {
   const { transaction, invoice } = params
   // The payment takes the vendor's own name, so it reads the same as every other payment of theirs.
   const vendorName = params.allowStatusChange
     ? params.receiptVendor?.name ?? normalizeVendorInput(invoice?.vendor?.name ?? null)
     : null
 
-  const { data, error } = await (supabase as any).rpc('apply_receipt_invoice_match', {
-    p_transaction_id: transaction.id,
-    p_invoice_id: invoice?.id ?? null,
-    p_invoice_number: params.invoiceNumber,
-    p_invoice_payment_id: params.invoicePaymentId,
-    p_match_status: params.status,
-    p_amount_match: params.amountMatch,
-    p_matched_amount: receiptTransactionAmount(transaction),
-    p_invoice_total: invoice ? moneyValue(invoice.total_amount) : null,
-    p_invoice_paid_before: invoice ? moneyValue(invoice.paid_amount) : null,
-    p_payload: params.payload ?? {},
-    p_allow_status_change: params.allowStatusChange,
-    p_vendor_id: vendorName ? params.receiptVendor?.id ?? null : null,
-    p_vendor_name: vendorName,
-    p_initiated_by: params.initiatedBy,
-  })
+  // With a payment to record, one function writes the ledger entry, the match and the bank
+  // payment together (`record_receipt_invoice_payment`). They used to be two calls: a failure
+  // between them, then a retry, could record the money twice.
+  const recording = params.recordPaymentAmount !== undefined && invoice !== null
+  const { data, error } = recording
+    ? await (supabase as any).rpc('record_receipt_invoice_payment', {
+        p_transaction_id: transaction.id,
+        p_invoice_id: invoice.id,
+        p_invoice_number: params.invoiceNumber,
+        p_amount: params.recordPaymentAmount,
+        p_amount_match: params.amountMatch,
+        p_invoice_total: moneyValue(invoice.total_amount),
+        p_invoice_paid_before: moneyValue(invoice.paid_amount),
+        p_payload: params.payload ?? {},
+        p_vendor_id: vendorName ? params.receiptVendor?.id ?? null : null,
+        p_vendor_name: vendorName,
+        p_initiated_by: params.initiatedBy,
+      })
+    : await (supabase as any).rpc('apply_receipt_invoice_match', {
+        p_transaction_id: transaction.id,
+        p_invoice_id: invoice?.id ?? null,
+        p_invoice_number: params.invoiceNumber,
+        p_invoice_payment_id: params.invoicePaymentId,
+        p_match_status: params.status,
+        p_amount_match: params.amountMatch,
+        p_matched_amount: receiptTransactionAmount(transaction),
+        p_invoice_total: invoice ? moneyValue(invoice.total_amount) : null,
+        p_invoice_paid_before: invoice ? moneyValue(invoice.paid_amount) : null,
+        p_payload: params.payload ?? {},
+        p_allow_status_change: params.allowStatusChange,
+        p_vendor_id: vendorName ? params.receiptVendor?.id ?? null : null,
+        p_vendor_name: vendorName,
+        p_initiated_by: params.initiatedBy,
+      })
 
   if (error) {
-    throw new Error(`Failed to apply receipt invoice match: ${error.message}`)
+    throw new Error(
+      recording
+        ? `Failed to record invoice payment for ${params.invoiceNumber}: ${error.message}`
+        : `Failed to apply receipt invoice match: ${error.message}`
+    )
   }
 
   const result = (data ?? {}) as {
     outcome?: string
     status_updated?: boolean
     vendor_updated?: boolean
+    payment_recorded?: boolean
+    available?: number | string
+    allocated?: number | string
+    requested?: number | string
     previous_status?: ReceiptTransaction['status']
+  }
+
+  if (result.outcome === 'over_allocated') {
+    return {
+      statusUpdated: false,
+      classificationUpdated: false,
+      paymentRecorded: false,
+      overAllocated: {
+        available: moneyValue(result.available),
+        allocated: moneyValue(result.allocated),
+        requested: moneyValue(result.requested),
+      },
+    }
   }
 
   if (result.outcome !== 'applied') {
@@ -379,7 +391,7 @@ async function applyInvoiceMatch(
     await recordReceiptClassificationSignals(supabase, signals)
   }
 
-  return { statusUpdated, classificationUpdated }
+  return { statusUpdated, classificationUpdated, paymentRecorded: Boolean(result.payment_recorded) }
 }
 
 /**
@@ -391,26 +403,27 @@ async function fetchReferenceFreeCandidates(
   supabase: AdminClient,
   transactionIds?: string[]
 ): Promise<ReceiptTransaction[]> {
-  let query = supabase
-    .from('receipt_transactions')
-    .select('*')
-    .not('amount_in', 'is', null)
-    .gt('amount_in', 0)
-    .not('details', 'ilike', '%INV-%')
-    .in('status', PAIRABLE_TRANSACTION_STATUSES as unknown as string[])
-    .order('transaction_date', { ascending: false })
+  // Paged, on a unique order: one request returns at most 1,000 rows and says nothing when it
+  // stops there.
+  return fetchAllRows<ReceiptTransaction>(
+    (from, to) => {
+      let query = supabase
+        .from('receipt_transactions')
+        .select('*')
+        .not('amount_in', 'is', null)
+        .gt('amount_in', 0)
+        .not('details', 'ilike', '%INV-%')
+        .in('status', PAIRABLE_TRANSACTION_STATUSES as unknown as string[])
+        .order('transaction_date', { ascending: false })
+        .order('id', { ascending: true })
 
-  if (transactionIds?.length) {
-    query = query.in('id', transactionIds)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    throw new Error(`Failed to load reference-free receipt transactions: ${error.message}`)
-  }
-
-  return (data ?? []) as ReceiptTransaction[]
+      if (transactionIds?.length) {
+        query = query.in('id', transactionIds)
+      }
+      return query.range(from, to)
+    },
+    { label: 'reference-free receipt transactions' }
+  )
 }
 
 /**
@@ -517,21 +530,20 @@ async function loadInvoicesForVendors(
  * single invoice could be paired to two different payments of the same value.
  */
 async function loadClaimedInvoiceIds(supabase: AdminClient): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('receipt_invoice_matches')
-    .select('invoice_id')
-    .not('invoice_id', 'is', null)
-
-  if (error) {
-    console.warn('Failed to load claimed invoice ids', error)
-    return new Set()
-  }
-
-  return new Set(
-    ((data ?? []) as Array<{ invoice_id: string | null }>)
-      .map((row) => row.invoice_id)
-      .filter((id): id is string => Boolean(id))
+  // Paged, and a failure throws. An empty set here would mean "no invoice is spoken for", and
+  // the pass would then pair a second payment to an invoice that already has one.
+  const rows = await fetchAllRows<{ invoice_id: string | null }>(
+    (from, to) =>
+      supabase
+        .from('receipt_invoice_matches')
+        .select('invoice_id')
+        .not('invoice_id', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, to),
+    { label: 'claimed invoice ids' }
   )
+
+  return new Set(rows.map((row) => row.invoice_id).filter((id): id is string => Boolean(id)))
 }
 
 async function runReferenceFreePairingPass(
@@ -705,6 +717,8 @@ export async function performReconcileReceiptInvoicePayments(options: {
     referenceFreePaired: 0,
     referenceFreeTiebroken: 0,
     referenceFreeAmbiguous: 0,
+    overAllocated: 0,
+    attachmentsQueued: 0,
     samples: [],
   }
 
@@ -786,7 +800,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
       const mayRecordPayment = options.recordPayments !== false
 
       let status: StoredInvoiceMatchStatus = 'matched'
-      let invoicePaymentId: string | null = null
+      let recordPayment = false
 
       if (isPaidStatus(invoice.status) || outstanding <= MONEY_EPSILON) {
         status = amountMatch ? 'already_paid' : 'amount_mismatch'
@@ -794,9 +808,8 @@ export async function performReconcileReceiptInvoicePayments(options: {
       } else if (!amountCanBePayment) {
         status = 'amount_mismatch'
       } else if (mayRecordPayment) {
-        invoicePaymentId = await recordInvoicePayment(supabase, transaction, invoice, amount)
         status = 'payment_recorded'
-        summary.paymentsRecorded += 1
+        recordPayment = true
       }
 
       if (status === 'amount_mismatch') summary.amountMismatch += 1
@@ -807,18 +820,40 @@ export async function performReconcileReceiptInvoicePayments(options: {
         invoice.vendor_id
       )
 
-      const updateResult = await applyInvoiceMatch(supabase, {
+      let updateResult = await applyInvoiceMatch(supabase, {
         transaction,
         invoiceNumber,
         invoice,
-        invoicePaymentId,
+        invoicePaymentId: null,
         status,
         amountMatch,
         allowStatusChange: true,
         receiptVendor,
         initiatedBy,
         payload: matchPayload,
+        recordPaymentAmount: recordPayment ? amount : undefined,
       })
+
+      if (updateResult.overAllocated) {
+        // The bank payment has already paid other invoices in full. Nothing is recorded on the
+        // ledger; the match is stored for a person to look at and the payment is left alone.
+        summary.overAllocated += 1
+        status = 'review_required'
+        updateResult = await applyInvoiceMatch(supabase, {
+          transaction,
+          invoiceNumber,
+          invoice,
+          invoicePaymentId: null,
+          status,
+          amountMatch: false,
+          allowStatusChange: false,
+          receiptVendor: null,
+          initiatedBy,
+          payload: { ...matchPayload, over_allocated: updateResult.overAllocated },
+        })
+      } else if (updateResult.paymentRecorded) {
+        summary.paymentsRecorded += 1
+      }
 
       if (updateResult.statusUpdated) summary.statusUpdated += 1
       if (updateResult.classificationUpdated) summary.classificationUpdated += 1
@@ -834,6 +869,15 @@ export async function performReconcileReceiptInvoicePayments(options: {
   // Runs after the reference pass so that anything already explained by a
   // quoted invoice number has claimed its invoice first.
   await runReferenceFreePairingPass(supabase, summary, { transactionIds: options.transactionIds, initiatedBy })
+
+  // Every payment matched to a real invoice gets a copy of that invoice attached (spec 10.6).
+  // One pass queues them all: the matches just made, and those made before invoices were
+  // attached. A failure here does not undo the matching: the next run tries again.
+  try {
+    summary.attachmentsQueued += await enqueueMissingInvoiceAttachments(supabase)
+  } catch (attachError) {
+    console.error('Failed to queue invoice copies for existing matches', attachError)
+  }
 
   return summary
 }

@@ -906,3 +906,127 @@ describe('UnifiedJobQueue classify_receipt_transactions handler', () => {
     await expect(run({ transactionIds: ['a'] })).rejects.toThrow('OpenAI returned 503')
   })
 })
+
+const invoiceCopyMocks = vi.hoisted(() => ({
+  mockedAttach: vi.fn(),
+}))
+vi.mock('@/services/receipts/receiptInvoiceFiles', () => ({
+  performAttachInvoiceToReceipt: invoiceCopyMocks.mockedAttach,
+}))
+
+describe('UnifiedJobQueue attach_invoice_to_receipt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function run(payload: Record<string, unknown>) {
+    const queue = UnifiedJobQueue.getInstance()
+    return (UnifiedJobQueue.prototype as any).executeJob.call(queue, 'attach_invoice_to_receipt', payload)
+  }
+
+  it('attaches the invoice to the transaction the job names, and never as a refresh', async () => {
+    invoiceCopyMocks.mockedAttach.mockResolvedValue({ outcome: 'attached', statusUpdated: true })
+
+    await expect(run({ transactionId: 'tx-1', invoiceId: 'inv-1', replace: true })).resolves.toEqual({
+      outcome: 'attached',
+      statusUpdated: true,
+    })
+    expect(invoiceCopyMocks.mockedAttach).toHaveBeenCalledWith({ transactionId: 'tx-1', invoiceId: 'inv-1' })
+  })
+
+  it('finishes quietly when there is nothing to do', async () => {
+    invoiceCopyMocks.mockedAttach.mockResolvedValue({ outcome: 'already_attached' })
+
+    await expect(run({ transactionId: 'tx-1', invoiceId: 'inv-1' })).resolves.toEqual({
+      outcome: 'already_attached',
+      statusUpdated: false,
+    })
+  })
+
+  it('skips a job that does not name both a transaction and an invoice', async () => {
+    await expect(run({ transactionId: 'tx-1' })).resolves.toEqual({ skipped: true })
+    await expect(run({ invoiceId: 'inv-1' })).resolves.toEqual({ skipped: true })
+    await expect(run({ transactionId: 7, invoiceId: 'inv-1' })).resolves.toEqual({ skipped: true })
+    expect(invoiceCopyMocks.mockedAttach).not.toHaveBeenCalled()
+  })
+
+  it('lets a failed render throw, so the queue retries it', async () => {
+    invoiceCopyMocks.mockedAttach.mockRejectedValue(new Error('Failed to store the copy of invoice INV-0042'))
+
+    await expect(run({ transactionId: 'tx-1', invoiceId: 'inv-1' })).rejects.toThrow('Failed to store the copy of invoice INV-0042')
+  })
+
+  describe('in a run', () => {
+    const jobBase = {
+      status: 'processing' as const,
+      priority: 0,
+      attempts: 1,
+      max_attempts: 3,
+      scheduled_for: new Date().toISOString(),
+      processing_token: 'token-1',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      payload: {},
+    }
+
+    function spies(queue: UnifiedJobQueue, jobs: unknown[]) {
+      const order: string[] = []
+      const list = [
+        vi.spyOn(queue as any, 'resetStaleJobs').mockResolvedValue(undefined),
+        vi.spyOn(queue as any, 'claimJobs').mockResolvedValue(jobs),
+        vi.spyOn(queue as any, 'processJob').mockImplementation(async (job: any) => {
+          order.push(job.id)
+          return { ok: true, fatalSmsSafetyFailure: false }
+        }),
+      ]
+      const reschedule = vi.spyOn(queue as any, 'persistJobReschedule').mockResolvedValue(undefined)
+      return { order, reschedule, restore: () => [...list, reschedule].forEach((spy) => spy.mockRestore()) }
+    }
+
+    it('renders one invoice per run and hands the rest back, uncounted, for the next', async () => {
+      mockedCreateAdminClient.mockResolvedValue({})
+      const queue = UnifiedJobQueue.getInstance()
+      const { order, reschedule, restore } = spies(queue, [
+        { ...jobBase, id: 'copy-1', type: 'attach_invoice_to_receipt' as const },
+        { ...jobBase, id: 'classify', type: 'classify_receipt_transactions' as const },
+        { ...jobBase, id: 'copy-2', type: 'attach_invoice_to_receipt' as const },
+        { ...jobBase, id: 'sms', type: 'send_sms' as const },
+        { ...jobBase, id: 'copy-3', type: 'attach_invoice_to_receipt' as const },
+      ])
+
+      try {
+        await queue.processJobs(10)
+
+        // The message went first; one copy was rendered alongside the other receipts work.
+        expect(order[0]).toBe('sms')
+        expect(order.slice(1).sort()).toEqual(['classify', 'copy-1'])
+        expect(reschedule.mock.calls.map((call) => (call[1] as { id: string }).id)).toEqual(['copy-2', 'copy-3'])
+        const [, , token, request] = reschedule.mock.calls[0] as [unknown, unknown, string, { runAt: Date; result: unknown }]
+        expect(token).toBe('token-1')
+        expect(request.runAt.getTime()).toBeLessThanOrEqual(Date.now())
+        expect(request.result).toEqual({ deferred: 'one document is rendered per run' })
+      } finally {
+        restore()
+      }
+    })
+
+    it('starts no render when the run has too little time left', async () => {
+      mockedCreateAdminClient.mockResolvedValue({})
+      const queue = UnifiedJobQueue.getInstance()
+      const { order, reschedule, restore } = spies(queue, [
+        { ...jobBase, id: 'copy-1', type: 'attach_invoice_to_receipt' as const },
+        { ...jobBase, id: 'copy-2', type: 'attach_invoice_to_receipt' as const },
+      ])
+
+      try {
+        await queue.processJobs(10, { deadlineAt: Date.now() + 46_000 })
+
+        expect(order).toEqual([])
+        expect(reschedule).toHaveBeenCalledTimes(2)
+        expect((reschedule.mock.calls[0][3] as { result: unknown }).result).toEqual({ deferred: 'not enough time left in the run' })
+      } finally {
+        restore()
+      }
+    })
+  })
+})

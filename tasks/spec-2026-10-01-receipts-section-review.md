@@ -547,6 +547,56 @@ The ledger write itself (recording the invoice payment) is made transactional an
 
 **Tests:** job idempotency, render failure, split payment, shared invoice, refresh, delete, and the export listing.
 
+### 10.7 As built (1 October 2026)
+
+**Files (10.1)**
+
+- The duplicate check is inside `complete_receipt_upload`, under a lock on the file's hash, so two uploads of the same file at the same moment cannot both pass unwarned. The warning lists up to ten of the other transactions and says how many there are. "Attach anyway" finishes the same upload without sending the file again; "Do not attach" removes the stored file.
+- The server reads the stored bytes back before attaching. It records their size and what they are (from the first bytes, not from what the browser declared), refuses a file it cannot read, and refuses an iPhone HEIC that arrived unconverted. The browser converts HEIC to JPEG first (longest edge 3000px, so small print stays readable) and says what to do when it cannot.
+- Removing a file is one database function (`delete_receipt_file`): the file row, the transaction's status and its history move together, and the stored object is removed afterwards. A completed transaction that loses its last file goes back to pending, or to "no receipt required" if it is matched to a real invoice, unless it has a reason.
+- The sweep runs daily at 03:50 UTC (`/api/cron/receipts-sweep`). It removes uploads abandoned for more than a day, only after the database has released them. It reports, and never removes, stored files that nothing refers to and completed transactions with neither a file nor a reason. It answers 500 if a file could not be removed, so the cron alert fires.
+- A file that sits on other transactions is marked "Also on N others" in the list and in `MANIFEST.csv`. A file link that cannot be made shows an error. Download uses the file's own name.
+
+**Status (10.2)**
+
+- Completing by hand is one database function (`mark_receipt_transaction`), which refuses "completed" without a file or a reason. The screen asks for the reason first. The reason shows under the status, in the export and in the audit entry. Notes are not touched by a status change.
+- The count of completed transactions with no file and no reason is a tile and an alert with a "Review Them" link (`/receipts?noReceipt=1`), and a filter. Nothing is changed automatically (D7).
+- Each transaction has a History button: what happened, when (London time), who, and how the status moved.
+
+**Export (10.3)**
+
+- Built from one manifest read in pages. Every file is in the pack or named in `MISSING_FILES.txt`; `MANIFEST.csv` lists every file and whether it is in the pack. The quarter is read again before the pack is finished, and a change is refused with a 409 and "The quarter changed while the pack was being built. Please try again."
+- The Export button fetches the pack, so a refusal shows as a message, not a page of JSON, and a pack with missing files says so when it arrives.
+- One audit entry per pack: who, which quarter, and the counts.
+- The expenses CSV and expense images are read in pages; a failed read of the expense files now fails the pack.
+- Not done: the ZIP is still buffered in memory (EXP-03), as the design says.
+
+**Workspace, bulk and ledger (10.4)**
+
+- One layout is drawn: the table from 1024px, cards below it. Every view pages at 100. Grouped by vendor, each vendor is kept together across pages and its heading shows the total of the whole group, worked out on the server.
+- A status change the server refuses puts the transaction back exactly as it was and where it was. While testing this a second fault was found and fixed: a successful change moved the summary tiles twice.
+- Search covers description, type, vendor, note and an amount. A page number that is not a number is page one.
+- Bulk apply sends the group's own transactions. It first reports what would change ("N will change, M decided by a person will not"), then applies as a recorded run that can be undone from Recent runs. It never changes a status, leaves locked transactions alone, and writes the source as manual.
+- A change from the spec: on the bulk page an empty vendor box, or "Leave unset" as the category, now means "leave it as it is". Both boxes start ticked for a group that needs them, and an empty one used to be sent as "clear it" on every transaction in the group. Clearing in bulk is no longer offered on that page.
+- The invoice payment, the match row and the transaction update are one database function (`record_receipt_invoice_payment`), which refuses to allocate more than the bank payment in total; an over-allocation is stored as "review required". Both invoice-matching reads are paged, and a failed read stops the run.
+- Not done (WRK-06, in part): a change still refreshes the page's server queries. The row itself updates at once, so this costs time on the server and not on the screen.
+
+**Housekeeping (10.5)**
+
+- SEC-01: table privileges revoked from `anon` and `authenticated` on the six receipt tables; five reporting functions limited to the service role; the unused three-argument `get_receipt_detail_groups` dropped. SEC-03: both OpenAI-backed vendor actions need `receipts.manage`.
+- DEAD-01 done, plus `queryMonthlyReceiptSummary`, which nothing called.
+- CODE-01 in part: bulk apply, invoice copies and the sweep are their own files, and the row and card share one hook. The mutation and query files are smaller and still large.
+- TEST-01: three action test files became two, with one new file for the Release 6 actions.
+- TEXT-01: new notes use " | "; old notes are still read.
+- A guard test fails on any read of the payment or file tables that has no bound. Writing it found one more unpaged read in invoice matching, now paged.
+
+**Invoices (10.6)**
+
+- As designed. The copy is rendered by the invoices section's own PDF generator and stored at `<year>/invoice_<number>_<transaction>_<time>.pdf`, a shape an upload can never be issued, so one cannot be passed off as the other.
+- The job queue renders one invoice per run and hands the rest back for the next run without counting an attempt: the generator starts a headless browser.
+- A transaction on or before the lock date gets no copy from the job. "Refresh invoice copy" is a person's own action and is allowed on a locked transaction, like any single manual edit (W4); it changes the file and not the status.
+- The 25 existing matches are picked up by the first reconciliation run after release, at most 200 per run.
+
 ---
 
 ## 11. Rollout and testing
@@ -569,7 +619,7 @@ The ledger write itself (recording the invoice payment) is made transactional an
 | 3 | Vendor kind and origin columns; operation record table; merge, rename and undo RPCs; `vendor_id` on watchlist and reviews; vendor view |
 | 4 | `receipt_ai_attempts`; `ai_accepted` in both source CHECK constraints; `no_category_applies` on payments and rules; accept RPC; category-suggestion approval RPC; receipts-only AI cost function; the Release 5 field functions replaced to carry `no_category_applies`. Applies after 5 |
 | 5 | `receipt_rule_runs` and before-image table; guarded apply and undo RPCs; lock-date setting |
-| 6 | `completed_reason`; file `source` and `invoice_id`; ledger RPC; grant revocations; cron entry for the sweep |
+| 6 | `completed_reason`; file `source` and `invoice_id`; the upload function replaced to check for duplicates; delete, mark, ledger and invoice-attach RPCs; the invoice match function replaced to respect the lock date; grant revocations; one unused function overload dropped. The sweep's cron entry is in `vercel.json`, not the migration. Applies last |
 
 Every SECURITY DEFINER function states its `search_path` and grants. Each migration is validated by running it and its RPCs against production inside a transaction that is rolled back, which executes every statement and persists nothing, then applied through the `prod-migrate` workflow with the owner's go-ahead. After any migration that adds a table, view or SECURITY DEFINER routine, run `scripts/security/assert-anon-surface.ts`.
 
@@ -630,6 +680,7 @@ Every SECURITY DEFINER function states its `search_path` and grants. Each migrat
 - The live bodies of database functions were compared with migrations by name and signature, and in part by body.
 - No sample of the bank's CSV is in the repository. The money grammar in 6.2 item 3 is confirmed against real files before Release 2 is called done.
 - The production deployment was not matched to a commit.
+- After the build (1 October 2026): every migration ran on a throwaway Postgres 15 and none has been applied to production. No screen has been opened in a browser. No call has been made to OpenAI from this build. The invoice copy job has not been run in the serverless environment, where the PDF generator starts a headless browser. The filter for completed transactions without a receipt relies on PostgREST filtering on an empty embedded relation, which the tests stand in for and do not exercise.
 
 ---
 

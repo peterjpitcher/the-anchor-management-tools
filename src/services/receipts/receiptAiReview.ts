@@ -16,11 +16,9 @@ import { NO_CATEGORY_LABEL } from '@/lib/receipts/no-category'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/database'
 import { loadReceiptSettings } from './receiptSettings'
-import { RULE_RUN_STEP_SIZE } from './receiptRuleRuns'
+import { performRecordedRun, type RecordedRunChange } from './receiptRuleRuns'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const CHANGE_INSERT_CHUNK = 500
-const MAX_APPLY_STEPS = 50
 
 export type AiCategoryDecision = 'accept' | 'edit' | 'dismiss'
 
@@ -250,32 +248,10 @@ export async function performAcceptVendorCategoryProposals(
   const now = new Date().toISOString()
   const vendorName = paymentOf(rows[0]).vendor_name ?? 'no vendor'
 
-  const { data: run, error: runError } = await (supabase as any)
-    .from('receipt_rule_runs')
-    .insert({
-      kind: 'ai_accept_all',
-      label: `Accepted suggestions: ${vendorName}`,
-      scope: 'all',
-      lock_date: lockDate,
-      status: 'drafting',
-      reviewed_count: rows.length,
-      matched_count: rows.length,
-      planned_count: rows.length,
-      created_by: userId,
-    })
-    .select('id')
-    .single()
-
-  if (runError || !run) {
-    console.error('Failed to record an accept-all run', runError)
-    return { error: 'The suggestions could not be accepted. Nothing was changed.' }
-  }
-
-  const changes = rows.map((row) => {
+  const changes: RecordedRunChange[] = rows.map((row) => {
     const payment = paymentOf(row)
     const none = Boolean(row.proposed_no_category) && !row.proposed_expense_category
     return {
-      run_id: run.id,
       transaction_id: payment.id,
       expected_updated_at: payment.updated_at,
       after: {
@@ -294,54 +270,37 @@ export async function performAcceptVendorCategoryProposals(
     }
   })
 
-  for (let index = 0; index < changes.length; index += CHANGE_INSERT_CHUNK) {
-    const { error } = await (supabase as any).from('receipt_rule_run_changes').insert(changes.slice(index, index + CHANGE_INSERT_CHUNK))
-    if (error) {
-      console.error('Failed to store accept-all changes', error)
-      await (supabase as any).from('receipt_rule_runs').delete().eq('id', run.id)
-      return { error: 'The suggestions could not be accepted. Nothing was changed.' }
-    }
-  }
+  const run = await performRecordedRun(supabase, userId, {
+    kind: 'ai_accept_all',
+    label: `Accepted suggestions: ${vendorName}`,
+    lockDate,
+    reviewed: rows.length,
+    changes,
+  })
 
-  const { error: readyError } = await (supabase as any)
-    .from('receipt_rule_runs')
-    .update({ status: 'previewed' })
-    .eq('id', run.id)
-    .eq('status', 'drafting')
-  if (readyError) {
-    console.error('Failed to start an accept-all run', readyError)
+  if (run.failure === 'not_recorded' || !run.runId) {
     return { error: 'The suggestions could not be accepted. Nothing was changed.' }
   }
-
-  let accepted = 0
-  let skippedChanged = 0
-  let skippedLocked = 0
-  for (let step = 0; step < MAX_APPLY_STEPS; step += 1) {
-    const { data, error } = await (supabase as any).rpc('apply_receipt_rule_run', {
-      p_run_id: run.id,
-      p_user: userId,
-      p_limit: RULE_RUN_STEP_SIZE,
-    })
-    if (error || !data || (data.outcome !== 'in_progress' && data.outcome !== 'completed')) {
-      console.error('Accept-all run stopped', error ?? data)
-      return {
-        error:
-          data?.outcome === 'stale_preview'
-            ? 'The lock date changed while accepting. What was accepted is recorded under Recent runs and can be undone.'
-            : 'Accepting stopped part-way. What was accepted is recorded under Recent runs and can be undone.',
-        runId: run.id as string,
-        accepted,
-      }
+  if (run.failure) {
+    return {
+      error:
+        run.failure === 'stale'
+          ? 'The lock date changed while accepting. What was accepted is recorded under Recent runs and can be undone.'
+          : 'Accepting stopped part-way. What was accepted is recorded under Recent runs and can be undone.',
+      runId: run.runId,
+      accepted: run.applied,
     }
-    accepted = Number(data.applied_total ?? 0)
-    skippedChanged = Number(data.skipped_changed_total ?? 0)
-    skippedLocked = Number(data.skipped_locked_total ?? 0)
-    if (data.outcome === 'completed') break
   }
 
-  await closeProposalsForRun(supabase, run.id as string, userId, 'accepted')
+  await closeProposalsForRun(supabase, run.runId, userId, 'accepted')
 
-  return { success: true, runId: run.id as string, accepted, skippedChanged, skippedLocked }
+  return {
+    success: true,
+    runId: run.runId,
+    accepted: run.applied,
+    skippedChanged: run.skippedChanged,
+    skippedLocked: run.skippedLocked,
+  }
 }
 
 /**

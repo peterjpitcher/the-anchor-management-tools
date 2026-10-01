@@ -23,7 +23,6 @@ import type {
   ReceiptDetailGroup,
   ReceiptDetailGroupSuggestion,
   NormalizedDetailGroupRow,
-  ReceiptMonthlySummaryItem,
   ReceiptMonthlyInsights,
   ReceiptMonthlyInsightMonth,
   ReceiptBankBalanceHistory,
@@ -49,11 +48,7 @@ import type {
   BulkStatus,
   RulePreviewResult,
 } from './types'
-import {
-  DEFAULT_PAGE_SIZE,
-  MAX_MONTH_PAGE_SIZE,
-  OUTSTANDING_STATUSES,
-} from './types'
+import { OUTSTANDING_STATUSES, WORKSPACE_PAGE_SIZE } from './types'
 import {
   normalizeVendorInput,
   coerceExpenseCategory,
@@ -83,6 +78,7 @@ import {
 } from './vendorInsights'
 import { queryReceiptGovernanceItems } from './receiptGovernance'
 import { queryReceiptAiStatus } from './receiptAiReview'
+import { totalVendorGroups, type VendorGroupTotal } from '@/lib/receipts/vendor-group-key'
 import { RECEIPT_AI_PROMPT_VERSION } from '@/lib/receipts/ai-client'
 
 const RECEIPT_HISTORY_PAGE_SIZE = 1000
@@ -172,7 +168,7 @@ function buildGroupSuggestion(
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
+  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }, { data: bareCount, error: bareCountError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -188,6 +184,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .select('id', { count: 'exact', head: true })
       .eq('type', 'classify_receipt_transactions')
       .eq('status', 'failed'),
+    (supabase as any).rpc('count_receipts_completed_without_receipt'),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
@@ -203,6 +200,10 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
 
   if (failedJobsError) {
     console.error('Failed to fetch failed AI job count:', failedJobsError)
+  }
+
+  if (bareCountError) {
+    console.error('Failed to count completed payments without a receipt:', bareCountError)
   }
 
   const pending = Number(counts?.pending ?? 0)
@@ -227,6 +228,8 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     openAICost,
     aiUsageBreakdown,
     failedAiJobCount: failedJobCount ?? 0,
+    // Unknown is not zero: the tile says so.
+    completedWithoutReceipt: bareCountError || bareCount === null || bareCount === undefined ? null : Number(bareCount),
   }
 }
 
@@ -286,6 +289,49 @@ async function loadAiAttemptsForPage(
 }
 
 /**
+ * For each uploaded file on the page, how many other payments carry a file with the same bytes.
+ * One document on several payments is sometimes right (a statement paid in parts) and sometimes
+ * the wrong file attached, so it is shown. A failure here costs the marker and not the list.
+ */
+async function loadSharedFileCounts(
+  supabase: AdminClient,
+  files: Array<{ transaction_id: string; content_hash: string | null; source?: string | null }>
+): Promise<Map<string, number>> {
+  const hashes = [...new Set(files.filter((file) => file.content_hash && file.source !== 'invoice').map((file) => file.content_hash as string))]
+  const others = new Map<string, number>()
+  if (!hashes.length) return others
+
+  try {
+    const paymentsByHash = new Map<string, Set<string>>()
+    for (let index = 0; index < hashes.length; index += 100) {
+      const rows = await fetchAllRows<{ content_hash: string; transaction_id: string; source: string | null }>(
+        (from, to) =>
+          (supabase as any)
+            .from('receipt_files')
+            .select('content_hash, transaction_id, source')
+            .in('content_hash', hashes.slice(index, index + 100))
+            .order('id', { ascending: true })
+            .range(from, to),
+        { label: 'files sharing a hash' }
+      )
+      for (const row of rows) {
+        if (row.source === 'invoice') continue
+        const set = paymentsByHash.get(row.content_hash) ?? new Set<string>()
+        set.add(row.transaction_id)
+        paymentsByHash.set(row.content_hash, set)
+      }
+    }
+    for (const [hash, payments] of paymentsByHash) {
+      if (payments.size > 1) others.set(hash, payments.size - 1)
+    }
+  } catch (error) {
+    console.error('Failed to work out which receipt files are shared:', error)
+    return new Map()
+  }
+  return others
+}
+
+/**
  * What a payment's AI attempts mean for the person looking at it: a category waiting to be
  * accepted, or a note. A suggestion is shown only while the payment is still uncategorised.
  */
@@ -328,97 +374,174 @@ export function describeAiAttempts(
   return { aiSuggestion, aiNote }
 }
 
+/** A search for an amount: "£1,234.50" or "42" finds payments of exactly that much, in or out. */
+function parseSearchAmount(search: string): number | null {
+  const cleaned = search.replace(/[£,\s]/g, '')
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(cleaned)) return null
+  const value = Number(cleaned)
+  return Number.isFinite(value) ? value : null
+}
+
+/**
+ * The filters of the workspace list, applied to any read of the payments. One place, so the page
+ * of rows and the totals of its vendor groups are always worked out over the same payments.
+ */
+function applyWorkspaceFilters<Query>(
+  query: Query,
+  filters: ReceiptWorkspaceFilters,
+  monthRange: { start: string; end: string } | null
+): Query {
+  let filtered = query as any
+
+  if (filters.status && filters.status !== 'all') {
+    filtered = filtered.eq('status', filters.status)
+  }
+
+  if (filters.showOnlyOutstanding && !filters.status) {
+    filtered = filtered.in('status', OUTSTANDING_STATUSES)
+  }
+
+  if (filters.direction && filters.direction !== 'all') {
+    filtered = filtered.not(filters.direction === 'in' ? 'amount_in' : 'amount_out', 'is', null)
+  }
+
+  if (filters.search) {
+    const term = sanitizeReceiptSearchTerm(filters.search.toLowerCase())
+    if (term.length > 0) {
+      const like = `%${term}%`
+      // The description and type, and also who it was paid to, the note on it, and its amount.
+      const parts = [
+        `details.ilike.${like}`,
+        `transaction_type.ilike.${like}`,
+        `vendor_name.ilike.${like}`,
+        `notes.ilike.${like}`,
+      ]
+      const amount = parseSearchAmount(filters.search)
+      if (amount !== null) {
+        parts.push(`amount_in.eq.${amount}`, `amount_out.eq.${amount}`)
+      }
+      filtered = filtered.or(parts.join(','))
+    }
+  }
+
+  if (filters.sourceType && filters.sourceType !== 'all') {
+    filtered = filtered.eq('source_type', filters.sourceType)
+  }
+
+  if (filters.cardMember && filters.sourceType === 'amex') {
+    filtered = filtered.eq('card_member', filters.cardMember)
+  }
+
+  if (filters.missingVendorOnly) {
+    filtered = filtered.or('vendor_name.is.null,vendor_name.eq.')
+  }
+
+  if (filters.missingExpenseOnly) {
+    // A payment marked "no category applies" has been decided: it is not missing a category.
+    filtered = filtered.is('expense_category', null).eq('no_category_applies', false).not('amount_out', 'is', null)
+  }
+
+  if (filters.completedWithoutReceipt) {
+    // Completed, no reason, and no file: the last is an anti-join on the embedded files, so any
+    // read using these filters must embed `receipt_files`.
+    filtered = filtered.eq('status', 'completed').is('completed_reason', null).is('receipt_files', null)
+  }
+
+  if (monthRange) {
+    filtered = filtered.gte('transaction_date', monthRange.start).lt('transaction_date', monthRange.end)
+  }
+
+  return filtered as Query
+}
+
+/**
+ * Totals for each vendor group across every payment the filters match, so a group's heading is
+ * right whichever page it is on. Read as four narrow columns, in pages. Null when it cannot be
+ * read: the list then totals the rows it has and says nothing false.
+ */
+async function loadVendorGroupTotals(
+  supabase: AdminClient,
+  filters: ReceiptWorkspaceFilters,
+  monthRange: { start: string; end: string } | null
+): Promise<Record<string, VendorGroupTotal> | null> {
+  try {
+    const rows = await fetchAllRows<{
+      vendor_name: string | null
+      amount_in: number | null
+      amount_out: number | null
+      amount_total: number | null
+    }>(
+      (from, to) =>
+        applyWorkspaceFilters(
+          (supabase as any)
+            .from('receipt_transactions')
+            .select(
+              filters.completedWithoutReceipt
+                ? 'vendor_name, amount_in, amount_out, amount_total, receipt_files(id)'
+                : 'vendor_name, amount_in, amount_out, amount_total'
+            ),
+          filters,
+          monthRange
+        )
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'receipt vendor group totals' }
+    )
+    return totalVendorGroups(rows)
+  } catch (error) {
+    console.error('Failed to total the vendor groups for the receipts workspace:', error)
+    return null
+  }
+}
+
 export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters = {}): Promise<ReceiptWorkspaceData> {
   const supabase = createAdminClient()
 
   const monthRange = resolveMonthRange(filters.month)
-  const isMonthScoped = Boolean(monthRange)
-  const useExpandedPage = isMonthScoped || filters.groupByVendor
-  const maxPageSize = useExpandedPage ? MAX_MONTH_PAGE_SIZE : 100
-  const requestedPageSize = filters.pageSize ?? (useExpandedPage ? MAX_MONTH_PAGE_SIZE : DEFAULT_PAGE_SIZE)
-  const pageSize = Math.min(requestedPageSize, maxPageSize)
-  // Every view honours the requested page. Pinning the month view to page 1 left
-  // the pager offering pages the query never fetched, so later rows were simply
-  // unreachable.
-  const page = Math.max(filters.page ?? 1, 1)
+  // One page size for every view. The month and grouped views used to load 1,000 rows and draw
+  // each of them twice.
+  const requestedPageSize = Number(filters.pageSize)
+  const pageSize =
+    Number.isFinite(requestedPageSize) && requestedPageSize >= 1
+      ? Math.min(Math.floor(requestedPageSize), WORKSPACE_PAGE_SIZE)
+      : WORKSPACE_PAGE_SIZE
+  // A page that is not a whole number above zero is page one, not an error.
+  const requestedPage = Number(filters.page)
+  const page = Number.isFinite(requestedPage) && requestedPage >= 1 ? Math.floor(requestedPage) : 1
   const offset = (page - 1) * pageSize
 
   const isAllTimeView = !filters.month
   const defaultSortColumn: ReceiptSortColumn = isAllTimeView ? 'amount_total' : 'transaction_date'
   const sortColumn: ReceiptSortColumn = filters.sortBy ?? defaultSortColumn
-  const sortDirection: 'asc' | 'desc' = filters.sortDirection === 'asc' ? 'asc' : 'desc'
+  const ascending = filters.sortDirection === 'asc'
 
-  const orderDefinitions: Array<{ column: ReceiptSortColumn; ascending: boolean; nullsFirst?: boolean }> = []
+  let baseQuery: any = applyWorkspaceFilters(
+    supabase
+      .from('receipt_transactions')
+      .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id,name)', { count: 'exact' }),
+    filters,
+    monthRange
+  )
 
-  const isAscending = sortDirection === 'asc'
-  orderDefinitions.push({
-    column: sortColumn,
-    ascending: isAscending,
-    nullsFirst: sortColumn === 'amount_total' ? false : undefined,
-  })
-
-  if (!orderDefinitions.some((order) => order.column === 'transaction_date')) {
-    orderDefinitions.push({ column: 'transaction_date', ascending: false })
+  // Grouped by vendor, the vendors are kept together across pages: a group never has its rows
+  // scattered between page one and page three. Payments with no vendor come first.
+  if (filters.groupByVendor) {
+    baseQuery = baseQuery.order('vendor_name', { ascending: true, nullsFirst: true })
   }
-
-  if (!orderDefinitions.some((order) => order.column === 'details')) {
-    orderDefinitions.push({ column: 'details', ascending: true })
+  // An empty amount sorts last in both directions: it used to come first when sorting high to low.
+  baseQuery = baseQuery.order(sortColumn, { ascending, nullsFirst: false })
+  if (sortColumn !== 'transaction_date') {
+    baseQuery = baseQuery.order('transaction_date', { ascending: false })
   }
-
-  let baseQuery = supabase
-    .from('receipt_transactions')
-    .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id,name)', { count: 'exact' })
-
-  orderDefinitions.forEach((order) => {
-    baseQuery = baseQuery.order(order.column, { ascending: order.ascending, nullsFirst: order.nullsFirst })
-  })
-
-  if (filters.status && filters.status !== 'all') {
-    baseQuery = baseQuery.eq('status', filters.status)
+  if (sortColumn !== 'details') {
+    baseQuery = baseQuery.order('details', { ascending: true })
   }
+  // A unique last key, so two payments that tie on everything else do not swap pages.
+  baseQuery = baseQuery.order('id', { ascending: true }).range(offset, offset + pageSize - 1)
 
-  if (filters.showOnlyOutstanding && !filters.status) {
-    baseQuery = baseQuery.in('status', OUTSTANDING_STATUSES)
-  }
-
-  if (filters.direction && filters.direction !== 'all') {
-    if (filters.direction === 'in') {
-      baseQuery = baseQuery.not('amount_in', 'is', null)
-    } else {
-      baseQuery = baseQuery.not('amount_out', 'is', null)
-    }
-  }
-
-  if (filters.search) {
-    const sanitizedSearch = sanitizeReceiptSearchTerm(filters.search.toLowerCase())
-    if (sanitizedSearch.length > 0) {
-      const qs = `%${sanitizedSearch}%`
-      baseQuery = baseQuery.or(`details.ilike.${qs},transaction_type.ilike.${qs}`)
-    }
-  }
-
-  if (filters.sourceType && filters.sourceType !== 'all') {
-    baseQuery = baseQuery.eq('source_type', filters.sourceType)
-  }
-
-  if (filters.cardMember && filters.sourceType === 'amex') {
-    baseQuery = baseQuery.eq('card_member', filters.cardMember)
-  }
-
-  if (filters.missingVendorOnly) {
-    baseQuery = baseQuery.or('vendor_name.is.null,vendor_name.eq.')
-  }
-
-  if (filters.missingExpenseOnly) {
-    // A payment marked "no category applies" has been decided: it is not missing a category.
-    baseQuery = baseQuery.is('expense_category', null).eq('no_category_applies', false).not('amount_out', 'is', null)
-  }
-
-  if (monthRange) {
-    baseQuery = baseQuery.gte('transaction_date', monthRange.start).lt('transaction_date', monthRange.end)
-  }
-
-  baseQuery = baseQuery.range(offset, offset + pageSize - 1)
+  const vendorGroupTotalsQuery = filters.groupByVendor
+    ? loadVendorGroupTotals(supabase, filters, monthRange)
+    : Promise.resolve(null)
 
   // The vendor picker offers the vendors that are standing: not merged into another and not
   // deactivated. Those keep their history and are no longer offered. Names on the rows already
@@ -456,6 +579,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: cardMemberRows, error: cardMemberError },
     governance,
     aiStatus,
+    vendorGroupTotals,
   ] = await Promise.all([
     baseQuery,
     supabase
@@ -473,6 +597,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
       console.error('Failed to load AI classification status for receipts workspace:', aiStatusError)
       return null
     }),
+    vendorGroupTotalsQuery,
   ])
 
   if (error) {
@@ -493,9 +618,17 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     (transactions ?? []).map((tx: any) => String(tx.id))
   )
 
+  const sharedFileCounts = await loadSharedFileCounts(
+    supabase,
+    (transactions ?? []).flatMap((tx: any) => (tx.receipt_files ?? []) as Array<{ transaction_id: string; content_hash: string | null; source?: string | null }>)
+  )
+
   const shapedTransactions = (transactions ?? []).map((tx: any) => ({
     ...tx,
-    files: tx.receipt_files ?? [],
+    files: ((tx.receipt_files ?? []) as Array<{ content_hash: string | null; source?: string | null }>).map((file) => ({
+      ...file,
+      shared_with: file.content_hash && file.source !== 'invoice' ? sharedFileCounts.get(file.content_hash) ?? 0 : 0,
+    })),
     autoRule: tx.receipt_rules?.[0] ?? null,
     ...describeAiAttempts(tx, attemptsByTransaction.get(String(tx.id)) ?? []),
   }))
@@ -549,6 +682,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   return {
     transactions: shapedTransactions,
     aiStatus,
+    vendorGroupTotals,
     rules: rules ?? [],
     ruleConflicts: governance.conflicts,
     ruleSuggestions: governance.suggestions,
@@ -646,7 +780,11 @@ export async function queryReceiptBulkReviewData(options: {
 // getReceiptSignedUrl
 // ---------------------------------------------------------------------------
 
-export async function queryReceiptSignedUrl(fileId: string): Promise<{ success?: boolean; url?: string; error?: string }> {
+/** A link to a stored file. It is made when asked for and lasts five minutes. */
+export async function queryReceiptSignedUrl(
+  fileId: string,
+  options: { /** Save the file under its own name, not open it in the browser. */ download?: boolean } = {}
+): Promise<{ success?: boolean; url?: string; error?: string }> {
   const supabase = createAdminClient()
 
   const { data: receipt, error } = await supabase
@@ -661,40 +799,94 @@ export async function queryReceiptSignedUrl(fileId: string): Promise<{ success?:
 
   const { data: urlData, error: urlError } = await supabase.storage
     .from('receipts')
-    .createSignedUrl(receipt.storage_path, 60 * 5)
+    .createSignedUrl(
+      receipt.storage_path,
+      60 * 5,
+      // The stored object's name ends in a timestamp. A download is given the file's real name.
+      options.download ? { download: receipt.file_name || true } : undefined
+    )
 
   if (urlError || !urlData?.signedUrl) {
-    return { error: 'Unable to create download link' }
+    console.error('Failed to create a signed link for a receipt file', { fileId, urlError })
+    return { error: 'The file could not be opened. It may have been removed from storage.' }
   }
 
   return { success: true, url: urlData.signedUrl }
 }
 
 // ---------------------------------------------------------------------------
-// getMonthlyReceiptSummary
+// The history of one payment
 // ---------------------------------------------------------------------------
 
-export async function queryMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
+export type ReceiptHistoryEntry = {
+  id: string
+  at: string
+  action: string
+  note: string | null
+  previousStatus: ReceiptTransaction['status'] | null
+  newStatus: ReceiptTransaction['status'] | null
+  /** Who did it. Null for something the system did with nobody behind it. */
+  by: string | null
+}
+
+/**
+ * Everything recorded against a payment, newest first: status changes, classifications, files
+ * added and removed, rule runs, invoice matches. The log has always been written and was never
+ * shown.
+ */
+export async function queryReceiptTransactionHistory(transactionId: string): Promise<ReceiptHistoryEntry[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.rpc('get_receipt_monthly_summary', {
-    limit_months: limit,
-  })
+
+  const { data: logs, error } = await supabase
+    .from('receipt_transaction_logs')
+    .select('id, performed_at, action_type, note, previous_status, new_status, performed_by')
+    .eq('transaction_id', transactionId)
+    .order('performed_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(200)
 
   if (error) {
-    console.error('Failed to load monthly receipt summary', error)
-    throw error
+    throw new Error(`Failed to load the history of a transaction: ${error.message}`)
   }
 
-  const rows = Array.isArray(data) ? data : []
+  const rows = (logs ?? []) as Array<{
+    id: string
+    performed_at: string
+    action_type: string
+    note: string | null
+    previous_status: ReceiptTransaction['status'] | null
+    new_status: ReceiptTransaction['status'] | null
+    performed_by: string | null
+  }>
 
-  return rows.map((row: any) => ({
-    monthStart: row.month_start,
-    totalIncome: Number(row.total_income ?? 0),
-    totalOutgoing: Number(row.total_outgoing ?? 0),
-    topIncome: parseTopList(row.top_income),
-    topOutgoing: parseTopList(row.top_outgoing),
+  const userIds = [...new Set(rows.map((row) => row.performed_by).filter((id): id is string => Boolean(id)))]
+  const names = new Map<string, string>()
+  if (userIds.length) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds)
+    if (profilesError) {
+      // The history is still worth showing without names.
+      console.error('Failed to load names for a transaction history', profilesError)
+    }
+    for (const profile of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) {
+      if (profile.full_name) names.set(profile.id, profile.full_name)
+    }
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    at: row.performed_at,
+    action: row.action_type,
+    note: row.note,
+    previousStatus: row.previous_status,
+    newStatus: row.new_status,
+    by: row.performed_by ? names.get(row.performed_by) ?? 'A member of staff' : null,
   }))
 }
+
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // getReceiptBankBalanceHistory
@@ -1743,10 +1935,6 @@ export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissin
   })
 }
 
-// ---------------------------------------------------------------------------
-// getAIUsageBreakdown
-// ---------------------------------------------------------------------------
-
 function readAiUsage(data: unknown): AIUsageBreakdown {
   const usage = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
   return {
@@ -1755,18 +1943,6 @@ function readAiUsage(data: unknown): AIUsageBreakdown {
     total_calls: Number(usage.total_calls ?? 0),
     this_month_calls: Number(usage.this_month_calls ?? 0),
   }
-}
-
-export async function queryAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
-  const supabase = createAdminClient()
-  const { data, error } = await (supabase as any).rpc('get_receipt_ai_usage')
-
-  if (error) {
-    console.error('Failed to fetch receipts AI usage', error)
-    return { success: false, error: 'Failed to load AI usage data' }
-  }
-
-  return { success: true, breakdown: readAiUsage(data) }
 }
 
 // ---------------------------------------------------------------------------

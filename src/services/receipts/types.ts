@@ -19,11 +19,8 @@ import type {
 } from '@/types/database'
 import type { BankBalancePoint } from '@/lib/receipts/bank-balance'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  MAX_RECEIPT_FILE_UPLOAD_BYTES,
-  MAX_RECEIPT_STATEMENT_UPLOAD_BYTES,
-  RECEIPT_BUCKET_NAME,
-} from '@/lib/receipts/upload-constraints'
+import { RECEIPT_BUCKET_NAME } from '@/lib/receipts/upload-constraints'
+import type { VendorGroupTotal } from '@/lib/receipts/vendor-group-key'
 
 // ---------------------------------------------------------------------------
 // Internal utility types
@@ -92,6 +89,8 @@ export type ReceiptWorkspaceFilters = {
   groupByVendor?: boolean
   missingVendorOnly?: boolean
   missingExpenseOnly?: boolean
+  /** Completed with neither a file nor a reason: the ones to review. */
+  completedWithoutReceipt?: boolean
   month?: string
   page?: number
   pageSize?: number
@@ -132,6 +131,8 @@ export type ReceiptWorkspaceSummary = {
   openAICost: number
   aiUsageBreakdown?: AIUsageBreakdown | null
   failedAiJobCount: number
+  /** Payments completed with neither a file nor a reason. Null when it could not be counted. */
+  completedWithoutReceipt: number | null
 }
 
 /** A category the AI has suggested for a payment, waiting for a person to accept, change or dismiss. */
@@ -161,6 +162,11 @@ export type ReceiptWorkspaceAiStatus = {
 export type ReceiptWorkspaceData = {
   transactions: ReceiptWorkspaceTransaction[]
   aiStatus: ReceiptWorkspaceAiStatus | null
+  /**
+   * Totals for each vendor group across every page, keyed as `vendorGroupKey` keys them. Null
+   * when the list is not grouped, or the totals could not be read.
+   */
+  vendorGroupTotals: Record<string, VendorGroupTotal> | null
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
@@ -509,15 +515,7 @@ export type BulkStatus = ReceiptTransaction['status']
 // ---------------------------------------------------------------------------
 
 export const RECEIPT_BUCKET = RECEIPT_BUCKET_NAME
-const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
-const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
-const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
-export const DEFAULT_PAGE_SIZE = 25
-// Supabase returns at most 1,000 rows per request and reports no error when it
-// truncates, so asking for more than this hands back 1,000 rows while the pager
-// still divides the total by the requested size. At 5,000 the month and
-// group-by-vendor views showed the first 1,000 rows and then jumped to row
-// 5,001, making everything between unreachable.
-export const MAX_MONTH_PAGE_SIZE = 1000
+/** Rows on one page of the workspace list, whatever the view. */
+export const WORKSPACE_PAGE_SIZE = 100
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']

@@ -41,6 +41,7 @@ export type JobType =
   | 'refresh_receipt_duplicate_candidates'
   | 'reconcile_receipt_invoice_payments'
   | 'process_receipt_batch'
+  | 'attach_invoice_to_receipt'
   | 'checklist_generate_day'
   | 'checklist_sweep'
   | 'checklist_email_outbox_process'
@@ -65,6 +66,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'refresh_receipt_duplicate_candidates',
   'reconcile_receipt_invoice_payments',
   'process_receipt_batch',
+  'attach_invoice_to_receipt',
   'checklist_generate_day',
   'checklist_sweep',
   'checklist_email_outbox_process',
@@ -97,8 +99,14 @@ const RECEIPT_JOB_TYPES: JobType[] = [
   'suggest_receipt_rules',
   'detect_receipt_rule_conflicts',
   'refresh_receipt_duplicate_candidates',
+  'attach_invoice_to_receipt',
 ]
 const RECEIPT_JOB_TIMEOUT_MS = 45_000
+/**
+ * Receipts jobs that start a headless browser to render a PDF. One of these runs at a time: ten
+ * browsers in one function would exhaust its memory. The rest are handed back for the next run.
+ */
+const RENDERING_RECEIPT_JOB_TYPES: JobType[] = ['attach_invoice_to_receipt']
 /** Time left in the run below which receipts jobs are handed back instead of started. */
 const RECEIPT_JOB_MIN_REMAINING_MS = RECEIPT_JOB_TIMEOUT_MS + 2_000
 
@@ -759,7 +767,23 @@ export class UnifiedJobQueue {
           )
         )
       } else {
-        await Promise.allSettled(receiptJobs.map((job) => this.processJob(job)))
+        const rendering = receiptJobs.filter((job) => RENDERING_RECEIPT_JOB_TYPES.includes(job.type))
+        const startNow = [
+          ...receiptJobs.filter((job) => !RENDERING_RECEIPT_JOB_TYPES.includes(job.type)),
+          ...rendering.slice(0, 1),
+        ]
+        const nextRun = rendering.slice(1)
+        await Promise.allSettled([
+          ...startNow.map((job) => this.processJob(job)),
+          ...nextRun.map((job) =>
+            this.persistJobReschedule(
+              supabase,
+              job,
+              job.processing_token ?? null,
+              new JobReschedule(new Date(), { deferred: 'one document is rendered per run' })
+            )
+          ),
+        ])
       }
     }
   }
@@ -1189,6 +1213,20 @@ export class UnifiedJobQueue {
         const { processReceiptBatchFollowup } = await import('@/services/receipts/receiptImport')
         const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
         return processReceiptBatchFollowup(batchId, { initiatedBy })
+      }
+
+      // A copy of one of our invoices, added to the bank payment that settled it. Safe to run
+      // twice: an invoice is attached to a payment once. A failure to render or store throws,
+      // so the job is retried.
+      case 'attach_invoice_to_receipt': {
+        const transactionId = typeof payload.transactionId === 'string' ? payload.transactionId : null
+        const invoiceId = typeof payload.invoiceId === 'string' ? payload.invoiceId : null
+        if (!transactionId || !invoiceId) {
+          return { skipped: true }
+        }
+        const { performAttachInvoiceToReceipt } = await import('@/services/receipts/receiptInvoiceFiles')
+        const result = await performAttachInvoiceToReceipt({ transactionId, invoiceId })
+        return { outcome: result.outcome, statusUpdated: Boolean(result.statusUpdated) }
       }
 
       case 'send_sms':
