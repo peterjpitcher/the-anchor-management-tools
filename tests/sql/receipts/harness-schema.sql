@@ -39,8 +39,48 @@ CREATE TABLE public.invoice_payments (
   invoice_id uuid NOT NULL REFERENCES public.invoices(id),
   amount numeric(12,2) NOT NULL,
   payment_date date NOT NULL,
-  reference text
+  payment_method text,
+  reference text,
+  notes text
 );
+
+-- Stand-in for the invoice ledger function (20260918124021). The real one also checks the
+-- caller's permission, takes the invoice settlement lock and lets triggers work out the paid
+-- amount. What the receipts functions rely on is kept: one payment row per call, a refusal when
+-- the invoice cannot take the money, and the payment returned as JSON.
+CREATE FUNCTION public.record_invoice_payment_transaction(p_payment_data jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog'
+AS $$
+DECLARE
+  v_invoice public.invoices%ROWTYPE;
+  v_payment public.invoice_payments%ROWTYPE;
+  v_invoice_id uuid := (p_payment_data->>'invoice_id')::uuid;
+  v_amount numeric := (p_payment_data->>'amount')::numeric;
+  v_paid numeric;
+BEGIN
+  SELECT * INTO v_invoice FROM public.invoices WHERE id = v_invoice_id FOR UPDATE;
+  IF NOT FOUND OR v_invoice.deleted_at IS NOT NULL OR v_invoice.status IN ('void', 'written_off') THEN
+    RAISE EXCEPTION 'invoice_not_payable';
+  END IF;
+  SELECT COALESCE(SUM(amount), 0) INTO v_paid FROM public.invoice_payments WHERE invoice_id = v_invoice_id;
+  IF v_amount IS NULL OR v_amount <= 0 OR v_amount <> round(v_amount, 2) THEN
+    RAISE EXCEPTION 'invalid_payment_amount';
+  END IF;
+  IF v_amount > v_invoice.total_amount - v_paid THEN
+    RAISE EXCEPTION 'Payment amount exceeds outstanding balance';
+  END IF;
+  INSERT INTO public.invoice_payments (invoice_id, payment_date, amount, payment_method, reference, notes)
+  VALUES (v_invoice_id, (p_payment_data->>'payment_date')::date, v_amount,
+    p_payment_data->>'payment_method', p_payment_data->>'reference', p_payment_data->>'notes')
+  RETURNING * INTO v_payment;
+  UPDATE public.invoices
+  SET paid_amount = v_paid + v_amount,
+      status = CASE WHEN v_paid + v_amount >= total_amount THEN 'paid' ELSE 'partially_paid' END
+  WHERE id = v_invoice_id;
+  RETURN to_jsonb(v_payment);
+END;
+$$;
 
 -- The shared job queue table, as the live catalogue has it.
 CREATE TABLE public.jobs (
@@ -425,6 +465,19 @@ CREATE TABLE public.ai_usage_events (
   cost NUMERIC(12, 6) NOT NULL DEFAULT 0
 );
 
+-- Reporting functions as production has them on 1 October 2026: they run as the caller and the
+-- browser roles may call them (the default grant above). Release 6 takes that away. The bodies
+-- are not under test.
+CREATE FUNCTION public.get_receipt_monthly_category_breakdown(limit_months integer DEFAULT 12, top_categories integer DEFAULT 6)
+RETURNS TABLE(month_start date) LANGUAGE sql STABLE AS $$ SELECT NULL::date WHERE false $$;
+CREATE FUNCTION public.get_receipt_monthly_status_counts(limit_months integer DEFAULT 12)
+RETURNS TABLE(month_start date) LANGUAGE sql STABLE AS $$ SELECT NULL::date WHERE false $$;
+CREATE FUNCTION public.get_ai_usage_breakdown() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT '{}'::jsonb $$;
+CREATE FUNCTION public.get_openai_usage_total() RETURNS numeric LANGUAGE sql STABLE AS $$ SELECT 0::numeric $$;
+-- The older, three-argument form of the bulk grouping function, which production still carries.
+CREATE FUNCTION public.get_receipt_detail_groups(limit_groups integer, include_statuses text[], only_unclassified boolean)
+RETURNS TABLE(details text) LANGUAGE sql STABLE AS $$ SELECT NULL::text WHERE false $$;
+
 -- Every receipts table is service-role only in production.
 DO $$
 DECLARE
@@ -438,5 +491,15 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('GRANT ALL ON public.%I TO service_role', t);
+  END LOOP;
+
+  -- Six of them still carry table privileges for the browser roles, from before row security
+  -- was the rule. Row security blocks every use of them. Release 6 revokes them.
+  FOREACH t IN ARRAY ARRAY[
+    'receipt_batches', 'receipt_files', 'receipt_rules', 'receipt_transaction_logs',
+    'receipt_transactions', 'receipt_upload_intents'
+  ] LOOP
+    EXECUTE format('GRANT SELECT ON public.%I TO anon', t);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated', t);
   END LOOP;
 END $$;

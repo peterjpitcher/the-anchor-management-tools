@@ -45,8 +45,9 @@ vi.mock('@/app/actions/receipts', () => ({
 // 00:30 BST on Friday 2 October 2026 in London; still 23:30 on Thursday 1 October in UTC.
 const JUST_AFTER_MIDNIGHT_BST = '2026-10-01T23:30:00Z'
 const LONDON_STAMP = '02 Oct 2026, 00:30'
-// The stored separator is a long dash with a space either side, built here so this file holds none.
-const SEPARATOR = ` ${String.fromCharCode(0x2014)} `
+// New notes are stored with a plain bar between the time and the text. Notes written before
+// October 2026 used a long dash, which is still read (tests/lib/receipts/note-format.test.ts).
+const SEPARATOR = ' | '
 
 type WorkspaceTransaction = ReceiptTransaction & {
   files: ReceiptFile[]
@@ -124,7 +125,6 @@ describe('ReceiptTableRow note timestamp', () => {
             transaction={transaction}
             vendorOptions={[]}
             onUpdate={vi.fn()}
-            onRemove={vi.fn()}
             onRuleSuggestion={vi.fn()}
           />
         </tbody>

@@ -114,7 +114,6 @@ Auth legend: **session** = `auth.getUser()`; **rbac** = `checkUserPermission`; *
 | `/api/quotes/[id]/pdf` | GET | session | `src/app/api/quotes/[id]/pdf/route.ts` |
 | `/api/receipts/export` | GET | session | `src/app/api/receipts/export/route.ts` |
 | `/api/receipts/pnl/export` | GET | rbac + action-auth | `src/app/api/receipts/pnl/export/route.ts` |
-| `/api/receipts/upload` | POST | action-auth | `src/app/api/receipts/upload/route.ts` |
 | `/api/rota/export`, `/api/rota/pdf`, `/api/rota/resync-calendar` | GET / POST | session | `src/app/api/rota/**/route.ts` |
 | `/api/rota/hours/pdf` | GET | rbac + action-auth | `src/app/api/rota/hours/pdf/route.ts` |
 | `/api/rota/feed` | GET | rbac/token | `src/app/api/rota/feed/route.ts` |
@@ -195,6 +194,7 @@ All guarded by `authorizeCronRequest()` (`src/lib/cron-auth.ts`, CRON_SECRET bea
 | `/api/cron/recruitment-retention` | `30 2 * * *` |
 | `/api/cron/engagement-scoring` | `0 3 * * *` |
 | `/api/cron/cleanup-rate-limits` | `0 3 * * *` |
+| `/api/cron/receipts-sweep` | `50 3 * * *` |
 | `/api/cron/rota-auto-close` | `0 5 * * *` |
 | `/api/cron/employee-separations` | `0 6 * * *` |
 | `/api/cron/private-bookings-expire-holds` | `0 6 * * *` |

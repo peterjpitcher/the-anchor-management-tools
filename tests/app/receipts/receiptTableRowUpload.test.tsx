@@ -46,7 +46,6 @@ describe('ReceiptTableRow upload button', () => {
             transaction={transaction()}
             vendorOptions={[]}
             onUpdate={() => {}}
-            onRemove={() => {}}
             onRuleSuggestion={() => {}}
           />
         </tbody>

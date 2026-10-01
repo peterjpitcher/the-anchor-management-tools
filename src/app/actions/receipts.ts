@@ -14,7 +14,7 @@ import type { ReceiptRuleSuggestion } from '@/types/database'
 // Re-export types so existing consumers keep working
 // ---------------------------------------------------------------------------
 export type {
-  
+  ReceiptHistoryEntry,
   ReceiptWorkspaceFilters,
   
   AIUsageBreakdown,
@@ -52,6 +52,9 @@ export type {
   BulkStatus,
 } from '@/services/receipts'
 
+import type { ReceiptTransaction } from '@/types/database'
+import { performApplyReceiptBulkClassification, type BulkApplyResult } from '@/services/receipts/receiptBulkApply'
+
 // ---------------------------------------------------------------------------
 // Service layer imports
 // ---------------------------------------------------------------------------
@@ -60,7 +63,7 @@ import {
   queryReceiptWorkspaceData,
   queryReceiptBulkReviewData,
   queryReceiptSignedUrl,
-  queryMonthlyReceiptSummary,
+  queryReceiptTransactionHistory,
   queryMonthlyReceiptInsights,
   queryReceiptBankBalanceHistory,
   queryReceiptVendorSummary,
@@ -72,7 +75,6 @@ import {
   queryReceiptVendorWatchlist,
   queryReceiptVendorReviews,
   queryReceiptMissingExpenseSummary,
-  queryAIUsageBreakdown,
   queryPreviewReceiptRule,
   // Mutations
   performImportReceiptStatement,
@@ -81,12 +83,12 @@ import {
   performUpdateReceiptClassification,
   performCreateReceiptUploadUrl,
   performCompleteReceiptUpload,
-  performUploadReceiptForTransaction,
+  performCancelReceiptUpload,
   performDeleteReceiptFile,
+  performRefreshInvoiceCopy,
   performCreateReceiptRule,
   performUpdateReceiptRule,
   performToggleReceiptRule,
-  performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
   performSetReceiptVendorReviewStatus,
@@ -98,7 +100,6 @@ import {
   refreshAutomationForPendingTransactions,
   // Helpers
   fileSchema,
-  receiptFileSchema,
   groupRuleInputSchema,
   normalizeVendorInput,
   coerceExpenseCategory,
@@ -107,6 +108,7 @@ import {
 } from '@/services/receipts'
 
 import type {
+  ReceiptHistoryEntry,
   ReceiptWorkspaceFilters,
   ReceiptWorkspaceData,
   ReceiptBulkReviewData,
@@ -303,20 +305,31 @@ export async function getReceiptBulkReviewData(options: {
   return queryReceiptBulkReviewData(options)
 }
 
-export async function getReceiptSignedUrl(fileId: string) {
+export async function getReceiptSignedUrl(fileId: string, options: { download?: boolean } = {}) {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     return { error: 'Insufficient permissions' }
   }
-  return queryReceiptSignedUrl(fileId)
+  return queryReceiptSignedUrl(fileId, { download: options?.download === true })
 }
 
-async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
+/** Everything recorded against one transaction, newest first. */
+export async function getReceiptTransactionHistory(
+  transactionId: string
+): Promise<{ entries?: ReceiptHistoryEntry[]; error?: string }> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
-    throw new Error('Insufficient permissions')
+    return { error: 'Insufficient permissions' }
   }
-  return queryMonthlyReceiptSummary(limit)
+  if (typeof transactionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(transactionId)) {
+    return { error: 'Transaction reference is invalid' }
+  }
+  try {
+    return { entries: await queryReceiptTransactionHistory(transactionId) }
+  } catch (error) {
+    console.error('Failed to load a transaction history', error)
+    return { error: 'The history could not be loaded.' }
+  }
 }
 
 export async function getMonthlyReceiptInsights(limit = 12): Promise<ReceiptMonthlyInsights> {
@@ -392,6 +405,11 @@ export async function getReceiptVendorMovements(input: {
   })
 }
 
+/**
+ * These two ask OpenAI to put the figures into words, which costs money. They used to need only
+ * `receipts:view`, so a view-only user could run up calls. They now need `receipts:manage`. The
+ * figures themselves are on the vendor screens for everyone who can view.
+ */
 export async function getReceiptVendorCostReview(input: {
   monthWindow?: number
 } = {}): Promise<{
@@ -400,8 +418,8 @@ export async function getReceiptVendorCostReview(input: {
   review?: ReceiptVendorAiReview
   error?: string
 }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
     return { success: false, signals: [], error: 'Insufficient permissions' }
   }
   return queryReceiptVendorCostReview(input)
@@ -416,8 +434,8 @@ export async function getReceiptVendorAiSummary(input: {
   signals: ReceiptVendorCostSignal[]
   error?: string
 }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
     return { success: false, signals: [], error: 'Insufficient permissions' }
   }
   return queryReceiptVendorAiSummary(input)
@@ -492,14 +510,6 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
     throw new Error('Insufficient permissions')
   }
   return queryReceiptMissingExpenseSummary()
-}
-
-async function getAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
-    return { success: false, error: 'Insufficient permissions' }
-  }
-  return queryAIUsageBreakdown()
 }
 
 export async function previewReceiptRule(formData: FormData): Promise<{ success: boolean; preview?: RulePreviewResult; error?: string }> {
@@ -619,8 +629,8 @@ export async function updateReceiptNote(input: { transactionId: string; note?: s
 export async function markReceiptTransaction(input: {
   transactionId: string
   status: string
-  note?: string
-  receiptRequired?: boolean
+  /** Why the transaction is complete without a receipt. Needed when it has no file. */
+  reason?: string | null
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -629,7 +639,11 @@ export async function markReceiptTransaction(input: {
 
   const actor = await requireCurrentUser()
   const { user_id, user_email } = actor
-  const result = await performMarkReceiptTransaction(user_id, user_email, input as any)
+  const result = await performMarkReceiptTransaction(user_id, user_email, {
+    transactionId: input.transactionId,
+    status: input.status as ReceiptTransaction['status'],
+    reason: input.reason ?? null,
+  })
 
   if (result.success) {
     await logReceiptAudit(actor, {
@@ -639,7 +653,7 @@ export async function markReceiptTransaction(input: {
       operation_status: 'success',
       additional_info: {
         new_status: input.status,
-        note: input.note ?? null,
+        completed_reason: result.transaction?.completed_reason ?? null,
       },
     })
     revalidatePath('/receipts')
@@ -726,6 +740,8 @@ export async function completeReceiptUpload(input: {
   fileName: string
   fileType: string
   fileSize: number
+  /** Sent after the person has seen the warning that the file is on another transaction. */
+  confirmDuplicate?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -738,7 +754,10 @@ export async function completeReceiptUpload(input: {
 
   const actor = await requireCurrentUser()
   const { user_id, user_email } = actor
-  const result = await performCompleteReceiptUpload(user_id, user_email, input)
+  const result = await performCompleteReceiptUpload(user_id, user_email, {
+    ...input,
+    confirmDuplicate: input.confirmDuplicate === true,
+  })
 
   if (result.success) {
     await logReceiptAudit(actor, {
@@ -749,7 +768,8 @@ export async function completeReceiptUpload(input: {
       additional_info: {
         status: 'completed',
         file_name: input.fileName,
-        file_size: input.fileSize,
+        file_size: result.receipt?.file_size_bytes ?? input.fileSize,
+        duplicate_confirmed: input.confirmDuplicate === true,
       },
     })
     revalidatePath('/receipts')
@@ -759,38 +779,26 @@ export async function completeReceiptUpload(input: {
   return result
 }
 
-export async function uploadReceiptForTransaction(formData: FormData) {
+/** Cancels an upload the person was warned about: the stored file is removed, nothing is attached. */
+export async function cancelReceiptUpload(input: { transactionId: string; storagePath: string }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const transactionId = formData.get('transactionId')
-  if (typeof transactionId !== 'string' || !transactionId) {
-    return { error: 'Missing transaction reference' }
-  }
-
-  const receiptFile = formData.get('receipt')
-  const parsedFile = receiptFileSchema.safeParse(receiptFile)
-  if (!parsedFile.success) {
-    return { error: parsedFile.error.issues[0]?.message ?? 'Invalid receipt upload' }
-  }
-
   const actor = await requireCurrentUser()
-  const { user_id, user_email } = actor
-  const result = await performUploadReceiptForTransaction(user_id, user_email, transactionId, parsedFile.data)
+  const result = await performCancelReceiptUpload(actor.user_id, {
+    transactionId: String(input?.transactionId ?? ''),
+    storagePath: String(input?.storagePath ?? ''),
+  })
 
-  if (result.success) {
-    await logReceiptAudit(actor, {
-      operation_type: 'upload_receipt',
-      resource_type: 'receipt_transaction',
-      resource_id: transactionId,
-      operation_status: 'success',
-      additional_info: { status: 'completed' },
-    })
-    revalidatePath('/receipts')
-    revalidateTag('dashboard')
-  }
+  await logReceiptAudit(actor, {
+    operation_type: 'cancel_upload',
+    resource_type: 'receipt_transaction',
+    resource_id: String(input?.transactionId ?? ''),
+    operation_status: result.success ? 'success' : 'failure',
+    additional_info: { reason: 'duplicate_file_warning' },
+  })
 
   return result
 }
@@ -811,9 +819,39 @@ export async function deleteReceiptFile(fileId: string) {
       resource_type: 'receipt_file',
       resource_id: fileId,
       operation_status: 'success',
+      additional_info: {
+        transaction_id: result.transactionId ?? null,
+        new_status: result.newStatus ?? null,
+        remaining_files: result.remainingFiles ?? null,
+      },
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
+  }
+
+  return result
+}
+
+/** Renders an attached invoice again and swaps the stored copy, for when the invoice has changed. */
+export async function refreshReceiptInvoiceCopy(fileId: string) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const actor = await requireCurrentUser()
+  const result = await performRefreshInvoiceCopy(actor.user_id, String(fileId ?? ''))
+
+  await logReceiptAudit(actor, {
+    operation_type: 'refresh_invoice_copy',
+    resource_type: 'receipt_file',
+    resource_id: String(fileId ?? ''),
+    operation_status: result.success ? 'success' : 'failure',
+    error_message: result.success ? undefined : result.error,
+  })
+
+  if (result.success) {
+    revalidatePath('/receipts')
   }
 
   return result
@@ -1051,14 +1089,26 @@ export async function declineReceiptRuleSuggestion(
   return result
 }
 
+/**
+ * One vendor or category for the transactions of a group on the bulk page. Called first without
+ * `confirm`, it says what would change and writes nothing. Called with it, the change is made as
+ * a recorded run, which Recent runs can undo.
+ */
 export async function applyReceiptGroupClassification(input: {
+  /** The group's heading, used to name the run. */
   details: string
+  /** The transactions in the group, as the page listed them. */
+  transactionIds: string[]
   vendorName?: string | null
   expenseCategory?: string | null
-  statuses?: BulkStatus[]
+  /** With no category: these transactions take none. */
+  noCategoryApplies?: boolean
   /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
   createVendor?: boolean
-}) {
+  /** Also change the transactions a person has already decided. */
+  includeDecided?: boolean
+  confirm?: boolean
+}): Promise<BulkApplyResult> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
@@ -1066,18 +1116,38 @@ export async function applyReceiptGroupClassification(input: {
 
   const actor = await requireCurrentUser()
   const { user_id } = actor
-  const result = await performApplyReceiptGroupClassification(user_id, input as any)
+  const details = typeof input?.details === 'string' ? input.details : ''
 
-  if (result.success) {
+  const request: Parameters<typeof performApplyReceiptBulkClassification>[1] = {
+    transactionIds: Array.isArray(input?.transactionIds) ? input.transactionIds : [],
+    noCategoryApplies: input?.noCategoryApplies === true,
+    createVendor: input?.createVendor === true,
+    includeDecided: input?.includeDecided === true,
+    confirm: input?.confirm === true,
+    label: `Bulk: ${details.trim().slice(0, 100) || 'group'}`,
+  }
+  // "Present, even as null" means the field is to be set, so a missing key is kept missing.
+  if (Object.prototype.hasOwnProperty.call(input ?? {}, 'vendorName')) request.vendorName = input.vendorName ?? null
+  if (Object.prototype.hasOwnProperty.call(input ?? {}, 'expenseCategory')) request.expenseCategory = input.expenseCategory ?? null
+
+  const result = await performApplyReceiptBulkClassification(user_id, request)
+
+  // A preview changes nothing, so there is nothing to record or refresh.
+  if (request.confirm && (result.success || result.runId)) {
     await logReceiptAudit(actor, {
       operation_type: 'bulk_classification',
       resource_type: 'receipt_transaction_group',
-      resource_id: hashDetails(input.details),
-      operation_status: 'success',
+      resource_id: hashDetails(details),
+      operation_status: result.success ? 'success' : 'failure',
+      error_message: result.success ? undefined : result.error,
       additional_info: {
-        details: input.details,
-        count: result.updated,
-        skipped_incoming_count: result.skippedIncomingCount,
+        details,
+        run_id: result.runId ?? null,
+        count: result.applied ?? 0,
+        skipped_changed: result.skippedChanged ?? 0,
+        skipped_locked: result.skippedLocked ?? 0,
+        decided_by_person: result.preview?.decidedByPerson ?? 0,
+        included_decided: request.includeDecided === true,
       },
     })
     revalidateReceiptPaths()

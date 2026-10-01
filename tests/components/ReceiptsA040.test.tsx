@@ -131,6 +131,7 @@ describe('Receipts A-040', () => {
           groupByVendor: false,
           missingVendorOnly: false,
           missingExpenseOnly: false,
+          completedWithoutReceipt: false,
           search: '',
         }}
       />,

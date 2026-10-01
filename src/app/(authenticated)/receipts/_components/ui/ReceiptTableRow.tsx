@@ -1,19 +1,9 @@
 'use client'
 
-import { useState, useTransition, useRef } from 'react'
-import { NewVendorDialog, type VendorConfirmationPrompt } from './NewVendorDialog'
-import { Badge, Button, ConfirmDialog, FileButton, IconButton, Input, Select, toast, Icon } from '@/ds'
-import {
-  markReceiptTransaction,
-  updateReceiptNote,
-  deleteReceiptFile,
-  getReceiptSignedUrl,
-  updateReceiptClassification,
-  type ClassificationRuleSuggestion,
-} from '@/app/actions/receipts'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
-import type { ReceiptTransaction, ReceiptFile, ReceiptClassificationSource } from '@/types/database'
-import { usePermissions } from '@/contexts/PermissionContext'
+import { NewVendorDialog } from './NewVendorDialog'
+import { Badge, Button, FileButton, IconButton, Input, Select, Icon } from '@/ds'
+import type { ClassificationRuleSuggestion } from '@/app/actions/receipts'
+import type { ReceiptTransaction, ReceiptClassificationSource } from '@/types/database'
 import { formatCurrency, formatDate } from '@/app/(authenticated)/receipts/utils'
 import {
   RECEIPT_CLASSIFICATION_SOURCE_LABEL,
@@ -23,17 +13,11 @@ import {
   RECEIPT_STATUS_LABEL,
   RECEIPT_STATUS_TONE,
 } from '@/app/(authenticated)/receipts/_shared/status-ui'
-import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
-import { formatDateTimeInLondon } from '@/lib/dateUtils'
+import { RECEIPT_UPLOAD_ACCEPT } from './receiptUploadClient'
 import { AiCategorySuggestion } from './AiCategorySuggestion'
-import {
-  EXPENSE_CHOICE_OPTIONS,
-  expenseChoiceLabel,
-  expenseChoiceValue,
-  saveExpenseChoice,
-  suggestionChoiceValue,
-  type WorkspaceTransaction,
-} from './expenseChoice'
+import { EXPENSE_CHOICE_OPTIONS, expenseChoiceLabel, type WorkspaceTransaction } from './expenseChoice'
+import { CompletedReason, ReceiptFiles, ReceiptRowDialogs } from './ReceiptRowParts'
+import { useReceiptRow } from './useReceiptRow'
 
 export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['source_type'] }) {
   const source = sourceType === 'amex' ? 'amex' : 'bank'
@@ -44,7 +28,7 @@ export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['so
   )
 }
 
-function ClassificationBadge({ source }: { source?: ReceiptClassificationSource | null }) {
+export function ClassificationBadge({ source }: { source?: ReceiptClassificationSource | null }) {
   if (!source || source === 'manual') return null
   return (
     <Badge tone={RECEIPT_CLASSIFICATION_SOURCE_TONE[source] ?? 'neutral'} size="sm">
@@ -58,256 +42,12 @@ interface ReceiptTableRowProps {
   vendorOptions: string[]
   heatColour?: string
   onUpdate: (transaction: WorkspaceTransaction, previousStatus: ReceiptTransaction['status']) => void
-  onRemove: (id: string, previousStatus: ReceiptTransaction['status'], nextStatus?: ReceiptTransaction['status']) => void
   onRuleSuggestion: (suggestion: ClassificationRuleSuggestion) => void
 }
 
-export function ReceiptTableRow({
-  transaction,
-  vendorOptions,
-  heatColour,
-  onUpdate,
-  onRemove,
-  onRuleSuggestion,
-}: ReceiptTableRowProps) {
-  const { hasPermission } = usePermissions()
-  const supabase = useSupabase()
-  const canManageReceipts = hasPermission('receipts', 'manage')
-
-  const [isPending, startTransition] = useTransition()
-  const [editingField, setEditingField] = useState<'vendor' | 'expense' | null>(null)
-  const [classificationDraft, setClassificationDraft] = useState('')
-  const [isCustomVendor, setIsCustomVendor] = useState(false)
-  const [vendorPrompt, setVendorPrompt] = useState<VendorConfirmationPrompt | null>(null)
-  const [deleteFileId, setDeleteFileId] = useState<string | null>(null)
-
-  const [isEditingNote, setIsEditingNote] = useState(false)
-  const [noteDraft, setNoteDraft] = useState('')
-  const noteInputRef = useRef<HTMLInputElement>(null)
-
-  async function handleStatusUpdate(status: ReceiptTransaction['status']) {
-    if (!canManageReceipts) return
-    const previousStatus = transaction.status
-    onUpdate({
-      ...transaction,
-      status,
-      files: transaction.files,
-      autoRule: transaction.autoRule,
-    }, previousStatus)
-    startTransition(async () => {
-      const result = await markReceiptTransaction({
-        transactionId: transaction.id,
-        status,
-        note: transaction.notes ?? undefined,
-        receiptRequired: transaction.receipt_required,
-      })
-
-      if (result?.error || !result?.transaction) {
-        onUpdate({
-          ...transaction,
-          status: previousStatus,
-          files: transaction.files,
-          autoRule: transaction.autoRule,
-        }, status)
-        toast.error(result?.error ?? 'Update failed')
-        return
-      }
-
-      onUpdate({
-        ...transaction,
-        ...result.transaction as ReceiptTransaction,
-        files: transaction.files,
-        autoRule: transaction.autoRule
-      }, previousStatus)
-    })
-  }
-
-  async function handleUpload(files: File[]) {
-    if (!canManageReceipts) return
-    const file = files[0]
-    if (!file) return
-
-    startTransition(async () => {
-      try {
-        const result = await uploadReceiptFile({
-          supabase,
-          transactionId: transaction.id,
-          file,
-        })
-
-        if (result?.error || !result?.receipt) {
-          toast.error(result?.error ?? 'Upload failed')
-          return
-        }
-
-        onUpdate({
-          ...transaction,
-          status: 'completed',
-          receipt_required: false,
-          files: [...transaction.files, result.receipt as ReceiptFile]
-        }, transaction.status)
-
-        toast.success('Receipt uploaded')
-      } catch (error) {
-        console.error('Receipt upload failed', error)
-        toast.error(receiptUploadErrorMessage(error))
-      }
-    })
-  }
-
-  async function handleReceiptDelete(fileId: string) {
-    if (!canManageReceipts) return
-    startTransition(async () => {
-      const result = await deleteReceiptFile(fileId)
-      if (result?.error) {
-        toast.error(result.error)
-        return
-      }
-      const remaining = transaction.files.filter(f => f.id !== fileId)
-      const newStatus = (remaining.length === 0 && transaction.status === 'completed') ? 'pending' : transaction.status
-
-      onUpdate({
-        ...transaction,
-        status: newStatus,
-        files: remaining
-      }, transaction.status)
-      setDeleteFileId(null)
-      toast.success('Receipt removed')
-    })
-  }
-
-  async function handleReceiptDownload(fileId: string) {
-    const result = await getReceiptSignedUrl(fileId)
-    if (result?.url) window.open(result.url, '_blank', 'noopener')
-  }
-
-  // Classification
-  function startEditing(field: 'vendor' | 'expense') {
-    if (!canManageReceipts) return
-    setEditingField(field)
-    if (field === 'vendor') {
-      const val = transaction.vendor_name ?? ''
-      setClassificationDraft(val)
-      setIsCustomVendor(val.length > 0 && !vendorOptions.includes(val))
-    } else {
-      setClassificationDraft(expenseChoiceValue(transaction))
-    }
-  }
-
-  /** "Change" on a suggestion: the category picker, starting on what was suggested. */
-  function startChangingSuggestion() {
-    if (!canManageReceipts || !transaction.aiSuggestion) return
-    setEditingField('expense')
-    setClassificationDraft(suggestionChoiceValue(transaction.aiSuggestion))
-  }
-
-  function saveExpense() {
-    if (!canManageReceipts) return
-    startTransition(async () => {
-      const result = await saveExpenseChoice(transaction, classificationDraft)
-      if (result.transaction || result.suggestionClosed) {
-        onUpdate({
-          ...transaction,
-          ...(result.transaction ?? {}),
-          files: transaction.files,
-          autoRule: transaction.autoRule,
-          aiSuggestion: result.suggestionClosed ? null : transaction.aiSuggestion,
-        }, transaction.status)
-      }
-      if (result.error) {
-        toast.error(result.error)
-        if (result.suggestionClosed) setEditingField(null)
-        return
-      }
-      if (result.ruleSuggestion) {
-        onRuleSuggestion(result.ruleSuggestion)
-      }
-      setEditingField(null)
-      toast.success('Updated')
-    })
-  }
-
-  // `vendorName` and `createVendor` come from the new-vendor dialog: use an existing vendor
-  // instead of the typed name, or confirm that the typed name is a new vendor.
-  async function saveClassification(options: { vendorName?: string; createVendor?: boolean } = {}) {
-    if (!canManageReceipts) return
-    if (editingField === 'expense') {
-      saveExpense()
-      return
-    }
-    const draft = (options.vendorName ?? classificationDraft).trim()
-    const payload: any = { transactionId: transaction.id }
-    payload.vendorName = draft.length ? draft : null
-    if (options.createVendor) payload.createVendor = true
-
-    startTransition(async () => {
-      const result = await updateReceiptClassification(payload)
-      if (result?.error) {
-        toast.error(result.error)
-        return
-      }
-      // The name is not on the vendor list. Nothing was saved: ask before adding a vendor.
-      if (result?.vendorConfirmation) {
-        setVendorPrompt(result.vendorConfirmation)
-        return
-      }
-      setVendorPrompt(null)
-      if (result?.transaction) {
-        onUpdate({
-          ...transaction,
-          ...result.transaction,
-          files: transaction.files,
-          autoRule: transaction.autoRule
-        }, transaction.status)
-      }
-      if (result?.ruleSuggestion) {
-        onRuleSuggestion(result.ruleSuggestion)
-      }
-      setEditingField(null)
-      toast.success('Updated')
-    })
-  }
-
-  // Notes
-  function startNoteEdit() {
-    if (!canManageReceipts) return
-    const raw = transaction.notes ?? ''
-    const [, ...rest] = raw.split(' — ')
-    setNoteDraft(rest.length ? rest.join(' — ').trim() : raw)
-    setIsEditingNote(true)
-    setTimeout(() => noteInputRef.current?.focus(), 10)
-  }
-
-  async function saveNote() {
-    if (!canManageReceipts) return
-    const trimmed = noteDraft.trim()
-    const timestamp = formatDateTimeInLondon(new Date(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    const formatted = trimmed.length ? `${timestamp} — ${trimmed}` : ''
-
-    if ((transaction.notes ?? '') === formatted) {
-      setIsEditingNote(false)
-      return
-    }
-
-    startTransition(async () => {
-      const result = await updateReceiptNote({
-        transactionId: transaction.id,
-        note: formatted.length ? formatted : null,
-      })
-      if (result?.error || !result?.transaction) {
-        toast.error(result?.error ?? 'Failed to save the note')
-        return
-      }
-      onUpdate({
-        ...transaction,
-        ...result.transaction as ReceiptTransaction,
-        files: transaction.files,
-        autoRule: transaction.autoRule
-      }, transaction.status)
-      setIsEditingNote(false)
-      toast.success('Note saved')
-    })
-  }
+export function ReceiptTableRow({ transaction, vendorOptions, heatColour, onUpdate, onRuleSuggestion }: ReceiptTableRowProps) {
+  const row = useReceiptRow({ transaction, vendorOptions, onUpdate, onRuleSuggestion })
+  const { canManage, isPending } = row
 
   return (
     <tr
@@ -340,40 +80,62 @@ export function ReceiptTableRow({
 
       {/* Vendor */}
       <td className="px-4 py-2">
-        {editingField === 'vendor' ? (
+        {row.editingField === 'vendor' ? (
           <div className="flex flex-col gap-2 min-w-[200px]">
-            {isCustomVendor ? (
+            {row.isCustomVendor ? (
               <div className="space-y-2">
-                <Input autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} placeholder="Vendor name" disabled={isPending} />
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setIsCustomVendor(false); setClassificationDraft('') }} disabled={isPending}>⟵ Pick Existing</Button>
+                <Input
+                  autoFocus
+                  aria-label="Vendor name"
+                  value={row.classificationDraft}
+                  onChange={(event) => row.setClassificationDraft(event.target.value)}
+                  placeholder="Vendor name"
+                  disabled={isPending}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { row.setIsCustomVendor(false); row.setClassificationDraft('') }}
+                  disabled={isPending}
+                >
+                  ⟵ Pick Existing
+                </Button>
               </div>
             ) : (
-              <Select autoFocus value={classificationDraft} onChange={e => {
-                if (e.target.value === '__custom__') { setIsCustomVendor(true); setClassificationDraft(''); }
-                else setClassificationDraft(e.target.value)
-              }} disabled={isPending} options={[
-                { value: '', label: 'Clear' },
-                ...vendorOptions.map(v => ({ value: v, label: v })),
-                { value: '__custom__', label: '+ New vendor' },
-              ]} />
+              <Select
+                autoFocus
+                aria-label="Vendor"
+                value={row.classificationDraft}
+                onChange={(event) => {
+                  if (event.target.value === '__custom__') { row.setIsCustomVendor(true); row.setClassificationDraft('') }
+                  else row.setClassificationDraft(event.target.value)
+                }}
+                disabled={isPending}
+                options={[
+                  { value: '', label: 'Clear' },
+                  ...vendorOptions.map((vendor) => ({ value: vendor, label: vendor })),
+                  { value: '__custom__', label: '+ New vendor' },
+                ]}
+              />
             )}
             <div className="flex gap-2">
-              <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" variant="primary" onClick={() => row.saveClassification()} loading={isPending}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={row.cancelEditing} disabled={isPending}>Cancel</Button>
             </div>
             <NewVendorDialog
-              prompt={vendorPrompt}
+              prompt={row.vendorPrompt}
               pending={isPending}
-              onUseExisting={(vendorName) => saveClassification({ vendorName })}
-              onCreate={() => saveClassification({ createVendor: true })}
-              onClose={() => setVendorPrompt(null)}
+              onUseExisting={(vendorName) => row.saveClassification({ vendorName })}
+              onCreate={() => row.saveClassification({ createVendor: true })}
+              onClose={() => row.setVendorPrompt(null)}
             />
           </div>
         ) : (
           <div className="flex flex-col gap-1">
             {/* `||` not `??`: a blank vendor string still needs the prompt, and
                 those are exactly the rows the Needs Vendor tab surfaces. */}
-            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
+            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => row.startEditing('vendor')} disabled={!canManage}>
               {transaction.vendor_name || <span className="font-normal text-text-soft">Add vendor</span>}
             </Button>
             <div className="flex items-center gap-2">
@@ -386,17 +148,24 @@ export function ReceiptTableRow({
 
       {/* Expense */}
       <td className="px-4 py-2">
-        {editingField === 'expense' ? (
+        {row.editingField === 'expense' ? (
           <div className="flex flex-col gap-2 min-w-[200px]">
-            <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={EXPENSE_CHOICE_OPTIONS} />
+            <Select
+              autoFocus
+              aria-label="Expense category"
+              value={row.classificationDraft}
+              onChange={(event) => row.setClassificationDraft(event.target.value)}
+              disabled={isPending}
+              options={EXPENSE_CHOICE_OPTIONS}
+            />
             <div className="flex gap-2">
-              <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" variant="primary" onClick={() => row.saveClassification()} loading={isPending}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={row.cancelEditing} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
+            <Button variant="link" size="sm" className="justify-start whitespace-normal text-left text-text-strong hover:text-primary" onClick={() => row.startEditing('expense')} disabled={!canManage}>
               {expenseChoiceLabel(transaction) || <span className="font-normal text-text-soft">Add category</span>}
             </Button>
             <div className="flex items-center gap-2">
@@ -405,16 +174,10 @@ export function ReceiptTableRow({
             </div>
             <AiCategorySuggestion
               transaction={transaction}
-              canManage={canManageReceipts}
+              canManage={canManage}
               disabled={isPending}
-              onChange={startChangingSuggestion}
-              onClosed={(updated) => onUpdate({
-                ...transaction,
-                ...(updated ?? {}),
-                files: transaction.files,
-                autoRule: transaction.autoRule,
-                aiSuggestion: null,
-              }, transaction.status)}
+              onChange={row.startChangingSuggestion}
+              onClosed={row.closeSuggestion}
             />
           </div>
         )}
@@ -424,75 +187,53 @@ export function ReceiptTableRow({
       <td className="px-4 py-2 text-right">{formatCurrency(transaction.amount_out)}</td>
 
       <td className="px-4 py-2">
-        <Badge
-          tone={RECEIPT_STATUS_TONE[transaction.status]}
-          icon={
-            transaction.status === 'completed' ? <Icon name="checkCircle" size={12} /> : transaction.status === 'pending' ? <Icon name="xCircle" size={12} /> : undefined
-          }
-          className="whitespace-nowrap"
-        >
-          {RECEIPT_STATUS_LABEL[transaction.status]}
-        </Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge
+            tone={RECEIPT_STATUS_TONE[transaction.status]}
+            icon={
+              transaction.status === 'completed' ? <Icon name="checkCircle" size={12} /> : transaction.status === 'pending' ? <Icon name="xCircle" size={12} /> : undefined
+            }
+            className="whitespace-nowrap"
+          >
+            {RECEIPT_STATUS_LABEL[transaction.status]}
+          </Badge>
+          <CompletedReason transaction={transaction} />
+        </div>
       </td>
 
       <td className="px-4 py-2">
-        {transaction.files.map(f => (
-          <div key={f.id} className="flex items-center gap-2 mb-1">
-            <Button variant="link" size="xs" onClick={() => handleReceiptDownload(f.id)} className="max-w-[100px]">
-              <span className="truncate">{f.file_name || 'View'}</span>
-            </Button>
-            <IconButton
-              size="sm"
-              label={`Delete ${f.file_name || 'receipt file'}`}
-              icon={<Icon name="x" size={14} className="text-danger" />}
-              onClick={() => setDeleteFileId(f.id)}
-              disabled={isPending}
-            />
-          </div>
-        ))}
-        {transaction.files.length > 0 && (
-          <p className="mt-1 text-2xs text-text-soft">Links expire after 5 min. Refresh if a link stops working.</p>
-        )}
-        <ConfirmDialog
-          open={Boolean(deleteFileId)}
-          onClose={() => setDeleteFileId(null)}
-          onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
-          title="Delete Receipt File"
-          message="Delete this receipt file from the transaction? This cannot be undone."
-          confirmLabel="Delete"
-          tone="danger"
-        />
+        <ReceiptFiles transaction={transaction} row={row} compact />
       </td>
 
       <td className="px-4 py-2 min-w-[200px]">
-        {isEditingNote ? (
+        {row.isEditingNote ? (
           <div className="space-y-2">
             <Input
-              ref={noteInputRef}
-              value={noteDraft}
-              onChange={e => setNoteDraft(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && saveNote()}
+              autoFocus
+              value={row.noteDraft}
+              onChange={(event) => row.setNoteDraft(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && row.saveNote()}
               aria-label="Note"
               disabled={isPending}
             />
             <div className="flex gap-1">
-              <Button size="sm" variant="primary" onClick={saveNote} loading={isPending}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" variant="primary" onClick={row.saveNote} loading={isPending}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => row.setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
           <div className="space-y-1 group">
-            {transaction.notes ? (
+            {row.note.text ? (
               <>
-                <p className="text-meta text-text-muted uppercase">{transaction.notes.split(' — ')[0]}</p>
-                <p className="text-sm text-text break-words">{transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes}</p>
+                {row.note.stamp && <p className="text-meta text-text-muted uppercase">{row.note.stamp}</p>}
+                <p className="text-sm text-text break-words">{row.note.text}</p>
               </>
             ) : (
               <span className="text-xs text-text-soft italic">No notes</span>
             )}
             {/* Always visible: this table is used on an iPad, where there is no
                 hover and a hover-only control is simply unreachable. */}
-            <Button variant="ghost" size="xs" icon={<Icon name="edit" size={12} />} onClick={startNoteEdit} disabled={!canManageReceipts}>
+            <Button variant="ghost" size="xs" icon={<Icon name="edit" size={12} />} onClick={row.startNoteEdit} disabled={!canManage}>
               Edit
             </Button>
           </div>
@@ -507,8 +248,8 @@ export function ReceiptTableRow({
           <FileButton
             variant="secondary"
             accept={RECEIPT_UPLOAD_ACCEPT}
-            onFiles={handleUpload}
-            disabled={isPending || !canManageReceipts}
+            onFiles={row.upload}
+            disabled={isPending || !canManage}
             aria-label="Upload receipt"
             title="Upload receipt"
             icon={<Icon name="upload" size={16} />}
@@ -517,8 +258,8 @@ export function ReceiptTableRow({
           {transaction.status !== 'completed' && (
             <IconButton
               variant="primary"
-              onClick={() => handleStatusUpdate('completed')}
-              disabled={isPending || !canManageReceipts}
+              onClick={() => row.updateStatus('completed')}
+              disabled={isPending || !canManage}
               title="Mark as done"
               label="Mark as done"
               icon={<Icon name="check" size={16} />}
@@ -528,8 +269,8 @@ export function ReceiptTableRow({
           {transaction.status !== 'no_receipt_required' && (
             <IconButton
               variant="secondary"
-              onClick={() => handleStatusUpdate('no_receipt_required')}
-              disabled={isPending || !canManageReceipts}
+              onClick={() => row.updateStatus('no_receipt_required')}
+              disabled={isPending || !canManage}
               title="Skip (no receipt needed)"
               label="Skip (no receipt needed)"
               icon={<Icon name="fastForward" size={16} />}
@@ -539,9 +280,9 @@ export function ReceiptTableRow({
           {transaction.status !== 'cant_find' && (
             <IconButton
               variant="secondary"
-              onClick={() => handleStatusUpdate('cant_find')}
+              onClick={() => row.updateStatus('cant_find')}
               className="border-danger-border text-danger-fg hover:bg-danger-soft"
-              disabled={isPending || !canManageReceipts}
+              disabled={isPending || !canManage}
               title="Mark as missing"
               label="Mark as missing"
               icon={<Icon name="helpCircle" size={16} />}
@@ -551,14 +292,23 @@ export function ReceiptTableRow({
           {transaction.status !== 'pending' && (
             <IconButton
               variant="ghost"
-              onClick={() => handleStatusUpdate('pending')}
-              disabled={isPending || !canManageReceipts}
+              onClick={() => row.updateStatus('pending')}
+              disabled={isPending || !canManage}
               title="Reopen"
               label="Reopen"
               icon={<Icon name="undo" size={16} />}
             />
           )}
+
+          <IconButton
+            variant="ghost"
+            onClick={row.openHistory}
+            title="History"
+            label={`History of ${transaction.details}`}
+            icon={<Icon name="clock" size={16} />}
+          />
         </div>
+        <ReceiptRowDialogs transaction={transaction} row={row} />
       </td>
     </tr>
   )

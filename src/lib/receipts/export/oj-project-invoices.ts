@@ -3,6 +3,8 @@ import Papa from 'papaparse'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { closePdfBrowser, createPdfBrowser, generateInvoicePDF } from '@/lib/pdf-generator'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatDateTimeInLondon, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
+import { escapeCsvCell } from './csv-helpers'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -75,7 +77,7 @@ export function buildOjProjectInvoiceSummaryCsv(
 ): Buffer {
   const summaryRows: string[][] = [
     ['Quarter', `Q${period.quarter} ${period.year}`],
-    ['Generated at', new Date().toISOString()],
+    ['Generated at (London time)', formatDateTimeInLondon(new Date(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })],
     ['Total OJ Projects invoices', String(invoices.length)],
     ['Total invoice value (GBP)', formatCurrency(invoices.reduce((sum, invoice) => sum + (invoice.total_amount ?? 0), 0))],
     ['Total paid value (GBP)', formatCurrency(invoices.reduce((sum, invoice) => sum + (invoice.paid_amount ?? 0), 0))],
@@ -121,7 +123,10 @@ async function loadOjProjectInvoiceIdsPaidInQuarter(
   startDate: string,
   endDate: string
 ): Promise<string[]> {
-  const paidAtEndExclusive = toExclusiveEndTimestamp(endDate)
+  // `paid_at` is a moment, and the quarter is a London quarter: it starts and ends at midnight
+  // in London, which is 23:00 UTC the day before while the clocks are forward.
+  const paidAtStart = londonMidnightIso(startDate)
+  const paidAtEndExclusive = londonMidnightIso(shiftIsoDate(endDate, 1) ?? endDate)
 
   const [
     paymentInvoiceIds,
@@ -131,8 +136,8 @@ async function loadOjProjectInvoiceIdsPaidInQuarter(
   ] = await Promise.all([
     loadInvoiceIdsFromPaymentsInRange(supabase, startDate, endDate),
     loadInvoiceIdsFromReceiptMatchesInRange(supabase, startDate, endDate),
-    loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_entries', startDate, paidAtEndExclusive),
-    loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_recurring_charge_instances', startDate, paidAtEndExclusive),
+    loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_entries', paidAtStart, paidAtEndExclusive),
+    loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_recurring_charge_instances', paidAtStart, paidAtEndExclusive),
   ])
 
   const ojLinkedPaymentInvoiceIds = await filterOjProjectInvoiceIds(supabase, paymentInvoiceIds)
@@ -191,14 +196,14 @@ async function loadInvoiceIdsFromReceiptMatchesInRange(
 async function loadLinkedInvoiceIdsPaidAtInRange(
   supabase: SupabaseAdminClient,
   table: 'oj_entries' | 'oj_recurring_charge_instances',
-  startDate: string,
+  startIso: string,
   endExclusiveIso: string
 ): Promise<string[]> {
   const { data, error } = await supabase
     .from(table)
     .select('invoice_id')
     .not('invoice_id', 'is', null)
-    .gte('paid_at', `${startDate}T00:00:00.000Z`)
+    .gte('paid_at', startIso)
     .lt('paid_at', endExclusiveIso)
 
   if (error) {
@@ -249,13 +254,6 @@ function buildOjProjectInvoiceFileName(invoice: Pick<InvoiceWithDetails, 'id' | 
   return `oj-projects/invoices/${uniqueSegment}_${invoiceNumber}.pdf`
 }
 
-function escapeCsvCell(value: string): string {
-  if (!value || typeof value !== 'string') return value
-  if (['=', '+', '-', '@'].includes(value[0])) {
-    return '\t' + value
-  }
-  return value
-}
 
 function friendlyInvoiceStatus(status: InvoiceWithDetails['status']) {
   switch (status) {
@@ -292,10 +290,13 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)))
 }
 
-function toExclusiveEndTimestamp(endDate: string): string {
-  const date = new Date(`${endDate}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString()
+/** Midnight in London at the start of the given date, as a UTC instant. */
+function londonMidnightIso(isoDate: string): string {
+  const instant = whenLondonClockReaches(isoDate, '00:00')
+  if (!instant) {
+    throw new Error(`Not a calendar date: ${isoDate}`)
+  }
+  return instant.toISOString()
 }
 
 function sanitizeZipFilename(value: string, fallback = 'invoice.pdf'): string {

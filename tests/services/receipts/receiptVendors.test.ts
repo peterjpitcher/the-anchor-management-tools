@@ -26,10 +26,10 @@ import {
   resolveVendorForPersonWrite,
 } from '@/services/receipts/receiptVendors'
 import {
-  performApplyReceiptGroupClassification,
   performCreateReceiptRule,
   performUpdateReceiptClassification,
 } from '@/services/receipts/receiptMutations'
+import { performApplyReceiptBulkClassification } from '@/services/receipts/receiptBulkApply'
 import { applyAutomationRules } from '@/services/receipts/receiptAutomation'
 import { createFakeDb, fakeReceiptsRpc, fakeResolveReceiptVendor, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
@@ -262,25 +262,18 @@ describe('a vendor named by a rule or a bulk change', () => {
     expect(db.rows('receipt_rules')[0].vendor_id).toEqual(expect.any(String))
   })
 
-  it('a bulk change asks before adding a vendor, and sends the vendor\'s own name when it is known', async () => {
-    const { db, calls } = arrange()
+  it('a bulk change asks before adding a vendor, and plans the vendor\'s own name when it is known', async () => {
+    const { db, calls } = arrange({ receipt_transactions: [payment()], receipt_settings: [] })
 
-    const asked = await performApplyReceiptGroupClassification(USER, { details: 'OAK FARM GAS', vendorName: 'Oak Farm Gas' })
+    const asked = await performApplyReceiptBulkClassification(USER, { transactionIds: [TX], vendorName: 'Oak Farm Gas' })
     expect(asked).toEqual({ vendorConfirmation: { name: 'Oak Farm Gas', similar: [{ id: OAK, name: 'Oak Farm Gas Co' }] } })
     expect(calls.map((call) => call.name)).toEqual(['resolve_receipt_vendor'])
+    expect(db.writes).toEqual([])
 
-    db.onRpc((name, args) => {
-      calls.push({ name, args })
-      if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
-      return { data: { updated: 3, skippedIncomingCount: 0 }, error: null }
-    })
-    const applied = await performApplyReceiptGroupClassification(USER, { details: 'OAK FARM GAS', vendorName: 'ofg' })
-
-    expect(applied).toMatchObject({ success: true, updated: 3 })
-    expect(calls.at(-1)).toMatchObject({
-      name: 'apply_receipt_group_classification_atomic',
-      args: { p_vendor_id: OAK, p_vendor_name: 'Oak Farm Gas Co' },
-    })
+    // A spelling the list already knows: no question, and the preview says what would change.
+    const previewed = await performApplyReceiptBulkClassification(USER, { transactionIds: [TX], vendorName: 'ofg' })
+    expect(previewed).toMatchObject({ success: true, preview: { total: 1, willChange: 1 } })
+    expect(db.writes).toEqual([])
   })
 
   it('the rule engine ties a rule that names its vendor in text to the vendor list', async () => {

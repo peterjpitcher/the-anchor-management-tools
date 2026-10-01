@@ -54,7 +54,6 @@ export type {
 // ---------------------------------------------------------------------------
 
 export const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
-export const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
 
 // Below this AI-reported confidence the AI classifier does not even propose a rule
 // suggestion — keeps the suggestion queue trustworthy and cheap to review. (Lives here,
@@ -65,13 +64,6 @@ export const bulkGroupQuerySchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
   statuses: z.array(receiptTransactionStatusSchema).optional(),
   onlyUnclassified: z.boolean().optional(),
-})
-
-export const bulkGroupApplySchema = z.object({
-  details: z.string().min(1),
-  statuses: z.array(receiptTransactionStatusSchema).optional(),
-  vendorName: z.union([z.string(), z.null()]).optional(),
-  expenseCategory: z.union([z.string(), z.null()]).optional(),
 })
 
 export const groupRuleInputSchema = z.object({
@@ -107,16 +99,6 @@ export const fileSchema = z.instanceof(File, { message: 'Please attach a CSV fil
   .refine((file) => file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv'), {
     message: 'Only CSV bank statements are supported'
   })
-
-export const receiptFileSchema = z.instanceof(File, { message: 'Please choose a receipt file' })
-  .refine((file) => file.size > 0, { message: 'File is empty' })
-  .refine((file) => file.size <= MAX_RECEIPT_FILE_UPLOAD_BYTES, {
-    message: `File is too large. Please keep receipts under ${RECEIPT_FILE_UPLOAD_LIMIT_LABEL}.`
-  })
-  .refine(
-    (file) => isAllowedReceiptMimeType(file.type),
-    { message: 'Only PDF, PNG, JPG, GIF, WEBP, and HEIC files are accepted.' }
-  )
 
 const receiptUploadMetadataBaseSchema = z.object({
   fileName: z.string().trim().min(1, 'Please choose a receipt file').max(255, 'File name is too long'),

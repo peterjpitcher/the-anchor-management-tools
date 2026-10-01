@@ -10,14 +10,27 @@
 
 import Papa from 'papaparse'
 
+const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@'])
+
 /**
- * Prefixes formula-injection trigger characters with a tab so spreadsheet
- * applications treat the cell as text rather than a formula.
+ * Makes free text safe to open in a spreadsheet: a cell that would be read as a formula is
+ * prefixed with a tab, so it is shown as text.
+ *
+ * A spreadsheet ignores spaces, tabs and line breaks in front of a formula, so `" =1+1"` and
+ * `"\r=1+1"` are formulas too. Those leading characters are dropped and the rest is then
+ * prefixed. A cell that begins with a tab or a carriage return and is not a formula has them
+ * dropped: both are themselves ways of starting one.
+ *
+ * Only for free-text columns. Numbers and dates are written as they are.
  */
 export function escapeCsvCell(value: string): string {
   if (!value || typeof value !== 'string') return value
-  if (['=', '+', '-', '@'].includes(value[0])) {
-    return '\t' + value
+  const trimmed = value.replace(/^[\s\u0000-\u001f]+/, '')
+  if (trimmed && FORMULA_TRIGGERS.has(trimmed[0])) {
+    return '\t' + trimmed
+  }
+  if (value[0] === '\t' || value[0] === '\r' || value[0] === '\n') {
+    return trimmed
   }
   return value
 }
