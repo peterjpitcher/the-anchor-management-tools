@@ -1103,7 +1103,8 @@ export class UnifiedJobQueue {
         const transactionIds = Array.isArray(payload.transaction_ids)
           ? payload.transaction_ids.filter((id): id is string => typeof id === 'string')
           : undefined
-        return performReconcileReceiptInvoicePayments({ transactionIds })
+        const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
+        return performReconcileReceiptInvoicePayments({ transactionIds, initiatedBy })
       }
 
       case 'send_sms':

@@ -12,8 +12,6 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
-import { selectBestReceiptRule } from '@/lib/receipts/rule-matching'
-import { logger } from '@/lib/logger'
 import { receiptRuleSchema, receiptMarkSchema } from '@/lib/validation'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createHash } from 'crypto'
@@ -49,8 +47,6 @@ import {
   coerceExpenseCategory,
   hashDetails,
   chunkArray,
-  getTransactionDirection,
-  guessAmountValue,
   isIncomingOnlyTransaction,
   buildRuleSuggestion,
   composeReceiptFileArtifacts,
@@ -69,12 +65,17 @@ import {
   recordReceiptClassificationSignals,
   resolveReceiptVendorId,
 } from './receiptGovernance'
+import { applyAutomationRules, refreshAutomationForPendingTransactions } from './receiptAutomation'
 
+// The rule engine lives in receiptAutomation.ts. Re-exported so existing imports keep working.
+export { applyAutomationRules, refreshAutomationForPendingTransactions }
+
+/** Queues one receipts background job. Returns false, having logged why, when it could not. */
 async function enqueueReceiptSystemJob(
   type: Parameters<typeof jobQueue.enqueue>[0],
   uniqueSuffix: string,
   payload: Record<string, unknown> = {}
-): Promise<void> {
+): Promise<boolean> {
   const result = await jobQueue.enqueue(
     type,
     payload,
@@ -85,8 +86,10 @@ async function enqueueReceiptSystemJob(
   )
 
   if (!result.success) {
-    console.warn(`Failed to enqueue receipt system job ${type}`, result.error)
+    console.error(`Failed to enqueue receipt system job ${type}`, result.error)
+    return false
   }
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -215,405 +218,6 @@ export async function performSetReceiptVendorReviewStatus(
 }
 
 // ---------------------------------------------------------------------------
-// applyAutomationRules — internal rule engine (no direct auth needed; called
-// by import and retro-run which already check auth)
-// ---------------------------------------------------------------------------
-
-export async function applyAutomationRules(
-  transactionIds: string[],
-  options: {
-    includeClosed?: boolean
-    targetRuleId?: string | null
-    overrideManual?: boolean
-    allowClosedStatusUpdates?: boolean
-  } = {}
-): Promise<AutomationResult> {
-  logger.debug('[retro] applyAutomationRules start', {
-    metadata: { transactionCount: transactionIds.length, ...options },
-  })
-
-  if (!transactionIds.length) {
-    console.warn('[retro] applyAutomationRules called with empty transactionIds', options)
-    return {
-      statusAutoUpdated: 0,
-      classificationUpdated: 0,
-      matched: 0,
-      vendorIntended: 0,
-      expenseIntended: 0,
-      samples: [],
-    }
-  }
-
-  const supabase = createAdminClient()
-
-  const {
-    includeClosed = false,
-    targetRuleId = null,
-    overrideManual = false,
-    allowClosedStatusUpdates = false,
-  } = options
-
-  let rulesQuery = supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('is_active', true)
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  if (targetRuleId) {
-    rulesQuery = rulesQuery.eq('id', targetRuleId)
-  }
-
-  const { data: rules, error: rulesError } = await rulesQuery
-
-  const chunkSize = 100
-  const idChunks: string[][] = []
-  for (let index = 0; index < transactionIds.length; index += chunkSize) {
-    idChunks.push(transactionIds.slice(index, index + chunkSize))
-  }
-
-  const chunkResults = await Promise.all(
-    idChunks.map(async (chunk, chunkIndex) => {
-      const { data, error } = await supabase
-        .from('receipt_transactions')
-        .select('*')
-        .in('id', chunk)
-      if (error) {
-        console.error('[retro] applyAutomationRules chunk error', {
-          chunkIndex,
-          chunkSize: chunk.length,
-          error,
-        })
-      }
-      return { data: data ?? [], error, chunkIndex }
-    })
-  )
-
-  const transactions = chunkResults.flatMap((result) => result.data)
-
-  if (rulesError) {
-    console.error('[retro] applyAutomationRules rules query error', rulesError)
-  }
-
-  if (!rules?.length) {
-    console.warn('[retro] applyAutomationRules no active rules found', {
-      targetRuleId,
-      includeClosed,
-    })
-  }
-
-  if (!transactions?.length) {
-    console.warn('[retro] applyAutomationRules no transactions fetched', {
-      transactionIdsLength: transactionIds.length,
-      sampleIds: transactionIds.slice(0, 20),
-    })
-  }
-
-  if (!rules?.length || !transactions?.length) {
-    return {
-      statusAutoUpdated: 0,
-      classificationUpdated: 0,
-      matched: 0,
-      vendorIntended: 0,
-      expenseIntended: 0,
-      samples: [],
-    }
-  }
-
-  const ruleList = targetRuleId ? rules.filter((rule) => rule.id === targetRuleId) : rules
-  if (!ruleList.length) {
-    console.warn('[retro] applyAutomationRules ruleList empty after filtering', {
-      targetRuleId,
-      availableRules: rules.map((rule) => rule.id),
-    })
-    return {
-      statusAutoUpdated: 0,
-      classificationUpdated: 0,
-      matched: 0,
-      vendorIntended: 0,
-      expenseIntended: 0,
-      samples: [],
-    }
-  }
-
-  const activeRules = ruleList.filter((rule) => rule.is_active)
-
-  let statusAutoUpdated = 0
-  let classificationUpdated = 0
-  let matchedCount = 0
-  let vendorIntended = 0
-  let expenseIntended = 0
-  const classificationLogs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
-  const classificationSignals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
-  const now = new Date().toISOString()
-  const inspectedTransactions: ReceiptTransaction[] = []
-  const unmatchedSamples: Array<AutomationResult['samples'][number]> = []
-
-  for (const transaction of transactions) {
-    const isPending = transaction.status === 'pending'
-    if (!includeClosed && !isPending) continue
-
-    const direction = getTransactionDirection(transaction)
-    const amountValue = guessAmountValue(transaction)
-    inspectedTransactions.push(transaction)
-
-    const matchingRule = selectBestReceiptRule(
-      activeRules,
-      {
-        details: transaction.details,
-        transaction_type: transaction.transaction_type,
-      },
-      { direction, amountValue }
-    )
-
-    if (!matchingRule) {
-      if (unmatchedSamples.length < 20) {
-        unmatchedSamples.push({
-          id: transaction.id,
-          status: transaction.status,
-          direction,
-          details: transaction.details,
-          transaction_type: transaction.transaction_type,
-          amount_in: transaction.amount_in,
-          amount_out: transaction.amount_out,
-          vendor_name: transaction.vendor_name,
-          vendor_source: transaction.vendor_source,
-          expense_category: transaction.expense_category,
-          expense_source: transaction.expense_category_source,
-        })
-      }
-      continue
-    }
-
-    matchedCount += 1
-
-    const vendorLocked = !overrideManual && (transaction.vendor_source === 'manual' || transaction.vendor_source === 'import')
-    const expenseLocked = !overrideManual && transaction.expense_category_source === 'manual'
-
-    const shouldUpdateVendor = Boolean(
-      matchingRule.set_vendor_name &&
-        !vendorLocked &&
-        (
-          transaction.vendor_name !== matchingRule.set_vendor_name ||
-          transaction.vendor_source !== 'rule' ||
-          transaction.vendor_rule_id !== matchingRule.id
-        )
-    )
-
-    const shouldUpdateExpense = Boolean(
-      matchingRule.set_expense_category &&
-        direction === 'out' &&
-        !expenseLocked &&
-        (
-          transaction.expense_category !== matchingRule.set_expense_category ||
-          transaction.expense_category_source !== 'rule' ||
-          transaction.expense_rule_id !== matchingRule.id
-        )
-    )
-
-    const updatePayload: Record<string, unknown> = {}
-    const classificationNotes: string[] = []
-    const targetStatus = matchingRule.auto_status
-    const allowStatusUpdates = isPending || allowClosedStatusUpdates
-    const statusChanged = allowStatusUpdates && targetStatus !== transaction.status
-
-    if (allowStatusUpdates) {
-      if (statusChanged) {
-        updatePayload.status = targetStatus
-        updatePayload.receipt_required = targetStatus === 'pending'
-        updatePayload.marked_by = null
-        updatePayload.marked_by_email = null
-        updatePayload.marked_by_name = null
-        updatePayload.marked_at = now
-        updatePayload.marked_method = 'rule'
-        updatePayload.rule_applied_id = matchingRule.id
-        if (targetStatus === 'auto_completed') {
-          updatePayload.auto_completed_reason = `trusted_rule:${matchingRule.id}`
-        }
-      } else if (targetStatus !== 'pending') {
-        updatePayload.receipt_required = false
-        updatePayload.marked_by = null
-        updatePayload.marked_by_email = null
-        updatePayload.marked_by_name = null
-        updatePayload.marked_at = now
-        updatePayload.marked_method = 'rule'
-        updatePayload.rule_applied_id = matchingRule.id
-      }
-    }
-
-    if (shouldUpdateVendor) {
-      const targetVendorId = matchingRule.vendor_id ?? await resolveReceiptVendorId(supabase, matchingRule.set_vendor_name)
-      vendorIntended += 1
-      updatePayload.vendor_name = matchingRule.set_vendor_name
-      updatePayload.vendor_id = targetVendorId
-      updatePayload.vendor_source = 'rule'
-      updatePayload.vendor_rule_id = matchingRule.id
-      updatePayload.vendor_updated_at = now
-      classificationNotes.push(`Vendor → ${matchingRule.set_vendor_name}`)
-    }
-
-    if (shouldUpdateExpense) {
-      expenseIntended += 1
-      updatePayload.expense_category = matchingRule.set_expense_category
-      updatePayload.expense_category_source = 'rule'
-      updatePayload.expense_rule_id = matchingRule.id
-      updatePayload.expense_updated_at = now
-      classificationNotes.push(`Expense → ${matchingRule.set_expense_category}`)
-    }
-
-    // Ensure rule_applied_id is always set when the rule causes any change,
-    // even if the status doesn't change (e.g. auto_status='pending' classification-only rules)
-    if ((shouldUpdateVendor || shouldUpdateExpense) && !('rule_applied_id' in updatePayload)) {
-      updatePayload.rule_applied_id = matchingRule.id
-    }
-
-    if (!Object.keys(updatePayload).length && classificationNotes.length === 0) {
-      continue
-    }
-
-    updatePayload.updated_at = now
-
-    const { data: updatedTransaction, error } = await supabase
-      .from('receipt_transactions')
-      .update(updatePayload)
-      .eq('id', transaction.id)
-      .select('id')
-      .maybeSingle()
-
-    if (error) {
-      console.warn('[receipts] applyAutomationRules failed to persist transaction update', {
-        transactionId: transaction.id,
-        ruleId: matchingRule.id,
-        error,
-      })
-      continue
-    }
-
-    if (!updatedTransaction) {
-      console.warn('[receipts] applyAutomationRules update affected no transaction rows', {
-        transactionId: transaction.id,
-        ruleId: matchingRule.id,
-      })
-      continue
-    }
-
-    if (statusChanged) {
-      statusAutoUpdated += 1
-      classificationLogs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: targetStatus,
-        action_type: 'rule_auto_mark',
-        note: `Auto-marked by rule: ${matchingRule.name}`,
-        performed_by: null,
-        rule_id: matchingRule.id,
-        performed_at: now,
-      })
-      classificationSignals.push({
-        transaction_id: transaction.id,
-        source: 'rule',
-        signal_type: 'rule_auto_mark',
-        prior_vendor_id: transaction.vendor_id ?? null,
-        new_vendor_id: transaction.vendor_id ?? null,
-        prior_vendor_name: transaction.vendor_name,
-        new_vendor_name: transaction.vendor_name,
-        prior_expense_category: transaction.expense_category,
-        new_expense_category: transaction.expense_category,
-        prior_status: transaction.status,
-        new_status: targetStatus,
-        rule_id: matchingRule.id,
-        ai_confidence: null,
-        performed_by: null,
-        performed_at: now,
-        payload: { rule_name: matchingRule.name },
-      })
-    }
-
-    if (classificationNotes.length) {
-      classificationLogs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: statusChanged ? targetStatus : transaction.status,
-        action_type: 'rule_classification',
-        note: `Classification updated by rule ${matchingRule.name}: ${classificationNotes.join(' | ')}`,
-        performed_by: null,
-        rule_id: matchingRule.id,
-        performed_at: now,
-      })
-      classificationSignals.push({
-        transaction_id: transaction.id,
-        source: 'rule',
-        signal_type: 'rule_classification',
-        prior_vendor_id: transaction.vendor_id ?? null,
-        new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
-        prior_vendor_name: transaction.vendor_name,
-        new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
-        prior_expense_category: transaction.expense_category,
-        new_expense_category: (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
-        prior_status: transaction.status,
-        new_status: statusChanged ? targetStatus : transaction.status,
-        rule_id: matchingRule.id,
-        ai_confidence: null,
-        performed_by: null,
-        performed_at: now,
-        payload: { note: classificationNotes.join(' | '), rule_name: matchingRule.name },
-      })
-      classificationUpdated += 1
-    }
-  }
-
-  if (classificationLogs.length) {
-    const { error: classificationLogError } = await supabase.from('receipt_transaction_logs').insert(classificationLogs)
-    if (classificationLogError) {
-      console.error('Failed to record automation classification logs', classificationLogError)
-    }
-  }
-
-  await recordReceiptClassificationSignals(supabase, classificationSignals)
-
-  if (targetRuleId) {
-    const summary = {
-      targetRuleId,
-      includeClosed,
-      overrideManual,
-      allowClosedStatusUpdates,
-      totalTransactions: transactions.length,
-      matchedCount,
-      statusAutoUpdated,
-      classificationUpdated,
-      vendorIntended,
-      expenseIntended,
-    }
-    logger.debug('[receipts] applyAutomationRules summary', { metadata: summary })
-
-    if (matchedCount === 0) {
-      console.warn('[receipts] applyAutomationRules sample transactions', unmatchedSamples.slice(0, 10))
-    }
-  }
-
-  return {
-    statusAutoUpdated,
-    classificationUpdated,
-    matched: matchedCount,
-    vendorIntended,
-    expenseIntended,
-    samples: inspectedTransactions.slice(0, 50).map((tx) => ({
-      id: tx.id,
-      status: tx.status,
-      direction: getTransactionDirection(tx),
-      details: tx.details,
-      transaction_type: tx.transaction_type,
-      amount_in: tx.amount_in,
-      amount_out: tx.amount_out,
-      vendor_name: tx.vendor_name,
-      vendor_source: tx.vendor_source,
-      expense_category: tx.expense_category,
-      expense_source: tx.expense_category_source,
-    })),
-  }
-}
-
-// ---------------------------------------------------------------------------
 // enqueueReceiptAiClassificationJobs
 // ---------------------------------------------------------------------------
 
@@ -656,23 +260,6 @@ async function enqueueReceiptAiClassificationJobs(
 }
 
 // ---------------------------------------------------------------------------
-// refreshAutomationForPendingTransactions
-// ---------------------------------------------------------------------------
-
-export async function refreshAutomationForPendingTransactions(): Promise<void> {
-  const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('receipt_transactions')
-    .select('id')
-    .eq('status', 'pending')
-    .limit(500)
-
-  const ids = data?.map((row) => row.id) ?? []
-  if (!ids.length) return
-  await applyAutomationRules(ids)
-}
-
-// ---------------------------------------------------------------------------
 // importReceiptStatement
 // @requires Caller must verify user auth and 'receipts.manage' permission
 // ---------------------------------------------------------------------------
@@ -692,6 +279,7 @@ export async function performImportReceiptStatement(
   autoClassified?: number
   batch?: any
   warning?: string
+  alreadyImported?: boolean
 }> {
   let rows: ParsedTransactionRow[]
   try {
@@ -724,6 +312,7 @@ export async function performImportReceiptStatement(
       autoClassified: 0,
       batch: null,
       warning: 'This file has already been imported.',
+      alreadyImported: true,
     }
   }
 
@@ -807,30 +396,42 @@ export async function performImportReceiptStatement(
   let automationWarning: string | undefined
 
   try {
-    const automationResult = await applyAutomationRules(insertedIds)
+    const automationResult = await applyAutomationRules(insertedIds, { performedBy: userId })
     autoApplied = automationResult.statusAutoUpdated ?? 0
     autoClassified = automationResult.classificationUpdated ?? 0
+    const notApplied = (automationResult.failed ?? 0) + (automationResult.conflicts ?? 0)
+    if (notApplied > 0) {
+      automationWarning = `Rules could not be applied to ${notApplied} of the new transactions. Run the rules again from the rules section.`
+    }
   } catch (automationError) {
     console.error('applyAutomationRules failed during import:', automationError)
     automationWarning =
-      'Automation rules could not be applied — you can re-run them manually from the rules page.'
+      'Rules could not be applied to this import. Run them again from the rules section.'
   }
 
-  let aiJobsQueued = 0
-  let aiJobsFailed = 0
+  let aiQueuedTransactions = 0
   let aiEnqueueWarning: string | undefined
+  let systemJobWarning: string | undefined
 
   try {
     const queuedResult = await enqueueReceiptAiClassificationJobs(insertedIds, batch.id)
-    aiJobsQueued = queuedResult.queued
-    aiJobsFailed = queuedResult.failed
-    await enqueueReceiptSystemJob('reconcile_receipt_invoice_payments', batch.id, {
+    aiQueuedTransactions = queuedResult.queuedTransactions
+    if (queuedResult.failed > 0) {
+      aiEnqueueWarning = `AI classification could not be queued for ${insertedIds.length - queuedResult.queuedTransactions} of the new transactions. Use Re-classify to retry.`
+    }
+    const reconcileQueued = await enqueueReceiptSystemJob('reconcile_receipt_invoice_payments', batch.id, {
       transaction_ids: insertedIds,
+      initiated_by: userId,
     })
-    await enqueueReceiptSystemJob('refresh_receipt_duplicate_candidates', batch.id)
+    const duplicatesQueued = await enqueueReceiptSystemJob('refresh_receipt_duplicate_candidates', batch.id)
+    if (!reconcileQueued) {
+      systemJobWarning = 'Invoice matching could not be queued for this import.'
+    } else if (!duplicatesQueued) {
+      systemJobWarning = 'The duplicate check could not be queued for this import.'
+    }
   } catch (enqueueError) {
-    console.error('Failed to enqueue AI classification jobs:', enqueueError)
-    aiEnqueueWarning = 'AI classification could not be queued — use the re-queue button to retry.'
+    console.error('Failed to enqueue receipt jobs after import:', enqueueError)
+    aiEnqueueWarning = 'AI classification could not be queued. Use Re-classify to retry.'
   }
 
   let logWarning: string | undefined
@@ -841,7 +442,7 @@ export async function performImportReceiptStatement(
       previous_status: null,
       new_status: row.status,
       action_type: 'import',
-      note: `Imported via ${receiptFile.name} [AI jobs: ${aiJobsQueued}/${insertedIds.length}]`,
+      note: `Imported via ${receiptFile.name} [AI queued for ${aiQueuedTransactions} of ${insertedIds.length} transactions]`,
       performed_by: userId,
       rule_id: null,
       performed_at: now,
@@ -850,7 +451,7 @@ export async function performImportReceiptStatement(
     const { error: importLogError } = await supabase.from('receipt_transaction_logs').insert(logs)
     if (importLogError) {
       console.error('Failed to record import transaction logs', importLogError)
-      logWarning = 'Audit log for this import could not be written — transactions were still imported.'
+      logWarning = 'The history entries for this import could not be written. The transactions were still imported.'
     }
   }
 
@@ -861,7 +462,8 @@ export async function performImportReceiptStatement(
     autoApplied,
     autoClassified,
     batch,
-    warning: [automationWarning, aiEnqueueWarning, logWarning].filter(Boolean).join(' ') || undefined,
+    warning:
+      [automationWarning, aiEnqueueWarning, systemJobWarning, logWarning].filter(Boolean).join(' ') || undefined,
   }
 }
 
@@ -957,6 +559,62 @@ export async function performMarkReceiptTransaction(
 }
 
 // ---------------------------------------------------------------------------
+// updateReceiptNote
+// @requires Caller must verify user auth and 'receipts.manage' permission
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves the note on a payment and nothing else. Notes used to be saved through the status
+ * change, which rewrote who had marked the payment and dropped its link to the rule that
+ * closed it.
+ */
+export async function performUpdateReceiptNote(
+  userId: string,
+  input: { transactionId: string; note?: string | null }
+): Promise<{ success?: boolean; error?: string; transaction?: ReceiptTransaction }> {
+  if (typeof input.transactionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.transactionId)) {
+    return { error: 'Transaction reference is invalid' }
+  }
+
+  const note = typeof input.note === 'string' ? input.note.trim() : ''
+  if (note.length > 500) {
+    return { error: 'Keep the note under 500 characters' }
+  }
+
+  const supabase = createAdminClient()
+  const { data: updated, error: updateError } = await supabase
+    .from('receipt_transactions')
+    .update({ notes: note.length ? note : null })
+    .eq('id', input.transactionId)
+    .select('*')
+    .maybeSingle()
+
+  if (updateError) {
+    console.error('Failed to update receipt note:', updateError)
+    return { error: 'Failed to save the note.' }
+  }
+  if (!updated) {
+    return { error: 'Transaction not found' }
+  }
+
+  const { error: noteLogError } = await supabase.from('receipt_transaction_logs').insert({
+    transaction_id: input.transactionId,
+    previous_status: updated.status,
+    new_status: updated.status,
+    action_type: 'note_update',
+    note: note.length ? note : 'Note cleared',
+    performed_by: userId,
+    rule_id: null,
+    performed_at: new Date().toISOString(),
+  })
+  if (noteLogError) {
+    console.error('Failed to record note update transaction log', noteLogError)
+  }
+
+  return { success: true, transaction: updated }
+}
+
+// ---------------------------------------------------------------------------
 // updateReceiptClassification
 // @requires Caller must verify user auth and 'receipts.manage' permission
 // ---------------------------------------------------------------------------
@@ -1026,7 +684,9 @@ export async function performUpdateReceiptClassification(
       const vendorId = vendorName ? await resolveReceiptVendorId(supabase, vendorName) : null
       updatePayload.vendor_name = vendorName ?? null
       updatePayload.vendor_id = vendorId
-      updatePayload.vendor_source = (vendorName ? 'manual' : null) as ReceiptClassificationSource | null
+      // A value a person clears is still that person's decision, so the source stays manual
+      // and no rule or AI run fills it back in.
+      updatePayload.vendor_source = 'manual' satisfies ReceiptClassificationSource
       updatePayload.vendor_rule_id = null
       updatePayload.vendor_updated_at = now
       changeNotes.push(vendorName ? `Vendor → ${vendorName}` : 'Vendor cleared')
@@ -1038,7 +698,7 @@ export async function performUpdateReceiptClassification(
     const currentExpense = transaction.expense_category ?? null
     if (currentExpense !== (expenseCategory ?? null)) {
       updatePayload.expense_category = expenseCategory ?? null
-      updatePayload.expense_category_source = (expenseCategory ? 'manual' : null) as ReceiptClassificationSource | null
+      updatePayload.expense_category_source = 'manual' satisfies ReceiptClassificationSource
       updatePayload.expense_rule_id = null
       updatePayload.expense_updated_at = now
       changeNotes.push(expenseCategory ? `Expense → ${expenseCategory}` : 'Expense cleared')
@@ -1368,71 +1028,132 @@ export async function performCompleteReceiptUpload(
   }
 
   const supabase = createAdminClient()
+  const storagePath = validation.data.storagePath
+
+  // Nothing below removes a stored object on the strength of the path alone. The path comes
+  // from the browser, and it has the same shape as every receipt already stored.
   const { transaction, profile, error } = await getReceiptUploadContext(supabase, userId, input.transactionId)
   if (error || !transaction) {
-    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
     return { error: error ?? 'Transaction not found' }
   }
 
-  const { data: uploadIntent, error: uploadIntentError } = await (supabase as any)
-    .from('receipt_upload_intents')
-    .select('id, transaction_id, storage_path, issued_to, completed_at')
-    .eq('transaction_id', input.transactionId)
-    .eq('storage_path', validation.data.storagePath)
-    .eq('issued_to', userId)
-    .is('completed_at', null)
-    .maybeSingle()
-
-  if (uploadIntentError || !uploadIntent) {
-    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
-    return { error: 'Uploaded receipt path was not issued for this transaction' }
-  }
-
   const expectedYearPrefix = `${transaction.transaction_date.substring(0, 4)}/`
-  if (!validation.data.storagePath.startsWith(expectedYearPrefix)) {
-    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
+  if (!storagePath.startsWith(expectedYearPrefix)) {
+    await releaseUnattachedReceiptUpload(supabase, input.transactionId, storagePath, userId)
     return { error: 'Uploaded receipt path is invalid' }
   }
 
   let contentHash: string | null = null
   const { data: storedFile, error: downloadError } = await supabase.storage
     .from(RECEIPT_BUCKET)
-    .download(validation.data.storagePath)
+    .download(storagePath)
   if (!downloadError && storedFile) {
     contentHash = createHash('sha256')
       .update(Buffer.from(await storedFile.arrayBuffer()))
       .digest('hex')
   }
 
-  const result = await recordUploadedReceiptForTransaction({
-    supabase,
-    userId,
-    userEmail,
-    transactionId: input.transactionId,
-    transaction,
-    profile,
-    storagePath: validation.data.storagePath,
-    fileName: validation.data.fileName,
-    fileType: validation.data.fileType,
-    fileSize: validation.data.fileSize,
-    contentHash,
+  // One locked transaction: file row, payment, log and intent move together, and a second call
+  // for the same upload is answered with the file the first one stored.
+  const { data: rpcResult, error: rpcError } = await (supabase as any).rpc('complete_receipt_upload', {
+    p_transaction_id: input.transactionId,
+    p_storage_path: storagePath,
+    p_user_id: userId,
+    p_user_email: userEmail,
+    p_user_name: profile?.full_name ?? null,
+    p_file_name: validation.data.fileName,
+    p_mime_type: validation.data.fileType,
+    p_file_size_bytes: validation.data.fileSize,
+    p_content_hash: contentHash,
   })
 
-  if (result.success) {
-    const { error: completeIntentError } = await (supabase as any)
-      .from('receipt_upload_intents')
-      .update({
-        completed_at: new Date().toISOString(),
-        receipt_file_id: result.receipt?.id ?? null,
-      })
-      .eq('id', uploadIntent.id)
-
-    if (completeIntentError) {
-      console.error('Failed to mark receipt upload intent completed:', completeIntentError)
-    }
+  if (rpcError) {
+    console.error('Failed to complete receipt upload:', rpcError)
+    await releaseUnattachedReceiptUpload(supabase, input.transactionId, storagePath, userId)
+    return { error: 'Failed to store receipt metadata.' }
   }
 
-  return result
+  const outcome = (rpcResult as { outcome?: string } | null)?.outcome
+  const receipt = (rpcResult as { receipt?: Record<string, unknown> } | null)?.receipt ?? null
+
+  if (outcome === 'replayed' && receipt) {
+    return { success: true, receipt }
+  }
+
+  if (outcome === 'completed' && receipt) {
+    const previousStatus = ((rpcResult as { previous_status?: string }).previous_status ??
+      transaction.status) as ReceiptTransaction['status']
+    await recordReceiptClassificationSignals(supabase, [{
+      transaction_id: input.transactionId,
+      source: 'human',
+      signal_type: 'receipt_upload',
+      prior_vendor_id: null,
+      new_vendor_id: null,
+      prior_vendor_name: null,
+      new_vendor_name: null,
+      prior_expense_category: null,
+      new_expense_category: null,
+      prior_status: previousStatus,
+      new_status: 'completed',
+      rule_id: null,
+      ai_confidence: null,
+      performed_by: userId,
+      performed_at: new Date().toISOString(),
+      payload: { file_name: validation.data.fileName, content_hash: contentHash },
+    }])
+    return { success: true, receipt }
+  }
+
+  if (outcome === 'transaction_not_found') {
+    return { error: 'Transaction not found' }
+  }
+
+  if (outcome === 'already_completed') {
+    return { error: 'This upload was already completed and its file has since been removed. Upload the receipt again.' }
+  }
+
+  // not_issued, or anything unexpected: the path was never issued to this user for this
+  // payment, so it is not ours to touch.
+  return { error: 'Uploaded receipt path was not issued for this transaction' }
+}
+
+/**
+ * Removes a stored object that will never be attached. The database decides, under the same
+ * lock a completion takes, whether the caller still holds an open intent for a path no file
+ * row references. Only then is the object removed, so a file that was attached can never lose
+ * its object, however the calls interleave.
+ */
+async function releaseUnattachedReceiptUpload(
+  supabase: AdminClient,
+  transactionId: string,
+  storagePath: string,
+  userId: string
+): Promise<void> {
+  const { data: released, error: releaseError } = await (supabase as any).rpc('release_receipt_upload_intent', {
+    p_transaction_id: transactionId,
+    p_storage_path: storagePath,
+    p_user_id: userId,
+  })
+
+  if (releaseError) {
+    console.error('Failed to release receipt upload intent:', releaseError)
+    return
+  }
+
+  if (released !== 'released') {
+    return
+  }
+
+  const { error: removeError } = await supabase.storage.from(RECEIPT_BUCKET).remove([storagePath])
+  if (removeError) {
+    // The intent is gone and the object is still there. It is referenced by nothing, so the
+    // storage sweep will find it; say so loudly in the meantime.
+    console.error('Released a receipt upload but could not remove its stored object', {
+      storagePath,
+      transactionId,
+      removeError,
+    })
+  }
 }
 
 export async function performUploadReceiptForTransaction(
@@ -1655,7 +1376,8 @@ function getRuleFormData(formData: FormData) {
     match_direction: formData.get('match_direction') || 'both',
     match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
-    auto_status: formData.get('auto_status') || 'no_receipt_required',
+    // No outcome chosen means the rule only classifies. Closing a payment has to be asked for.
+    auto_status: formData.get('auto_status') || 'pending',
     set_vendor_name: optionalRuleText(formData.get('set_vendor_name')),
     set_expense_category: optionalRuleText(formData.get('set_expense_category')),
   }
@@ -1819,7 +1541,7 @@ export async function performToggleReceiptRule(
   ruleId: string,
   isActive: boolean,
   userId?: string
-): Promise<{ success?: boolean; error?: string; rule?: ReceiptRule }> {
+): Promise<{ success?: boolean; error?: string; rule?: ReceiptRule; warning?: string }> {
   const supabase = createAdminClient()
   const now = new Date().toISOString()
   const { data: updated, error } = await supabase
@@ -1840,13 +1562,20 @@ export async function performToggleReceiptRule(
     return { error: 'Rule not found' }
   }
 
+  let warning: string | undefined
   if (isActive) {
-    await refreshAutomationForPendingTransactions()
+    // The rule is switched on whatever happens next, so a failed re-run is a warning, not an error.
+    try {
+      await refreshAutomationForPendingTransactions({ performedBy: userId ?? null })
+    } catch (refreshError) {
+      console.error('Failed to re-run rules after enabling a rule', refreshError)
+      warning = 'The rule is on, but it could not be run over the pending transactions. Run it from the rules list.'
+    }
   }
 
   await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', updated.id)
 
-  return { success: true, rule: updated }
+  return { success: true, rule: updated, warning }
 }
 
 // ---------------------------------------------------------------------------
@@ -1876,24 +1605,6 @@ export async function performDeleteReceiptRule(
 
   if (!updated) {
     return { error: 'Rule not found' }
-  }
-
-  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', ruleId)
-
-  return { success: true }
-}
-
-export async function performHardDeleteReceiptRule(
-  ruleId: string
-): Promise<{ success?: boolean; error?: string }> {
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('receipt_rules')
-    .delete()
-    .eq('id', ruleId)
-
-  if (error) {
-    return { error: 'Failed to delete rule.' }
   }
 
   await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', ruleId)

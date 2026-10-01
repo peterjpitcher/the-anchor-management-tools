@@ -159,7 +159,7 @@ export const receiptTransactionStatusSchema = z.enum([
   'cant_find',
 ]);
 
-const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);
+const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import', 'invoice']);
 
 export const receiptExpenseCategorySchema = z.enum([
   'Total Staff',
@@ -219,20 +219,17 @@ export const receiptRuleSchema = z.object({
   match_direction: receiptRuleDirectionSchema.default('both'),
   match_min_amount: z.number().nonnegative().optional(),
   match_max_amount: z.number().nonnegative().optional(),
-  auto_status: receiptTransactionStatusSchema.default('no_receipt_required'),
+  // A rule with no outcome chosen only classifies. Closing a payment has to be asked for.
+  auto_status: receiptTransactionStatusSchema.default('pending'),
   set_vendor_name: z.string().trim().max(120).optional(),
   set_expense_category: receiptExpenseCategorySchema.optional(),
 }).refine((data) => {
-  return Boolean(
-    data.match_description ||
-    data.match_transaction_type ||
-    data.match_direction !== 'both' ||
-    data.match_min_amount != null ||
-    data.match_max_amount != null
-  );
+  // Direction and amount only narrow a match. On their own they would catch every otherwise
+  // unmatched payment going that way, so a rule needs words to look for or a bank type.
+  return Boolean(data.match_description || data.match_transaction_type);
 }, {
   path: ['match_description'],
-  message: 'Add at least one match condition before saving this rule',
+  message: 'Add match keywords or a bank transaction type before saving this rule',
 }).refine((data) => {
   if (data.match_min_amount != null && data.match_max_amount != null) {
     return data.match_min_amount <= data.match_max_amount;

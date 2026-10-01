@@ -119,7 +119,8 @@ export type ReceiptTransactionStatus =
   | 'no_receipt_required'
   | 'cant_find';
 
-export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import';
+// Who decided a vendor or category. `src/lib/receipts/field-protection.ts` says who may overwrite whom.
+export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import' | 'invoice';
 
 export type ReceiptSourceType = 'bank' | 'amex';
 

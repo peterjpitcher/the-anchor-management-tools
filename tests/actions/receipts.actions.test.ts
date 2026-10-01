@@ -179,7 +179,7 @@ describe('Receipts actions expense-direction safeguards', () => {
   it('does not apply expense updates during retro rules run for incoming-only transactions', async () => {
     const updatePayloads: Record<string, unknown>[] = []
     const rule = {
-      id: 'rule-legacy-both',
+      id: '33333333-3333-4333-8333-333333333333',
       name: 'Legacy refund rule',
       is_active: true,
       match_description: 'refund',
@@ -212,6 +212,7 @@ describe('Receipts actions expense-direction safeguards', () => {
       marked_at: null,
       marked_method: null,
       rule_applied_id: null,
+      updated_at: '2026-09-01T10:00:00.000000+00:00',
     }
 
     const receiptRulesSelect = vi.fn(() => {
@@ -244,7 +245,11 @@ describe('Receipts actions expense-direction safeguards', () => {
 
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: incomingTx.id }, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    // The engine filters on the id and on the updated_at it read, so the write only lands on an
+    // unchanged payment.
+    const updateChain: Record<string, unknown> = { select: updateSelect }
+    const updateEq = vi.fn(() => updateChain)
+    updateChain.eq = updateEq
     const update = vi.fn((payload: Record<string, unknown>) => {
       updatePayloads.push(payload)
       return { eq: updateEq }
@@ -301,5 +306,7 @@ describe('Receipts actions expense-direction safeguards', () => {
     })
     expect(updatePayloads[0]).not.toHaveProperty('expense_category')
     expect(updatePayloads[0]).not.toHaveProperty('expense_category_source')
+    expect(updateEq).toHaveBeenCalledWith('id', incomingTx.id)
+    expect(updateEq).toHaveBeenCalledWith('updated_at', incomingTx.updated_at)
   })
 })

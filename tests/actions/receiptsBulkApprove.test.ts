@@ -69,12 +69,15 @@ function makeAdmin(): Handles {
     rpc,
     from: vi.fn((table: string) => {
       if (table === 'receipt_transactions') {
-        // refreshAutomationForPendingTransactions: select('id').eq('status','pending').limit(500)
-        const limit = vi.fn(() => {
+        // refreshAutomationForPendingTransactions pages through every pending row in id order:
+        // select('id').eq('status','pending').order('id').range(from, to). It used to read the
+        // first 500 in no order, so a newly approved rule could miss its own evidence.
+        const range = vi.fn(() => {
           pendingRefreshCount += 1
           return Promise.resolve({ data: [], error: null })
         })
-        const eq = vi.fn().mockReturnValue({ limit })
+        const order = vi.fn().mockReturnValue({ range })
+        const eq = vi.fn().mockReturnValue({ order })
         return { select: vi.fn().mockReturnValue({ eq }) }
       }
       if (table === 'receipt_rules') {

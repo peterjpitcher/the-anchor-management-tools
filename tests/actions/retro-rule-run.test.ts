@@ -45,6 +45,7 @@ vi.mock('@/services/receipts', async (importOriginal) => {
 })
 
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { applyAutomationRules } from '@/services/receipts'
@@ -54,8 +55,12 @@ const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCurrentUser = getCurrentUser as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedApplyAutomationRules = applyAutomationRules as unknown as Mock
+const mockedAudit = logAuditEvent as unknown as Mock
 
-const RULE = { id: 'rule-1', name: 'Retro rule', is_active: true }
+// The action refuses anything that is not a UUID, so the fixtures use real-shaped ids.
+const RULE = { id: '11111111-1111-4111-8111-111111111111', name: 'Retro rule', is_active: true }
+const USER = { user_id: '22222222-2222-4222-8222-222222222222', user_email: 'user@example.com' }
+const txId = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
 const CHUNK_SIZE = 100
 const TRANSACTION_COUNT = 250
 
@@ -69,7 +74,7 @@ type OrderKey = { column: keyof FakeRow; ascending: boolean }
 
 function buildRows(count: number, dateFor: (index: number) => string): FakeRow[] {
   return Array.from({ length: count }, (_, index) => ({
-    id: `tx-${String(index).padStart(3, '0')}`,
+    id: txId(index),
     status: 'pending',
     transaction_date: dateFor(index),
   }))
@@ -111,7 +116,7 @@ function sortRows(rows: FakeRow[], orders: OrderKey[], tieSeed: number): FakeRow
   return result
 }
 
-function createFakeDb(rows: FakeRow[], options: { shuffleTies?: boolean } = {}) {
+function createFakeDb(rows: FakeRow[], options: { shuffleTies?: boolean; superAdmin?: boolean } = {}) {
   const store = new Map(rows.map((row) => [row.id, { ...row }]))
   let queryCount = 0
 
@@ -150,6 +155,13 @@ function createFakeDb(rows: FakeRow[], options: { shuffleTies?: boolean } = {}) 
   }
 
   const client = {
+    // Reaching closed transactions is a super-admin decision, checked through this RPC.
+    async rpc(name: string) {
+      if (name === 'is_super_admin') {
+        return { data: options.superAdmin !== false, error: null }
+      }
+      throw new Error(`Unexpected rpc: ${name}`)
+    },
     from(table: string) {
       if (table === 'receipt_rules') {
         return {
@@ -242,6 +254,9 @@ function trackVisits(options: { store: Map<string, FakeRow>; matches: boolean })
       matched: options.matches ? ids.length : 0,
       vendorIntended: 0,
       expenseIntended: 0,
+      protectedCount: 0,
+      conflicts: 0,
+      failed: 0,
       samples: [],
     }
   })
@@ -255,7 +270,7 @@ describe('Retro rule run traversal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedPermission.mockResolvedValue(true)
-    mockedCurrentUser.mockResolvedValue({ user_id: 'user-1', user_email: 'user@example.com' })
+    mockedCurrentUser.mockResolvedValue(USER)
   })
 
   it('visits all 250 pending transactions exactly once when the rule matches every one', async () => {
@@ -313,5 +328,124 @@ describe('Retro rule run traversal', () => {
 
     expect(step).toEqual({ success: false, error: 'Insufficient permissions' })
     expect(mockedApplyAutomationRules).not.toHaveBeenCalled()
+  })
+})
+
+describe('Retro rule run safety', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedCurrentUser.mockResolvedValue(USER)
+  })
+
+  function arrange(count = 3, options: { superAdmin?: boolean } = {}) {
+    const rows = buildRows(count, () => '2026-09-01')
+    const { client, store } = createFakeDb(rows, options)
+    mockedCreateAdminClient.mockReturnValue(client)
+    trackVisits({ store, matches: false })
+  }
+
+  it('never asks the engine to override manual values or to move closed statuses', async () => {
+    arrange()
+
+    await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, scope: 'all' })
+
+    expect(mockedApplyAutomationRules).toHaveBeenCalledTimes(1)
+    const engineOptions = mockedApplyAutomationRules.mock.calls[0][1]
+    expect(engineOptions).toEqual({
+      includeClosed: true,
+      targetRuleId: RULE.id,
+      dryRun: false,
+      performedBy: USER.user_id,
+    })
+    expect(engineOptions).not.toHaveProperty('overrideManual')
+    expect(engineOptions).not.toHaveProperty('allowClosedStatusUpdates')
+  })
+
+  it('refuses the all scope to anyone who is not a super admin', async () => {
+    arrange(3, { superAdmin: false })
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, scope: 'all' })
+
+    expect(step).toEqual({
+      success: false,
+      error: 'Only super admins can run a rule over all historical transactions.',
+    })
+    expect(mockedApplyAutomationRules).not.toHaveBeenCalled()
+  })
+
+  it('still lets a manager run the pending scope', async () => {
+    arrange(3, { superAdmin: false })
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, scope: 'pending' })
+
+    expect(step.success).toBe(true)
+    expect(mockedApplyAutomationRules.mock.calls[0][1]).toMatchObject({ includeClosed: false })
+  })
+
+  it('rejects a scope, a rule id or a cursor the browser made up', async () => {
+    arrange()
+
+    expect(
+      await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, scope: 'everything' as unknown as 'all' })
+    ).toEqual({ success: false, error: 'Choose pending or all transactions' })
+    expect(await runReceiptRuleRetroactivelyStep({ ruleId: 'not-a-rule' })).toEqual({
+      success: false,
+      error: 'Rule not found',
+    })
+    expect(await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, cursor: "x' or 1=1" })).toEqual({
+      success: false,
+      error: 'Invalid run position',
+    })
+    expect(mockedApplyAutomationRules).not.toHaveBeenCalled()
+  })
+
+  it('caps the chunk size the browser asks for at 200', async () => {
+    arrange(450)
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, chunkSize: 100000 })
+
+    expect(step.success).toBe(true)
+    expect(mockedApplyAutomationRules.mock.calls[0][0]).toHaveLength(200)
+  })
+
+  it('a dry run passes dryRun to the engine and writes no audit entry', async () => {
+    arrange()
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id, dryRun: true })
+
+    expect(step.success).toBe(true)
+    expect(mockedApplyAutomationRules.mock.calls[0][1]).toMatchObject({ dryRun: true })
+    expect(mockedAudit).not.toHaveBeenCalled()
+  })
+
+  it('a real run is audited on the server, naming the user, at the start and at the end', async () => {
+    arrange()
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id })
+
+    expect(step.success && step.done).toBe(true)
+    const entries = mockedAudit.mock.calls.map((call) => call[0])
+    expect(entries.map((entry) => entry.operation_type)).toEqual(['retro_run_started', 'retro_run'])
+    for (const entry of entries) {
+      expect(entry.user_id).toBe(USER.user_id)
+      expect(entry.user_email).toBe(USER.user_email)
+      expect(entry.resource_id).toBe(RULE.id)
+    }
+    expect(entries[1].additional_info).toMatchObject({ scope: 'pending', reviewed_in_step: 3, done: true })
+  })
+
+  it('reports an engine failure as a failure and audits it', async () => {
+    arrange()
+    mockedApplyAutomationRules.mockRejectedValueOnce(new Error('Failed to load receipt rules'))
+
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId: RULE.id })
+
+    expect(step).toEqual({
+      success: false,
+      error: 'The rule could not be run. Nothing in this step was changed.',
+    })
+    const failure = mockedAudit.mock.calls.map((call) => call[0]).find((entry) => entry.operation_status === 'failure')
+    expect(failure).toMatchObject({ operation_type: 'retro_run', user_id: USER.user_id })
   })
 })

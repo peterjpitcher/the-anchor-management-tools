@@ -34,7 +34,7 @@ import {
   type RulePreviewResult,
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema, receiptRuleKindSchema } from '@/lib/validation'
-import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
+import { useRetroRuleRunner, type RetroTotals } from '@/hooks/useRetroRuleRunner'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion } from '@/types/database'
 import { RECEIPT_RULE_STATE_TONE, RECEIPT_STATUS_LABEL } from '@/app/(authenticated)/receipts/_shared/status-ui'
@@ -147,7 +147,15 @@ export function ReceiptRules({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageReceipts = hasPermission('receipts', 'manage')
-  const { runRetro, isRunning: isRetroPending, activeRuleId: retroRuleId } = useRetroRuleRunner()
+  const {
+    previewRetro,
+    runRetro,
+    isRunning: isRetroRunning,
+    isPreviewing: isRetroPreviewing,
+    activeRuleId: retroRuleId,
+  } = useRetroRuleRunner()
+  // Busy from the first click: working out what would change, then changing it.
+  const isRetroPending = isRetroRunning || isRetroPreviewing
 
   const [isSectionOpen, setIsSectionOpen] = useState(false)
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null)
@@ -155,9 +163,23 @@ export function ReceiptRules({
   const [isRulePending, startRuleTransition] = useTransition()
   const [isPreviewPending, startPreviewTransition] = useTransition()
   const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
-  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
+  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('pending')
   const [retroConfirmRuleId, setRetroConfirmRuleId] = useState<string | null>(null)
-  const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('all')
+  const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('pending')
+  // A run that has been worked out and is waiting for a yes. Nothing is written until then.
+  const [retroRun, setRetroRun] = useState<{
+    ruleId: string
+    ruleName: string
+    scope: 'pending' | 'all'
+    totals: RetroTotals
+  } | null>(null)
+  // Reaching closed transactions is a super-admin decision; the server refuses it otherwise.
+  const retroScopeOptions = canGovernRules
+    ? [
+        { value: 'pending', label: 'Pending only' },
+        { value: 'all', label: 'All historical' },
+      ]
+    : [{ value: 'pending', label: 'Pending only' }]
   const [ruleSearch, setRuleSearch] = useState('')
   const [expandedRuleKeys, setExpandedRuleKeys] = useState<string[]>([])
   const [newMatchDescription, setNewMatchDescription] = useState('')
@@ -335,14 +357,27 @@ export function ReceiptRules({
   // but usually it's triggered by a user action. 
   // The original code had a "Apply" button in a banner.
   
-  function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
+  // Works out what the run would change, then asks. The run itself starts from the dialog.
+  async function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
     if (!canManageReceipts) {
       toast.error('You do not have permission to manage receipts.')
       return
     }
+    const ruleName = rules.find((rule) => rule.id === ruleId)?.name ?? retroPrompt?.name ?? 'this rule'
+    const safeScope = canGovernRules ? scope : 'pending'
     setRetroPrompt(null)
     setRetroScope('pending')
-    runRetro({ ruleId, scope })
+    const totals = await previewRetro({ ruleId, scope: safeScope })
+    if (!totals) return
+    if (totals.statusAutoUpdated + totals.classificationUpdated === 0) {
+      toast.success(
+        totals.protectedCount > 0
+          ? `Nothing to change. ${totals.protectedCount} matching transactions were set by a person and stay as they are.`
+          : 'Nothing to change. Every matching transaction is already as this rule would set it.'
+      )
+      return
+    }
+    setRetroRun({ ruleId, ruleName, scope: safeScope, totals })
   }
 
   function handlePreviewRule(formRef: React.RefObject<HTMLFormElement | null>) {
@@ -370,7 +405,11 @@ export function ReceiptRules({
         setActiveRuleId(null)
         return
       }
-      toast.success(`Rule ${rule.is_active ? 'disabled' : 'enabled'}`)
+      if (result?.warning) {
+        toast.error(result.warning)
+      } else {
+        toast.success(`Rule ${rule.is_active ? 'disabled' : 'enabled'}`)
+      }
       router.refresh()
       setActiveRuleId(null)
     })
@@ -403,7 +442,11 @@ export function ReceiptRules({
         setActiveRuleId(null)
         return
       }
-      toast.success(active ? 'Suggested rule approved' : 'Suggested rule approved as disabled')
+      if (result && 'warning' in result && result.warning) {
+        toast.error(result.warning)
+      } else {
+        toast.success(active ? 'Suggested rule approved' : 'Suggested rule approved as disabled')
+      }
       router.refresh()
       setActiveRuleId(null)
     })
@@ -422,6 +465,8 @@ export function ReceiptRules({
       const failed = result.failed ?? 0
       if (failed > 0) {
         toast.error(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}, ${failed} failed`)
+      } else if (result.warning) {
+        toast.error(result.warning)
       } else {
         toast.success(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}`)
       }
@@ -656,17 +701,18 @@ export function ReceiptRules({
                     role="status"
                     title={`Run rule \u201c${retroPrompt.name}\u201d on ${retroScope === 'all' ? 'all transactions' : 'pending transactions'}?`}
                   >
-                    <p>We can re-check historical records without reopening completed items.</p>
+                    <p>
+                      Pending transactions get the rule in full. Closed transactions keep their status:
+                      the rule only fills in or refreshes their vendor and category, and anything set by
+                      hand is left alone. You will see what would change before anything is saved.
+                    </p>
                     <div className="mt-2 flex flex-wrap items-end gap-2">
                       <Select
                         aria-label="Which transactions to run the rule on"
                         value={retroScope}
                         onChange={(event) => setRetroScope(event.target.value as 'pending' | 'all')}
                         className="w-44"
-                        options={[
-                          { value: 'pending', label: 'Pending only' },
-                          { value: 'all', label: 'All historical' },
-                        ]}
+                        options={retroScopeOptions}
                       />
                       <Button
                         size="sm"
@@ -683,8 +729,9 @@ export function ReceiptRules({
                         variant="secondary"
                         onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
                         loading={isRetroPending}
+                        disabled={isRetroPending}
                       >
-                        Run Now
+                        Check What Changes
                       </Button>
                     </div>
                   </Alert>
@@ -729,11 +776,11 @@ export function ReceiptRules({
                     { value: 'out', label: 'Money out' },
                     { value: 'in', label: 'Money in' },
                   ]} />
-                  <Select label="Outcome" name="auto_status" defaultValue="no_receipt_required" options={[
+                  <Select label="Outcome" name="auto_status" defaultValue="pending" options={[
+                    { value: 'pending', label: 'Leave pending' },
                     { value: 'no_receipt_required', label: 'Mark as not required' },
                     { value: 'auto_completed', label: 'Mark as auto completed' },
                     { value: 'completed', label: 'Mark as completed' },
-                    { value: 'pending', label: 'Leave pending' },
                   ]} />
                   <Input label="Set vendor name" name="set_vendor_name" placeholder="Set vendor name (optional)" />
                   <Select label="Set expense" name="set_expense_category" defaultValue="" options={[
@@ -857,10 +904,7 @@ export function ReceiptRules({
                                 value={retroConfirmScope}
                                 onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
                                 className="w-40"
-                                options={[
-                                  { value: 'pending', label: 'Pending only' },
-                                  { value: 'all', label: 'All historical' },
-                                ]}
+                                options={retroScopeOptions}
                               />
                               <Button size="sm" variant="ghost" onClick={() => setRetroConfirmRuleId(null)}>Cancel</Button>
                               <Button
@@ -870,14 +914,14 @@ export function ReceiptRules({
                                 loading={isRetroPending && retroRuleId === rule.id}
                                 disabled={isRetroPending}
                               >
-                                Run Now
+                                Check What Changes
                               </Button>
                             </div>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('all') }}
+                              onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('pending') }}
                               disabled={!rule.is_active || isRetroPending || !canManageReceipts}
                               title={rule.is_active ? 'Run this rule across historical transactions' : 'Enable the rule before running it'}
                             >
@@ -983,6 +1027,42 @@ export function ReceiptRules({
         title="Deactivate Rule"
         message="This rule will stop matching new transactions. Transactions it has already classified are left as they are."
         confirmLabel="Deactivate"
+        tone="primary"
+      />
+      <ConfirmDialog
+        open={Boolean(retroRun)}
+        onClose={() => setRetroRun(null)}
+        onConfirm={() => {
+          if (!retroRun) return
+          const { ruleId, scope } = retroRun
+          setRetroRun(null)
+          runRetro({ ruleId, scope })
+        }}
+        title={retroRun ? `Run \u201c${retroRun.ruleName}\u201d` : 'Run rule'}
+        message={retroRun ? (
+          <div className="space-y-2">
+            <p>
+              Checked {retroRun.totals.reviewed}{' '}
+              {retroRun.scope === 'all' ? 'transactions' : 'pending transactions'}. This rule matches{' '}
+              {retroRun.totals.matched} of them and would:
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>set the vendor on {retroRun.totals.vendorIntended}</li>
+              <li>set the expense category on {retroRun.totals.expenseIntended}</li>
+              <li>change the status of {retroRun.totals.statusAutoUpdated} pending transactions</li>
+            </ul>
+            {retroRun.totals.protectedCount > 0 && (
+              <p>
+                {retroRun.totals.protectedCount} matching transactions were set by a person, the import
+                or invoice matching and will be left as they are.
+              </p>
+            )}
+            {retroRun.scope === 'all' && (
+              <p>Closed transactions keep their status. Only their vendor and category can change.</p>
+            )}
+          </div>
+        ) : undefined}
+        confirmLabel="Run Rule"
         tone="primary"
       />
     </Card>

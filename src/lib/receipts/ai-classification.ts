@@ -1,5 +1,6 @@
-'use server'
-
+// Server only, and deliberately not a server action. With a 'use server' directive the build
+// listed classifyReceiptTransactionsWithAI as callable from a browser, with no permission check.
+// It is run by the job queue and nowhere else.
 import type { createAdminClient } from '@/lib/supabase/admin'
 import {
   classifyReceiptTransactionsBatch,
