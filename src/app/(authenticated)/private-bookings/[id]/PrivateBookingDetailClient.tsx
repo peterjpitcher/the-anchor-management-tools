@@ -1996,7 +1996,15 @@ export default function PrivateBookingDetailClient({
   }, [bookingId]);
 
   const handleConfirmInvoice = useCallback(
-    async ({ depositTreatment, reference }: { depositTreatment: DepositTreatment; reference: string }) => {
+    async ({
+      depositTreatment,
+      reference,
+      paypalPaymentsEnabled,
+    }: {
+      depositTreatment: DepositTreatment;
+      reference: string;
+      paypalPaymentsEnabled?: boolean;
+    }) => {
       if (!bookingId || invoiceSending) return;
       setInvoiceSending(true);
       setInvoiceError(null);
@@ -2006,6 +2014,8 @@ export default function PrivateBookingDetailClient({
           bookingId,
           depositTreatment,
           reference,
+          // Only present on a customer's first invoice, where the dialog asks.
+          paypalPaymentsEnabled,
           // Binds this confirmation to the figures that were on screen. If the
           // booking moved underneath the dialog, the send is refused.
           sourceHash: invoicePreview?.sourceHash,

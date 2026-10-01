@@ -83,6 +83,12 @@ export interface PrivateBookingInvoicePreview {
   /** Binds a confirmation to the data it was shown for. */
   sourceHash: string
   previousTreatment: DepositTreatment | null
+  /**
+   * True when sending will create this customer's billing record. The dialog
+   * then has to ask whether they can pay by card or PayPal, because a new
+   * record has no setting of its own and the email is composed from it.
+   */
+  createsBillingRecord: boolean
 }
 
 type ActionResult<T> =
@@ -111,6 +117,7 @@ const BLOCKING_ERROR_CODES = new Set([
   'booking_not_invoiced',
   'invoice_has_real_payments',
   'cancel_reason_required',
+  'paypal_answer_required',
 ])
 
 /** Maps a raised code to its copy, and says whether it blocks outright. */
@@ -140,6 +147,8 @@ const ERROR_COPY: Record<string, string> = {
   invoice_has_real_payments:
     'A payment has been received against this invoice, so it cannot be cancelled. Issue a credit note instead.',
   cancel_reason_required: 'Give a reason for cancelling this invoice.',
+  paypal_answer_required:
+    'This customer has no billing record yet, so nothing was created. Close this and open it again, then say whether they can pay by card or PayPal.',
 }
 
 function describeDatabaseError(message: string): { error: string; blocked: boolean } {
@@ -214,43 +223,76 @@ function computeSourceHash(booking: PrivateBookingWithDetails): string {
 }
 
 /**
- * Find or create the invoice_vendors row for this booking's customer.
+ * The invoice_vendors row this booking's customer already has, if any.
  *
  * Matching is on `customer_id` only. `invoice_vendors` has exactly one
  * constraint, its primary key, so email is neither unique nor case-normalised
  * and can never be an upsert key. A booking with no customer record gets a
  * fresh vendor row rather than risking a wrong match on a shared address.
+ *
+ * The preview and the send both go through here, so the dialog asks the PayPal
+ * question in exactly the cases where the send will create a row.
+ */
+async function findExistingInvoiceVendor(
+  booking: PrivateBookingWithDetails,
+): Promise<{ vendorId: string | null } | { error: string }> {
+  if (!booking.customer_id) return { vendorId: null }
+
+  const { data: existing, error: lookupError } = await createAdminClient()
+    .from('invoice_vendors')
+    .select('id')
+    .eq('customer_id', booking.customer_id)
+    .maybeSingle()
+
+  if (lookupError) {
+    console.error('[PrivateBookingInvoice] Vendor lookup failed', lookupError)
+    return { error: 'Could not look up the billing record for this customer.' }
+  }
+
+  return { vendorId: existing?.id ?? null }
+}
+
+type ResolvedInvoiceVendor =
+  | { vendorId: string; created: false }
+  | { vendorId: string; created: true; paypalPaymentsEnabled: boolean }
+
+/**
+ * Find or create the invoice_vendors row for this booking's customer.
+ *
+ * `paypalPaymentsEnabled` is the operator's answer from the dialog and is only
+ * used when a row is created. It has to be on the row before the invoice is
+ * loaded for sending, because the "pay online" link in the email is decided
+ * from the vendor. A create with no answer is refused rather than defaulted:
+ * defaulting to off is how every first invoice went out without a link.
+ *
+ * An existing row keeps whatever it is already set to. That setting is managed
+ * on the vendor screen and applies to all of that customer's invoices.
  */
 async function resolveInvoiceVendor(
   booking: PrivateBookingWithDetails,
-): Promise<{ vendorId: string } | { error: string }> {
+  paypalPaymentsEnabled: boolean | undefined,
+): Promise<ResolvedInvoiceVendor | { error: string; blocked?: boolean }> {
   const db = createAdminClient()
   const name = bookingCustomerName(booking)
   const email = (booking.contact_email || '').trim() || null
   const phone = (booking.contact_phone || '').trim() || null
 
-  if (booking.customer_id) {
-    const { data: existing, error: lookupError } = await db
+  const existing = await findExistingInvoiceVendor(booking)
+  if ('error' in existing) return existing
+
+  if (existing.vendorId) {
+    // Refresh contact details but never the name: renaming a shared vendor
+    // would silently restate historical invoices that point at it.
+    await db
       .from('invoice_vendors')
-      .select('id')
-      .eq('customer_id', booking.customer_id)
-      .maybeSingle()
+      .update({ email, phone, updated_at: new Date().toISOString() })
+      .eq('id', existing.vendorId)
 
-    if (lookupError) {
-      console.error('[PrivateBookingInvoice] Vendor lookup failed', lookupError)
-      return { error: 'Could not look up the billing record for this customer.' }
-    }
+    return { vendorId: existing.vendorId, created: false }
+  }
 
-    if (existing?.id) {
-      // Refresh contact details but never the name: renaming a shared vendor
-      // would silently restate historical invoices that point at it.
-      await db
-        .from('invoice_vendors')
-        .update({ email, phone, updated_at: new Date().toISOString() })
-        .eq('id', existing.id)
-
-      return { vendorId: existing.id }
-    }
+  if (typeof paypalPaymentsEnabled !== 'boolean') {
+    return describeBlockingError('paypal_answer_required')
   }
 
   const { data: created, error: insertError } = await db
@@ -265,6 +307,7 @@ async function resolveInvoiceVendor(
       // these terms only matter if the customer is invoiced normally later.
       // Net-7 to match the house default rather than leaving them on 0.
       payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
+      paypal_payments_enabled: paypalPaymentsEnabled,
       notes: 'Created automatically from a private booking.',
     })
     .select('id')
@@ -275,7 +318,7 @@ async function resolveInvoiceVendor(
     return { error: 'Could not create a billing record for this customer.' }
   }
 
-  return { vendorId: created.id }
+  return { vendorId: created.id, created: true, paypalPaymentsEnabled }
 }
 
 async function loadBooking(bookingId: string): Promise<PrivateBookingWithDetails | null> {
@@ -359,6 +402,9 @@ export async function previewPrivateBookingInvoice(
     const invoiceTotal = mapped.totals.total_amount
     const today = getTodayIsoDate()
 
+    const existingVendor = await findExistingInvoiceVendor(booking)
+    if ('error' in existingVendor) return { error: existingVendor.error }
+
     const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
     return {
@@ -390,6 +436,7 @@ export async function previewPrivateBookingInvoice(
         sourceHash: computeSourceHash(booking),
         previousTreatment:
           (booking.invoice_deposit_treatment as DepositTreatment | undefined) ?? null,
+        createsBillingRecord: existingVendor.vendorId === null,
       },
     }
   } catch (error) {
@@ -531,6 +578,11 @@ export interface GenerateInvoiceInput {
   reference?: string
   /** From the preview. Rejects the send if the booking changed since. */
   sourceHash?: string
+  /**
+   * Whether this customer can pay by card or PayPal. Required when the send
+   * creates their billing record, ignored when they already have one.
+   */
+  paypalPaymentsEnabled?: boolean
 }
 
 export async function generatePrivateBookingInvoice(
@@ -564,8 +616,8 @@ export async function generatePrivateBookingInvoice(
       discount_amount: toNum(booking.discount_amount),
     })
 
-    const vendor = await resolveInvoiceVendor(booking)
-    if ('error' in vendor) return { error: vendor.error }
+    const vendor = await resolveInvoiceVendor(booking, input.paypalPaymentsEnabled)
+    if ('error' in vendor) return { error: vendor.error, blocked: vendor.blocked }
 
     const today = getTodayIsoDate()
     const db = createAdminClient()
@@ -625,6 +677,10 @@ export async function generatePrivateBookingInvoice(
         deposit_treatment: input.depositTreatment,
         recipient,
         created: rpcResult.created,
+        billing_record_created: vendor.created,
+        // Only recorded when it was asked. An existing record keeps its own
+        // setting, which this action neither reads nor changes.
+        ...(vendor.created ? { paypal_payments_enabled: vendor.paypalPaymentsEnabled } : {}),
         email_error: delivery.error ?? null,
       },
     })
