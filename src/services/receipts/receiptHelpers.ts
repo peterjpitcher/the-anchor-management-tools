@@ -6,7 +6,6 @@
  */
 
 import { createHash } from 'crypto'
-import Papa from 'papaparse'
 import { z } from 'zod'
 import {
   receiptExpenseCategorySchema,
@@ -18,8 +17,6 @@ import type {
   ReceiptTransaction,
 } from '@/types/database'
 import type {
-  AmexCsvRow,
-  CsvRow,
   ParsedTransactionRow,
   GroupSample,
   RpcDetailGroupRow,
@@ -33,6 +30,23 @@ import {
   RECEIPT_STATEMENT_UPLOAD_LIMIT_LABEL,
   isAllowedReceiptMimeType,
 } from '@/lib/receipts/upload-constraints'
+
+// Statement parsing has its own module. Re-exported so existing imports keep working.
+export {
+  createAmexTransactionHash,
+  createTransactionHash,
+  parseAmexCsv,
+  parseAmexStatement,
+  parseBankStatement,
+  parseCsv,
+  parseSignedAmount,
+  parseStatementMoney,
+} from './statementParsing'
+export type {
+  RejectedStatementRecord,
+  StatementParseResult,
+  StatementRejectionReason,
+} from './statementParsing'
 
 // ---------------------------------------------------------------------------
 // Zod schemas shared by actions layer
@@ -86,7 +100,8 @@ export const fileSchema = z.instanceof(File, { message: 'Please attach a CSV fil
   .refine((file) => file.size <= MAX_RECEIPT_STATEMENT_UPLOAD_BYTES, {
     message: `CSV file is too large. Please keep bank statements under ${RECEIPT_STATEMENT_UPLOAD_LIMIT_LABEL}.`,
   })
-  .refine((file) => file.type === 'text/csv' || file.name.endsWith('.csv'), {
+  // Windows saves the extension in capitals as often as not.
+  .refine((file) => file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv'), {
     message: 'Only CSV bank statements are supported'
   })
 
@@ -185,115 +200,6 @@ export function composeReceiptFileArtifacts(
   return { friendlyName, storagePath }
 }
 
-export function parseCsv(buffer: Buffer): ParsedTransactionRow[] {
-  const csvText = buffer.toString('utf-8')
-  const parsed = Papa.parse<CsvRow>(csvText, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (header) => header.trim(),
-  })
-
-  if (parsed.errors.length) {
-    console.warn('CSV parsing encountered issues:', parsed.errors.slice(0, 3))
-  }
-
-  const fields = parsed.meta.fields ?? []
-  const hasDetails = fields.includes('Details')
-  const hasAmountColumn = fields.includes('In') || fields.includes('Out')
-  if (!hasDetails || !hasAmountColumn) {
-    throw new Error(
-      "This doesn't look like a bank statement CSV — expected 'Details' and 'In'/'Out' columns.",
-    )
-  }
-
-  const records = parsed.data.filter((record) => record && Object.keys(record).length > 0)
-  const rows: ParsedTransactionRow[] = []
-
-  for (const record of records) {
-    const details = sanitizeText(record.Details || '')
-    if (!details) continue
-
-    const transactionDate = record.Date ? normaliseDate(record.Date) : null
-    if (!transactionDate) continue
-
-    const amountIn = parseCurrency(record.In)
-    const amountOut = parseCurrency(record.Out)
-
-    if ((amountIn == null || amountIn === 0) && (amountOut == null || amountOut === 0)) {
-      continue
-    }
-
-    const balance = parseCurrency(record.Balance)
-    const transactionType = sanitizeText(record['Transaction Type'] || '') || null
-
-    rows.push({
-      transactionDate,
-      details,
-      transactionType,
-      amountIn,
-      amountOut,
-      balance,
-      dedupeHash: createTransactionHash({
-        transactionDate,
-        details,
-        transactionType,
-        amountIn,
-        amountOut,
-        balance,
-      }),
-    })
-  }
-
-  return rows
-}
-
-function normaliseDate(input: string): string | null {
-  const trimmed = input.trim()
-  if (!trimmed) return null
-
-  const parts = trimmed.split('/')
-  if (parts.length === 3) {
-    const [day, month, year] = parts.map((value) => parseInt(value, 10))
-    if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null
-    const iso = new Date(Date.UTC(year, month - 1, day))
-    if (Number.isNaN(iso.getTime())) return null
-    return iso.toISOString().slice(0, 10)
-  }
-
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed
-  }
-
-  return null
-}
-
-function parseCurrency(value: string | null | undefined): number | null {
-  if (!value) return null
-  const cleaned = value.replace(/,/g, '').trim()
-  if (!cleaned) return null
-  const result = Number.parseFloat(cleaned)
-  if (!Number.isFinite(result)) return null
-  // Bank CSV exports should always use unsigned amounts in their respective column
-  // (positive values in 'In' for credits, positive values in 'Out' for debits).
-  // Negative values indicate a malformed or unexpected export format — reject them.
-  if (result < 0) return null
-  return Number(result.toFixed(2))
-}
-
-// Amex statements use a single signed Amount column (positive = spend, negative =
-// payment/credit). Unlike parseCurrency this PRESERVES the sign. parseCurrency is left
-// untouched so the bank path keeps rejecting negatives.
-export function parseSignedAmount(value: string | null | undefined): number | null {
-  if (!value) return null
-  const cleaned = value.replace(/[£,]/g, '').trim()
-  if (!cleaned) return null
-  const result = Number.parseFloat(cleaned)
-  if (!Number.isFinite(result) || result === 0) return null
-  const rounded = Number(result.toFixed(2))
-  return rounded === 0 ? null : rounded
-}
-
 export function normalizeVendorInput(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -350,45 +256,6 @@ export function deriveDirection(amountIn: number | null, amountOut: number | nul
   if (outValue > 0 && outValue >= inValue) return 'out'
   if (inValue > 0) return 'in'
   return outValue > inValue ? 'out' : 'in'
-}
-
-export function createTransactionHash(input: {
-  transactionDate: string
-  details: string
-  transactionType: string | null
-  amountIn: number | null
-  amountOut: number | null
-  balance: number | null
-}): string {
-  const hash = createHash('sha256')
-  hash.update([input.transactionDate, input.details, input.transactionType ?? '', input.amountIn ?? '', input.amountOut ?? '', input.balance ?? ''].join('|'))
-  return hash.digest('hex')
-}
-
-// Dedup hash for Amex rows. Uses RAW, stable fields only — never the display-normalised
-// `details` or title-cased card member — so formatting changes can't alter dedup identity.
-// The 'amex' prefix guarantees no collision with bank hashes.
-export function createAmexTransactionHash(input: {
-  transactionDate: string
-  signedAmount: number
-  cardAccount: string | null
-  rawCardMember: string | null
-  externalReference: string | null
-  details: string
-}): string {
-  const hash = createHash('sha256')
-  hash.update(
-    [
-      'amex',
-      input.transactionDate,
-      input.signedAmount.toFixed(2),
-      input.cardAccount ?? '',
-      input.rawCardMember ?? '',
-      input.externalReference ?? '',
-      input.details,
-    ].join('|'),
-  )
-  return hash.digest('hex')
 }
 
 export function chunkArray<T>(items: T[], size: number): T[][] {
@@ -579,142 +446,4 @@ export function toOptionalNumber(input: FormDataEntryValue | null): number | und
   if (!cleaned) return undefined
   const value = Number.parseFloat(cleaned)
   return Number.isFinite(value) ? Number(value.toFixed(2)) : undefined
-}
-
-// ---------------------------------------------------------------------------
-// American Express statement import
-// ---------------------------------------------------------------------------
-
-const AMEX_VENDOR = 'American Express'
-const AMEX_FEE_CATEGORY: ReceiptExpenseCategory = 'Bank Charges/Credit Card Commission'
-
-function toTitleCase(value: string): string {
-  return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-type AmexClassification = Pick<
-  ParsedTransactionRow,
-  'status' | 'receiptRequired' | 'expenseCategory' | 'expenseCategorySource' | 'vendorName' | 'vendorSource'
->
-
-function classifyAmexRow(details: string, signedAmount: number): AmexClassification {
-  const upper = details.toUpperCase()
-  const isPayment = upper.startsWith('PAYMENT RECEIVED') || upper.startsWith('CREDIT FOR')
-  const isFee =
-    upper.includes('INTEREST CHARGE') ||
-    upper.includes('MEMBERSHIP FEE') ||
-    upper.includes('LATE PAYMENT FEE')
-
-  if (isPayment) {
-    return {
-      status: 'no_receipt_required',
-      receiptRequired: false,
-      expenseCategory: null,
-      expenseCategorySource: null,
-      vendorName: AMEX_VENDOR,
-      vendorSource: 'import',
-    }
-  }
-  if (isFee) {
-    return {
-      status: 'no_receipt_required',
-      receiptRequired: false,
-      expenseCategory: AMEX_FEE_CATEGORY,
-      expenseCategorySource: 'import',
-      vendorName: AMEX_VENDOR,
-      vendorSource: 'import',
-    }
-  }
-  if (signedAmount < 0) {
-    // Merchant refund / other credit — not a purchase to chase.
-    return {
-      status: 'no_receipt_required',
-      receiptRequired: false,
-      expenseCategory: null,
-      expenseCategorySource: null,
-      vendorName: null,
-      vendorSource: null,
-    }
-  }
-  // Genuine spend — vendor/expense left for the rules + AI pass.
-  return {
-    status: 'pending',
-    receiptRequired: true,
-    expenseCategory: null,
-    expenseCategorySource: null,
-    vendorName: null,
-    vendorSource: null,
-  }
-}
-
-export function parseAmexCsv(buffer: Buffer): ParsedTransactionRow[] {
-  const csvText = buffer.toString('utf-8')
-  const parsed = Papa.parse<AmexCsvRow>(csvText, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (header) => header.trim(),
-  })
-
-  if (parsed.errors.length) {
-    console.warn('Amex CSV parsing encountered issues:', parsed.errors.slice(0, 3))
-  }
-
-  const fields = parsed.meta.fields ?? []
-  if (!fields.includes('Card Member') || !fields.includes('Amount')) {
-    throw new Error(
-      "This doesn't look like an American Express statement — expected 'Card Member' and 'Amount' columns.",
-    )
-  }
-
-  const records = parsed.data.filter((record) => record && Object.keys(record).length > 0)
-  const rows: ParsedTransactionRow[] = []
-
-  for (const record of records) {
-    const details = sanitizeText(record.Description || record['Appears On Your Statement As'] || '')
-    if (!details) continue
-
-    const transactionDate = record.Date ? normaliseDate(record.Date) : null
-    if (!transactionDate) continue
-
-    const signedAmount = parseSignedAmount(record.Amount)
-    if (signedAmount == null) continue
-
-    const amountOut = signedAmount > 0 ? Number(signedAmount.toFixed(2)) : null
-    const amountIn = signedAmount < 0 ? Number(Math.abs(signedAmount).toFixed(2)) : null
-
-    const rawCardMember = sanitizeText(record['Card Member'] || '') || null
-    const cardMember = rawCardMember ? toTitleCase(rawCardMember) : null
-    const cardAccount = (record['Account #'] || '').replace(/[^0-9]/g, '') || null
-    const merchantCategory = sanitizeText(record.Category || '') || null
-    const merchantTown = sanitizeText(record['Town/City'] || '') || null
-    const externalReference = (record.Reference || '').replace(/^'+|'+$/g, '').trim() || null
-
-    const classification = classifyAmexRow(details, signedAmount)
-
-    rows.push({
-      transactionDate,
-      details,
-      transactionType: null,
-      amountIn,
-      amountOut,
-      balance: null,
-      dedupeHash: createAmexTransactionHash({
-        transactionDate,
-        signedAmount,
-        cardAccount,
-        rawCardMember,
-        externalReference,
-        details,
-      }),
-      sourceType: 'amex',
-      cardMember,
-      cardAccount,
-      merchantCategory,
-      merchantTown,
-      externalReference,
-      ...classification,
-    })
-  }
-
-  return rows
 }

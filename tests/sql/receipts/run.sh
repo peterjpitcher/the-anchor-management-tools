@@ -26,6 +26,11 @@ test:release-1-upload.test.sql
 test:release-1-invoice-match.test.sql
 test:release-1-grants.test.sql
 race:complete_upload
+# Release 2. The seed is committed first so the migration's backfill has a legacy batch to mark.
+test:release-2-before-migration.sql
+migration:20261001150000_receipts_release_2_import.sql
+test:release-2-import.test.sql
+race:import_statement
 "
 
 ENGINE=""
@@ -129,6 +134,53 @@ SQL
   echo "    first session: $first_out"
   echo "    second session: $second"
   echo "    file rows: $files, completed intents: $intents"
+  return 1
+}
+
+# Two sessions import the same statement at once. The advisory lock makes the second wait, and it
+# is then answered with the first one's batch: one batch, each line once, one follow-up job.
+race_import_statement() {
+  local call="SELECT public.import_receipt_statement('{\"source_type\":\"bank\",\"source_hash\":\"race-file\",\"original_filename\":\"race.csv\",\"uploaded_by\":\"00000000-0000-0000-0000-0000000000a1\"}'::jsonb, '[{\"transaction_date\":\"2026-09-10\",\"details\":\"RACE LINE ONE\",\"amount_out\":1.00,\"dedupe_hash\":\"race-line-1\"},{\"transaction_date\":\"2026-09-11\",\"details\":\"RACE LINE TWO\",\"amount_out\":2.00,\"dedupe_hash\":\"race-line-2\"}]'::jsonb)->>'outcome';"
+  local first second
+  first="$(mktemp -t amsreceiptsrace)"
+  (run_sql -tA >"$first" 2>&1 <<SQL
+BEGIN;
+$call
+SELECT pg_sleep(1.5);
+COMMIT;
+SQL
+  ) &
+  local first_pid=$!
+  sleep 0.5
+  second="$(run_sql -tA 2>&1 <<SQL
+$call
+SQL
+  )"
+  wait "$first_pid" || true
+  local first_out
+  first_out="$(cat "$first")"
+  rm -f "$first"
+
+  local batches lines jobs
+  batches="$(run_sql -tA <<'SQL'
+SELECT count(*) FROM public.receipt_batches WHERE source_hash = 'race-file';
+SQL
+  )"
+  lines="$(run_sql -tA <<'SQL'
+SELECT count(*) FROM public.receipt_transactions WHERE dedupe_hash IN ('race-line-1', 'race-line-2');
+SQL
+  )"
+  jobs="$(run_sql -tA <<'SQL'
+SELECT count(*) FROM public.jobs j JOIN public.receipt_batches b ON j.payload->>'batch_id' = b.id::text WHERE b.source_hash = 'race-file';
+SQL
+  )"
+
+  if grep -q "imported" <<<"$first_out" && [ "$(tr -d '[:space:]' <<<"$second")" = "already_imported" ] && [ "$(tr -d '[:space:]' <<<"$batches")" = "1" ] && [ "$(tr -d '[:space:]' <<<"$lines")" = "2" ] && [ "$(tr -d '[:space:]' <<<"$jobs")" = "1" ]; then
+    return 0
+  fi
+  echo "    first session: $first_out"
+  echo "    second session: $second"
+  echo "    batches: $batches, lines: $lines, jobs: $jobs"
   return 1
 }
 
