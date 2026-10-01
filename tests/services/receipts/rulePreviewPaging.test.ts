@@ -18,7 +18,8 @@ vi.mock('@/lib/receipts/ai-classification', () => ({
   recordAIUsage: vi.fn(),
 }))
 
-vi.mock('@/lib/receipts/rule-matching', () => ({
+vi.mock('@/lib/receipts/rule-matching', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/receipts/rule-matching')>()),
   getRuleMatch: vi.fn(() => ({ matched: true })),
 }))
 
@@ -128,15 +129,19 @@ describe('rule preview and conflict detection paging', () => {
     const rangeCalls: Array<[number, number]> = []
     let upserted: any[] = []
 
+    // The same priority and a different result: the only kind of overlap that is a conflict.
     const activeRules = [
-      { id: 'rule-a', name: 'Rule A', priority: 100, is_active: true },
-      { id: 'rule-b', name: 'Rule B', priority: 100, is_active: true },
+      { id: 'rule-a', name: 'Rule A', priority: 100, is_active: true, auto_status: 'pending', set_expense_category: 'Entertainment' },
+      { id: 'rule-b', name: 'Rule B', priority: 100, is_active: true, auto_status: 'pending', set_expense_category: 'Travel/Car' },
     ]
 
     mockedCreateAdminClient.mockReturnValue({
       from: (table: string) => {
         if (table === 'receipt_rules') {
           return createQueryStub(() => ({ data: activeRules, error: null })).builder
+        }
+        if (table === 'receipt_settings') {
+          return createQueryStub(() => ({ data: [], error: null })).builder
         }
         if (table === 'receipt_rule_conflicts') {
           return createQueryStub((calls) => {

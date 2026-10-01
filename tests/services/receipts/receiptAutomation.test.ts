@@ -15,7 +15,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { applyAutomationRules, refreshAutomationForPendingTransactions } from '@/services/receipts/receiptAutomation'
-import { createFakeDb, type FakeDb } from '../../helpers/fakeSupabaseDb'
+import { createFakeDb, fakeReceiptsRpc, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -80,6 +80,8 @@ const markedByPerson = {
 
 function arrange(payments: Array<Record<string, unknown>>, rules: Array<Record<string, unknown>> = [closingRule]): FakeDb {
   const db = createFakeDb({ receipt_rules: rules, receipt_transactions: payments })
+  // Each change is written by the database function that also writes its history rows.
+  db.onRpc(fakeReceiptsRpc(db))
   mockedCreateAdminClient.mockReturnValue(db.client)
   return db
 }

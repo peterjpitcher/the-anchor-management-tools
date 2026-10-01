@@ -28,7 +28,8 @@ vi.mock('@/lib/receipts/ai-classification', () => ({
   recordAIUsage: vi.fn(),
 }))
 
-vi.mock('@/lib/receipts/rule-matching', () => ({
+vi.mock('@/lib/receipts/rule-matching', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/receipts/rule-matching')>()),
   selectBestReceiptRule: vi.fn(),
   getRuleMatch: vi.fn(),
 }))
@@ -114,6 +115,10 @@ function buildMockClient(
 
   return {
     from: vi.fn((table: string) => {
+      // A rule save reads the existing rules first, for the duplicate check. There are none here.
+      if (table === 'receipt_rules') {
+        return { select: vi.fn().mockResolvedValue({ data: [], error: null }), ...tables[table] }
+      }
       if (tables[table]) return tables[table]
       if (defaultTables[table]) return defaultTables[table]
       throw new Error(`Unexpected table: ${table}`)

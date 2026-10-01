@@ -452,6 +452,8 @@ export type AutomationResult = {
   conflicts: number
   /** Payments the rule tried to update and could not. */
   failed: number
+  /** Payments the rules would have changed, left alone because they are on or before the lock date. */
+  locked: number
   samples: Array<{
     id: string
     status: ReceiptTransaction['status']
@@ -485,26 +487,6 @@ export type RuleMutationResult =
   /** The rule names a vendor that is not on the list. Nothing was saved; ask, then send again. */
   | { vendorConfirmation: { name: string; similar: Array<{ id: string; name: string }> } }
 
-export type RetroStepSuccess = {
-  success: true
-  reviewed: number
-  matched: number
-  statusAutoUpdated: number
-  classificationUpdated: number
-  vendorIntended: number
-  expenseIntended: number
-  protectedCount: number
-  conflicts: number
-  failed: number
-  samples: AutomationResult['samples']
-  nextOffset: number
-  total: number
-  done: boolean
-  durationMs: number
-}
-
-export type RetroStepResult = RetroStepSuccess | { success: false; error: string }
-
 export type BulkStatus = ReceiptTransaction['status']
 
 // ---------------------------------------------------------------------------
@@ -523,5 +505,4 @@ export const DEFAULT_PAGE_SIZE = 25
 // 5,001, making everything between unreachable.
 export const MAX_MONTH_PAGE_SIZE = 1000
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10
-export const RETRO_CHUNK_SIZE = 100
 export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']

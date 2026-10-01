@@ -424,6 +424,20 @@ The ledger write itself (recording the invoice payment) is made transactional an
 9. **Conflicts.** List only pairs with the same priority and different outputs, name both rules, refresh after approval.
 10. **No more rules in migrations.**
 
+**As built (1 October 2026)**
+
+- Build order: this release was built before Release 4, which needs its per-field output, run records and lock date.
+- The preview is stored as a run (`receipt_rule_runs`, `receipt_rule_run_changes`) holding the rule's version, the version of the whole rule set and the lock date. Applying it stops if the rule, any other rule or the lock date has changed. Only the person who made the preview can apply it. A run is applied and undone 200 changes at a time.
+- Every rule change, in a run or not, is written by one database function together with its history rows (`apply_receipt_rule_change`, `apply_receipt_rule_run`), so a change without history cannot exist (RUL-13). Runs do not also write classification signals: nothing reads that table, and the run record is the trace.
+- The lock date lives in a new `receipt_settings` table that only the service role can touch, not in `system_settings`, which any manager can write through its row policies. The database functions enforce the lock as well as the application.
+- Rule outcomes are limited to "leave pending" and "no receipt required". This removes "can't find" (item 7) and also covers the part of O2 that says a rule can no longer mark a payment completed. Live rules use only those two outcomes already.
+- Per-field output (W3) is on. Run over the live data it changes nothing today: no payment has a lower rule supplying a vendor or category the best rule leaves unset.
+- Whole-word matching is built and is OFF. The comparison on live data (8,420 payments, 180 active rules): it would change 6 payments, and in every case a correct match would be lost ("Booker" no longer matching "Bookers", "Wickes" no longer matching "WICKESBUILD", "Jensten Insurance" no longer matching "JENSTENINSURANCE"). It would remove no wrong match. The recommendation is to leave it off. A super admin can see the comparison and switch it on the rules screen.
+- Rule health is worked out by running the matcher over every payment when asked. On live data: no rule has never matched, none is always beaten by another, and 105 of 180 have matched nothing in the last 90 days (D12).
+- Conflicts now list only pairs with the same priority and a different result, and name the other rule.
+- A rule made from a bulk group keeps the whole description as one keyword: commas in it are escaped.
+- Screen: the run dialog, the rule tools (lock date, recent runs with undo, test box, health, matcher comparison) and the phone list are their own components; there is one on/off control; one action at a time; a description field on both forms. The proposals panel is split out with Release 4, which rewrites it.
+
 ---
 
 ## 10. Release 6: files, export, workspace and invoices

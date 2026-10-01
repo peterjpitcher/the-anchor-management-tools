@@ -55,13 +55,11 @@ describe('receipts audit entries name an actor', () => {
       'createReceiptRule',
       'updateReceiptRule',
       'toggleReceiptRule',
-      'deleteReceiptRule',
       'approveReceiptRuleSuggestion',
       'approveReceiptRuleSuggestions',
       'declineReceiptRuleSuggestion',
       'applyReceiptGroupClassification',
       'requeueUnclassifiedTransactions',
-      'runReceiptRuleRetroactivelyStep',
     ]
     const functions = source.split(/^(?=export async function )/m)
     for (const name of audited) {
@@ -71,34 +69,43 @@ describe('receipts audit entries name an actor', () => {
     }
   })
 
-  it('vendor actions go through one helper that adds the actor, and audit every change', () => {
-    const vendors = read('src/app/actions/receipt-vendors.ts')
+  it('the shared helper adds the actor to every entry', () => {
+    const helper = read('src/app/actions/receipt-audit.ts')
+    expect(helper).not.toContain("'use server'")
+    expect([...helper.matchAll(/\blogAuditEvent\(/g)]).toHaveLength(1)
+    expect(helper).toContain('logAuditEvent({ ...event, user_id: actor.user_id')
+  })
 
-    expect([...vendors.matchAll(/\blogAuditEvent\(/g)]).toHaveLength(1)
-    const helperStart = vendors.indexOf('async function logVendorAudit(')
-    expect(helperStart).toBeGreaterThan(-1)
-    const helper = vendors.slice(helperStart, vendors.indexOf('\n}\n', helperStart))
-    expect(helper).toContain('user_id: actor.user_id')
-
-    const calls = [...vendors.matchAll(/\blogVendorAudit\(([^,)]*)/g)].filter(
-      (match) => !match[1].includes('actor: VendorActor') && match[1].trim() !== ''
-    )
-    for (const call of calls) {
-      expect(call[1].trim()).toBe('actor')
+  it('the other receipts action files audit through the shared helper, with an actor', () => {
+    const expected: Record<string, string[]> = {
+      'receipt-vendors.ts': ['mergeReceiptVendors', 'renameReceiptVendor', 'undoReceiptVendorOperation', 'updateReceiptVendorDetails'],
+      'receipt-rules.ts': ['previewReceiptRuleRun', 'applyReceiptRuleRunStep', 'undoReceiptRuleRunStep', 'setReceiptsLockDate', 'setReceiptRuleMatcher'],
     }
 
-    const functions = vendors.split(/^(?=export async function )/m)
-    for (const name of ['mergeReceiptVendors', 'renameReceiptVendor', 'undoReceiptVendorOperation', 'updateReceiptVendorDetails']) {
-      const body = functions.find((chunk) => chunk.startsWith(`export async function ${name}(`))
-      expect(body, `${name} should exist`).toBeTruthy()
-      expect(body, `${name} should write an audit entry`).toContain('logVendorAudit(actor,')
+    for (const [file, audited] of Object.entries(expected)) {
+      const content = read(`src/app/actions/${file}`)
+      // No direct call to the audit service: everything goes through the helper.
+      expect([...content.matchAll(/\blogAuditEvent\(/g)], `${file} calls logAuditEvent directly`).toHaveLength(0)
+
+      const calls = [...content.matchAll(/\blogReceiptActorAudit\(([^,)]*)/g)]
+      expect(calls.length, `${file} writes no audit entries`).toBeGreaterThan(0)
+      for (const call of calls) {
+        expect(call[1].trim(), `${file} passes something other than the actor`).toBe('actor')
+      }
+
+      const functions = content.split(/^(?=export async function )/m)
+      for (const name of audited) {
+        const body = functions.find((chunk) => chunk.startsWith(`export async function ${name}(`))
+        expect(body, `${name} should exist in ${file}`).toBeTruthy()
+        expect(body, `${name} should write an audit entry`).toContain('logReceiptActorAudit(actor,')
+      }
     }
   })
 
   it('has no other receipts action file writing an audit entry without one', () => {
     // If a second receipts action module appears, it must follow the same pattern.
     const actionFiles = readdirSync(join(ROOT, 'src/app/actions')).filter(
-      (name) => /receipt/i.test(name) && name.endsWith('.ts') && name !== 'receipts.ts'
+      (name) => /receipt/i.test(name) && name.endsWith('.ts') && name !== 'receipts.ts' && name !== 'receipt-audit.ts'
     )
     for (const name of actionFiles) {
       const content = read(`src/app/actions/${name}`)

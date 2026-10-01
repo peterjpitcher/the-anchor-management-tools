@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath, revalidateTag } from 'next/cache'
+import { escapeRuleKeyword } from '@/lib/receipts/rule-matching'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
@@ -84,17 +85,16 @@ import {
   performCreateReceiptRule,
   performUpdateReceiptRule,
   performToggleReceiptRule,
-  performDeleteReceiptRule,
   performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
   performSetReceiptVendorReviewStatus,
   performApproveReceiptRuleSuggestion,
   performApproveReceiptRuleSuggestions,
+  enqueueReceiptSystemJob,
   performDeclineReceiptRuleSuggestion,
   queryReceiptGovernanceItems,
   refreshAutomationForPendingTransactions,
-  applyAutomationRules,
   // Helpers
   fileSchema,
   receiptFileSchema,
@@ -128,12 +128,8 @@ import type {
   AIUsageBreakdown,
   RulePreviewResult,
   RuleMutationResult,
-  RetroStepResult,
-  RetroStepSuccess,
-  AutomationResult,
   BulkStatus,
 } from '@/services/receipts'
-import { RETRO_CHUNK_SIZE } from '@/services/receipts'
 
 // ---------------------------------------------------------------------------
 // Revalidation helpers
@@ -903,30 +899,6 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
   return result
 }
 
-export async function deleteReceiptRule(ruleId: string) {
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  const actor = await requireCurrentUser()
-  const { user_id } = actor
-  const result = await performDeleteReceiptRule(ruleId, user_id)
-
-  if (result.success) {
-    await logReceiptAudit(actor, {
-      operation_type: 'deactivate',
-      resource_type: 'receipt_rule',
-      resource_id: ruleId,
-      operation_status: 'success',
-    })
-    revalidatePath('/receipts')
-    revalidateTag('dashboard')
-  }
-
-  return result
-}
-
 export async function approveReceiptRuleSuggestion(
   suggestionId: string,
   options: { active?: boolean } = {}
@@ -946,6 +918,8 @@ export async function approveReceiptRuleSuggestion(
   const result = await performApproveReceiptRuleSuggestion(user_id, suggestionId, options)
 
   if (result.success) {
+    // A new rule can clash with an existing one, so the conflict list is worked out again.
+    await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', result.rule?.id ?? suggestionId)
     // Re-run rules over pending rows so the newly approved rule classifies its evidence.
     // Triggered here (not in the service) to avoid a circular import between
     // receiptGovernance and receiptMutations. The approval has already committed, so a
@@ -998,6 +972,7 @@ export async function approveReceiptRuleSuggestions(
   // The approvals have already committed, so a refresh failure must not fail the action.
   let warning: string | undefined
   if (result.approved > 0) {
+    await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', `approved:${validIds[0]}`)
     try {
       await refreshAutomationForPendingTransactions({ performedBy: user_id })
     } catch (e) {
@@ -1129,7 +1104,8 @@ export async function createReceiptRuleFromGroup(input: {
   if (data.description) {
     formData.set('description', data.description)
   }
-  formData.set('match_description', data.matchDescription ?? data.details)
+  // With no keywords typed, the whole description is the keyword, commas and all.
+  formData.set('match_description', data.matchDescription ?? escapeRuleKeyword(data.details))
   formData.set('match_direction', data.direction)
   formData.set('auto_status', data.autoStatus)
   formData.set('match_transaction_type', '')
@@ -1174,287 +1150,4 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
   })
 
   return result
-}
-
-// ---------------------------------------------------------------------------
-// RETRO-RUN actions (kept here because they compose multiple service calls)
-// ---------------------------------------------------------------------------
-
-type RetroStepSuccessWithCursor = RetroStepSuccess & { nextCursor: string | null }
-type RetroStepResultWithCursor = RetroStepSuccessWithCursor | Extract<RetroStepResult, { success: false }>
-
-const RETRO_SCOPES = ['pending', 'all'] as const
-const RETRO_MAX_CHUNK_SIZE = 200
-
-/**
- * One step of running a rule over existing transactions.
- *
- * What a run may change is fixed by the rule engine, not by this action: it classifies, and it
- * moves a status only on a pending payment nobody reopened. Scope `all` reaches closed payments
- * too, to fill in or refresh their vendor and category. Their status, their receipt flag and who
- * marked them are never touched, and anything a person, the import or invoice pairing decided is
- * left alone.
- *
- * `dryRun` works out the same step and writes nothing, which is what the confirmation shows.
- *
- * A retro run changes the very set it reads: applying a rule moves matched rows out of
- * `pending`. Paging that set by offset skipped one unprocessed row for every row the previous
- * chunk moved, and stopped early because the row count shrank under the cursor. Ordering by
- * `transaction_date` made it worse: the date is not unique, so tied rows could be returned in a
- * different order on the next request and be skipped or repeated even for the `all` scope.
- *
- * Paging is therefore by keyset on `id`, the primary key: each step asks for the next ids above
- * the last id it saw. That ordering is total, it is unaffected by anything the rule changes
- * underneath it, and it always moves forward, so the run visits every matching row once and
- * terminates.
- *
- * `offset` and `nextOffset` are kept only as a progress tally of rows visited so far. They no
- * longer drive paging; `cursor` and `nextCursor` do.
- */
-export async function runReceiptRuleRetroactivelyStep({
-  ruleId,
-  scope = 'pending',
-  cursor = null,
-  offset = 0,
-  chunkSize = RETRO_CHUNK_SIZE,
-  dryRun = false,
-}: {
-  ruleId: string
-  scope?: 'pending' | 'all'
-  cursor?: string | null
-  offset?: number
-  chunkSize?: number
-  dryRun?: boolean
-}): Promise<RetroStepResultWithCursor> {
-  const startedAt = Date.now()
-  // Checked on every step: a run is many requests, and a role can change between them.
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { success: false, error: 'Insufficient permissions' }
-  }
-
-  // Everything below arrives from the browser, so none of it is trusted.
-  if (typeof ruleId !== 'string' || !UUID_PATTERN.test(ruleId)) {
-    return { success: false, error: 'Rule not found' }
-  }
-  if (!RETRO_SCOPES.includes(scope)) {
-    return { success: false, error: 'Choose pending or all transactions' }
-  }
-  if (cursor !== null && (typeof cursor !== 'string' || !UUID_PATTERN.test(cursor))) {
-    return { success: false, error: 'Invalid run position' }
-  }
-  const requestedChunk = Number.isFinite(Number(chunkSize)) ? Math.floor(Number(chunkSize)) : RETRO_CHUNK_SIZE
-  const safeChunkSize = Math.min(Math.max(requestedChunk, 1), RETRO_MAX_CHUNK_SIZE)
-  const visitedSoFar = Number.isFinite(Number(offset)) ? Math.max(Math.floor(Number(offset)), 0) : 0
-  const isDryRun = dryRun === true
-
-  const actor = await requireCurrentUser()
-
-  if (scope === 'all') {
-    const canGovernRules = await currentUserCanGovernReceiptRules()
-    if (!canGovernRules) {
-      return { success: false, error: 'Only super admins can run a rule over all historical transactions.' }
-    }
-  }
-
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase = createAdminClient()
-
-  const { data: rule, error: ruleError } = await supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('id', ruleId)
-    .maybeSingle()
-
-  if (ruleError || !rule) {
-    console.error('[retro-step] rule lookup failed', { ruleId, ruleError })
-    return { success: false, error: 'Rule not found' }
-  }
-
-  if (!rule.is_active) {
-    return { success: false, error: 'Enable the rule before running it' }
-  }
-
-  let idsQuery = supabase
-    .from('receipt_transactions')
-    .select('id', { count: 'exact', head: false })
-    .order('id', { ascending: true })
-
-  if (scope === 'pending') {
-    idsQuery = idsQuery.eq('status', 'pending')
-  }
-
-  if (cursor) {
-    idsQuery = idsQuery.gt('id', cursor)
-  }
-
-  const { data: idRows, count, error: idsError } = await idsQuery.range(0, safeChunkSize - 1)
-
-  if (idsError) {
-    console.error('[retro-step] failed to load ids', { idsError, ruleId, cursor, safeChunkSize })
-    return { success: false, error: 'Failed to load transactions' }
-  }
-
-  const ids = (idRows ?? []).map((row) => row.id ?? null).filter((value): value is string => Boolean(value))
-
-  // `count` is the number of rows still at or after the cursor, so the expected size of the
-  // whole run is the rows already visited plus the rows left.
-  const total = visitedSoFar + (typeof count === 'number' ? count : ids.length)
-
-  // The start of a real run is recorded here, on the server, before anything is written, so a
-  // run that stops part-way still leaves a trace of who started it.
-  if (!isDryRun && cursor === null) {
-    await logReceiptAudit(actor, {
-      operation_type: 'retro_run_started',
-      resource_type: 'receipt_rule',
-      resource_id: ruleId,
-      operation_status: 'success',
-      additional_info: { scope, rule_name: rule.name, expected_total: total },
-    })
-  }
-
-  if (!ids.length) {
-    if (!isDryRun) {
-      await logReceiptAudit(actor, {
-        operation_type: 'retro_run',
-        resource_type: 'receipt_rule',
-        resource_id: ruleId,
-        operation_status: 'success',
-        additional_info: { scope, rule_name: rule.name, reviewed_in_step: 0, visited: visitedSoFar, done: true },
-      })
-    }
-    return {
-      success: true,
-      reviewed: 0,
-      matched: 0,
-      statusAutoUpdated: 0,
-      classificationUpdated: 0,
-      vendorIntended: 0,
-      expenseIntended: 0,
-      protectedCount: 0,
-      conflicts: 0,
-      failed: 0,
-      samples: [],
-      nextOffset: visitedSoFar,
-      nextCursor: cursor,
-      total,
-      done: true,
-      durationMs: Date.now() - startedAt,
-    }
-  }
-
-  let summary: AutomationResult
-  try {
-    summary = await applyAutomationRules(ids, {
-      includeClosed: scope === 'all',
-      targetRuleId: ruleId,
-      dryRun: isDryRun,
-      performedBy: actor.user_id,
-    })
-  } catch (error) {
-    console.error('[retro-step] rule run failed', { ruleId, scope, cursor, error })
-    if (!isDryRun) {
-      await logReceiptAudit(actor, {
-        operation_type: 'retro_run',
-        resource_type: 'receipt_rule',
-        resource_id: ruleId,
-        operation_status: 'failure',
-        error_message: error instanceof Error ? error.message : 'Rule run failed',
-        additional_info: { scope, rule_name: rule.name, visited: visitedSoFar },
-      })
-    }
-    return { success: false, error: 'The rule could not be run. Nothing in this step was changed.' }
-  }
-
-  const nextOffset = visitedSoFar + ids.length
-  // The ids come back in ascending order, so the last one is where the next step starts.
-  const nextCursor = ids[ids.length - 1]
-  // A short page is the end of the set. Asking again after a full page is one cheap empty read,
-  // which is the price of never deciding "done" from a count the run itself is shrinking.
-  const done = ids.length < safeChunkSize
-  const durationMs = Date.now() - startedAt
-
-  const changedSomething =
-    summary.statusAutoUpdated + summary.classificationUpdated + summary.conflicts + summary.failed > 0
-
-  // Server-side record of what this step did, from the server's own totals. Written for any
-  // step that changed or failed to change something, and for the last step.
-  if (!isDryRun && (changedSomething || done)) {
-    await logReceiptAudit(actor, {
-      operation_type: 'retro_run',
-      resource_type: 'receipt_rule',
-      resource_id: ruleId,
-      operation_status: summary.failed > 0 ? 'failure' : 'success',
-      error_message: summary.failed > 0 ? `${summary.failed} transactions could not be updated` : undefined,
-      additional_info: {
-        scope,
-        rule_name: rule.name,
-        reviewed_in_step: ids.length,
-        visited: nextOffset,
-        matched: summary.matched,
-        auto_marked: summary.statusAutoUpdated,
-        classified: summary.classificationUpdated,
-        protected: summary.protectedCount,
-        conflicts: summary.conflicts,
-        failed: summary.failed,
-        done,
-      },
-    })
-  }
-
-  logger.debug('[retro-step] processed chunk', {
-    metadata: {
-      ruleId,
-      scope,
-      cursor,
-      dryRun: isDryRun,
-      processed: ids.length,
-      matched: summary.matched,
-      statusAutoUpdated: summary.statusAutoUpdated,
-      classificationUpdated: summary.classificationUpdated,
-      protectedCount: summary.protectedCount,
-      conflicts: summary.conflicts,
-      failed: summary.failed,
-      nextOffset,
-      nextCursor,
-      total,
-      done,
-      durationMs,
-    },
-  })
-
-  return {
-    success: true,
-    reviewed: ids.length,
-    matched: summary.matched,
-    statusAutoUpdated: summary.statusAutoUpdated,
-    classificationUpdated: summary.classificationUpdated,
-    vendorIntended: summary.vendorIntended,
-    expenseIntended: summary.expenseIntended,
-    protectedCount: summary.protectedCount,
-    conflicts: summary.conflicts,
-    failed: summary.failed,
-    samples: summary.samples,
-    nextOffset,
-    nextCursor,
-    total,
-    done,
-    durationMs,
-  }
-}
-
-/**
- * Called by the browser when a run has finished, to refresh the pages that show the results.
- * It records nothing: the audit trail is written by each step from the server's own totals, so
- * it does not depend on the browser finishing the loop or on figures the browser supplies.
- */
-export async function finalizeReceiptRuleRetroRun(): Promise<{ success?: boolean; error?: string }> {
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  revalidateReceiptPaths()
-
-  return { success: true }
 }

@@ -23,6 +23,9 @@ Recorded here so they travel with the commits. Each is a working default from sp
 - W6: receipts actions pass the actor explicitly; the shared audit service is unchanged.
 - W10: running a rule over all history is super admin only.
 - The vendor picker is alphabetical, not most used first (reason in spec 7.2 item 5).
+- Whole-word rule matching is built but off: on live data it only loses correct matches.
+- A rule may only leave a payment pending or mark it as needing no receipt.
+- Only the person who previewed a run can apply it; undoing a run over pending payments needs manage, over all history super admin.
 - Undo of a vendor merge or rename runs newest first; an older one is refused while a later one stands.
 - Invoice pairing may still move a "can't find" payment to "no receipt required" (the reference-free pass always could); it never moves a completed one, and never a pending one a person reopened.
 
@@ -73,7 +76,22 @@ Recorded here so they travel with the commits. Each is a working default from sp
 
 ## Release 5: rules management
 
-- [ ] 9.2 items 1 to 10
+Built before Release 4, which needs its per-field output, run records and lock date.
+
+- [x] 9.2 item 1: one evaluator (`src/lib/receipts/rule-evaluation.ts`) used by the engine and the preview; a preview is stored with each payment's version and applied exactly; it stops if the rule, any rule or the lock date changed
+- [x] 9.2 item 2: `receipt_rule_runs` and `receipt_rule_run_changes` with before-images; `apply_receipt_rule_run`, `undo_receipt_rule_run`; every engine write goes through `apply_receipt_rule_change` with its history rows
+- [x] 9.2 item 3: lock date in `receipt_settings`, set by super admins, enforced by the evaluator and by the database functions
+- [x] 9.2 item 4: rule health (matches, wins, last 90 days, last matched, always beaten by) with filters
+- [x] 9.2 item 5: test box
+- [x] 9.2 item 6: per-field output; whole-word matcher built and off, with the comparison on screen; commas from a bulk group escaped; a run evaluates every active rule and writes only what the target wins
+- [x] 9.2 item 7: duplicate check on create, edit and approve; outcomes limited to pending and no receipt required
+- [x] 9.2 item 8 (part): run dialog, rule tools and phone list as components; description field; one on/off control; one action at a time. Proposals panel split with Release 4
+- [x] 9.2 item 9: conflicts only for same priority and different result, naming the other rule; refreshed after an approval
+- [x] 9.2 item 10: guard test `tests/guards/receipts-no-rules-in-migrations.test.ts`
+- [x] Tests: evaluator, matcher, health and identity (42), runs, settings, guards and conflicts (35), permission matrix (25), SQL on Postgres 15 (lock date, single change, run in steps, stale previews, undo with conflicts, grants)
+- [x] Live comparison, read only: whole-word matching would change 6 of 8,420 payments, all losing a correct match; per-field output changes none
+- [x] Migration drafted: `supabase/migrations/20261001170000_receipts_release_5_rules.sql` (not applied)
+- [ ] Owner go-ahead, apply the migration, deploy, run a preview and undo on the deployed build
 
 ## Release 6: files, export, workspace and invoices
 

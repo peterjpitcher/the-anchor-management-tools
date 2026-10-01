@@ -31,7 +31,7 @@ import {
   performUpdateReceiptClassification,
 } from '@/services/receipts/receiptMutations'
 import { applyAutomationRules } from '@/services/receipts/receiptAutomation'
-import { createFakeDb, fakeResolveReceiptVendor, type FakeDb } from '../../helpers/fakeSupabaseDb'
+import { createFakeDb, fakeReceiptsRpc, fakeResolveReceiptVendor, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -59,8 +59,7 @@ function arrange(seed: Record<string, Array<Record<string, unknown>>> = {}): { d
   const calls: RpcCall[] = []
   db.onRpc((name, args) => {
     calls.push({ name, args })
-    if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
-    throw new Error(`Unexpected rpc ${name}`)
+    return fakeReceiptsRpc(db)(name, args)
   })
   mockedCreateAdminClient.mockReturnValue(db.client)
   return { db, calls }
