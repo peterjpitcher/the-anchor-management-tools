@@ -5,12 +5,13 @@ Uses schema metadata only, synthetic contacts, and a Unix socket with no network
 listener. External foreign keys, production triggers and RLS are not reproduced.
 """
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PG = Path('/opt/homebrew/opt/postgresql@17/bin')
+PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20260910095523_private_booking_email_apostrophes.sql'
 
 
