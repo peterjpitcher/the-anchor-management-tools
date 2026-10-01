@@ -23,24 +23,24 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 #                             output must contain the file's PASS marker, followed by " (<phase>)"
 #                             when a phase is given
 MILEAGE_STEPS="
-migration:20260915185549_mileage_rate_schedule_and_recalc_trigger.sql
+migration:20260916071139_mileage_rate_schedule_and_recalc_trigger.sql
 test:rates-and-recalc.test.sql
-migration:20260916155342_mileage_drivers_foundation.sql
+migration:20260916160953_mileage_drivers_foundation.sql
 test:drivers.test.sql
 # Release 3 cutover: refused before the backfill and whenever a stored amount would change, then
 # applied over backfilled trips.
 test:driver-cutover.test.sql:no_driver
-refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_NULL_DRIVERS
+refused:20260916164644_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_NULL_DRIVERS
 test:driver-cutover.test.sql:no_oj_driver
-refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_OJ_DRIVER
+refused:20260916164644_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_OJ_DRIVER
 test:driver-cutover.test.sql:amounts_change
-refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_CHANGED_AMOUNTS
+refused:20260916164644_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_CHANGED_AMOUNTS
 test:driver-cutover.test.sql:backfilled
-migration:20260916162417_mileage_driver_cutover.sql
+migration:20260916164644_mileage_driver_cutover.sql
 test:driver-cutover.test.sql:after
-migration:20260916165129_mileage_report_dataset.sql
+migration:20260916165615_mileage_report_dataset.sql
 test:report-dataset.test.sql
-migration:20260916165211_mileage_trips_page.sql
+migration:20260916173112_mileage_trips_page.sql
 test:trips-page.test.sql
 "
 
