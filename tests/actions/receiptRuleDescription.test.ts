@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * What a rule save does to `receipt_rules.description`.
  *
- * The rule edit form has no description input, and the write used to put `description ?? null`
- * in the update payload, so every edit blanked the description written by the approve-suggestion
+ * The rule edit form once had no description input, and the write put `description ?? null` in
+ * the update payload, so every edit blanked the description written by the approve-suggestion
  * RPC, the group-rule path or a seed migration. The rule list then showed "Matches: ..." instead
- * of the label someone had written. An absent description now means "leave it alone", while a
- * blank description field still clears it, which is what the other prefilled fields do.
+ * of the label someone had written. An absent description means "leave it alone", which still
+ * matters for any caller that sends no description field, while a blank description field
+ * clears it, which is what the other prefilled fields do.
  */
 
 vi.mock('next/cache', () => ({
@@ -29,10 +30,6 @@ vi.mock('@/lib/audit-helpers', () => ({
 
 vi.mock('@/lib/receipts/ai-classification', () => ({
   recordAIUsage: vi.fn(),
-}))
-
-vi.mock('@/lib/receipts/rule-matching', () => ({
-  selectBestReceiptRule: vi.fn(),
 }))
 
 vi.mock('@/lib/unified-job-queue', () => ({
@@ -87,7 +84,8 @@ function buildDatabase() {
           Object.assign(row, firstArgsOf(query, 'update')?.[0])
           return { data: { ...row }, error: null }
         }
-        return { data: { ...row }, error: null }
+        // A plain read is the list of rules, used for the duplicate check.
+        return { data: called(query, 'eq') ? { ...row } : [{ ...row }], error: null }
       },
       // Read by the governance check: no super-admin role, so priority and kind are left alone.
       user_roles: () => ({ data: [], error: null }),

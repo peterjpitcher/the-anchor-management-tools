@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, Fragment, useMemo } from 'react'
+import { ChangeEvent, Fragment, useMemo, useSyncExternalStore } from 'react'
 import {
   Card,
   CardHeader,
@@ -32,8 +32,34 @@ type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
 // Helper types matching action exports
 type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'amount_total'
 
+/** The width at which the list becomes a table. Matches the `lg` breakpoint the wrappers use. */
+const TABLE_LAYOUT_QUERY = '(min-width: 1024px)'
+
+function subscribeToLayout(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => undefined
+  const media = window.matchMedia(TABLE_LAYOUT_QUERY)
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
+
+function readTableLayout(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  return window.matchMedia(TABLE_LAYOUT_QUERY).matches
+}
+
+/**
+ * Whether the table or the cards are on screen. The list draws one of them: it used to draw
+ * both and hide one, so a page of a hundred payments was two hundred rows of controls. The
+ * server sends the table; a narrower screen swaps to cards as soon as it has loaded.
+ */
+function useTableLayout(): boolean {
+  return useSyncExternalStore(subscribeToLayout, readTableLayout, () => true)
+}
+
 interface ReceiptListProps {
   transactions: WorkspaceTransaction[]
+  /** Totals of each vendor group across every page. Null when not grouped, or not available. */
+  vendorGroupTotals?: ReceiptWorkspaceData['vendorGroupTotals']
   knownVendors: string[]
   filters: {
     sortBy?: ReceiptSortColumn
@@ -43,6 +69,7 @@ interface ReceiptListProps {
     groupByVendor?: boolean
     missingVendorOnly?: boolean
     missingExpenseOnly?: boolean
+    completedWithoutReceipt?: boolean
   }
   onSort: (column: SortColumn) => void
   onMobileSort: (event: ChangeEvent<HTMLSelectElement>) => void
@@ -64,6 +91,7 @@ const NO_MATCHES_HINT = 'Change or clear the filters to see more transactions.'
 
 export function ReceiptList({
   transactions,
+  vendorGroupTotals = null,
   knownVendors,
   filters,
   onSort,
@@ -77,7 +105,8 @@ export function ReceiptList({
   const currentSortDirection = filters.sortDirection ?? 'desc'
   const mobileSortValue = `${currentSortBy}:${currentSortDirection}`
   const shouldGroupByVendor = filters.groupByVendor ?? false
-  const vendorGroups = useMemo(() => buildVendorGroups(transactions), [transactions])
+  const showTable = useTableLayout()
+  const vendorGroups = useMemo(() => buildVendorGroups(transactions, vendorGroupTotals), [transactions, vendorGroupTotals])
   const valueRanges = useMemo(() => {
     const transactionValues = transactions.map(getTransactionValue)
     const groupValues = vendorGroups.map((group) => group.totalAmount)
@@ -136,7 +165,15 @@ export function ReceiptList({
           onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }
-      if (filters.missingExpenseOnly && !isExpenseMissing(updated.expense_category)) {
+      // Given a receipt, a reason, or another status: no longer something to review.
+      if (
+        filters.completedWithoutReceipt &&
+        (updated.status !== 'completed' || updated.files.length > 0 || Boolean(updated.completed_reason))
+      ) {
+          onTransactionRemove(updated.id, previousStatus, updated.status)
+          return
+      }
+      if (filters.missingExpenseOnly && (!isExpenseMissing(updated.expense_category) || updated.no_category_applies)) {
           onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }
@@ -160,6 +197,7 @@ export function ReceiptList({
       <CardHeader title="Transactions" subtitle="Tick off receipts as you collect them and keep the finance trail tidy" />
       {/* Card list runs to lg, so the sort control must too. It used to stop
           at sm, leaving tablets with cards and no way to sort them. */}
+      {!showTable && (
       <div className="w-full p-pad-card lg:hidden">
         <Select
           id="mobile-receipts-sort"
@@ -169,8 +207,10 @@ export function ReceiptList({
           options={mobileSortOptions}
         />
       </div>
+      )}
 
       {/* Phones and tablets */}
+      {!showTable && (
       <div className="flex flex-col gap-2 px-pad-card pb-pad-card lg:hidden">
         {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
         {transactions.length === 0 ? (
@@ -187,7 +227,7 @@ export function ReceiptList({
                   <span className="text-xs font-bold">Total {formatCurrency(group.totalAmount)}</span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-on-dark-muted">
-                  <span>{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                  <span>{group.count} transaction{group.count === 1 ? '' : 's'}</span>
                   {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
                   {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
                 </div>
@@ -216,8 +256,10 @@ export function ReceiptList({
           ))
         )}
       </div>
+      )}
 
       {/* Desktop table */}
+      {showTable && (
       <div className="hidden lg:block">
         {transactions.length > 0 && shouldGroupByVendor && (
           <div className="flex justify-end border-t border-border px-4 py-2">
@@ -259,7 +301,7 @@ export function ReceiptList({
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <span className="font-bold">{group.vendorName}</span>
-                          <span className="text-xs font-semibold text-on-dark-muted">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                          <span className="text-xs font-semibold text-on-dark-muted">{group.count} transaction{group.count === 1 ? '' : 's'}</span>
                         </div>
                         <div className="flex flex-wrap gap-3 text-xs font-bold">
                           <span>Total {formatCurrency(group.totalAmount)}</span>
@@ -276,7 +318,6 @@ export function ReceiptList({
                       vendorOptions={knownVendors}
                       heatColour={transactionHeatColour(transaction)}
                       onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                      onRemove={onTransactionRemove}
                       onRuleSuggestion={onRuleSuggestion}
                     />
                   ))}
@@ -289,7 +330,6 @@ export function ReceiptList({
                   transaction={transaction}
                   vendorOptions={knownVendors}
                   onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                  onRemove={onTransactionRemove}
                   onRuleSuggestion={onRuleSuggestion}
                 />
               ))
@@ -297,6 +337,7 @@ export function ReceiptList({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {pagination && (
         <TablePagination

@@ -1,6 +1,8 @@
 'use server'
 
 import { revalidatePath, revalidateTag } from 'next/cache'
+import { escapeRuleKeyword } from '@/lib/receipts/rule-matching'
+import { NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
@@ -12,7 +14,7 @@ import type { ReceiptRuleSuggestion } from '@/types/database'
 // Re-export types so existing consumers keep working
 // ---------------------------------------------------------------------------
 export type {
-  
+  ReceiptHistoryEntry,
   ReceiptWorkspaceFilters,
   
   AIUsageBreakdown,
@@ -50,6 +52,9 @@ export type {
   BulkStatus,
 } from '@/services/receipts'
 
+import type { ReceiptTransaction } from '@/types/database'
+import { performApplyReceiptBulkClassification, type BulkApplyResult } from '@/services/receipts/receiptBulkApply'
+
 // ---------------------------------------------------------------------------
 // Service layer imports
 // ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ import {
   queryReceiptWorkspaceData,
   queryReceiptBulkReviewData,
   queryReceiptSignedUrl,
-  queryMonthlyReceiptSummary,
+  queryReceiptTransactionHistory,
   queryMonthlyReceiptInsights,
   queryReceiptBankBalanceHistory,
   queryReceiptVendorSummary,
@@ -70,34 +75,31 @@ import {
   queryReceiptVendorWatchlist,
   queryReceiptVendorReviews,
   queryReceiptMissingExpenseSummary,
-  queryAIUsageBreakdown,
   queryPreviewReceiptRule,
   // Mutations
   performImportReceiptStatement,
   performMarkReceiptTransaction,
+  performUpdateReceiptNote,
   performUpdateReceiptClassification,
   performCreateReceiptUploadUrl,
   performCompleteReceiptUpload,
-  performUploadReceiptForTransaction,
+  performCancelReceiptUpload,
   performDeleteReceiptFile,
+  performRefreshInvoiceCopy,
   performCreateReceiptRule,
   performUpdateReceiptRule,
   performToggleReceiptRule,
-  performDeleteReceiptRule,
-  performHardDeleteReceiptRule,
-  performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
   performSetReceiptVendorReviewStatus,
   performApproveReceiptRuleSuggestion,
   performApproveReceiptRuleSuggestions,
+  enqueueReceiptSystemJob,
   performDeclineReceiptRuleSuggestion,
   queryReceiptGovernanceItems,
   refreshAutomationForPendingTransactions,
-  applyAutomationRules,
   // Helpers
   fileSchema,
-  receiptFileSchema,
   groupRuleInputSchema,
   normalizeVendorInput,
   coerceExpenseCategory,
@@ -106,6 +108,7 @@ import {
 } from '@/services/receipts'
 
 import type {
+  ReceiptHistoryEntry,
   ReceiptWorkspaceFilters,
   ReceiptWorkspaceData,
   ReceiptBulkReviewData,
@@ -128,23 +131,72 @@ import type {
   AIUsageBreakdown,
   RulePreviewResult,
   RuleMutationResult,
-  RetroStepResult,
-  RetroStepSuccess,
-  AutomationResult,
   BulkStatus,
 } from '@/services/receipts'
-import { RETRO_CHUNK_SIZE } from '@/services/receipts'
 
 // ---------------------------------------------------------------------------
 // Revalidation helpers
 // ---------------------------------------------------------------------------
 
-async function requireCurrentUser(): Promise<{ user_id: string; user_email: string }> {
+type ReceiptActor = { user_id: string; user_email: string }
+
+async function requireCurrentUser(): Promise<ReceiptActor> {
   const { user_id, user_email } = await getCurrentUser()
   if (!user_id) {
     throw new Error('Unauthorized')
   }
   return { user_id, user_email: user_email ?? '' }
+}
+
+/**
+ * Every receipts audit entry names the person who did it. The shared audit service records
+ * whatever it is given and looks nobody up, so an entry written without an actor is anonymous
+ * for good: 1,423 of the first 1,429 receipts entries were. The actor is therefore a required
+ * argument here, not an optional field.
+ */
+async function logReceiptAudit(
+  actor: ReceiptActor,
+  event: Omit<Parameters<typeof logAuditEvent>[0], 'user_id' | 'user_email'>
+): Promise<void> {
+  await logAuditEvent({
+    ...event,
+    user_id: actor.user_id,
+    user_email: actor.user_email || undefined,
+  })
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const RULE_REFRESH_WARNING =
+  'The rule was saved, but it could not be run over the pending transactions. Run it from the rules list.'
+
+/** The parts of a rule that decide what it matches and what it does, for the audit trail. */
+function ruleAuditValues(rule: {
+  name: string
+  match_description: string | null
+  match_transaction_type: string | null
+  match_direction: string
+  match_min_amount: number | null
+  match_max_amount: number | null
+  auto_status: string
+  set_vendor_name: string | null
+  set_expense_category: string | null
+  priority: number
+  is_active: boolean
+}): Record<string, unknown> {
+  return {
+    name: rule.name,
+    match_description: rule.match_description,
+    match_transaction_type: rule.match_transaction_type,
+    match_direction: rule.match_direction,
+    match_min_amount: rule.match_min_amount,
+    match_max_amount: rule.match_max_amount,
+    auto_status: rule.auto_status,
+    set_vendor_name: rule.set_vendor_name,
+    set_expense_category: rule.set_expense_category,
+    priority: rule.priority,
+    is_active: rule.is_active,
+  }
 }
 
 function revalidateReceiptPaths(): void {
@@ -164,6 +216,8 @@ function optionalRuleFormText(formData: FormData, key: string): string | undefin
 }
 
 function getReceiptRuleValidationInput(formData: FormData) {
+  // "No category applies" travels in the category field and is stored as a flag.
+  const setsNoCategory = formData.get('set_expense_category') === NO_CATEGORY_VALUE
   return {
     name: formData.get('name') ?? '',
     description: optionalRuleFormText(formData, 'description'),
@@ -174,9 +228,10 @@ function getReceiptRuleValidationInput(formData: FormData) {
     match_direction: formData.get('match_direction') ?? 'both',
     match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
-    auto_status: formData.get('auto_status') ?? 'no_receipt_required',
+    auto_status: formData.get('auto_status') ?? 'pending',
     set_vendor_name: optionalRuleFormText(formData, 'set_vendor_name'),
-    set_expense_category: optionalRuleFormText(formData, 'set_expense_category'),
+    set_expense_category: setsNoCategory ? undefined : optionalRuleFormText(formData, 'set_expense_category'),
+    set_no_category: setsNoCategory,
   }
 }
 
@@ -186,7 +241,7 @@ function validateReceiptRuleForm(formData: FormData): { success: true } | { succ
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -250,20 +305,31 @@ export async function getReceiptBulkReviewData(options: {
   return queryReceiptBulkReviewData(options)
 }
 
-export async function getReceiptSignedUrl(fileId: string) {
+export async function getReceiptSignedUrl(fileId: string, options: { download?: boolean } = {}) {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     return { error: 'Insufficient permissions' }
   }
-  return queryReceiptSignedUrl(fileId)
+  return queryReceiptSignedUrl(fileId, { download: options?.download === true })
 }
 
-async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
+/** Everything recorded against one transaction, newest first. */
+export async function getReceiptTransactionHistory(
+  transactionId: string
+): Promise<{ entries?: ReceiptHistoryEntry[]; error?: string }> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
-    throw new Error('Insufficient permissions')
+    return { error: 'Insufficient permissions' }
   }
-  return queryMonthlyReceiptSummary(limit)
+  if (typeof transactionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(transactionId)) {
+    return { error: 'Transaction reference is invalid' }
+  }
+  try {
+    return { entries: await queryReceiptTransactionHistory(transactionId) }
+  } catch (error) {
+    console.error('Failed to load a transaction history', error)
+    return { error: 'The history could not be loaded.' }
+  }
 }
 
 export async function getMonthlyReceiptInsights(limit = 12): Promise<ReceiptMonthlyInsights> {
@@ -339,6 +405,11 @@ export async function getReceiptVendorMovements(input: {
   })
 }
 
+/**
+ * These two ask OpenAI to put the figures into words, which costs money. They used to need only
+ * `receipts:view`, so a view-only user could run up calls. They now need `receipts:manage`. The
+ * figures themselves are on the vendor screens for everyone who can view.
+ */
 export async function getReceiptVendorCostReview(input: {
   monthWindow?: number
 } = {}): Promise<{
@@ -347,8 +418,8 @@ export async function getReceiptVendorCostReview(input: {
   review?: ReceiptVendorAiReview
   error?: string
 }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
     return { success: false, signals: [], error: 'Insufficient permissions' }
   }
   return queryReceiptVendorCostReview(input)
@@ -363,8 +434,8 @@ export async function getReceiptVendorAiSummary(input: {
   signals: ReceiptVendorCostSignal[]
   error?: string
 }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
     return { success: false, signals: [], error: 'Insufficient permissions' }
   }
   return queryReceiptVendorAiSummary(input)
@@ -441,14 +512,6 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
   return queryReceiptMissingExpenseSummary()
 }
 
-async function getAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
-  const canView = await checkUserPermission('receipts', 'view')
-  if (!canView) {
-    return { success: false, error: 'Insufficient permissions' }
-  }
-  return queryAIUsageBreakdown()
-}
-
 export async function previewReceiptRule(formData: FormData): Promise<{ success: boolean; preview?: RulePreviewResult; error?: string }> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -459,7 +522,7 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -491,12 +554,13 @@ export async function importReceiptStatement(formData: FormData) {
     .parse(typeof sourceTypeRaw === 'string' ? sourceTypeRaw : 'bank')
 
   const buffer = Buffer.from(await receiptFile.arrayBuffer())
-  const { user_id, user_email } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id, user_email } = actor
 
   const result = await performImportReceiptStatement(user_id, user_email, receiptFile, buffer, sourceType)
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'create',
       resource_type: 'receipt_batch',
       resource_id: result.batch?.id ?? undefined,
@@ -506,11 +570,57 @@ export async function importReceiptStatement(formData: FormData) {
         source_type: sourceType,
         inserted: result.inserted,
         skipped: result.skipped,
+        records_in_file: result.recordsInFile ?? null,
+        rejected: result.rejected?.length ?? 0,
+        repeated_in_file: result.repeatedInFile ?? 0,
         auto_applied: result.autoApplied,
         auto_classified: result.autoClassified,
+        already_imported: result.alreadyImported ?? false,
+        followup_status: result.followupStatus ?? null,
+        warning: result.warning ?? null,
       },
     })
     revalidateReceiptPaths()
+  } else {
+    await logReceiptAudit(actor, {
+      operation_type: 'create',
+      resource_type: 'receipt_batch',
+      operation_status: 'failure',
+      error_message: result.error ?? 'Import failed',
+      additional_info: {
+        filename: receiptFile.name,
+        source_type: sourceType,
+        records_in_file: result.recordsInFile ?? null,
+        rejected: result.rejected?.length ?? 0,
+      },
+    })
+  }
+
+  return result
+}
+
+/**
+ * Saves the note on a payment. Separate from the status change on purpose: a note must not
+ * rewrite who marked the payment or drop the rule that closed it.
+ */
+export async function updateReceiptNote(input: { transactionId: string; note?: string | null }) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const actor = await requireCurrentUser()
+  const result = await performUpdateReceiptNote(actor.user_id, input)
+
+  if (result.success) {
+    await logReceiptAudit(actor, {
+      operation_type: 'update_note',
+      resource_type: 'receipt_transaction',
+      resource_id: input.transactionId,
+      operation_status: 'success',
+      additional_info: { cleared: !input.note },
+    })
+    revalidatePath('/receipts')
   }
 
   return result
@@ -519,26 +629,31 @@ export async function importReceiptStatement(formData: FormData) {
 export async function markReceiptTransaction(input: {
   transactionId: string
   status: string
-  note?: string
-  receiptRequired?: boolean
+  /** Why the transaction is complete without a receipt. Needed when it has no file. */
+  reason?: string | null
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id, user_email } = await requireCurrentUser()
-  const result = await performMarkReceiptTransaction(user_id, user_email, input as any)
+  const actor = await requireCurrentUser()
+  const { user_id, user_email } = actor
+  const result = await performMarkReceiptTransaction(user_id, user_email, {
+    transactionId: input.transactionId,
+    status: input.status as ReceiptTransaction['status'],
+    reason: input.reason ?? null,
+  })
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'update_status',
       resource_type: 'receipt_transaction',
       resource_id: input.transactionId,
       operation_status: 'success',
       additional_info: {
         new_status: input.status,
-        note: input.note ?? null,
+        completed_reason: result.transaction?.completed_reason ?? null,
       },
     })
     revalidatePath('/receipts')
@@ -554,19 +669,24 @@ export async function updateReceiptClassification(input: {
   transactionId: string
   vendorName?: string | null
   expenseCategory?: string | null
+  /** With no category: this payment takes none ("no category applies"). */
+  noCategoryApplies?: boolean
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const result = await performUpdateReceiptClassification(user_id, input as any)
 
   if (result.success && result.changed) {
     const hasVendorField = Object.prototype.hasOwnProperty.call(input, 'vendorName')
     const hasExpenseField = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'update_classification',
       resource_type: 'receipt_transaction',
       resource_id: input.transactionId,
@@ -574,8 +694,10 @@ export async function updateReceiptClassification(input: {
       additional_info: {
         vendor_changed: hasVendorField,
         expense_changed: hasExpenseField,
-        vendor: input.vendorName ?? null,
+        vendor: hasVendorField ? result.transaction?.vendor_name ?? null : null,
+        vendor_id: hasVendorField ? result.transaction?.vendor_id ?? null : null,
         expense: input.expenseCategory ?? null,
+        no_category_applies: hasExpenseField ? Boolean(result.transaction?.no_category_applies) : null,
       },
     })
     revalidatePath('/receipts')
@@ -618,6 +740,8 @@ export async function completeReceiptUpload(input: {
   fileName: string
   fileType: string
   fileSize: number
+  /** Sent after the person has seen the warning that the file is on another transaction. */
+  confirmDuplicate?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -628,11 +752,15 @@ export async function completeReceiptUpload(input: {
     return { error: 'Missing transaction reference' }
   }
 
-  const { user_id, user_email } = await requireCurrentUser()
-  const result = await performCompleteReceiptUpload(user_id, user_email, input)
+  const actor = await requireCurrentUser()
+  const { user_id, user_email } = actor
+  const result = await performCompleteReceiptUpload(user_id, user_email, {
+    ...input,
+    confirmDuplicate: input.confirmDuplicate === true,
+  })
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'upload_receipt',
       resource_type: 'receipt_transaction',
       resource_id: input.transactionId,
@@ -640,7 +768,8 @@ export async function completeReceiptUpload(input: {
       additional_info: {
         status: 'completed',
         file_name: input.fileName,
-        file_size: input.fileSize,
+        file_size: result.receipt?.file_size_bytes ?? input.fileSize,
+        duplicate_confirmed: input.confirmDuplicate === true,
       },
     })
     revalidatePath('/receipts')
@@ -650,37 +779,26 @@ export async function completeReceiptUpload(input: {
   return result
 }
 
-export async function uploadReceiptForTransaction(formData: FormData) {
+/** Cancels an upload the person was warned about: the stored file is removed, nothing is attached. */
+export async function cancelReceiptUpload(input: { transactionId: string; storagePath: string }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const transactionId = formData.get('transactionId')
-  if (typeof transactionId !== 'string' || !transactionId) {
-    return { error: 'Missing transaction reference' }
-  }
+  const actor = await requireCurrentUser()
+  const result = await performCancelReceiptUpload(actor.user_id, {
+    transactionId: String(input?.transactionId ?? ''),
+    storagePath: String(input?.storagePath ?? ''),
+  })
 
-  const receiptFile = formData.get('receipt')
-  const parsedFile = receiptFileSchema.safeParse(receiptFile)
-  if (!parsedFile.success) {
-    return { error: parsedFile.error.issues[0]?.message ?? 'Invalid receipt upload' }
-  }
-
-  const { user_id, user_email } = await requireCurrentUser()
-  const result = await performUploadReceiptForTransaction(user_id, user_email, transactionId, parsedFile.data)
-
-  if (result.success) {
-    await logAuditEvent({
-      operation_type: 'upload_receipt',
-      resource_type: 'receipt_transaction',
-      resource_id: transactionId,
-      operation_status: 'success',
-      additional_info: { status: 'completed' },
-    })
-    revalidatePath('/receipts')
-    revalidateTag('dashboard')
-  }
+  await logReceiptAudit(actor, {
+    operation_type: 'cancel_upload',
+    resource_type: 'receipt_transaction',
+    resource_id: String(input?.transactionId ?? ''),
+    operation_status: result.success ? 'success' : 'failure',
+    additional_info: { reason: 'duplicate_file_warning' },
+  })
 
   return result
 }
@@ -691,18 +809,49 @@ export async function deleteReceiptFile(fileId: string) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const result = await performDeleteReceiptFile(user_id, fileId)
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'delete_receipt',
       resource_type: 'receipt_file',
       resource_id: fileId,
       operation_status: 'success',
+      additional_info: {
+        transaction_id: result.transactionId ?? null,
+        new_status: result.newStatus ?? null,
+        remaining_files: result.remainingFiles ?? null,
+      },
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
+  }
+
+  return result
+}
+
+/** Renders an attached invoice again and swaps the stored copy, for when the invoice has changed. */
+export async function refreshReceiptInvoiceCopy(fileId: string) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const actor = await requireCurrentUser()
+  const result = await performRefreshInvoiceCopy(actor.user_id, String(fileId ?? ''))
+
+  await logReceiptAudit(actor, {
+    operation_type: 'refresh_invoice_copy',
+    resource_type: 'receipt_file',
+    resource_id: String(fileId ?? ''),
+    operation_status: result.success ? 'success' : 'failure',
+    error_message: result.success ? undefined : result.error,
+  })
+
+  if (result.success) {
+    revalidatePath('/receipts')
   }
 
   return result
@@ -719,16 +868,18 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
     return { error: validation.error }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const canGovernRules = await currentUserCanGovernReceiptRules()
   const result = await performCreateReceiptRule(user_id, formData, { canGovernRules })
 
   if ('success' in result && result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'create',
       resource_type: 'receipt_rule',
       resource_id: result.rule.id,
       operation_status: 'success',
+      new_values: ruleAuditValues(result.rule),
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
@@ -748,16 +899,18 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
     return { error: validation.error }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const canGovernRules = await currentUserCanGovernReceiptRules()
   const result = await performUpdateReceiptRule(user_id, ruleId, formData, { canGovernRules })
 
   if ('success' in result && result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'update',
       resource_type: 'receipt_rule',
       resource_id: ruleId,
       operation_status: 'success',
+      new_values: ruleAuditValues(result.rule),
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
@@ -772,66 +925,17 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const result = await performToggleReceiptRule(ruleId, isActive, user_id)
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'toggle',
       resource_type: 'receipt_rule',
       resource_id: ruleId,
       operation_status: 'success',
       additional_info: { is_active: isActive },
-    })
-    revalidatePath('/receipts')
-    revalidateTag('dashboard')
-  }
-
-  return result
-}
-
-export async function deleteReceiptRule(ruleId: string) {
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  const { user_id } = await requireCurrentUser()
-  const result = await performDeleteReceiptRule(ruleId, user_id)
-
-  if (result.success) {
-    await logAuditEvent({
-      operation_type: 'deactivate',
-      resource_type: 'receipt_rule',
-      resource_id: ruleId,
-      operation_status: 'success',
-    })
-    revalidatePath('/receipts')
-    revalidateTag('dashboard')
-  }
-
-  return result
-}
-
-async function hardDeleteReceiptRule(ruleId: string) {
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  const canGovernRules = await currentUserCanGovernReceiptRules()
-  if (!canGovernRules) {
-    return { error: 'Only super admins can permanently delete rules.' }
-  }
-
-  const result = await performHardDeleteReceiptRule(ruleId)
-
-  if (result.success) {
-    await logAuditEvent({
-      operation_type: 'hard_delete',
-      resource_type: 'receipt_rule',
-      resource_id: ruleId,
-      operation_status: 'success',
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
@@ -849,7 +953,8 @@ export async function approveReceiptRuleSuggestion(
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const canGovernRules = await currentUserCanGovernReceiptRules()
   if (!canGovernRules) {
     return { error: 'Only super admins can approve suggested rules.' }
@@ -858,23 +963,28 @@ export async function approveReceiptRuleSuggestion(
   const result = await performApproveReceiptRuleSuggestion(user_id, suggestionId, options)
 
   if (result.success) {
+    // A new rule can clash with an existing one, so the conflict list is worked out again.
+    await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', result.rule?.id ?? suggestionId)
     // Re-run rules over pending rows so the newly approved rule classifies its evidence.
     // Triggered here (not in the service) to avoid a circular import between
     // receiptGovernance and receiptMutations. The approval has already committed, so a
     // refresh failure must not fail the action.
+    let warning: string | undefined
     try {
-      await refreshAutomationForPendingTransactions()
+      await refreshAutomationForPendingTransactions({ performedBy: user_id })
     } catch (e) {
       console.error('Failed to refresh rules after approve', e)
+      warning = RULE_REFRESH_WARNING
     }
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'approve_suggestion',
       resource_type: 'receipt_rule_suggestion',
       resource_id: suggestionId,
       operation_status: 'success',
-      additional_info: { rule_id: result.rule?.id ?? null },
+      additional_info: { rule_id: result.rule?.id ?? null, refresh_failed: Boolean(warning) },
     })
     revalidateReceiptPaths()
+    return { ...result, warning }
   }
 
   return result
@@ -883,19 +993,20 @@ export async function approveReceiptRuleSuggestion(
 export async function approveReceiptRuleSuggestions(
   ids: string[],
   options: { active?: boolean } = {}
-): Promise<{ approved?: number; failed?: number; error?: string }> {
+): Promise<{ approved?: number; failed?: number; error?: string; warning?: string }> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const canGovernRules = await currentUserCanGovernReceiptRules()
   if (!canGovernRules) {
     return { error: 'Only super admins can approve suggested rules.' }
   }
 
-  const validIds = [...new Set(ids)].filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+  const validIds = [...new Set(ids)].filter((id) => UUID_PATTERN.test(id))
   if (!validIds.length) {
     return { error: 'Select at least one suggestion to approve.' }
   }
@@ -904,35 +1015,46 @@ export async function approveReceiptRuleSuggestions(
 
   // One refresh after the whole batch so the approved rules re-run over pending rows once.
   // The approvals have already committed, so a refresh failure must not fail the action.
+  let warning: string | undefined
   if (result.approved > 0) {
+    await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', `approved:${validIds[0]}`)
     try {
-      await refreshAutomationForPendingTransactions()
+      await refreshAutomationForPendingTransactions({ performedBy: user_id })
     } catch (e) {
       console.error('Failed to refresh rules after approve', e)
+      warning = RULE_REFRESH_WARNING
     }
   }
 
-  await logAuditEvent({
+  await logReceiptAudit(actor, {
     operation_type: 'approve_suggestions_bulk',
     resource_type: 'receipt_rule_suggestion',
-    operation_status: 'success',
-    additional_info: { ...result, count: validIds.length },
+    // Nothing approved is not a success, whatever was selected.
+    operation_status: result.approved > 0 ? 'success' : 'failure',
+    error_message: result.approved > 0 ? undefined : 'No suggestion could be approved',
+    additional_info: { ...result, count: validIds.length, refresh_failed: Boolean(warning) },
   })
   revalidateReceiptPaths()
 
-  return result
+  return { ...result, warning }
 }
 
 export async function getReceiptRuleSuggestionsPage(
   page = 1,
-  pageSize = 20
+  pageSize = 20,
+  /** `liveChecks` runs each keyword over every payment now: what it matches and what it clashes with. */
+  options: { liveChecks?: boolean } = {}
 ): Promise<{ suggestions: ReceiptRuleSuggestion[]; suggestionsTotal: number; error?: string }> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     return { suggestions: [], suggestionsTotal: 0, error: 'Insufficient permissions' }
   }
 
-  const { suggestions, suggestionsTotal } = await queryReceiptGovernanceItems({ page, pageSize })
+  const { suggestions, suggestionsTotal } = await queryReceiptGovernanceItems({
+    page,
+    pageSize,
+    liveChecks: options?.liveChecks === true,
+  })
   return { suggestions, suggestionsTotal }
 }
 
@@ -945,7 +1067,8 @@ export async function declineReceiptRuleSuggestion(
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
   const canGovernRules = await currentUserCanGovernReceiptRules()
   if (!canGovernRules) {
     return { error: 'Only super admins can decline suggested rules.' }
@@ -954,7 +1077,7 @@ export async function declineReceiptRuleSuggestion(
   const result = await performDeclineReceiptRuleSuggestion(user_id, suggestionId, reason)
 
   if (result.success) {
-    await logAuditEvent({
+    await logReceiptAudit(actor, {
       operation_type: 'decline_suggestion',
       resource_type: 'receipt_rule_suggestion',
       resource_id: suggestionId,
@@ -966,30 +1089,65 @@ export async function declineReceiptRuleSuggestion(
   return result
 }
 
+/**
+ * One vendor or category for the transactions of a group on the bulk page. Called first without
+ * `confirm`, it says what would change and writes nothing. Called with it, the change is made as
+ * a recorded run, which Recent runs can undo.
+ */
 export async function applyReceiptGroupClassification(input: {
+  /** The group's heading, used to name the run. */
   details: string
+  /** The transactions in the group, as the page listed them. */
+  transactionIds: string[]
   vendorName?: string | null
   expenseCategory?: string | null
-  statuses?: BulkStatus[]
-}) {
+  /** With no category: these transactions take none. */
+  noCategoryApplies?: boolean
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
+  /** Also change the transactions a person has already decided. */
+  includeDecided?: boolean
+  confirm?: boolean
+}): Promise<BulkApplyResult> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
 
-  const { user_id } = await requireCurrentUser()
-  const result = await performApplyReceiptGroupClassification(user_id, input as any)
+  const actor = await requireCurrentUser()
+  const { user_id } = actor
+  const details = typeof input?.details === 'string' ? input.details : ''
 
-  if (result.success) {
-    await logAuditEvent({
+  const request: Parameters<typeof performApplyReceiptBulkClassification>[1] = {
+    transactionIds: Array.isArray(input?.transactionIds) ? input.transactionIds : [],
+    noCategoryApplies: input?.noCategoryApplies === true,
+    createVendor: input?.createVendor === true,
+    includeDecided: input?.includeDecided === true,
+    confirm: input?.confirm === true,
+    label: `Bulk: ${details.trim().slice(0, 100) || 'group'}`,
+  }
+  // "Present, even as null" means the field is to be set, so a missing key is kept missing.
+  if (Object.prototype.hasOwnProperty.call(input ?? {}, 'vendorName')) request.vendorName = input.vendorName ?? null
+  if (Object.prototype.hasOwnProperty.call(input ?? {}, 'expenseCategory')) request.expenseCategory = input.expenseCategory ?? null
+
+  const result = await performApplyReceiptBulkClassification(user_id, request)
+
+  // A preview changes nothing, so there is nothing to record or refresh.
+  if (request.confirm && (result.success || result.runId)) {
+    await logReceiptAudit(actor, {
       operation_type: 'bulk_classification',
       resource_type: 'receipt_transaction_group',
-      resource_id: hashDetails(input.details),
-      operation_status: 'success',
+      resource_id: hashDetails(details),
+      operation_status: result.success ? 'success' : 'failure',
+      error_message: result.success ? undefined : result.error,
       additional_info: {
-        details: input.details,
-        count: result.updated,
-        skipped_incoming_count: result.skippedIncomingCount,
+        details,
+        run_id: result.runId ?? null,
+        count: result.applied ?? 0,
+        skipped_changed: result.skippedChanged ?? 0,
+        skipped_locked: result.skippedLocked ?? 0,
+        decided_by_person: result.preview?.decidedByPerson ?? 0,
+        included_decided: request.includeDecided === true,
       },
     })
     revalidateReceiptPaths()
@@ -1007,6 +1165,8 @@ export async function createReceiptRuleFromGroup(input: {
   autoStatus?: string
   vendorName?: string | null
   expenseCategory?: string | null
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -1027,12 +1187,16 @@ export async function createReceiptRuleFromGroup(input: {
   if (data.description) {
     formData.set('description', data.description)
   }
-  formData.set('match_description', data.matchDescription ?? data.details)
+  // With no keywords typed, the whole description is the keyword, commas and all.
+  formData.set('match_description', data.matchDescription ?? escapeRuleKeyword(data.details))
   formData.set('match_direction', data.direction)
   formData.set('auto_status', data.autoStatus)
   formData.set('match_transaction_type', '')
   if (vendor) {
     formData.set('set_vendor_name', vendor)
+    if (input.createVendor) {
+      formData.set('create_vendor', 'true')
+    }
   }
   if (expense) {
     formData.set('set_expense_category', expense)
@@ -1048,18 +1212,16 @@ export async function createReceiptRuleFromGroup(input: {
   return result
 }
 
-export async function requeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; error?: string }> {
+export async function requeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; alreadyAsked?: number; error?: string }> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { success: false, error: 'Insufficient permissions' }
   }
 
-  const userInfo = await getCurrentUser()
+  const actor = await requireCurrentUser()
   const result = await performRequeueUnclassifiedTransactions()
 
-  await logAuditEvent({
-    user_id: userInfo.user_id ?? undefined,
-    user_email: userInfo.user_email ?? undefined,
+  await logReceiptAudit(actor, {
     operation_type: 'requeue',
     resource_type: 'receipt_transactions',
     operation_status: result.success ? 'success' : 'failure',
@@ -1067,317 +1229,9 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
     additional_info: {
       action: 'requeue_unclassified_transactions',
       queued: result.queued ?? 0,
+      already_asked: result.alreadyAsked ?? 0,
     },
   })
 
   return result
-}
-
-// ---------------------------------------------------------------------------
-// RETRO-RUN actions (kept here because they compose multiple service calls)
-// ---------------------------------------------------------------------------
-
-type RetroStepSuccessWithCursor = RetroStepSuccess & { nextCursor: string | null }
-type RetroStepResultWithCursor = RetroStepSuccessWithCursor | Extract<RetroStepResult, { success: false }>
-
-/**
- * A retro run changes the very set it reads: applying a rule moves matched rows out of
- * `pending`. Paging that set by offset skipped one unprocessed row for every row the previous
- * chunk moved, and stopped early because the row count shrank under the cursor. Ordering by
- * `transaction_date` made it worse: the date is not unique, so tied rows could be returned in a
- * different order on the next request and be skipped or repeated even for the `all` scope.
- *
- * Paging is therefore by keyset on `id`, the primary key: each step asks for the next ids above
- * the last id it saw. That ordering is total, it is unaffected by anything the rule changes
- * underneath it, and it always moves forward, so the run visits every matching row once and
- * terminates.
- *
- * `offset` and `nextOffset` are kept only as a progress tally of rows visited so far. They no
- * longer drive paging; `cursor` and `nextCursor` do.
- */
-export async function runReceiptRuleRetroactivelyStep({
-  ruleId,
-  scope = 'pending',
-  cursor = null,
-  offset = 0,
-  chunkSize = RETRO_CHUNK_SIZE,
-}: {
-  ruleId: string
-  scope?: 'pending' | 'all'
-  cursor?: string | null
-  offset?: number
-  chunkSize?: number
-}): Promise<RetroStepResultWithCursor> {
-  const startedAt = Date.now()
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { success: false, error: 'Insufficient permissions' }
-  }
-
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase = createAdminClient()
-
-  const { data: rule, error: ruleError } = await supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('id', ruleId)
-    .maybeSingle()
-
-  if (ruleError || !rule) {
-    console.error('[retro-step] rule lookup failed', { ruleId, ruleError })
-    return { success: false, error: 'Rule not found' }
-  }
-
-  if (!rule.is_active) {
-    console.warn('[retro-step] rule inactive', { ruleId })
-    return { success: false, error: 'Enable the rule before running it' }
-  }
-
-  let idsQuery = supabase
-    .from('receipt_transactions')
-    .select('id', { count: 'exact', head: false })
-    .order('id', { ascending: true })
-
-  if (scope === 'pending') {
-    idsQuery = idsQuery.eq('status', 'pending')
-  }
-
-  if (cursor) {
-    idsQuery = idsQuery.gt('id', cursor)
-  }
-
-  const { data: idRows, count, error: idsError } = await idsQuery.range(0, chunkSize - 1)
-
-  if (idsError) {
-    console.error('[retro-step] failed to load ids', { idsError, ruleId, cursor, chunkSize })
-    return { success: false, error: 'Failed to load transactions' }
-  }
-
-  const ids = (idRows ?? []).map((row) => row.id ?? null).filter((value): value is string => Boolean(value))
-
-  // `count` is the number of rows still at or after the cursor, so the expected size of the
-  // whole run is the rows already visited plus the rows left.
-  const total = offset + (typeof count === 'number' ? count : ids.length)
-
-  if (!ids.length) {
-    return {
-      success: true,
-      reviewed: 0,
-      matched: 0,
-      statusAutoUpdated: 0,
-      classificationUpdated: 0,
-      vendorIntended: 0,
-      expenseIntended: 0,
-      samples: [],
-      nextOffset: offset,
-      nextCursor: cursor,
-      total,
-      done: true,
-      durationMs: Date.now() - startedAt,
-    }
-  }
-
-  const summary = await applyAutomationRules(ids, {
-    includeClosed: scope === 'all',
-    targetRuleId: ruleId,
-    overrideManual: scope === 'all',
-    allowClosedStatusUpdates: scope === 'all',
-  })
-
-  const nextOffset = offset + ids.length
-  // The ids come back in ascending order, so the last one is where the next step starts.
-  const nextCursor = ids[ids.length - 1]
-  // A short page is the end of the set. Asking again after a full page is one cheap empty read,
-  // which is the price of never deciding "done" from a count the run itself is shrinking.
-  const done = ids.length < chunkSize
-  const durationMs = Date.now() - startedAt
-
-  logger.debug('[retro-step] processed chunk', {
-    metadata: {
-      ruleId,
-      scope,
-      cursor,
-      processed: ids.length,
-      matched: summary.matched,
-      statusAutoUpdated: summary.statusAutoUpdated,
-      classificationUpdated: summary.classificationUpdated,
-      vendorIntended: summary.vendorIntended,
-      expenseIntended: summary.expenseIntended,
-      nextOffset,
-      nextCursor,
-      total,
-      done,
-      durationMs,
-    },
-  })
-
-  return {
-    success: true,
-    reviewed: ids.length,
-    matched: summary.matched,
-    statusAutoUpdated: summary.statusAutoUpdated,
-    classificationUpdated: summary.classificationUpdated,
-    vendorIntended: summary.vendorIntended,
-    expenseIntended: summary.expenseIntended,
-    samples: summary.samples,
-    nextOffset,
-    nextCursor,
-    total,
-    done,
-    durationMs,
-  }
-}
-
-export async function finalizeReceiptRuleRetroRun(input: {
-  ruleId: string
-  scope: 'pending' | 'all'
-  reviewed: number
-  statusAutoUpdated: number
-  classificationUpdated: number
-  matched: number
-  vendorIntended: number
-  expenseIntended: number
-}) {
-  const canManage = await checkUserPermission('receipts', 'manage')
-  if (!canManage) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  await logAuditEvent({
-    operation_type: 'retro_run',
-    resource_type: 'receipt_rule',
-    resource_id: input.ruleId,
-    operation_status: 'success',
-    additional_info: {
-      scope: input.scope,
-      reviewed: input.reviewed,
-      auto_marked: input.statusAutoUpdated,
-      classified: input.classificationUpdated,
-      matched: input.matched,
-      vendor_intended: input.vendorIntended,
-      expense_intended: input.expenseIntended,
-    },
-  })
-
-  revalidateReceiptPaths()
-
-  return { success: true }
-}
-
-async function runReceiptRuleRetroactively(
-  ruleId: string,
-  scope: 'pending' | 'all' = 'pending'
-) {
-  const start = Date.now()
-  const timeBudgetMs = 12_000
-
-  let cursor: string | null = null
-  let visited = 0
-  let totals = {
-    reviewed: 0,
-    matched: 0,
-    statusAutoUpdated: 0,
-    classificationUpdated: 0,
-    vendorIntended: 0,
-    expenseIntended: 0,
-  }
-  let samples: AutomationResult['samples'] = []
-  let totalRecords = 0
-
-  while (true) {
-    const step = await runReceiptRuleRetroactivelyStep({ ruleId, scope, cursor, offset: visited })
-
-    if (!step.success) {
-      return { error: step.error }
-    }
-
-    totals = {
-      reviewed: totals.reviewed + step.reviewed,
-      matched: totals.matched + step.matched,
-      statusAutoUpdated: totals.statusAutoUpdated + step.statusAutoUpdated,
-      classificationUpdated: totals.classificationUpdated + step.classificationUpdated,
-      vendorIntended: totals.vendorIntended + step.vendorIntended,
-      expenseIntended: totals.expenseIntended + step.expenseIntended,
-    }
-
-    if (!samples.length && step.samples.length) {
-      samples = step.samples
-    }
-
-    cursor = step.nextCursor
-    visited = step.nextOffset
-    totalRecords = step.total
-
-    if (step.done) {
-      const finalizeResult = await finalizeReceiptRuleRetroRun({
-        ruleId,
-        scope,
-        reviewed: totals.reviewed,
-        statusAutoUpdated: totals.statusAutoUpdated,
-        classificationUpdated: totals.classificationUpdated,
-        matched: totals.matched,
-        vendorIntended: totals.vendorIntended,
-        expenseIntended: totals.expenseIntended,
-      })
-
-      if (finalizeResult && 'error' in finalizeResult && finalizeResult.error) {
-        return { error: finalizeResult.error }
-      }
-
-      return {
-        success: true,
-        ruleId,
-        reviewed: totals.reviewed,
-        autoApplied: totals.statusAutoUpdated,
-        classified: totals.classificationUpdated,
-        matched: totals.matched,
-        vendorIntended: totals.vendorIntended,
-        expenseIntended: totals.expenseIntended,
-        samples,
-        scope,
-        done: true,
-      }
-    }
-
-    if (Date.now() - start > timeBudgetMs) {
-      console.warn('[retro] time budget exceeded, returning partial result', {
-        ruleId,
-        scope,
-        cursor,
-        totals,
-        totalRecords,
-      })
-      const partialFinalizeResult = await finalizeReceiptRuleRetroRun({
-        ruleId,
-        scope,
-        reviewed: totals.reviewed,
-        statusAutoUpdated: totals.statusAutoUpdated,
-        classificationUpdated: totals.classificationUpdated,
-        matched: totals.matched,
-        vendorIntended: totals.vendorIntended,
-        expenseIntended: totals.expenseIntended,
-      })
-      if (partialFinalizeResult && 'error' in partialFinalizeResult && partialFinalizeResult.error) {
-        return { error: partialFinalizeResult.error }
-      }
-      return {
-        success: true,
-        ruleId,
-        reviewed: totals.reviewed,
-        autoApplied: totals.statusAutoUpdated,
-        classified: totals.classificationUpdated,
-        matched: totals.matched,
-        vendorIntended: totals.vendorIntended,
-        expenseIntended: totals.expenseIntended,
-        samples,
-        scope,
-        done: false,
-        partial: true,
-        nextOffset: visited,
-        nextCursor: cursor,
-        total: totalRecords,
-        warning: `Time limit reached after processing ${totals.reviewed} transactions. Re-run to continue.`,
-      }
-    }
-  }
 }

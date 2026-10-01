@@ -1,3 +1,10 @@
+import {
+  paymentValue,
+  vendorGroupKey,
+  vendorGroupLabel,
+  type VendorGroupTotal,
+} from '@/lib/receipts/vendor-group-key'
+
 export type GroupableReceiptTransaction = {
   vendor_name?: string | null
   amount_in?: number | null
@@ -8,50 +15,64 @@ export type GroupableReceiptTransaction = {
 export type VendorGroup<TTransaction extends GroupableReceiptTransaction> = {
   key: string
   vendorName: string
+  /** The group's payments on this page. */
   transactions: TTransaction[]
+  /** Payments in the group across every page. */
+  count: number
   totalIn: number
   totalOut: number
   totalAmount: number
 }
 
-export const MISSING_VENDOR_LABEL = 'Missing vendor'
-
-function getVendorGroupLabel(transaction: GroupableReceiptTransaction) {
-  const vendorName = transaction.vendor_name?.trim()
-  return vendorName || MISSING_VENDOR_LABEL
-}
-
 export function getTransactionValue(transaction: GroupableReceiptTransaction) {
-  const amountIn = Number(transaction.amount_in ?? 0)
-  const amountOut = Number(transaction.amount_out ?? 0)
-  return Number(transaction.amount_total ?? amountIn + amountOut)
+  return paymentValue(transaction)
 }
 
+/**
+ * The page's payments under their vendor headings.
+ *
+ * `serverTotals` are the totals of each group across every matching payment, worked out on the
+ * server. With them, the groups stay in the order the server sent the rows (it keeps each vendor
+ * together across pages) and a heading shows the whole group, not the part on this page. Without
+ * them the page's own rows are totalled and the groups are put in alphabetical order.
+ */
 export function buildVendorGroups<TTransaction extends GroupableReceiptTransaction>(
   transactions: TTransaction[],
+  serverTotals?: Record<string, VendorGroupTotal> | null,
 ): VendorGroup<TTransaction>[] {
   const groups = new Map<string, VendorGroup<TTransaction>>()
 
   transactions.forEach((transaction) => {
-    const vendorName = getVendorGroupLabel(transaction)
-    const key = vendorName.toLocaleLowerCase('en-GB')
+    const key = vendorGroupKey(transaction.vendor_name)
     const group = groups.get(key) ?? {
       key,
-      vendorName,
+      vendorName: vendorGroupLabel(transaction.vendor_name),
       transactions: [],
+      count: 0,
       totalIn: 0,
       totalOut: 0,
       totalAmount: 0,
     }
 
     group.transactions.push(transaction)
+    group.count += 1
     group.totalIn += Number(transaction.amount_in ?? 0)
     group.totalOut += Number(transaction.amount_out ?? 0)
     group.totalAmount += getTransactionValue(transaction)
     groups.set(key, group)
   })
 
-  return Array.from(groups.values()).sort((a, b) =>
+  const list = Array.from(groups.values())
+
+  if (serverTotals) {
+    return list.map((group) => {
+      const total = serverTotals[group.key]
+      // A group the server did not total (a row changed since) keeps what the page adds up to.
+      return total ? { ...group, ...total } : group
+    })
+  }
+
+  return list.sort((a, b) =>
     a.vendorName.localeCompare(b.vendorName, 'en-GB', {
       sensitivity: 'base',
       numeric: true,

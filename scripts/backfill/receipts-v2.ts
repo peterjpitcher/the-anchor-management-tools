@@ -215,20 +215,13 @@ async function runRuleBackfill(supabase: SupabaseAdmin, args: Args) {
   if (args.dryRun) return
 
   if (pendingIds.length) {
-    const result = await applyAutomationRules(pendingIds, {
-      includeClosed: false,
-      overrideManual: false,
-      allowClosedStatusUpdates: false,
-    })
+    const result = await applyAutomationRules(pendingIds, { includeClosed: false })
     console.log(`[${SCRIPT_NAME}] pending rule backfill: ${JSON.stringify(result)}`)
   }
 
   if (!args.skipHistorical && closedIds.length) {
-    const result = await applyAutomationRules(closedIds, {
-      includeClosed: true,
-      overrideManual: false,
-      allowClosedStatusUpdates: false,
-    })
+    // The engine never moves a closed status or replaces a manual value, whatever it is asked.
+    const result = await applyAutomationRules(closedIds, { includeClosed: true })
     console.log(`[${SCRIPT_NAME}] historical classification-only rule backfill: ${JSON.stringify(result)}`)
   }
 }

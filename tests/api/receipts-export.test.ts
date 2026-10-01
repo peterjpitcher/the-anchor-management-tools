@@ -5,15 +5,9 @@ import {
   type OjProjectInvoiceForExport,
 } from '@/lib/receipts/export/oj-project-invoices'
 
-// Inline copy of the helper to test the logic independently
-function escapeCsvCell(value: string): string {
-  if (!value || typeof value !== 'string') return value;
-  if (['=', '+', '-', '@'].includes(value[0])) {
-    return '\t' + value;
-  }
-  return value;
-}
+import { escapeCsvCell } from '@/lib/receipts/export/csv-helpers'
 
+// The helper itself. This file used to test a copy of it, which could not notice it changing.
 describe('escapeCsvCell', () => {
   it('should prefix = with a tab', () => {
     expect(escapeCsvCell('=SUM(A1:A10)')).toBe('\t=SUM(A1:A10)');
@@ -31,6 +25,22 @@ describe('escapeCsvCell', () => {
     expect(escapeCsvCell('Tesco')).toBe('Tesco');
     expect(escapeCsvCell('100.00')).toBe('100.00');
     expect(escapeCsvCell('')).toBe('');
+    expect(escapeCsvCell('  Tesco  ')).toBe('  Tesco  ');
+    expect(escapeCsvCell('A - B')).toBe('A - B');
+  });
+  // A spreadsheet skips spaces, tabs and line breaks in front of a formula.
+  it.each([
+    [' =1+1', '\t=1+1'],
+    ['\t=1+1', '\t=1+1'],
+    ['\r=1+1', '\t=1+1'],
+    ['\r\n  @SUM(A1)', '\t@SUM(A1)'],
+    ['   -2+3', '\t-2+3'],
+  ])('should neutralise a formula hidden behind leading whitespace: %j', (input, expected) => {
+    expect(escapeCsvCell(input)).toBe(expected);
+  });
+  it('should drop a leading tab or carriage return from a value that is not a formula', () => {
+    expect(escapeCsvCell('\tTesco')).toBe('Tesco');
+    expect(escapeCsvCell('\rTesco')).toBe('Tesco');
   });
 });
 
@@ -69,10 +79,23 @@ describe('OJ Projects invoice receipts export helpers', () => {
       method: 'lte',
       args: ['payment_date', '2026-03-31'],
     })
+    // The quarter is a London quarter. Its end is midnight in London on 1 April, which is
+    // 23:00 UTC on 31 March because the clocks went forward two days earlier. Its start, in
+    // winter, is midnight UTC.
+    expect(calls).toContainEqual({
+      table: 'oj_entries',
+      method: 'gte',
+      args: ['paid_at', '2026-01-01T00:00:00.000Z'],
+    })
     expect(calls).toContainEqual({
       table: 'oj_entries',
       method: 'lt',
-      args: ['paid_at', '2026-04-01T00:00:00.000Z'],
+      args: ['paid_at', '2026-03-31T23:00:00.000Z'],
+    })
+    expect(calls).toContainEqual({
+      table: 'oj_recurring_charge_instances',
+      method: 'lt',
+      args: ['paid_at', '2026-03-31T23:00:00.000Z'],
     })
     expect(calls).toContainEqual({
       table: 'invoices',

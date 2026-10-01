@@ -42,14 +42,23 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const rawDirection = typeof resolvedParams?.direction === 'string' ? resolvedParams.direction : undefined
   const direction = rawDirection && DIRECTION_VALUES.has(rawDirection) ? rawDirection as 'in' | 'out' : 'all'
 
-  const outstandingParam = typeof resolvedParams?.outstanding === 'string' ? resolvedParams.outstanding : undefined
-  const showOnlyOutstanding = outstandingParam === '0' ? false : true
   const groupByVendorParam = typeof resolvedParams?.groupByVendor === 'string' ? resolvedParams.groupByVendor : undefined
   const groupByVendor = groupByVendorParam === '0' ? false : true
   const needsVendorParam = typeof resolvedParams?.needsVendor === 'string' ? resolvedParams.needsVendor : undefined
   const needsExpenseParam = typeof resolvedParams?.needsExpense === 'string' ? resolvedParams.needsExpense : undefined
   const missingVendorOnly = needsVendorParam === '1'
   const missingExpenseOnly = needsExpenseParam === '1'
+  const completedWithoutReceipt = resolvedParams?.noReceipt === '1'
+
+  // The list shows pending transactions unless asked otherwise. The Needs Vendor and Needs
+  // Expense tabs show every status: a completed transaction with no vendor still needs one.
+  const outstandingParam = typeof resolvedParams?.outstanding === 'string' ? resolvedParams.outstanding : undefined
+  const showOnlyOutstanding =
+    outstandingParam === '1'
+      ? true
+      : outstandingParam === '0'
+        ? false
+        : !(missingVendorOnly || missingExpenseOnly || completedWithoutReceipt)
   const search = typeof resolvedParams?.search === 'string' ? resolvedParams.search : ''
 
   const rawSource = typeof resolvedParams?.source === 'string' ? resolvedParams.source : undefined
@@ -73,8 +82,11 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const sortBy = sortByFromQuery ?? defaultSortBy
   const sortDirection = sortDirectionFromQuery ?? 'desc'
 
+  // Anything that is not a whole number above zero is page one. `?page=abc` used to reach the
+  // database as "not a number" and crash the page.
   const rawPage = typeof resolvedParams?.page === 'string' ? resolvedParams.page : undefined
-  const page = rawPage ? parseInt(rawPage, 10) : 1
+  const parsedPage = rawPage && /^\d{1,6}$/.test(rawPage) ? Number.parseInt(rawPage, 10) : 1
+  const page = parsedPage >= 1 ? parsedPage : 1
 
   let filters: ReceiptWorkspaceFilters = {
     status: status !== 'all' ? status : undefined,
@@ -84,6 +96,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     groupByVendor,
     missingVendorOnly: missingVendorOnly ? true : undefined,
     missingExpenseOnly: missingExpenseOnly ? true : undefined,
+    completedWithoutReceipt: completedWithoutReceipt ? true : undefined,
     sourceType: sourceType !== 'all' ? sourceType : undefined,
     cardMember: cardMember || undefined,
     month,
@@ -117,7 +130,9 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
           ? 'Needs Vendor: transactions still waiting for a vendor'
           : missingExpenseOnly
             ? 'Needs Expense: transactions still waiting for an expense category'
-            : 'Receipts: upload statements, tick off receipts and download quarterly packs'
+            : completedWithoutReceipt
+              ? 'Completed without a receipt: add the receipt, or say why there is none'
+              : 'Receipts: upload statements, tick off receipts and download quarterly packs'
       }
       navState={{ view: 'workspace', missingVendorOnly, missingExpenseOnly }}
       canManage={canManage}
@@ -136,6 +151,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
           groupByVendor,
           missingVendorOnly,
           missingExpenseOnly,
+          completedWithoutReceipt,
           sourceType,
           cardMember: cardMember ?? '',
           month: filters.month ?? month,

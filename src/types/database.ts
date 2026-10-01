@@ -119,7 +119,9 @@ export type ReceiptTransactionStatus =
   | 'no_receipt_required'
   | 'cant_find';
 
-export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import';
+// Who decided a vendor or category. `src/lib/receipts/field-protection.ts` says who may overwrite whom.
+/** `ai_accepted` is a suggestion a person accepted. It ranks with `manual`. */
+export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import' | 'invoice' | 'ai_accepted';
 
 export type ReceiptSourceType = 'bank' | 'amex';
 
@@ -187,6 +189,19 @@ export interface ReceiptBatch {
   row_count: number;
   notes: string | null;
   created_at: string;
+  /** `superseded` marks an empty batch left behind by an old repeat upload. */
+  status?: 'completed' | 'superseded';
+  /** Data records in the file: inserted + duplicate + rejected. Null on batches from before October 2026. */
+  records_in_file?: number | null;
+  inserted_count?: number | null;
+  duplicate_count?: number | null;
+  rejected_count?: number;
+  rejected_records?: Array<{ record: number; reason: string; message: string; excerpt: string }>;
+  repeated_in_file?: number;
+  /** Where the work that follows an import (rules, AI, invoice matching) has got to. */
+  followup_status?: 'queued' | 'running' | 'done' | 'failed';
+  followup_error?: string | null;
+  followup_completed_at?: string | null;
 }
 
 export interface ReceiptRule {
@@ -208,6 +223,8 @@ export interface ReceiptRule {
   updated_at: string;
   set_vendor_name: string | null;
   set_expense_category: ReceiptExpenseCategory | null;
+  /** The rule marks the payment "no category applies". Never set together with a category. */
+  set_no_category?: boolean;
   vendor_id: string | null;
   reviewed_at: string | null;
   reviewed_by: string | null;
@@ -241,12 +258,16 @@ export interface ReceiptTransaction {
   marked_method: string | null;
   rule_applied_id: string | null;
   auto_completed_reason: string | null;
+  /** Why the payment is completed with no file on it. */
+  completed_reason?: string | null;
   vendor_id: string | null;
   vendor_name: string | null;
   vendor_source: ReceiptClassificationSource | null;
   vendor_rule_id: string | null;
   vendor_updated_at: string | null;
   expense_category: ReceiptExpenseCategory | null;
+  /** Decided: this payment takes no expense category. The category is then always empty. */
+  no_category_applies?: boolean;
   expense_category_source: ReceiptClassificationSource | null;
   expense_rule_id: string | null;
   expense_updated_at: string | null;
@@ -268,6 +289,12 @@ export interface ReceiptFile {
   hash_verified_at: string | null;
   uploaded_by: string | null;
   uploaded_at: string;
+  /** Uploaded by a person, or a copy of one of our own invoices. */
+  source?: 'upload' | 'invoice';
+  /** The invoice this is a copy of, when `source` is `invoice`. */
+  invoice_id?: string | null;
+  /** Worked out for the list, not stored: other payments that carry a file with the same bytes. */
+  shared_with?: number;
 }
 
 export interface ReceiptTransactionLog {
@@ -287,6 +314,10 @@ interface ReceiptVendor {
   canonical_name: string;
   vendor_key: string;
   status: ReceiptVendorStatus;
+  /** A person is a member of staff or another individual, and is never sent to the AI. */
+  kind?: 'business' | 'person';
+  /** Where the vendor came from. `unknown` for vendors from before October 2026. */
+  origin?: 'unknown' | 'manual' | 'rule' | 'invoice' | 'ai' | 'payroll';
   invoice_vendor_id: string | null;
   merged_into_vendor_id: string | null;
   category_hint: string | null;

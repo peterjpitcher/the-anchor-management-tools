@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useState, useEffect, ChangeEvent, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useRef, ChangeEvent, type Dispatch, type SetStateAction } from 'react'
 import {
   type ReceiptWorkspaceData,
   type ReceiptWorkspaceFilters,
@@ -14,6 +14,7 @@ import { ReceiptExport } from './ui/ReceiptExport'
 import { ReceiptFilters } from './ui/ReceiptFilters'
 import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
+import { ReceiptAiStatusNotice } from './ui/ReceiptAiStatusNotice'
 import { Card, CardBody } from '@/ds'
 
 interface ReceiptsClientProps {
@@ -30,6 +31,7 @@ interface ReceiptsClientProps {
     groupByVendor: boolean
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
+    completedWithoutReceipt: boolean
     search: string
     month?: string
     sortBy?: ReceiptWorkspaceFilters['sortBy']
@@ -133,9 +135,26 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
     applySort(column, direction)
   }
 
+  // Where each row that left the list used to sit, so it can be put back in the same place.
+  const removedPositions = useRef(new Map<string, number>())
+
+  useEffect(() => {
+    removedPositions.current.clear()
+  }, [initialData.transactions])
+
   // Optimistic State Updates
   function handleTransactionChange(updated: typeof transactions[number], previousStatus?: ReceiptTransaction['status']) {
-    setTransactions(prev => prev.map(tx => tx.id === updated.id ? updated : tx))
+    setTransactions((prev) => {
+      if (prev.some((tx) => tx.id === updated.id)) {
+        return prev.map((tx) => (tx.id === updated.id ? updated : tx))
+      }
+      // The row had left the list (its new status no longer matched the filters) and the change
+      // then failed on the server. It goes back where it was: it used to stay gone.
+      const position = removedPositions.current.get(updated.id)
+      removedPositions.current.delete(updated.id)
+      const index = position === undefined ? prev.length : Math.min(position, prev.length)
+      return [...prev.slice(0, index), updated, ...prev.slice(index)]
+    })
 
     updateSummaryForStatusChange(setSummary, previousStatus, updated.status)
   }
@@ -145,7 +164,11 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
     previousStatus: ReceiptTransaction['status'],
     nextStatus?: ReceiptTransaction['status']
   ) {
-    setTransactions(prev => prev.filter(tx => tx.id !== id))
+    setTransactions((prev) => {
+      const index = prev.findIndex((tx) => tx.id === id)
+      if (index >= 0) removedPositions.current.set(id, index)
+      return prev.filter((tx) => tx.id !== id)
+    })
     updateSummaryForStatusChange(setSummary, previousStatus, nextStatus ?? previousStatus)
   }
 
@@ -172,8 +195,11 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         </CardBody>
       </Card>
 
+      <ReceiptAiStatusNotice status={initialData.aiStatus} />
+
       <ReceiptList
         transactions={transactions}
+        vendorGroupTotals={initialData.vendorGroupTotals}
         knownVendors={knownVendors}
         filters={{
           sortBy: currentSortBy,
@@ -183,6 +209,7 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
           groupByVendor: initialFilters.groupByVendor,
           missingVendorOnly: initialFilters.missingVendorOnly,
           missingExpenseOnly: initialFilters.missingExpenseOnly,
+          completedWithoutReceipt: initialFilters.completedWithoutReceipt,
         }}
         onSort={handleSort}
         onMobileSort={handleMobileSortChange}

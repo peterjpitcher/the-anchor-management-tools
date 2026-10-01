@@ -2,9 +2,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  cancelReceiptUpload,
   completeReceiptUpload,
   createReceiptUploadUrl,
 } from '@/app/actions/receipts'
+import { ReceiptPhotoError, prepareReceiptFileForUpload } from '@/lib/receipts/heic-convert'
 import {
   RECEIPT_BUCKET_NAME,
   RECEIPT_FILE_UPLOAD_LIMIT_LABEL,
@@ -19,11 +21,64 @@ type UploadReceiptFileInput = {
   file: File
 }
 
+/** An upload that has been stored and is waiting for the person to confirm or cancel it. */
+export type PendingReceiptUpload = {
+  transactionId: string
+  storagePath: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}
+
+/** The same file is already on these transactions. */
+export type DuplicateReceiptWarning = {
+  count: number
+  payments: Array<{
+    transactionId: string
+    transactionDate: string
+    details: string
+    amount: number | null
+    fileName: string | null
+  }>
+}
+
+export type UploadReceiptResult = {
+  success?: boolean
+  error?: string
+  receipt?: ReceiptFile
+  /** Nothing was attached: the file is on other transactions. Confirm or cancel `pending`. */
+  duplicate?: DuplicateReceiptWarning
+  pending?: PendingReceiptUpload
+}
+
+function readCompletion(
+  result: Awaited<ReturnType<typeof completeReceiptUpload>>,
+  pending: PendingReceiptUpload
+): UploadReceiptResult {
+  const outcome = result as { success?: boolean; error?: string; receipt?: ReceiptFile; duplicate?: DuplicateReceiptWarning }
+  if (outcome.duplicate) {
+    return { duplicate: outcome.duplicate, pending }
+  }
+  if (outcome.error || !outcome.receipt) {
+    return { error: outcome.error ?? 'Upload failed' }
+  }
+  return { success: true, receipt: outcome.receipt }
+}
+
 export async function uploadReceiptFile({
   supabase,
   transactionId,
-  file,
-}: UploadReceiptFileInput): Promise<{ success?: boolean; error?: string; receipt?: ReceiptFile }> {
+  file: chosen,
+}: UploadReceiptFileInput): Promise<UploadReceiptResult> {
+  // An iPhone photo is turned into a JPEG here, in the browser that can read it.
+  let file: File
+  try {
+    file = await prepareReceiptFileForUpload(chosen)
+  } catch (error) {
+    if (error instanceof ReceiptPhotoError) return { error: error.userMessage }
+    throw error
+  }
+
   const signedUpload = await createReceiptUploadUrl({
     transactionId,
     fileName: file.name,
@@ -46,13 +101,25 @@ export async function uploadReceiptFile({
     return { error: uploadResult.error.message || 'Failed to upload receipt file.' }
   }
 
-  return completeReceiptUpload({
+  const pending: PendingReceiptUpload = {
     transactionId,
     storagePath: signedUpload.path,
     fileName: signedUpload.friendlyName,
     fileType: file.type,
     fileSize: file.size,
-  }) as Promise<{ success?: boolean; error?: string; receipt?: ReceiptFile }>
+  }
+
+  return readCompletion(await completeReceiptUpload(pending), pending)
+}
+
+/** The person has seen the warning and wants the file attached all the same. */
+export async function confirmDuplicateReceiptUpload(pending: PendingReceiptUpload): Promise<UploadReceiptResult> {
+  return readCompletion(await completeReceiptUpload({ ...pending, confirmDuplicate: true }), pending)
+}
+
+/** The person does not want it attached: the stored file is removed. */
+export async function cancelDuplicateReceiptUpload(pending: PendingReceiptUpload): Promise<void> {
+  await cancelReceiptUpload({ transactionId: pending.transactionId, storagePath: pending.storagePath })
 }
 
 export function receiptUploadErrorMessage(error: unknown): string {

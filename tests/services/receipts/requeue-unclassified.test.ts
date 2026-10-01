@@ -33,16 +33,28 @@ type Resolved = { data: Array<{ id: string; batch_id: string | null }> | null; e
 const vendorRanges: Array<[number, number]> = []
 const expenseRanges: Array<[number, number]> = []
 
+// What the AI has already been asked, for the current version of the question. Empty unless a
+// test fills it.
+let attemptRows: Array<{ transaction_id: string; outcome: string }> = []
+// Every filter each read asked for, so a test can check what was and was not excluded.
+const filterCalls: Array<{ table: string; method: string; args: unknown[] }> = []
+
 // Fails the read for whichever query name it is set to, so the failure path can
 // be exercised without changing the rest of the fixture.
 let failingQuery: 'vendor' | 'expense' | null = null
 
-function makeChain(): Record<string, unknown> {
+function makeChain(table: string): Record<string, unknown> {
   const columns: string[] = []
   const chain: Record<string, unknown> = {}
 
-  for (const method of ['select', 'not', 'gt', 'order', 'limit']) {
+  for (const method of ['select', 'order', 'limit']) {
     chain[method] = vi.fn(() => chain)
+  }
+  for (const method of ['not', 'gt', 'eq']) {
+    chain[method] = vi.fn((...args: unknown[]) => {
+      filterCalls.push({ table, method, args })
+      return chain
+    })
   }
 
   chain.is = vi.fn((column: string) => {
@@ -51,6 +63,10 @@ function makeChain(): Record<string, unknown> {
   })
 
   function resolve(from: number, to: number): Resolved {
+    if (table === 'receipt_ai_attempts') {
+      return { data: attemptRows.slice(from, Math.min(to, from + 999) + 1) as never, error: null }
+    }
+
     const isVendorQuery = columns.includes('vendor_name')
 
     if (failingQuery === (isVendorQuery ? 'vendor' : 'expense')) {
@@ -72,7 +88,7 @@ function makeChain(): Record<string, unknown> {
   return chain
 }
 
-const mockFrom = vi.fn(() => makeChain())
+const mockFrom = vi.fn((table: string) => makeChain(table))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({ from: mockFrom })),
@@ -80,7 +96,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 type EnqueueArgs = [
   type: string,
-  payload: { transactionIds?: string[]; batchId?: string },
+  payload: { transactionIds?: string[]; batchId?: string; retryFinalFailures?: boolean },
   options?: Record<string, unknown>,
 ]
 
@@ -107,6 +123,8 @@ describe('performRequeueUnclassifiedTransactions', () => {
     vi.clearAllMocks()
     vendorRanges.length = 0
     expenseRanges.length = 0
+    attemptRows = []
+    filterCalls.length = 0
     failingQuery = null
     enqueue.mockResolvedValue({ success: true })
   })
@@ -194,5 +212,78 @@ describe('performRequeueUnclassifiedTransactions', () => {
 
     // The first job holds the first ten transactions.
     expect(result.queued).toBe(UNIQUE_COUNT - 10)
+  })
+
+  it('does not count a transaction marked "no category applies" as missing a category', async () => {
+    await performRequeueUnclassifiedTransactions()
+
+    expect(filterCalls).toContainEqual({
+      table: 'receipt_transactions',
+      method: 'eq',
+      args: ['no_category_applies', false],
+    })
+  })
+
+  // A second click used to send every unclassified transaction again and pay for the same
+  // answers. A transaction is now sent once per version of the question.
+  it('does not send again a transaction the AI has already been asked about', async () => {
+    attemptRows = [
+      { transaction_id: id(0), outcome: 'nothing_identified' },
+      { transaction_id: id(1), outcome: 'low_confidence' },
+      { transaction_id: id(2), outcome: 'category_proposed' },
+      { transaction_id: id(3), outcome: 'payroll_check' },
+      { transaction_id: id(4), outcome: 'failed_final' },
+      { transaction_id: id(5), outcome: 'failed_retryable' },
+    ]
+
+    const result = await performRequeueUnclassifiedTransactions()
+
+    const ids = enqueuedTransactionIds()
+    for (const index of [0, 1, 2, 3, 4]) {
+      expect(ids).not.toContain(id(index))
+    }
+    // A failure that may not happen twice is tried again.
+    expect(ids).toContain(id(5))
+    expect(result).toEqual({ success: true, queued: UNIQUE_COUNT - 5, alreadyAsked: 5 })
+  })
+
+  it('sends the ones that were given up on when a person asks for them', async () => {
+    attemptRows = [
+      { transaction_id: id(0), outcome: 'nothing_identified' },
+      { transaction_id: id(4), outcome: 'failed_final' },
+    ]
+
+    const result = await performRequeueUnclassifiedTransactions({ retryFinalFailures: true })
+
+    const ids = enqueuedTransactionIds()
+    expect(ids).toContain(id(4))
+    expect(ids).not.toContain(id(0))
+    expect(result.alreadyAsked).toBe(1)
+    // The job is told, so the classifier does not skip them in turn.
+    expect(enqueue.mock.calls.every((call) => call[1]?.retryFinalFailures === true)).toBe(true)
+  })
+
+  it('says so, and queues nothing, when everything has already been asked', async () => {
+    attemptRows = Array.from({ length: UNIQUE_COUNT }, (_, index) => ({
+      transaction_id: id(index),
+      outcome: 'nothing_identified',
+    }))
+
+    const result = await performRequeueUnclassifiedTransactions()
+
+    expect(result).toEqual({ success: true, queued: 0, alreadyAsked: UNIQUE_COUNT })
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('queues below messages, keyed so a second click does not queue the same job twice', async () => {
+    await performRequeueUnclassifiedTransactions()
+
+    const [type, payload, options] = enqueue.mock.calls[0]
+    expect(type).toBe('classify_receipt_transactions')
+    expect(payload.retryFinalFailures).toBeUndefined()
+    expect(options).toMatchObject({ priority: -10 })
+    expect(String(options?.unique)).toMatch(/^receipts:classify:/)
+    const keys = enqueue.mock.calls.map((call) => call[2]?.unique)
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })

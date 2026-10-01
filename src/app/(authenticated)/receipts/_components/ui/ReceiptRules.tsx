@@ -17,27 +17,27 @@ import {
   Input,
   SearchInput,
   Select,
-  TablePagination,
   toast,
 } from '@/ds'
 import {
   toggleReceiptRule,
   createReceiptRule,
   updateReceiptRule,
-  deleteReceiptRule,
   previewReceiptRule,
-  approveReceiptRuleSuggestion,
-  approveReceiptRuleSuggestions,
-  declineReceiptRuleSuggestion,
-  getReceiptRuleSuggestionsPage,
   type ClassificationRuleSuggestion,
   type RulePreviewResult,
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema, receiptRuleKindSchema } from '@/lib/validation'
+import { NO_CATEGORY_LABEL, NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
+import { RuleProposalsPanel } from './RuleProposalsPanel'
 import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
+import type { RuleRunPreview } from '@/services/receipts/receiptRuleRuns'
+import { RuleRunDialog } from './RuleRunDialog'
+import { ReceiptRuleTools } from './ReceiptRuleTools'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion } from '@/types/database'
 import { RECEIPT_RULE_STATE_TONE, RECEIPT_STATUS_LABEL } from '@/app/(authenticated)/receipts/_shared/status-ui'
+import { NewVendorDialog, type VendorConfirmationPrompt } from './NewVendorDialog'
 
 interface ReceiptRulesProps {
   rules: ReceiptRule[]
@@ -51,24 +51,6 @@ interface ReceiptRulesProps {
   onDismissSuggestion: () => void
 }
 
-const SUGGESTIONS_PAGE_SIZE = 20
-
-function suggestionEvidenceCount(suggestion: ReceiptRuleSuggestion): number {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  const count = evidence.transaction_count
-  if (typeof count === 'number') return count
-  return Array.isArray(suggestion.evidence_transaction_ids) ? suggestion.evidence_transaction_ids.length : 0
-}
-
-function suggestionAiConfidence(suggestion: ReceiptRuleSuggestion): number | null {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  return typeof evidence.ai_confidence === 'number' ? evidence.ai_confidence : null
-}
-
-function suggestionPreviewCount(suggestion: ReceiptRuleSuggestion): number | null {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  return typeof evidence.preview_match_count === 'number' ? evidence.preview_match_count : null
-}
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
 const ruleKindOptions = receiptRuleKindSchema.options
@@ -134,6 +116,13 @@ function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   )
 }
 
+// A rule can leave a transaction pending or mark it as needing no receipt. It cannot complete
+// one (that needs a receipt or a reason) or conclude that the receipt cannot be found.
+const RULE_OUTCOME_OPTIONS = [
+  { value: 'pending', label: 'Leave pending' },
+  { value: 'no_receipt_required', label: 'Mark as not required' },
+]
+
 export function ReceiptRules({
   rules,
   ruleConflicts,
@@ -147,7 +136,15 @@ export function ReceiptRules({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageReceipts = hasPermission('receipts', 'manage')
-  const { runRetro, isRunning: isRetroPending, activeRuleId: retroRuleId } = useRetroRuleRunner()
+  const {
+    previewRetro,
+    runRetro,
+    isRunning: isRetroRunning,
+    isPreviewing: isRetroPreviewing,
+    activeRuleId: retroRuleId,
+  } = useRetroRuleRunner()
+  // Busy from the first click: working out what would change, then changing it.
+  const isRetroPending = isRetroRunning || isRetroPreviewing
 
   const [isSectionOpen, setIsSectionOpen] = useState(false)
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null)
@@ -155,69 +152,37 @@ export function ReceiptRules({
   const [isRulePending, startRuleTransition] = useTransition()
   const [isPreviewPending, startPreviewTransition] = useTransition()
   const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
-  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
+  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('pending')
   const [retroConfirmRuleId, setRetroConfirmRuleId] = useState<string | null>(null)
-  const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('all')
+  const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('pending')
+  // A run that has been worked out and is waiting for a yes. Nothing is written until then.
+  const [retroRun, setRetroRun] = useState<{
+    ruleId: string
+    preview: RuleRunPreview & { runId: string }
+  } | null>(null)
+  // Reaching closed transactions is a super-admin decision; the server refuses it otherwise.
+  const retroScopeOptions = canGovernRules
+    ? [
+        { value: 'pending', label: 'Pending only' },
+        { value: 'all', label: 'All historical' },
+      ]
+    : [{ value: 'pending', label: 'Pending only' }]
   const [ruleSearch, setRuleSearch] = useState('')
   const [expandedRuleKeys, setExpandedRuleKeys] = useState<string[]>([])
   const [newMatchDescription, setNewMatchDescription] = useState('')
   const [editMatchDescription, setEditMatchDescription] = useState('')
   const [rulePreview, setRulePreview] = useState<RulePreviewResult | null>(null)
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
-  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
   // Controlled, so clearing the form after a rule is created clears the tick too: the DS
   // Checkbox draws its own tick, which a native form reset does not reach.
   const [newRuleReviewed, setNewRuleReviewed] = useState(false)
-
-  // Suggestions: server count + paging. Seed the loaded page from props; fetch more pages
-  // via getReceiptRuleSuggestionsPage. The selection drives the bulk "Approve selected".
-  const [suggestions, setSuggestions] = useState<ReceiptRuleSuggestion[]>(ruleSuggestions)
-  const [suggestionPage, setSuggestionPage] = useState(1)
-  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([])
-  const [isSuggestionsPending, startSuggestionsTransition] = useTransition()
-  const [isBulkApproving, startBulkApproveTransition] = useTransition()
-  const totalSuggestionPages = Math.max(1, Math.ceil(suggestionsTotal / SUGGESTIONS_PAGE_SIZE))
 
   useEffect(() => {
     if (pendingSuggestion) {
       setIsSectionOpen(true)
     }
   }, [pendingSuggestion])
-
-  // Keep the loaded suggestions in sync when the server re-supplies the first page
-  // (e.g. after router.refresh()), and reset paging/selection.
-  useEffect(() => {
-    setSuggestions(ruleSuggestions)
-    setSuggestionPage(1)
-    setSelectedSuggestionIds([])
-  }, [ruleSuggestions])
-
-  const allSuggestionsSelected = suggestions.length > 0 && selectedSuggestionIds.length === suggestions.length
-
-  function toggleSuggestionSelected(id: string) {
-    setSelectedSuggestionIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    )
-  }
-
-  function toggleSelectAllSuggestions() {
-    setSelectedSuggestionIds((current) => (current.length === suggestions.length ? [] : suggestions.map((s) => s.id)))
-  }
-
-  function loadSuggestionsPage(nextPage: number) {
-    if (nextPage < 1 || nextPage > totalSuggestionPages) return
-    startSuggestionsTransition(async () => {
-      const result = await getReceiptRuleSuggestionsPage(nextPage, SUGGESTIONS_PAGE_SIZE)
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-      setSuggestions(result.suggestions)
-      setSuggestionPage(nextPage)
-      setSelectedSuggestionIds([])
-    })
-  }
 
   const filteredRules = useMemo(() => {
     const trimmedQuery = ruleSearch.trim().toLowerCase()
@@ -327,7 +292,7 @@ export function ReceiptRules({
     if (maxAmountInput) maxAmountInput.value = ''
 
     form.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    toast.success('Prefilled the new rule form from your classification')
+    toast.success('Prefilled the new rule form')
     onApplySuggestion(suggestion) // Notify parent to clear suggestion
   }
   
@@ -335,14 +300,30 @@ export function ReceiptRules({
   // but usually it's triggered by a user action. 
   // The original code had a "Apply" button in a banner.
   
-  function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
+  // Works out what the run would change, then asks. The run itself starts from the dialog.
+  async function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
     if (!canManageReceipts) {
       toast.error('You do not have permission to manage receipts.')
       return
     }
+    const safeScope = canGovernRules ? scope : 'pending'
     setRetroPrompt(null)
     setRetroScope('pending')
-    runRetro({ ruleId, scope })
+    const preview = await previewRetro({ ruleId, scope: safeScope })
+    if (!preview) return
+    if (!preview.runId || preview.planned === 0) {
+      const reasons: string[] = []
+      if (preview.protectedCount > 0) reasons.push(`${preview.protectedCount} were set by a person and stay as they are`)
+      if (preview.locked > 0) reasons.push(`${preview.locked} are on or before the lock date`)
+      if (preview.outranked > 0) reasons.push(`${preview.outranked} are decided by a higher rule`)
+      toast.success(
+        reasons.length
+          ? `Nothing to change. Of ${preview.matched} matching transactions, ${reasons.join(', ')}.`
+          : 'Nothing to change. Every matching transaction is already as this rule would set it.'
+      )
+      return
+    }
+    setRetroRun({ ruleId, preview: { ...preview, runId: preview.runId } })
   }
 
   function handlePreviewRule(formRef: React.RefObject<HTMLFormElement | null>) {
@@ -370,89 +351,35 @@ export function ReceiptRules({
         setActiveRuleId(null)
         return
       }
-      toast.success(`Rule ${rule.is_active ? 'disabled' : 'enabled'}`)
-      router.refresh()
-      setActiveRuleId(null)
-    })
-  }
-
-  async function handleRuleDelete(ruleId: string) {
-    if (!canManageReceipts) return
-    setDeleteRuleId(null)
-    setActiveRuleId(ruleId)
-    startRuleTransition(async () => {
-      const result = await deleteReceiptRule(ruleId)
-      if (result?.error) {
-        toast.error(result.error)
-        setActiveRuleId(null)
-        return
-      }
-      toast.success('Rule deactivated')
-      router.refresh()
-      setActiveRuleId(null)
-    })
-  }
-
-  async function handleApproveSuggestion(suggestionId: string, active = true) {
-    if (!canGovernRules) return
-    setActiveRuleId(suggestionId)
-    startRuleTransition(async () => {
-      const result = await approveReceiptRuleSuggestion(suggestionId, { active })
-      if (result?.error) {
-        toast.error(result.error)
-        setActiveRuleId(null)
-        return
-      }
-      toast.success(active ? 'Suggested rule approved' : 'Suggested rule approved as disabled')
-      router.refresh()
-      setActiveRuleId(null)
-    })
-  }
-
-  function handleApproveSelected(active = true) {
-    if (!canGovernRules || selectedSuggestionIds.length === 0) return
-    const ids = [...selectedSuggestionIds]
-    startBulkApproveTransition(async () => {
-      const result = await approveReceiptRuleSuggestions(ids, { active })
-      if (result?.error) {
-        toast.error(result.error)
-        return
-      }
-      const approved = result.approved ?? 0
-      const failed = result.failed ?? 0
-      if (failed > 0) {
-        toast.error(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}, ${failed} failed`)
+      if (result?.warning) {
+        toast.error(result.warning)
       } else {
-        toast.success(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}`)
+        toast.success(`Rule switched ${rule.is_active ? 'off' : 'on'}`)
       }
-      setSelectedSuggestionIds([])
-      router.refresh()
-    })
-  }
-
-  async function handleDeclineSuggestion(suggestionId: string) {
-    if (!canGovernRules) return
-    setActiveRuleId(suggestionId)
-    startRuleTransition(async () => {
-      const result = await declineReceiptRuleSuggestion(suggestionId)
-      if (result?.error) {
-        toast.error(result.error)
-        setActiveRuleId(null)
-        return
-      }
-      toast.success('Suggested rule declined')
       router.refresh()
       setActiveRuleId(null)
     })
   }
+
+  // A rule form waiting on the new-vendor question, kept so it can be sent again with the answer.
+  const [ruleVendorPrompt, setRuleVendorPrompt] = useState<{
+    formElement: HTMLFormElement
+    formData: FormData
+    ruleId?: string
+    confirmation: VendorConfirmationPrompt
+  } | null>(null)
 
   async function handleRuleSubmit(event: FormEvent<HTMLFormElement>, ruleId?: string) {
     event.preventDefault()
     if (!canManageReceipts) return
-    
-    const formElement = event.currentTarget
-    const formData = new FormData(formElement)
 
+    const formElement = event.currentTarget
+    submitRuleForm(formElement, new FormData(formElement), ruleId)
+  }
+
+  // Also called by the new-vendor dialog, with the vendor swapped for an existing one or with
+  // `create_vendor` set once the person has confirmed the name is a new vendor.
+  function submitRuleForm(formElement: HTMLFormElement, formData: FormData, ruleId?: string) {
     setActiveRuleId(ruleId ?? 'new')
     startRuleTransition(async () => {
       const result = ruleId
@@ -463,6 +390,18 @@ export function ReceiptRules({
         toast.error(result?.error ?? 'Failed to save rule')
         setActiveRuleId(null)
         return
+      }
+      // The rule names a vendor that is not on the list. Nothing was saved: ask first.
+      if ('vendorConfirmation' in result) {
+        setRuleVendorPrompt({ formElement, formData, ruleId, confirmation: result.vendorConfirmation })
+        setActiveRuleId(null)
+        return
+      }
+      setRuleVendorPrompt(null)
+      const savedVendorName = formData.get('set_vendor_name')
+      const vendorInput = formElement.elements.namedItem('set_vendor_name')
+      if (typeof savedVendorName === 'string' && vendorInput instanceof HTMLInputElement) {
+        vendorInput.value = result.rule.set_vendor_name ?? savedVendorName
       }
       toast.success(`Rule ${ruleId ? 'updated' : 'created'}`)
       const createdRule = result.rule
@@ -481,8 +420,40 @@ export function ReceiptRules({
   }
 
   const pendingBusy = (id: string) => isRulePending && activeRuleId === id
+  // One action at a time: while a save, a switch or a run is in flight, the others wait.
+  const anyRuleActionBusy = isRulePending || isRetroPending
 
   return (
+    <>
+    {/* Rules are edited on a larger screen. A phone gets the list to read. */}
+    <Card className="md:hidden">
+      <CardHeader title="Automation rules" subtitle={`${rules.length} rules. Open on a larger screen to change them.`} />
+      <CardBody>
+        {rules.length === 0 ? (
+          <Empty title="No rules yet" size="sm" variant="minimal" />
+        ) : (
+          <ul className="divide-y divide-border">
+            {rules.map((rule) => (
+              <li key={rule.id} className="space-y-1 py-3">
+                <p className="font-medium text-text-strong">{rule.name}</p>
+                <p className="break-words text-sm text-text-muted">
+                  Matches: {rule.match_description ?? rule.match_transaction_type ?? 'any'}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  <Badge tone={RECEIPT_RULE_STATE_TONE[rule.is_active ? 'active' : 'disabled']}>
+                    {rule.is_active ? 'On' : 'Off'}
+                  </Badge>
+                  <Badge tone="neutral">{statusLabels[rule.auto_status]}</Badge>
+                  {rule.set_vendor_name && <Badge tone="neutral">{rule.set_vendor_name}</Badge>}
+                  {rule.set_expense_category && <Badge tone="neutral">{rule.set_expense_category}</Badge>}
+                  {rule.set_no_category && <Badge tone="neutral">{NO_CATEGORY_LABEL}</Badge>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardBody>
+    </Card>
     <Card className="hidden md:block">
       <CardHeader
         title="Automation Rules"
@@ -529,126 +500,12 @@ export function ReceiptRules({
                     </div>
                   </Alert>
                 )}
-                {suggestionsTotal > 0 && (
-                  <Alert tone="warning" size="sm" role="status" title={`System suggestions (${suggestionsTotal})`}>
-                    <div className="space-y-2">
-                      {canGovernRules && suggestions.length > 0 && (
-                        <Checkbox
-                          label="Select all on page"
-                          checked={allSuggestionsSelected}
-                          onChange={toggleSelectAllSuggestions}
-                          disabled={isSuggestionsPending}
-                        />
-                      )}
-
-                      {canGovernRules && selectedSuggestionIds.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{selectedSuggestionIds.length} selected</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={isBulkApproving}
-                            onClick={() => setSelectedSuggestionIds([])}
-                          >
-                            Clear
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={isBulkApproving}
-                            onClick={() => handleApproveSelected(false)}
-                          >
-                            Approve Selected as Disabled
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={isBulkApproving}
-                            onClick={() => handleApproveSelected(true)}
-                          >
-                            Approve Selected
-                          </Button>
-                        </div>
-                      )}
-
-                      {suggestions.map((suggestion) => {
-                        const evidenceCount = suggestionEvidenceCount(suggestion)
-                        const aiConfidence = suggestionAiConfidence(suggestion)
-                        const previewCount = suggestionPreviewCount(suggestion)
-                        const busy = !canGovernRules || pendingBusy(suggestion.id)
-                        return (
-                          <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-warning-border pt-2 first:border-t-0 first:pt-0">
-                            <div className="flex min-w-0 items-start gap-2">
-                              {canGovernRules && (
-                                <Checkbox
-                                  checked={selectedSuggestionIds.includes(suggestion.id)}
-                                  onChange={() => toggleSuggestionSelected(suggestion.id)}
-                                  aria-label={`Select suggestion ${suggestion.suggested_name}`}
-                                />
-                              )}
-                              <div className="min-w-0">
-                                <p className="font-medium">{suggestion.suggested_name}</p>
-                                <p>
-                                  Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
-                                </p>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  <Badge tone="neutral">{evidenceCount} evidence</Badge>
-                                  {aiConfidence != null && <Badge tone="info">AI {aiConfidence}%</Badge>}
-                                  {previewCount != null && (
-                                    <Badge tone="warning">would match {previewCount} transaction{previewCount === 1 ? '' : 's'}</Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={busy}
-                                onClick={() => handleDeclineSuggestion(suggestion.id)}
-                              >
-                                Decline
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={busy}
-                                onClick={() => handleApproveSuggestion(suggestion.id, false)}
-                              >
-                                Approve Disabled
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={busy}
-                                onClick={() => handleApproveSuggestion(suggestion.id, true)}
-                              >
-                                Approve
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      {totalSuggestionPages > 1 && (
-                        <TablePagination
-                          page={suggestionPage}
-                          totalPages={totalSuggestionPages}
-                          pageSize={SUGGESTIONS_PAGE_SIZE}
-                          totalItems={suggestionsTotal}
-                          onPageChange={(nextPage) => {
-                            if (!isSuggestionsPending) loadSuggestionsPage(nextPage)
-                          }}
-                          className="px-0"
-                        />
-                      )}
-
-                      {!canGovernRules && (
-                        <p>Super admin approval is required before a suggestion can become a rule.</p>
-                      )}
-                    </div>
-                  </Alert>
-                )}
+                <RuleProposalsPanel
+                  initialSuggestions={ruleSuggestions}
+                  suggestionsTotal={suggestionsTotal}
+                  canGovernRules={canGovernRules}
+                  onEditFirst={applySuggestion}
+                />
                 {retroPrompt && (
                   <Alert
                     tone="info"
@@ -656,17 +513,18 @@ export function ReceiptRules({
                     role="status"
                     title={`Run rule \u201c${retroPrompt.name}\u201d on ${retroScope === 'all' ? 'all transactions' : 'pending transactions'}?`}
                   >
-                    <p>We can re-check historical records without reopening completed items.</p>
+                    <p>
+                      Pending transactions get the rule in full. Closed transactions keep their status:
+                      the rule only fills in or refreshes their vendor and category, and anything set by
+                      hand is left alone. You will see what would change before anything is saved.
+                    </p>
                     <div className="mt-2 flex flex-wrap items-end gap-2">
                       <Select
                         aria-label="Which transactions to run the rule on"
                         value={retroScope}
                         onChange={(event) => setRetroScope(event.target.value as 'pending' | 'all')}
                         className="w-44"
-                        options={[
-                          { value: 'pending', label: 'Pending only' },
-                          { value: 'all', label: 'All historical' },
-                        ]}
+                        options={retroScopeOptions}
                       />
                       <Button
                         size="sm"
@@ -683,14 +541,16 @@ export function ReceiptRules({
                         variant="secondary"
                         onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
                         loading={isRetroPending}
+                        disabled={isRetroPending}
                       >
-                        Run Now
+                        Check What Changes
                       </Button>
                     </div>
                   </Alert>
                 )}
                 <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-4">
                   <Input label="Rule name" name="name" placeholder="Rule name" required />
+                  <Input label="Description" name="description" placeholder="What this rule is for (optional)" maxLength={500} />
                   {canGovernRules && (
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -729,16 +589,12 @@ export function ReceiptRules({
                     { value: 'out', label: 'Money out' },
                     { value: 'in', label: 'Money in' },
                   ]} />
-                  <Select label="Outcome" name="auto_status" defaultValue="no_receipt_required" options={[
-                    { value: 'no_receipt_required', label: 'Mark as not required' },
-                    { value: 'auto_completed', label: 'Mark as auto completed' },
-                    { value: 'completed', label: 'Mark as completed' },
-                    { value: 'pending', label: 'Leave pending' },
-                  ]} />
+                  <Select label="Outcome" name="auto_status" defaultValue="pending" options={RULE_OUTCOME_OPTIONS} />
                   <Input label="Set vendor name" name="set_vendor_name" placeholder="Set vendor name (optional)" />
                   <Select label="Set expense" name="set_expense_category" defaultValue="" options={[
                     { value: '', label: 'Leave expense unset' },
                     ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                    { value: NO_CATEGORY_VALUE, label: NO_CATEGORY_LABEL },
                   ]} />
                   {isPreviewVisible && rulePreview && (
                     <RulePreviewPanel preview={rulePreview} />
@@ -826,7 +682,7 @@ export function ReceiptRules({
                           <Badge tone="warning">Conflict</Badge>
                         ) : null}
                         <Badge tone={RECEIPT_RULE_STATE_TONE[rule.is_active ? 'active' : 'disabled']}>
-                          {rule.is_active ? 'Active' : 'Disabled'}
+                          {rule.is_active ? 'On' : 'Off'}
                         </Badge>
                         <Badge tone="neutral">
                           P{rule.priority ?? 1000}
@@ -846,7 +702,7 @@ export function ReceiptRules({
                             variant="secondary"
                             size="sm"
                             onClick={() => setEditingRuleId((current) => current === rule.id ? null : rule.id)}
-                            disabled={pendingBusy(rule.id) || !canManageReceipts}
+                            disabled={anyRuleActionBusy || !canManageReceipts}
                           >
                             {editingRuleId === rule.id ? 'Close Editor' : 'Edit'}
                           </Button>
@@ -857,10 +713,7 @@ export function ReceiptRules({
                                 value={retroConfirmScope}
                                 onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
                                 className="w-40"
-                                options={[
-                                  { value: 'pending', label: 'Pending only' },
-                                  { value: 'all', label: 'All historical' },
-                                ]}
+                                options={retroScopeOptions}
                               />
                               <Button size="sm" variant="ghost" onClick={() => setRetroConfirmRuleId(null)}>Cancel</Button>
                               <Button
@@ -870,42 +723,36 @@ export function ReceiptRules({
                                 loading={isRetroPending && retroRuleId === rule.id}
                                 disabled={isRetroPending}
                               >
-                                Run Now
+                                Check What Changes
                               </Button>
                             </div>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('all') }}
-                              disabled={!rule.is_active || isRetroPending || !canManageReceipts}
-                              title={rule.is_active ? 'Run this rule across historical transactions' : 'Enable the rule before running it'}
+                              onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('pending') }}
+                              disabled={!rule.is_active || anyRuleActionBusy || !canManageReceipts}
+                              title={rule.is_active ? 'Run this rule across historical transactions' : 'Switch the rule on before running it'}
                             >
                               Run Historical
                             </Button>
                           )}
+                          {/* One control for on and off. "Disable" and "Deactivate" did the same thing. */}
                           <Button
-                            variant={rule.is_active ? 'primary' : 'ghost'}
+                            variant={rule.is_active ? 'ghost' : 'primary'}
                             size="sm"
                             onClick={() => handleRuleToggle(rule)}
                             loading={pendingBusy(rule.id)}
-                            disabled={!canManageReceipts}
+                            disabled={!canManageReceipts || anyRuleActionBusy}
                           >
-                            {rule.is_active ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteRuleId(rule.id)}
-                            disabled={pendingBusy(rule.id) || !canManageReceipts}
-                          >
-                            Deactivate
+                            {rule.is_active ? 'Switch Off' : 'Switch On'}
                           </Button>
                         </div>
 
                         {editingRuleId === rule.id ? (
                           <form onSubmit={(event) => handleRuleSubmit(event, rule.id)} className="space-y-4">
                             <Input label="Rule name" name="name" defaultValue={rule.name} required />
+                            <Input label="Description" name="description" defaultValue={rule.description ?? ''} placeholder="What this rule is for (optional)" maxLength={500} />
                             {canGovernRules && (
                               <div className="space-y-4">
                                 <div className="grid gap-4 sm:grid-cols-2">
@@ -929,16 +776,17 @@ export function ReceiptRules({
                               { value: 'out', label: 'Money out' },
                               { value: 'in', label: 'Money in' },
                             ]} />
-                            <Select label="Outcome" name="auto_status" defaultValue={rule.auto_status} options={[
-                              { value: 'no_receipt_required', label: 'Mark as not required' },
-                              { value: 'auto_completed', label: 'Mark as auto completed' },
-                              { value: 'completed', label: 'Mark as completed' },
-                              { value: 'pending', label: 'Leave pending' },
-                            ]} />
+                            <Select
+                              label="Outcome"
+                              name="auto_status"
+                              defaultValue={rule.auto_status === 'no_receipt_required' ? 'no_receipt_required' : 'pending'}
+                              options={RULE_OUTCOME_OPTIONS}
+                            />
                             <Input label="Set vendor name" name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
-                            <Select label="Set expense" name="set_expense_category" defaultValue={rule.set_expense_category ?? ''} options={[
+                            <Select label="Set expense" name="set_expense_category" defaultValue={rule.set_expense_category ?? (rule.set_no_category ? NO_CATEGORY_VALUE : '')} options={[
                               { value: '', label: 'Leave expense unset' },
                               ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                              { value: NO_CATEGORY_VALUE, label: NO_CATEGORY_LABEL },
                             ]} />
                             <FormFooter>
                               <Button type="button" variant="secondary" onClick={() => setEditingRuleId(null)}>
@@ -959,11 +807,18 @@ export function ReceiptRules({
                             <p>Outcome: {statusLabels[rule.auto_status]}</p>
                             {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
                             {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
-                            {conflictsByRule.get(rule.id)?.map((conflict) => (
-                              <p key={conflict.id} className="text-warning-fg">
-                                Conflict warning: overlaps {conflict.overlap_count} sampled transaction{conflict.overlap_count === 1 ? '' : 's'}.
-                              </p>
-                            ))}
+                            {rule.set_no_category && <p>Sets expense: {NO_CATEGORY_LABEL.toLowerCase()}</p>}
+                            {conflictsByRule.get(rule.id)?.map((conflict) => {
+                              const otherId = conflict.rule_id === rule.id ? conflict.overlapping_rule_id : conflict.rule_id
+                              const otherName = rules.find((candidate) => candidate.id === otherId)?.name ?? 'another rule'
+                              return (
+                                <p key={conflict.id} className="text-warning-fg">
+                                  Conflict: {conflict.overlap_count} transaction{conflict.overlap_count === 1 ? '' : 's'} also
+                                  match{conflict.overlap_count === 1 ? 'es' : ''} &quot;{otherName}&quot;, which has the same priority and a
+                                  different result. Give one of them a higher priority.
+                                </p>
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -973,18 +828,42 @@ export function ReceiptRules({
               )}
             </div>
           </div>
+          <div className="mt-6">
+            <ReceiptRuleTools rules={rules} canManage={canManageReceipts} canGovern={canGovernRules} />
+          </div>
         </CardBody>
       )}
 
-      <ConfirmDialog
-        open={Boolean(deleteRuleId)}
-        onClose={() => setDeleteRuleId(null)}
-        onConfirm={() => deleteRuleId ? handleRuleDelete(deleteRuleId) : undefined}
-        title="Deactivate Rule"
-        message="This rule will stop matching new transactions. Transactions it has already classified are left as they are."
-        confirmLabel="Deactivate"
-        tone="primary"
+      <NewVendorDialog
+        prompt={ruleVendorPrompt?.confirmation ?? null}
+        pending={isRulePending}
+        onUseExisting={(vendorName) => {
+          if (!ruleVendorPrompt) return
+          const { formElement, formData, ruleId } = ruleVendorPrompt
+          formData.set('set_vendor_name', vendorName)
+          formData.delete('create_vendor')
+          submitRuleForm(formElement, formData, ruleId)
+        }}
+        onCreate={() => {
+          if (!ruleVendorPrompt) return
+          const { formElement, formData, ruleId } = ruleVendorPrompt
+          formData.set('create_vendor', 'true')
+          submitRuleForm(formElement, formData, ruleId)
+        }}
+        onClose={() => setRuleVendorPrompt(null)}
+      />
+      <RuleRunDialog
+        preview={retroRun?.preview ?? null}
+        running={isRetroRunning}
+        onClose={() => setRetroRun(null)}
+        onRun={() => {
+          if (!retroRun) return
+          const { ruleId, preview } = retroRun
+          setRetroRun(null)
+          runRetro(preview, ruleId)
+        }}
       />
     </Card>
+    </>
   )
 }

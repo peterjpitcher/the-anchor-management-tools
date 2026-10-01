@@ -14,6 +14,8 @@ import { ReceiptMobileCard } from '@/app/(authenticated)/receipts/_components/ui
 import type { ReceiptFile, ReceiptTransaction } from '@/types/database'
 
 const markReceiptTransaction = vi.hoisted(() => vi.fn())
+// Notes are saved by their own action, so saving one cannot rewrite who marked the payment.
+const updateReceiptNote = vi.hoisted(() => vi.fn())
 
 vi.mock('react-hot-toast', () => ({
   toast: {
@@ -36,14 +38,16 @@ vi.mock('@/app/actions/receipts', () => ({
   deleteReceiptFile: vi.fn(),
   getReceiptSignedUrl: vi.fn(),
   markReceiptTransaction: (...args: unknown[]) => markReceiptTransaction(...args),
+  updateReceiptNote: (...args: unknown[]) => updateReceiptNote(...args),
   updateReceiptClassification: vi.fn(),
 }))
 
 // 00:30 BST on Friday 2 October 2026 in London; still 23:30 on Thursday 1 October in UTC.
 const JUST_AFTER_MIDNIGHT_BST = '2026-10-01T23:30:00Z'
 const LONDON_STAMP = '02 Oct 2026, 00:30'
-// The stored separator is a long dash with a space either side, built here so this file holds none.
-const SEPARATOR = ` ${String.fromCharCode(0x2014)} `
+// New notes are stored with a plain bar between the time and the text. Notes written before
+// October 2026 used a long dash, which is still read (tests/lib/receipts/note-format.test.ts).
+const SEPARATOR = ' | '
 
 type WorkspaceTransaction = ReceiptTransaction & {
   files: ReceiptFile[]
@@ -95,15 +99,17 @@ const transaction: WorkspaceTransaction = {
 }
 
 function savedNote(): unknown {
-  expect(markReceiptTransaction).toHaveBeenCalledTimes(1)
-  return (markReceiptTransaction.mock.calls[0][0] as { note?: string }).note
+  expect(updateReceiptNote).toHaveBeenCalledTimes(1)
+  // The status action must not be used for a note: it resets the marker and the rule link.
+  expect(markReceiptTransaction).not.toHaveBeenCalled()
+  return (updateReceiptNote.mock.calls[0][0] as { note?: string }).note
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(JUST_AFTER_MIDNIGHT_BST))
-  markReceiptTransaction.mockResolvedValue({ transaction: { ...transaction, notes: 'saved' } })
+  updateReceiptNote.mockResolvedValue({ success: true, transaction: { ...transaction, notes: 'saved' } })
 })
 
 afterEach(() => {
@@ -119,7 +125,6 @@ describe('ReceiptTableRow note timestamp', () => {
             transaction={transaction}
             vendorOptions={[]}
             onUpdate={vi.fn()}
-            onRemove={vi.fn()}
             onRuleSuggestion={vi.fn()}
           />
         </tbody>
@@ -130,7 +135,7 @@ describe('ReceiptTableRow note timestamp', () => {
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Chased supplier' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(markReceiptTransaction).toHaveBeenCalled())
+    await waitFor(() => expect(updateReceiptNote).toHaveBeenCalled())
     expect(savedNote()).toBe(`${LONDON_STAMP}${SEPARATOR}Chased supplier`)
   })
 })
@@ -150,7 +155,7 @@ describe('ReceiptMobileCard note timestamp', () => {
     fireEvent.change(screen.getByPlaceholderText('Note'), { target: { value: 'Chased supplier' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(markReceiptTransaction).toHaveBeenCalled())
+    await waitFor(() => expect(updateReceiptNote).toHaveBeenCalled())
     expect(savedNote()).toBe(`${LONDON_STAMP}${SEPARATOR}Chased supplier`)
   })
 })
