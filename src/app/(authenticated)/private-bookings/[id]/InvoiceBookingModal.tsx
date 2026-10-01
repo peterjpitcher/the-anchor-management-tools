@@ -7,6 +7,12 @@
  * a setting to find beforehand. Both answers are priced on screen so the
  * consequence is visible before anything is sent, and whichever is chosen is
  * saved on the booking so the invoice can always be explained afterwards.
+ *
+ * A first invoice also asks whether the customer can pay by card or PayPal.
+ * Sending creates their billing record, and the "pay online" link in the email
+ * is decided from that record, so the answer has to exist before the send.
+ * A customer who already has a billing record is not asked: their setting
+ * lives on the vendor screen and is left alone.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -39,7 +45,12 @@ interface InvoiceBookingModalProps {
   error: string | null
   /** True when the error means the booking cannot be invoiced at all. */
   blocked?: boolean
-  onConfirm: (input: { depositTreatment: DepositTreatment; reference: string }) => void
+  onConfirm: (input: {
+    depositTreatment: DepositTreatment
+    reference: string
+    /** Only set when the question was asked: a first invoice for this customer. */
+    paypalPaymentsEnabled?: boolean
+  }) => void
 }
 
 function money(amount: number): string {
@@ -67,15 +78,23 @@ export function InvoiceBookingModal({
   // deliberate "not applicable" and is easy to overtype when a business does
   // supply one.
   const [reference, setReference] = useState('TBC')
+  // Deliberately unanswered to start with. A first invoice creates the
+  // customer's billing record, and the "pay online" link in the email is
+  // decided from it, so a default either way would send some customers the
+  // wrong email without anyone having chosen it.
+  const [paypalPaymentsEnabled, setPaypalPaymentsEnabled] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!preview) return
     setTreatment(preview.previousTreatment ?? 'held_separately')
     setReference(preview.suggestedReference)
+    setPaypalPaymentsEnabled(null)
   }, [preview])
 
   const deposit = preview?.deposit ?? null
   const askAboutDeposit = Boolean(deposit && !deposit.waived && deposit.amount > 0)
+  const askAboutPayPal = preview?.createsBillingRecord ?? false
+  const paypalUnanswered = askAboutPayPal && paypalPaymentsEnabled === null
 
   const balanceDue = useMemo(() => {
     if (!preview) return 0
@@ -88,12 +107,25 @@ export function InvoiceBookingModal({
     treatment === 'deducted' && askAboutDeposit && (preview?.depositWouldOverpay ?? false)
 
   const handleConfirm = useCallback(() => {
-    if (!preview || sending || blockedByOverpayment || blocked) return
+    if (!preview || sending || blockedByOverpayment || blocked || paypalUnanswered) return
     onConfirm({
       depositTreatment: askAboutDeposit ? treatment : 'held_separately',
       reference: reference.trim(),
+      ...(askAboutPayPal && paypalPaymentsEnabled !== null ? { paypalPaymentsEnabled } : {}),
     })
-  }, [preview, sending, blockedByOverpayment, blocked, onConfirm, askAboutDeposit, treatment, reference])
+  }, [
+    preview,
+    sending,
+    blockedByOverpayment,
+    blocked,
+    paypalUnanswered,
+    onConfirm,
+    askAboutDeposit,
+    treatment,
+    reference,
+    askAboutPayPal,
+    paypalPaymentsEnabled,
+  ])
 
   return (
     <Modal
@@ -116,7 +148,7 @@ export function InvoiceBookingModal({
           <Button
             variant="primary"
             onClick={handleConfirm}
-            disabled={!preview || loading || blockedByOverpayment || blocked}
+            disabled={!preview || loading || blockedByOverpayment || blocked || paypalUnanswered}
             loading={sending}
           >
             Send Invoice
@@ -245,6 +277,42 @@ export function InvoiceBookingModal({
               <dd className="text-text">{money(balanceDue)}</dd>
             </div>
           </dl>
+
+          {askAboutPayPal && (
+            <Fieldset
+              legend={`Can ${preview.customerName.split(' ')[0]} pay online by card or PayPal?`}
+              required
+              hint={
+                paypalUnanswered
+                  ? 'Choose one to send the invoice. This is their first invoice, so the answer is saved on their billing record. You can change it later under Invoices, Vendors.'
+                  : 'Saved on their billing record. You can change it later under Invoices, Vendors.'
+              }
+            >
+              <Radio
+                name="paypal-payments"
+                value="yes"
+                label="Yes, add a payment link"
+                description={
+                  balanceDue > 0
+                    ? `The email includes a link to pay the ${money(balanceDue)} online by card or PayPal.`
+                    : 'Nothing is owed on this invoice, so this email has no link. Later invoices will include one.'
+                }
+                checked={paypalPaymentsEnabled === true}
+                onChange={() => setPaypalPaymentsEnabled(true)}
+                disabled={sending}
+              />
+
+              <Radio
+                name="paypal-payments"
+                value="no"
+                label="No, bank transfer only"
+                description="No payment link goes in the email."
+                checked={paypalPaymentsEnabled === false}
+                onChange={() => setPaypalPaymentsEnabled(false)}
+                disabled={sending}
+              />
+            </Fieldset>
+          )}
 
           <Input
             id="invoice-reference"
