@@ -4,7 +4,6 @@ import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import { findDuplicateRule } from '@/lib/receipts/rule-identity'
 import type {
   ReceiptClassificationSignal,
-  ReceiptExpenseCategory,
   ReceiptRule,
   ReceiptRuleConflict,
   ReceiptRuleSuggestion,
@@ -12,11 +11,8 @@ import type {
 } from '@/types/database'
 import type { AdminClient } from './types'
 import { loadReceiptSettings } from './receiptSettings'
-import {
-  buildRuleSuggestion,
-  getTransactionDirection,
-  guessAmountValue,
-} from './receiptHelpers'
+import { checkSuggestionsAgainstPayments, type SuggestionCheck } from './receiptRuleProposals'
+import { getTransactionDirection, guessAmountValue } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
 
 type SignalInsert = Omit<ReceiptClassificationSignal, 'id'> & {
@@ -54,7 +50,17 @@ export async function recordReceiptClassificationSignals(
 
 const SUGGESTIONS_PAGE_SIZE = 20
 
-export async function queryReceiptGovernanceItems(options: { page?: number; pageSize?: number } = {}): Promise<{
+export async function queryReceiptGovernanceItems(
+  options: {
+    page?: number
+    pageSize?: number
+    /**
+     * Run each suggestion's keyword over every payment now. Costs a read of every payment, so
+     * the workspace does not ask for it; the proposals panel does when it is opened.
+     */
+    liveChecks?: boolean
+  } = {}
+): Promise<{
   conflicts: ReceiptRuleConflict[]
   suggestions: ReceiptRuleSuggestion[]
   suggestionsTotal: number
@@ -92,23 +98,27 @@ export async function queryReceiptGovernanceItems(options: { page?: number; page
     console.error('Failed to load receipt rule suggestions', suggestionsError)
   }
 
-  // Attach an impact preview to each suggestion: read evidence.preview_match_count if it
-  // was stored at suggestion time (AI path), otherwise compute it for legacy rows.
+  // What a suggestion would match, and how many of those payments belong to another vendor. The
+  // figures stored when it was raised are shown unless live ones are asked for.
   const suggestionRows = (suggestions ?? []) as ReceiptRuleSuggestion[]
-  const enrichedSuggestions = await Promise.all(
-    suggestionRows.map(async (suggestion) => {
-      const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-      const storedPreview = typeof evidence.preview_match_count === 'number' ? evidence.preview_match_count : null
-      const previewMatchCount = storedPreview ?? await previewSuggestionMatchCount(supabase, {
-        match_description: suggestion.match_description,
-        match_direction: suggestion.match_direction,
-      })
-      return {
-        ...suggestion,
-        evidence: { ...evidence, preview_match_count: previewMatchCount },
-      }
+  let enrichedSuggestions = suggestionRows
+  if (options.liveChecks && suggestionRows.length) {
+    const checks = await checkSuggestionsAgainstPayments(supabase, suggestionRows)
+    enrichedSuggestions = suggestionRows.map((suggestion) => {
+      const check = checks.get(suggestion.id)
+      return check
+        ? {
+            ...suggestion,
+            evidence: {
+              ...(suggestion.evidence ?? {}),
+              preview_match_count: check.matchCount,
+              collision_count: check.collisions,
+              checked_live: true,
+            },
+          }
+        : suggestion
     })
-  )
+  }
 
   return {
     conflicts: (conflicts ?? []) as ReceiptRuleConflict[],
@@ -231,161 +241,42 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
   }
 }
 
-type SuggestionSource = 'manual_corrections' | 'ai_classification'
+/** Why a suggestion cannot be approved as it stands, or what kind of approval it is. */
+type ApprovalGuard = { error: string } | { kind: 'new_rule' | 'add_category' }
 
-export function suggestionDedupeKey(parts: {
-  matchDescription: string | null
-  direction: string
-  vendorName: string | null
-  expenseCategory: string | null
-}): string {
-  return [
-    normalizeReceiptVendorKey(parts.matchDescription),
-    parts.direction ?? 'both',
-    normalizeReceiptVendorKey(parts.vendorName),
-    parts.expenseCategory ?? '',
-  ].join('|')
-}
-
-// Builds receipt_rule_suggestions insert rows from (transaction, vendor, expense) inputs.
-// minOccurrences: manual=2, ai=1. existingKeys must already include active rules + pending/approved suggestions.
-export function buildRuleSuggestionInserts(
-  inputs: Array<{ transaction: ReceiptTransaction; vendorName: string | null; expenseCategory: ReceiptExpenseCategory | null; suggestedRuleKeywords: string | null; confidence: number | null }>,
-  opts: { source: SuggestionSource; minOccurrences: number; existingKeys: Set<string>; cap: number }
-): any[] {
-  const groups = new Map<string, { suggestion: NonNullable<ReturnType<typeof buildRuleSuggestion>>; transactionIds: string[]; confidence: number | null }>()
-  for (const input of inputs) {
-    const suggestion = buildRuleSuggestion(input.transaction, {
-      vendorName: input.vendorName, expenseCategory: input.expenseCategory, suggestedRuleKeywords: input.suggestedRuleKeywords,
-    })
-    if (!suggestion?.matchDescription) continue
-    const key = suggestionDedupeKey({ matchDescription: suggestion.matchDescription, direction: suggestion.direction, vendorName: suggestion.setVendorName, expenseCategory: suggestion.setExpenseCategory })
-    if (opts.existingKeys.has(key)) continue
-    const group = groups.get(key) ?? { suggestion, transactionIds: [], confidence: input.confidence }
-    group.transactionIds.push(input.transaction.id)
-    group.confidence = group.confidence ?? input.confidence
-    groups.set(key, group)
-  }
-  return Array.from(groups.values())
-    .filter((g) => g.transactionIds.length >= opts.minOccurrences)
-    .slice(0, opts.cap)
-    .map((g) => ({
-      suggested_name: g.suggestion.suggestedName,
-      match_description: g.suggestion.matchDescription,
-      match_transaction_type: null,
-      match_direction: g.suggestion.direction,
-      set_vendor_name: g.suggestion.setVendorName,
-      set_expense_category: g.suggestion.setExpenseCategory,
-      auto_status: 'pending',
-      evidence_transaction_ids: g.transactionIds.slice(0, 20),
-      evidence: { source: opts.source, transaction_count: g.transactionIds.length, details_sample: g.suggestion.details, ai_confidence: g.confidence },
-    }))
-}
-
-// Count transactions a proposed rule's criteria would match (impact preview).
-export async function previewSuggestionMatchCount(
-  supabase: AdminClient,
-  criteria: { match_description: string | null; match_direction: string }
-): Promise<number> {
-  if (!criteria.match_description) return 0
-  const needles = criteria.match_description.split(',').map((n) => n.trim().replace(/[%_\\]/g, '\\$&')).filter(Boolean)
-  if (!needles.length) return 0
-  const or = needles.map((n) => `details.ilike.%${n}%`).join(',')
-  let q = supabase.from('receipt_transactions').select('id', { count: 'exact', head: true }).or(or)
-  if (criteria.match_direction === 'out') q = q.not('amount_out', 'is', null)
-  else if (criteria.match_direction === 'in') q = q.not('amount_in', 'is', null)
-  const { count } = await q
-  return count ?? 0
-}
-
-export async function performSuggestReceiptRules(): Promise<{
-  reviewed: number
-  created: number
-}> {
-  const supabase = createAdminClient()
-  const [{ data: transactions, error: txError }, { data: existingSuggestions }, { data: rules }] = await Promise.all([
-    supabase
-      .from('receipt_transactions')
-      .select('*')
-      .or('vendor_source.eq.manual,expense_category_source.eq.manual')
-      .order('updated_at', { ascending: false })
-      .limit(500),
-    supabase
-      .from('receipt_rule_suggestions')
-      .select('match_description, match_direction, set_vendor_name, set_expense_category, status')
-      .in('status', ['pending', 'approved']),
-    supabase
-      .from('receipt_rules')
-      .select('match_description, match_direction, set_vendor_name, set_expense_category')
-      .eq('is_active', true),
-  ])
-
-  if (txError) {
-    throw new Error(`Failed to load manually classified receipt transactions: ${txError.message}`)
-  }
-
-  const existingKeys = new Set<string>()
-  ;[...(existingSuggestions ?? []), ...(rules ?? [])].forEach((row: any) => {
-    existingKeys.add(suggestionDedupeKey({
-      matchDescription: row.match_description,
-      direction: row.match_direction,
-      vendorName: row.set_vendor_name,
-      expenseCategory: row.set_expense_category,
-    }))
-  })
-
-  const inputs = ((transactions ?? []) as ReceiptTransaction[]).map((transaction) => ({
-    transaction,
-    vendorName: transaction.vendor_source === 'manual' ? transaction.vendor_name : null,
-    expenseCategory: transaction.expense_category_source === 'manual' ? transaction.expense_category : null,
-    suggestedRuleKeywords: transaction.ai_suggested_keywords,
-    confidence: null,
-  }))
-
-  const inserts = buildRuleSuggestionInserts(inputs, {
-    source: 'manual_corrections',
-    minOccurrences: 2,
-    existingKeys,
-    cap: 10,
-  })
-
-  if (!inserts.length) {
-    return { reviewed: (transactions ?? []).length, created: 0 }
-  }
-
-  const { error: insertError } = await supabase
-    .from('receipt_rule_suggestions')
-    .insert(inserts)
-
-  if (insertError) {
-    throw new Error(`Failed to create receipt rule suggestions: ${insertError.message}`)
-  }
-
-  return {
-    reviewed: (transactions ?? []).length,
-    created: inserts.length,
-  }
+const CATEGORY_APPROVAL_REFUSALS: Record<string, string> = {
+  not_found: 'That suggestion no longer exists.',
+  not_pending: 'That suggestion has already been approved or declined.',
+  rule_unavailable: 'The rule this suggestion adds to has been switched off or removed. Decline the suggestion.',
+  rule_has_category: 'The rule this suggestion adds to already sets a different category. Decline the suggestion.',
 }
 
 /**
- * A suggestion that would make a rule identical to one that already exists is not approved.
- * Returns an error to show, or nothing when the suggestion is new.
+ * The checks a suggestion must pass at the moment it is approved, whatever it showed when it
+ * was raised:
+ *  - it must not make a rule identical to one that exists, on or off;
+ *  - its keyword must not also match payments that belong to a different vendor.
+ * `checks` carries the live counts when the caller has worked them out for several at once.
  */
-async function findDuplicateOfSuggestion(
+async function guardSuggestionApproval(
   supabase: AdminClient,
-  suggestionId: string
-): Promise<{ error?: string }> {
+  suggestionId: string,
+  checks?: Map<string, SuggestionCheck>
+): Promise<ApprovalGuard> {
   const [{ data: suggestion, error: suggestionError }, { data: rules, error: rulesError }] = await Promise.all([
     supabase.from('receipt_rule_suggestions').select('*').eq('id', suggestionId).maybeSingle(),
     supabase.from('receipt_rules').select('*'),
   ])
 
   if (suggestionError || rulesError) {
-    console.error('Failed to check a rule suggestion for duplicates', suggestionError ?? rulesError)
+    console.error('Failed to check a rule suggestion before approval', suggestionError ?? rulesError)
     return { error: 'The existing rules could not be checked. The suggestion was not approved.' }
   }
   // Already approved, or gone: the database function answers for those.
-  if (!suggestion || suggestion.status !== 'pending') return {}
+  if (!suggestion || suggestion.status !== 'pending') return { kind: 'new_rule' }
+
+  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
+  if (evidence.kind === 'add_category') return { kind: 'add_category' }
 
   const duplicate = findDuplicateRule((rules ?? []) as ReceiptRule[], {
     match_description: suggestion.match_description,
@@ -399,13 +290,53 @@ async function findDuplicateOfSuggestion(
     set_expense_category: suggestion.set_expense_category,
     auto_status: suggestion.auto_status,
   })
-  if (!duplicate) return {}
-
-  return {
-    error: duplicate.is_active
-      ? `A rule with the same match and result already exists: "${duplicate.name}". Decline this suggestion.`
-      : `A rule with the same match and result already exists but is switched off: "${duplicate.name}". Switch that one on, or decline this suggestion.`,
+  if (duplicate) {
+    return {
+      error: duplicate.is_active
+        ? `A rule with the same match and result already exists: "${duplicate.name}". Decline this suggestion.`
+        : `A rule with the same match and result already exists but is switched off: "${duplicate.name}". Switch that one on, or decline this suggestion.`,
+    }
   }
+
+  // Only a suggestion that names a vendor can take another vendor's payments.
+  if (suggestion.set_vendor_id) {
+    let check = checks?.get(suggestionId)
+    if (!check) {
+      try {
+        check = (await checkSuggestionsAgainstPayments(supabase, [suggestion as ReceiptRuleSuggestion])).get(suggestionId)
+      } catch (checkError) {
+        console.error('Failed to check a rule suggestion against the payments', checkError)
+        return { error: 'The suggestion could not be checked against the transactions. It was not approved.' }
+      }
+    }
+    if (check && check.collisions > 0) {
+      return {
+        error: `This keyword also matches ${check.collisions} transaction${check.collisions === 1 ? '' : 's'} that belong${check.collisions === 1 ? 's' : ''} to another vendor. Make it more specific as a new rule, then decline this suggestion.`,
+      }
+    }
+  }
+
+  return { kind: 'new_rule' }
+}
+
+/** Approves "add this category to the existing rule": the rule and the suggestion change together. */
+async function approveCategorySuggestion(
+  supabase: AdminClient,
+  userId: string,
+  suggestionId: string
+): Promise<{ ruleId?: string; error?: string }> {
+  const { data, error } = await (supabase as any).rpc('approve_receipt_rule_category_suggestion', {
+    p_suggestion_id: suggestionId,
+    p_user: userId,
+  })
+  if (error || !data) {
+    console.error('Failed to approve a category suggestion', error)
+    return { error: 'The category could not be added to the rule.' }
+  }
+  if (data.outcome !== 'approved') {
+    return { error: CATEGORY_APPROVAL_REFUSALS[data.outcome as string] ?? 'The category could not be added to the rule.' }
+  }
+  return { ruleId: data.rule_id as string }
 }
 
 export async function performApproveReceiptRuleSuggestion(
@@ -415,23 +346,33 @@ export async function performApproveReceiptRuleSuggestion(
 ): Promise<{ success?: boolean; rule?: ReceiptRule; error?: string }> {
   const supabase = createAdminClient()
 
-  const duplicate = await findDuplicateOfSuggestion(supabase, suggestionId)
-  if (duplicate.error) {
-    return { error: duplicate.error }
+  const guard = await guardSuggestionApproval(supabase, suggestionId)
+  if ('error' in guard) {
+    return { error: guard.error }
   }
 
-  // Atomic approval: the RPC inserts the rule and marks the suggestion approved in a
-  // single Postgres transaction (it also nulls the bank transaction_type). A failure
-  // can no longer leave a rule with a still-pending suggestion.
-  const { data: ruleId, error: rpcError } = await supabase.rpc('approve_receipt_rule_suggestion', {
-    p_suggestion_id: suggestionId,
-    p_user_id: userId,
-    p_active: options.active ?? true,
-  })
+  let ruleId: string | null = null
+  if (guard.kind === 'add_category') {
+    const approved = await approveCategorySuggestion(supabase, userId, suggestionId)
+    if (approved.error || !approved.ruleId) {
+      return { error: approved.error ?? 'The category could not be added to the rule.' }
+    }
+    ruleId = approved.ruleId
+  } else {
+    // Atomic approval: the RPC inserts the rule and marks the suggestion approved in a
+    // single Postgres transaction (it also nulls the bank transaction_type). A failure
+    // can no longer leave a rule with a still-pending suggestion.
+    const { data, error: rpcError } = await supabase.rpc('approve_receipt_rule_suggestion', {
+      p_suggestion_id: suggestionId,
+      p_user_id: userId,
+      p_active: options.active ?? true,
+    })
 
-  if (rpcError || !ruleId) {
-    console.error('Failed to approve receipt rule suggestion', rpcError)
-    return { error: 'Failed to create rule from suggestion.' }
+    if (rpcError || !data) {
+      console.error('Failed to approve receipt rule suggestion', rpcError)
+      return { error: 'Failed to create rule from suggestion.' }
+    }
+    ruleId = data as string
   }
 
   const { data: rule, error: ruleError } = await supabase
@@ -502,11 +443,37 @@ export async function performApproveReceiptRuleSuggestions(
   let approved = 0
   let failed = 0
 
+  // One read of the payments checks every selected suggestion's keyword.
+  let checks: Map<string, SuggestionCheck> | undefined
+  try {
+    const { data: selected, error: selectedError } = await supabase
+      .from('receipt_rule_suggestions')
+      .select('id, match_description, set_vendor_id')
+      .in('id', ids)
+    if (selectedError) throw new Error(selectedError.message)
+    checks = await checkSuggestionsAgainstPayments(
+      supabase,
+      ((selected ?? []) as Array<Pick<ReceiptRuleSuggestion, 'id' | 'match_description' | 'set_vendor_id'>>).filter(
+        (suggestion) => Boolean(suggestion.set_vendor_id)
+      )
+    )
+  } catch (checkError) {
+    console.error('Failed to check rule suggestions against the payments (bulk)', checkError)
+    return { approved: 0, failed: ids.length }
+  }
+
   for (const suggestionId of ids) {
     // Checked one at a time, so the second of two identical suggestions is caught by the first.
-    const duplicate = await findDuplicateOfSuggestion(supabase, suggestionId)
-    if (duplicate.error) {
+    const guard = await guardSuggestionApproval(supabase, suggestionId, checks)
+    if ('error' in guard) {
       failed += 1
+      continue
+    }
+
+    if (guard.kind === 'add_category') {
+      const result = await approveCategorySuggestion(supabase, userId, suggestionId)
+      if (result.error) failed += 1
+      else approved += 1
       continue
     }
 

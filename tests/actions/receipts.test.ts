@@ -378,15 +378,28 @@ describe('requeueUnclassifiedTransactions', () => {
     const expenseOrder = vi.fn().mockReturnValue({ range: expenseRange })
     const expenseGt = vi.fn().mockReturnValue({ order: expenseOrder })
     const expenseNot = vi.fn().mockReturnValue({ gt: expenseGt })
-    const expenseSecondIs = vi.fn().mockReturnValue({ not: expenseNot })
+    // Transactions marked "no category applies" are left out of the expense read.
+    const expenseEq = vi.fn().mockReturnValue({ not: expenseNot })
+    const expenseSecondIs = vi.fn().mockReturnValue({ eq: expenseEq })
     const expenseFirstIs = vi.fn().mockReturnValue({ is: expenseSecondIs })
     const select = vi
       .fn()
       .mockReturnValueOnce({ is: vendorFirstIs })
       .mockReturnValueOnce({ is: expenseFirstIs })
 
+    // What the AI has already been asked: tx-3 is not in either read, so nothing is held back.
+    const attemptRange = vi.fn().mockResolvedValue({
+      data: [{ transaction_id: 'tx-3', outcome: 'nothing_identified' }],
+      error: null,
+    })
+    const attemptOrder = vi.fn().mockReturnValue({ range: attemptRange })
+    const attemptEq = vi.fn().mockReturnValue({ order: attemptOrder })
+
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === 'receipt_ai_attempts') {
+          return { select: vi.fn().mockReturnValue({ eq: attemptEq }) }
+        }
         if (table !== 'receipt_transactions') {
           throw new Error(`Unexpected table: ${table}`)
         }
@@ -398,7 +411,8 @@ describe('requeueUnclassifiedTransactions', () => {
 
     // Two unique transactions (tx-1 appears in both reads) travel in one job;
     // the count reported and logged is transactions, not jobs.
-    expect(result).toEqual({ success: true, queued: 2 })
+    expect(result).toEqual({ success: true, queued: 2, alreadyAsked: 0 })
+    expect(expenseEq).toHaveBeenCalledWith('no_category_applies', false)
     expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'user-1',
       user_email: 'test@example.com',
@@ -408,6 +422,7 @@ describe('requeueUnclassifiedTransactions', () => {
       additional_info: {
         action: 'requeue_unclassified_transactions',
         queued: 2,
+        already_asked: 0,
       },
     }))
     expect(mockedLogAuditEvent.mock.calls[0][0].additional_info.transaction_ids).toBeUndefined()

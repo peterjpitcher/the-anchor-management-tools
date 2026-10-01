@@ -80,6 +80,7 @@ describe('receipts audit entries name an actor', () => {
     const expected: Record<string, string[]> = {
       'receipt-vendors.ts': ['mergeReceiptVendors', 'renameReceiptVendor', 'undoReceiptVendorOperation', 'updateReceiptVendorDetails'],
       'receipt-rules.ts': ['previewReceiptRuleRun', 'applyReceiptRuleRunStep', 'undoReceiptRuleRunStep', 'setReceiptsLockDate', 'setReceiptRuleMatcher'],
+      'receipt-ai.ts': ['decideReceiptAiCategory', 'acceptVendorCategoryProposals', 'retryFailedReceiptClassification'],
     }
 
     for (const [file, audited] of Object.entries(expected)) {

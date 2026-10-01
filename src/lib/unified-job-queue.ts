@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { claimIdempotencyKey, releaseIdempotencyClaim } from '@/lib/api/idempotency'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 const DEBUG_JOB_QUEUE = process.env.JOB_QUEUE_DEBUG === '1'
 
@@ -83,11 +84,30 @@ const DEFAULT_LEASE_SECONDS = Number.isFinite(Number(process.env.JOB_QUEUE_LEASE
 const HEARTBEAT_MS = Number.isFinite(Number(process.env.JOB_QUEUE_HEARTBEAT_MS))
   ? Number(process.env.JOB_QUEUE_HEARTBEAT_MS)
   : 30000
+/**
+ * Receipts background work: classification, the work after an import, invoice matching and the
+ * rule housekeeping. It runs after everything else in a claimed batch, messages included, and has
+ * its own timeout below the 60 seconds the processing route is allowed. A slow call to OpenAI can
+ * therefore never hold up a text message, and never outlives the request that started it.
+ */
+const RECEIPT_JOB_TYPES: JobType[] = [
+  'classify_receipt_transactions',
+  'process_receipt_batch',
+  'reconcile_receipt_invoice_payments',
+  'suggest_receipt_rules',
+  'detect_receipt_rule_conflicts',
+  'refresh_receipt_duplicate_candidates',
+]
+const RECEIPT_JOB_TIMEOUT_MS = 45_000
+/** Time left in the run below which receipts jobs are handed back instead of started. */
+const RECEIPT_JOB_MIN_REMAINING_MS = RECEIPT_JOB_TIMEOUT_MS + 2_000
+
 const JOB_TIMEOUTS_MS: Partial<Record<JobType, number>> = {
   send_bulk_sms: 0,
   send_event_reschedule_notifications: 0,
   send_event_postponed_notifications: 0,
   cancel_event_bookings: 0,
+  ...Object.fromEntries(RECEIPT_JOB_TYPES.map((type) => [type, RECEIPT_JOB_TIMEOUT_MS])),
 }
 
 function resolveJobTimeoutMs(type: JobType): number {
@@ -659,7 +679,7 @@ export class UnifiedJobQueue {
   /**
    * Process pending jobs
    */
-  async processJobs(limit = 10): Promise<void> {
+  async processJobs(limit = 10, options: { /** When this run must be finished, as epoch milliseconds. */ deadlineAt?: number } = {}): Promise<void> {
     const supabase = await createAdminClient()
     await this.resetStaleJobs(supabase)
 
@@ -683,7 +703,8 @@ export class UnifiedJobQueue {
 
     const sendJobTypes: JobType[] = ['send_sms', 'send_bulk_sms']
     const sendJobs = jobs.filter((job) => sendJobTypes.includes(job.type))
-    const otherJobs = jobs.filter((job) => !sendJobTypes.includes(job.type))
+    const receiptJobs = jobs.filter((job) => RECEIPT_JOB_TYPES.includes(job.type))
+    const otherJobs = jobs.filter((job) => !sendJobTypes.includes(job.type) && !RECEIPT_JOB_TYPES.includes(job.type))
 
     // Non-SMS jobs can run concurrently.
     if (otherJobs.length > 0) {
@@ -714,6 +735,31 @@ export class UnifiedJobQueue {
             error: abort.message,
           }
         })
+      }
+    }
+
+    // Receipts work goes last, so nothing above waits on it. If the run has too little time left
+    // for one of these jobs to finish, they are handed back for the next run and not started:
+    // the wait is not counted against their attempts.
+    if (receiptJobs.length > 0) {
+      const remainingMs = options.deadlineAt ? options.deadlineAt - Date.now() : Number.POSITIVE_INFINITY
+      if (remainingMs < RECEIPT_JOB_MIN_REMAINING_MS) {
+        logQueueDebug('Handing receipts jobs back: not enough time left in this run', {
+          count: receiptJobs.length,
+          remainingMs,
+        })
+        await Promise.allSettled(
+          receiptJobs.map((job) =>
+            this.persistJobReschedule(
+              supabase,
+              job,
+              job.processing_token ?? null,
+              new JobReschedule(new Date(), { deferred: 'not enough time left in the run' })
+            )
+          )
+        )
+      } else {
+        await Promise.allSettled(receiptJobs.map((job) => this.processJob(job)))
       }
     }
   }
@@ -889,12 +935,21 @@ export class UnifiedJobQueue {
 
       // Execute job based on type with timeout protection
       const timeoutMs = resolveJobTimeoutMs(job.type)
+      // A handler that takes the signal stops its outside calls when the job times out or loses
+      // its lease. Without it a timed-out handler ran on, and could overlap its own retry.
+      const cancel = new AbortController()
       const execution = withTimeout(
-        this.executeJob(job.type, { ...job.payload, __job_id: job.id }),
+        this.executeJob(job.type, { ...job.payload, __job_id: job.id }, cancel.signal),
         timeoutMs,
         `Job execution timeout (${timeoutMs}ms)`
       )
-      const result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
+      let result: any
+      try {
+        result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
+      } catch (executionError) {
+        cancel.abort()
+        throw executionError
+      }
 
       if (result instanceof JobReschedule) {
         await this.persistJobReschedule(supabase, job, token, result)
@@ -1062,7 +1117,7 @@ export class UnifiedJobQueue {
   /**
    * Execute job based on type
    */
-  private async executeJob(type: JobType, payload: JobPayload): Promise<any> {
+  private async executeJob(type: JobType, payload: JobPayload, signal?: AbortSignal): Promise<any> {
     // Import handlers dynamically to avoid circular dependencies
     switch (type) {
       case 'classify_receipt_transactions': {
@@ -1077,8 +1132,22 @@ export class UnifiedJobQueue {
         const { classifyReceiptTransactionsWithAI } = await import('@/lib/receipts/ai-classification')
         const supabase = createAdminClient()
 
-        await classifyReceiptTransactionsWithAI(supabase, transactionIds)
-        return { processed: transactionIds.length }
+        // A failed call throws from here, so the queue retries it. What it did before failing
+        // is already recorded against each payment.
+        const summary = await classifyReceiptTransactionsWithAI(supabase, transactionIds, {
+          signal,
+          retryFinalFailures: payload.retryFinalFailures === true,
+        })
+
+        // New vendors on payments are what rule proposals are worked out from.
+        if (summary.vendorsWritten > 0) {
+          await this.enqueue(
+            'suggest_receipt_rules',
+            {},
+            { priority: -10, unique: `receipts:suggest_receipt_rules:${getTodayIsoDate()}` }
+          )
+        }
+        return summary
       }
 
       case 'detect_receipt_rule_conflicts': {

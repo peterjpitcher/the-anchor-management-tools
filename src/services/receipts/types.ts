@@ -99,19 +99,13 @@ export type ReceiptWorkspaceFilters = {
   sortDirection?: 'asc' | 'desc'
 }
 
-type AIModelBreakdown = {
-  model: string
-  total_cost: number
-  total_tokens: number
-  call_count: number
-}
-
+/** What the receipts AI has cost. The figures are US dollars, as OpenAI charges them. */
 export type AIUsageBreakdown = {
   total_cost: number
   this_month_cost: number
-  total_classifications: number
-  this_month_classifications: number
-  model_breakdown: AIModelBreakdown[] | null
+  /** Calls to the model, not payments: one call classifies a batch. */
+  total_calls: number
+  this_month_calls: number
 }
 
 export type RulePreviewResult = {
@@ -140,11 +134,33 @@ export type ReceiptWorkspaceSummary = {
   failedAiJobCount: number
 }
 
+/** A category the AI has suggested for a payment, waiting for a person to accept, change or dismiss. */
+export type ReceiptAiSuggestion = {
+  /** Null with `noCategoryApplies` true: the suggestion is that no category applies. */
+  category: ReceiptExpenseCategory | null
+  noCategoryApplies: boolean
+  confidence: number | null
+  reasoning: string | null
+}
+
+export type ReceiptWorkspaceTransaction = ReceiptTransaction & {
+  files: ReceiptFile[]
+  autoRule?: Pick<ReceiptRule, 'id' | 'name'> | null
+  aiSuggestion?: ReceiptAiSuggestion | null
+  /** Something about this payment a person should know: a possible wage payment, or a failed classification. */
+  aiNote?: string | null
+}
+
+/** What the AI could not do, shown above the list. Null when it could not be worked out. */
+export type ReceiptWorkspaceAiStatus = {
+  failed: number
+  failedForGood: number
+  payrollChecks: number
+}
+
 export type ReceiptWorkspaceData = {
-  transactions: (ReceiptTransaction & {
-    files: ReceiptFile[]
-    autoRule?: Pick<ReceiptRule, 'id' | 'name'> | null
-  })[]
+  transactions: ReceiptWorkspaceTransaction[]
+  aiStatus: ReceiptWorkspaceAiStatus | null
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
@@ -403,7 +419,6 @@ export type ReceiptBulkReviewData = {
     limit: number
     statuses: ReceiptTransaction['status'][]
     onlyUnclassified: boolean
-    openAIEnabled: boolean
     useFuzzyGrouping: boolean
   }
 }

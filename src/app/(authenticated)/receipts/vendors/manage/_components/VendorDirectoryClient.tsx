@@ -84,6 +84,11 @@ const ORIGIN_LABEL: Record<ReceiptVendorDirectoryItem['origin'], string | null> 
 
 const currency = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' })
 
+/** Added by the AI and not yet confirmed by a person. */
+function needsAiReview(vendor: Pick<ReceiptVendorDirectoryItem, 'status' | 'origin'>): boolean {
+  return vendor.status === 'unconfirmed' && vendor.origin === 'ai'
+}
+
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`
 }
@@ -117,7 +122,7 @@ export function VendorDirectoryClient({ directory, canManage, canGovern }: Vendo
 
   const visibleVendors = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return directory.vendors.filter((vendor) => {
+    const matching = directory.vendors.filter((vendor) => {
       if (statusFilter === 'standing' && vendor.status !== 'unconfirmed' && vendor.status !== 'confirmed') return false
       if (statusFilter !== 'standing' && statusFilter !== 'all' && vendor.status !== statusFilter) return false
       if (!term) return true
@@ -126,9 +131,13 @@ export function VendorDirectoryClient({ directory, canManage, canGovern }: Vendo
         vendor.aliases.some((alias) => alias.toLowerCase().includes(term))
       )
     })
+    // Vendors the AI added and nobody has confirmed come first: they are the ones to look at.
+    // The sort is stable, so everything else keeps the order it arrived in.
+    return matching.sort((left, right) => Number(needsAiReview(right)) - Number(needsAiReview(left)))
   }, [directory.vendors, search, statusFilter])
 
   const unconfirmedCount = standingVendors.filter((vendor) => vendor.status === 'unconfirmed').length
+  const aiUnconfirmedCount = standingVendors.filter(needsAiReview).length
 
   function openDialog(next: Dialog) {
     setDialogError(null)
@@ -379,7 +388,7 @@ export function VendorDirectoryClient({ directory, canManage, canGovern }: Vendo
         <Card>
           <CardHeader
             title="Vendors"
-            subtitle={`${plural(standingVendors.length, 'vendor', 'vendors')} in use, ${unconfirmedCount} not yet confirmed`}
+            subtitle={`${plural(standingVendors.length, 'vendor', 'vendors')} in use, ${unconfirmedCount} not yet confirmed${aiUnconfirmedCount > 0 ? `. ${aiUnconfirmedCount} added by the AI ${aiUnconfirmedCount === 1 ? 'is' : 'are'} listed first` : ''}`}
           />
           <CardBody>
             <div className="mb-4 grid gap-3 sm:grid-cols-2">

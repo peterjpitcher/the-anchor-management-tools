@@ -1,5 +1,7 @@
 import ReceiptBulkReviewClient from '@/app/(authenticated)/receipts/_components/ReceiptBulkReviewClient'
 import { getReceiptBulkReviewData } from '@/app/actions/receipts'
+import { getReceiptCategoryProposals } from '@/app/actions/receipt-ai'
+import { SuggestedCategoriesCard } from '../_components/ui/SuggestedCategoriesCard'
 import { Alert } from '@/ds'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -75,6 +77,10 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
     )
   }
 
+  // Read apart from the groups below: if the suggestions cannot be loaded the page says so and
+  // the rest of it still works.
+  const proposals = await getReceiptCategoryProposals()
+
   const filters = {
     limit: data.config.limit,
     statuses: data.config.statuses,
@@ -87,6 +93,7 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
       navState={{ view: 'bulk' }}
       canManage={canManage}
     >
+      <SuggestedCategoriesCard initialGroups={proposals.groups ?? []} loadError={proposals.error ?? null} />
       <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
     </ReceiptsPageChrome>
   )

@@ -137,6 +137,11 @@ function mockAdminClient(transactions: ReturnType<typeof buildTransactions>, ven
         return createQueryStub(() => ({ data: [], error: null, count: 0 })).builder
       }
 
+      // What the AI has suggested for the transactions on the page, and what it could not do.
+      if (table === 'receipt_ai_attempts') {
+        return createQueryStub(() => ({ data: [], error: null })).builder
+      }
+
       throw new Error(`Unexpected table: ${table}`)
     },
     rpc: (fn: string) => {
@@ -146,8 +151,11 @@ function mockAdminClient(transactions: ReturnType<typeof buildTransactions>, ven
           error: null,
         })).builder
       }
-      if (fn === 'get_openai_usage_total') {
-        return createQueryStub(() => ({ data: 0, error: null })).builder
+      if (fn === 'get_receipt_ai_usage') {
+        return createQueryStub(() => ({
+          data: { total_cost: 0, this_month_cost: 0, total_calls: 0, this_month_calls: 0 },
+          error: null,
+        })).builder
       }
       return createQueryStub(() => ({ data: [], error: null })).builder
     },

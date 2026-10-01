@@ -109,11 +109,14 @@ export const RECEIPT_SOURCE_LABEL: Record<'bank' | 'amex', string> = {
  */
 export const RECEIPT_CLASSIFICATION_SOURCE_TONE: Partial<Record<string, 'info' | 'primary'>> = {
   ai: 'info',
+  ai_accepted: 'info',
   rule: 'primary',
 }
 
 export const RECEIPT_CLASSIFICATION_SOURCE_LABEL: Partial<Record<string, string>> = {
   ai: 'AI',
+  // Suggested by the AI and accepted by a person: it ranks with a manual entry.
+  ai_accepted: 'AI, accepted',
   rule: 'Rule',
 }
 

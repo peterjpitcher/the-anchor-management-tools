@@ -15,6 +15,7 @@ export type RuleIdentityInput = {
   set_vendor_name?: string | null
   vendor_id?: string | null
   set_expense_category?: string | null
+  set_no_category?: boolean | null
   auto_status?: string | null
 }
 
@@ -44,7 +45,7 @@ export function ruleIdentityKey(rule: RuleIdentityInput): string {
     amount(rule.match_max_amount),
     // The vendor itself where it is known; its name only for an old rule with no vendor id.
     rule.vendor_id ?? text(rule.set_vendor_name),
-    rule.set_expense_category ?? '',
+    rule.set_no_category ? 'no category applies' : rule.set_expense_category ?? '',
     rule.auto_status ?? 'pending',
   ])
 }

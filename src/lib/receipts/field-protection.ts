@@ -11,7 +11,15 @@
  * must be changed together.
  */
 
+import type { ReceiptClassificationSource } from '@/types/database'
+
 type FieldSource = string | null | undefined
+
+/**
+ * Every source a vendor or category may carry. The database allows exactly these (the two
+ * `*_source_check` constraints on `receipt_transactions`); a guard test keeps the lists the same.
+ */
+export const RECEIPT_CLASSIFICATION_SOURCES = ['ai', 'manual', 'rule', 'import', 'invoice', 'ai_accepted'] as const satisfies readonly ReceiptClassificationSource[]
 
 /** Sources a rule (on import, on refresh or run over history) may overwrite. */
 const RULE_WRITABLE_SOURCES = new Set(['ai', 'rule'])

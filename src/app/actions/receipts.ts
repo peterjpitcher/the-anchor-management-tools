@@ -2,6 +2,7 @@
 
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { escapeRuleKeyword } from '@/lib/receipts/rule-matching'
+import { NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
@@ -213,6 +214,8 @@ function optionalRuleFormText(formData: FormData, key: string): string | undefin
 }
 
 function getReceiptRuleValidationInput(formData: FormData) {
+  // "No category applies" travels in the category field and is stored as a flag.
+  const setsNoCategory = formData.get('set_expense_category') === NO_CATEGORY_VALUE
   return {
     name: formData.get('name') ?? '',
     description: optionalRuleFormText(formData, 'description'),
@@ -225,7 +228,8 @@ function getReceiptRuleValidationInput(formData: FormData) {
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
     auto_status: formData.get('auto_status') ?? 'pending',
     set_vendor_name: optionalRuleFormText(formData, 'set_vendor_name'),
-    set_expense_category: optionalRuleFormText(formData, 'set_expense_category'),
+    set_expense_category: setsNoCategory ? undefined : optionalRuleFormText(formData, 'set_expense_category'),
+    set_no_category: setsNoCategory,
   }
 }
 
@@ -235,7 +239,7 @@ function validateReceiptRuleForm(formData: FormData): { success: true } | { succ
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -508,7 +512,7 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -651,6 +655,8 @@ export async function updateReceiptClassification(input: {
   transactionId: string
   vendorName?: string | null
   expenseCategory?: string | null
+  /** With no category: this payment takes none ("no category applies"). */
+  noCategoryApplies?: boolean
   /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
   createVendor?: boolean
 }) {
@@ -677,6 +683,7 @@ export async function updateReceiptClassification(input: {
         vendor: hasVendorField ? result.transaction?.vendor_name ?? null : null,
         vendor_id: hasVendorField ? result.transaction?.vendor_id ?? null : null,
         expense: input.expenseCategory ?? null,
+        no_category_applies: hasExpenseField ? Boolean(result.transaction?.no_category_applies) : null,
       },
     })
     revalidatePath('/receipts')
@@ -996,14 +1003,20 @@ export async function approveReceiptRuleSuggestions(
 
 export async function getReceiptRuleSuggestionsPage(
   page = 1,
-  pageSize = 20
+  pageSize = 20,
+  /** `liveChecks` runs each keyword over every payment now: what it matches and what it clashes with. */
+  options: { liveChecks?: boolean } = {}
 ): Promise<{ suggestions: ReceiptRuleSuggestion[]; suggestionsTotal: number; error?: string }> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     return { suggestions: [], suggestionsTotal: 0, error: 'Insufficient permissions' }
   }
 
-  const { suggestions, suggestionsTotal } = await queryReceiptGovernanceItems({ page, pageSize })
+  const { suggestions, suggestionsTotal } = await queryReceiptGovernanceItems({
+    page,
+    pageSize,
+    liveChecks: options?.liveChecks === true,
+  })
   return { suggestions, suggestionsTotal }
 }
 
@@ -1129,7 +1142,7 @@ export async function createReceiptRuleFromGroup(input: {
   return result
 }
 
-export async function requeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; error?: string }> {
+export async function requeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; alreadyAsked?: number; error?: string }> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { success: false, error: 'Insufficient permissions' }
@@ -1146,6 +1159,7 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
     additional_info: {
       action: 'requeue_unclassified_transactions',
       queued: result.queued ?? 0,
+      already_asked: result.alreadyAsked ?? 0,
     },
   })
 

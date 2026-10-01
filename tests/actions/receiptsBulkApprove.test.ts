@@ -91,7 +91,11 @@ function makeAdmin(): Handles {
           error: null,
         })
         const eq = vi.fn().mockReturnValue({ maybeSingle })
-        return { select: vi.fn().mockReturnValue({ eq }) }
+        // The bulk path reads the selected suggestions once, to check the keywords of those that
+        // name a vendor against every transaction. None here names one; that checking is tested
+        // in receiptGovernance.approval.test.ts.
+        const inIds = vi.fn().mockResolvedValue({ data: [], error: null })
+        return { select: vi.fn().mockReturnValue({ eq, in: inIds }) }
       }
       if (table === 'receipt_classification_signals') {
         return { insert: vi.fn().mockResolvedValue({ error: null }) }

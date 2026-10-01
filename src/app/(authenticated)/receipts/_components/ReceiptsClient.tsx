@@ -14,6 +14,7 @@ import { ReceiptExport } from './ui/ReceiptExport'
 import { ReceiptFilters } from './ui/ReceiptFilters'
 import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
+import { ReceiptAiStatusNotice } from './ui/ReceiptAiStatusNotice'
 import { Card, CardBody } from '@/ds'
 
 interface ReceiptsClientProps {
@@ -171,6 +172,8 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
           />
         </CardBody>
       </Card>
+
+      <ReceiptAiStatusNotice status={initialData.aiStatus} />
 
       <ReceiptList
         transactions={transactions}

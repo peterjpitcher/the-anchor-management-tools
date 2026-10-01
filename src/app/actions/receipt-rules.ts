@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { currentUserCanGovernReceiptRules } from '@/app/actions/receipts'
 import { logReceiptActorAudit, requireReceiptActor } from '@/app/actions/receipt-audit'
 import type { MatcherComparison, RuleMatchExplanation } from '@/lib/receipts/rule-health'
+import { performReopenProposalsForUndoneRun } from '@/services/receipts/receiptAiReview'
 import type { RuleMatcherMode } from '@/lib/receipts/rule-matching'
 import {
   performApplyReceiptRuleRunStep,
@@ -190,6 +191,10 @@ export async function undoReceiptRuleRunStep(runId: string): Promise<RuleRunUndo
   }
 
   if (step.success && step.done) {
+    // Undoing a run of accepted suggestions puts those suggestions back on offer.
+    if (run.kind === 'ai_accept_all') {
+      await performReopenProposalsForUndoneRun(run.id)
+    }
     revalidateRulePaths()
   }
   return step

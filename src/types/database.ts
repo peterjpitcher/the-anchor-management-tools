@@ -120,7 +120,8 @@ export type ReceiptTransactionStatus =
   | 'cant_find';
 
 // Who decided a vendor or category. `src/lib/receipts/field-protection.ts` says who may overwrite whom.
-export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import' | 'invoice';
+/** `ai_accepted` is a suggestion a person accepted. It ranks with `manual`. */
+export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import' | 'invoice' | 'ai_accepted';
 
 export type ReceiptSourceType = 'bank' | 'amex';
 
@@ -222,6 +223,8 @@ export interface ReceiptRule {
   updated_at: string;
   set_vendor_name: string | null;
   set_expense_category: ReceiptExpenseCategory | null;
+  /** The rule marks the payment "no category applies". Never set together with a category. */
+  set_no_category?: boolean;
   vendor_id: string | null;
   reviewed_at: string | null;
   reviewed_by: string | null;
@@ -261,6 +264,8 @@ export interface ReceiptTransaction {
   vendor_rule_id: string | null;
   vendor_updated_at: string | null;
   expense_category: ReceiptExpenseCategory | null;
+  /** Decided: this payment takes no expense category. The category is then always empty. */
+  no_category_applies?: boolean;
   expense_category_source: ReceiptClassificationSource | null;
   expense_rule_id: string | null;
   expense_updated_at: string | null;

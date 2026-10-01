@@ -13,20 +13,21 @@ import {
 } from '@/app/actions/receipts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptClassificationSource } from '@/types/database'
-import { receiptExpenseCategorySchema } from '@/lib/validation'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_FLOW_TONE, RECEIPT_STATUS_LABEL, RECEIPT_STATUS_TONE } from '@/app/(authenticated)/receipts/_shared/status-ui'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 import { SourceBadge } from './ReceiptTableRow'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
-
-type WorkspaceTransaction = ReceiptTransaction & {
-  files: ReceiptFile[]
-  autoRule?: { id: string; name: string } | null
-}
-
-const expenseCategoryOptions = receiptExpenseCategorySchema.options
+import { AiCategorySuggestion } from './AiCategorySuggestion'
+import {
+  EXPENSE_CHOICE_OPTIONS,
+  expenseChoiceLabel,
+  expenseChoiceValue,
+  saveExpenseChoice,
+  suggestionChoiceValue,
+  type WorkspaceTransaction,
+} from './expenseChoice'
 
 interface ReceiptMobileCardProps {
   transaction: WorkspaceTransaction
@@ -147,23 +148,56 @@ export function ReceiptMobileCard({
           setClassificationDraft(val)
           setIsCustomVendor(val.length > 0 && !vendorOptions.includes(val))
       } else {
-          setClassificationDraft(transaction.expense_category ?? '')
+          setClassificationDraft(expenseChoiceValue(transaction))
       }
+  }
+
+  /** "Change" on a suggestion: the category picker, starting on what was suggested. */
+  function startChangingSuggestion() {
+      if (!canManageReceipts || !transaction.aiSuggestion) return
+      setEditingField('expense')
+      setClassificationDraft(suggestionChoiceValue(transaction.aiSuggestion))
+  }
+
+  function saveExpense() {
+      if (!canManageReceipts) return
+      startTransition(async () => {
+          const result = await saveExpenseChoice(transaction, classificationDraft)
+          if (result.transaction || result.suggestionClosed) {
+              onUpdate({
+                  ...transaction,
+                  ...(result.transaction ?? {}),
+                  files: transaction.files,
+                  autoRule: transaction.autoRule,
+                  aiSuggestion: result.suggestionClosed ? null : transaction.aiSuggestion,
+              }, transaction.status)
+          }
+          if (result.error) {
+              toast.error(result.error)
+              if (result.suggestionClosed) setEditingField(null)
+              return
+          }
+          if (result.ruleSuggestion) {
+              onRuleSuggestion(result.ruleSuggestion)
+          }
+          setEditingField(null)
+          toast.success('Updated')
+      })
   }
   
   // `vendorName` and `createVendor` come from the new-vendor dialog: use an existing vendor
   // instead of the typed name, or confirm that the typed name is a new vendor.
   async function saveClassification(options: { vendorName?: string; createVendor?: boolean } = {}) {
       if (!canManageReceipts) return
+      if (editingField === 'expense') {
+          saveExpense()
+          return
+      }
       const draft = (options.vendorName ?? classificationDraft).trim()
       const payload: any = { transactionId: transaction.id }
       
-      if (editingField === 'vendor') {
-          payload.vendorName = draft.length ? draft : null
-          if (options.createVendor) payload.createVendor = true
-      } else {
-          payload.expenseCategory = draft.length ? draft : null
-      }
+      payload.vendorName = draft.length ? draft : null
+      if (options.createVendor) payload.createVendor = true
       
       startTransition(async () => {
           const result = await updateReceiptClassification(payload)
@@ -249,6 +283,9 @@ export function ReceiptMobileCard({
                     Auto rule
                 </Badge>
                 )}
+                {transaction.aiNote && (
+                <p className="text-meta text-warning-fg">{transaction.aiNote}</p>
+                )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-meta">
                 {transaction.amount_out != null && (
@@ -310,20 +347,32 @@ export function ReceiptMobileCard({
             <div className="text-sm leading-tight text-text-strong">
                  {editingField === 'expense' ? (
                     <div className="flex flex-col gap-2 mt-1">
-                        <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={[
-                            { value: '', label: 'Clear' },
-                            ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
-                        ]} />
+                        <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={EXPENSE_CHOICE_OPTIONS} />
                         <div className="flex gap-2">
                             <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
                         </div>
                     </div>
                 ) : (
-                    <Button variant="link" size="sm" onClick={() => startEditing('expense')} className="justify-start whitespace-normal text-left font-normal text-text-strong hover:text-primary" disabled={!canManageReceipts}>
-                        {transaction.expense_category || <span className="text-text-soft">Add category</span>}
-                        {transaction.expense_category_source === 'ai' && <Icon name="sparkles" size={12} className="inline text-info" />}
-                    </Button>
+                    <div className="flex flex-col items-start gap-1">
+                        <Button variant="link" size="sm" onClick={() => startEditing('expense')} className="justify-start whitespace-normal text-left font-normal text-text-strong hover:text-primary" disabled={!canManageReceipts}>
+                            {expenseChoiceLabel(transaction) || <span className="text-text-soft">Add category</span>}
+                            {transaction.expense_category_source === 'ai' && <Icon name="sparkles" size={12} className="inline text-info" />}
+                        </Button>
+                        <AiCategorySuggestion
+                            transaction={transaction}
+                            canManage={canManageReceipts}
+                            disabled={isPending}
+                            onChange={startChangingSuggestion}
+                            onClosed={(updated) => onUpdate({
+                                ...transaction,
+                                ...(updated ?? {}),
+                                files: transaction.files,
+                                autoRule: transaction.autoRule,
+                                aiSuggestion: null,
+                            }, transaction.status)}
+                        />
+                    </div>
                 )}
             </div>
 

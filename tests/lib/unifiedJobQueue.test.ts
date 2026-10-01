@@ -650,3 +650,259 @@ describe('UnifiedJobQueue lease guards', () => {
     }
   })
 })
+
+// Receipts background work shares the queue with text messages. A slow call to OpenAI used to be
+// able to sit in front of a text, and a classification job that timed out ran on regardless.
+describe('UnifiedJobQueue receipts jobs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const jobBase = {
+    status: 'processing' as const,
+    priority: 0,
+    attempts: 1,
+    max_attempts: 3,
+    scheduled_for: new Date().toISOString(),
+    processing_token: 'token-1',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    payload: {},
+  }
+
+  function claimed() {
+    return [
+      { ...jobBase, id: 'classify', type: 'classify_receipt_transactions' as const },
+      { ...jobBase, id: 'sms', type: 'send_sms' as const },
+      { ...jobBase, id: 'batch', type: 'process_receipt_batch' as const },
+      { ...jobBase, id: 'other', type: 'send_email' as const },
+      { ...jobBase, id: 'suggest', type: 'suggest_receipt_rules' as const },
+    ]
+  }
+
+  function spies(queue: UnifiedJobQueue, jobs: unknown[]) {
+    const order: string[] = []
+    const list = [
+      vi.spyOn(queue as any, 'resetStaleJobs').mockResolvedValue(undefined),
+      vi.spyOn(queue as any, 'claimJobs').mockResolvedValue(jobs),
+      vi.spyOn(queue as any, 'processJob').mockImplementation(async (job: any) => {
+        order.push(job.id)
+        return { ok: true, fatalSmsSafetyFailure: false }
+      }),
+    ]
+    const reschedule = vi.spyOn(queue as any, 'persistJobReschedule').mockResolvedValue(undefined)
+    return { order, reschedule, restore: () => [...list, reschedule].forEach((spy) => spy.mockRestore()) }
+  }
+
+  it('runs every receipts job after the messages, whatever order they were claimed in', async () => {
+    mockedCreateAdminClient.mockResolvedValue({})
+    const queue = UnifiedJobQueue.getInstance()
+    const { order, reschedule, restore } = spies(queue, claimed())
+
+    try {
+      await queue.processJobs(10)
+
+      expect(order.slice(0, 2)).toEqual(['other', 'sms'])
+      expect(order.slice(2).sort()).toEqual(['batch', 'classify', 'suggest'])
+      expect(reschedule).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('hands receipts jobs back, unstarted, when the run has too little time left for one to finish', async () => {
+    mockedCreateAdminClient.mockResolvedValue({})
+    const queue = UnifiedJobQueue.getInstance()
+    const { order, reschedule, restore } = spies(queue, claimed())
+
+    try {
+      // 46 seconds left: less than the 45 second receipts timeout plus its margin.
+      await queue.processJobs(10, { deadlineAt: Date.now() + 46_000 })
+
+      // The messages still went.
+      expect(order).toEqual(['other', 'sms'])
+      expect(reschedule.mock.calls.map((call) => (call[1] as { id: string }).id).sort()).toEqual([
+        'batch',
+        'classify',
+        'suggest',
+      ])
+      // Handed back to run straight away next time, with the claim's token.
+      const [, , token, request] = reschedule.mock.calls[0] as [unknown, unknown, string, { runAt: Date; result: unknown }]
+      expect(token).toBe('token-1')
+      expect(request.runAt.getTime()).toBeLessThanOrEqual(Date.now())
+      expect(request.result).toEqual({ deferred: 'not enough time left in the run' })
+    } finally {
+      restore()
+    }
+  })
+
+  it('starts receipts jobs when there is time for them', async () => {
+    mockedCreateAdminClient.mockResolvedValue({})
+    const queue = UnifiedJobQueue.getInstance()
+    const { order, reschedule, restore } = spies(queue, claimed())
+
+    try {
+      await queue.processJobs(10, { deadlineAt: Date.now() + 55_000 })
+
+      expect(order).toHaveLength(5)
+      expect(reschedule).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not count the wait against a job that was handed back', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'classify' }, error: null })
+    const builder: any = { eq: vi.fn(() => builder), select: vi.fn(() => builder), maybeSingle }
+    const update = vi.fn((_payload: Record<string, unknown>) => builder)
+    mockedCreateAdminClient.mockResolvedValue({ from: vi.fn(() => ({ update })) })
+
+    const queue = UnifiedJobQueue.getInstance()
+    const resetSpy = vi.spyOn(queue as any, 'resetStaleJobs').mockResolvedValue(undefined)
+    const claimSpy = vi
+      .spyOn(queue as any, 'claimJobs')
+      .mockResolvedValue([{ ...jobBase, id: 'classify', type: 'classify_receipt_transactions' as const, attempts: 2 }])
+    const executeSpy = vi.fn()
+    const originalExecute = (queue as any).executeJob
+    ;(queue as any).executeJob = executeSpy
+
+    try {
+      await queue.processJobs(10, { deadlineAt: Date.now() + 1_000 })
+
+      expect(executeSpy).not.toHaveBeenCalled()
+      expect(update).toHaveBeenCalledTimes(1)
+      expect(update.mock.calls[0][0]).toMatchObject({ status: 'pending', attempts: 1, processing_token: null })
+      expect(builder.eq).toHaveBeenCalledWith('processing_token', 'token-1')
+    } finally {
+      ;(queue as any).executeJob = originalExecute
+      resetSpy.mockRestore()
+      claimSpy.mockRestore()
+    }
+  })
+
+  it('stops a classification job after 45 seconds and cancels its call to OpenAI', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'classify' }, error: null })
+      const builder: any = { eq: vi.fn(() => builder), select: vi.fn(() => builder), maybeSingle }
+      mockedCreateAdminClient.mockResolvedValue({ from: vi.fn(() => ({ update: vi.fn(() => builder) })) })
+
+      const queue = UnifiedJobQueue.getInstance()
+      let seenSignal: AbortSignal | undefined
+      const originalExecute = (queue as any).executeJob
+      ;(queue as any).executeJob = vi.fn((_type: string, _payload: unknown, signal: AbortSignal) => {
+        seenSignal = signal
+        return new Promise(() => {})
+      })
+
+      try {
+        const jobPromise = (queue as any).processJob({
+          ...jobBase,
+          id: 'classify',
+          type: 'classify_receipt_transactions',
+        })
+
+        await vi.advanceTimersByTimeAsync(44_000)
+        expect(seenSignal?.aborted).toBe(false)
+
+        await vi.advanceTimersByTimeAsync(1_000)
+        const outcome = await jobPromise
+
+        expect(seenSignal?.aborted).toBe(true)
+        expect(outcome.ok).toBe(false)
+        expect(outcome.errorMessage ?? '').toMatch(/45000ms/)
+      } finally {
+        ;(queue as any).executeJob = originalExecute
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+const classifierMocks = vi.hoisted(() => ({
+  mockedClassify: vi.fn(),
+}))
+vi.mock('@/lib/receipts/ai-classification', () => ({
+  classifyReceiptTransactionsWithAI: classifierMocks.mockedClassify,
+}))
+
+describe('UnifiedJobQueue classify_receipt_transactions handler', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedCreateAdminClient.mockReturnValue({ marker: 'admin' })
+  })
+
+  function run(payload: Record<string, unknown>, signal?: AbortSignal) {
+    const queue = UnifiedJobQueue.getInstance()
+    // From the class, not the instance: earlier tests in this file replace the instance's
+    // `executeJob` with a stub and leave it there.
+    return (UnifiedJobQueue.prototype as any).executeJob.call(queue, 'classify_receipt_transactions', payload, signal)
+  }
+
+  it('passes the cancel signal and the retry flag to the classifier', async () => {
+    classifierMocks.mockedClassify.mockResolvedValue({ vendorsWritten: 0 })
+    const controller = new AbortController()
+
+    await run({ transactionIds: ['a', '', 'b', 7], retryFinalFailures: true }, controller.signal)
+
+    expect(classifierMocks.mockedClassify).toHaveBeenCalledWith({ marker: 'admin' }, ['a', 'b'], {
+      signal: controller.signal,
+      retryFinalFailures: true,
+    })
+  })
+
+  it('does not retry the given-up ones unless the job says so', async () => {
+    classifierMocks.mockedClassify.mockResolvedValue({ vendorsWritten: 0 })
+
+    await run({ transactionIds: ['a'], retryFinalFailures: 'yes' })
+
+    expect(classifierMocks.mockedClassify.mock.calls[0][2]).toMatchObject({ retryFinalFailures: false })
+  })
+
+  it('skips a job with no transactions without calling the classifier', async () => {
+    expect(await run({ transactionIds: [] })).toEqual({ skipped: true })
+    expect(await run({})).toEqual({ skipped: true })
+    expect(classifierMocks.mockedClassify).not.toHaveBeenCalled()
+  })
+
+  it('queues rule suggestions once a day when vendors were written, below messages', async () => {
+    classifierMocks.mockedClassify.mockResolvedValue({ vendorsWritten: 2 })
+    const queue = UnifiedJobQueue.getInstance()
+    const enqueueSpy = vi.spyOn(queue, 'enqueue').mockResolvedValue({ success: true } as never)
+
+    try {
+      const summary = await run({ transactionIds: ['a'] })
+
+      expect(summary).toEqual({ vendorsWritten: 2 })
+      expect(enqueueSpy).toHaveBeenCalledTimes(1)
+      const [type, payload, options] = enqueueSpy.mock.calls[0]
+      expect(type).toBe('suggest_receipt_rules')
+      expect(payload).toEqual({})
+      expect(options).toMatchObject({ priority: -10 })
+      expect(String(options?.unique)).toMatch(/^receipts:suggest_receipt_rules:\d{4}-\d{2}-\d{2}$/)
+    } finally {
+      enqueueSpy.mockRestore()
+    }
+  })
+
+  it('queues nothing more when no vendor was written', async () => {
+    classifierMocks.mockedClassify.mockResolvedValue({ vendorsWritten: 0 })
+    const queue = UnifiedJobQueue.getInstance()
+    const enqueueSpy = vi.spyOn(queue, 'enqueue').mockResolvedValue({ success: true } as never)
+
+    try {
+      await run({ transactionIds: ['a'] })
+      expect(enqueueSpy).not.toHaveBeenCalled()
+    } finally {
+      enqueueSpy.mockRestore()
+    }
+  })
+
+  it('lets a failed classification throw, so the queue retries it', async () => {
+    classifierMocks.mockedClassify.mockRejectedValue(new Error('OpenAI returned 503'))
+
+    await expect(run({ transactionIds: ['a'] })).rejects.toThrow('OpenAI returned 503')
+  })
+})

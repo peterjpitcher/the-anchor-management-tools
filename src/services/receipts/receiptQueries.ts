@@ -7,8 +7,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
-import { classifyReceiptTransaction, summarizeReceiptVendorCostReview } from '@/lib/openai'
-import { getOpenAIConfig } from '@/lib/openai/config'
+import { summarizeReceiptVendorCostReview } from '@/lib/openai'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
 import { buildDailyBankBalanceSeries, type BankBalanceRow } from '@/lib/receipts/bank-balance'
@@ -18,6 +17,7 @@ import type {
   AdminClient,
   ReceiptWorkspaceFilters,
   ReceiptWorkspaceData,
+  ReceiptAiSuggestion,
   ReceiptWorkspaceSummary,
   ReceiptBulkReviewData,
   ReceiptDetailGroup,
@@ -59,7 +59,6 @@ import {
   coerceExpenseCategory,
   sanitizeReceiptSearchTerm,
   normalizeDetailGroupRow,
-  deriveDirection,
   hashDetails,
   parseNumeric,
   roundToCurrency,
@@ -83,76 +82,88 @@ import {
   receiptVendorMovementRangeMonths,
 } from './vendorInsights'
 import { queryReceiptGovernanceItems } from './receiptGovernance'
+import { queryReceiptAiStatus } from './receiptAiReview'
+import { RECEIPT_AI_PROMPT_VERSION } from '@/lib/receipts/ai-client'
 
 const RECEIPT_HISTORY_PAGE_SIZE = 1000
 
 type CanonicalVendorRow = { canonical_name: string | null }
 
 // ---------------------------------------------------------------------------
-// buildGroupSuggestion — AI-assisted classification for bulk review groups
+// Suggestions for bulk review groups, from what is already stored
 // ---------------------------------------------------------------------------
+// The bulk page used to make one model call per group every time it was opened (2,293 calls by
+// October 2026), sending each group's bank description. It now reads what the classification job
+// has already recorded: the category proposed for the group's payments. Nothing is sent anywhere
+// when the page loads.
 
-async function buildGroupSuggestion(
+type StoredProposalRow = {
+  transaction_id: string
+  proposed_expense_category: string | null
+  category_state: string
+  reasoning: string | null
+  model: string | null
+}
+
+async function loadStoredProposals(
   supabase: AdminClient,
+  transactionIds: string[]
+): Promise<Map<string, StoredProposalRow>> {
+  const byTransaction = new Map<string, StoredProposalRow>()
+  for (let index = 0; index < transactionIds.length; index += 200) {
+    const chunk = transactionIds.slice(index, index + 200)
+    const { data, error } = await (supabase as any)
+      .from('receipt_ai_attempts')
+      .select('transaction_id, proposed_expense_category, category_state, reasoning, model')
+      .eq('category_state', 'proposed')
+      .in('transaction_id', chunk)
+    if (error) {
+      // The groups still show without suggestions.
+      console.error('Failed to load stored AI proposals for bulk review', error)
+      return byTransaction
+    }
+    for (const row of (data ?? []) as StoredProposalRow[]) {
+      byTransaction.set(row.transaction_id, row)
+    }
+  }
+  return byTransaction
+}
+
+function buildGroupSuggestion(
   group: NormalizedDetailGroupRow,
-  openAIEnabled: boolean
-): Promise<ReceiptDetailGroupSuggestion> {
+  proposals: Map<string, StoredProposalRow>
+): ReceiptDetailGroupSuggestion {
   const existingVendor = group.dominantVendor
   const existingExpense = group.dominantExpense
 
-  let suggestion: ReceiptDetailGroupSuggestion = {
+  const suggestion: ReceiptDetailGroupSuggestion = {
     vendorName: existingVendor,
     expenseCategory: existingExpense ?? null,
     reasoning: null,
     source: existingVendor || existingExpense ? 'existing' : 'none',
   }
+  if (existingExpense) return suggestion
 
-  const needsAI = group.needsVendorCount > 0 || group.needsExpenseCount > 0 || (!existingVendor && !existingExpense)
-
-  if (!openAIEnabled || !needsAI) {
-    return suggestion
+  // The category proposed most often for this group's payments.
+  const counts = new Map<string, { count: number; row: StoredProposalRow }>()
+  for (const id of group.transactionIds) {
+    const row = proposals.get(id)
+    const category = coerceExpenseCategory(row?.proposed_expense_category ?? null)
+    if (!row || !category) continue
+    const entry = counts.get(category) ?? { count: 0, row }
+    entry.count += 1
+    counts.set(category, entry)
   }
+  const best = [...counts.entries()].sort((left, right) => right[1].count - left[1].count)[0]
+  if (!best) return suggestion
 
-  const sample = group.sampleTransaction
-  const averageIn = group.transactionCount ? group.totalIn / group.transactionCount : 0
-  const averageOut = group.transactionCount ? group.totalOut / group.transactionCount : 0
-  const amountIn = sample?.amountIn && sample.amountIn > 0 ? sample.amountIn : averageIn || null
-  const amountOut = sample?.amountOut && sample.amountOut > 0 ? sample.amountOut : averageOut || null
-  const direction = deriveDirection(amountIn, amountOut)
-
-  let outcome
-  try {
-    outcome = await classifyReceiptTransaction({
-      details: group.details,
-      amountIn,
-      amountOut,
-      transactionType: sample?.transactionType ?? null,
-      categories: EXPENSE_CATEGORY_OPTIONS,
-      direction,
-      existingVendor: existingVendor ?? undefined,
-      existingExpenseCategory: existingExpense ?? undefined,
-    })
-  } catch (aiError) {
-    console.error('AI classification failed for group, falling back to existing data', aiError)
-    return suggestion
+  return {
+    vendorName: existingVendor,
+    expenseCategory: best[0] as ReceiptDetailGroupSuggestion['expenseCategory'],
+    reasoning: best[1].row.reasoning,
+    source: 'ai',
+    model: best[1].row.model ?? undefined,
   }
-
-  if (outcome?.result) {
-    const vendorName = normalizeVendorInput(outcome.result.vendorName) ?? existingVendor ?? null
-    const expenseCategory = coerceExpenseCategory(outcome.result.expenseCategory) ?? existingExpense ?? null
-    suggestion = {
-      vendorName,
-      expenseCategory,
-      reasoning: outcome.result.reasoning,
-      source: 'ai',
-      model: outcome.usage?.model,
-    }
-    if (outcome.usage) {
-      await recordAIUsage(supabase, outcome.usage, `receipt_group:${hashDetails(group.details)}`)
-    }
-  }
-
-  return suggestion
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +172,7 @@ async function buildGroupSuggestion(
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
+  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -170,8 +181,8 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .order('uploaded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase.rpc('get_openai_usage_total'),
-    supabase.rpc('get_ai_usage_breakdown'),
+    // Receipts spend only. The app-wide total includes recruitment and is not this section's figure.
+    (supabase as any).rpc('get_receipt_ai_usage'),
     supabase
       .from('jobs')
       .select('id', { count: 'exact', head: true })
@@ -186,12 +197,8 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     console.error('Failed to count receipt statuses', statusCountsError)
   }
 
-  if (costError) {
-    console.error('Failed to fetch OpenAI usage total', costError)
-  }
-
-  if (breakdownError) {
-    console.error('Failed to fetch AI usage breakdown', breakdownError)
+  if (usageError) {
+    console.error('Failed to fetch receipts AI usage', usageError)
   }
 
   if (failedJobsError) {
@@ -203,19 +210,8 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const autoCompleted = Number(counts?.auto_completed ?? 0)
   const noReceiptRequired = Number(counts?.no_receipt_required ?? 0)
   const cantFind = Number(counts?.cant_find ?? 0)
-  const openAICost = costError ? 0 : Number(costData ?? 0)
-
-  let aiUsageBreakdown: AIUsageBreakdown | null = null
-  if (!breakdownError && breakdownData && typeof breakdownData === 'object') {
-    const bd = breakdownData as Record<string, unknown>
-    aiUsageBreakdown = {
-      total_cost: Number(bd.total_cost ?? 0),
-      this_month_cost: Number(bd.this_month_cost ?? 0),
-      total_classifications: Number(bd.total_classifications ?? 0),
-      this_month_classifications: Number(bd.this_month_classifications ?? 0),
-      model_breakdown: Array.isArray(bd.model_breakdown) ? (bd.model_breakdown as AIUsageBreakdown['model_breakdown']) : null,
-    }
-  }
+  const aiUsageBreakdown = usageError ? null : readAiUsage(usageData)
+  const openAICost = aiUsageBreakdown?.total_cost ?? 0
 
   return {
     totals: {
@@ -237,6 +233,100 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
 // ---------------------------------------------------------------------------
 // getReceiptWorkspaceData
 // ---------------------------------------------------------------------------
+
+type AiAttemptRow = {
+  transaction_id: string
+  outcome: string
+  category_state: string
+  proposed_expense_category: string | null
+  proposed_no_category: boolean | null
+  confidence: number | null
+  reasoning: string | null
+  prompt_version: string
+}
+
+/**
+ * The AI's attempts for the payments on this page. Read on its own, not embedded in the payment
+ * query, so that a failure here costs the suggestions and not the whole list.
+ */
+async function loadAiAttemptsForPage(
+  supabase: AdminClient,
+  transactionIds: string[]
+): Promise<Map<string, AiAttemptRow[]>> {
+  const byTransaction = new Map<string, AiAttemptRow[]>()
+  const chunks: string[][] = []
+  for (let index = 0; index < transactionIds.length; index += 200) {
+    chunks.push(transactionIds.slice(index, index + 200))
+  }
+
+  // A month view holds up to 1,000 payments: the chunks are read together, not one after another.
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      (supabase as any)
+        .from('receipt_ai_attempts')
+        .select(
+          'transaction_id, outcome, category_state, proposed_expense_category, proposed_no_category, confidence, reasoning, prompt_version'
+        )
+        .in('transaction_id', chunk)
+    )
+  )
+
+  for (const { data, error } of results as Array<{ data: AiAttemptRow[] | null; error: unknown }>) {
+    if (error) {
+      console.error('Failed to load AI attempts for receipts workspace:', error)
+      return new Map()
+    }
+    for (const row of data ?? []) {
+      const list = byTransaction.get(row.transaction_id) ?? []
+      list.push(row)
+      byTransaction.set(row.transaction_id, list)
+    }
+  }
+  return byTransaction
+}
+
+/**
+ * What a payment's AI attempts mean for the person looking at it: a category waiting to be
+ * accepted, or a note. A suggestion is shown only while the payment is still uncategorised.
+ */
+export function describeAiAttempts(
+  payment: Pick<
+    ReceiptTransaction,
+    'vendor_name' | 'vendor_source' | 'expense_category' | 'expense_category_source' | 'amount_out'
+  > & { no_category_applies?: boolean | null },
+  attempts: AiAttemptRow[]
+): { aiSuggestion: ReceiptAiSuggestion | null; aiNote: string | null } {
+  const needsVendor = !payment.vendor_name && !payment.vendor_source
+  const needsCategory =
+    Number(payment.amount_out ?? 0) > 0 &&
+    !payment.expense_category &&
+    !payment.expense_category_source &&
+    !payment.no_category_applies
+
+  const open = needsCategory ? attempts.find((attempt) => attempt.category_state === 'proposed') : undefined
+  const category = coerceExpenseCategory(open?.proposed_expense_category ?? null)
+  const aiSuggestion: ReceiptAiSuggestion | null =
+    open && (category || open.proposed_no_category)
+      ? {
+          category: category ?? null,
+          noCategoryApplies: !category && Boolean(open.proposed_no_category),
+          confidence: open.confidence,
+          reasoning: open.reasoning,
+        }
+      : null
+
+  const current = attempts.find((attempt) => attempt.prompt_version === RECEIPT_AI_PROMPT_VERSION)
+  let aiNote: string | null = null
+  if (current && (needsVendor || needsCategory)) {
+    if (current.outcome === 'payroll_check') {
+      aiNote = current.reasoning || 'This may be a wage payment. Please check it.'
+    } else if (current.outcome === 'failed_final' || current.outcome === 'failed_retryable') {
+      aiNote = 'The AI could not classify this transaction.'
+    }
+  }
+
+  return { aiSuggestion, aiNote }
+}
 
 export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters = {}): Promise<ReceiptWorkspaceData> {
   const supabase = createAdminClient()
@@ -320,7 +410,8 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   }
 
   if (filters.missingExpenseOnly) {
-    baseQuery = baseQuery.is('expense_category', null).not('amount_out', 'is', null)
+    // A payment marked "no category applies" has been decided: it is not missing a category.
+    baseQuery = baseQuery.is('expense_category', null).eq('no_category_applies', false).not('amount_out', 'is', null)
   }
 
   if (monthRange) {
@@ -364,6 +455,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: monthSummary, error: monthError },
     { data: cardMemberRows, error: cardMemberError },
     governance,
+    aiStatus,
   ] = await Promise.all([
     baseQuery,
     supabase
@@ -376,6 +468,11 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     monthsQuery,
     cardMembersQuery,
     queryReceiptGovernanceItems(),
+    // The list still loads if this cannot be worked out; the notice above it is simply left off.
+    queryReceiptAiStatus().catch((aiStatusError: unknown) => {
+      console.error('Failed to load AI classification status for receipts workspace:', aiStatusError)
+      return null
+    }),
   ])
 
   if (error) {
@@ -391,10 +488,16 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     console.error('Failed to load card member list for receipts workspace:', cardMemberError)
   }
 
+  const attemptsByTransaction = await loadAiAttemptsForPage(
+    supabase,
+    (transactions ?? []).map((tx: any) => String(tx.id))
+  )
+
   const shapedTransactions = (transactions ?? []).map((tx: any) => ({
     ...tx,
     files: tx.receipt_files ?? [],
     autoRule: tx.receipt_rules?.[0] ?? null,
+    ...describeAiAttempts(tx, attemptsByTransaction.get(String(tx.id)) ?? []),
   }))
 
   const knownVendorSet = new Set<string>()
@@ -445,6 +548,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   return {
     transactions: shapedTransactions,
+    aiStatus,
     rules: rules ?? [],
     ruleConflicts: governance.conflicts,
     ruleSuggestions: governance.suggestions,
@@ -498,14 +602,16 @@ export async function queryReceiptBulkReviewData(options: {
   }
 
   const rows = (data ?? []) as RpcDetailGroupRow[]
-  const { apiKey } = await getOpenAIConfig()
-  const openAIEnabled = Boolean(apiKey)
+  const normalizedRows = rows.map(normalizeDetailGroupRow)
+  const proposals = await loadStoredProposals(
+    supabase,
+    normalizedRows.flatMap((group) => group.transactionIds)
+  )
 
   const groups: ReceiptDetailGroup[] = []
 
-  for (const row of rows) {
-    const normalized = normalizeDetailGroupRow(row)
-    const suggestion = await buildGroupSuggestion(supabase, normalized, openAIEnabled)
+  for (const normalized of normalizedRows) {
+    const suggestion = buildGroupSuggestion(normalized, proposals)
 
     groups.push({
       details: normalized.details,
@@ -531,7 +637,6 @@ export async function queryReceiptBulkReviewData(options: {
       limit,
       statuses,
       onlyUnclassified,
-      openAIEnabled,
       useFuzzyGrouping,
     },
   }
@@ -1595,6 +1700,7 @@ export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissin
         .from('receipt_transactions')
         .select('vendor_name, amount_out, amount_in, transaction_date, receipt_vendors(canonical_name)')
         .is('expense_category', null)
+        .eq('no_category_applies', false)
         .not('amount_out', 'is', null)
         .order('id')
         .range(from, to),
@@ -1641,30 +1747,26 @@ export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissin
 // getAIUsageBreakdown
 // ---------------------------------------------------------------------------
 
+function readAiUsage(data: unknown): AIUsageBreakdown {
+  const usage = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+  return {
+    total_cost: Number(usage.total_cost ?? 0),
+    this_month_cost: Number(usage.this_month_cost ?? 0),
+    total_calls: Number(usage.total_calls ?? 0),
+    this_month_calls: Number(usage.this_month_calls ?? 0),
+  }
+}
+
 export async function queryAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.rpc('get_ai_usage_breakdown')
+  const { data, error } = await (supabase as any).rpc('get_receipt_ai_usage')
 
   if (error) {
-    console.error('Failed to fetch AI usage breakdown', error)
+    console.error('Failed to fetch receipts AI usage', error)
     return { success: false, error: 'Failed to load AI usage data' }
   }
 
-  if (!data || typeof data !== 'object') {
-    return { success: true, breakdown: { total_cost: 0, this_month_cost: 0, total_classifications: 0, this_month_classifications: 0, model_breakdown: null } }
-  }
-
-  const bd = data as Record<string, unknown>
-  return {
-    success: true,
-    breakdown: {
-      total_cost: Number(bd.total_cost ?? 0),
-      this_month_cost: Number(bd.this_month_cost ?? 0),
-      total_classifications: Number(bd.total_classifications ?? 0),
-      this_month_classifications: Number(bd.this_month_classifications ?? 0),
-      model_breakdown: Array.isArray(bd.model_breakdown) ? (bd.model_breakdown as AIUsageBreakdown['model_breakdown']) : null,
-    },
-  }
+  return { success: true, breakdown: readAiUsage(data) }
 }
 
 // ---------------------------------------------------------------------------

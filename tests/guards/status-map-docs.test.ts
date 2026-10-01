@@ -54,6 +54,7 @@ const NOT_STATUS_ELSEWHERE: Record<string, string> = {
   resolveConfirmDialogTone: 'the ConfirmDialog button colour, a DS prop resolver',
   CUSTOMERS_BACK_LABEL: 'a back button label',
   MISSING_VENDOR_LABEL: 'the receipts group heading for no vendor',
+  NO_CATEGORY_LABEL: 'the receipts answer that a payment takes no expense category',
   GUEST_MARKETING_EMAIL_LABEL: 'consent wording',
   GUEST_MARKETING_SMS_LABEL: 'consent wording',
   GUEST_WHATSAPP_SERVICE_LABEL: 'consent wording',
