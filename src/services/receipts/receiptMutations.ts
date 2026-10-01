@@ -18,16 +18,12 @@ import { createHash } from 'crypto'
 import type {
   ReceiptRule,
   ReceiptTransaction,
-  ReceiptTransactionLog,
   ReceiptExpenseCategory,
   ReceiptClassificationSource,
-  ReceiptSourceType,
 } from '@/types/database'
 
 import type {
   AdminClient,
-  AutomationResult,
-  ParsedTransactionRow,
   RuleMutationResult,
   BulkStatus,
   ReceiptVendorWatchlistItem,
@@ -38,25 +34,18 @@ import type {
 import {
   RECEIPT_BUCKET,
   RECEIPT_AI_JOB_CHUNK_SIZE,
-  RETRO_CHUNK_SIZE,
 } from './types'
 import {
-  parseCsv,
-  parseAmexCsv,
   normalizeVendorInput,
   coerceExpenseCategory,
-  hashDetails,
   chunkArray,
   isIncomingOnlyTransaction,
   buildRuleSuggestion,
   composeReceiptFileArtifacts,
-  fileSchema,
-  receiptFileSchema,
   receiptUploadMetadataSchema,
   receiptUploadedObjectSchema,
   classificationUpdateSchema,
   bulkGroupApplySchema,
-  groupRuleInputSchema,
   toOptionalNumber,
   BULK_STATUS_OPTIONS,
 } from './receiptHelpers'
@@ -67,8 +56,11 @@ import {
 } from './receiptGovernance'
 import { applyAutomationRules, refreshAutomationForPendingTransactions } from './receiptAutomation'
 
-// The rule engine lives in receiptAutomation.ts. Re-exported so existing imports keep working.
+// The rule engine lives in receiptAutomation.ts and the statement import in receiptImport.ts.
+// Re-exported so existing imports keep working.
 export { applyAutomationRules, refreshAutomationForPendingTransactions }
+export { performImportReceiptStatement, processReceiptBatchFollowup } from './receiptImport'
+export type { ImportStatementResult, ReceiptBatchFollowupStatus } from './receiptImport'
 
 /** Queues one receipts background job. Returns false, having logged why, when it could not. */
 async function enqueueReceiptSystemJob(
@@ -257,214 +249,6 @@ async function enqueueReceiptAiClassificationJobs(
   }
 
   return { queued: results.length - failed, failed, queuedTransactions }
-}
-
-// ---------------------------------------------------------------------------
-// importReceiptStatement
-// @requires Caller must verify user auth and 'receipts.manage' permission
-// ---------------------------------------------------------------------------
-
-export async function performImportReceiptStatement(
-  userId: string,
-  userEmail: string,
-  receiptFile: File,
-  buffer: Buffer,
-  sourceType: ReceiptSourceType = 'bank'
-): Promise<{
-  success?: boolean
-  error?: string
-  inserted?: number
-  skipped?: number
-  autoApplied?: number
-  autoClassified?: number
-  batch?: any
-  warning?: string
-  alreadyImported?: boolean
-}> {
-  let rows: ParsedTransactionRow[]
-  try {
-    rows = sourceType === 'amex' ? parseAmexCsv(buffer) : parseCsv(buffer)
-  } catch (parseError) {
-    return {
-      error: parseError instanceof Error ? parseError.message : 'Could not read the CSV file.',
-    }
-  }
-
-  if (!rows.length) {
-    return { error: 'No valid transactions found in the CSV file.' }
-  }
-
-  const supabase = createAdminClient()
-
-  const sourceHash = createHash('sha256').update(buffer).digest('hex')
-  const { data: existingBatch } = await supabase
-    .from('receipt_batches')
-    .select('id')
-    .eq('source_hash', sourceHash)
-    .maybeSingle()
-
-  if (existingBatch) {
-    return {
-      success: true,
-      inserted: 0,
-      skipped: rows.length,
-      autoApplied: 0,
-      autoClassified: 0,
-      batch: null,
-      warning: 'This file has already been imported.',
-      alreadyImported: true,
-    }
-  }
-
-  const { data: batch, error: batchError } = await supabase
-    .from('receipt_batches')
-    .insert({
-      original_filename: receiptFile.name,
-      source_hash: sourceHash,
-      source_type: sourceType,
-      row_count: rows.length,
-      uploaded_by: userId,
-    })
-    .select('*')
-    .single()
-
-  if (batchError || !batch) {
-    console.error('Failed to record receipt batch:', batchError)
-    return { error: 'Failed to record the upload. Please try again.' }
-  }
-
-  const now = new Date().toISOString()
-
-  const payload = rows.map((row) => ({
-    batch_id: batch.id,
-    source_type: row.sourceType ?? 'bank',
-    transaction_date: row.transactionDate,
-    details: row.details,
-    transaction_type: row.transactionType,
-    amount_in: row.amountIn,
-    amount_out: row.amountOut,
-    balance: row.balance,
-    dedupe_hash: row.dedupeHash,
-    status: (row.status ?? 'pending') satisfies ReceiptTransaction['status'],
-    receipt_required: row.receiptRequired ?? true,
-    card_member: row.cardMember ?? null,
-    card_account: row.cardAccount ?? null,
-    merchant_category: row.merchantCategory ?? null,
-    merchant_town: row.merchantTown ?? null,
-    external_reference: row.externalReference ?? null,
-    vendor_name: row.vendorName ?? null,
-    vendor_source: row.vendorSource ?? null,
-    expense_category: row.expenseCategory ?? null,
-    expense_category_source: row.expenseCategorySource ?? null,
-    marked_by: null,
-    marked_by_email: null,
-    marked_by_name: null,
-    marked_at: null,
-    marked_method: null,
-    rule_applied_id: null,
-    notes: null,
-    created_at: now,
-    updated_at: now,
-  }))
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('receipt_transactions')
-    .upsert(payload, {
-      onConflict: 'dedupe_hash',
-      ignoreDuplicates: true,
-    })
-    .select('id, status')
-
-  if (insertError) {
-    console.error('Failed to insert receipt transactions:', insertError)
-    // Attempt to clean up the orphaned batch record
-    const { error: batchDeleteError } = await supabase
-      .from('receipt_batches')
-      .delete()
-      .eq('id', batch.id)
-    if (batchDeleteError) {
-      console.error('Failed to clean up orphaned receipt batch after transaction insert failure:', batchDeleteError)
-      return { error: 'Failed to store transactions, and cleanup of the partial import also failed — please contact support to resolve a leftover empty batch.' }
-    }
-    return { error: 'Failed to store the transactions.' }
-  }
-
-  const insertedIds = inserted?.map((row) => row.id) ?? []
-
-  let autoApplied = 0
-  let autoClassified = 0
-  let automationWarning: string | undefined
-
-  try {
-    const automationResult = await applyAutomationRules(insertedIds, { performedBy: userId })
-    autoApplied = automationResult.statusAutoUpdated ?? 0
-    autoClassified = automationResult.classificationUpdated ?? 0
-    const notApplied = (automationResult.failed ?? 0) + (automationResult.conflicts ?? 0)
-    if (notApplied > 0) {
-      automationWarning = `Rules could not be applied to ${notApplied} of the new transactions. Run the rules again from the rules section.`
-    }
-  } catch (automationError) {
-    console.error('applyAutomationRules failed during import:', automationError)
-    automationWarning =
-      'Rules could not be applied to this import. Run them again from the rules section.'
-  }
-
-  let aiQueuedTransactions = 0
-  let aiEnqueueWarning: string | undefined
-  let systemJobWarning: string | undefined
-
-  try {
-    const queuedResult = await enqueueReceiptAiClassificationJobs(insertedIds, batch.id)
-    aiQueuedTransactions = queuedResult.queuedTransactions
-    if (queuedResult.failed > 0) {
-      aiEnqueueWarning = `AI classification could not be queued for ${insertedIds.length - queuedResult.queuedTransactions} of the new transactions. Use Re-classify to retry.`
-    }
-    const reconcileQueued = await enqueueReceiptSystemJob('reconcile_receipt_invoice_payments', batch.id, {
-      transaction_ids: insertedIds,
-      initiated_by: userId,
-    })
-    const duplicatesQueued = await enqueueReceiptSystemJob('refresh_receipt_duplicate_candidates', batch.id)
-    if (!reconcileQueued) {
-      systemJobWarning = 'Invoice matching could not be queued for this import.'
-    } else if (!duplicatesQueued) {
-      systemJobWarning = 'The duplicate check could not be queued for this import.'
-    }
-  } catch (enqueueError) {
-    console.error('Failed to enqueue receipt jobs after import:', enqueueError)
-    aiEnqueueWarning = 'AI classification could not be queued. Use Re-classify to retry.'
-  }
-
-  let logWarning: string | undefined
-
-  if (inserted && inserted.length) {
-    const logs = inserted.map<Omit<ReceiptTransactionLog, 'id'>>((row) => ({
-      transaction_id: row.id,
-      previous_status: null,
-      new_status: row.status,
-      action_type: 'import',
-      note: `Imported via ${receiptFile.name} [AI queued for ${aiQueuedTransactions} of ${insertedIds.length} transactions]`,
-      performed_by: userId,
-      rule_id: null,
-      performed_at: now,
-    }))
-
-    const { error: importLogError } = await supabase.from('receipt_transaction_logs').insert(logs)
-    if (importLogError) {
-      console.error('Failed to record import transaction logs', importLogError)
-      logWarning = 'The history entries for this import could not be written. The transactions were still imported.'
-    }
-  }
-
-  return {
-    success: true,
-    inserted: insertedIds.length,
-    skipped: rows.length - insertedIds.length,
-    autoApplied,
-    autoClassified,
-    batch,
-    warning:
-      [automationWarning, aiEnqueueWarning, systemJobWarning, logWarning].filter(Boolean).join(' ') || undefined,
-  }
 }
 
 // ---------------------------------------------------------------------------

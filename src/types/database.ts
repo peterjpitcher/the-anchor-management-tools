@@ -188,6 +188,19 @@ export interface ReceiptBatch {
   row_count: number;
   notes: string | null;
   created_at: string;
+  /** `superseded` marks an empty batch left behind by an old repeat upload. */
+  status?: 'completed' | 'superseded';
+  /** Data records in the file: inserted + duplicate + rejected. Null on batches from before October 2026. */
+  records_in_file?: number | null;
+  inserted_count?: number | null;
+  duplicate_count?: number | null;
+  rejected_count?: number;
+  rejected_records?: Array<{ record: number; reason: string; message: string; excerpt: string }>;
+  repeated_in_file?: number;
+  /** Where the work that follows an import (rules, AI, invoice matching) has got to. */
+  followup_status?: 'queued' | 'running' | 'done' | 'failed';
+  followup_error?: string | null;
+  followup_completed_at?: string | null;
 }
 
 export interface ReceiptRule {

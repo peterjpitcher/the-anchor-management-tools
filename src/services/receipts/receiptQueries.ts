@@ -165,7 +165,8 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
-      .select('id, uploaded_at, uploaded_by, original_filename, source_hash, source_type, row_count, notes, created_at')
+      .select('id, uploaded_at, uploaded_by, original_filename, source_hash, source_type, row_count, notes, created_at, status, records_in_file, inserted_count, duplicate_count, rejected_count, rejected_records, repeated_in_file, followup_status, followup_error, followup_completed_at')
+      .eq('status', 'completed')
       .order('uploaded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

@@ -170,6 +170,45 @@ export function isValidIsoDate(value: string): boolean {
   return isoDateToUtcMs(value) !== null
 }
 
+export type StatementDateResult =
+  | { ok: true; date: string }
+  | { ok: false; reason: 'missing' | 'format' | 'impossible' | 'future' }
+
+/**
+ * Reads the date on a line of a bank or card statement and returns it as YYYY-MM-DD.
+ *
+ * Statements from UK banks and from American Express write DD/MM/YYYY. Only that and
+ * YYYY-MM-DD are accepted, with a four-digit year. The date must exist on the calendar and
+ * must not be more than one day ahead of today in London: a statement cannot hold a payment
+ * that has not happened, and a date that far ahead means the columns were read as month first.
+ *
+ * The parser this replaces built the date with Date.UTC and no checks, so 02/13/2026 became
+ * 2 January 2027, 31/02/2026 became 3 March and 01/02/26 became 1926.
+ */
+export function parseStatementDate(
+  input: string | null | undefined,
+  options: { today?: string } = {}
+): StatementDateResult {
+  const trimmed = (input ?? '').trim()
+  if (!trimmed) return { ok: false, reason: 'missing' }
+
+  let iso: string | null = null
+  const dayFirst = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed)
+  if (dayFirst) {
+    iso = `${dayFirst[3]}-${dayFirst[2].padStart(2, '0')}-${dayFirst[1].padStart(2, '0')}`
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    iso = trimmed
+  }
+
+  if (!iso) return { ok: false, reason: 'format' }
+  if (!isValidIsoDate(iso)) return { ok: false, reason: 'impossible' }
+
+  const latestAllowed = shiftIsoDate(options.today ?? getTodayIsoDate(), 1)
+  if (latestAllowed && iso > latestAllowed) return { ok: false, reason: 'future' }
+
+  return { ok: true, date: iso }
+}
+
 /**
  * ISO weekday for a YYYY-MM-DD calendar date: 1 = Monday through 7 = Sunday.
  * Returns null for an invalid date.

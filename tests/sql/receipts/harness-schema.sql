@@ -42,6 +42,29 @@ CREATE TABLE public.invoice_payments (
   reference text
 );
 
+-- The shared job queue table, as the live catalogue has it.
+CREATE TABLE public.jobs (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  type character varying(50) NOT NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status character varying(20) DEFAULT 'pending'::character varying,
+  attempts integer DEFAULT 0,
+  max_attempts integer DEFAULT 3,
+  scheduled_for timestamp with time zone DEFAULT now(),
+  started_at timestamp with time zone,
+  completed_at timestamp with time zone,
+  failed_at timestamp with time zone,
+  error_message text,
+  result jsonb,
+  priority integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  processing_token uuid,
+  lease_expires_at timestamp with time zone,
+  last_heartbeat_at timestamp with time zone,
+  CONSTRAINT jobs_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
+);
+
 CREATE FUNCTION public.set_receipt_row_updated_at() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path TO 'public', 'pg_catalog'

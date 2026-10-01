@@ -560,9 +560,13 @@ export async function importReceiptStatement(formData: FormData) {
         source_type: sourceType,
         inserted: result.inserted,
         skipped: result.skipped,
+        records_in_file: result.recordsInFile ?? null,
+        rejected: result.rejected?.length ?? 0,
+        repeated_in_file: result.repeatedInFile ?? 0,
         auto_applied: result.autoApplied,
         auto_classified: result.autoClassified,
         already_imported: result.alreadyImported ?? false,
+        followup_status: result.followupStatus ?? null,
         warning: result.warning ?? null,
       },
     })
@@ -573,7 +577,12 @@ export async function importReceiptStatement(formData: FormData) {
       resource_type: 'receipt_batch',
       operation_status: 'failure',
       error_message: result.error ?? 'Import failed',
-      additional_info: { filename: receiptFile.name, source_type: sourceType },
+      additional_info: {
+        filename: receiptFile.name,
+        source_type: sourceType,
+        records_in_file: result.recordsInFile ?? null,
+        rejected: result.rejected?.length ?? 0,
+      },
     })
   }
 

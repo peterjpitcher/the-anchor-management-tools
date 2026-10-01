@@ -43,7 +43,14 @@ Recorded here so they travel with the commits. Each is a working default from sp
 
 ## Release 2: import
 
-- [ ] 6.2 items 1 to 9
+- [x] 6.2 items 1 to 3 and 6: strict parsers in `src/services/receipts/statementParsing.ts`; every record is a payment or a rejection with its number and reason; one money grammar; dates through `parseStatementDate` in `dateUtils`; identical lines kept with an occurrence number
+- [x] 6.2 items 4 and 5: `import_receipt_statement` writes the batch, lines, logs and one `process_receipt_batch` job in one transaction; follow-up in `src/services/receipts/receiptImport.ts` records each step and resumes; repeat upload returns the batch and recovers missed lines; unique index on completed batches; 26 empty legacy batches marked superseded
+- [x] 6.2 item 7: missing column named, `.CSV` accepted, Windows-1252 and UTF-16 read, 4 MB limit stated, London time, outcome panel that stays on screen
+- [x] 6.2 item 8: `scripts/receipts/import-historic-statements.ts` removed
+- [x] 6.2 item 9: tests on the real exports (parsers 74, upload check 9, import service and follow-up 21), SQL tests including two uploads of one file at once
+- [x] Found and fixed: bank lines with an empty Details column were dropped (IMP-15). Proven on the 79 real statement files: 6,796 lines before, 6,841 after, none rejected, every existing identity unchanged
+- [x] Migration drafted: `supabase/migrations/20261001150000_receipts_release_2_import.sql` (not applied)
+- [ ] Owner go-ahead, apply the migration, deploy, run an upload on the deployed build, then D14
 
 ## Release 3: vendors
 

@@ -39,6 +39,7 @@ export type JobType =
   | 'suggest_receipt_rules'
   | 'refresh_receipt_duplicate_candidates'
   | 'reconcile_receipt_invoice_payments'
+  | 'process_receipt_batch'
   | 'checklist_generate_day'
   | 'checklist_sweep'
   | 'checklist_email_outbox_process'
@@ -62,6 +63,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'suggest_receipt_rules',
   'refresh_receipt_duplicate_candidates',
   'reconcile_receipt_invoice_payments',
+  'process_receipt_batch',
   'checklist_generate_day',
   'checklist_sweep',
   'checklist_email_outbox_process',
@@ -1105,6 +1107,19 @@ export class UnifiedJobQueue {
           : undefined
         const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
         return performReconcileReceiptInvoicePayments({ transactionIds, initiatedBy })
+      }
+
+      // Written by import_receipt_statement in the same transaction as the lines, so the work
+      // that follows an import survives the importing request dying. Safe to run twice: each
+      // step records that it is done.
+      case 'process_receipt_batch': {
+        const batchId = typeof payload.batch_id === 'string' ? payload.batch_id : null
+        if (!batchId) {
+          return { skipped: true }
+        }
+        const { processReceiptBatchFollowup } = await import('@/services/receipts/receiptImport')
+        const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
+        return processReceiptBatchFollowup(batchId, { initiatedBy })
       }
 
       case 'send_sms':
