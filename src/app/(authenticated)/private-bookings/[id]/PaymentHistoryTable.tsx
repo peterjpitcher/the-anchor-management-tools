@@ -7,10 +7,12 @@ import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import { Alert, Button, ConfirmDialog, Empty, Icon, IconButton, Input, Select, SubHeading, toast } from '@/ds'
 import { editPrivateBookingPayment, deletePrivateBookingPayment } from '@/app/actions/privateBookingActions'
-import type { PaymentHistoryEntry } from '@/types/private-bookings'
+import type { DepositRefundEntry, PaymentHistoryEntry } from '@/types/private-bookings'
 
 interface PaymentHistoryTableProps {
   payments: PaymentHistoryEntry[]
+  /** Deposit refunds, listed among the payments as money returned. They never change the bill totals. */
+  refunds?: DepositRefundEntry[]
   bookingId: string
   canEditPayments: boolean
   totalAmount: number
@@ -18,8 +20,22 @@ interface PaymentHistoryTableProps {
 
 type DepositMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 
+const NO_REFUNDS: DepositRefundEntry[] = []
+
+/** Payments and refunds as one list, oldest first; on a shared date the money in comes before the money out. */
+function inDateOrder(
+  payments: PaymentHistoryEntry[],
+  refunds: DepositRefundEntry[],
+): Array<PaymentHistoryEntry | DepositRefundEntry> {
+  return [...payments, ...refunds]
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => (a.entry.date === b.entry.date ? a.index - b.index : a.entry.date < b.entry.date ? -1 : 1))
+    .map(({ entry }) => entry)
+}
+
 export default function PaymentHistoryTable({
   payments,
+  refunds = NO_REFUNDS,
   bookingId,
   canEditPayments,
   totalAmount,
@@ -147,11 +163,30 @@ export default function PaymentHistoryTable({
         <Alert tone="danger" size="sm" className="mb-2">{error}</Alert>
       )}
 
-      {payments.length === 0 ? (
+      {payments.length === 0 && refunds.length === 0 ? (
         <Empty size="sm" title="No payments yet" />
       ) : (
         <div className="space-y-2">
-          {payments.map((entry) => {
+          {inDateOrder(payments, refunds).map((entry) => {
+            // A refund is read-only here: it is made and tracked through Process Refund.
+            if (entry.type === 'refund') {
+              return (
+                <div
+                  key={`refund-${entry.id}`}
+                  className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-text-muted"
+                >
+                  <span className="min-w-0">
+                    {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {' - '}
+                    {entry.status === 'pending' ? 'Deposit refund (pending)' : 'Deposit refund'}
+                    {' · '}
+                    {formatMethodLabel(entry.method)}
+                  </span>
+                  <span className="font-medium">{formatCurrency(-entry.amount)}</span>
+                </div>
+              )
+            }
+
             const isEditing = editingId === entry.id
             const isDepositEntry = entry.type === 'deposit'
             const isPayPalDeposit = isDepositEntry && entry.method === 'paypal'

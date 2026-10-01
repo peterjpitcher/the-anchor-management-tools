@@ -15,6 +15,7 @@ vi.mock('@/lib/dateUtils', async (importOriginal) => {
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  getBookingDepositRefunds,
   getBookingPaymentHistory,
   updateBalancePayment,
   deleteBalancePayment,
@@ -122,6 +123,50 @@ describe('getBookingPaymentHistory', () => {
   it('throws if fetching balance payments fails', async () => {
     mockAdminClient({ booking: { deposit_paid_date: null }, payments: [], paymentsError: true })
     await expect(getBookingPaymentHistory('booking-id')).rejects.toThrow()
+  })
+})
+
+describe('getBookingDepositRefunds', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function mockRefunds(result: { data: Record<string, unknown>[] | null; error: { message: string } | null }) {
+    const query = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue(result),
+    }
+    const from = vi.fn(() => query)
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ from })
+    return { from, query }
+  }
+
+  it('reads only this booking\'s refunds and returns them as history entries', async () => {
+    const { from, query } = mockRefunds({
+      data: [
+        { id: 'refund-1', amount: '250.00', refund_method: 'paypal', status: 'completed', created_at: '2026-10-01T11:45:11Z', completed_at: '2026-10-01T11:45:12Z' },
+        { id: 'refund-2', amount: 10, refund_method: 'paypal', status: 'failed', created_at: '2026-10-01T12:00:00Z', completed_at: null },
+      ],
+      error: null,
+    })
+
+    const result = await getBookingDepositRefunds('booking-id')
+
+    expect(from).toHaveBeenCalledWith('payment_refunds')
+    expect(query.eq).toHaveBeenCalledWith('source_type', 'private_booking')
+    expect(query.eq).toHaveBeenCalledWith('source_id', 'booking-id')
+    expect(result).toEqual([
+      { id: 'refund-1', type: 'refund', amount: 250, method: 'paypal', date: '2026-10-01', status: 'completed' },
+    ])
+  })
+
+  it('returns an empty list when nothing has been refunded', async () => {
+    mockRefunds({ data: [], error: null })
+    expect(await getBookingDepositRefunds('booking-id')).toEqual([])
+  })
+
+  it('throws when the refunds cannot be read, rather than reporting none', async () => {
+    mockRefunds({ data: null, error: { message: 'db error' } })
+    await expect(getBookingDepositRefunds('booking-id')).rejects.toThrow('Failed to fetch booking refunds: db error')
   })
 })
 
