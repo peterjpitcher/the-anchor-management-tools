@@ -1,12 +1,12 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
-import { getBookingPaymentHistory } from '@/services/private-bookings'
+import { getBookingDepositRefunds, getBookingPaymentHistory } from '@/services/private-bookings'
 import { currentUserCanInvoicePrivateBookings } from '@/app/actions/privateBookingInvoice'
 import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation'
-import type { PaymentHistoryEntry } from '@/types/private-bookings'
+import type { DepositRefundEntry, PaymentHistoryEntry } from '@/types/private-bookings'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
 export const dynamic = 'force-dynamic'
@@ -89,9 +89,14 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   }
 
   let paymentHistory: PaymentHistoryEntry[] = []
+  let depositRefunds: DepositRefundEntry[] = []
   if (bookingData) {
     try {
-      paymentHistory = await getBookingPaymentHistory(bookingData.id)
+      // Refunds load with the payments: a list missing a refund would show the deposit as still held.
+      ;[paymentHistory, depositRefunds] = await Promise.all([
+        getBookingPaymentHistory(bookingData.id),
+        getBookingDepositRefunds(bookingData.id),
+      ])
     } catch (error) {
       console.error('Failed to load booking payment history', error)
       errors.push('Payment history could not be loaded. Refresh before recording a payment.')
@@ -149,6 +154,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canViewPricing,
       }}
       paymentHistory={paymentHistory}
+      depositRefunds={depositRefunds}
       depositConfirmation={depositConfirmation}
       initialError={initialError}
     />

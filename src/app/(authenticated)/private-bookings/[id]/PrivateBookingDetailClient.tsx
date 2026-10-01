@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
@@ -57,6 +57,7 @@ import type {
   PrivateBookingItem,
   PrivateBookingPayment,
   PaymentHistoryEntry,
+  DepositRefundEntry,
 } from "@/types/private-bookings";
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
@@ -186,6 +187,8 @@ interface PrivateBookingDetailClientProps {
     canViewPricing?: boolean;
   };
   paymentHistory: PaymentHistoryEntry[];
+  /** Completed and pending deposit refunds, loaded by the page with the payment history. */
+  depositRefunds: DepositRefundEntry[];
   /**
    * Set by the page while private_booking_deposit_confirmation is on: whether the deposit is still
    * to be confirmed, and the deadline confirming it would set.
@@ -1640,6 +1643,7 @@ export default function PrivateBookingDetailClient({
   initialBooking,
   permissions,
   paymentHistory,
+  depositRefunds,
   depositConfirmation,
   initialError,
 }: PrivateBookingDetailClientProps) {
@@ -1736,26 +1740,21 @@ export default function PrivateBookingDetailClient({
 
   // Refund dialog state
   const [showRefundDialog, setShowRefundDialog] = useState(false);
-  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 });
 
-  // Load refund totals when booking changes
-  useEffect(() => {
-    if (!booking?.id) return;
-    let cancelled = false;
-    import('@/app/actions/refundActions').then(({ getRefundHistory }) =>
-      getRefundHistory('private_booking', booking.id).then((result) => {
-        if (cancelled || !result.data) return;
-        const completed = result.data
-          .filter((r: any) => r.status === 'completed')
-          .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
-        const pending = result.data
-          .filter((r: any) => r.status === 'pending')
-          .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
-        setRefundTotals({ totalRefunded: completed, totalPending: pending });
-      })
-    );
-    return () => { cancelled = true; };
-  }, [booking?.id]);
+  // From the server-loaded refunds, so the badge, the Process Refund button and the payment history
+  // all change together when router.refresh() follows a refund. These were fetched once per booking
+  // in client state, which left the page showing the deposit as still held until a manual reload.
+  const refundTotals = useMemo(
+    () => ({
+      totalRefunded: depositRefunds
+        .filter((refund) => refund.status === 'completed')
+        .reduce((sum, refund) => sum + refund.amount, 0),
+      totalPending: depositRefunds
+        .filter((refund) => refund.status === 'pending')
+        .reduce((sum, refund) => sum + refund.amount, 0),
+    }),
+    [depositRefunds],
+  );
 
   const loadBooking = useCallback(
     async (id: string) => {
@@ -3226,6 +3225,7 @@ export default function PrivateBookingDetailClient({
                       <div className="mt-3 pt-3 border-t border-border">
                         <PaymentHistoryTable
                           payments={paymentHistory}
+                          refunds={depositRefunds}
                           bookingId={bookingId}
                           canEditPayments={canEditPayments}
                           totalAmount={aggregateBookingTotal}
@@ -3251,9 +3251,11 @@ export default function PrivateBookingDetailClient({
             </CardBody>
           </Card>
 
-          {/* Refund history draws its own card, and nothing when there are no refunds. */}
+          {/* Refund history draws its own card, and nothing when there are no refunds. It fetches
+              its own rows once, so the key remounts it when a refund is added or settles. */}
           {booking.deposit_paid_date && (
             <RefundHistoryTable
+              key={depositRefunds.map((refund) => `${refund.id}:${refund.status}`).join('|')}
               sourceType="private_booking"
               sourceId={booking.id}
             />
