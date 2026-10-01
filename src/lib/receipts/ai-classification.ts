@@ -12,8 +12,10 @@
 //  3. The model is given our own vendor list and names the vendor from it. That vendor is
 //     written onto the payment, but only if the payment still has no vendor and nothing has
 //     decided it. A rule or a person always wins.
-//  4. The category is stored as a proposal for a person to accept, never written. Where the
-//     vendor has a default category a person set, that is what is proposed.
+//  4. The category is written the same way: only where the payment has no category and nothing
+//     has decided it (owner decision, 1 October 2026). Where the vendor has a default category
+//     a person set, that is what is written. "No category applies" is never written: it is
+//     stored as a proposal for a person to accept.
 //  5. A failed call is recorded against every payment it covered and, when trying again can
 //     help, thrown so the queue retries. A failure used to return quietly as "done".
 import type { createAdminClient } from '@/lib/supabase/admin'
@@ -59,6 +61,7 @@ const WAGE_MATCH_CLOSES_PAYMENT = true
 
 export type ReceiptAiOutcome =
   | 'vendor_written'
+  | 'category_written'
   | 'category_proposed'
   | 'nothing_identified'
   | 'low_confidence'
@@ -76,6 +79,8 @@ export type ReceiptAiRunSummary = {
   /** Payments sent to the model. */
   sent: number
   vendorsWritten: number
+  categoriesWritten: number
+  /** "No category applies" is never written: it waits for a person. */
   categoriesProposed: number
   nothingIdentified: number
   lowConfidence: number
@@ -122,7 +127,7 @@ type AttemptWrite = {
   vendor_written: boolean
   proposed_expense_category: ReceiptExpenseCategory | null
   proposed_no_category: boolean
-  category_state: 'proposed' | 'none'
+  category_state: 'proposed' | 'written' | 'none'
   confidence: number | null
   reasoning: string | null
   model: string | null
@@ -294,6 +299,8 @@ async function loadExamples(
 
 type ChangeOutcome = 'applied' | 'changed' | 'locked' | 'not_found' | 'failed'
 
+type FieldLog = { action_type: string; note: string }
+
 /**
  * Writes fields onto a payment through the same guarded function the rules use: only if the
  * payment is still at the version that was read, not behind the lock date, and together with
@@ -303,13 +310,13 @@ async function writeFields(
   supabase: AdminClient,
   payment: PaymentRow,
   after: Record<string, string | boolean | null>,
-  log: { action_type: string; note: string }
+  logs: FieldLog[]
 ): Promise<ChangeOutcome> {
   const { data, error } = await (supabase as any).rpc('apply_receipt_rule_change', {
     p_transaction_id: payment.id,
     p_expected_updated_at: payment.updated_at,
     p_after: after,
-    p_logs: [log],
+    p_logs: logs,
     p_performed_by: null,
   })
   if (error) {
@@ -333,6 +340,7 @@ function emptySummary(): ReceiptAiRunSummary {
     payrollCheck: 0,
     sent: 0,
     vendorsWritten: 0,
+    categoriesWritten: 0,
     categoriesProposed: 0,
     nothingIdentified: 0,
     lowConfidence: 0,
@@ -510,10 +518,9 @@ export async function classifyReceiptTransactionsWithAI(
       after.marked_method = 'rule'
     }
 
-    const outcome = await writeFields(supabase, payment, after, {
-      action_type: 'payroll_local',
-      note: 'Recognised as a wage payment from the employee list',
-    })
+    const outcome = await writeFields(supabase, payment, after, [
+      { action_type: 'payroll_local', note: 'Recognised as a wage payment from the employee list' },
+    ])
 
     if (outcome === 'applied') {
       summary.payrollLocal += 1
@@ -529,20 +536,95 @@ export async function classifyReceiptTransactionsWithAI(
     }
   }
 
+  /**
+   * Writes what the payment still needs and nothing else. Worked out from the payment as it is
+   * at the moment of writing: a vendor or category that a rule or a person has set in the
+   * meantime is left alone (5.0). If the payment changed while the model was answering, the
+   * write is tried once more on the payment as it now is.
+   */
+  const writeWhatIsNeeded = async (
+    payment: PaymentRow,
+    wanted: {
+      vendor: ResolvedReceiptVendor | null
+      category: ReceiptExpenseCategory | null
+      vendorNote: string
+      categoryNote: string
+    }
+  ): Promise<{ outcome: ChangeOutcome | 'nothing'; vendorWritten: boolean; categoryWritten: boolean }> => {
+    const plan = (target: PaymentRow) => {
+      const after: Record<string, string | boolean | null> = {}
+      const logs: FieldLog[] = []
+      const vendor = wanted.vendor && needsVendor(target) ? wanted.vendor : null
+      // The model's category went with its vendor. If something else has named a different
+      // vendor in the meantime, the category is not written either.
+      const vendorOverruled = Boolean(wanted.vendor) && !vendor && target.vendor_id !== wanted.vendor?.id
+      const category = wanted.category && !vendorOverruled && needsCategory(target) ? wanted.category : null
+      if (vendor) {
+        after.vendor_id = vendor.id
+        after.vendor_name = vendor.canonicalName
+        after.vendor_source = 'ai'
+        after.vendor_rule_id = null
+        after.vendor_updated_at = now
+        logs.push({ action_type: 'ai_vendor', note: wanted.vendorNote })
+      }
+      if (category) {
+        after.expense_category = category
+        after.expense_category_source = 'ai'
+        after.expense_rule_id = null
+        after.expense_updated_at = now
+        logs.push({ action_type: 'ai_category', note: wanted.categoryNote })
+      }
+      return { after, logs, vendor: Boolean(vendor), category: Boolean(category) }
+    }
+
+    let step = plan(payment)
+    if (!step.logs.length) return { outcome: 'nothing', vendorWritten: false, categoryWritten: false }
+
+    let outcome = await writeFields(supabase, payment, step.after, step.logs)
+    if (outcome === 'changed') {
+      const fresh = await reloadPayment(supabase, payment.id)
+      if (fresh) {
+        step = plan(fresh)
+        if (step.logs.length) outcome = await writeFields(supabase, fresh, step.after, step.logs)
+      }
+    }
+
+    const applied = outcome === 'applied'
+    return { outcome, vendorWritten: applied && step.vendor, categoryWritten: applied && step.category }
+  }
+
   // ---- 2. A category from the vendor's own default, with no call ------------------------------
   const toSend: PaymentRow[] = []
   for (const payment of forModel) {
     const existingVendor = payment.vendor_id ? vendorById.get(payment.vendor_id) : undefined
     const defaultCategory = existingVendor?.default_expense_category
     if (!needsVendor(payment) && needsCategory(payment) && defaultCategory && EXPENSE_CATEGORY_OPTIONS.includes(defaultCategory as ReceiptExpenseCategory)) {
-      summary.categoriesProposed += 1
-      attempt(payment, {
-        outcome: 'category_proposed',
-        vendor_id: payment.vendor_id,
-        proposed_expense_category: defaultCategory as ReceiptExpenseCategory,
-        category_state: 'proposed',
-        reasoning: 'The default category for this vendor',
+      const category = defaultCategory as ReceiptExpenseCategory
+      const written = await writeWhatIsNeeded(payment, {
+        vendor: null,
+        category,
+        vendorNote: '',
+        categoryNote: `Category → ${category} (the default for this vendor)`,
       })
+
+      if (written.categoryWritten) {
+        summary.categoriesWritten += 1
+        attempt(payment, {
+          outcome: 'category_written',
+          vendor_id: payment.vendor_id,
+          proposed_expense_category: category,
+          category_state: 'written',
+          reasoning: 'The default category for this vendor',
+        })
+      } else if (written.outcome === 'locked') {
+        summary.locked += 1
+      } else if (written.outcome === 'failed') {
+        summary.failed += 1
+        attempt(payment, { outcome: 'failed_retryable', error: 'The category could not be saved' })
+      } else {
+        summary.skippedProtected += 1
+        attempt(payment, { outcome: 'skipped_protected', vendor_id: payment.vendor_id })
+      }
       continue
     }
     toSend.push(payment)
@@ -636,12 +718,12 @@ export async function classifyReceiptTransactionsWithAI(
     return resolveReceiptVendor(supabase, { name }, { create: true, origin: 'ai', kind: 'business' })
   }
 
-  for (let payment of toSend) {
+  for (const payment of toSend) {
     const result = resultById.get(payment.id)
+    const tries = (attemptsByPayment.get(payment.id)?.tries ?? 0) + 1
 
     if (!result) {
       summary.failed += 1
-      const tries = (attemptsByPayment.get(payment.id)?.tries ?? 0) + 1
       attempt(payment, {
         outcome: tries < MAX_TRIES ? 'failed_retryable' : 'failed_final',
         error: 'The model returned no answer for this payment',
@@ -657,9 +739,6 @@ export async function classifyReceiptTransactionsWithAI(
     }
 
     let vendor: ResolvedReceiptVendor | null = null
-    let vendorWritten = false
-    let vendorBlocked = false
-
     if (needsVendor(payment) && (result.vendorId || result.newVendorName)) {
       try {
         vendor = result.vendorId
@@ -669,64 +748,58 @@ export async function classifyReceiptTransactionsWithAI(
         console.error('Failed to resolve the vendor the model chose', vendorError)
         vendor = null
       }
-
-      if (vendor) {
-        const write = async (target: PaymentRow): Promise<ChangeOutcome> =>
-          writeFields(
-            supabase,
-            target,
-            {
-              vendor_id: vendor!.id,
-              vendor_name: vendor!.canonicalName,
-              vendor_source: 'ai',
-              vendor_rule_id: null,
-              vendor_updated_at: now,
-            },
-            { action_type: 'ai_vendor', note: `Vendor → ${vendor!.canonicalName} (AI, ${result.confidence}% sure)` }
-          )
-
-        let outcome = await write(payment)
-        if (outcome === 'changed') {
-          // Someone touched the payment while the model was answering. If it still has no vendor
-          // and nothing has decided it, the write is tried once more on the payment as it is now.
-          const fresh = await reloadPayment(supabase, payment.id)
-          if (fresh && needsVendor(fresh)) {
-            payment = fresh
-            outcome = await write(fresh)
-          }
-        }
-
-        if (outcome === 'applied') {
-          vendorWritten = true
-        } else if (outcome === 'locked') {
-          summary.locked += 1
-          continue
-        } else {
-          vendorBlocked = true
-        }
-      }
     }
 
-    // The category is a proposal. A default a person set for the vendor outranks the model.
-    let proposedCategory: ReceiptExpenseCategory | null = null
+    // The category is written too (owner decision, 1 October 2026). A default a person set for
+    // the vendor outranks the model. "No category applies" is the exception: it takes a payment
+    // out of the figures, so it stays a suggestion for a person to accept.
+    let category: ReceiptExpenseCategory | null = null
     let proposedNone = false
     if (needsCategory(payment)) {
       const vendorDefault = (vendor?.defaultExpenseCategory ??
         (payment.vendor_id ? vendorById.get(payment.vendor_id)?.default_expense_category : null) ??
         null) as ReceiptExpenseCategory | null
-      proposedCategory =
-        vendorDefault && EXPENSE_CATEGORY_OPTIONS.includes(vendorDefault) ? vendorDefault : result.expenseCategory
-      proposedNone = !proposedCategory && result.noCategoryApplies
+      const fromDefault = Boolean(vendorDefault && EXPENSE_CATEGORY_OPTIONS.includes(vendorDefault))
+      category = fromDefault ? vendorDefault : result.expenseCategory
+      proposedNone = !category && result.noCategoryApplies
     }
-    const hasProposal = Boolean(proposedCategory) || proposedNone
+
+    const written = await writeWhatIsNeeded(payment, {
+      vendor,
+      category,
+      vendorNote: vendor ? `Vendor → ${vendor.canonicalName} (AI, ${result.confidence}% sure)` : '',
+      categoryNote: category ? `Category → ${category} (AI, ${result.confidence}% sure)` : '',
+    })
+
+    if (written.outcome === 'locked') {
+      summary.locked += 1
+      continue
+    }
+
+    if (written.outcome === 'failed') {
+      summary.failed += 1
+      attempt(payment, {
+        outcome: tries < MAX_TRIES ? 'failed_retryable' : 'failed_final',
+        error: 'The classification could not be saved',
+        confidence: result.confidence,
+        model,
+      })
+      continue
+    }
+
+    const { vendorWritten, categoryWritten } = written
+    // Something was chosen, and a rule or a person had decided it by the time it was written.
+    const blocked = written.outcome !== 'nothing' && written.outcome !== 'applied'
 
     if (vendorWritten) summary.vendorsWritten += 1
-    if (hasProposal) summary.categoriesProposed += 1
+    if (categoryWritten) summary.categoriesWritten += 1
+    if (proposedNone) summary.categoriesProposed += 1
 
     let outcome: ReceiptAiOutcome
     if (vendorWritten) outcome = 'vendor_written'
-    else if (hasProposal) outcome = 'category_proposed'
-    else if (vendorBlocked) outcome = 'skipped_protected'
+    else if (categoryWritten) outcome = 'category_written'
+    else if (proposedNone) outcome = 'category_proposed'
+    else if (blocked) outcome = 'skipped_protected'
     else outcome = 'nothing_identified'
 
     if (outcome === 'skipped_protected') summary.skippedProtected += 1
@@ -736,9 +809,9 @@ export async function classifyReceiptTransactionsWithAI(
       outcome,
       vendor_id: vendor?.id ?? null,
       vendor_written: vendorWritten,
-      proposed_expense_category: proposedCategory,
+      proposed_expense_category: categoryWritten ? category : null,
       proposed_no_category: proposedNone,
-      category_state: hasProposal ? 'proposed' : 'none',
+      category_state: categoryWritten ? 'written' : proposedNone ? 'proposed' : 'none',
       confidence: result.confidence,
       reasoning: result.reasoning,
       model,

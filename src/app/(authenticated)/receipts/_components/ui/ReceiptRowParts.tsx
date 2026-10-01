@@ -34,6 +34,7 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   invoice_attached: 'Invoice attached',
   invoice_copy_refreshed: 'Invoice copy refreshed',
   ai_vendor: 'Vendor set by the AI',
+  ai_category: 'Category set by the AI',
   ai_category_accepted: 'Suggested category accepted',
   ai_category_edited: 'Suggested category changed',
   payroll_local: 'Recognised as wages',

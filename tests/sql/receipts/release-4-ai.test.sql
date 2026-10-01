@@ -77,6 +77,13 @@ BEGIN
   END;
   ASSERT v_failed, 'an outcome outside the list is refused';
 
+  -- A category the AI wrote onto the payment is recorded as written, which is not an open proposal.
+  INSERT INTO public.receipt_ai_attempts (transaction_id, prompt_version, outcome, proposed_expense_category, category_state)
+  VALUES (v_tx_plain, 'v-written', 'category_written', 'Telephone', 'written');
+  ASSERT (SELECT count(*) FROM public.receipt_ai_attempts WHERE transaction_id = v_tx_plain AND category_state = 'proposed') = 0,
+    'a written category is not a proposal waiting for a person';
+  DELETE FROM public.receipt_ai_attempts WHERE transaction_id = v_tx_plain AND prompt_version = 'v-written';
+
   INSERT INTO public.receipt_ai_attempts (transaction_id, prompt_version, outcome, proposed_no_category, category_state) VALUES (v_tx_none, 'v1', 'category_proposed', true, 'proposed');
   INSERT INTO public.receipt_ai_attempts (transaction_id, prompt_version, outcome, proposed_expense_category, category_state) VALUES (v_tx_edit, 'v1', 'category_proposed', 'Sundries/Consumables', 'proposed');
   INSERT INTO public.receipt_ai_attempts (transaction_id, prompt_version, outcome, proposed_expense_category, category_state) VALUES (v_tx_dismiss, 'v1', 'category_proposed', 'Sundries/Consumables', 'proposed');

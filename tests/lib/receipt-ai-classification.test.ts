@@ -159,19 +159,26 @@ afterEach(() => {
 })
 
 describe('what the AI writes and what it only suggests', () => {
-  it('writes the vendor from our list, and stores the category as a suggestion', async () => {
+  it('writes the vendor from our list and the category, as one change', async () => {
     const db = arrange({ payments: [payment('p1', { details: 'BT GROUP PLC DD' })] })
     modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone', confidence: 92 })])
 
     const summary = await classify(db, ['p1'])
 
-    expect(summary).toMatchObject({ considered: 1, sent: 1, vendorsWritten: 1, categoriesProposed: 1, failed: 0 })
+    expect(summary).toMatchObject({
+      considered: 1,
+      sent: 1,
+      vendorsWritten: 1,
+      categoriesWritten: 1,
+      categoriesProposed: 0,
+      failed: 0,
+    })
 
     const row = paymentRow(db, 'p1')
     expect(row).toMatchObject({ vendor_id: 'v-bt', vendor_name: 'BT', vendor_source: 'ai' })
-    // The category is not on the payment. It waits for a person.
-    expect(row.expense_category).toBeNull()
-    expect(row.expense_category_source).toBeNull()
+    // The category is on the payment, marked as the AI's, with no rule behind it.
+    expect(row).toMatchObject({ expense_category: 'Telephone', expense_category_source: 'ai', expense_rule_id: null })
+    // Classifying is not closing: the payment still needs its receipt.
     expect(row.status).toBe('pending')
 
     expect(attemptFor(db, 'p1')).toMatchObject({
@@ -180,7 +187,7 @@ describe('what the AI writes and what it only suggests', () => {
       vendor_id: 'v-bt',
       vendor_written: true,
       proposed_expense_category: 'Telephone',
-      category_state: 'proposed',
+      category_state: 'written',
       confidence: 92,
       model: 'gpt-test',
       tries: 1,
@@ -188,19 +195,31 @@ describe('what the AI writes and what it only suggests', () => {
 
     expect(db.rows('receipt_transaction_logs')).toEqual([
       expect.objectContaining({ transaction_id: 'p1', action_type: 'ai_vendor', performed_by: null }),
+      expect.objectContaining({
+        transaction_id: 'p1',
+        action_type: 'ai_category',
+        note: 'Category → Telephone (AI, 92% sure)',
+        performed_by: null,
+      }),
     ])
     expect(db.rows('ai_usage_events')).toEqual([
       expect.objectContaining({ context: 'receipt_classification:1', model: 'gpt-test', total_tokens: 120 }),
     ])
   })
 
-  it('stores "no category applies" as a suggestion too', async () => {
+  it('never writes "no category applies": it stays a suggestion for a person', async () => {
     const db = arrange({ payments: [payment('p1', { details: 'HMRC VAT' })] })
     modelAnswers([answerItem('p1', { no_category_applies: true })])
 
-    await classify(db, ['p1'])
+    const summary = await classify(db, ['p1'])
 
-    expect(paymentRow(db, 'p1').no_category_applies).toBe(false)
+    expect(summary).toMatchObject({ categoriesWritten: 0, categoriesProposed: 1 })
+    expect(paymentRow(db, 'p1')).toMatchObject({
+      no_category_applies: false,
+      expense_category: null,
+      expense_category_source: null,
+    })
+    expect(db.rows('receipt_transaction_logs')).toHaveLength(0)
     expect(attemptFor(db, 'p1')).toMatchObject({
       outcome: 'category_proposed',
       proposed_expense_category: null,
@@ -209,7 +228,7 @@ describe('what the AI writes and what it only suggests', () => {
     })
   })
 
-  it('suggests the category a person set as the vendor default, whatever the model says', async () => {
+  it('writes the category a person set as the vendor default, whatever the model says', async () => {
     const db = arrange({
       payments: [payment('p1', { details: 'BT GROUP PLC DD' })],
       vendors: [vendor('v-bt', 'BT', { default_expense_category: 'Telephone' })],
@@ -218,10 +237,42 @@ describe('what the AI writes and what it only suggests', () => {
 
     await classify(db, ['p1'])
 
-    expect(attemptFor(db, 'p1')).toMatchObject({ outcome: 'vendor_written', proposed_expense_category: 'Telephone' })
+    expect(paymentRow(db, 'p1')).toMatchObject({ expense_category: 'Telephone', expense_category_source: 'ai' })
+    expect(attemptFor(db, 'p1')).toMatchObject({
+      outcome: 'vendor_written',
+      proposed_expense_category: 'Telephone',
+      category_state: 'written',
+    })
   })
 
-  it('suggests the vendor default without a call when only the category is missing', async () => {
+  it('writes only the category when the vendor is already there', async () => {
+    const db = arrange({
+      payments: [payment('p1', { vendor_id: 'v-booker', vendor_name: 'Booker', vendor_source: 'manual' })],
+    })
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Sundries/Consumables', confidence: 81 })])
+
+    const summary = await classify(db, ['p1'])
+
+    expect(userPrompt()).toContain('Booker')
+    expect(summary).toMatchObject({ vendorsWritten: 0, categoriesWritten: 1 })
+    expect(paymentRow(db, 'p1')).toMatchObject({
+      vendor_id: 'v-booker',
+      vendor_name: 'Booker',
+      vendor_source: 'manual',
+      expense_category: 'Sundries/Consumables',
+      expense_category_source: 'ai',
+    })
+    expect(attemptFor(db, 'p1')).toMatchObject({
+      outcome: 'category_written',
+      vendor_written: false,
+      category_state: 'written',
+    })
+    expect(db.rows('receipt_transaction_logs')).toEqual([
+      expect.objectContaining({ action_type: 'ai_category' }),
+    ])
+  })
+
+  it('writes the vendor default without a call when only the category is missing', async () => {
     const db = arrange({
       payments: [payment('p1', { vendor_id: 'v-bt', vendor_name: 'BT', vendor_source: 'manual' })],
       vendors: [vendor('v-bt', 'BT', { default_expense_category: 'Telephone' })],
@@ -230,22 +281,31 @@ describe('what the AI writes and what it only suggests', () => {
     const summary = await classify(db, ['p1'])
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(summary).toMatchObject({ considered: 1, sent: 0, categoriesProposed: 1 })
+    expect(summary).toMatchObject({ considered: 1, sent: 0, categoriesWritten: 1, categoriesProposed: 0 })
     expect(attemptFor(db, 'p1')).toMatchObject({
-      outcome: 'category_proposed',
+      outcome: 'category_written',
       proposed_expense_category: 'Telephone',
-      category_state: 'proposed',
+      category_state: 'written',
     })
-    expect(paymentRow(db, 'p1').expense_category).toBeNull()
+    expect(paymentRow(db, 'p1')).toMatchObject({
+      vendor_name: 'BT',
+      vendor_source: 'manual',
+      expense_category: 'Telephone',
+      expense_category_source: 'ai',
+    })
+    expect(db.rows('receipt_transaction_logs')).toEqual([
+      expect.objectContaining({ action_type: 'ai_category', note: 'Category → Telephone (the default for this vendor)' }),
+    ])
   })
 
-  it('never suggests a category for money in', async () => {
+  it('never gives a category to money in', async () => {
     const db = arrange({ payments: [payment('p1', { amount_in: 300, amount_out: null, details: 'SUMUP SETTLEMENT' })] })
     modelAnswers([answerItem('p1', { new_vendor_name: 'SumUp', expense_category: 'Telephone' })])
 
     await classify(db, ['p1'])
 
     expect(userPrompt()).toContain('category: not wanted')
+    expect(paymentRow(db, 'p1').expense_category).toBeNull()
     expect(attemptFor(db, 'p1')).toMatchObject({
       outcome: 'vendor_written',
       proposed_expense_category: null,
@@ -262,9 +322,10 @@ describe('what the AI writes and what it only suggests', () => {
 
     const summary = await classify(db, ['p1', 'p2'])
 
-    expect(summary).toMatchObject({ lowConfidence: 2, vendorsWritten: 0, categoriesProposed: 0 })
+    expect(summary).toMatchObject({ lowConfidence: 2, vendorsWritten: 0, categoriesWritten: 0, categoriesProposed: 0 })
     for (const id of ['p1', 'p2']) {
       expect(paymentRow(db, id).vendor_name).toBeNull()
+      expect(paymentRow(db, id).expense_category).toBeNull()
       expect(attemptFor(db, id)).toMatchObject({ outcome: 'low_confidence', category_state: 'none' })
     }
   })
@@ -403,9 +464,77 @@ describe('a rule or a person always wins', () => {
     const summary = await classify(db, ['p1'])
 
     expect(paymentRow(db, 'p1')).toMatchObject({ vendor_id: 'v-booker', vendor_name: 'Booker', vendor_source: 'rule' })
-    expect(summary.vendorsWritten).toBe(0)
-    expect(attemptFor(db, 'p1')).toMatchObject({ vendor_written: false })
+    expect(summary).toMatchObject({ vendorsWritten: 0, categoriesWritten: 0, skippedProtected: 1 })
+    // The model's category went with its own vendor, so it is not written beside another one.
+    expect(paymentRow(db, 'p1').expense_category).toBeNull()
+    expect(attemptFor(db, 'p1')).toMatchObject({ outcome: 'skipped_protected', vendor_written: false, category_state: 'none' })
     expect(db.rows('receipt_transaction_logs')).toHaveLength(0)
+  })
+
+  it('does not overwrite a category that was set while the model was answering', async () => {
+    const db = arrange({ payments: [payment('p1')] })
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone' })], () => {
+      Object.assign(paymentRow(db, 'p1'), {
+        expense_category: 'Entertainment',
+        expense_category_source: 'manual',
+        updated_at: 'v2',
+      })
+    })
+
+    const summary = await classify(db, ['p1'])
+
+    // The vendor was still needed and is written. The person's category stays.
+    expect(summary).toMatchObject({ vendorsWritten: 1, categoriesWritten: 0 })
+    expect(paymentRow(db, 'p1')).toMatchObject({
+      vendor_name: 'BT',
+      vendor_source: 'ai',
+      expense_category: 'Entertainment',
+      expense_category_source: 'manual',
+    })
+    expect(attemptFor(db, 'p1')).toMatchObject({ outcome: 'vendor_written', category_state: 'none', proposed_expense_category: null })
+    expect(db.rows('receipt_transaction_logs')).toEqual([expect.objectContaining({ action_type: 'ai_vendor' })])
+  })
+
+  it('leaves a category a person cleared on purpose, and does not ask for one', async () => {
+    const db = arrange({ payments: [payment('p1', { expense_category_source: 'manual' })] })
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone' })])
+
+    await classify(db, ['p1'])
+
+    expect(userPrompt()).toContain('category: not wanted')
+    expect(paymentRow(db, 'p1')).toMatchObject({
+      vendor_name: 'BT',
+      expense_category: null,
+      expense_category_source: 'manual',
+    })
+  })
+
+  it('does not give a category to a payment marked "no category applies"', async () => {
+    const db = arrange({ payments: [payment('p1', { no_category_applies: true, expense_category_source: 'manual' })] })
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone' })])
+
+    await classify(db, ['p1'])
+
+    expect(paymentRow(db, 'p1')).toMatchObject({ vendor_name: 'BT', expense_category: null, no_category_applies: true })
+  })
+
+  it('records a failure, to be tried again, when the write cannot be saved', async () => {
+    const db = arrange({ payments: [payment('p1')] })
+    const receiptsRpc = fakeReceiptsRpc(db)
+    db.onRpc((name, args) =>
+      name === 'apply_receipt_rule_change' ? { data: null, error: { message: 'deadlock detected' } } : receiptsRpc(name, args)
+    )
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone' })])
+
+    const summary = await classify(db, ['p1'])
+
+    expect(summary).toMatchObject({ vendorsWritten: 0, categoriesWritten: 0, failed: 1 })
+    expect(paymentRow(db, 'p1')).toMatchObject({ vendor_name: null, expense_category: null })
+    expect(attemptFor(db, 'p1')).toMatchObject({
+      outcome: 'failed_retryable',
+      error: 'The classification could not be saved',
+      category_state: 'none',
+    })
   })
 
   it('writes on the payment as it now is when something else about it changed', async () => {
