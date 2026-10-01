@@ -3,7 +3,6 @@ import type {
   ReceiptClassificationSignal,
   ReceiptExpenseCategory,
   ReceiptTransaction,
-  ReceiptTransactionLog,
 } from '@/types/database'
 import type { AdminClient } from './types'
 import { normalizeVendorInput } from './receiptHelpers'
@@ -22,11 +21,26 @@ const INVOICE_NUMBER_PATTERN = /\bINV-[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi
 const MONEY_EPSILON = 0.01
 
 /**
- * Statuses the reference-free pass is allowed to touch. A payment that is
+ * Statuses invoice pairing is allowed to move to "no receipt required". A payment that is
  * already `completed` has a receipt attached and must not be downgraded, and
- * `no_receipt_required` is already closed.
+ * `no_receipt_required` is already closed. Both passes follow this. The reference-free pass
+ * also only looks at these payments; the reference pass still records a match for a closed
+ * payment, without touching its status. `apply_receipt_invoice_match` enforces the same list
+ * under a row lock, so the two must be changed together.
  */
 const PAIRABLE_TRANSACTION_STATUSES = ['pending', 'cant_find'] as const
+
+/** Every status that can be stored on a match. Pinned to the CHECK constraint by a parity test. */
+export const STORED_INVOICE_MATCH_STATUSES = [
+  'matched',
+  'payment_recorded',
+  'already_paid',
+  'missing_invoice',
+  'multiple_invoice_refs',
+  'amount_mismatch',
+  'review_required',
+  'vendor_amount_matched',
+] as const
 
 type InvoicePaymentMatchStatus =
   | 'matched'
@@ -70,6 +84,8 @@ type ReconciliationSummary = {
   amountMismatch: number
   statusUpdated: number
   classificationUpdated: number
+  /** Payments quoting more than one invoice number: recorded for a person, nothing applied. */
+  multipleInvoiceRefs: number
   /** Inward payments with no invoice number in the narrative that we tried to pair. */
   referenceFreeReviewed: number
   /** Of those, how many were paired on vendor + amount + date. */
@@ -252,158 +268,95 @@ async function recordInvoicePayment(
   return (data as { id?: string } | null)?.id ?? null
 }
 
-async function upsertInvoiceMatch(
+type StoredInvoiceMatchStatus = (typeof STORED_INVOICE_MATCH_STATUSES)[number]
+
+/**
+ * Stores the match and updates the payment in one database transaction
+ * (`apply_receipt_invoice_match`). The function decides, with the payment row locked, whether
+ * the status may move and whether the vendor may be written, so a payment a person closed,
+ * reopened or named by hand is left as they left it.
+ */
+async function applyInvoiceMatch(
   supabase: AdminClient,
   params: {
     transaction: ReceiptTransaction
     invoiceNumber: string
     invoice: InvoiceRow | null
     invoicePaymentId: string | null
-    status: InvoicePaymentMatchStatus
+    status: StoredInvoiceMatchStatus
     amountMatch: boolean
     payload?: Record<string, unknown>
+    /** False for matches a person has to review: several invoice numbers, or no such invoice. */
+    allowStatusChange: boolean
+    receiptVendorId: string | null
+    initiatedBy: string | null
   }
-): Promise<void> {
-  const amount = receiptTransactionAmount(params.transaction)
-  const { error } = await supabase
-    .from('receipt_invoice_matches')
-    .upsert({
-      receipt_transaction_id: params.transaction.id,
-      invoice_id: params.invoice?.id ?? null,
-      invoice_payment_id: params.invoicePaymentId,
-      invoice_number: params.invoiceNumber,
-      match_status: params.status,
-      amount_match: params.amountMatch,
-      transaction_date: params.transaction.transaction_date,
-      matched_amount: amount,
-      invoice_total_amount: params.invoice ? moneyValue(params.invoice.total_amount) : null,
-      invoice_paid_amount_before: params.invoice ? moneyValue(params.invoice.paid_amount) : null,
-      matched_at: new Date().toISOString(),
-      payload: params.payload ?? {},
-    }, { onConflict: 'receipt_transaction_id,invoice_number' })
-
-  if (error) {
-    throw new Error(`Failed to upsert receipt invoice match: ${error.message}`)
-  }
-}
-
-async function updateReceiptTransactionFromInvoice(
-  supabase: AdminClient,
-  transaction: ReceiptTransaction,
-  invoice: InvoiceRow,
-  receiptVendorId: string | null,
-  status: InvoicePaymentMatchStatus
 ): Promise<{ statusUpdated: boolean; classificationUpdated: boolean }> {
-  const now = new Date().toISOString()
-  const vendorName = normalizeVendorInput(invoice.vendor?.name ?? null)
-  const updates: Record<string, unknown> = {}
-  const statusUpdated = transaction.status !== 'no_receipt_required'
-  const classificationUpdated = Boolean(
-    vendorName &&
-    (
-      transaction.vendor_name !== vendorName ||
-      transaction.vendor_id !== receiptVendorId ||
-      transaction.vendor_source !== 'rule'
-    )
-  )
+  const { transaction, invoice } = params
+  const vendorName = params.allowStatusChange ? normalizeVendorInput(invoice?.vendor?.name ?? null) : null
 
-  if (statusUpdated) {
-    updates.status = 'no_receipt_required'
-    updates.receipt_required = false
-    updates.marked_by = null
-    updates.marked_by_email = null
-    updates.marked_by_name = null
-    updates.marked_at = now
-    updates.marked_method = 'invoice_reconciliation'
-    updates.auto_completed_reason = `invoice_payment:${invoice.invoice_number}`
-  } else if (transaction.receipt_required) {
-    updates.receipt_required = false
-  }
-
-  if (classificationUpdated && vendorName) {
-    updates.vendor_name = vendorName
-    updates.vendor_id = receiptVendorId
-    updates.vendor_source = 'rule'
-    updates.vendor_rule_id = null
-    updates.vendor_updated_at = now
-  }
-
-  if (!Object.keys(updates).length) {
-    return { statusUpdated: false, classificationUpdated: false }
-  }
-
-  updates.updated_at = now
-
-  const { error } = await supabase
-    .from('receipt_transactions')
-    .update(updates)
-    .eq('id', transaction.id)
+  const { data, error } = await (supabase as any).rpc('apply_receipt_invoice_match', {
+    p_transaction_id: transaction.id,
+    p_invoice_id: invoice?.id ?? null,
+    p_invoice_number: params.invoiceNumber,
+    p_invoice_payment_id: params.invoicePaymentId,
+    p_match_status: params.status,
+    p_amount_match: params.amountMatch,
+    p_matched_amount: receiptTransactionAmount(transaction),
+    p_invoice_total: invoice ? moneyValue(invoice.total_amount) : null,
+    p_invoice_paid_before: invoice ? moneyValue(invoice.paid_amount) : null,
+    p_payload: params.payload ?? {},
+    p_allow_status_change: params.allowStatusChange,
+    p_vendor_id: vendorName ? params.receiptVendorId : null,
+    p_vendor_name: vendorName,
+    p_initiated_by: params.initiatedBy,
+  })
 
   if (error) {
-    throw new Error(`Failed to update receipt transaction from invoice match: ${error.message}`)
+    throw new Error(`Failed to apply receipt invoice match: ${error.message}`)
   }
 
-  const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
-  if (statusUpdated) {
-    logs.push({
-      transaction_id: transaction.id,
-      previous_status: transaction.status,
-      new_status: 'no_receipt_required',
-      action_type: 'invoice_reconciliation',
-      note: `Matched invoice payment ${invoice.invoice_number}`,
-      performed_by: null,
-      rule_id: null,
-      performed_at: now,
-    })
+  const result = (data ?? {}) as {
+    outcome?: string
+    status_updated?: boolean
+    vendor_updated?: boolean
+    previous_status?: ReceiptTransaction['status']
   }
 
-  if (classificationUpdated && vendorName) {
-    logs.push({
-      transaction_id: transaction.id,
-      previous_status: transaction.status,
-      new_status: statusUpdated ? 'no_receipt_required' : transaction.status,
-      action_type: 'invoice_classification',
-      note: `Vendor updated from invoice ${invoice.invoice_number}: ${vendorName}`,
-      performed_by: null,
-      rule_id: null,
-      performed_at: now,
-    })
+  if (result.outcome !== 'applied') {
+    throw new Error(`Failed to apply receipt invoice match: ${result.outcome ?? 'no result'}`)
   }
 
-  if (logs.length) {
-    const { error: logError } = await supabase.from('receipt_transaction_logs').insert(logs)
-    if (logError) {
-      console.error('Failed to record invoice reconciliation receipt logs', logError)
-    }
-  }
+  const statusUpdated = Boolean(result.status_updated)
+  const classificationUpdated = Boolean(result.vendor_updated)
 
-  const signals: Array<Omit<ReceiptClassificationSignal, 'id'>> = []
-  if (statusUpdated || classificationUpdated) {
-    signals.push({
+  if (invoice && (statusUpdated || classificationUpdated)) {
+    const priorStatus = result.previous_status ?? transaction.status
+    const signals: Array<Omit<ReceiptClassificationSignal, 'id'>> = [{
       transaction_id: transaction.id,
       source: 'system',
       signal_type: 'invoice_reconciliation',
       prior_vendor_id: transaction.vendor_id ?? null,
-      new_vendor_id: classificationUpdated ? receiptVendorId : transaction.vendor_id ?? null,
+      new_vendor_id: classificationUpdated ? params.receiptVendorId : transaction.vendor_id ?? null,
       prior_vendor_name: transaction.vendor_name,
       new_vendor_name: classificationUpdated ? vendorName : transaction.vendor_name,
       prior_expense_category: transaction.expense_category,
       new_expense_category: transaction.expense_category as ReceiptExpenseCategory | null,
-      prior_status: transaction.status,
-      new_status: statusUpdated ? 'no_receipt_required' : transaction.status,
+      prior_status: priorStatus,
+      new_status: statusUpdated ? 'no_receipt_required' : priorStatus,
       rule_id: null,
       ai_confidence: null,
-      performed_by: null,
-      performed_at: now,
+      performed_by: params.initiatedBy,
+      performed_at: new Date().toISOString(),
       payload: {
         invoice_id: invoice.id,
         invoice_number: invoice.invoice_number,
-        match_status: status,
+        match_status: params.status,
+        prior_vendor_source: transaction.vendor_source,
       },
-    })
+    }]
+    await recordReceiptClassificationSignals(supabase, signals)
   }
-
-  await recordReceiptClassificationSignals(supabase, signals)
 
   return { statusUpdated, classificationUpdated }
 }
@@ -563,7 +516,7 @@ async function loadClaimedInvoiceIds(supabase: AdminClient): Promise<Set<string>
 async function runReferenceFreePairingPass(
   supabase: AdminClient,
   summary: ReconciliationSummary,
-  options: { transactionIds?: string[] }
+  options: { transactionIds?: string[]; initiatedBy: string | null }
 ): Promise<void> {
   const transactions = await fetchReferenceFreeCandidates(supabase, options.transactionIds)
   if (!transactions.length) return
@@ -620,7 +573,7 @@ async function runReferenceFreePairingPass(
     await applyReferenceFreePair(supabase, summary, transaction, result.candidate, amount, {
       candidateCount: result.candidateCount,
       viaTiebreak: result.viaTiebreak,
-    })
+    }, options.initiatedBy)
     claimedInvoiceIds.add(result.candidate.invoice.id)
   }
 }
@@ -631,7 +584,8 @@ async function applyReferenceFreePair(
   transaction: ReceiptTransaction,
   candidate: PairingCandidate,
   amount: number,
-  provenance: { candidateCount: number; viaTiebreak: boolean }
+  provenance: { candidateCount: number; viaTiebreak: boolean },
+  initiatedBy: string | null
 ): Promise<void> {
   const { data, error } = await supabase
     .from('invoices')
@@ -651,24 +605,16 @@ async function applyReferenceFreePair(
     invoice.vendor_id
   )
 
-  const updateResult = await updateReceiptTransactionFromInvoice(
-    supabase,
-    transaction,
-    invoice,
-    receiptVendorId,
-    'vendor_amount_matched'
-  )
-
-  if (updateResult.statusUpdated) summary.statusUpdated += 1
-  if (updateResult.classificationUpdated) summary.classificationUpdated += 1
-
-  await upsertInvoiceMatch(supabase, {
+  const updateResult = await applyInvoiceMatch(supabase, {
     transaction,
     invoiceNumber: invoice.invoice_number,
     invoice,
     invoicePaymentId: null,
     status: 'vendor_amount_matched',
     amountMatch: true,
+    allowStatusChange: true,
+    receiptVendorId,
+    initiatedBy,
     payload: {
       match_method: 'vendor_amount',
       match_basis: candidate.basis,
@@ -682,6 +628,9 @@ async function applyReferenceFreePair(
       invoice_paid_before: moneyValue(invoice.paid_amount),
     },
   })
+
+  if (updateResult.statusUpdated) summary.statusUpdated += 1
+  if (updateResult.classificationUpdated) summary.classificationUpdated += 1
 
   summary.referenceFreePaired += 1
   summary.matched += 1
@@ -699,8 +648,11 @@ async function applyReferenceFreePair(
 export async function performReconcileReceiptInvoicePayments(options: {
   transactionIds?: string[]
   recordPayments?: boolean
+  /** The user whose import started this run, recorded on the log rows it writes. */
+  initiatedBy?: string | null
 } = {}): Promise<ReconciliationSummary> {
   const supabase = createAdminClient()
+  const initiatedBy = options.initiatedBy ?? null
   const transactions = await fetchCandidateTransactions(supabase, options.transactionIds)
   const refsByTransaction = new Map<string, string[]>()
   const invoiceNumbers = new Set<string>()
@@ -727,6 +679,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
     amountMismatch: 0,
     statusUpdated: 0,
     classificationUpdated: 0,
+    multipleInvoiceRefs: 0,
     referenceFreeReviewed: 0,
     referenceFreePaired: 0,
     referenceFreeTiebroken: 0,
@@ -740,19 +693,28 @@ export async function performReconcileReceiptInvoicePayments(options: {
 
     summary.withInvoiceReference += 1
 
+    // One bank payment quoting several invoices cannot be split by guesswork: each invoice
+    // would otherwise be offered the whole amount. Record what was quoted and leave the
+    // payment, and the invoice ledger, for a person.
+    const quotesSeveralInvoices = refs.length > 1
+    if (quotesSeveralInvoices) summary.multipleInvoiceRefs += 1
+
     for (const invoiceNumber of refs) {
       const invoice = invoiceByNumber.get(invoiceNumber) ?? null
       const amount = receiptTransactionAmount(transaction)
 
       if (!invoice) {
         summary.missingInvoice += 1
-        await upsertInvoiceMatch(supabase, {
+        await applyInvoiceMatch(supabase, {
           transaction,
           invoiceNumber,
           invoice: null,
           invoicePaymentId: null,
           status: 'missing_invoice',
           amountMatch: false,
+          allowStatusChange: false,
+          receiptVendorId: null,
+          initiatedBy,
           payload: { details: transaction.details },
         })
         if (summary.samples.length < 20) {
@@ -764,12 +726,45 @@ export async function performReconcileReceiptInvoicePayments(options: {
       const invoiceTotal = moneyValue(invoice.total_amount)
       const paidBefore = moneyValue(invoice.paid_amount)
       const outstanding = Math.max(0, invoiceTotal - paidBefore)
+      const matchPayload = {
+        invoice_status_before: invoice.status,
+        invoice_total: invoiceTotal,
+        invoice_paid_before: paidBefore,
+        invoice_outstanding_before: outstanding,
+        existing_payments: (paymentByInvoice.get(invoice.id) ?? []).map((payment) => ({
+          id: payment.id,
+          amount: moneyValue(payment.amount),
+          payment_date: payment.payment_date,
+          reference: payment.reference,
+        })),
+      }
+
+      if (quotesSeveralInvoices) {
+        await applyInvoiceMatch(supabase, {
+          transaction,
+          invoiceNumber,
+          invoice,
+          invoicePaymentId: null,
+          status: 'multiple_invoice_refs',
+          amountMatch: false,
+          allowStatusChange: false,
+          receiptVendorId: null,
+          initiatedBy,
+          payload: { ...matchPayload, quoted_invoice_numbers: refs },
+        })
+        if (summary.samples.length < 20) {
+          summary.samples.push({ transactionId: transaction.id, invoiceNumber, status: 'multiple_invoice_refs', details: transaction.details, amount })
+        }
+        continue
+      }
+
       const exactAmountMatch = moneyMatches(amount, invoiceTotal)
       const outstandingAmountMatch = moneyMatches(amount, outstanding)
       const amountCanBePayment = amount > 0 && amount <= outstanding + MONEY_EPSILON
       const amountMatch = exactAmountMatch || outstandingAmountMatch || amountCanBePayment
+      const mayRecordPayment = options.recordPayments !== false
 
-      let status: InvoicePaymentMatchStatus = refs.length > 1 ? 'multiple_invoice_refs' : 'matched'
+      let status: StoredInvoiceMatchStatus = 'matched'
       let invoicePaymentId: string | null = null
 
       if (isPaidStatus(invoice.status) || outstanding <= MONEY_EPSILON) {
@@ -777,7 +772,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
         if (status === 'already_paid') summary.alreadyPaid += 1
       } else if (!amountCanBePayment) {
         status = 'amount_mismatch'
-      } else if (options.recordPayments !== false) {
+      } else if (mayRecordPayment) {
         invoicePaymentId = await recordInvoicePayment(supabase, transaction, invoice, amount)
         status = 'payment_recorded'
         summary.paymentsRecorded += 1
@@ -790,37 +785,22 @@ export async function performReconcileReceiptInvoicePayments(options: {
         invoice.vendor?.name ?? null,
         invoice.vendor_id
       )
-      const updateResult = await updateReceiptTransactionFromInvoice(
-        supabase,
-        transaction,
-        invoice,
-        receiptVendorId,
-        status
-      )
 
-      if (updateResult.statusUpdated) summary.statusUpdated += 1
-      if (updateResult.classificationUpdated) summary.classificationUpdated += 1
-
-      await upsertInvoiceMatch(supabase, {
+      const updateResult = await applyInvoiceMatch(supabase, {
         transaction,
         invoiceNumber,
         invoice,
         invoicePaymentId,
         status,
         amountMatch,
-        payload: {
-          invoice_status_before: invoice.status,
-          invoice_total: invoiceTotal,
-          invoice_paid_before: paidBefore,
-          invoice_outstanding_before: outstanding,
-          existing_payments: (paymentByInvoice.get(invoice.id) ?? []).map((payment) => ({
-            id: payment.id,
-            amount: moneyValue(payment.amount),
-            payment_date: payment.payment_date,
-            reference: payment.reference,
-          })),
-        },
+        allowStatusChange: true,
+        receiptVendorId,
+        initiatedBy,
+        payload: matchPayload,
       })
+
+      if (updateResult.statusUpdated) summary.statusUpdated += 1
+      if (updateResult.classificationUpdated) summary.classificationUpdated += 1
 
       summary.matched += 1
       if (summary.samples.length < 20) {
@@ -832,7 +812,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
   // Second pass: payments whose narrative never carried an invoice number.
   // Runs after the reference pass so that anything already explained by a
   // quoted invoice number has claimed its invoice first.
-  await runReferenceFreePairingPass(supabase, summary, { transactionIds: options.transactionIds })
+  await runReferenceFreePairingPass(supabase, summary, { transactionIds: options.transactionIds, initiatedBy })
 
   return summary
 }

@@ -91,7 +91,8 @@ const TEST_UUID = '550e8400-e29b-41d4-a716-446655440000'
  */
 function buildMockClient(
   tables: Record<string, Record<string, unknown>>,
-  storage?: Record<string, unknown>
+  storage?: Record<string, unknown>,
+  rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
 ) {
   const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
@@ -131,6 +132,7 @@ function buildMockClient(
       throw new Error(`Unexpected table: ${table}`)
     }),
     ...(storageClient ? { storage: { from: vi.fn().mockReturnValue(storageClient) } } : {}),
+    ...(rpc ? { rpc: vi.fn(rpc) } : {}),
   }
 }
 
@@ -662,99 +664,79 @@ describe('uploadReceiptForTransaction', () => {
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('should complete a signed receipt upload and mark transaction completed', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-    const receiptRecord = { id: 'file-1', storage_path: '2026/Coffee_4.50.pdf_1770000000000' }
+  // completeReceiptUpload: the file row, the payment, the log and the intent are written by one
+  // database function under a lock (tests/sql/receipts covers that function on a real
+  // Postgres). These tests cover what the action does around it, above all that it never
+  // removes a stored object on the strength of a path the browser sent.
+  const uploadTransaction = {
+    id: 'tx-1',
+    transaction_date: '2026-03-15',
+    details: 'Coffee',
+    amount_in: null,
+    amount_out: 4.5,
+    status: 'pending',
+  }
+  const uploadInput = {
+    transactionId: 'tx-1',
+    storagePath: '2026/Coffee_4.50.pdf_1770000000000',
+    fileName: '2026-03-15 - Coffee - 4.50.pdf',
+    fileType: 'application/pdf',
+    fileSize: 8 * 1024 * 1024,
+  }
 
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const txUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'tx-1' }, error: null })
-    const txUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: txUpdateMaybeSingle })
-    const txUpdateEq = vi.fn().mockReturnValue({ select: txUpdateSelect })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const receiptInsertSingle = vi.fn().mockResolvedValue({ data: receiptRecord, error: null })
-    const receiptInsertSelect = vi.fn().mockReturnValue({ single: receiptInsertSingle })
-    const receiptInsert = vi.fn().mockReturnValue({ select: receiptInsertSelect })
-
-    const intentMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'intent-1', storage_path: '2026/Coffee_4.50.pdf_1770000000000' },
-      error: null,
-    })
-    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
-    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
-    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
-    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
-    const intentSelect = vi.fn().mockReturnValue({ eq: intentEqTransaction })
-    const intentUpdateEq = vi.fn().mockResolvedValue({ error: null })
-    const intentUpdate = vi.fn().mockReturnValue({ eq: intentUpdateEq })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-    const storageRemove = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-            update: vi.fn().mockReturnValue({ eq: txUpdateEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_files: {
-            insert: receiptInsert,
-          },
-          receipt_upload_intents: {
-            select: intentSelect,
-            update: intentUpdate,
-          },
-          receipt_transaction_logs: {
-            insert: logInsert,
-          },
-        },
-        {
-          remove: storageRemove,
-        }
-      )
+  function arrangeUpload(
+    rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>,
+    transaction: Record<string, unknown> | null = uploadTransaction
+  ) {
+    const txSelectSingle = vi.fn().mockResolvedValue(
+      transaction ? { data: transaction, error: null } : { data: null, error: { message: 'not found' } }
     )
+    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
+    const storageRemove = vi.fn().mockResolvedValue({ error: null })
+    const client = buildMockClient(
+      {
+        receipt_transactions: {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: txSelectSingle }) }),
+        },
+        profiles: {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: profileSingle }) }),
+        },
+      },
+      { remove: storageRemove },
+      rpc
+    )
+    mockedCreateAdminClient.mockReturnValue(client)
+    return { client, storageRemove, rpc: (client as unknown as { rpc: Mock }).rpc }
+  }
 
-    const result = await completeReceiptUpload({
-      transactionId: 'tx-1',
-      storagePath: '2026/Coffee_4.50.pdf_1770000000000',
-      fileName: '2026-03-15 - Coffee - 4.50.pdf',
-      fileType: 'application/pdf',
-      fileSize: 8 * 1024 * 1024,
+  it('should complete a signed receipt upload through the locked database function', async () => {
+    const receiptRecord = { id: 'file-1', storage_path: uploadInput.storagePath }
+    const { storageRemove, rpc } = arrangeUpload(async (name) => {
+      if (name === 'complete_receipt_upload') {
+        return { data: { outcome: 'completed', receipt: receiptRecord, previous_status: 'pending' }, error: null }
+      }
+      throw new Error(`Unexpected rpc ${name}`)
     })
+
+    const result = await completeReceiptUpload(uploadInput)
 
     expect(result).toMatchObject({ success: true, receipt: receiptRecord })
-    expect(intentEqTransaction).toHaveBeenCalledWith('transaction_id', 'tx-1')
-    expect(intentEqStoragePath).toHaveBeenCalledWith('storage_path', '2026/Coffee_4.50.pdf_1770000000000')
-    expect(intentEqIssuedTo).toHaveBeenCalledWith('issued_to', TEST_USER.user_id)
-    expect(intentIs).toHaveBeenCalledWith('completed_at', null)
-    expect(intentUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      receipt_file_id: 'file-1',
-    }))
-    expect(receiptInsert).toHaveBeenCalledWith(expect.objectContaining({
-      transaction_id: 'tx-1',
-      storage_path: '2026/Coffee_4.50.pdf_1770000000000',
-      file_name: '2026-03-15 - Coffee - 4.50.pdf',
-      mime_type: 'application/pdf',
-      file_size_bytes: 8 * 1024 * 1024,
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('complete_receipt_upload', expect.objectContaining({
+      p_transaction_id: 'tx-1',
+      p_storage_path: uploadInput.storagePath,
+      p_user_id: TEST_USER.user_id,
+      p_user_email: TEST_USER.user_email,
+      p_user_name: 'Test User',
+      p_file_name: uploadInput.fileName,
+      p_mime_type: 'application/pdf',
+      p_file_size_bytes: 8 * 1024 * 1024,
+      p_content_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
     }))
     expect(storageRemove).not.toHaveBeenCalled()
     expect(mockedLogAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
+        user_id: TEST_USER.user_id,
         operation_type: 'upload_receipt',
         resource_type: 'receipt_transaction',
         resource_id: 'tx-1',
@@ -763,61 +745,84 @@ describe('uploadReceiptForTransaction', () => {
     )
   })
 
-  it('should reject a completed receipt upload when the path was not issued for that transaction', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
+  it('should answer a repeated completion with the stored file and remove nothing', async () => {
+    const receiptRecord = { id: 'file-1', storage_path: uploadInput.storagePath }
+    const { storageRemove, rpc } = arrangeUpload(async () => ({
+      data: { outcome: 'replayed', receipt: receiptRecord },
+      error: null,
+    }))
 
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-    const intentMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
-    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
-    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
-    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
-    const receiptInsert = vi.fn()
-    const storageRemove = vi.fn().mockResolvedValue({ error: null })
+    const result = await completeReceiptUpload(uploadInput)
 
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_upload_intents: {
-            select: vi.fn().mockReturnValue({ eq: intentEqTransaction }),
-          },
-          receipt_files: {
-            insert: receiptInsert,
-          },
-        },
-        {
-          remove: storageRemove,
-        }
-      )
-    )
+    expect(result).toMatchObject({ success: true, receipt: receiptRecord })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(storageRemove).not.toHaveBeenCalled()
+  })
 
-    const result = await completeReceiptUpload({
-      transactionId: 'tx-1',
-      storagePath: '2026/other_transaction_1770000000000',
-      fileName: 'receipt.pdf',
-      fileType: 'application/pdf',
-      fileSize: 8 * 1024 * 1024,
-    })
+  it('should refuse a path that was not issued and leave the stored object alone', async () => {
+    // The path has the same shape as every receipt already in the bucket. Removing it on the
+    // caller's say-so deleted other payments' receipts; this used to assert exactly that.
+    const forged = { ...uploadInput, storagePath: '2026/other_transaction_1770000000000' }
+    const { storageRemove, rpc } = arrangeUpload(async () => ({ data: { outcome: 'not_issued' }, error: null }))
+
+    const result = await completeReceiptUpload(forged)
 
     expect(result).toEqual({ error: 'Uploaded receipt path was not issued for this transaction' })
-    expect(storageRemove).toHaveBeenCalledWith(['2026/other_transaction_1770000000000'])
-    expect(receiptInsert).not.toHaveBeenCalled()
+    expect(storageRemove).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalledWith('release_receipt_upload_intent', expect.anything())
+    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+  })
+
+  it('should remove nothing when the transaction does not exist', async () => {
+    const { storageRemove, rpc } = arrangeUpload(async () => ({ data: null, error: null }), null)
+
+    const result = await completeReceiptUpload(uploadInput)
+
+    expect(result).toEqual({ error: 'Transaction not found' })
+    expect(rpc).not.toHaveBeenCalled()
+    expect(storageRemove).not.toHaveBeenCalled()
+  })
+
+  it('should remove the object after a failed save only when the database releases the intent', async () => {
+    const { storageRemove, rpc } = arrangeUpload(async (name) => {
+      if (name === 'complete_receipt_upload') return { data: null, error: { message: 'boom' } }
+      if (name === 'release_receipt_upload_intent') return { data: 'released', error: null }
+      throw new Error(`Unexpected rpc ${name}`)
+    })
+
+    const result = await completeReceiptUpload(uploadInput)
+
+    expect(result).toEqual({ error: 'Failed to store receipt metadata.' })
+    expect(rpc).toHaveBeenCalledWith('release_receipt_upload_intent', {
+      p_transaction_id: 'tx-1',
+      p_storage_path: uploadInput.storagePath,
+      p_user_id: TEST_USER.user_id,
+    })
+    expect(storageRemove).toHaveBeenCalledWith([uploadInput.storagePath])
+  })
+
+  it.each(['referenced', 'completed', 'not_issued'])(
+    'should keep the object after a failed save when the database answers %s',
+    async (answer) => {
+      const { storageRemove } = arrangeUpload(async (name) => {
+        if (name === 'complete_receipt_upload') return { data: null, error: { message: 'boom' } }
+        return { data: answer, error: null }
+      })
+
+      const result = await completeReceiptUpload(uploadInput)
+
+      expect(result).toEqual({ error: 'Failed to store receipt metadata.' })
+      expect(storageRemove).not.toHaveBeenCalled()
+    }
+  )
+
+  it('should tell the user to upload again when the upload was completed and its file removed', async () => {
+    const { storageRemove } = arrangeUpload(async () => ({ data: { outcome: 'already_completed' }, error: null }))
+
+    const result = await completeReceiptUpload(uploadInput)
+
+    expect(result.error).toContain('Upload the receipt again')
+    expect(storageRemove).not.toHaveBeenCalled()
   })
 
   it('should return error when user lacks permission', async () => {
@@ -1180,7 +1185,20 @@ describe('createReceiptRule', () => {
       })
     )
 
-    expect(result).toEqual({ error: 'Add at least one match condition before saving this rule' })
+    expect(result).toEqual({ error: 'Add match keywords or a bank transaction type before saving this rule' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('should reject a rule that only names a direction', async () => {
+    // "Money out" alone would match every otherwise unmatched outgoing payment.
+    const result = await createReceiptRule(
+      makeRuleFormData({
+        match_description: '',
+        match_direction: 'out',
+      })
+    )
+
+    expect(result).toEqual({ error: 'Add match keywords or a bank transaction type before saving this rule' })
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 

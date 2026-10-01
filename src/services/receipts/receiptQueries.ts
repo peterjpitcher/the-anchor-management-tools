@@ -161,7 +161,7 @@ async function buildGroupSuggestion(
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
+  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -179,6 +179,11 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
+
+  // A failed count used to show as zero, and zero reads as "All clear".
+  if (statusCountsError) {
+    console.error('Failed to count receipt statuses', statusCountsError)
+  }
 
   if (costError) {
     console.error('Failed to fetch OpenAI usage total', costError)
@@ -219,6 +224,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       noReceiptRequired,
       cantFind,
     },
+    totalsUnavailable: Boolean(statusCountsError),
     needsAttentionValue: pending,
     lastImport: lastBatch ?? null,
     openAICost,

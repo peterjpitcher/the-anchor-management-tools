@@ -288,7 +288,8 @@ describe('deleteReceiptFile rollback safety', () => {
     formData.set('name', 'Rule A')
     formData.set('description', '')
     formData.set('match_description', '')
-    formData.set('match_transaction_type', '')
+    // A rule needs words to look for or a bank type; direction alone is no longer enough.
+    formData.set('match_transaction_type', 'Direct Debit')
     formData.set('match_direction', 'out')
     formData.set('match_min_amount', '')
     formData.set('match_max_amount', '')
@@ -304,7 +305,7 @@ describe('deleteReceiptFile rollback safety', () => {
         name: 'Rule A',
         description: null,
         match_description: null,
-        match_transaction_type: null,
+        match_transaction_type: 'Direct Debit',
         match_direction: 'out',
         match_min_amount: null,
         match_max_amount: null,

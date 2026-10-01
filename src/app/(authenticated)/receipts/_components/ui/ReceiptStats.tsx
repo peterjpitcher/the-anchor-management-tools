@@ -25,8 +25,19 @@ interface ReceiptStatsProps {
 
 /** A fragment: the alert and the figures are separate blocks in the page's 24px stack. */
 export function ReceiptStats({ summary }: ReceiptStatsProps) {
+  // When the counts could not be read they are unknown. Showing 0 and "All clear" would say
+  // there is nothing to do, which is the one thing we do not know.
+  const unknown = Boolean(summary.totalsUnavailable)
+  const countValue = (value: number) => (unknown ? '?' : value)
+  const countHint = (value: number) => (unknown ? 'Could not load' : formatCount(value))
+
   return (
     <>
+      {unknown && (
+        <Alert tone="danger" title="The transaction counts could not be loaded">
+          The figures below are not known, not zero. Refresh the page to try again.
+        </Alert>
+      )}
       {summary.failedAiJobCount > 0 && (
         <Alert tone="warning" title={`${summary.failedAiJobCount} AI classification job${summary.failedAiJobCount !== 1 ? 's' : ''} failed`}>
           These could not be retried automatically. Use Re-classify Untagged at the top of the page to try them again.
@@ -34,11 +45,11 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
       )}
       <StatGrid columns={6}>
         <Stat label="OpenAI spend" value={formatCurrencyStrict(summary.openAICost)} hint={aiSpendHint(summary.openAICost, summary.aiUsageBreakdown)} />
-        <Stat label="Pending" value={summary.totals.pending} hint={formatCount(summary.totals.pending)} />
-        <Stat label="Completed" value={summary.totals.completed} hint={formatCount(summary.totals.completed)} />
-        <Stat label="Auto completed" value={summary.totals.autoCompleted} hint={formatCount(summary.totals.autoCompleted)} />
-        <Stat label="No receipt required" value={summary.totals.noReceiptRequired} hint={formatCount(summary.totals.noReceiptRequired)} />
-        <Stat label="Can't find" value={summary.totals.cantFind} hint={formatCount(summary.totals.cantFind)} />
+        <Stat label="Pending" value={countValue(summary.totals.pending)} hint={countHint(summary.totals.pending)} />
+        <Stat label="Completed" value={countValue(summary.totals.completed)} hint={countHint(summary.totals.completed)} />
+        <Stat label="Auto completed" value={countValue(summary.totals.autoCompleted)} hint={countHint(summary.totals.autoCompleted)} />
+        <Stat label="No receipt required" value={countValue(summary.totals.noReceiptRequired)} hint={countHint(summary.totals.noReceiptRequired)} />
+        <Stat label="Can't find" value={countValue(summary.totals.cantFind)} hint={countHint(summary.totals.cantFind)} />
       </StatGrid>
     </>
   )

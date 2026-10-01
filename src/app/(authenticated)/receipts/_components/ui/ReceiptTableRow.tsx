@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import { Badge, Button, ConfirmDialog, FileButton, IconButton, Input, Select, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
+  updateReceiptNote,
   deleteReceiptFile,
   getReceiptSignedUrl,
   updateReceiptClassification,
@@ -247,14 +248,12 @@ export function ReceiptTableRow({
     }
 
     startTransition(async () => {
-      const result = await markReceiptTransaction({
+      const result = await updateReceiptNote({
         transactionId: transaction.id,
-        status: transaction.status,
-        note: formatted.length ? formatted : undefined,
-        receiptRequired: transaction.receipt_required
+        note: formatted.length ? formatted : null,
       })
       if (result?.error || !result?.transaction) {
-        toast.error(result?.error ?? 'Failed')
+        toast.error(result?.error ?? 'Failed to save the note')
         return
       }
       onUpdate({

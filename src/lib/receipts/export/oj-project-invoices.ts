@@ -177,7 +177,7 @@ async function loadInvoiceIdsFromReceiptMatchesInRange(
     .not('invoice_id', 'is', null)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
-    .in('match_status', ['matched', 'payment_recorded', 'already_paid', 'amount_mismatch'])
+    .in('match_status', ['matched', 'payment_recorded', 'already_paid', 'amount_mismatch', 'vendor_amount_matched'])
     .order('transaction_date', { ascending: true })
 
   if (error) {

@@ -65,7 +65,7 @@ export const groupRuleInputSchema = z.object({
   matchDescription: z.string().trim().max(300).optional(),
   description: z.string().trim().max(500).optional(),
   direction: z.enum(['in', 'out', 'both']).default('both'),
-  autoStatus: receiptTransactionStatusSchema.default('no_receipt_required'),
+  autoStatus: receiptTransactionStatusSchema.default('pending'),
   vendorName: z.union([z.string(), z.null()]).optional(),
   expenseCategory: z.union([z.string(), z.null()]).optional(),
 })

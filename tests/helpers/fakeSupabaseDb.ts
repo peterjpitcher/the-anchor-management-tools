@@ -1,0 +1,315 @@
+/**
+ * A small in-memory stand-in for the Supabase client, for tests that need to run real service
+ * code against rows and then look at what was written.
+ *
+ * It covers the query shapes the receipts services use: select with eq, in, is, gt, order, range
+ * and limit; update and delete with filters; insert; `maybeSingle` and `single`. An update
+ * bumps `updated_at`, as the database triggers do, so optimistic "still as I read it" writes
+ * behave as they do for real.
+ *
+ * It is not a Postgres. Anything that depends on a lock, a constraint or a function body is
+ * tested against a real database in tests/sql.
+ */
+
+type Row = Record<string, unknown>
+type QueryResult = { data: unknown; error: { message: string } | null; count?: number | null }
+
+type Failure = {
+  table: string
+  operation: 'select' | 'update' | 'insert' | 'delete'
+  message: string
+  /** Fail only this many times, then behave. Omit to fail every time. */
+  times?: number
+}
+
+export type FakeDb = {
+  client: {
+    from: (table: string) => FakeTable
+    rpc: (name: string, args?: Row) => Promise<QueryResult>
+  }
+  rows: (table: string) => Row[]
+  /** Every write, in order, for assertions about what was and was not touched. */
+  writes: Array<{ table: string; operation: 'update' | 'insert' | 'delete'; payload?: Row; ids: unknown[] }>
+  failNext: (failure: Failure) => void
+  /** Runs just before an update is applied, to model another writer getting in first. */
+  beforeUpdate: (hook: (table: string, matched: Row[]) => void) => void
+  onRpc: (handler: (name: string, args: Row) => QueryResult | Promise<QueryResult>) => void
+}
+
+type FakeTable = {
+  select: (columns?: string, options?: { count?: string; head?: boolean }) => FakeQuery
+  update: (payload: Row) => FakeQuery
+  insert: (payload: Row | Row[]) => FakeQuery
+  delete: () => FakeQuery
+}
+
+let clock = 0
+function nextTimestamp(): string {
+  clock += 1
+  return new Date(Date.UTC(2026, 9, 1, 12, 0, 0, clock)).toISOString()
+}
+
+function likeMatcher(pattern: string): (value: unknown) => boolean {
+  const source = pattern
+    .split('%')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+  const expression = new RegExp(`^${source}$`, 'i')
+  return (value) => typeof value === 'string' && expression.test(value)
+}
+
+/** Splits on commas that are not inside the brackets of an `in.(...)` list. */
+function splitOrTerms(expression: string): string[] {
+  const terms: string[] = []
+  let depth = 0
+  let current = ''
+  for (const char of expression) {
+    if (char === '(') depth += 1
+    if (char === ')') depth -= 1
+    if (char === ',' && depth === 0) {
+      terms.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  if (current) terms.push(current)
+  return terms
+}
+
+function parseOrTerm(term: string): (row: Row) => boolean {
+  const [column, operator, ...rest] = term.split('.')
+  const value = rest.join('.')
+  if (operator === 'is' && value === 'null') return (row) => (row[column] ?? null) === null
+  if (operator === 'eq') return (row) => String(row[column]) === value
+  if (operator === 'in') {
+    const values = value
+      .replace(/^\(|\)$/g, '')
+      .split(',')
+      .map((entry) => entry.replace(/^"|"$/g, ''))
+    return (row) => values.includes(String(row[column]))
+  }
+  throw new Error(`fakeSupabaseDb: unsupported or() term ${term}`)
+}
+
+class FakeQuery implements PromiseLike<QueryResult> {
+  private filters: Array<(row: Row) => boolean> = []
+  private orders: Array<{ column: string; ascending: boolean }> = []
+  private window: [number, number] | null = null
+  private returning = false
+
+  constructor(
+    private db: InternalDb,
+    private table: string,
+    private operation: 'select' | 'update' | 'insert' | 'delete',
+    private payload?: Row | Row[]
+  ) {
+    this.returning = operation === 'select'
+  }
+
+  eq(column: string, value: unknown) {
+    this.filters.push((row) => (row[column] ?? null) === (value ?? null))
+    return this
+  }
+
+  in(column: string, values: unknown[]) {
+    this.filters.push((row) => values.includes(row[column]))
+    return this
+  }
+
+  is(column: string, value: unknown) {
+    this.filters.push((row) => (row[column] ?? null) === value)
+    return this
+  }
+
+  gt(column: string, value: string | number) {
+    this.filters.push((row) => (row[column] as string | number) > value)
+    return this
+  }
+
+  ilike(column: string, pattern: string) {
+    const matches = likeMatcher(pattern)
+    this.filters.push((row) => matches(row[column]))
+    return this
+  }
+
+  /** Supports the two forms the services use: `not(col, 'is', null)` and `not(col, 'ilike', pattern)`. */
+  not(column: string, operator: string, value: unknown) {
+    if (operator === 'is') {
+      this.filters.push((row) => (row[column] ?? null) !== value)
+    } else if (operator === 'ilike') {
+      const matches = likeMatcher(String(value))
+      this.filters.push((row) => !matches(row[column]))
+    } else {
+      throw new Error(`fakeSupabaseDb: unsupported not(${operator})`)
+    }
+    return this
+  }
+
+  /** Supports `col.is.null`, `col.eq.value` and `col.in.(a,b)` terms joined by commas. */
+  or(expression: string) {
+    const terms = splitOrTerms(expression).map(parseOrTerm)
+    this.filters.push((row) => terms.some((term) => term(row)))
+    return this
+  }
+
+  order(column: string, config?: { ascending?: boolean }) {
+    this.orders.push({ column, ascending: config?.ascending !== false })
+    return this
+  }
+
+  range(from: number, to: number) {
+    this.window = [from, to]
+    return this
+  }
+
+  limit(count: number) {
+    this.window = [0, count - 1]
+    return this
+  }
+
+  select() {
+    this.returning = true
+    return this
+  }
+
+  async maybeSingle(): Promise<QueryResult> {
+    const result = await this.execute()
+    if (result.error) return { data: null, error: result.error }
+    const rows = (result.data as Row[] | null) ?? []
+    return { data: rows[0] ?? null, error: null }
+  }
+
+  async single(): Promise<QueryResult> {
+    const result = await this.execute()
+    if (result.error) return { data: null, error: result.error }
+    const rows = (result.data as Row[] | null) ?? []
+    if (rows.length !== 1) return { data: null, error: { message: 'Expected exactly one row' } }
+    return { data: rows[0], error: null }
+  }
+
+  then<TResult1 = QueryResult, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2> {
+    return this.execute().then(onfulfilled, onrejected)
+  }
+
+  private async execute(): Promise<QueryResult> {
+    const failure = this.db.takeFailure(this.table, this.operation)
+    if (failure) return { data: null, error: { message: failure } }
+
+    const table = this.db.table(this.table)
+
+    if (this.operation === 'insert') {
+      const incoming = (Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]).map((row) => ({
+        id: `fake-${this.table}-${table.length + 1}-${Math.random().toString(16).slice(2, 8)}`,
+        ...row,
+      }))
+      table.push(...incoming)
+      this.db.writes.push({ table: this.table, operation: 'insert', ids: incoming.map((row) => row.id) })
+      return { data: this.returning ? incoming : null, error: null }
+    }
+
+    let matched = table.filter((row) => this.filters.every((filter) => filter(row)))
+
+    if (this.operation === 'update') {
+      this.db.runBeforeUpdate(this.table, matched)
+      // Re-evaluate: the hook models another writer changing the row between read and write.
+      matched = table.filter((row) => this.filters.every((filter) => filter(row)))
+      for (const row of matched) {
+        Object.assign(row, this.payload as Row)
+        row.updated_at = nextTimestamp()
+      }
+      this.db.writes.push({
+        table: this.table,
+        operation: 'update',
+        payload: this.payload as Row,
+        ids: matched.map((row) => row.id),
+      })
+      return { data: this.returning ? matched.map((row) => ({ ...row })) : null, error: null }
+    }
+
+    if (this.operation === 'delete') {
+      for (const row of matched) table.splice(table.indexOf(row), 1)
+      this.db.writes.push({ table: this.table, operation: 'delete', ids: matched.map((row) => row.id) })
+      return { data: this.returning ? matched : null, error: null }
+    }
+
+    const total = matched.length
+    for (const { column, ascending } of [...this.orders].reverse()) {
+      matched = [...matched].sort((left, right) => {
+        const a = left[column] as string | number
+        const b = right[column] as string | number
+        if (a === b) return 0
+        return (a < b ? -1 : 1) * (ascending ? 1 : -1)
+      })
+    }
+    if (this.window) matched = matched.slice(this.window[0], this.window[1] + 1)
+    return { data: matched.map((row) => ({ ...row })), error: null, count: total }
+  }
+}
+
+class InternalDb {
+  tables = new Map<string, Row[]>()
+  writes: FakeDb['writes'] = []
+  private failures: Failure[] = []
+  private updateHook: ((table: string, matched: Row[]) => void) | null = null
+  rpcHandler: ((name: string, args: Row) => QueryResult | Promise<QueryResult>) | null = null
+
+  table(name: string): Row[] {
+    if (!this.tables.has(name)) this.tables.set(name, [])
+    return this.tables.get(name) as Row[]
+  }
+
+  addFailure(failure: Failure) {
+    this.failures.push({ ...failure })
+  }
+
+  takeFailure(table: string, operation: Failure['operation']): string | null {
+    const failure = this.failures.find((entry) => entry.table === table && entry.operation === operation)
+    if (!failure) return null
+    if (failure.times !== undefined) {
+      failure.times -= 1
+      if (failure.times <= 0) this.failures.splice(this.failures.indexOf(failure), 1)
+    }
+    return failure.message
+  }
+
+  setUpdateHook(hook: (table: string, matched: Row[]) => void) {
+    this.updateHook = hook
+  }
+
+  runBeforeUpdate(table: string, matched: Row[]) {
+    this.updateHook?.(table, matched)
+  }
+}
+
+export function createFakeDb(seed: Record<string, Row[]> = {}): FakeDb {
+  const db = new InternalDb()
+  for (const [table, rows] of Object.entries(seed)) {
+    db.tables.set(table, rows.map((row) => ({ ...row })))
+  }
+
+  return {
+    client: {
+      from: (table: string): FakeTable => ({
+        select: () => new FakeQuery(db, table, 'select'),
+        update: (payload: Row) => new FakeQuery(db, table, 'update', payload),
+        insert: (payload: Row | Row[]) => new FakeQuery(db, table, 'insert', payload),
+        delete: () => new FakeQuery(db, table, 'delete'),
+      }),
+      rpc: async (name: string, args: Row = {}) => {
+        if (!db.rpcHandler) throw new Error(`Unexpected rpc: ${name}`)
+        return db.rpcHandler(name, args)
+      },
+    },
+    rows: (table: string) => db.table(table),
+    writes: db.writes,
+    failNext: (failure: Failure) => db.addFailure(failure),
+    beforeUpdate: (hook) => db.setUpdateHook(hook),
+    onRpc: (handler) => {
+      db.rpcHandler = handler
+    },
+  }
+}

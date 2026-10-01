@@ -107,10 +107,16 @@ function extractContent(content: unknown): string | null {
   return null
 }
 
-function normaliseVendorName(value: unknown): string | null {
+// What a model writes when it means "no answer". Five pending rule suggestions named their
+// vendor "null" because the string was taken at face value.
+const PLACEHOLDER_VENDOR_NAMES = new Set(['null', 'none', 'unknown', 'n/a', 'na', 'undefined', 'not applicable', '-'])
+
+export function normaliseVendorName(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
-  return trimmed.length ? trimmed.slice(0, 120) : null
+  if (!trimmed.length) return null
+  if (PLACEHOLDER_VENDOR_NAMES.has(trimmed.toLowerCase())) return null
+  return trimmed.slice(0, 120)
 }
 
 function normaliseExpenseCategory(

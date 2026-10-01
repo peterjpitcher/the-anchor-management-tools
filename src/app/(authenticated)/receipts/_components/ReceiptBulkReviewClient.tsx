@@ -33,11 +33,13 @@ import { RECEIPT_STATUS_LABEL, RECEIPT_SUGGESTION_SOURCE_LABEL, RECEIPT_SUGGESTI
 const STATUS_LABELS = RECEIPT_STATUS_LABEL
 
 const EXPENSE_OPTIONS = receiptExpenseCategorySchema.options
+// "Leave pending" comes first and is the default: a rule that only names a vendor must not stop
+// receipts being chased for it.
 const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = [
+  'pending',
   'no_receipt_required',
   'auto_completed',
   'completed',
-  'pending',
   'cant_find',
 ]
 const RULE_DIRECTION_OPTIONS: Array<{ value: 'in' | 'out' | 'both'; label: string }> = [
@@ -144,7 +146,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
         name: defaultRuleName(group.details),
         matchDescription: group.details,
         direction: defaultRuleDirection(group.totalIn, group.totalOut),
-        autoStatus: 'no_receipt_required',
+        autoStatus: 'pending',
         setVendor: Boolean(group.suggestion.vendorName),
         setExpense: Boolean(group.suggestion.expenseCategory),
       }
@@ -182,7 +184,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
         name: defaultRuleName(group.details),
         matchDescription: group.details,
         direction: defaultRuleDirection(group.totalIn, group.totalOut),
-        autoStatus: 'no_receipt_required',
+        autoStatus: 'pending',
         setVendor: Boolean(group.suggestion.vendorName),
         setExpense: Boolean(group.suggestion.expenseCategory),
       }

@@ -131,6 +131,8 @@ export type ReceiptWorkspaceSummary = {
     noReceiptRequired: number
     cantFind: number
   }
+  /** True when the status counts could not be read. The totals are then unknown, not zero. */
+  totalsUnavailable?: boolean
   needsAttentionValue: number
   lastImport?: ReceiptBatch | null
   openAICost: number
@@ -444,6 +446,12 @@ export type AutomationResult = {
   matched: number
   vendorIntended: number
   expenseIntended: number
+  /** Matched payments where a different value was left alone because a person, the import or invoice pairing decided it. */
+  protectedCount: number
+  /** Payments that changed between the read and the write, so the rule left them alone. */
+  conflicts: number
+  /** Payments the rule tried to update and could not. */
+  failed: number
   samples: Array<{
     id: string
     status: ReceiptTransaction['status']
@@ -483,6 +491,9 @@ export type RetroStepSuccess = {
   classificationUpdated: number
   vendorIntended: number
   expenseIntended: number
+  protectedCount: number
+  conflicts: number
+  failed: number
   samples: AutomationResult['samples']
   nextOffset: number
   total: number

@@ -44,12 +44,25 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
         toast.error(result.error)
         return
       }
+      // A repeat upload adds nothing. Saying "Imported 0" in green made it look like a success.
+      if (result?.alreadyImported) {
+        toast.warning('This file has already been imported. Nothing was added.')
+        setStatementFile(null)
+        return
+      }
       const autoApplied = result?.autoApplied ?? 0
       const autoClassified = result?.autoClassified ?? 0
+      const skipped = result?.skipped ?? 0
       const parts = [`Imported ${result?.inserted ?? 0} new transactions`]
+      if (skipped > 0) parts.push(`${skipped} already held`)
       if (autoApplied > 0) parts.push(`${autoApplied} auto-matched`)
       if (autoClassified > 0) parts.push(`${autoClassified} auto-classified`)
-      toast.success(parts.join(' · '))
+      if (result?.warning) {
+        // The import went in, but something after it did not. Keep it on screen long enough to read.
+        toast.warning(`${parts.join(' · ')}. ${result.warning}`, { duration: 12000 })
+      } else {
+        toast.success(parts.join(' · '))
+      }
       setStatementFile(null)
       router.refresh()
     })
