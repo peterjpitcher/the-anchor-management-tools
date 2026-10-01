@@ -138,6 +138,7 @@ describe('BookingDetailClient party size changes', () => {
         canEdit
         canManage
         canRefund={false}
+        depositRefunds={[]}
       />
     )
 
@@ -187,7 +188,7 @@ describe('BookingDetailClient party size changes', () => {
 
   it('offers "Notify guest", true whether the request goes by text or by email first, and unticking it sends nothing', async () => {
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/move-table`, { cache: 'no-store' })
     })
@@ -216,7 +217,7 @@ describe('BookingDetailClient party size changes', () => {
   it('says the deposit link went by SMS on the text-only path, as before', async () => {
     requestTableBookingActionMock.mockResolvedValue({ success: true, depositRequired: true, smsSent: true })
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
 
     await saveNewPartySize(user, '9')
 
@@ -232,7 +233,7 @@ describe('BookingDetailClient party size changes', () => {
       depositNotification: { status: 'sent', channel: 'email', fallbackUsed: false, error: null },
     })
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
 
     await saveNewPartySize(user, '9')
 
@@ -248,7 +249,7 @@ describe('BookingDetailClient party size changes', () => {
       depositNotification: { status: 'failed', channel: null, fallbackUsed: false, error: 'Twilio 21610' },
     })
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
 
     await saveNewPartySize(user, '9')
 
@@ -266,7 +267,7 @@ describe('BookingDetailClient party size changes', () => {
       guest_notification: { status: 'no_channel', channel: null, fallbackUsed: false, error: 'no_channel_available' },
     })
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
 
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
@@ -287,7 +288,7 @@ describe('BookingDetailClient party size changes', () => {
   it('shows nothing new when a cancellation comes back from the text-only path', async () => {
     requestTableBookingActionMock.mockResolvedValue({ success: true, data: { id: BOOKING_ID, status: 'cancelled' } })
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
 
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
@@ -319,6 +320,7 @@ describe('BookingDetailClient party size changes', () => {
         canEdit
         canManage
         canRefund={false}
+        depositRefunds={[]}
       />
     )
 
