@@ -16,7 +16,7 @@ Gate for every release (all must pass, on Node 20):
 
 Recorded here so they travel with the commits. Each is a working default from spec section 3.1 until the owner rules otherwise.
 
-- W1: the AI writes the vendor only; its category is a proposal a person accepts.
+- W1: RULED 1 October 2026, the AI writes the category as well as the vendor (source `ai`, blanks only). "No category applies" stays a proposal. Built after Release 6.
 - W2: an unambiguous wage match is classified and closed automatically, as today's payroll rules do.
 - W3: status comes from the winning rule; vendor and category fall through to the next rule that sets them.
 - W4: the lock date applies to every automated or bulk writer.

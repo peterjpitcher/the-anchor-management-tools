@@ -266,6 +266,109 @@ while IFS= read -r step <&3; do
   esac
 done 3<<<"$RECEIPTS_STEPS"
 
+# The rollback, proved on a second, clean database: every migration, the rollback, then every
+# migration again. It cannot use the first database: the rollback refuses to run while a payment
+# carries a value the old schema does not allow, and the tests above leave such rows behind.
+ROLLBACK_FILE="20261001190000_receipts_overhaul_all_six.sql"
+ROLLBACK_DB="receipts_rollback_check"
+
+# Tables, columns, constraints and indexes of the receipts tables, one per line. Grants are left
+# out on purpose: the rollback does not give back what the last migration took from anon.
+schema_shape() {
+  run_sql -d "$ROLLBACK_DB" -tA <<'SQL'
+SELECT line FROM (
+  SELECT 'column ' || table_name || '.' || column_name || ' ' || data_type || ' default=' || coalesce(column_default, '-') || ' null=' || is_nullable AS line
+  FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'receipt%'
+  UNION ALL
+  SELECT 'constraint ' || conrelid::regclass::text || '.' || conname || ' ' || pg_get_constraintdef(oid)
+  FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND conrelid::regclass::text LIKE '%receipt%'
+  UNION ALL
+  SELECT 'index ' || indexname || ' ' || indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename LIKE 'receipt%'
+  UNION ALL
+  SELECT 'relation ' || relname || ' ' || relkind::text
+  FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname LIKE 'receipt%' AND relkind IN ('r', 'v')
+) shape ORDER BY line;
+SQL
+}
+
+apply_every_migration() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      migration:*) run_sql -d "$ROLLBACK_DB" < "$ROOT/supabase/migrations/${line#migration:}" >/dev/null 2>&1 || return 1 ;;
+    esac
+  done <<<"$RECEIPTS_STEPS"
+}
+
+rollback_check() {
+  local before after left restored
+  run_sql -c "CREATE DATABASE $ROLLBACK_DB" >/dev/null || return 1
+  run_sql -d "$ROLLBACK_DB" < "$HERE/harness-schema.sql" >/dev/null || return 1
+  before="$(schema_shape)"
+
+  apply_every_migration || { echo "    the migrations did not apply to the clean database"; return 1; }
+  if ! run_sql -d "$ROLLBACK_DB" < "$ROOT/supabase/rollbacks/$ROLLBACK_FILE" >/dev/null 2>&1; then
+    run_sql -d "$ROLLBACK_DB" < "$ROOT/supabase/rollbacks/$ROLLBACK_FILE" 2>&1 | tail -5
+    return 1
+  fi
+  after="$(schema_shape)"
+
+  if [ "$before" != "$after" ]; then
+    echo "    the tables are not as they were before the migrations:"
+    diff <(echo "$before") <(echo "$after") | head -20
+    return 1
+  fi
+
+  # None of the functions the overhaul added is left.
+  left="$(run_sql -d "$ROLLBACK_DB" -tA <<'SQL'
+SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname IN (
+  'complete_receipt_upload', 'release_receipt_upload_intent', 'apply_receipt_invoice_match', 'import_receipt_statement',
+  'receipt_vendor_survivor', 'resolve_receipt_vendor', 'merge_receipt_vendor', 'rename_receipt_vendor',
+  'undo_receipt_vendor_operation', 'get_receipt_vendor_directory', 'receipts_locked_before', 'set_receipts_locked_before',
+  'receipt_write_payment_fields', 'receipt_payment_field_image', 'receipt_payment_holds_fields', 'apply_receipt_rule_change',
+  'apply_receipt_rule_run', 'undo_receipt_rule_run', 'decide_receipt_ai_category', 'approve_receipt_rule_category_suggestion',
+  'get_receipt_ai_usage', 'delete_receipt_file', 'mark_receipt_transaction', 'count_receipts_completed_without_receipt',
+  'record_receipt_invoice_payment', 'attach_receipt_invoice_file'
+);
+SQL
+  )"
+  if [ "$(tr -d '[:space:]' <<<"$left")" != "0" ]; then
+    echo "    $left functions the overhaul added are still there"
+    return 1
+  fi
+
+  # The six functions that were there before are back exactly as production had them on
+  # 1 October 2026: these are md5(pg_get_functiondef(oid)) read from production that day.
+  restored="$(run_sql -d "$ROLLBACK_DB" -tA <<'SQL'
+SELECT count(*) FROM pg_proc p
+WHERE p.pronamespace = 'public'::regnamespace
+  AND (p.proname, md5(pg_get_functiondef(p.oid))) IN (
+    ('get_receipt_vendor_monthly_totals', '7ab0e41a471b38e7d61ec087be688f5c'),
+    ('get_receipt_vendor_transactions', 'a46b388c7e7d33b9a88197172b87bc55'),
+    ('get_receipt_vendor_trends', '4664279916a89bd38ebb396a96ab0ec7'),
+    ('apply_receipt_group_classification_atomic', '98135e5111a221398d6dadfb91b12be7'),
+    ('get_receipt_detail_groups', '83c080fbceb05f46320ba61db7d0f257'),
+    ('get_receipt_detail_groups', '9125e12a3a14c9ca209348d14d895881')
+  );
+SQL
+  )"
+  if [ "$(tr -d '[:space:]' <<<"$restored")" != "6" ]; then
+    echo "    only $restored of the 6 earlier functions came back as production had them"
+    return 1
+  fi
+
+  apply_every_migration || { echo "    the migrations did not apply again after the rollback"; return 1; }
+}
+
+if [ "$failed" -eq 0 ]; then
+  if rollback_check; then
+    echo "  rollback $ROLLBACK_FILE, then every migration again: pass"
+  else
+    echo "  rollback $ROLLBACK_FILE: FAIL"
+    failed=1
+  fi
+fi
+
 if [ "$failed" -ne 0 ]; then
   echo "FAIL: receipts SQL tests" >&2
   exit 1

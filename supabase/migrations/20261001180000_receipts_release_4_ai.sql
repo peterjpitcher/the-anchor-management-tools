@@ -67,8 +67,9 @@ CREATE TABLE IF NOT EXISTS public.receipt_ai_attempts (
   -- Changing the prompt in a way that could change answers bumps this, and payments are asked again.
   prompt_version text NOT NULL,
   outcome text NOT NULL CHECK (outcome = ANY (ARRAY[
-    'vendor_written'::text,      -- the vendor was written onto the payment
-    'category_proposed'::text,   -- only a category was proposed
+    'vendor_written'::text,      -- the vendor was written onto the payment (a category may have been too)
+    'category_written'::text,    -- only a category was written onto the payment
+    'category_proposed'::text,   -- only "no category applies" was proposed
     'nothing_identified'::text,  -- the model could not tell
     'low_confidence'::text,      -- it answered below the confidence floor
     'skipped_protected'::text,   -- a person or a rule had decided by the time it answered
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS public.receipt_ai_attempts (
   proposed_expense_category text,
   proposed_no_category boolean NOT NULL DEFAULT false,
   category_state text NOT NULL DEFAULT 'none' CHECK (category_state = ANY (ARRAY[
-    'proposed'::text, 'accepted'::text, 'edited'::text, 'dismissed'::text, 'superseded'::text, 'none'::text
+    'proposed'::text, 'written'::text, 'accepted'::text, 'edited'::text, 'dismissed'::text, 'superseded'::text, 'none'::text
   ])),
   confidence smallint CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 100)),
   reasoning text,
