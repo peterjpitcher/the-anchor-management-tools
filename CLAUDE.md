@@ -29,6 +29,7 @@ npx tsc --noEmit        # app code only (tsconfig.json excludes tests/ and *.tes
 npm run typecheck:tests # tests/ plus co-located src/**/*.test.ts (tsconfig.tests.json); CI runs both
 npm test                # vitest run (coverage floors: lines 42, branches 34, functions 52)
 npm run test:coverage
+npm run test:pg         # every scripts/testing/*-postgres.py harness on a throwaway local Postgres (PG_BIN, default Homebrew); CI runs it on 15
 npm run knip            # unused files and exports
 npm run build
 npx supabase db push    # read Database and migrations below first
