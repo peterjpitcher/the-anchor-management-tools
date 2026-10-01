@@ -21,4 +21,5 @@ export * from './receiptMutations'
 
 // Governance jobs, canonical vendors, suggestions, and diagnostics
 export * from './receiptGovernance'
+export { performSuggestReceiptRules } from './receiptRuleProposals'
 export * from './receiptInvoiceReconciliation'

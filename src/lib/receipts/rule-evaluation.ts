@@ -26,6 +26,8 @@ export type EvaluableRule = ReceiptRuleMatchable & {
   auto_status: ReceiptTransaction['status']
   set_vendor_name: string | null
   set_expense_category: string | null
+  /** The rule marks its payments "no category applies". */
+  set_no_category?: boolean | null
   vendor_id?: string | null
 }
 
@@ -47,7 +49,7 @@ export type EvaluablePayment = Pick<
   | 'expense_category_source'
   | 'expense_rule_id'
   | 'updated_at'
->
+> & { no_category_applies?: boolean | null }
 
 export type RuleEvaluationOptions = {
   /** Also classify payments that are no longer pending. Their status is never changed. */
@@ -149,7 +151,9 @@ export function evaluatePaymentAgainstRules<TRule extends EvaluableRule>(
   const bestStatus = ranked[0].rule
   const bestVendor = ranked.find((entry) => Boolean(entry.rule.set_vendor_name))?.rule ?? null
   const bestExpense =
-    direction === 'out' ? ranked.find((entry) => Boolean(entry.rule.set_expense_category))?.rule ?? null : null
+    direction === 'out'
+      ? ranked.find((entry) => Boolean(entry.rule.set_expense_category) || Boolean(entry.rule.set_no_category))?.rule ?? null
+      : null
 
   // With a target rule, only the fields it wins are its to write.
   const owns = (rule: TRule | null): TRule | null => (rule && (!target || rule.id === target) ? rule : null)
@@ -163,7 +167,13 @@ export function evaluatePaymentAgainstRules<TRule extends EvaluableRule>(
   const winners = { status: statusRule, vendor: vendorRule, expense: expenseRule }
 
   const vendorValueDiffers = Boolean(vendorRule) && payment.vendor_name !== vendorRule?.set_vendor_name
-  const expenseValueDiffers = Boolean(expenseRule) && payment.expense_category !== expenseRule?.set_expense_category
+  // What the category rule would leave the payment holding: a category, or the "no category
+  // applies" flag with the category empty.
+  const ruleSetsNoCategory = Boolean(expenseRule?.set_no_category)
+  const ruleCategory = ruleSetsNoCategory ? null : expenseRule?.set_expense_category ?? null
+  const expenseValueDiffers =
+    Boolean(expenseRule) &&
+    ((payment.expense_category ?? null) !== ruleCategory || Boolean(payment.no_category_applies) !== ruleSetsNoCategory)
   // Same value, but not yet recorded as this rule's: the rule takes it over from the AI or an older rule.
   const vendorOwnerDiffers =
     Boolean(vendorRule) && (payment.vendor_source !== 'rule' || payment.vendor_rule_id !== vendorRule?.id)
@@ -233,11 +243,16 @@ export function evaluatePaymentAgainstRules<TRule extends EvaluableRule>(
   }
 
   if (expenseChanged && expenseRule) {
-    after.expense_category = expenseRule.set_expense_category
+    after.expense_category = ruleCategory
+    // Written only when the rule sets the flag or the payment carries it, so a payment that never
+    // had it is left exactly as before.
+    if (ruleSetsNoCategory || payment.no_category_applies) {
+      after.no_category_applies = ruleSetsNoCategory
+    }
     after.expense_category_source = 'rule' satisfies ReceiptClassificationSource
     after.expense_rule_id = expenseRule.id
     after.expense_updated_at = options.now
-    note(expenseRule, `Expense → ${expenseRule.set_expense_category}`)
+    note(expenseRule, ruleSetsNoCategory ? 'Expense → no category applies' : `Expense → ${ruleCategory}`)
   }
 
   for (const { rule, notes } of notesByRule.values()) {

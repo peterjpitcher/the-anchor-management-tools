@@ -429,13 +429,26 @@ describe('the rule engine with a lock date and per-field rules', () => {
 describe('receipt settings', () => {
   it('reads the lock date and the matcher, with safe defaults', async () => {
     const { db } = arrange()
-    await expect(loadReceiptSettings(db.client as any)).resolves.toEqual({ lockDate: null, matcher: 'substring' })
+    await expect(loadReceiptSettings(db.client as any)).resolves.toEqual({
+      lockDate: null,
+      matcher: 'substring',
+      payrollReference: 'the anchor',
+    })
 
     db.rows('receipt_settings').push(
       { key: 'locked_before', value: { date: '2026-03-31' } },
-      { key: 'rule_matcher', value: { mode: 'word' } }
+      { key: 'rule_matcher', value: { mode: 'word' } },
+      { key: 'payroll_reference', value: { text: '  Staff Pay  ' } }
     )
-    await expect(loadReceiptSettings(db.client as any)).resolves.toEqual({ lockDate: '2026-03-31', matcher: 'word' })
+    await expect(loadReceiptSettings(db.client as any)).resolves.toEqual({
+      lockDate: '2026-03-31',
+      matcher: 'word',
+      payrollReference: 'Staff Pay',
+    })
+
+    // A blank reference would match every payment, so it falls back to the default.
+    db.rows('receipt_settings')[2].value = { text: '   ' }
+    await expect(loadReceiptSettings(db.client as any)).resolves.toMatchObject({ payrollReference: 'the anchor' })
 
     // A value that is not a real date is not a lock date.
     db.rows('receipt_settings')[0].value = { date: '2026-02-31' }

@@ -168,7 +168,7 @@ export const receiptRuleOutcomeSchema = z.enum(['pending', 'no_receipt_required'
   message: 'A rule can leave a transaction pending or mark it as not needing a receipt',
 });
 
-const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import', 'invoice']);
+const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import', 'invoice', 'ai_accepted']);
 
 export const receiptExpenseCategorySchema = z.enum([
   'Total Staff',
@@ -234,6 +234,11 @@ export const receiptRuleSchema = z.object({
   auto_status: receiptRuleOutcomeSchema.default('pending'),
   set_vendor_name: z.string().trim().max(120).optional(),
   set_expense_category: receiptExpenseCategorySchema.optional(),
+  // The rule marks its payments "no category applies". Never together with a category.
+  set_no_category: z.boolean().optional(),
+}).refine((data) => !(data.set_no_category && data.set_expense_category), {
+  path: ['set_expense_category'],
+  message: 'A rule sets a category or "no category applies", not both',
 }).refine((data) => {
   // Direction and amount only narrow a match. On their own they would catch every otherwise
   // unmatched payment going that way, so a rule needs words to look for or a bank type.

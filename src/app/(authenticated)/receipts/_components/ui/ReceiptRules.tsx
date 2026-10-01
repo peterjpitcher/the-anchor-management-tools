@@ -17,7 +17,6 @@ import {
   Input,
   SearchInput,
   Select,
-  TablePagination,
   toast,
 } from '@/ds'
 import {
@@ -25,14 +24,12 @@ import {
   createReceiptRule,
   updateReceiptRule,
   previewReceiptRule,
-  approveReceiptRuleSuggestion,
-  approveReceiptRuleSuggestions,
-  declineReceiptRuleSuggestion,
-  getReceiptRuleSuggestionsPage,
   type ClassificationRuleSuggestion,
   type RulePreviewResult,
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema, receiptRuleKindSchema } from '@/lib/validation'
+import { NO_CATEGORY_LABEL, NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
+import { RuleProposalsPanel } from './RuleProposalsPanel'
 import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
 import type { RuleRunPreview } from '@/services/receipts/receiptRuleRuns'
 import { RuleRunDialog } from './RuleRunDialog'
@@ -54,24 +51,6 @@ interface ReceiptRulesProps {
   onDismissSuggestion: () => void
 }
 
-const SUGGESTIONS_PAGE_SIZE = 20
-
-function suggestionEvidenceCount(suggestion: ReceiptRuleSuggestion): number {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  const count = evidence.transaction_count
-  if (typeof count === 'number') return count
-  return Array.isArray(suggestion.evidence_transaction_ids) ? suggestion.evidence_transaction_ids.length : 0
-}
-
-function suggestionAiConfidence(suggestion: ReceiptRuleSuggestion): number | null {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  return typeof evidence.ai_confidence === 'number' ? evidence.ai_confidence : null
-}
-
-function suggestionPreviewCount(suggestion: ReceiptRuleSuggestion): number | null {
-  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
-  return typeof evidence.preview_match_count === 'number' ? evidence.preview_match_count : null
-}
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
 const ruleKindOptions = receiptRuleKindSchema.options
@@ -199,54 +178,11 @@ export function ReceiptRules({
   // Checkbox draws its own tick, which a native form reset does not reach.
   const [newRuleReviewed, setNewRuleReviewed] = useState(false)
 
-  // Suggestions: server count + paging. Seed the loaded page from props; fetch more pages
-  // via getReceiptRuleSuggestionsPage. The selection drives the bulk "Approve selected".
-  const [suggestions, setSuggestions] = useState<ReceiptRuleSuggestion[]>(ruleSuggestions)
-  const [suggestionPage, setSuggestionPage] = useState(1)
-  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([])
-  const [isSuggestionsPending, startSuggestionsTransition] = useTransition()
-  const [isBulkApproving, startBulkApproveTransition] = useTransition()
-  const totalSuggestionPages = Math.max(1, Math.ceil(suggestionsTotal / SUGGESTIONS_PAGE_SIZE))
-
   useEffect(() => {
     if (pendingSuggestion) {
       setIsSectionOpen(true)
     }
   }, [pendingSuggestion])
-
-  // Keep the loaded suggestions in sync when the server re-supplies the first page
-  // (e.g. after router.refresh()), and reset paging/selection.
-  useEffect(() => {
-    setSuggestions(ruleSuggestions)
-    setSuggestionPage(1)
-    setSelectedSuggestionIds([])
-  }, [ruleSuggestions])
-
-  const allSuggestionsSelected = suggestions.length > 0 && selectedSuggestionIds.length === suggestions.length
-
-  function toggleSuggestionSelected(id: string) {
-    setSelectedSuggestionIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-    )
-  }
-
-  function toggleSelectAllSuggestions() {
-    setSelectedSuggestionIds((current) => (current.length === suggestions.length ? [] : suggestions.map((s) => s.id)))
-  }
-
-  function loadSuggestionsPage(nextPage: number) {
-    if (nextPage < 1 || nextPage > totalSuggestionPages) return
-    startSuggestionsTransition(async () => {
-      const result = await getReceiptRuleSuggestionsPage(nextPage, SUGGESTIONS_PAGE_SIZE)
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-      setSuggestions(result.suggestions)
-      setSuggestionPage(nextPage)
-      setSelectedSuggestionIds([])
-    })
-  }
 
   const filteredRules = useMemo(() => {
     const trimmedQuery = ruleSearch.trim().toLowerCase()
@@ -356,7 +292,7 @@ export function ReceiptRules({
     if (maxAmountInput) maxAmountInput.value = ''
 
     form.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    toast.success('Prefilled the new rule form from your classification')
+    toast.success('Prefilled the new rule form')
     onApplySuggestion(suggestion) // Notify parent to clear suggestion
   }
   
@@ -420,65 +356,6 @@ export function ReceiptRules({
       } else {
         toast.success(`Rule switched ${rule.is_active ? 'off' : 'on'}`)
       }
-      router.refresh()
-      setActiveRuleId(null)
-    })
-  }
-
-  async function handleApproveSuggestion(suggestionId: string, active = true) {
-    if (!canGovernRules) return
-    setActiveRuleId(suggestionId)
-    startRuleTransition(async () => {
-      const result = await approveReceiptRuleSuggestion(suggestionId, { active })
-      if (result?.error) {
-        toast.error(result.error)
-        setActiveRuleId(null)
-        return
-      }
-      if (result && 'warning' in result && result.warning) {
-        toast.error(result.warning)
-      } else {
-        toast.success(active ? 'Suggested rule approved' : 'Suggested rule approved as disabled')
-      }
-      router.refresh()
-      setActiveRuleId(null)
-    })
-  }
-
-  function handleApproveSelected(active = true) {
-    if (!canGovernRules || selectedSuggestionIds.length === 0) return
-    const ids = [...selectedSuggestionIds]
-    startBulkApproveTransition(async () => {
-      const result = await approveReceiptRuleSuggestions(ids, { active })
-      if (result?.error) {
-        toast.error(result.error)
-        return
-      }
-      const approved = result.approved ?? 0
-      const failed = result.failed ?? 0
-      if (failed > 0) {
-        toast.error(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}, ${failed} failed`)
-      } else if (result.warning) {
-        toast.error(result.warning)
-      } else {
-        toast.success(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}`)
-      }
-      setSelectedSuggestionIds([])
-      router.refresh()
-    })
-  }
-
-  async function handleDeclineSuggestion(suggestionId: string) {
-    if (!canGovernRules) return
-    setActiveRuleId(suggestionId)
-    startRuleTransition(async () => {
-      const result = await declineReceiptRuleSuggestion(suggestionId)
-      if (result?.error) {
-        toast.error(result.error)
-        setActiveRuleId(null)
-        return
-      }
-      toast.success('Suggested rule declined')
       router.refresh()
       setActiveRuleId(null)
     })
@@ -569,6 +446,7 @@ export function ReceiptRules({
                   <Badge tone="neutral">{statusLabels[rule.auto_status]}</Badge>
                   {rule.set_vendor_name && <Badge tone="neutral">{rule.set_vendor_name}</Badge>}
                   {rule.set_expense_category && <Badge tone="neutral">{rule.set_expense_category}</Badge>}
+                  {rule.set_no_category && <Badge tone="neutral">{NO_CATEGORY_LABEL}</Badge>}
                 </div>
               </li>
             ))}
@@ -622,126 +500,12 @@ export function ReceiptRules({
                     </div>
                   </Alert>
                 )}
-                {suggestionsTotal > 0 && (
-                  <Alert tone="warning" size="sm" role="status" title={`System suggestions (${suggestionsTotal})`}>
-                    <div className="space-y-2">
-                      {canGovernRules && suggestions.length > 0 && (
-                        <Checkbox
-                          label="Select all on page"
-                          checked={allSuggestionsSelected}
-                          onChange={toggleSelectAllSuggestions}
-                          disabled={isSuggestionsPending}
-                        />
-                      )}
-
-                      {canGovernRules && selectedSuggestionIds.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{selectedSuggestionIds.length} selected</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={isBulkApproving}
-                            onClick={() => setSelectedSuggestionIds([])}
-                          >
-                            Clear
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={isBulkApproving}
-                            onClick={() => handleApproveSelected(false)}
-                          >
-                            Approve Selected as Disabled
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={isBulkApproving}
-                            onClick={() => handleApproveSelected(true)}
-                          >
-                            Approve Selected
-                          </Button>
-                        </div>
-                      )}
-
-                      {suggestions.map((suggestion) => {
-                        const evidenceCount = suggestionEvidenceCount(suggestion)
-                        const aiConfidence = suggestionAiConfidence(suggestion)
-                        const previewCount = suggestionPreviewCount(suggestion)
-                        const busy = !canGovernRules || pendingBusy(suggestion.id)
-                        return (
-                          <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-warning-border pt-2 first:border-t-0 first:pt-0">
-                            <div className="flex min-w-0 items-start gap-2">
-                              {canGovernRules && (
-                                <Checkbox
-                                  checked={selectedSuggestionIds.includes(suggestion.id)}
-                                  onChange={() => toggleSuggestionSelected(suggestion.id)}
-                                  aria-label={`Select suggestion ${suggestion.suggested_name}`}
-                                />
-                              )}
-                              <div className="min-w-0">
-                                <p className="font-medium">{suggestion.suggested_name}</p>
-                                <p>
-                                  Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
-                                </p>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  <Badge tone="neutral">{evidenceCount} evidence</Badge>
-                                  {aiConfidence != null && <Badge tone="info">AI {aiConfidence}%</Badge>}
-                                  {previewCount != null && (
-                                    <Badge tone="warning">would match {previewCount} transaction{previewCount === 1 ? '' : 's'}</Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={busy}
-                                onClick={() => handleDeclineSuggestion(suggestion.id)}
-                              >
-                                Decline
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={busy}
-                                onClick={() => handleApproveSuggestion(suggestion.id, false)}
-                              >
-                                Approve Disabled
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={busy}
-                                onClick={() => handleApproveSuggestion(suggestion.id, true)}
-                              >
-                                Approve
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      {totalSuggestionPages > 1 && (
-                        <TablePagination
-                          page={suggestionPage}
-                          totalPages={totalSuggestionPages}
-                          pageSize={SUGGESTIONS_PAGE_SIZE}
-                          totalItems={suggestionsTotal}
-                          onPageChange={(nextPage) => {
-                            if (!isSuggestionsPending) loadSuggestionsPage(nextPage)
-                          }}
-                          className="px-0"
-                        />
-                      )}
-
-                      {!canGovernRules && (
-                        <p>Super admin approval is required before a suggestion can become a rule.</p>
-                      )}
-                    </div>
-                  </Alert>
-                )}
+                <RuleProposalsPanel
+                  initialSuggestions={ruleSuggestions}
+                  suggestionsTotal={suggestionsTotal}
+                  canGovernRules={canGovernRules}
+                  onEditFirst={applySuggestion}
+                />
                 {retroPrompt && (
                   <Alert
                     tone="info"
@@ -830,6 +594,7 @@ export function ReceiptRules({
                   <Select label="Set expense" name="set_expense_category" defaultValue="" options={[
                     { value: '', label: 'Leave expense unset' },
                     ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                    { value: NO_CATEGORY_VALUE, label: NO_CATEGORY_LABEL },
                   ]} />
                   {isPreviewVisible && rulePreview && (
                     <RulePreviewPanel preview={rulePreview} />
@@ -1018,9 +783,10 @@ export function ReceiptRules({
                               options={RULE_OUTCOME_OPTIONS}
                             />
                             <Input label="Set vendor name" name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
-                            <Select label="Set expense" name="set_expense_category" defaultValue={rule.set_expense_category ?? ''} options={[
+                            <Select label="Set expense" name="set_expense_category" defaultValue={rule.set_expense_category ?? (rule.set_no_category ? NO_CATEGORY_VALUE : '')} options={[
                               { value: '', label: 'Leave expense unset' },
                               ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                              { value: NO_CATEGORY_VALUE, label: NO_CATEGORY_LABEL },
                             ]} />
                             <FormFooter>
                               <Button type="button" variant="secondary" onClick={() => setEditingRuleId(null)}>
@@ -1041,6 +807,7 @@ export function ReceiptRules({
                             <p>Outcome: {statusLabels[rule.auto_status]}</p>
                             {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
                             {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
+                            {rule.set_no_category && <p>Sets expense: {NO_CATEGORY_LABEL.toLowerCase()}</p>}
                             {conflictsByRule.get(rule.id)?.map((conflict) => {
                               const otherId = conflict.rule_id === rule.id ? conflict.overlapping_rule_id : conflict.rule_id
                               const otherName = rules.find((candidate) => candidate.id === otherId)?.name ?? 'another rule'

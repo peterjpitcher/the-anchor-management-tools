@@ -37,6 +37,12 @@ test:release-3-vendors.test.sql
 # Release 5 (built before Release 4, which needs its run records and lock date).
 migration:20261001170000_receipts_release_5_rules.sql
 test:release-5-rules.test.sql
+# Release 4. It replaces functions Release 5 created, so it is applied after it.
+migration:20261001180000_receipts_release_4_ai.sql
+test:release-4-ai.test.sql
+# The earlier tests still hold once every migration is in.
+test:release-3-vendors.test.sql
+test:release-5-rules.test.sql
 "
 
 ENGINE=""

@@ -1,22 +1,27 @@
 import { Alert, Stat, StatGrid } from '@/ds'
 import type { ReceiptWorkspaceSummary, AIUsageBreakdown } from '@/app/actions/receipts'
 
-function formatCurrencyStrict(value: number) {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value ?? 0)
+/** OpenAI charges in US dollars, and the figure is stored as charged. It is not pounds. */
+function formatUsd(value: number) {
+  const amount = value ?? 0
+  // Under a cent the tile would read "US$0.00" for a month that did cost something.
+  const digits = amount > 0 && amount < 0.01 ? 4 : 2
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(amount)
 }
 
 function formatCount(value: number) {
   return value === 0 ? 'All clear' : value === 1 ? '1 item' : `${value} items`
 }
 
-function aiSpendHint(cost: number, breakdown?: AIUsageBreakdown | null) {
-  const avgPerTx = breakdown && breakdown.total_classifications > 0
-    ? breakdown.total_cost / breakdown.total_classifications
-    : null
-
-  if (!breakdown) return cost > 0 ? 'Includes AI tagging' : 'No spend yet'
-  if (avgPerTx === null) return `This month ${formatCurrencyStrict(breakdown.this_month_cost)}`
-  return `This month ${formatCurrencyStrict(breakdown.this_month_cost)} - ${formatCurrencyStrict(avgPerTx)} avg`
+function aiSpendHint(breakdown?: AIUsageBreakdown | null) {
+  if (!breakdown) return 'Could not load'
+  if (breakdown.total_calls === 0) return 'No spend yet'
+  return `This month ${formatUsd(breakdown.this_month_cost)}, receipts only`
 }
 
 interface ReceiptStatsProps {
@@ -44,7 +49,7 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
         </Alert>
       )}
       <StatGrid columns={6}>
-        <Stat label="OpenAI spend" value={formatCurrencyStrict(summary.openAICost)} hint={aiSpendHint(summary.openAICost, summary.aiUsageBreakdown)} />
+        <Stat label="AI spend (US dollars)" value={summary.aiUsageBreakdown ? formatUsd(summary.openAICost) : '?'} hint={aiSpendHint(summary.aiUsageBreakdown)} />
         <Stat label="Pending" value={countValue(summary.totals.pending)} hint={countHint(summary.totals.pending)} />
         <Stat label="Completed" value={countValue(summary.totals.completed)} hint={countHint(summary.totals.completed)} />
         <Stat label="Auto completed" value={countValue(summary.totals.autoCompleted)} hint={countHint(summary.totals.autoCompleted)} />

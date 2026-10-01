@@ -58,6 +58,9 @@ import {
 } from './receiptVendors'
 import { applyAutomationRules, refreshAutomationForPendingTransactions } from './receiptAutomation'
 import { findDuplicateRule, ruleBehaviourChanged } from '@/lib/receipts/rule-identity'
+import { NO_CATEGORY_VALUE } from '@/lib/receipts/no-category'
+import { RECEIPT_AI_PROMPT_VERSION } from '@/lib/receipts/ai-client'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 // The rule engine lives in receiptAutomation.ts and the statement import in receiptImport.ts.
 // Re-exported so existing imports keep working.
@@ -218,7 +221,8 @@ export async function performSetReceiptVendorReviewStatus(
 
 async function enqueueReceiptAiClassificationJobs(
   transactionIds: string[],
-  batchId: string
+  batchId: string,
+  options: { retryFinalFailures?: boolean } = {}
 ): Promise<{ queued: number; failed: number; queuedTransactions: number }> {
   if (!transactionIds.length) {
     return { queued: 0, failed: 0, queuedTransactions: 0 }
@@ -227,10 +231,17 @@ async function enqueueReceiptAiClassificationJobs(
   const chunks = chunkArray(transactionIds, RECEIPT_AI_JOB_CHUNK_SIZE)
   const results = await Promise.all(
     chunks.map((chunk) =>
-      jobQueue.enqueue('classify_receipt_transactions', {
-        transactionIds: chunk,
-        batchId,
-      })
+      jobQueue.enqueue(
+        'classify_receipt_transactions',
+        {
+          transactionIds: chunk,
+          batchId,
+          ...(options.retryFinalFailures ? { retryFinalFailures: true } : {}),
+        },
+        // Below messages in the queue, and keyed on the payments so a second click while the
+        // first is still waiting does not queue them twice.
+        { priority: -10, unique: `receipts:classify:${chunk[0]}:${chunk.length}:${chunk[chunk.length - 1]}` }
+      )
     )
   )
 
@@ -412,6 +423,8 @@ export async function performUpdateReceiptClassification(
     transactionId: string
     vendorName?: string | null
     expenseCategory?: ReceiptExpenseCategory | null
+    /** With no category: the person has decided this payment takes none. */
+    noCategoryApplies?: boolean
     /** The person has confirmed that a name not on the vendor list is a new vendor. */
     createVendor?: boolean
   }
@@ -439,6 +452,7 @@ export async function performUpdateReceiptClassification(
     transactionId: input.transactionId,
     vendorName: hasVendorField ? (normalizedVendor ? normalizedVendor : null) : undefined,
     expenseCategory: hasExpenseField ? (input.expenseCategory ?? null) : undefined,
+    noCategoryApplies: hasExpenseField ? Boolean(input.noCategoryApplies) : undefined,
   })
 
   if (!validation.success) {
@@ -459,7 +473,10 @@ export async function performUpdateReceiptClassification(
     return { error: 'Transaction not found' }
   }
 
-  if (hasExpenseField && expenseCategory && isIncomingOnlyTransaction(transaction)) {
+  // "No category applies" is the absence of a category, decided. A category given with it wins.
+  const noCategoryApplies = hasExpenseField && !expenseCategory && Boolean(validation.data.noCategoryApplies)
+
+  if (hasExpenseField && (expenseCategory || noCategoryApplies) && isIncomingOnlyTransaction(transaction)) {
     return { error: 'Expense categories can only be set on outgoing transactions' }
   }
 
@@ -503,12 +520,20 @@ export async function performUpdateReceiptClassification(
 
   if (hasExpenseField) {
     const currentExpense = transaction.expense_category ?? null
-    if (currentExpense !== (expenseCategory ?? null)) {
+    const currentNoCategory = Boolean(transaction.no_category_applies)
+    if (currentExpense !== (expenseCategory ?? null) || currentNoCategory !== noCategoryApplies) {
       updatePayload.expense_category = expenseCategory ?? null
+      // The flag is written only when it is being set or cleared, so a payment that never had it
+      // is saved exactly as before.
+      if (noCategoryApplies || currentNoCategory) {
+        updatePayload.no_category_applies = noCategoryApplies
+      }
       updatePayload.expense_category_source = 'manual' satisfies ReceiptClassificationSource
       updatePayload.expense_rule_id = null
       updatePayload.expense_updated_at = now
-      changeNotes.push(expenseCategory ? `Expense → ${expenseCategory}` : 'Expense cleared')
+      changeNotes.push(
+        expenseCategory ? `Expense → ${expenseCategory}` : noCategoryApplies ? 'Expense → no category applies' : 'Expense cleared'
+      )
       expenseChanged = true
     }
   }
@@ -567,7 +592,7 @@ export async function performUpdateReceiptClassification(
     payload: { note: changeNotes.join(' | ') },
   }])
 
-  await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
+  await enqueueReceiptSystemJob('suggest_receipt_rules', getTodayIsoDate())
 
   const ruleSuggestion = buildRuleSuggestion(updated, {
     vendorName: vendorChanged ? nextVendorName : undefined,
@@ -1172,6 +1197,7 @@ function getRuleDescription(formData: FormData): string | null | undefined {
 }
 
 function getRuleFormData(formData: FormData) {
+  const setsNoCategory = formData.get('set_expense_category') === NO_CATEGORY_VALUE
   return {
     name: formData.get('name'),
     description: getRuleDescription(formData),
@@ -1186,7 +1212,9 @@ function getRuleFormData(formData: FormData) {
     // No outcome chosen means the rule only classifies. Closing a payment has to be asked for.
     auto_status: formData.get('auto_status') || 'pending',
     set_vendor_name: optionalRuleText(formData.get('set_vendor_name')),
-    set_expense_category: optionalRuleText(formData.get('set_expense_category')),
+    // "No category applies" travels in the category field and is stored as a flag.
+    set_expense_category: setsNoCategory ? undefined : optionalRuleText(formData.get('set_expense_category')),
+    set_no_category: setsNoCategory,
   }
 }
 
@@ -1212,6 +1240,7 @@ function buildRuleWritePayload(
     auto_status: ReceiptRule['auto_status']
     set_vendor_name?: string
     set_expense_category?: ReceiptRule['set_expense_category']
+    set_no_category?: boolean
   },
   userId: string,
   isInsert = false,
@@ -1230,6 +1259,7 @@ function buildRuleWritePayload(
     auto_status: data.auto_status,
     set_vendor_name: data.set_vendor_name ?? null,
     set_expense_category: data.set_expense_category ?? null,
+    set_no_category: Boolean(data.set_no_category),
     vendor_id: options.vendorId ?? null,
     updated_by: userId,
   }
@@ -1313,7 +1343,7 @@ export async function performCreateReceiptRule(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -1370,7 +1400,7 @@ export async function performUpdateReceiptRule(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
   }
-  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+  if ((parsed.data.set_expense_category || parsed.data.set_no_category) && parsed.data.match_direction !== 'out') {
     return { error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
@@ -1572,7 +1602,7 @@ export async function performApplyReceiptGroupClassification(
   const skippedIncomingCount = Number((rpcResult as any)?.skippedIncomingCount ?? 0)
 
   if (updated > 0) {
-    await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
+    await enqueueReceiptSystemJob('suggest_receipt_rules', getTodayIsoDate())
   }
 
   return { success: true, updated, skippedIncomingCount }
@@ -1585,13 +1615,25 @@ export async function performApplyReceiptGroupClassification(
 
 type UnclassifiedTransactionRow = { id: string; batch_id: string | null }
 
-export async function performRequeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; error?: string }> {
+/**
+ * Queues AI classification for payments that still need a vendor or a category and have not
+ * been asked about under the current prompt. A payment the AI has already answered for, found
+ * nothing for, or that a person must check, is not sent again: the button used to re-send every
+ * unclassified payment on every click, about 5,000 of them.
+ *
+ * `retryFinalFailures` also re-sends payments whose last try failed for good, for when the cause
+ * (a bad API key, say) has been put right.
+ */
+export async function performRequeueUnclassifiedTransactions(
+  options: { retryFinalFailures?: boolean } = {}
+): Promise<{ success: boolean; queued?: number; alreadyAsked?: number; error?: string }> {
   const supabase = createAdminClient()
 
   let vendorMissing: UnclassifiedTransactionRow[]
   let expenseMissing: UnclassifiedTransactionRow[]
+  let attempts: Array<{ transaction_id: string; outcome: string }>
 
-  // Both reads page in 1,000s and order by id: Supabase caps a single request at
+  // The reads page in 1,000s and order by id: Supabase caps a single request at
   // 1,000 rows without saying so, and an unordered read would re-queue the same
   // rows on every click instead of working through the backlog.
   try {
@@ -1608,7 +1650,7 @@ export async function performRequeueUnclassifiedTransactions(): Promise<{ succes
       { label: 'vendor-unclassified transactions for requeue' }
     )
 
-    // Query 2: outgoing transactions that have a vendor but no expense category
+    // Query 2: outgoing transactions with no expense category, and not marked as taking none
     expenseMissing = await fetchAllRows<UnclassifiedTransactionRow>(
       (from, to) =>
         supabase
@@ -1616,39 +1658,65 @@ export async function performRequeueUnclassifiedTransactions(): Promise<{ succes
           .select('id, batch_id')
           .is('expense_category', null)
           .is('expense_category_source', null)
+          .eq('no_category_applies', false)
           .not('amount_out', 'is', null)
           .gt('amount_out', 0)
           .order('id', { ascending: true })
           .range(from, to),
       { label: 'expense-unclassified transactions for requeue' }
     )
+
+    attempts = await fetchAllRows<{ transaction_id: string; outcome: string }>(
+      (from, to) =>
+        (supabase as any)
+          .from('receipt_ai_attempts')
+          .select('transaction_id, outcome')
+          .eq('prompt_version', RECEIPT_AI_PROMPT_VERSION)
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'AI attempts for requeue' }
+    )
   } catch (err) {
     console.error('Failed to load unclassified transactions for requeue', err)
     return { success: false, error: 'Failed to load transactions' }
   }
 
+  const attemptByTransaction = new Map(attempts.map((attempt) => [attempt.transaction_id, attempt.outcome]))
+  const mayAsk = (id: string): boolean => {
+    const outcome = attemptByTransaction.get(id)
+    if (!outcome) return true
+    if (outcome === 'failed_retryable') return true
+    return outcome === 'failed_final' && Boolean(options.retryFinalFailures)
+  }
+
   // Merge and de-duplicate by ID
   const seenIds = new Set<string>()
   const rows: Array<{ id: string; batch_id: string | null }> = []
+  let alreadyAsked = 0
   for (const row of [...vendorMissing, ...expenseMissing]) {
-    if (!seenIds.has(row.id)) {
-      seenIds.add(row.id)
+    if (seenIds.has(row.id)) continue
+    seenIds.add(row.id)
+    if (mayAsk(row.id)) {
       rows.push(row)
+    } else {
+      alreadyAsked += 1
     }
   }
 
   if (!rows.length) {
-    return { success: true, queued: 0 }
+    return { success: true, queued: 0, alreadyAsked }
   }
 
   const ids = rows.map((row) => row.id)
   const batchId = rows[0]?.batch_id ?? 'requeue'
 
   try {
-    const result = await enqueueReceiptAiClassificationJobs(ids, batchId)
+    const result = await enqueueReceiptAiClassificationJobs(ids, batchId, {
+      retryFinalFailures: options.retryFinalFailures,
+    })
     // The button reports this as a number of transactions, so return transactions,
     // not the ten-transaction jobs they travel in.
-    return { success: true, queued: result.queuedTransactions }
+    return { success: true, queued: result.queuedTransactions, alreadyAsked }
   } catch (err) {
     console.error('Failed to enqueue requeue jobs', err)
     return { success: false, error: 'Failed to queue classification jobs' }

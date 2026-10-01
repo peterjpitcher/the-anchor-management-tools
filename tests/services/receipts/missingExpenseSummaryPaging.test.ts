@@ -27,6 +27,9 @@ import { queryReceiptMissingExpenseSummary } from '@/services/receipts/receiptQu
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
+// Every `.eq()` the summary asked for.
+const eqCalls: Array<[string, unknown]> = []
+
 // Production has 3,387 unclassified outgoing transactions across 11 vendor labels,
 // which is what the old single request silently cut to 1,000.
 const TOTAL_ROWS = 3387
@@ -43,6 +46,7 @@ type MissingExpenseRow = {
 type QueryBuilder = {
   select: Mock
   is: Mock
+  eq: Mock
   not: Mock
   order: Mock
   range: Mock
@@ -67,6 +71,7 @@ describe('queryReceiptMissingExpenseSummary paging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedCreateAdminClient.mockReset()
+    eqCalls.length = 0
   })
 
   it('counts every unclassified transaction rather than the first page', async () => {
@@ -78,6 +83,10 @@ describe('queryReceiptMissingExpenseSummary paging', () => {
       select: vi.fn(() => builder),
       is: vi.fn((column: string, value: unknown) => {
         calledMethods.push(`is:${column}:${String(value)}`)
+        return builder
+      }),
+      eq: vi.fn((column: string, value: unknown) => {
+        eqCalls.push([column, value])
         return builder
       }),
       not: vi.fn((column: string, operator: string, value: unknown) => {
@@ -112,6 +121,9 @@ describe('queryReceiptMissingExpenseSummary paging', () => {
       [3000, 3999],
     ])
 
+    // A transaction marked "no category applies" has been decided: it is not missing a category.
+    expect(eqCalls).toContainEqual(['no_category_applies', false])
+
     const totalCount = summary.reduce((sum, item) => sum + item.transactionCount, 0)
     expect(totalCount).toBe(TOTAL_ROWS)
     expect(summary).toHaveLength(VENDOR_COUNT)
@@ -138,6 +150,10 @@ describe('queryReceiptMissingExpenseSummary paging', () => {
     const builder: QueryBuilder = {
       select: vi.fn(() => builder),
       is: vi.fn(() => builder),
+      eq: vi.fn((column: string, value: unknown) => {
+        eqCalls.push([column, value])
+        return builder
+      }),
       not: vi.fn(() => builder),
       order: vi.fn(() => builder),
       range: vi.fn((from: number, to: number) => {

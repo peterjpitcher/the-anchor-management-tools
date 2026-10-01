@@ -10,16 +10,20 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidIsoDate } from '@/lib/dateUtils'
 import type { RuleMatcherMode } from '@/lib/receipts/rule-matching'
+import { DEFAULT_PAYROLL_REFERENCE } from '@/lib/receipts/payroll-recognition'
 import type { AdminClient } from './types'
 
 export type ReceiptSettings = {
   /** Payments dated on or before this are left alone by every automatic or bulk writer. */
   lockDate: string | null
   matcher: RuleMatcherMode
+  /** The reference the payroll run puts on every wage payment. */
+  payrollReference: string
 }
 
 const LOCK_KEY = 'locked_before'
 const MATCHER_KEY = 'rule_matcher'
+const PAYROLL_REFERENCE_KEY = 'payroll_reference'
 
 /**
  * Throws when the settings cannot be read. A writer that cannot find out whether a period is
@@ -29,7 +33,7 @@ export async function loadReceiptSettings(supabase: AdminClient): Promise<Receip
   const { data, error } = await (supabase as any)
     .from('receipt_settings')
     .select('key, value')
-    .in('key', [LOCK_KEY, MATCHER_KEY])
+    .in('key', [LOCK_KEY, MATCHER_KEY, PAYROLL_REFERENCE_KEY])
 
   if (error) {
     throw new Error(`Failed to load receipt settings: ${error.message}`)
@@ -38,10 +42,13 @@ export async function loadReceiptSettings(supabase: AdminClient): Promise<Receip
   const rows = (data ?? []) as Array<{ key: string; value: Record<string, unknown> | null }>
   const lock = rows.find((row) => row.key === LOCK_KEY)?.value?.date
   const matcher = rows.find((row) => row.key === MATCHER_KEY)?.value?.mode
+  const payrollReference = rows.find((row) => row.key === PAYROLL_REFERENCE_KEY)?.value?.text
 
   return {
     lockDate: typeof lock === 'string' && isValidIsoDate(lock) ? lock : null,
     matcher: matcher === 'word' ? 'word' : 'substring',
+    payrollReference:
+      typeof payrollReference === 'string' && payrollReference.trim() ? payrollReference.trim() : DEFAULT_PAYROLL_REFERENCE,
   }
 }
 

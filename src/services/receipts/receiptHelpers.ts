@@ -94,6 +94,8 @@ export const classificationUpdateSchema = z.object({
     .nullable()
     .optional(),
   expenseCategory: receiptExpenseCategorySchema.nullable().optional(),
+  /** The person has decided this payment takes no expense category. */
+  noCategoryApplies: z.boolean().optional(),
 })
 
 export const fileSchema = z.instanceof(File, { message: 'Please attach a CSV file' })

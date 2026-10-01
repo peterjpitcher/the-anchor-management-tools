@@ -83,6 +83,23 @@ AS $$
   SELECT NULLIF(LOWER(REGEXP_REPLACE(BTRIM(COALESCE(input, '')), '[[:space:]]+', ' ', 'g')), '');
 $$;
 
+CREATE FUNCTION public.normalize_receipt_details(p_details text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE
+SET search_path TO 'public', 'pg_catalog'
+AS $function$
+DECLARE
+  v_result TEXT;
+BEGIN
+  IF p_details IS NULL THEN
+    RETURN NULL;
+  END IF;
+  v_result := p_details;
+  v_result := regexp_replace(v_result, '[*/][A-Z0-9]{4,10}\s*$', '', 'i');
+  v_result := regexp_replace(v_result, '\s+\d{6,}\s*$', '');
+  RETURN TRIM(v_result);
+END;
+$function$;
+
 CREATE TABLE public.receipt_batches (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -395,6 +412,18 @@ CREATE TRIGGER trg_receipt_transactions_updated_at BEFORE UPDATE ON public.recei
 CREATE TRIGGER trg_receipt_vendor_reviews_updated_at BEFORE UPDATE ON public.receipt_vendor_reviews FOR EACH ROW EXECUTE FUNCTION set_receipt_row_updated_at();
 CREATE TRIGGER trg_receipt_vendor_watchlist_updated_at BEFORE UPDATE ON public.receipt_vendor_watchlist FOR EACH ROW EXECUTE FUNCTION set_receipt_row_updated_at();
 CREATE TRIGGER trg_receipt_vendors_updated_at BEFORE UPDATE ON public.receipt_vendors FOR EACH ROW EXECUTE FUNCTION set_receipt_row_updated_at();
+
+-- What each model call cost, for every part of the app. The receipts cost tile reads its own rows.
+CREATE TABLE public.ai_usage_events (
+  id BIGSERIAL PRIMARY KEY,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  context TEXT,
+  model TEXT NOT NULL,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  cost NUMERIC(12, 6) NOT NULL DEFAULT 0
+);
 
 -- Every receipts table is service-role only in production.
 DO $$

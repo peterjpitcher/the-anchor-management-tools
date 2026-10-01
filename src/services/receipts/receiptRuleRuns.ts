@@ -28,6 +28,7 @@ import {
   type RuleMatchExplanation,
 } from '@/lib/receipts/rule-health'
 import type { RuleMatcherMode } from '@/lib/receipts/rule-matching'
+import { NO_CATEGORY_LABEL } from '@/lib/receipts/no-category'
 import type { ReceiptTransaction } from '@/types/database'
 import { loadRulesForEvaluation } from './receiptAutomation'
 import type { AdminClient } from './types'
@@ -36,7 +37,7 @@ export type RuleRunScope = 'pending' | 'all'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PAYMENT_COLUMNS =
-  'id, transaction_date, details, transaction_type, amount_in, amount_out, status, marked_method, vendor_id, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, updated_at'
+  'id, transaction_date, details, transaction_type, amount_in, amount_out, status, marked_method, vendor_id, vendor_name, vendor_source, vendor_rule_id, expense_category, no_category_applies, expense_category_source, expense_rule_id, updated_at'
 const CHANGE_INSERT_CHUNK = 500
 const SAMPLE_LIMIT = 50
 /** Changes written per call, so one request stays well inside the time a server action has. */
@@ -86,19 +87,23 @@ export type RuleRunPreview = {
   samples: RuleRunSample[]
 }
 
+function categoryLabel(category: string | null | undefined, noCategoryApplies: boolean | null | undefined): string | null {
+  return category ?? (noCategoryApplies ? NO_CATEGORY_LABEL : null)
+}
+
 function sampleOf(payment: EvaluablePayment, plan: RuleChangePlan): RuleRunSample {
   return {
     transactionId: payment.id,
     transactionDate: payment.transaction_date,
     details: payment.details,
     amount: paymentAmount(payment),
-    before: { status: payment.status, vendor: payment.vendor_name, category: payment.expense_category },
+    before: { status: payment.status, vendor: payment.vendor_name, category: categoryLabel(payment.expense_category, payment.no_category_applies) },
     after: {
       status: plan.statusChanged ? (plan.after.status as ReceiptTransaction['status']) : payment.status,
       vendor: plan.vendorChanged ? ((plan.after.vendor_name as string | null) ?? null) : payment.vendor_name,
       category: plan.expenseChanged
-        ? ((plan.after.expense_category as string | null) ?? null)
-        : payment.expense_category,
+        ? categoryLabel(plan.after.expense_category as string | null, plan.after.no_category_applies as boolean | undefined)
+        : categoryLabel(payment.expense_category, payment.no_category_applies),
     },
   }
 }
