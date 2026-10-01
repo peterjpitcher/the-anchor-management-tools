@@ -1,37 +1,40 @@
 /**
  * The receipt rule engine: applies the saved rules to payments.
  *
- * It has no auth of its own. It is called by the import, by rule changes and by the run over
- * history, each of which has already checked the user.
+ * It has no auth of its own. It is called by the import, by rule changes and by the refresh of
+ * pending payments, each of which has already checked the user. A run over history goes through
+ * `receiptRuleRuns.ts`, which previews first and records what it changes.
  *
- * What it may write is fixed by `@/lib/receipts/field-protection`:
+ * What the rules would do is worked out by `@/lib/receipts/rule-evaluation`, the same code the
+ * preview uses. What may be written is fixed by `@/lib/receipts/field-protection`:
  *  - a vendor or category only where nothing has decided it, or where a rule or the AI set it;
  *  - a status only on a pending payment that no person reopened;
+ *  - nothing on a payment dated on or before the lock date;
  *  - nothing at all on a payment that changed between the read and the write.
- * A run over history therefore classifies closed payments and never moves them.
+ * Each change is written by `apply_receipt_rule_change`, together with its history rows, in one
+ * transaction: a change without history cannot exist.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
-import { selectBestReceiptRule } from '@/lib/receipts/rule-matching'
-import { canAutomationChangeStatus, canRuleWriteField } from '@/lib/receipts/field-protection'
+import {
+  evaluatePaymentAgainstRules,
+  paymentDirection,
+  type RuleChangePlan,
+} from '@/lib/receipts/rule-evaluation'
+import type { RuleMatcherMode } from '@/lib/receipts/rule-matching'
 import { logger } from '@/lib/logger'
-import type {
-  ReceiptExpenseCategory,
-  ReceiptRule,
-  ReceiptTransaction,
-  ReceiptTransactionLog,
-} from '@/types/database'
+import type { ReceiptExpenseCategory, ReceiptRule, ReceiptTransaction } from '@/types/database'
 
-import type { AutomationResult } from './types'
-import { getTransactionDirection, guessAmountValue } from './receiptHelpers'
+import type { AdminClient, AutomationResult } from './types'
 import { recordReceiptClassificationSignals } from './receiptGovernance'
+import { loadReceiptSettings } from './receiptSettings'
 import { resolveReceiptVendor } from './receiptVendors'
 
 export type AutomationOptions = {
   /** Also classify payments that are no longer pending. Their status is never changed. */
   includeClosed?: boolean
-  /** Run this one rule instead of every active rule. */
+  /** Write only the fields this rule wins. Every active rule still decides who wins. */
   targetRuleId?: string | null
   /** Work out what would change and write nothing. */
   dryRun?: boolean
@@ -51,6 +54,7 @@ function emptyResult(): AutomationResult {
     protectedCount: 0,
     conflicts: 0,
     failed: 0,
+    locked: 0,
     samples: [],
   }
 }
@@ -59,7 +63,7 @@ function toSample(transaction: ReceiptTransaction): AutomationResult['samples'][
   return {
     id: transaction.id,
     status: transaction.status,
-    direction: getTransactionDirection(transaction),
+    direction: paymentDirection(transaction),
     details: transaction.details,
     transaction_type: transaction.transaction_type,
     amount_in: transaction.amount_in,
@@ -69,6 +73,150 @@ function toSample(transaction: ReceiptTransaction): AutomationResult['samples'][
     expense_category: transaction.expense_category,
     expense_source: transaction.expense_category_source,
   }
+}
+
+export type RulesForEvaluation = {
+  rules: ReceiptRule[]
+  /** Rules whose vendor could not be tied to the vendor list. Their vendor is not written. */
+  unresolvedVendorRuleIds: Set<string>
+  /** The newest `updated_at` among the active rules, and how many there are: the version of the set. */
+  rulesetUpdatedAt: string | null
+  rulesetCount: number
+  lockDate: string | null
+  matcher: RuleMatcherMode
+}
+
+/**
+ * The active rules in the order the matcher expects, the lock date and the matcher setting.
+ * A rule that names its vendor in text only is tied to the vendor list here, so the payment gets
+ * the vendor's own id and name and not the rule's spelling of it. A dry run looks the vendor up
+ * and creates nothing.
+ *
+ * Throws when the rules or the settings cannot be read: a failed load is a failure, and used to
+ * be reported as "0 matched".
+ */
+export async function loadRulesForEvaluation(
+  supabase: AdminClient,
+  options: { createVendors: boolean }
+): Promise<RulesForEvaluation> {
+  const { data, error } = await supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('is_active', true)
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('[receipts] could not load rules', error)
+    throw new Error('Failed to load receipt rules')
+  }
+
+  const rules = ((data ?? []) as ReceiptRule[]).filter((rule) => rule.is_active)
+  const settings = await loadReceiptSettings(supabase)
+
+  // The version of the rule set is taken before any name is tied to the vendor list, so it is
+  // exactly what the database holds.
+  const rulesetUpdatedAt = rules.reduce<string | null>((latest, rule) => {
+    if (!rule.updated_at) return latest
+    if (!latest || new Date(rule.updated_at).getTime() > new Date(latest).getTime()) return rule.updated_at
+    return latest
+  }, null)
+
+  const unresolvedVendorRuleIds = new Set<string>()
+  for (const rule of rules) {
+    if (!rule.set_vendor_name || rule.vendor_id) continue
+    try {
+      const vendor = await resolveReceiptVendor(
+        supabase,
+        { name: rule.set_vendor_name },
+        { create: options.createVendors, origin: 'rule' }
+      )
+      if (vendor) {
+        rule.vendor_id = vendor.id
+        rule.set_vendor_name = vendor.canonicalName
+      }
+    } catch (vendorError) {
+      console.error('[receipts] could not resolve a rule vendor', { ruleId: rule.id, error: vendorError })
+      unresolvedVendorRuleIds.add(rule.id)
+    }
+  }
+
+  return {
+    rules,
+    unresolvedVendorRuleIds,
+    rulesetUpdatedAt,
+    rulesetCount: rules.length,
+    lockDate: settings.lockDate,
+    matcher: settings.matcher,
+  }
+}
+
+type SignalInput = Parameters<typeof recordReceiptClassificationSignals>[1][number]
+
+/** The trace rows for a change that has been written. */
+export function signalsForRuleChange(
+  transaction: ReceiptTransaction,
+  plan: RuleChangePlan,
+  rules: { status: ReceiptRule | null; vendor: ReceiptRule | null; expense: ReceiptRule | null },
+  performedBy: string | null,
+  now: string
+): SignalInput[] {
+  const signals: SignalInput[] = []
+  const newStatus = plan.statusChanged ? (plan.after.status as ReceiptTransaction['status']) : transaction.status
+
+  if (plan.statusChanged && rules.status) {
+    signals.push({
+      transaction_id: transaction.id,
+      source: 'rule',
+      signal_type: 'rule_auto_mark',
+      prior_vendor_id: transaction.vendor_id ?? null,
+      new_vendor_id: transaction.vendor_id ?? null,
+      prior_vendor_name: transaction.vendor_name,
+      new_vendor_name: transaction.vendor_name,
+      prior_expense_category: transaction.expense_category,
+      new_expense_category: transaction.expense_category,
+      prior_status: transaction.status,
+      new_status: newStatus,
+      rule_id: rules.status.id,
+      ai_confidence: null,
+      performed_by: performedBy,
+      performed_at: now,
+      payload: { rule_name: rules.status.name },
+    })
+  }
+
+  if (plan.vendorChanged || plan.expenseChanged) {
+    const rule = (plan.vendorChanged ? rules.vendor : null) ?? rules.expense
+    signals.push({
+      transaction_id: transaction.id,
+      source: 'rule',
+      signal_type: 'rule_classification',
+      prior_vendor_id: transaction.vendor_id ?? null,
+      new_vendor_id: plan.vendorChanged ? ((plan.after.vendor_id as string | null) ?? null) : transaction.vendor_id ?? null,
+      prior_vendor_name: transaction.vendor_name,
+      new_vendor_name: plan.vendorChanged ? ((plan.after.vendor_name as string | null) ?? null) : transaction.vendor_name,
+      prior_expense_category: transaction.expense_category,
+      new_expense_category: plan.expenseChanged
+        ? ((plan.after.expense_category as ReceiptExpenseCategory | null) ?? null)
+        : transaction.expense_category,
+      prior_status: transaction.status,
+      new_status: newStatus,
+      rule_id: rule?.id ?? null,
+      ai_confidence: null,
+      performed_by: performedBy,
+      performed_at: now,
+      payload: {
+        note: plan.classificationNotes.join(' | '),
+        rule_name: rule?.name ?? null,
+        vendor_rule_id: plan.vendorChanged ? rules.vendor?.id ?? null : null,
+        expense_rule_id: plan.expenseChanged ? rules.expense?.id ?? null : null,
+        prior_vendor_source: transaction.vendor_source,
+        prior_expense_category_source: transaction.expense_category_source,
+      },
+    })
+  }
+
+  return signals
 }
 
 export async function applyAutomationRules(
@@ -82,27 +230,11 @@ export async function applyAutomationRules(
   const { includeClosed = false, targetRuleId = null, dryRun = false, performedBy = null } = options
   const supabase = createAdminClient()
 
-  let rulesQuery = supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('is_active', true)
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  if (targetRuleId) {
-    rulesQuery = rulesQuery.eq('id', targetRuleId)
+  const loaded = await loadRulesForEvaluation(supabase, { createVendors: !dryRun })
+  if (!loaded.rules.length) {
+    return emptyResult()
   }
-
-  const { data: rules, error: rulesError } = await rulesQuery
-
-  // A failed load used to be reported as "0 auto-matched". It is a failure, and the caller says so.
-  if (rulesError) {
-    console.error('[receipts] applyAutomationRules could not load rules', rulesError)
-    throw new Error('Failed to load receipt rules')
-  }
-
-  const activeRules = ((rules ?? []) as ReceiptRule[]).filter((rule) => rule.is_active)
-  if (!activeRules.length) {
+  if (targetRuleId && !loaded.rules.some((rule) => rule.id === targetRuleId)) {
     return emptyResult()
   }
 
@@ -130,240 +262,74 @@ export async function applyAutomationRules(
   }
 
   const result = emptyResult()
-  const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
-  const signals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
+  const signals: SignalInput[] = []
   const now = new Date().toISOString()
   const inspected: ReceiptTransaction[] = []
-  const resolvedNameOnlyRules = new Set<string>()
 
   for (const transaction of transactions) {
-    const isPending = transaction.status === 'pending'
-    if (!includeClosed && !isPending) continue
+    const evaluation = evaluatePaymentAgainstRules(transaction, loaded.rules, {
+      includeClosed,
+      targetRuleId,
+      lockDate: loaded.lockDate,
+      matcher: loaded.matcher,
+      unresolvedVendorRuleIds: loaded.unresolvedVendorRuleIds,
+      now,
+    })
 
-    const direction = getTransactionDirection(transaction)
-    const amountValue = guessAmountValue(transaction)
+    if (!evaluation.inScope) continue
     inspected.push(transaction)
-
-    const matchingRule = selectBestReceiptRule(
-      activeRules,
-      { details: transaction.details, transaction_type: transaction.transaction_type },
-      { direction, amountValue }
-    )
-
-    if (!matchingRule) continue
+    if (!evaluation.matched) continue
 
     result.matched += 1
-
-    // A rule that names its vendor in text only is tied to the vendor list, once per run, so the
-    // payment gets the vendor's own id and name and not the rule's spelling of it. A dry run
-    // looks the vendor up and creates nothing.
-    if (matchingRule.set_vendor_name && !matchingRule.vendor_id && !resolvedNameOnlyRules.has(matchingRule.id)) {
-      try {
-        const vendor = await resolveReceiptVendor(
-          supabase,
-          { name: matchingRule.set_vendor_name },
-          { create: !dryRun, origin: 'rule' }
-        )
-        if (vendor) {
-          matchingRule.vendor_id = vendor.id
-          matchingRule.set_vendor_name = vendor.canonicalName
-        }
-        resolvedNameOnlyRules.add(matchingRule.id)
-      } catch (vendorError) {
-        console.error('[receipts] applyAutomationRules could not resolve a rule vendor', {
-          ruleId: matchingRule.id,
-          error: vendorError,
-        })
-        result.failed += 1
-        continue
-      }
-    }
-
-    const setsVendor = Boolean(matchingRule.set_vendor_name)
-    const setsExpense = Boolean(matchingRule.set_expense_category) && direction === 'out'
-    const vendorValueDiffers = setsVendor && transaction.vendor_name !== matchingRule.set_vendor_name
-    const expenseValueDiffers = setsExpense && transaction.expense_category !== matchingRule.set_expense_category
-    // Same value, but not yet recorded as this rule's: the rule takes it over from the AI or an older rule.
-    const vendorOwnerDiffers =
-      setsVendor && (transaction.vendor_source !== 'rule' || transaction.vendor_rule_id !== matchingRule.id)
-    const expenseOwnerDiffers =
-      setsExpense &&
-      (transaction.expense_category_source !== 'rule' || transaction.expense_rule_id !== matchingRule.id)
-
-    const targetStatus = matchingRule.auto_status
-    const wantsStatus = isPending && targetStatus !== transaction.status
-
-    const vendorWritable = canRuleWriteField(transaction.vendor_source)
-    const expenseWritable = canRuleWriteField(transaction.expense_category_source)
-    const shouldUpdateVendor = (vendorValueDiffers || vendorOwnerDiffers) && vendorWritable
-    const shouldUpdateExpense = (expenseValueDiffers || expenseOwnerDiffers) && expenseWritable
-    const statusChanged = wantsStatus && canAutomationChangeStatus(transaction)
-
-    // A different value the rule would have set was decided by a person, the import or invoice pairing.
-    if (
-      (vendorValueDiffers && !vendorWritable) ||
-      (expenseValueDiffers && !expenseWritable) ||
-      (wantsStatus && !statusChanged)
-    ) {
-      result.protectedCount += 1
-    }
-
-    if (!shouldUpdateVendor && !shouldUpdateExpense && !statusChanged) {
+    if (evaluation.protectedByOwner) result.protectedCount += 1
+    if (evaluation.vendorUnresolved) result.failed += 1
+    if (evaluation.locked) {
+      result.locked += 1
       continue
     }
 
-    const updatePayload: Record<string, unknown> = {}
-    const classificationNotes: string[] = []
+    const plan = evaluation.plan
+    if (!plan) continue
 
-    if (statusChanged) {
-      updatePayload.status = targetStatus
-      updatePayload.receipt_required = targetStatus === 'pending'
-      updatePayload.marked_by = null
-      updatePayload.marked_by_email = null
-      updatePayload.marked_by_name = null
-      updatePayload.marked_at = now
-      updatePayload.marked_method = 'rule'
-      if (targetStatus === 'auto_completed') {
-        updatePayload.auto_completed_reason = `trusted_rule:${matchingRule.id}`
-      }
-    }
-
-    if (shouldUpdateVendor) {
-      result.vendorIntended += 1
-      classificationNotes.push(`Vendor → ${matchingRule.set_vendor_name}`)
-      if (!dryRun) {
-        updatePayload.vendor_name = matchingRule.set_vendor_name
-        updatePayload.vendor_id = matchingRule.vendor_id ?? null
-        updatePayload.vendor_source = 'rule'
-        updatePayload.vendor_rule_id = matchingRule.id
-        updatePayload.vendor_updated_at = now
-      }
-    }
-
-    if (shouldUpdateExpense) {
-      result.expenseIntended += 1
-      classificationNotes.push(`Expense → ${matchingRule.set_expense_category}`)
-      updatePayload.expense_category = matchingRule.set_expense_category
-      updatePayload.expense_category_source = 'rule'
-      updatePayload.expense_rule_id = matchingRule.id
-      updatePayload.expense_updated_at = now
-    }
+    if (plan.vendorChanged) result.vendorIntended += 1
+    if (plan.expenseChanged) result.expenseIntended += 1
 
     if (dryRun) {
-      if (statusChanged) result.statusAutoUpdated += 1
-      if (classificationNotes.length) result.classificationUpdated += 1
+      if (plan.statusChanged) result.statusAutoUpdated += 1
+      if (plan.vendorChanged || plan.expenseChanged) result.classificationUpdated += 1
       continue
     }
 
-    // The rule that last acted on a pending payment. A closed payment keeps whatever it had:
-    // its vendor_rule_id and expense_rule_id already say which rule classified it.
-    if (isPending) {
-      updatePayload.rule_applied_id = matchingRule.id
-    }
-    updatePayload.updated_at = now
-
-    // Write only if the payment is still as it was read. Someone editing it in between wins.
-    const { data: updatedTransaction, error } = await supabase
-      .from('receipt_transactions')
-      .update(updatePayload)
-      .eq('id', transaction.id)
-      .eq('updated_at', transaction.updated_at)
-      .select('id')
-      .maybeSingle()
+    // Written only if the payment is still as it was read. Someone editing it in between wins.
+    const { data: outcome, error } = await (supabase as any).rpc('apply_receipt_rule_change', {
+      p_transaction_id: plan.transactionId,
+      p_expected_updated_at: plan.expectedUpdatedAt,
+      p_after: plan.after,
+      p_logs: plan.logs,
+      p_performed_by: performedBy,
+    })
 
     if (error) {
-      console.error('[receipts] applyAutomationRules failed to persist transaction update', {
+      console.error('[receipts] applyAutomationRules failed to persist a change', {
         transactionId: transaction.id,
-        ruleId: matchingRule.id,
         error,
       })
       result.failed += 1
       continue
     }
 
-    if (!updatedTransaction) {
+    if (outcome === 'locked') {
+      result.locked += 1
+      continue
+    }
+    if (outcome !== 'applied') {
       result.conflicts += 1
       continue
     }
 
-    const newStatus = statusChanged ? targetStatus : transaction.status
-
-    if (statusChanged) {
-      result.statusAutoUpdated += 1
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: targetStatus,
-        action_type: 'rule_auto_mark',
-        note: `Auto-marked by rule: ${matchingRule.name}`,
-        performed_by: performedBy,
-        rule_id: matchingRule.id,
-        performed_at: now,
-      })
-      signals.push({
-        transaction_id: transaction.id,
-        source: 'rule',
-        signal_type: 'rule_auto_mark',
-        prior_vendor_id: transaction.vendor_id ?? null,
-        new_vendor_id: transaction.vendor_id ?? null,
-        prior_vendor_name: transaction.vendor_name,
-        new_vendor_name: transaction.vendor_name,
-        prior_expense_category: transaction.expense_category,
-        new_expense_category: transaction.expense_category,
-        prior_status: transaction.status,
-        new_status: targetStatus,
-        rule_id: matchingRule.id,
-        ai_confidence: null,
-        performed_by: performedBy,
-        performed_at: now,
-        payload: { rule_name: matchingRule.name },
-      })
-    }
-
-    if (classificationNotes.length) {
-      result.classificationUpdated += 1
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: newStatus,
-        action_type: 'rule_classification',
-        note: `Classification updated by rule ${matchingRule.name}: ${classificationNotes.join(' | ')}`,
-        performed_by: performedBy,
-        rule_id: matchingRule.id,
-        performed_at: now,
-      })
-      signals.push({
-        transaction_id: transaction.id,
-        source: 'rule',
-        signal_type: 'rule_classification',
-        prior_vendor_id: transaction.vendor_id ?? null,
-        new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
-        prior_vendor_name: transaction.vendor_name,
-        new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
-        prior_expense_category: transaction.expense_category,
-        new_expense_category:
-          (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
-        prior_status: transaction.status,
-        new_status: newStatus,
-        rule_id: matchingRule.id,
-        ai_confidence: null,
-        performed_by: performedBy,
-        performed_at: now,
-        payload: {
-          note: classificationNotes.join(' | '),
-          rule_name: matchingRule.name,
-          prior_vendor_source: transaction.vendor_source,
-          prior_expense_category_source: transaction.expense_category_source,
-        },
-      })
-    }
-  }
-
-  if (logs.length) {
-    const { error: logError } = await supabase.from('receipt_transaction_logs').insert(logs)
-    if (logError) {
-      console.error('Failed to record automation classification logs', logError)
-    }
+    if (plan.statusChanged) result.statusAutoUpdated += 1
+    if (plan.vendorChanged || plan.expenseChanged) result.classificationUpdated += 1
+    signals.push(...signalsForRuleChange(transaction, plan, evaluation.winners, performedBy, now))
   }
 
   await recordReceiptClassificationSignals(supabase, signals)
@@ -381,6 +347,7 @@ export async function applyAutomationRules(
         protectedCount: result.protectedCount,
         conflicts: result.conflicts,
         failed: result.failed,
+        locked: result.locked,
       },
     })
   }

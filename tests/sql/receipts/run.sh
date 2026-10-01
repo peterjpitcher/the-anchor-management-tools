@@ -34,6 +34,9 @@ race:import_statement
 # Release 3.
 migration:20261001160000_receipts_release_3_vendors.sql
 test:release-3-vendors.test.sql
+# Release 5 (built before Release 4, which needs its run records and lock date).
+migration:20261001170000_receipts_release_5_rules.sql
+test:release-5-rules.test.sql
 "
 
 ENGINE=""

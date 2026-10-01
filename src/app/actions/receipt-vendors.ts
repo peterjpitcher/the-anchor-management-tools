@@ -2,9 +2,8 @@
 
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { logAuditEvent } from '@/app/actions/audit'
 import { currentUserCanGovernReceiptRules } from '@/app/actions/receipts'
-import { getCurrentUser } from '@/lib/audit-helpers'
+import { logReceiptActorAudit, requireReceiptActor } from '@/app/actions/receipt-audit'
 import type { ReceiptExpenseCategory } from '@/types/database'
 import {
   performMergeReceiptVendor,
@@ -25,24 +24,6 @@ import {
  * default category need `receipts:manage`. Merging, renaming and undoing either rewrite the vendor
  * on every payment and rule that uses it, so they are for super admins only.
  */
-
-type VendorActor = { user_id: string; user_email: string }
-
-async function requireVendorActor(): Promise<VendorActor> {
-  const { user_id, user_email } = await getCurrentUser()
-  if (!user_id) {
-    throw new Error('Unauthorized')
-  }
-  return { user_id, user_email: user_email ?? '' }
-}
-
-/** Every entry names the person who did it; the shared audit service looks nobody up. */
-async function logVendorAudit(
-  actor: VendorActor,
-  event: Omit<Parameters<typeof logAuditEvent>[0], 'user_id' | 'user_email'>
-): Promise<void> {
-  await logAuditEvent({ ...event, user_id: actor.user_id, user_email: actor.user_email || undefined })
-}
 
 function revalidateVendorPaths(): void {
   revalidatePath('/receipts')
@@ -78,14 +59,14 @@ export async function mergeReceiptVendors(input: {
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
-  const actor = await requireVendorActor()
+  const actor = await requireReceiptActor()
   if (!(await currentUserCanGovernReceiptRules())) {
     return { error: SUPER_ADMIN_ONLY }
   }
 
   const result = await performMergeReceiptVendor(actor.user_id, input)
 
-  await logVendorAudit(actor, {
+  await logReceiptActorAudit(actor, {
     operation_type: 'merge',
     resource_type: 'receipt_vendor',
     resource_id: input.intoVendorId,
@@ -113,14 +94,14 @@ export async function renameReceiptVendor(input: { vendorId: string; name: strin
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
-  const actor = await requireVendorActor()
+  const actor = await requireReceiptActor()
   if (!(await currentUserCanGovernReceiptRules())) {
     return { error: SUPER_ADMIN_ONLY }
   }
 
   const result = await performRenameReceiptVendor(actor.user_id, input)
 
-  await logVendorAudit(actor, {
+  await logReceiptActorAudit(actor, {
     operation_type: 'rename',
     resource_type: 'receipt_vendor',
     resource_id: input.vendorId,
@@ -147,14 +128,14 @@ export async function undoReceiptVendorOperation(operationId: string): Promise<V
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
-  const actor = await requireVendorActor()
+  const actor = await requireReceiptActor()
   if (!(await currentUserCanGovernReceiptRules())) {
     return { error: SUPER_ADMIN_ONLY }
   }
 
   const result = await performUndoReceiptVendorOperation(actor.user_id, operationId)
 
-  await logVendorAudit(actor, {
+  await logReceiptActorAudit(actor, {
     operation_type: 'undo',
     resource_type: 'receipt_vendor_operation',
     resource_id: operationId,
@@ -186,12 +167,12 @@ export async function updateReceiptVendorDetails(input: {
   if (!canManage) {
     return { error: 'Insufficient permissions' }
   }
-  const actor = await requireVendorActor()
+  const actor = await requireReceiptActor()
 
   const result = await performUpdateReceiptVendorDetails(input)
 
   if (result.success) {
-    await logVendorAudit(actor, {
+    await logReceiptActorAudit(actor, {
       operation_type: 'update',
       resource_type: 'receipt_vendor',
       resource_id: input.vendorId,

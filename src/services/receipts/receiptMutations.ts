@@ -57,6 +57,7 @@ import {
   type VendorConfirmation,
 } from './receiptVendors'
 import { applyAutomationRules, refreshAutomationForPendingTransactions } from './receiptAutomation'
+import { findDuplicateRule, ruleBehaviourChanged } from '@/lib/receipts/rule-identity'
 
 // The rule engine lives in receiptAutomation.ts and the statement import in receiptImport.ts.
 // Re-exported so existing imports keep working.
@@ -65,7 +66,7 @@ export { performImportReceiptStatement, processReceiptBatchFollowup } from './re
 export type { ImportStatementResult, ReceiptBatchFollowupStatus } from './receiptImport'
 
 /** Queues one receipts background job. Returns false, having logged why, when it could not. */
-async function enqueueReceiptSystemJob(
+export async function enqueueReceiptSystemJob(
   type: Parameters<typeof jobQueue.enqueue>[0],
   uniqueSuffix: string,
   payload: Record<string, unknown> = {}
@@ -1285,6 +1286,22 @@ async function resolveRuleVendor(
   }
 }
 
+/** Every rule, on or off: a duplicate of a switched-off rule is still a duplicate. */
+async function loadRulesForDuplicateCheck(supabase: ReturnType<typeof createAdminClient>): Promise<ReceiptRule[] | null> {
+  const { data, error } = await supabase.from('receipt_rules').select('*')
+  if (error) {
+    console.error('Failed to load rules for the duplicate check', error)
+    return null
+  }
+  return (data ?? []) as ReceiptRule[]
+}
+
+function duplicateRuleMessage(existing: ReceiptRule): string {
+  return existing.is_active
+    ? `A rule with the same match and result already exists: "${existing.name}".`
+    : `A rule with the same match and result already exists but is switched off: "${existing.name}". Switch that one on instead.`
+}
+
 export async function performCreateReceiptRule(
   userId: string,
   formData: FormData,
@@ -1307,6 +1324,15 @@ export async function performCreateReceiptRule(
   }
   const vendorId = ruleVendor.vendorId
   const ruleData = { ...parsed.data, set_vendor_name: ruleVendor.vendorName ?? undefined }
+
+  const existingRules = await loadRulesForDuplicateCheck(supabase)
+  if (!existingRules) {
+    return { error: 'The existing rules could not be checked. The rule was not saved.' }
+  }
+  const duplicate = findDuplicateRule(existingRules, { ...ruleData, vendor_id: vendorId })
+  if (duplicate) {
+    return { error: duplicateRuleMessage(duplicate) }
+  }
 
   const { data: rule, error } = await supabase
     .from('receipt_rules')
@@ -1356,12 +1382,33 @@ export async function performUpdateReceiptRule(
   const vendorId = ruleVendor.vendorId
   const ruleData = { ...parsed.data, set_vendor_name: ruleVendor.vendorName ?? undefined }
 
+  const existingRules = await loadRulesForDuplicateCheck(supabase)
+  if (!existingRules) {
+    return { error: 'The existing rules could not be checked. The rule was not saved.' }
+  }
+  const current = existingRules.find((rule) => rule.id === ruleId)
+  if (!current) {
+    return { error: 'Rule not found' }
+  }
+  const duplicate = findDuplicateRule(existingRules, { ...ruleData, vendor_id: vendorId }, ruleId)
+  if (duplicate) {
+    return { error: duplicateRuleMessage(duplicate) }
+  }
+
+  const payload = buildRuleWritePayload(ruleData, userId, false, {
+    canGovernRules: options.canGovernRules,
+    vendorId,
+  })
+  // A review covers what the rule matched and did when it was reviewed. Change either and the
+  // rule needs looking at again, unless the person saving it is reviewing it now.
+  if (ruleBehaviourChanged(current, { ...ruleData, vendor_id: vendorId }) && !payload.reviewed_at) {
+    payload.reviewed_at = null
+    payload.reviewed_by = null
+  }
+
   const { data: updated, error } = await supabase
     .from('receipt_rules')
-    .update(buildRuleWritePayload(ruleData, userId, false, {
-      canGovernRules: options.canGovernRules,
-      vendorId,
-    }))
+    .update(payload)
     .eq('id', ruleId)
     .select('*')
     .maybeSingle()
@@ -1422,40 +1469,6 @@ export async function performToggleReceiptRule(
   await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', updated.id)
 
   return { success: true, rule: updated, warning }
-}
-
-// ---------------------------------------------------------------------------
-// deleteReceiptRule
-// @requires Caller must verify user auth and 'receipts.manage' permission
-// ---------------------------------------------------------------------------
-
-export async function performDeleteReceiptRule(
-  ruleId: string,
-  userId?: string
-): Promise<{ success?: boolean; error?: string }> {
-  const supabase = createAdminClient()
-  const { data: updated, error } = await supabase
-    .from('receipt_rules')
-    .update({
-      is_active: false,
-      deactivated_at: new Date().toISOString(),
-      deactivated_by: userId ?? null,
-    })
-    .eq('id', ruleId)
-    .select('id')
-    .maybeSingle()
-
-  if (error) {
-    return { error: 'Failed to deactivate rule.' }
-  }
-
-  if (!updated) {
-    return { error: 'Rule not found' }
-  }
-
-  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', ruleId)
-
-  return { success: true }
 }
 
 // ---------------------------------------------------------------------------

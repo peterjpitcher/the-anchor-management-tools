@@ -34,7 +34,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   applyReceiptGroupClassification,
   createReceiptRule,
-  runReceiptRuleRetroactivelyStep,
   updateReceiptClassification,
   updateReceiptRule,
 } from '@/app/actions/receipts'
@@ -79,7 +78,8 @@ describe('Receipts actions expense-direction safeguards', () => {
         if (table !== 'receipt_rules') {
           throw new Error(`Unexpected table: ${table}`)
         }
-        return { insert }
+        // The existing rules are read first, for the duplicate check. There are none.
+        return { insert, select: vi.fn().mockResolvedValue({ data: [], error: null }) }
       }),
     })
 
@@ -174,137 +174,5 @@ describe('Receipts actions expense-direction safeguards', () => {
       p_expense_category: 'Entertainment',
       p_user_id: 'user-1',
     }))
-  })
-
-  it('does not apply expense updates during retro rules run for incoming-only transactions', async () => {
-    const updatePayloads: Record<string, unknown>[] = []
-    const rule = {
-      id: '33333333-3333-4333-8333-333333333333',
-      name: 'Legacy refund rule',
-      is_active: true,
-      match_description: 'refund',
-      match_transaction_type: null,
-      match_direction: 'both',
-      match_min_amount: null,
-      match_max_amount: null,
-      auto_status: 'no_receipt_required',
-      set_vendor_name: 'Vendor from rule',
-      set_expense_category: 'Entertainment',
-    }
-
-    const incomingTx = {
-      id: 'tx-incoming',
-      status: 'pending',
-      details: 'Card Purchase Refund AMAZON',
-      transaction_type: 'Card Transaction',
-      amount_in: 12.34,
-      amount_out: null,
-      vendor_name: null,
-      vendor_source: null,
-      vendor_rule_id: null,
-      expense_category: null,
-      expense_category_source: null,
-      expense_rule_id: null,
-      receipt_required: true,
-      marked_by: null,
-      marked_by_email: null,
-      marked_by_name: null,
-      marked_at: null,
-      marked_method: null,
-      rule_applied_id: null,
-      updated_at: '2026-09-01T10:00:00.000000+00:00',
-    }
-
-    const receiptRulesSelect = vi.fn(() => {
-      const filters: Record<string, unknown> = {}
-      const chain: any = {
-        eq: vi.fn((field: string, value: unknown) => {
-          filters[field] = value
-          return chain
-        }),
-        order: vi.fn(() => chain),
-        maybeSingle: vi.fn(async () => ({
-          data: filters.id === rule.id ? rule : null,
-          error: null,
-        })),
-        then: (resolve: (value: unknown) => unknown) => resolve({ data: [rule], error: null }),
-      }
-      return chain
-    })
-
-    const idsRange = vi.fn().mockResolvedValue({
-      data: [{ id: incomingTx.id }],
-      count: 1,
-      error: null,
-    })
-    const idsEq = vi.fn().mockReturnValue({ range: idsRange })
-    const idsOrder = vi.fn().mockReturnValue({ eq: idsEq })
-
-    const txDetailIn = vi.fn().mockResolvedValue({ data: [incomingTx], error: null })
-    const txDetailSelect = vi.fn().mockReturnValue({ in: txDetailIn })
-
-    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: incomingTx.id }, error: null })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    // The engine filters on the id and on the updated_at it read, so the write only lands on an
-    // unchanged payment.
-    const updateChain: Record<string, unknown> = { select: updateSelect }
-    const updateEq = vi.fn(() => updateChain)
-    updateChain.eq = updateEq
-    const update = vi.fn((payload: Record<string, unknown>) => {
-      updatePayloads.push(payload)
-      return { eq: updateEq }
-    })
-
-    const receiptTxSelect = vi.fn((columns: string) => {
-      if (columns === 'id') {
-        return { order: idsOrder }
-      }
-      if (columns === '*') {
-        return txDetailSelect()
-      }
-      throw new Error(`Unexpected select columns: ${columns}`)
-    })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-    const signalInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table === 'receipt_rules') {
-          return { select: receiptRulesSelect }
-        }
-        if (table === 'receipt_transactions') {
-          return { select: receiptTxSelect, update }
-        }
-        if (table === 'receipt_transaction_logs') {
-          return { insert: logInsert }
-        }
-        if (table === 'receipt_classification_signals') {
-          return { insert: signalInsert }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
-      // The rule names its vendor in text only, so the engine ties it to the vendor list.
-      rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
-        if (name !== 'resolve_receipt_vendor') throw new Error(`Unexpected rpc: ${name}`)
-        return {
-          data: { vendor_id: 'vendor-1', canonical_name: String(args.p_name), vendor_key: String(args.p_name).toLowerCase(), status: 'confirmed', kind: 'business', default_expense_category: null, created: false },
-          error: null,
-        }
-      }),
-    })
-
-    const result = await runReceiptRuleRetroactivelyStep({ ruleId: rule.id })
-
-    expect(result.success).toBe(true)
-    expect(updatePayloads).toHaveLength(1)
-    expect(updatePayloads[0]).toMatchObject({
-      vendor_name: 'Vendor from rule',
-      vendor_source: 'rule',
-    })
-    expect(updatePayloads[0]).not.toHaveProperty('expense_category')
-    expect(updatePayloads[0]).not.toHaveProperty('expense_category_source')
-    expect(updateEq).toHaveBeenCalledWith('id', incomingTx.id)
-    expect(updateEq).toHaveBeenCalledWith('updated_at', incomingTx.updated_at)
   })
 })

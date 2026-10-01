@@ -9,6 +9,7 @@ import { createHash } from 'crypto'
 import { z } from 'zod'
 import {
   receiptExpenseCategorySchema,
+  receiptRuleOutcomeSchema,
   receiptTransactionStatusSchema,
 } from '@/lib/validation'
 import type {
@@ -79,7 +80,7 @@ export const groupRuleInputSchema = z.object({
   matchDescription: z.string().trim().max(300).optional(),
   description: z.string().trim().max(500).optional(),
   direction: z.enum(['in', 'out', 'both']).default('both'),
-  autoStatus: receiptTransactionStatusSchema.default('pending'),
+  autoStatus: receiptRuleOutcomeSchema.default('pending'),
   vendorName: z.union([z.string(), z.null()]).optional(),
   expenseCategory: z.union([z.string(), z.null()]).optional(),
 })

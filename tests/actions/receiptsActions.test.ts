@@ -22,7 +22,8 @@ vi.mock('@/lib/receipts/ai-classification', () => ({
   recordAIUsage: vi.fn(),
 }))
 
-vi.mock('@/lib/receipts/rule-matching', () => ({
+vi.mock('@/lib/receipts/rule-matching', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/receipts/rule-matching')>()),
   selectBestReceiptRule: vi.fn(),
 }))
 
@@ -242,6 +243,8 @@ describe('deleteReceiptFile rollback safety', () => {
         }
 
         return {
+          // The rule is there when the save reads it, and gone by the time it writes.
+          select: vi.fn().mockResolvedValue({ data: [{ id: 'rule-1', name: 'Rule A', is_active: true }], error: null }),
           update: vi.fn().mockReturnValue({ eq: updateEq }),
         }
       }),
@@ -274,7 +277,11 @@ describe('deleteReceiptFile rollback safety', () => {
           throw new Error(`Unexpected table: ${table}`)
         }
 
-        return { update }
+        return {
+          // Read first for the duplicate check and to see what the save changes.
+          select: vi.fn().mockResolvedValue({ data: [{ id: 'rule-1', name: 'Rule A', is_active: true }], error: null }),
+          update,
+        }
       }),
     })
 

@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
+import { findDuplicateRule } from '@/lib/receipts/rule-identity'
 import type {
   ReceiptClassificationSignal,
   ReceiptExpenseCategory,
@@ -10,6 +11,7 @@ import type {
   ReceiptTransaction,
 } from '@/types/database'
 import type { AdminClient } from './types'
+import { loadReceiptSettings } from './receiptSettings'
 import {
   buildRuleSuggestion,
   getTransactionDirection,
@@ -149,6 +151,15 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
   }
 
   const activeRules = (rules ?? []) as ReceiptRule[]
+  const { matcher } = await loadReceiptSettings(supabase)
+  // Two rules are in conflict only when nothing separates them: the same priority, and a
+  // different result. Where the priorities differ the higher one wins by design, and where the
+  // results are the same it does not matter which wins.
+  const sameResult = (left: ReceiptRule, right: ReceiptRule) =>
+    left.auto_status === right.auto_status &&
+    (left.vendor_id ?? normalizeReceiptVendorKey(left.set_vendor_name)) ===
+      (right.vendor_id ?? normalizeReceiptVendorKey(right.set_vendor_name)) &&
+    (left.set_expense_category ?? null) === (right.set_expense_category ?? null)
   const pairMap = new Map<string, {
     ruleId: string
     overlappingRuleId: string
@@ -161,12 +172,13 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
     const direction = getTransactionDirection(tx as ReceiptTransaction)
     const amountValue = guessAmountValue(tx as ReceiptTransaction)
     const matches = activeRules.filter((rule) =>
-      getRuleMatch(rule, tx, { direction, amountValue }).matched
+      getRuleMatch(rule, tx, { direction, amountValue, matcher }).matched
     )
 
     for (let leftIndex = 0; leftIndex < matches.length; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < matches.length; rightIndex += 1) {
         const [left, right] = [matches[leftIndex], matches[rightIndex]].sort((a, b) => a.id.localeCompare(b.id))
+        if ((left.priority ?? 1000) !== (right.priority ?? 1000) || sameResult(left, right)) continue
         const key = `${left.id}:${right.id}`
         const existing = pairMap.get(key) ?? {
           ruleId: left.id,
@@ -355,12 +367,58 @@ export async function performSuggestReceiptRules(): Promise<{
   }
 }
 
+/**
+ * A suggestion that would make a rule identical to one that already exists is not approved.
+ * Returns an error to show, or nothing when the suggestion is new.
+ */
+async function findDuplicateOfSuggestion(
+  supabase: AdminClient,
+  suggestionId: string
+): Promise<{ error?: string }> {
+  const [{ data: suggestion, error: suggestionError }, { data: rules, error: rulesError }] = await Promise.all([
+    supabase.from('receipt_rule_suggestions').select('*').eq('id', suggestionId).maybeSingle(),
+    supabase.from('receipt_rules').select('*'),
+  ])
+
+  if (suggestionError || rulesError) {
+    console.error('Failed to check a rule suggestion for duplicates', suggestionError ?? rulesError)
+    return { error: 'The existing rules could not be checked. The suggestion was not approved.' }
+  }
+  // Already approved, or gone: the database function answers for those.
+  if (!suggestion || suggestion.status !== 'pending') return {}
+
+  const duplicate = findDuplicateRule((rules ?? []) as ReceiptRule[], {
+    match_description: suggestion.match_description,
+    // An approved suggestion never carries a bank transaction type.
+    match_transaction_type: null,
+    match_direction: suggestion.match_direction,
+    match_min_amount: suggestion.match_min_amount,
+    match_max_amount: suggestion.match_max_amount,
+    set_vendor_name: suggestion.set_vendor_name,
+    vendor_id: suggestion.set_vendor_id,
+    set_expense_category: suggestion.set_expense_category,
+    auto_status: suggestion.auto_status,
+  })
+  if (!duplicate) return {}
+
+  return {
+    error: duplicate.is_active
+      ? `A rule with the same match and result already exists: "${duplicate.name}". Decline this suggestion.`
+      : `A rule with the same match and result already exists but is switched off: "${duplicate.name}". Switch that one on, or decline this suggestion.`,
+  }
+}
+
 export async function performApproveReceiptRuleSuggestion(
   userId: string,
   suggestionId: string,
   options: SuggestionApprovalOptions = {}
 ): Promise<{ success?: boolean; rule?: ReceiptRule; error?: string }> {
   const supabase = createAdminClient()
+
+  const duplicate = await findDuplicateOfSuggestion(supabase, suggestionId)
+  if (duplicate.error) {
+    return { error: duplicate.error }
+  }
 
   // Atomic approval: the RPC inserts the rule and marks the suggestion approved in a
   // single Postgres transaction (it also nulls the bank transaction_type). A failure
@@ -445,6 +503,13 @@ export async function performApproveReceiptRuleSuggestions(
   let failed = 0
 
   for (const suggestionId of ids) {
+    // Checked one at a time, so the second of two identical suggestions is caught by the first.
+    const duplicate = await findDuplicateOfSuggestion(supabase, suggestionId)
+    if (duplicate.error) {
+      failed += 1
+      continue
+    }
+
     // Each RPC call is its own atomic transaction; a failing id does not abort the rest.
     const { data: ruleId, error: rpcError } = await supabase.rpc('approve_receipt_rule_suggestion', {
       p_suggestion_id: suggestionId,

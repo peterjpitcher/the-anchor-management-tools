@@ -104,8 +104,9 @@ describe('performApproveReceiptRuleSuggestion (atomic RPC)', () => {
 
     const fromMock = (handles.supabase as { from: Mock }).from
     const rulesCalls = fromMock.mock.calls.filter((call) => call[0] === 'receipt_rules')
-    // Only the read-back select on receipt_rules — never an insert.
-    expect(rulesCalls).toHaveLength(1)
+    // Two reads of receipt_rules and never an insert: the duplicate check before approving, and
+    // the read-back afterwards. The mock has no insert method, so an insert would throw.
+    expect(rulesCalls).toHaveLength(2)
   })
 
   it('returns an error and records no signals when the RPC fails', async () => {

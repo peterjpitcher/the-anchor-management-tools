@@ -159,6 +159,15 @@ export const receiptTransactionStatusSchema = z.enum([
   'cant_find',
 ]);
 
+/**
+ * What a rule may do to a payment's status: leave it pending, or mark it as needing no receipt.
+ * A rule cannot mark a payment completed (that needs a receipt or a written reason) or "can't
+ * find" (that is something a person concludes after looking).
+ */
+export const receiptRuleOutcomeSchema = z.enum(['pending', 'no_receipt_required'], {
+  message: 'A rule can leave a transaction pending or mark it as not needing a receipt',
+});
+
 const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import', 'invoice']);
 
 export const receiptExpenseCategorySchema = z.enum([
@@ -203,15 +212,17 @@ export const receiptRuleKindSchema = z.enum([
 
 export const receiptRuleSchema = z.object({
   name: z.string().min(1, 'Rule name is required').max(120, 'Keep the name under 120 characters'),
-  // Absent means "leave the stored description alone" (the rule edit screen has no
-  // description input), null means "clear it". See getRuleFormData in receiptMutations.ts.
+  // Absent means "leave the stored description alone" (a caller that sends no description
+  // field, such as a rule made from a bulk group), null means "clear it". See getRuleFormData
+  // in receiptMutations.ts.
   description: z.string().trim().max(500).nullable().optional(),
   priority: z.number().int().min(0).max(100000).optional(),
   kind: receiptRuleKindSchema.default('standard'),
   match_description: z.string().trim().max(300).refine(
     (val) => {
       if (!val) return true
-      return val.split(',').map((t) => t.trim()).every((t) => t.length > 0)
+      // A comma written `\,` belongs to the keyword and does not separate two.
+      return val.replace(/\\,/g, 'x').split(',').every((t) => t.trim().length > 0)
     },
     { message: 'Match description must not contain empty tokens (check for double commas)' }
   ).optional(),
@@ -220,7 +231,7 @@ export const receiptRuleSchema = z.object({
   match_min_amount: z.number().nonnegative().optional(),
   match_max_amount: z.number().nonnegative().optional(),
   // A rule with no outcome chosen only classifies. Closing a payment has to be asked for.
-  auto_status: receiptTransactionStatusSchema.default('pending'),
+  auto_status: receiptRuleOutcomeSchema.default('pending'),
   set_vendor_name: z.string().trim().max(120).optional(),
   set_expense_category: receiptExpenseCategorySchema.optional(),
 }).refine((data) => {

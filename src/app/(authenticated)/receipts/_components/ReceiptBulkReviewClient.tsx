@@ -30,19 +30,17 @@ import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/databas
 import { usePermissions } from '@/contexts/PermissionContext'
 import { RECEIPT_STATUS_LABEL, RECEIPT_SUGGESTION_SOURCE_LABEL, RECEIPT_SUGGESTION_SOURCE_TONE } from '../_shared/status-ui'
 import { NewVendorDialog, type VendorConfirmationPrompt } from './ui/NewVendorDialog'
+import { RuleRunDialog } from './ui/RuleRunDialog'
+import { escapeRuleKeyword } from '@/lib/receipts/rule-matching'
+import type { RuleRunPreview } from '@/services/receipts/receiptRuleRuns'
 
 const STATUS_LABELS = RECEIPT_STATUS_LABEL
 
 const EXPENSE_OPTIONS = receiptExpenseCategorySchema.options
 // "Leave pending" comes first and is the default: a rule that only names a vendor must not stop
 // receipts being chased for it.
-const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = [
-  'pending',
-  'no_receipt_required',
-  'auto_completed',
-  'completed',
-  'cant_find',
-]
+// A rule can leave a transaction pending or mark it as needing no receipt, and nothing else.
+const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = ['pending', 'no_receipt_required']
 const RULE_DIRECTION_OPTIONS: Array<{ value: 'in' | 'out' | 'both'; label: string }> = [
   { value: 'out', label: 'Money out' },
   { value: 'in', label: 'Money in' },
@@ -99,7 +97,15 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const managePermissionMessage = 'You do not have permission to manage receipts.'
   const [isApplying, startApply] = useTransition()
   const [isCreatingRule, startCreateRule] = useTransition()
-  const { runRetro, isRunning: isRunningRetro, activeRuleId: retroRunningRuleId } = useRetroRuleRunner()
+  const {
+    previewRetro,
+    runRetro,
+    isRunning: isRunningRetro,
+    isPreviewing: isPreviewingRetro,
+    activeRuleId: retroRunningRuleId,
+  } = useRetroRuleRunner()
+  // A rule run that has been worked out and is waiting for a yes. Nothing is written until then.
+  const [retroRun, setRetroRun] = useState<{ ruleId: string; preview: RuleRunPreview & { runId: string } } | null>(null)
 
   const [activeApplyGroup, setActiveApplyGroup] = useState<string | null>(null)
   const [activeRuleGroup, setActiveRuleGroup] = useState<string | null>(null)
@@ -145,7 +151,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     initialData.groups.forEach((group) => {
       map[group.details] = {
         name: defaultRuleName(group.details),
-        matchDescription: group.details,
+        // The whole description is one keyword: its commas must not split it into several.
+        matchDescription: escapeRuleKeyword(group.details),
         direction: defaultRuleDirection(group.totalIn, group.totalOut),
         autoStatus: 'pending',
         setVendor: Boolean(group.suggestion.vendorName),
@@ -189,7 +196,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       applyExpenseMap[group.details] = group.needsExpenseCount > 0 || Boolean(group.suggestion.expenseCategory)
       ruleMap[group.details] = {
         name: defaultRuleName(group.details),
-        matchDescription: group.details,
+        // The whole description is one keyword: its commas must not split it into several.
+        matchDescription: escapeRuleKeyword(group.details),
         direction: defaultRuleDirection(group.totalIn, group.totalOut),
         autoStatus: 'pending',
         setVendor: Boolean(group.suggestion.vendorName),
@@ -405,7 +413,14 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     }
     const rule = createdRules[details]
     if (!rule) return
-    runRetro({ ruleId: rule.id, scope: 'pending' })
+    void previewRetro({ ruleId: rule.id, scope: 'pending' }).then((preview) => {
+      if (!preview) return
+      if (!preview.runId || preview.planned === 0) {
+        toast.success('Nothing to change. Every matching pending transaction is already as this rule would set it.')
+        return
+      }
+      setRetroRun({ ruleId: rule.id, preview: { ...preview, runId: preview.runId } })
+    })
   }
 
   const updateRuleDraft = (details: string, changes: Partial<RuleDraft>) =>
@@ -478,7 +493,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           const suggestion = group.suggestion
           const isApplyingGroup = isApplying && activeApplyGroup === group.details
           const isCreatingForGroup = isCreatingRule && activeRuleGroup === group.details
-          const isRetroPending = isRunningRetro && retroRunningRuleId === createdRules[group.details]?.id
+          const isRetroPending = (isRunningRetro || isPreviewingRetro) && retroRunningRuleId === createdRules[group.details]?.id
           const createdRule = createdRules[group.details]
           const sample = group.sampleTransaction
 
@@ -701,6 +716,17 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           )
         })
       )}
+      <RuleRunDialog
+        preview={retroRun?.preview ?? null}
+        running={isRunningRetro}
+        onClose={() => setRetroRun(null)}
+        onRun={() => {
+          if (!retroRun) return
+          const { ruleId, preview } = retroRun
+          setRetroRun(null)
+          runRetro(preview, ruleId)
+        }}
+      />
       <NewVendorDialog
         prompt={vendorPrompt?.confirmation ?? null}
         pending={isApplying || isCreatingRule}

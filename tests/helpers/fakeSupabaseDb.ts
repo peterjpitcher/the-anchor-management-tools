@@ -40,6 +40,8 @@ type FakeTable = {
   select: (columns?: string, options?: { count?: string; head?: boolean }) => FakeQuery
   update: (payload: Row) => FakeQuery
   insert: (payload: Row | Row[]) => FakeQuery
+  /** Insert, or update the row that matches on the `onConflict` columns. */
+  upsert: (payload: Row | Row[], options?: { onConflict?: string }) => PromiseLike<QueryResult>
   delete: () => FakeQuery
 }
 
@@ -297,6 +299,27 @@ export function createFakeDb(seed: Record<string, Row[]> = {}): FakeDb {
         select: () => new FakeQuery(db, table, 'select'),
         update: (payload: Row) => new FakeQuery(db, table, 'update', payload),
         insert: (payload: Row | Row[]) => new FakeQuery(db, table, 'insert', payload),
+        upsert: async (payload: Row | Row[], options?: { onConflict?: string }) => {
+          const failure = db.takeFailure(table, 'insert')
+          if (failure) return { data: null, error: { message: failure } }
+          const keys = (options?.onConflict ?? 'id').split(',').map((key) => key.trim())
+          const rows = db.table(table)
+          const ids: unknown[] = []
+          for (const incoming of Array.isArray(payload) ? payload : [payload]) {
+            const existing = rows.find((row) => keys.every((key) => (row[key] ?? null) === (incoming[key] ?? null)))
+            if (existing) {
+              Object.assign(existing, incoming)
+              existing.updated_at = nextTimestamp()
+              ids.push(existing.id)
+            } else {
+              const created = { id: `fake-${table}-${rows.length + 1}-${Math.random().toString(16).slice(2, 8)}`, ...incoming }
+              rows.push(created)
+              ids.push(created.id)
+            }
+          }
+          db.writes.push({ table, operation: 'insert', ids })
+          return { data: null, error: null }
+        },
         delete: () => new FakeQuery(db, table, 'delete'),
       }),
       rpc: async (name: string, args: Row = {}) => {
@@ -374,5 +397,61 @@ export function fakeResolveReceiptVendor(db: FakeDb, args: Row): QueryResult {
       created,
     },
     error: null,
+  }
+}
+
+/**
+ * What the database function `apply_receipt_rule_change` does, against the fake rows: the change
+ * is written only if the payment is still at the version it was read at and is not behind the
+ * lock date, and its history rows are written with it. It goes through the fake client, so
+ * `failNext`, `beforeUpdate` and `writes` behave as they do for a plain update.
+ */
+export async function fakeApplyReceiptRuleChange(db: FakeDb, args: Row): Promise<QueryResult> {
+  const id = args.p_transaction_id
+  const current = db.rows('receipt_transactions').find((row) => row.id === id)
+  if (!current) return { data: 'not_found', error: null }
+  if (current.updated_at !== args.p_expected_updated_at) return { data: 'changed', error: null }
+
+  const setting = db.rows('receipt_settings').find((row) => row.key === 'locked_before')
+  const lock = (setting?.value as { date?: string } | undefined)?.date ?? null
+  if (lock && String(current.transaction_date) <= lock) return { data: 'locked', error: null }
+
+  const previousStatus = current.status
+  const result = await db.client
+    .from('receipt_transactions')
+    .update(args.p_after as Row)
+    .eq('id', id)
+    .eq('updated_at', args.p_expected_updated_at)
+    .select()
+  if (result.error) return { data: null, error: result.error }
+  const updated = (result.data as Row[] | null) ?? []
+  if (!updated.length) return { data: 'changed', error: null }
+
+  const logs = (Array.isArray(args.p_logs) ? args.p_logs : []) as Row[]
+  if (logs.length) {
+    await db.client.from('receipt_transaction_logs').insert(
+      logs.map((entry) => ({
+        transaction_id: id,
+        previous_status: previousStatus,
+        new_status: updated[0].status,
+        action_type: entry.action_type,
+        note: entry.note,
+        performed_by: args.p_performed_by ?? null,
+        rule_id: entry.rule_id ?? null,
+      }))
+    )
+  }
+  return { data: 'applied', error: null }
+}
+
+/**
+ * The receipts database functions the services call, answered from the fake rows. Pass it to
+ * `db.onRpc`. A test that needs another function wraps this and handles its own names first.
+ */
+export function fakeReceiptsRpc(db: FakeDb): (name: string, args: Row) => QueryResult | Promise<QueryResult> {
+  return (name, args) => {
+    if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
+    if (name === 'apply_receipt_rule_change') return fakeApplyReceiptRuleChange(db, args)
+    throw new Error(`Unexpected rpc: ${name}`)
   }
 }
