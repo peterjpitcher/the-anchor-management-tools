@@ -397,6 +397,8 @@ describe('cancellation notice with the flag off: exactly today', () => {
 const REFUND_VARIANTS: Array<[string, TableBookingCancellationRefundResult]> = [
   ['full refund', { refunded: true, amountPence: 15000, tier: 'full' }],
   ['half refund', { refunded: true, amountPence: 7500, tier: 'half' }],
+  ['rest of a full refund', { refunded: true, amountPence: 10000, tier: 'full', alreadyReturnedPence: 5000 }],
+  ['rest of a half refund', { refunded: true, amountPence: 2500, tier: 'half', alreadyReturnedPence: 5000 }],
   ['inside three days', { refunded: false, reason: 'zero_tier' }],
   ['refund failed, amount known', { refunded: false, reason: 'refund_failed', depositOwed: true, amountOwedPence: 15000 }],
   ['refund failed, amount unknown', { refunded: false, reason: 'refund_failed', depositOwed: true }],

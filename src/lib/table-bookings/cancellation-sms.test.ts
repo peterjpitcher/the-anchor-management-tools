@@ -69,6 +69,21 @@ describe('cancellation SMS', () => {
     expect(body).not.toMatch(/half/i)
   })
 
+  it('says what has already gone back when this refund is only the rest of it', async () => {
+    const body = await sendWith({ refunded: true, amountPence: 10000, tier: 'full', alreadyReturnedPence: 5000 })
+    expect(body).toMatch(/already had £50\.00 of the deposit back/)
+    expect(body).toMatch(/remaining £100\.00 will land/)
+    expect(body).not.toMatch(/undefined|NaN/)
+  })
+
+  it('keeps the half tier named when part of it has already gone back', async () => {
+    const body = await sendWith({ refunded: true, amountPence: 2500, tier: 'half', alreadyReturnedPence: 5000 })
+    expect(body).toMatch(/half the deposit is refundable/i)
+    expect(body).toMatch(/already had £50\.00 back/)
+    expect(body).toMatch(/remaining £25\.00 will land/)
+    expect(body).not.toMatch(/undefined|NaN/)
+  })
+
   it('tells the guest when the refund failed, and names the amount owed', async () => {
     const body = await sendWith({
       refunded: false,
