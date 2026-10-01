@@ -2,6 +2,7 @@ import { isValidIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type {
   BalancePaymentEntry,
   DepositPaymentEntry,
+  DepositRefundEntry,
   PaymentHistoryEntry,
   PrivateBookingPayment,
 } from '@/types/private-bookings'
@@ -71,6 +72,40 @@ export function buildPaymentHistoryEntries(
     if (a.type === 'balance' && b.type === 'deposit') return 1
     return 0
   })
+
+  return entries
+}
+
+export type DepositRefundRow = {
+  id: string
+  amount: number | string
+  refund_method: string
+  status: string
+  created_at: string
+  completed_at?: string | null
+}
+
+/**
+ * The deposit refunds the booking page lists under its payments, oldest first, dates as London
+ * calendar dates. A failed refund moved no money, so it is left to the Refund History card. Booking
+ * page only: the balance reminder statement above never carries a refund.
+ */
+export function buildDepositRefundEntries(rows: DepositRefundRow[]): DepositRefundEntry[] {
+  const entries: DepositRefundEntry[] = []
+
+  for (const row of rows) {
+    if (row.status !== 'completed' && row.status !== 'pending') continue
+    entries.push({
+      id: row.id,
+      type: 'refund',
+      amount: Number(row.amount),
+      method: row.refund_method,
+      date: toLocalIsoDate(new Date(row.completed_at ?? row.created_at)),
+      status: row.status,
+    })
+  }
+
+  entries.sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? -1 : 1))
 
   return entries
 }

@@ -150,6 +150,7 @@ describe('private booking detail page chrome', () => {
         initialBooking={booking}
         permissions={permissions}
         paymentHistory={[]}
+        depositRefunds={[]}
       />,
     )
 
@@ -192,6 +193,7 @@ describe('private booking detail page chrome', () => {
         initialBooking={booking}
         permissions={permissions}
         paymentHistory={[]}
+        depositRefunds={[]}
       />,
     )
 
@@ -209,6 +211,44 @@ describe('private booking detail page chrome', () => {
     expect(within(alert).queryByRole('textbox')).not.toBeInTheDocument()
   })
 
+  it('shows a deposit as refunded, and stops offering a refund, as soon as the page reloads its data', () => {
+    // RefundDialog calls router.refresh() after a refund, which hands this component new props and
+    // keeps its state. The refund figures therefore have to come from the props.
+    const paidBooking = {
+      ...booking,
+      deposit_amount: 250,
+      deposit_paid_date: '2026-09-14T15:16:40Z',
+      deposit_payment_method: 'paypal',
+    } as unknown as PrivateBookingWithDetails
+    const refundPermissions = { ...permissions, canRefund: true, canViewPricing: true }
+    const deposit = { id: 'deposit', type: 'deposit', amount: 250, method: 'paypal', date: '2026-09-14' } as const
+
+    const { rerender } = render(
+      <PrivateBookingDetailClient
+        bookingId="booking-1"
+        initialBooking={paidBooking}
+        permissions={refundPermissions}
+        paymentHistory={[deposit]}
+        depositRefunds={[]}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Process Refund' })).toBeInTheDocument()
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument()
+
+    rerender(
+      <PrivateBookingDetailClient
+        bookingId="booking-1"
+        initialBooking={paidBooking}
+        permissions={refundPermissions}
+        paymentHistory={[deposit]}
+        depositRefunds={[{ id: 'refund-1', type: 'refund', amount: 250, method: 'paypal', date: '2026-10-01', status: 'completed' }]}
+      />,
+    )
+    expect(screen.getByText('Refunded')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Process Refund' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Deposit refund/).parentElement).toHaveTextContent('-£250.00')
+  })
+
   it('keeps the same title and tab row when the booking cannot be loaded', async () => {
     render(
       <PrivateBookingDetailClient
@@ -216,6 +256,7 @@ describe('private booking detail page chrome', () => {
         initialBooking={null}
         permissions={permissions}
         paymentHistory={[]}
+        depositRefunds={[]}
         initialError="We could not load this booking."
       />,
     )
