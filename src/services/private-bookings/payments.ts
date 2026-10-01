@@ -1,5 +1,5 @@
 import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger';
-import { buildPaymentHistoryEntries } from '@/lib/private-bookings/payment-statement';
+import { buildDepositRefundEntries, buildPaymentHistoryEntries } from '@/lib/private-bookings/payment-statement';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatDateInLondon } from '@/lib/dateUtils';
@@ -24,6 +24,7 @@ import type {
   BookingStatus,
   PrivateBookingWithDetails,
   PaymentHistoryEntry,
+  DepositRefundEntry,
 } from '@/types/private-bookings';
 import {
   type PrivateBookingSmsSideEffectSummary,
@@ -885,6 +886,25 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
 
   // The same list a balance reminder email carries (payment-statement.ts).
   return buildPaymentHistoryEntries(booking, ledger)
+}
+
+/**
+ * The deposit refunds the booking page lists under its payments. Throws rather than returning an
+ * empty list when the read fails, so the page never shows a refunded deposit as still held.
+ */
+export async function getBookingDepositRefunds(bookingId: string): Promise<DepositRefundEntry[]> {
+  const db = createAdminClient()
+
+  const { data, error } = await db
+    .from('payment_refunds')
+    .select('id, amount, refund_method, status, created_at, completed_at')
+    .eq('source_type', 'private_booking')
+    .eq('source_id', bookingId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`Failed to fetch booking refunds: ${error.message}`)
+
+  return buildDepositRefundEntries(data ?? [])
 }
 
 export async function updateBalancePayment(
