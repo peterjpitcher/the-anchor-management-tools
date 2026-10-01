@@ -127,6 +127,11 @@ function buildInvoice(overrides: Record<string, unknown> = {}) {
 function makeAdminClient(config: {
   roles?: Array<{ role_name: string }>
   booking?: Record<string, unknown> | null
+  /**
+   * The customer's existing billing record. Left out, they have one, so a test
+   * about something else is not also a test of the first-invoice question.
+   * Pass `null` for a customer who has never been invoiced.
+   */
   vendorLookup?: { id: string } | null
   vendorInsert?: { id: string } | null
   invoice?: Record<string, unknown> | null
@@ -165,7 +170,12 @@ function makeAdminClient(config: {
         return { data: null, error: null }
       }
       if (table === 'private_bookings') return { data: config.booking ?? null, error: null }
-      if (table === 'invoice_vendors') return { data: config.vendorLookup ?? null, error: null }
+      if (table === 'invoice_vendors') {
+        return {
+          data: 'vendorLookup' in config ? config.vendorLookup ?? null : { id: VENDOR_ID },
+          error: null,
+        }
+      }
       if (table === 'invoices') return { data: config.invoice ?? null, error: null }
       return { data: null, error: null }
     }
@@ -484,6 +494,156 @@ describe('generatePrivateBookingInvoice', () => {
     })
   })
 
+  describe('the billing record and the PayPal question', () => {
+    const vendorInsert = (admin: ReturnType<typeof makeAdminClient>) =>
+      admin.__inserts.find(i => i.table === 'invoice_vendors')?.values as
+        | Record<string, unknown>
+        | undefined
+
+    it('creates the billing record with online payment on when the answer is yes', async () => {
+      // The email's "pay online" link is decided from the vendor row, and the
+      // invoice is loaded for sending after this insert. The answer has to be
+      // on the row at creation or the first invoice goes out without a link.
+      const admin = makeAdminClient({
+        booking: buildBooking(),
+        vendorLookup: null,
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      const result = await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+        paypalPaymentsEnabled: true,
+      })
+
+      expect(result.error).toBeUndefined()
+      expect(vendorInsert(admin)).toMatchObject({
+        customer_id: CUSTOMER_ID,
+        paypal_payments_enabled: true,
+      })
+    })
+
+    it('creates it with online payment off when the answer is no', async () => {
+      const admin = makeAdminClient({
+        booking: buildBooking(),
+        vendorLookup: null,
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+        paypalPaymentsEnabled: false,
+      })
+
+      expect(vendorInsert(admin)).toMatchObject({ paypal_payments_enabled: false })
+    })
+
+    it('refuses a first invoice with no answer, and creates nothing', async () => {
+      // Defaulting to off is the bug this replaces: every first invoice went
+      // out with no link and nobody had chosen that. No answer means no send.
+      const admin = makeAdminClient({
+        booking: buildBooking(),
+        vendorLookup: null,
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      const result = await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+      })
+
+      expect(result.error).toContain('card or PayPal')
+      expect(result.blocked).toBe(true)
+      expect(vendorInsert(admin)).toBeUndefined()
+      expect(
+        admin.__rpcCalls.some(c => c.fn === 'create_private_booking_invoice_atomic'),
+      ).toBe(false)
+      expect(mockedSendInvoiceEmail).not.toHaveBeenCalled()
+    })
+
+    it('asks for a booking with no customer record too', async () => {
+      // No customer_id means no lookup key, so a fresh row is always created.
+      const admin = makeAdminClient({
+        booking: buildBooking({ customer_id: null }),
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      const refused = await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+      })
+      expect(refused.error).toContain('card or PayPal')
+
+      await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+        paypalPaymentsEnabled: true,
+      })
+      expect(vendorInsert(admin)).toMatchObject({
+        customer_id: null,
+        paypal_payments_enabled: true,
+      })
+    })
+
+    it('leaves an existing billing record setting alone', async () => {
+      // That setting covers every invoice the customer has, and is managed on
+      // the vendor screen. A booking invoice must not flip it either way.
+      const admin = makeAdminClient({
+        booking: buildBooking(),
+        vendorLookup: { id: VENDOR_ID },
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      const result = await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+        paypalPaymentsEnabled: true,
+      })
+
+      expect(result.error).toBeUndefined()
+      expect(vendorInsert(admin)).toBeUndefined()
+      const vendorUpdates = admin.__updates.filter(u => u.table === 'invoice_vendors')
+      expect(vendorUpdates).toHaveLength(1)
+      expect(vendorUpdates[0].values).not.toHaveProperty('paypal_payments_enabled')
+    })
+
+    it('records the answer in the audit log only when it was asked', async () => {
+      const first = makeAdminClient({
+        booking: buildBooking(),
+        vendorLookup: null,
+        invoice: buildInvoice(),
+      })
+      mockedCreateAdminClient.mockReturnValue(first)
+      await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+        paypalPaymentsEnabled: true,
+      })
+      expect(mockedLogAuditEvent.mock.calls[0][0].new_values).toMatchObject({
+        billing_record_created: true,
+        paypal_payments_enabled: true,
+      })
+
+      mockedLogAuditEvent.mockClear()
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+      )
+      await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+      })
+      const repeat = mockedLogAuditEvent.mock.calls[0][0].new_values
+      expect(repeat.billing_record_created).toBe(false)
+      expect(repeat).not.toHaveProperty('paypal_payments_enabled')
+    })
+  })
+
   describe('auditing', () => {
     it('records a failed send as a failure, not a success', async () => {
       mockedSendInvoiceEmail.mockResolvedValue({ success: false, error: 'nope' })
@@ -566,6 +726,25 @@ describe('previewPrivateBookingInvoice', () => {
     const result = await previewPrivateBookingInvoice(BOOKING_ID)
     expect(result.error).toContain('super admins')
   })
+
+  it.each([
+    ['a customer with no billing record', { vendorLookup: null }, {}, true],
+    ['a customer who already has one', { vendorLookup: { id: VENDOR_ID } }, {}, false],
+    ['a booking with no customer record', {}, { customer_id: null }, true],
+  ] as const)(
+    'tells the dialog whether to ask the PayPal question for %s',
+    async (_label, lookup, bookingOverrides, expected) => {
+      // The dialog asks exactly when the send will create the billing record,
+      // so the preview and the send have to reach the same answer.
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(bookingOverrides), ...lookup }),
+      )
+
+      const result = await previewPrivateBookingInvoice(BOOKING_ID)
+      expect(result.error).toBeUndefined()
+      expect(result.preview?.createsBillingRecord).toBe(expected)
+    },
+  )
 })
 
 describe('retryPrivateBookingInvoiceEmail', () => {
