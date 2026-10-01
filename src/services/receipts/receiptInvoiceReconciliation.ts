@@ -7,10 +7,8 @@ import type {
 import type { AdminClient } from './types'
 import { normalizeVendorInput } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
-import {
-  recordReceiptClassificationSignals,
-  resolveReceiptVendorId,
-} from './receiptGovernance'
+import { recordReceiptClassificationSignals } from './receiptGovernance'
+import { resolveReceiptVendor } from './receiptVendors'
 import {
   pairInvoiceByAmountAndDate,
   type PairableInvoice,
@@ -197,13 +195,32 @@ async function loadExistingPaymentsByInvoice(
   return byInvoice
 }
 
+type LinkedReceiptVendor = { id: string; name: string }
+
+/**
+ * The receipts vendor for an invoicing customer, created if this is the first time it is seen.
+ * A lookup failure leaves the payment's vendor alone: the match itself is still recorded.
+ */
 async function ensureReceiptVendorLinkedToInvoiceVendor(
   supabase: AdminClient,
   vendorName: string | null | undefined,
   invoiceVendorId: string | null | undefined
-): Promise<string | null> {
-  const receiptVendorId = await resolveReceiptVendorId(supabase, vendorName)
-  if (!receiptVendorId || !invoiceVendorId) return receiptVendorId
+): Promise<LinkedReceiptVendor | null> {
+  const normalizedName = normalizeVendorInput(vendorName ?? null)
+  if (!normalizedName) return null
+
+  let vendor: Awaited<ReturnType<typeof resolveReceiptVendor>>
+  try {
+    vendor = await resolveReceiptVendor(supabase, { name: normalizedName }, { create: true, origin: 'invoice' })
+  } catch (error) {
+    console.warn('Failed to resolve receipt vendor for an invoice match', error)
+    return null
+  }
+  if (!vendor) return null
+
+  const receiptVendorId = vendor.id
+  const linked: LinkedReceiptVendor = { id: vendor.id, name: vendor.canonicalName }
+  if (!invoiceVendorId) return linked
 
   const { error } = await supabase
     .from('receipt_vendors')
@@ -219,7 +236,7 @@ async function ensureReceiptVendorLinkedToInvoiceVendor(
     })
   }
 
-  return receiptVendorId
+  return linked
 }
 
 async function findExistingPaymentForTransaction(
@@ -288,12 +305,16 @@ async function applyInvoiceMatch(
     payload?: Record<string, unknown>
     /** False for matches a person has to review: several invoice numbers, or no such invoice. */
     allowStatusChange: boolean
-    receiptVendorId: string | null
+    /** The receipts vendor for the invoice's customer. Null when it could not be resolved. */
+    receiptVendor: LinkedReceiptVendor | null
     initiatedBy: string | null
   }
 ): Promise<{ statusUpdated: boolean; classificationUpdated: boolean }> {
   const { transaction, invoice } = params
-  const vendorName = params.allowStatusChange ? normalizeVendorInput(invoice?.vendor?.name ?? null) : null
+  // The payment takes the vendor's own name, so it reads the same as every other payment of theirs.
+  const vendorName = params.allowStatusChange
+    ? params.receiptVendor?.name ?? normalizeVendorInput(invoice?.vendor?.name ?? null)
+    : null
 
   const { data, error } = await (supabase as any).rpc('apply_receipt_invoice_match', {
     p_transaction_id: transaction.id,
@@ -307,7 +328,7 @@ async function applyInvoiceMatch(
     p_invoice_paid_before: invoice ? moneyValue(invoice.paid_amount) : null,
     p_payload: params.payload ?? {},
     p_allow_status_change: params.allowStatusChange,
-    p_vendor_id: vendorName ? params.receiptVendorId : null,
+    p_vendor_id: vendorName ? params.receiptVendor?.id ?? null : null,
     p_vendor_name: vendorName,
     p_initiated_by: params.initiatedBy,
   })
@@ -337,7 +358,7 @@ async function applyInvoiceMatch(
       source: 'system',
       signal_type: 'invoice_reconciliation',
       prior_vendor_id: transaction.vendor_id ?? null,
-      new_vendor_id: classificationUpdated ? params.receiptVendorId : transaction.vendor_id ?? null,
+      new_vendor_id: classificationUpdated ? params.receiptVendor?.id ?? null : transaction.vendor_id ?? null,
       prior_vendor_name: transaction.vendor_name,
       new_vendor_name: classificationUpdated ? vendorName : transaction.vendor_name,
       prior_expense_category: transaction.expense_category,
@@ -599,7 +620,7 @@ async function applyReferenceFreePair(
   }
 
   const invoice = data as InvoiceRow
-  const receiptVendorId = await ensureReceiptVendorLinkedToInvoiceVendor(
+  const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(
     supabase,
     invoice.vendor?.name ?? null,
     invoice.vendor_id
@@ -613,7 +634,7 @@ async function applyReferenceFreePair(
     status: 'vendor_amount_matched',
     amountMatch: true,
     allowStatusChange: true,
-    receiptVendorId,
+    receiptVendor,
     initiatedBy,
     payload: {
       match_method: 'vendor_amount',
@@ -713,7 +734,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
           status: 'missing_invoice',
           amountMatch: false,
           allowStatusChange: false,
-          receiptVendorId: null,
+          receiptVendor: null,
           initiatedBy,
           payload: { details: transaction.details },
         })
@@ -748,7 +769,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
           status: 'multiple_invoice_refs',
           amountMatch: false,
           allowStatusChange: false,
-          receiptVendorId: null,
+          receiptVendor: null,
           initiatedBy,
           payload: { ...matchPayload, quoted_invoice_numbers: refs },
         })
@@ -780,7 +801,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
 
       if (status === 'amount_mismatch') summary.amountMismatch += 1
 
-      const receiptVendorId = await ensureReceiptVendorLinkedToInvoiceVendor(
+      const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(
         supabase,
         invoice.vendor?.name ?? null,
         invoice.vendor_id
@@ -794,7 +815,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
         status,
         amountMatch,
         allowStatusChange: true,
-        receiptVendorId,
+        receiptVendor,
         initiatedBy,
         payload: matchPayload,
       })

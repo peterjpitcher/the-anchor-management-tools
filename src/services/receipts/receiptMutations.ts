@@ -50,10 +50,12 @@ import {
   BULK_STATUS_OPTIONS,
 } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
+import { recordReceiptClassificationSignals } from './receiptGovernance'
 import {
-  recordReceiptClassificationSignals,
-  resolveReceiptVendorId,
-} from './receiptGovernance'
+  resolveVendorForPersonWrite,
+  type ResolvedReceiptVendor,
+  type VendorConfirmation,
+} from './receiptVendors'
 import { applyAutomationRules, refreshAutomationForPendingTransactions } from './receiptAutomation'
 
 // The rule engine lives in receiptAutomation.ts and the statement import in receiptImport.ts.
@@ -409,6 +411,8 @@ export async function performUpdateReceiptClassification(
     transactionId: string
     vendorName?: string | null
     expenseCategory?: ReceiptExpenseCategory | null
+    /** The person has confirmed that a name not on the vendor list is a new vendor. */
+    createVendor?: boolean
   }
 ): Promise<{
   success?: boolean
@@ -416,6 +420,8 @@ export async function performUpdateReceiptClassification(
   error?: string
   transaction?: ReceiptTransaction
   ruleSuggestion?: any
+  /** The name is not on the vendor list. Nothing was saved; ask, then send again. */
+  vendorConfirmation?: VendorConfirmation
 }> {
   const hasVendorField = Object.prototype.hasOwnProperty.call(input, 'vendorName')
   const hasExpenseField = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
@@ -462,18 +468,34 @@ export async function performUpdateReceiptClassification(
   let vendorChanged = false
   let expenseChanged = false
 
+  // The name saved on the payment is the vendor's own, whatever spelling was typed.
+  let resolvedVendor: ResolvedReceiptVendor | null = null
+  if (hasVendorField && vendorName) {
+    try {
+      const resolution = await resolveVendorForPersonWrite(supabase, vendorName, { createVendor: input.createVendor })
+      if (resolution.outcome === 'unknown') {
+        return { vendorConfirmation: resolution.confirmation }
+      }
+      resolvedVendor = resolution.vendor
+    } catch (vendorError) {
+      console.error('Failed to resolve vendor for a manual classification', vendorError)
+      return { error: 'The vendor could not be looked up. Nothing was changed.' }
+    }
+  }
+  const nextVendorName = resolvedVendor?.canonicalName ?? null
+  const nextVendorId = resolvedVendor?.id ?? null
+
   if (hasVendorField) {
     const currentVendor = transaction.vendor_name ?? null
-    if (currentVendor !== (vendorName ?? null)) {
-      const vendorId = vendorName ? await resolveReceiptVendorId(supabase, vendorName) : null
-      updatePayload.vendor_name = vendorName ?? null
-      updatePayload.vendor_id = vendorId
+    if (currentVendor !== nextVendorName || (transaction.vendor_id ?? null) !== nextVendorId) {
+      updatePayload.vendor_name = nextVendorName
+      updatePayload.vendor_id = nextVendorId
       // A value a person clears is still that person's decision, so the source stays manual
       // and no rule or AI run fills it back in.
       updatePayload.vendor_source = 'manual' satisfies ReceiptClassificationSource
       updatePayload.vendor_rule_id = null
       updatePayload.vendor_updated_at = now
-      changeNotes.push(vendorName ? `Vendor → ${vendorName}` : 'Vendor cleared')
+      changeNotes.push(nextVendorName ? `Vendor → ${nextVendorName}` : 'Vendor cleared')
       vendorChanged = true
     }
   }
@@ -547,7 +569,7 @@ export async function performUpdateReceiptClassification(
   await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
 
   const ruleSuggestion = buildRuleSuggestion(updated, {
-    vendorName: vendorChanged ? vendorName ?? null : undefined,
+    vendorName: vendorChanged ? nextVendorName : undefined,
     expenseCategory: expenseChanged ? expenseCategory ?? null : undefined,
   })
 
@@ -1233,6 +1255,36 @@ function buildRuleWritePayload(
   return payload
 }
 
+/**
+ * The vendor a rule sets, tied to the vendor list. A name that is not on the list is created
+ * only when the form carries `create_vendor=true`, which the screen sends after asking.
+ */
+async function resolveRuleVendor(
+  supabase: ReturnType<typeof createAdminClient>,
+  vendorName: string | undefined,
+  formData: FormData
+): Promise<
+  | { vendorId: string | null; vendorName: string | null }
+  | { error: string }
+  | { vendorConfirmation: VendorConfirmation }
+> {
+  const name = typeof vendorName === 'string' ? vendorName.trim() : ''
+  if (!name) return { vendorId: null, vendorName: null }
+
+  try {
+    const resolution = await resolveVendorForPersonWrite(supabase, name, {
+      createVendor: formData.get('create_vendor') === 'true',
+    })
+    if (resolution.outcome === 'unknown') {
+      return { vendorConfirmation: resolution.confirmation }
+    }
+    return { vendorId: resolution.vendor.id, vendorName: resolution.vendor.canonicalName }
+  } catch (vendorError) {
+    console.error('Failed to resolve vendor for a receipt rule', vendorError)
+    return { error: 'The vendor could not be looked up. The rule was not saved.' }
+  }
+}
+
 export async function performCreateReceiptRule(
   userId: string,
   formData: FormData,
@@ -1249,11 +1301,16 @@ export async function performCreateReceiptRule(
   }
 
   const supabase = createAdminClient()
-  const vendorId = await resolveReceiptVendorId(supabase, parsed.data.set_vendor_name)
+  const ruleVendor = await resolveRuleVendor(supabase, parsed.data.set_vendor_name, formData)
+  if ('error' in ruleVendor || 'vendorConfirmation' in ruleVendor) {
+    return ruleVendor
+  }
+  const vendorId = ruleVendor.vendorId
+  const ruleData = { ...parsed.data, set_vendor_name: ruleVendor.vendorName ?? undefined }
 
   const { data: rule, error } = await supabase
     .from('receipt_rules')
-    .insert(buildRuleWritePayload(parsed.data, userId, true, {
+    .insert(buildRuleWritePayload(ruleData, userId, true, {
       canGovernRules: options.canGovernRules,
       vendorId,
     }))
@@ -1292,11 +1349,16 @@ export async function performUpdateReceiptRule(
   }
 
   const supabase = createAdminClient()
-  const vendorId = await resolveReceiptVendorId(supabase, parsed.data.set_vendor_name)
+  const ruleVendor = await resolveRuleVendor(supabase, parsed.data.set_vendor_name, formData)
+  if ('error' in ruleVendor || 'vendorConfirmation' in ruleVendor) {
+    return ruleVendor
+  }
+  const vendorId = ruleVendor.vendorId
+  const ruleData = { ...parsed.data, set_vendor_name: ruleVendor.vendorName ?? undefined }
 
   const { data: updated, error } = await supabase
     .from('receipt_rules')
-    .update(buildRuleWritePayload(parsed.data, userId, false, {
+    .update(buildRuleWritePayload(ruleData, userId, false, {
       canGovernRules: options.canGovernRules,
       vendorId,
     }))
@@ -1408,8 +1470,17 @@ export async function performApplyReceiptGroupClassification(
     vendorName?: string | null
     expenseCategory?: ReceiptExpenseCategory | null
     statuses?: BulkStatus[]
+    /** The person has confirmed that a name not on the vendor list is a new vendor. */
+    createVendor?: boolean
   }
-): Promise<{ success?: boolean; error?: string; updated?: number; skippedIncomingCount?: number }> {
+): Promise<{
+  success?: boolean
+  error?: string
+  updated?: number
+  skippedIncomingCount?: number
+  /** The name is not on the vendor list. Nothing was saved; ask, then send again. */
+  vendorConfirmation?: VendorConfirmation
+}> {
   const vendorProvided = Object.prototype.hasOwnProperty.call(input, 'vendorName')
   const expenseProvided = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
 
@@ -1440,13 +1511,26 @@ export async function performApplyReceiptGroupClassification(
   }
 
   let bulkVendorId: string | null = null
-  if (vendorProvided) {
-    bulkVendorId = normalizedVendor ? await resolveReceiptVendorId(supabase, normalizedVendor) : null
+  let bulkVendorName: string | null = null
+  if (vendorProvided && normalizedVendor) {
+    try {
+      const resolution = await resolveVendorForPersonWrite(supabase, normalizedVendor, {
+        createVendor: input.createVendor,
+      })
+      if (resolution.outcome === 'unknown') {
+        return { vendorConfirmation: resolution.confirmation }
+      }
+      bulkVendorId = resolution.vendor.id
+      bulkVendorName = resolution.vendor.canonicalName
+    } catch (vendorError) {
+      console.error('Failed to resolve vendor for a bulk classification', vendorError)
+      return { error: 'The vendor could not be looked up. Nothing was changed.' }
+    }
   }
 
   const summaryParts: string[] = []
   if (vendorProvided) {
-    summaryParts.push(normalizedVendor ? `Vendor → ${normalizedVendor}` : 'Vendor cleared')
+    summaryParts.push(bulkVendorName ? `Vendor → ${bulkVendorName}` : 'Vendor cleared')
   }
   if (expenseProvided) {
     summaryParts.push(normalizedExpense ? `Expense → ${normalizedExpense}` : 'Expense cleared')
@@ -1459,7 +1543,7 @@ export async function performApplyReceiptGroupClassification(
     p_statuses: statuses,
     p_vendor_provided: vendorProvided,
     p_vendor_id: bulkVendorId,
-    p_vendor_name: normalizedVendor ?? null,
+    p_vendor_name: bulkVendorName,
     p_expense_provided: expenseProvided,
     p_expense_category: normalizedExpense ?? null,
     p_user_id: userId,

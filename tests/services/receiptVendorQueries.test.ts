@@ -42,75 +42,44 @@ describe('receipt vendor queries', () => {
     mockedCreateAdminClient.mockReset()
   })
 
-  it('matches vendor month transactions using canonical rule-set vendor names', async () => {
+  it('reads a vendor month from the vendor\'s own payments, not from a capped scan of the month', async () => {
+    // The database function returns the payments of the vendor the label resolves to, whatever
+    // spelling each payment once carried. The month is then picked out of them. It used to read
+    // the first 1,000 payments of the month for every vendor and filter afterwards.
     const rows = [
-      {
-        id: 'tx-rule',
-        transaction_date: '2026-06-03',
-        details: 'OLD BREWERY PAYMENT',
-        transaction_type: 'Card',
-        amount_in: null,
-        amount_out: 120,
-        status: 'pending',
-        vendor_name: 'Old Brewery Ltd',
-        vendor_source: 'rule',
-        expense_category: 'Entertainment',
-        expense_category_source: 'rule',
-        receipt_rules: [{ set_vendor_name: 'Canonical Brewery' }],
-      },
-      {
-        id: 'tx-direct',
-        transaction_date: '2026-06-04',
-        details: 'CANONICAL BREWERY',
-        transaction_type: 'Card',
-        amount_in: null,
-        amount_out: 80,
-        status: 'completed',
-        vendor_name: 'Canonical Brewery',
-        vendor_source: 'manual',
-        expense_category: 'Entertainment',
-        expense_category_source: 'manual',
-        receipt_rules: [],
-      },
-      {
-        id: 'tx-other',
-        transaction_date: '2026-06-05',
-        details: 'OTHER SUPPLIER',
-        transaction_type: 'Card',
-        amount_in: null,
-        amount_out: 50,
-        status: 'pending',
-        vendor_name: 'Other Supplier',
-        vendor_source: 'manual',
-        expense_category: 'Entertainment',
-        expense_category_source: 'manual',
-        receipt_rules: [],
-      },
+      { id: 'tx-july', transaction_date: '2026-07-01', details: 'NEXT MONTH', transaction_type: 'Card', amount_in: null, amount_out: 10, status: 'pending', vendor_name: 'Canonical Brewery' },
+      { id: 'tx-late', transaction_date: '2026-06-30', details: 'LATE JUNE', transaction_type: 'Card', amount_in: null, amount_out: 80, status: 'completed', vendor_name: 'Canonical Brewery' },
+      { id: 'tx-early', transaction_date: '2026-06-01', details: 'EARLY JUNE', transaction_type: 'Card', amount_in: null, amount_out: 120, status: 'pending', vendor_name: 'Canonical Brewery' },
+      { id: 'tx-may', transaction_date: '2026-05-31', details: 'PREVIOUS MONTH', transaction_type: 'Card', amount_in: null, amount_out: 5, status: 'pending', vendor_name: 'Canonical Brewery' },
     ]
 
-    const limit = vi.fn().mockResolvedValue({ data: rows, error: null })
-    const order = vi.fn().mockReturnValue({ limit })
-    const lt = vi.fn().mockReturnValue({ order })
-    const gte = vi.fn().mockReturnValue({ lt })
-    const select = vi.fn().mockReturnValue({ gte })
-
-    mockedCreateAdminClient.mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'receipt_transactions') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-        return { select }
-      }),
+    const range = vi.fn().mockResolvedValue({ data: rows, error: null })
+    const rpc = vi.fn().mockReturnValue({ range })
+    const from = vi.fn(() => {
+      throw new Error('The month view must not scan receipt_transactions')
     })
+    mockedCreateAdminClient.mockReturnValue({ rpc, from })
 
     const result = await queryReceiptVendorMonthTransactions({
-      vendorLabel: 'Canonical Brewery',
+      vendorLabel: 'Old Brewery Ltd',
       monthStart: '2026-06-01',
     })
 
     expect(result.error).toBeUndefined()
-    expect(result.transactions.map((tx) => tx.id)).toEqual(['tx-rule', 'tx-direct'])
+    expect(rpc).toHaveBeenCalledWith('get_receipt_vendor_transactions', { target_vendor_label: 'Old Brewery Ltd' })
+    // June only, oldest first, under the vendor's own name.
+    expect(result.transactions.map((tx) => tx.id)).toEqual(['tx-early', 'tx-late'])
     expect(result.transactions[0].vendor_name).toBe('Canonical Brewery')
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed vendor month read as an error, not as an empty month', async () => {
+    const range = vi.fn().mockResolvedValue({ data: null, error: { message: 'connection reset', code: '08006' } })
+    mockedCreateAdminClient.mockReturnValue({ rpc: vi.fn().mockReturnValue({ range }), from: vi.fn() })
+
+    const result = await queryReceiptVendorMonthTransactions({ vendorLabel: 'Canonical Brewery', monthStart: '2026-06-01' })
+
+    expect(result).toEqual({ transactions: [], error: 'Failed to load transactions for this vendor.' })
   })
 
   it('returns the full vendor transaction history for vendor details', async () => {

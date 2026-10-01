@@ -313,3 +313,66 @@ export function createFakeDb(seed: Record<string, Row[]> = {}): FakeDb {
     },
   }
 }
+
+/**
+ * What the database function `resolve_receipt_vendor` does, against the fake rows: an id or a
+ * name comes back as the vendor that is standing now. A test's `onRpc` handler calls this for
+ * that function name. The real function is tested on a real Postgres in tests/sql.
+ */
+export function fakeResolveReceiptVendor(db: FakeDb, args: Row): QueryResult {
+  const vendors = db.rows('receipt_vendors')
+  const key = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null
+    const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase()
+    return normalized || null
+  }
+  const survivor = (id: unknown): Row | null => {
+    let current = vendors.find((vendor) => vendor.id === id) ?? null
+    for (let hops = 0; current && current.merged_into_vendor_id && hops < 20; hops += 1) {
+      const next: Row | undefined = vendors.find((vendor) => vendor.id === current?.merged_into_vendor_id)
+      if (!next) break
+      current = next
+    }
+    return current
+  }
+
+  const nameKey = key(args.p_name)
+  let vendor: Row | null = args.p_vendor_id ? survivor(args.p_vendor_id) : null
+  if (!vendor && nameKey) {
+    vendor = survivor(vendors.find((row) => row.vendor_key === nameKey)?.id)
+    if (!vendor) {
+      const alias = db.rows('receipt_vendor_aliases').find((row) => row.alias_key === nameKey)
+      vendor = alias ? survivor(alias.vendor_id) : null
+    }
+  }
+
+  let created = false
+  if (!vendor && args.p_create && nameKey) {
+    vendor = {
+      id: `fake-vendor-${vendors.length + 1}`,
+      canonical_name: String(args.p_name).trim().replace(/\s+/g, ' '),
+      vendor_key: nameKey,
+      status: 'unconfirmed',
+      kind: args.p_kind ?? 'business',
+      origin: args.p_origin ?? 'manual',
+      merged_into_vendor_id: null,
+      default_expense_category: null,
+    }
+    vendors.push(vendor)
+    created = true
+  }
+
+  if (!vendor) return { data: null, error: null }
+  return {
+    data: {
+      vendor_id: vendor.id,
+      canonical_name: vendor.canonical_name,
+      vendor_key: vendor.vendor_key,
+      status: vendor.status ?? 'unconfirmed',
+      kind: vendor.kind ?? 'business',
+      default_expense_category: vendor.default_expense_category ?? null,
+      created,
+    },
+    error: null,
+  }
+}

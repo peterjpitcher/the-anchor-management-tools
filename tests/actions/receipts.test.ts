@@ -94,20 +94,7 @@ function buildMockClient(
   storage?: Record<string, unknown>,
   rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
 ) {
-  const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-  const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
-  const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
-  const vendorInsertMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
-  const vendorInsertSelect = vi.fn().mockReturnValue({ maybeSingle: vendorInsertMaybeSingle })
-
   const defaultTables: Record<string, Record<string, unknown>> = {
-    receipt_vendors: {
-      select: vendorSelect,
-      insert: vi.fn().mockReturnValue({ select: vendorInsertSelect }),
-    },
-    receipt_vendor_aliases: {
-      insert: vi.fn().mockResolvedValue({ error: null }),
-    },
     receipt_classification_signals: {
       insert: vi.fn().mockResolvedValue({ error: null }),
     },
@@ -132,7 +119,26 @@ function buildMockClient(
       throw new Error(`Unexpected table: ${table}`)
     }),
     ...(storageClient ? { storage: { from: vi.fn().mockReturnValue(storageClient) } } : {}),
-    ...(rpc ? { rpc: vi.fn(rpc) } : {}),
+    // Every vendor name is on the vendor list here, under the spelling it was typed in. The
+    // "not on the list" path is covered in tests/services/receipts/receiptVendors.test.ts.
+    rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'resolve_receipt_vendor') {
+        return {
+          data: {
+            vendor_id: 'vendor-1',
+            canonical_name: String(args.p_name),
+            vendor_key: String(args.p_name).toLowerCase(),
+            status: 'confirmed',
+            kind: 'business',
+            default_expense_category: null,
+            created: false,
+          },
+          error: null,
+        }
+      }
+      if (rpc) return rpc(name, args)
+      throw new Error(`Unexpected rpc: ${name}`)
+    }),
   }
 }
 
@@ -544,6 +550,7 @@ describe('updateReceiptClassification', () => {
       amount_in: null,
       amount_out: 50,
       vendor_name: 'Costa Coffee',
+      vendor_id: 'vendor-1',
       expense_category: null,
     }
 

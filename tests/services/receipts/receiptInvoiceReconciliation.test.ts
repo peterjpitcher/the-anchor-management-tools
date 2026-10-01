@@ -21,7 +21,7 @@ import {
   performReconcileReceiptInvoicePayments,
   STORED_INVOICE_MATCH_STATUSES,
 } from '@/services/receipts/receiptInvoiceReconciliation'
-import { createFakeDb, type FakeDb } from '../../helpers/fakeSupabaseDb'
+import { createFakeDb, fakeResolveReceiptVendor, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -85,6 +85,9 @@ function arrange(seed: {
   const calls: RpcCall[] = []
   db.onRpc((name, args) => {
     calls.push({ name, args })
+    if (name === 'resolve_receipt_vendor') {
+      return fakeResolveReceiptVendor(db, args)
+    }
     if (name === 'record_invoice_payment_transaction') {
       return { data: { id: 'payment-1' }, error: null }
     }
@@ -135,6 +138,45 @@ describe('reconciliation: a payment quoting one invoice number', () => {
       p_initiated_by: USER,
     })
     expectNoDirectWrites(db)
+  })
+
+  it('gives the payment the vendor\'s own name, however the invoicing customer is spelled', async () => {
+    const { db, calls } = arrange({ payments: [inwardPayment('tx-1')], invoices: [invoice('inv-1', 'INV-A1')] })
+    // The receipts vendor was renamed; the invoicing customer still answers to the old spelling.
+    db.rows('receipt_vendors')[0].canonical_name = 'Client Limited'
+    db.rows('receipt_vendors')[0].vendor_key = 'client limited'
+    db.rows('receipt_vendor_aliases').push({ vendor_id: RECEIPT_VENDOR, alias: 'Client Ltd', alias_key: 'client ltd' })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_vendor_name: 'Client Limited', p_vendor_id: RECEIPT_VENDOR })
+    expect(db.rows('receipt_vendors')).toHaveLength(1)
+  })
+
+  it('follows a merge: the payment goes to the vendor the customer was merged into', async () => {
+    const { db, calls } = arrange({ payments: [inwardPayment('tx-1')], invoices: [invoice('inv-1', 'INV-A1')] })
+    db.rows('receipt_vendors')[0].status = 'merged'
+    db.rows('receipt_vendors')[0].merged_into_vendor_id = 'vendor-survivor'
+    db.rows('receipt_vendors').push({ id: 'vendor-survivor', canonical_name: 'Client Group', vendor_key: 'client group', invoice_vendor_id: null })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_vendor_name: 'Client Group', p_vendor_id: 'vendor-survivor' })
+  })
+
+  it('still records the match when the vendor cannot be looked up, without guessing a vendor id', async () => {
+    const { db, calls } = arrange({ payments: [inwardPayment('tx-1')], invoices: [invoice('inv-1', 'INV-A1')] })
+    db.onRpc((name, args) => {
+      calls.push({ name, args })
+      if (name === 'resolve_receipt_vendor') return { data: null, error: { message: 'connection reset' } }
+      if (name === 'record_invoice_payment_transaction') return { data: { id: 'payment-1' }, error: null }
+      return { data: { outcome: 'applied', status_updated: true, vendor_updated: true, previous_status: 'pending' }, error: null }
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(summary.matched).toBe(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_vendor_name: 'Client Ltd', p_vendor_id: null })
   })
 
   it('asks for the match on a completed payment too, and leaves the status decision to the database', async () => {

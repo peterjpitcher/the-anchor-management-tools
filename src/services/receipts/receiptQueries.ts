@@ -329,17 +329,18 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   baseQuery = baseQuery.range(offset, offset + pageSize - 1)
 
-  // Vendor suggestions come from the canonical vendor table, the rules and the
-  // rows already on screen. They used to come from a `receipt_transactions` scan
-  // ordered by vendor name as well, which returned 1,000 rows holding only 61 of
-  // the 254 vendor names, so anything late in the alphabet never appeared.
-  // Paged, so the list is whole or it is empty: a failure logs and leaves the
-  // suggestions to the other two sources rather than breaking the workspace.
+  // The vendor picker offers the vendors that are standing: not merged into another and not
+  // deactivated. Those keep their history and are no longer offered. Names on the rows already
+  // on screen and names in rules are not added: a name that is not a standing vendor goes
+  // through "+ New vendor", which asks first.
+  // Paged, so the list is whole or it is empty: a failure logs and leaves the picker with
+  // "+ New vendor" only rather than breaking the workspace.
   const canonicalVendorQuery = fetchAllRows<CanonicalVendorRow>(
     (from, to) =>
       supabase
         .from('receipt_vendors')
         .select('canonical_name')
+        .in('status', ['unconfirmed', 'confirmed'])
         .order('canonical_name', { ascending: true })
         .order('id')
         .range(from, to),
@@ -405,19 +406,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     }
   })
 
-  shapedTransactions.forEach((tx: any) => {
-    const normalized = normalizeVendorInput(tx.vendor_name)
-    if (normalized) {
-      knownVendorSet.add(normalized)
-    }
-  })
-
-  ;(rules ?? []).forEach((rule: any) => {
-    const normalized = normalizeVendorInput(rule.set_vendor_name)
-    if (normalized) {
-      knownVendorSet.add(normalized)
-    }
-  })
 
   const knownVendors = Array.from(knownVendorSet).sort((a: string, b: string) => a.localeCompare(b))
 
@@ -752,7 +740,6 @@ export async function queryMonthlyReceiptInsights(limit = 12): Promise<ReceiptMo
   return { months }
 }
 
-type VendorRuleJoin = { set_vendor_name?: string | null }
 type VendorCanonicalJoin = { canonical_name?: string | null; vendor_key?: string | null }
 
 type VendorTransactionRow = {
@@ -767,7 +754,6 @@ type VendorTransactionRow = {
   transaction_type: string | null
   expense_category?: ReceiptTransaction['expense_category']
   expense_category_source?: ReceiptTransaction['expense_category_source']
-  receipt_rules?: VendorRuleJoin | VendorRuleJoin[] | null
   receipt_vendors?: VendorCanonicalJoin | VendorCanonicalJoin[] | null
 }
 
@@ -780,16 +766,11 @@ type VendorMonthlyTotalRow = {
   transaction_count?: number | string | null
 }
 
-const VENDOR_TRANSACTION_SELECT = 'id, transaction_date, details, amount_in, amount_out, status, vendor_name, vendor_source, transaction_type, expense_category, expense_category_source, receipt_rules!receipt_transactions_vendor_rule_id_fkey(set_vendor_name), receipt_vendors(canonical_name, vendor_key)'
+// The vendor a payment reports under is its own vendor, by id. This matches the database view
+// `receipt_transaction_vendors`. The name a rule carries is not consulted: a payment says for
+// itself which vendor it belongs to.
+const VENDOR_TRANSACTION_SELECT = 'id, transaction_date, details, amount_in, amount_out, status, vendor_name, vendor_source, transaction_type, expense_category, expense_category_source, receipt_vendors(canonical_name, vendor_key)'
 const VENDOR_HISTORY_FALLBACK_PAGE_SIZE = 1000
-
-function getVendorRuleName(row: VendorTransactionRow): string | null {
-  const join = row.receipt_rules
-  if (Array.isArray(join)) {
-    return normalizeVendorInput(join[0]?.set_vendor_name)
-  }
-  return normalizeVendorInput(join?.set_vendor_name)
-}
 
 function getCanonicalVendorName(row: VendorTransactionRow): string | null {
   const join = row.receipt_vendors
@@ -800,7 +781,7 @@ function getCanonicalVendorName(row: VendorTransactionRow): string | null {
 }
 
 function getCanonicalVendorLabel(row: VendorTransactionRow): string | null {
-  return getCanonicalVendorName(row) ?? getVendorRuleName(row) ?? normalizeVendorInput(row.vendor_name)
+  return getCanonicalVendorName(row) ?? normalizeVendorInput(row.vendor_name)
 }
 
 function getCanonicalVendorKey(row: VendorTransactionRow): string | null {
@@ -1278,22 +1259,22 @@ export async function queryReceiptVendorMonthTransactions(input: {
 
   const supabase = createAdminClient()
 
-  const { data, error } = await supabase
-    .from('receipt_transactions')
-    .select(VENDOR_TRANSACTION_SELECT)
-    .gte('transaction_date', start.toISOString())
-    .lt('transaction_date', end.toISOString())
-    .order('transaction_date', { ascending: true })
-    .limit(1000)
-
-  if (error) {
-    console.error('Failed to load vendor month transactions', error)
+  // The vendor's own payments, then the month. It used to read the first 1,000 payments of the
+  // month for every vendor and filter afterwards, so a busy month lost payments without a word.
+  const history = await queryReceiptVendorHistoryRows(supabase, input.vendorLabel, vendorKey)
+  if (history.error) {
+    console.error('Failed to load vendor month transactions', history.error)
     return { transactions: [], error: 'Failed to load transactions for this vendor.' }
   }
 
-  const rows = Array.isArray(data) ? data : []
-  const matchingRows = (rows as VendorTransactionRow[])
-    .filter((row) => getCanonicalVendorKey(row) === vendorKey)
+  const startDay = start.toISOString().slice(0, 10)
+  const endDay = end.toISOString().slice(0, 10)
+  const matchingRows = history.rows
+    .filter((row) => {
+      const day = String(row.transaction_date).slice(0, 10)
+      return day >= startDay && day < endDay
+    })
+    .sort((left, right) => String(left.transaction_date).localeCompare(String(right.transaction_date)))
 
   return {
     transactions: matchingRows.map((row: VendorTransactionRow) => ({
@@ -1596,6 +1577,7 @@ export async function queryReceiptVendorReviews(userId: string): Promise<Receipt
 
 type MissingExpenseRow = {
   vendor_name: string | null
+  receipt_vendors?: VendorCanonicalJoin | VendorCanonicalJoin[] | null
   amount_out: number | string | null
   amount_in: number | string | null
   transaction_date: string | null
@@ -1611,7 +1593,7 @@ export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissin
     (from, to) =>
       supabase
         .from('receipt_transactions')
-        .select('vendor_name, amount_out, amount_in, transaction_date')
+        .select('vendor_name, amount_out, amount_in, transaction_date, receipt_vendors(canonical_name)')
         .is('expense_category', null)
         .not('amount_out', 'is', null)
         .order('id')
@@ -1622,7 +1604,9 @@ export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissin
   const summaryMap = new Map<string, ReceiptMissingExpenseSummaryItem>()
 
   rows.forEach((row) => {
-    const normalizedVendorName = normalizeVendorInput(row.vendor_name)
+    // Grouped under the vendor's own name, so two spellings of one vendor are one line.
+    const vendorJoin = Array.isArray(row.receipt_vendors) ? row.receipt_vendors[0] : row.receipt_vendors
+    const normalizedVendorName = normalizeVendorInput(vendorJoin?.canonical_name) ?? normalizeVendorInput(row.vendor_name)
     const label = normalizedVendorName ?? 'Unassigned vendor'
     const existing = summaryMap.get(label) ?? {
       vendorLabel: label,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { NewVendorDialog, type VendorConfirmationPrompt } from './NewVendorDialog'
 import { Badge, Button, Card, ConfirmDialog, FileButton, IconButton, Input, Select, SubHeading, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
@@ -50,6 +51,7 @@ export function ReceiptMobileCard({
   const [editingField, setEditingField] = useState<'vendor' | 'expense' | null>(null)
   const [classificationDraft, setClassificationDraft] = useState('')
   const [isCustomVendor, setIsCustomVendor] = useState(false)
+  const [vendorPrompt, setVendorPrompt] = useState<VendorConfirmationPrompt | null>(null)
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null)
   
   const [isEditingNote, setIsEditingNote] = useState(false)
@@ -149,13 +151,16 @@ export function ReceiptMobileCard({
       }
   }
   
-  async function saveClassification() {
+  // `vendorName` and `createVendor` come from the new-vendor dialog: use an existing vendor
+  // instead of the typed name, or confirm that the typed name is a new vendor.
+  async function saveClassification(options: { vendorName?: string; createVendor?: boolean } = {}) {
       if (!canManageReceipts) return
-      const draft = classificationDraft.trim()
+      const draft = (options.vendorName ?? classificationDraft).trim()
       const payload: any = { transactionId: transaction.id }
       
       if (editingField === 'vendor') {
           payload.vendorName = draft.length ? draft : null
+          if (options.createVendor) payload.createVendor = true
       } else {
           payload.expenseCategory = draft.length ? draft : null
       }
@@ -166,6 +171,12 @@ export function ReceiptMobileCard({
               toast.error(result.error)
               return
           }
+          // The name is not on the vendor list. Nothing was saved: ask before adding a vendor.
+          if (result?.vendorConfirmation) {
+              setVendorPrompt(result.vendorConfirmation)
+              return
+          }
+          setVendorPrompt(null)
           if (result?.transaction) {
               onUpdate({
                   ...transaction,
@@ -276,9 +287,16 @@ export function ReceiptMobileCard({
                             ]} />
                         )}
                         <div className="flex gap-2">
-                            <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
+                            <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
                         </div>
+                        <NewVendorDialog
+                            prompt={vendorPrompt}
+                            pending={isPending}
+                            onUseExisting={(vendorName) => saveClassification({ vendorName })}
+                            onCreate={() => saveClassification({ createVendor: true })}
+                            onClose={() => setVendorPrompt(null)}
+                        />
                     </div>
                 ) : (
                     <Button variant="link" size="sm" onClick={() => startEditing('vendor')} className="justify-start whitespace-normal text-left font-normal text-text-strong hover:text-primary" disabled={!canManageReceipts}>
@@ -297,7 +315,7 @@ export function ReceiptMobileCard({
                             ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
                         ]} />
                         <div className="flex gap-2">
-                            <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
+                            <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
                         </div>
                     </div>

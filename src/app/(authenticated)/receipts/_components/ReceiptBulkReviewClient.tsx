@@ -29,6 +29,7 @@ import { receiptExpenseCategorySchema, receiptTransactionStatusSchema } from '@/
 import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/database'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { RECEIPT_STATUS_LABEL, RECEIPT_SUGGESTION_SOURCE_LABEL, RECEIPT_SUGGESTION_SOURCE_TONE } from '../_shared/status-ui'
+import { NewVendorDialog, type VendorConfirmationPrompt } from './ui/NewVendorDialog'
 
 const STATUS_LABELS = RECEIPT_STATUS_LABEL
 
@@ -155,6 +156,12 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   })
 
   const [createdRules, setCreatedRules] = useState<Record<string, { id: string; name: string }>>({})
+  // A typed vendor that is not on the list: which action asked, for which group.
+  const [vendorPrompt, setVendorPrompt] = useState<{
+    action: 'apply' | 'rule'
+    details: string
+    confirmation: VendorConfirmationPrompt
+  } | null>(null)
 
   useEffect(() => {
     setLocalStatuses(initialFilters.statuses)
@@ -252,7 +259,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
   const statusesLabel = localStatuses.map((status) => STATUS_LABELS[status]).join(', ')
 
-  const handleApplyGroup = (details: string) => {
+  // `vendorName` and `createVendor` come from the new-vendor dialog.
+  const handleApplyGroup = (details: string, vendorChoice: { vendorName?: string; createVendor?: boolean } = {}) => {
     if (!canManageReceipts) {
       toast.error(managePermissionMessage)
       return
@@ -269,6 +277,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       statuses?: BulkStatus[]
       vendorName?: string | null
       expenseCategory?: ReceiptExpenseCategory | null
+      createVendor?: boolean
     } = {
       details,
     }
@@ -278,8 +287,9 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     }
 
     if (vendorEnabled) {
-      const value = (vendorDrafts[details] ?? '').trim()
+      const value = (vendorChoice.vendorName ?? vendorDrafts[details] ?? '').trim()
       payload.vendorName = value.length ? value : null
+      if (vendorChoice.createVendor) payload.createVendor = true
     }
 
     if (expenseEnabled) {
@@ -294,6 +304,15 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       if (result?.error) {
         toast.error(result.error)
         return
+      }
+      // The name is not on the vendor list. Nothing was changed: ask before adding a vendor.
+      if ('vendorConfirmation' in result && result.vendorConfirmation) {
+        setVendorPrompt({ action: 'apply', details, confirmation: result.vendorConfirmation })
+        return
+      }
+      setVendorPrompt(null)
+      if (vendorChoice.vendorName) {
+        setVendorDrafts((prev) => ({ ...prev, [details]: vendorChoice.vendorName as string }))
       }
       toast.success(`Applied to ${result.updated ?? 0} transactions`)
       router.refresh()
@@ -322,7 +341,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     toast.success('Reset to suggested values')
   }
 
-  const handleCreateRule = (details: string) => {
+  const handleCreateRule = (details: string, vendorChoice: { vendorName?: string; createVendor?: boolean } = {}) => {
     if (!canManageReceipts) {
       toast.error(managePermissionMessage)
       return
@@ -339,9 +358,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     }
 
     if (draft.setVendor) {
-      const value = (vendorDrafts[details] ?? '').trim()
+      const value = (vendorChoice.vendorName ?? vendorDrafts[details] ?? '').trim()
       if (value.length) {
         payload.vendorName = value
+        if (vendorChoice.createVendor) payload.createVendor = true
       }
     }
 
@@ -359,6 +379,15 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       if (!result || 'error' in result) {
         toast.error(result?.error ?? 'Failed to create rule')
         return
+      }
+      // The rule names a vendor that is not on the list. Nothing was saved: ask first.
+      if ('vendorConfirmation' in result) {
+        setVendorPrompt({ action: 'rule', details, confirmation: result.vendorConfirmation })
+        return
+      }
+      setVendorPrompt(null)
+      if (vendorChoice.vendorName) {
+        setVendorDrafts((prev) => ({ ...prev, [details]: vendorChoice.vendorName as string }))
       }
       toast.success('Rule created, you can run it against recent transactions now')
       setCreatedRules((prev) => ({
@@ -672,6 +701,21 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           )
         })
       )}
+      <NewVendorDialog
+        prompt={vendorPrompt?.confirmation ?? null}
+        pending={isApplying || isCreatingRule}
+        onUseExisting={(vendorName) => {
+          if (!vendorPrompt) return
+          const run = vendorPrompt.action === 'apply' ? handleApplyGroup : handleCreateRule
+          run(vendorPrompt.details, { vendorName })
+        }}
+        onCreate={() => {
+          if (!vendorPrompt) return
+          const run = vendorPrompt.action === 'apply' ? handleApplyGroup : handleCreateRule
+          run(vendorPrompt.details, { createVendor: true })
+        }}
+        onClose={() => setVendorPrompt(null)}
+      />
     </>
   )
 }

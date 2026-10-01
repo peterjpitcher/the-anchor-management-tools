@@ -38,6 +38,7 @@ import { useRetroRuleRunner, type RetroTotals } from '@/hooks/useRetroRuleRunner
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion } from '@/types/database'
 import { RECEIPT_RULE_STATE_TONE, RECEIPT_STATUS_LABEL } from '@/app/(authenticated)/receipts/_shared/status-ui'
+import { NewVendorDialog, type VendorConfirmationPrompt } from './NewVendorDialog'
 
 interface ReceiptRulesProps {
   rules: ReceiptRule[]
@@ -491,13 +492,25 @@ export function ReceiptRules({
     })
   }
 
+  // A rule form waiting on the new-vendor question, kept so it can be sent again with the answer.
+  const [ruleVendorPrompt, setRuleVendorPrompt] = useState<{
+    formElement: HTMLFormElement
+    formData: FormData
+    ruleId?: string
+    confirmation: VendorConfirmationPrompt
+  } | null>(null)
+
   async function handleRuleSubmit(event: FormEvent<HTMLFormElement>, ruleId?: string) {
     event.preventDefault()
     if (!canManageReceipts) return
-    
-    const formElement = event.currentTarget
-    const formData = new FormData(formElement)
 
+    const formElement = event.currentTarget
+    submitRuleForm(formElement, new FormData(formElement), ruleId)
+  }
+
+  // Also called by the new-vendor dialog, with the vendor swapped for an existing one or with
+  // `create_vendor` set once the person has confirmed the name is a new vendor.
+  function submitRuleForm(formElement: HTMLFormElement, formData: FormData, ruleId?: string) {
     setActiveRuleId(ruleId ?? 'new')
     startRuleTransition(async () => {
       const result = ruleId
@@ -508,6 +521,18 @@ export function ReceiptRules({
         toast.error(result?.error ?? 'Failed to save rule')
         setActiveRuleId(null)
         return
+      }
+      // The rule names a vendor that is not on the list. Nothing was saved: ask first.
+      if ('vendorConfirmation' in result) {
+        setRuleVendorPrompt({ formElement, formData, ruleId, confirmation: result.vendorConfirmation })
+        setActiveRuleId(null)
+        return
+      }
+      setRuleVendorPrompt(null)
+      const savedVendorName = formData.get('set_vendor_name')
+      const vendorInput = formElement.elements.namedItem('set_vendor_name')
+      if (typeof savedVendorName === 'string' && vendorInput instanceof HTMLInputElement) {
+        vendorInput.value = result.rule.set_vendor_name ?? savedVendorName
       }
       toast.success(`Rule ${ruleId ? 'updated' : 'created'}`)
       const createdRule = result.rule
@@ -1020,6 +1045,24 @@ export function ReceiptRules({
         </CardBody>
       )}
 
+      <NewVendorDialog
+        prompt={ruleVendorPrompt?.confirmation ?? null}
+        pending={isRulePending}
+        onUseExisting={(vendorName) => {
+          if (!ruleVendorPrompt) return
+          const { formElement, formData, ruleId } = ruleVendorPrompt
+          formData.set('set_vendor_name', vendorName)
+          formData.delete('create_vendor')
+          submitRuleForm(formElement, formData, ruleId)
+        }}
+        onCreate={() => {
+          if (!ruleVendorPrompt) return
+          const { formElement, formData, ruleId } = ruleVendorPrompt
+          formData.set('create_vendor', 'true')
+          submitRuleForm(formElement, formData, ruleId)
+        }}
+        onClose={() => setRuleVendorPrompt(null)}
+      />
       <ConfirmDialog
         open={Boolean(deleteRuleId)}
         onClose={() => setDeleteRuleId(null)}
