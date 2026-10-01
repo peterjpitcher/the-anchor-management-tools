@@ -46,11 +46,17 @@ DELETE FROM invoice_payments WHERE reference='MANUAL-EDIT';
 SELECT record_invoice_paypal_payment_atomic('00000000-0000-0000-0000-000000000011',10,'LONDON-DATE',NULL,'2026-09-04T23:30:00Z');
 SELECT fixture_assert((SELECT payment_date='2026-09-05' FROM invoice_payments WHERE reference='LONDON-DATE'),'London capture date');
 UPDATE invoice_payments SET payment_date='2026-09-04' WHERE reference='LONDON-DATE';
+-- Deleting an invoice's only payment returns it to sent or overdue by its due
+-- date. Due dates are relative to today so neither case depends on the calendar.
 INSERT INTO invoices(id,invoice_number,due_date,total_amount,status,sent_at)
-VALUES('00000000-0000-0000-0000-000000000013','FIXTURE-DELETE','2026-09-09',120,'sent',now());
+VALUES('00000000-0000-0000-0000-000000000013','FIXTURE-DELETE',CURRENT_DATE+30,120,'sent',now()),
+('00000000-0000-0000-0000-000000000014','FIXTURE-DELETE-LATE',CURRENT_DATE-1,120,'overdue',now());
 SELECT record_invoice_payment_transaction('{"invoice_id":"00000000-0000-0000-0000-000000000013","amount":10,"payment_method":"cash","payment_date":"2026-09-04","reference":"DELETE-MANUAL"}');
-DELETE FROM invoice_payments WHERE reference='DELETE-MANUAL';
-SELECT fixture_assert((SELECT paid_amount=0 AND status='sent' FROM invoices WHERE id='00000000-0000-0000-0000-000000000013'),'deletion resets invoice');
+SELECT record_invoice_payment_transaction('{"invoice_id":"00000000-0000-0000-0000-000000000014","amount":10,"payment_method":"cash","payment_date":"2026-09-04","reference":"DELETE-MANUAL-LATE"}');
+SELECT fixture_assert((SELECT count(*)=2 FROM invoices WHERE id IN ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000014') AND paid_amount=10 AND status='partially_paid'),'payments recorded before deletion');
+DELETE FROM invoice_payments WHERE reference IN ('DELETE-MANUAL','DELETE-MANUAL-LATE');
+SELECT fixture_assert((SELECT paid_amount=0 AND status='sent' FROM invoices WHERE id='00000000-0000-0000-0000-000000000013'),'payment deletion resets an invoice not yet due to sent');
+SELECT fixture_assert((SELECT paid_amount=0 AND status='overdue' FROM invoices WHERE id='00000000-0000-0000-0000-000000000014'),'payment deletion resets a late invoice to overdue');
 UPDATE invoices SET status='void' WHERE id='00000000-0000-0000-0000-000000000011';
 SELECT fixture_throws($q$SELECT record_invoice_paypal_payment_atomic('00000000-0000-0000-0000-000000000011',10,'VOID',NULL)$q$,'invoice_not_payable');
 SELECT fixture_throws($q$SELECT record_invoice_payment_transaction('{"invoice_id":"00000000-0000-0000-0000-000000000011","amount":10,"payment_method":"cash","payment_date":"2026-09-04"}')$q$,'invoice_not_payable');
