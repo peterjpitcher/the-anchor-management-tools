@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getIsoWeekday } from '@/lib/dateUtils'
 import {
+  buildDepositRefundEntries,
   buildPaymentHistoryEntries,
   paymentStatementProblem,
   type PrivateBookingPaymentStatement,
@@ -73,6 +74,39 @@ describe('the payment history a balance reminder lists', () => {
       { payments: [], appliedDepositAmount: 0 }
     )
     expect(entries).toEqual([])
+  })
+})
+
+describe('the deposit refunds the booking page lists', () => {
+  const refund = (overrides: Record<string, unknown>) => ({
+    id: 'refund',
+    amount: '250.00',
+    refund_method: 'paypal',
+    status: 'completed',
+    created_at: '2026-10-01T11:45:11.000Z',
+    completed_at: '2026-10-01T11:45:12.000Z',
+    ...overrides,
+  })
+
+  it('lists completed and pending refunds oldest first, as London dates, and leaves out a failed one', () => {
+    const entries = buildDepositRefundEntries([
+      // 23:30 UTC on 30 September is 00:30 on 1 October in London.
+      refund({ id: 'late-night', amount: 100, created_at: '2026-09-30T23:30:00.000Z', completed_at: '2026-09-30T23:30:05.000Z' }),
+      refund({ id: 'failed', status: 'failed', created_at: '2026-09-20T10:00:00.000Z', completed_at: null }),
+      refund({ id: 'waiting', amount: 50, status: 'pending', refund_method: 'bank_transfer', created_at: '2026-09-25T10:00:00.000Z', completed_at: null }),
+    ])
+
+    expect(entries).toEqual([
+      { id: 'waiting', type: 'refund', amount: 50, method: 'bank_transfer', date: '2026-09-25', status: 'pending' },
+      { id: 'late-night', type: 'refund', amount: 100, method: 'paypal', date: '2026-10-01', status: 'completed' },
+    ])
+  })
+
+  it('dates a refund by when it completed, and reads the amount as a number', () => {
+    const [entry] = buildDepositRefundEntries([
+      refund({ created_at: '2026-10-01T11:45:11.000Z', completed_at: '2026-10-03T09:00:00.000Z' }),
+    ])
+    expect(entry).toMatchObject({ amount: 250, date: '2026-10-03' })
   })
 })
 

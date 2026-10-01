@@ -422,3 +422,17 @@ export type BalancePaymentEntry = {
 }
 
 export type PaymentHistoryEntry = DepositPaymentEntry | BalancePaymentEntry
+
+/**
+ * A deposit refund as the booking page's payment history lists it. Kept out of PaymentHistoryEntry
+ * on purpose: that list is also the statement a balance reminder email carries, which is money
+ * received towards the bill and has no place for money handed back.
+ */
+export type DepositRefundEntry = {
+  id: string    // UUID from payment_refunds.id
+  type: 'refund'
+  amount: number  // what went back to the customer, as a positive figure
+  method: string  // payment_refunds.refund_method
+  date: string  // YYYY-MM-DD (London timezone)
+  status: 'completed' | 'pending'
+}
