@@ -75,6 +75,14 @@ BEGIN
 END;
 $$;
 
+-- As in production (pg_get_functiondef, 1 October 2026).
+CREATE FUNCTION public.normalize_receipt_vendor_key(input text) RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path TO 'public', 'extensions', 'pg_temp'
+AS $$
+  SELECT NULLIF(LOWER(REGEXP_REPLACE(BTRIM(COALESCE(input, '')), '[[:space:]]+', ' ', 'g')), '');
+$$;
+
 CREATE TABLE public.receipt_batches (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   uploaded_at timestamp with time zone DEFAULT now() NOT NULL,

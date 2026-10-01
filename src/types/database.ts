@@ -301,6 +301,10 @@ interface ReceiptVendor {
   canonical_name: string;
   vendor_key: string;
   status: ReceiptVendorStatus;
+  /** A person is a member of staff or another individual, and is never sent to the AI. */
+  kind?: 'business' | 'person';
+  /** Where the vendor came from. `unknown` for vendors from before October 2026. */
+  origin?: 'unknown' | 'manual' | 'rule' | 'invoice' | 'ai' | 'payroll';
   invoice_vendor_id: string | null;
   merged_into_vendor_id: string | null;
   category_hint: string | null;

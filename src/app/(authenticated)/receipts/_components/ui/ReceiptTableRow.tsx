@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef } from 'react'
+import { NewVendorDialog, type VendorConfirmationPrompt } from './NewVendorDialog'
 import { Badge, Button, ConfirmDialog, FileButton, IconButton, Input, Select, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
@@ -78,6 +79,7 @@ export function ReceiptTableRow({
   const [editingField, setEditingField] = useState<'vendor' | 'expense' | null>(null)
   const [classificationDraft, setClassificationDraft] = useState('')
   const [isCustomVendor, setIsCustomVendor] = useState(false)
+  const [vendorPrompt, setVendorPrompt] = useState<VendorConfirmationPrompt | null>(null)
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null)
 
   const [isEditingNote, setIsEditingNote] = useState(false)
@@ -193,13 +195,16 @@ export function ReceiptTableRow({
     }
   }
 
-  async function saveClassification() {
+  // `vendorName` and `createVendor` come from the new-vendor dialog: use an existing vendor
+  // instead of the typed name, or confirm that the typed name is a new vendor.
+  async function saveClassification(options: { vendorName?: string; createVendor?: boolean } = {}) {
     if (!canManageReceipts) return
-    const draft = classificationDraft.trim()
+    const draft = (options.vendorName ?? classificationDraft).trim()
     const payload: any = { transactionId: transaction.id }
 
     if (editingField === 'vendor') {
       payload.vendorName = draft.length ? draft : null
+      if (options.createVendor) payload.createVendor = true
     } else {
       payload.expenseCategory = draft.length ? draft : null
     }
@@ -210,6 +215,12 @@ export function ReceiptTableRow({
         toast.error(result.error)
         return
       }
+      // The name is not on the vendor list. Nothing was saved: ask before adding a vendor.
+      if (result?.vendorConfirmation) {
+        setVendorPrompt(result.vendorConfirmation)
+        return
+      }
+      setVendorPrompt(null)
       if (result?.transaction) {
         onUpdate({
           ...transaction,
@@ -313,9 +324,16 @@ export function ReceiptTableRow({
               ]} />
             )}
             <div className="flex gap-2">
-              <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
+              <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
+            <NewVendorDialog
+              prompt={vendorPrompt}
+              pending={isPending}
+              onUseExisting={(vendorName) => saveClassification({ vendorName })}
+              onCreate={() => saveClassification({ createVendor: true })}
+              onClose={() => setVendorPrompt(null)}
+            />
           </div>
         ) : (
           <div className="flex flex-col gap-1">
@@ -341,7 +359,7 @@ export function ReceiptTableRow({
               ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
             ]} />
             <div className="flex gap-2">
-              <Button size="sm" variant="primary" onClick={saveClassification} loading={isPending}>Save</Button>
+              <Button size="sm" variant="primary" onClick={() => saveClassification()} loading={isPending}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
           </div>

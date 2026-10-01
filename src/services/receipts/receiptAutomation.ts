@@ -25,7 +25,8 @@ import type {
 
 import type { AutomationResult } from './types'
 import { getTransactionDirection, guessAmountValue } from './receiptHelpers'
-import { recordReceiptClassificationSignals, resolveReceiptVendorId } from './receiptGovernance'
+import { recordReceiptClassificationSignals } from './receiptGovernance'
+import { resolveReceiptVendor } from './receiptVendors'
 
 export type AutomationOptions = {
   /** Also classify payments that are no longer pending. Their status is never changed. */
@@ -133,6 +134,7 @@ export async function applyAutomationRules(
   const signals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
   const now = new Date().toISOString()
   const inspected: ReceiptTransaction[] = []
+  const resolvedNameOnlyRules = new Set<string>()
 
   for (const transaction of transactions) {
     const isPending = transaction.status === 'pending'
@@ -151,6 +153,31 @@ export async function applyAutomationRules(
     if (!matchingRule) continue
 
     result.matched += 1
+
+    // A rule that names its vendor in text only is tied to the vendor list, once per run, so the
+    // payment gets the vendor's own id and name and not the rule's spelling of it. A dry run
+    // looks the vendor up and creates nothing.
+    if (matchingRule.set_vendor_name && !matchingRule.vendor_id && !resolvedNameOnlyRules.has(matchingRule.id)) {
+      try {
+        const vendor = await resolveReceiptVendor(
+          supabase,
+          { name: matchingRule.set_vendor_name },
+          { create: !dryRun, origin: 'rule' }
+        )
+        if (vendor) {
+          matchingRule.vendor_id = vendor.id
+          matchingRule.set_vendor_name = vendor.canonicalName
+        }
+        resolvedNameOnlyRules.add(matchingRule.id)
+      } catch (vendorError) {
+        console.error('[receipts] applyAutomationRules could not resolve a rule vendor', {
+          ruleId: matchingRule.id,
+          error: vendorError,
+        })
+        result.failed += 1
+        continue
+      }
+    }
 
     const setsVendor = Boolean(matchingRule.set_vendor_name)
     const setsExpense = Boolean(matchingRule.set_expense_category) && direction === 'out'
@@ -205,10 +232,8 @@ export async function applyAutomationRules(
       result.vendorIntended += 1
       classificationNotes.push(`Vendor → ${matchingRule.set_vendor_name}`)
       if (!dryRun) {
-        const targetVendorId =
-          matchingRule.vendor_id ?? (await resolveReceiptVendorId(supabase, matchingRule.set_vendor_name))
         updatePayload.vendor_name = matchingRule.set_vendor_name
-        updatePayload.vendor_id = targetVendorId
+        updatePayload.vendor_id = matchingRule.vendor_id ?? null
         updatePayload.vendor_source = 'rule'
         updatePayload.vendor_rule_id = matchingRule.id
         updatePayload.vendor_updated_at = now

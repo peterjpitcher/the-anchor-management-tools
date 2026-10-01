@@ -482,6 +482,8 @@ export type ClassificationRuleSuggestion = RuleSuggestion
 export type RuleMutationResult =
   | { success: true; rule: ReceiptRule; canPromptRetro: true }
   | { error: string }
+  /** The rule names a vendor that is not on the list. Nothing was saved; ask, then send again. */
+  | { vendorConfirmation: { name: string; similar: Array<{ id: string; name: string }> } }
 
 export type RetroStepSuccess = {
   success: true

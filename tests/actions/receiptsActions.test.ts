@@ -201,26 +201,20 @@ describe('deleteReceiptFile rollback safety', () => {
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
     const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
-    const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
-    const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
-    const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
-    const aliasInsert = vi.fn().mockResolvedValue({ error: null })
-
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+        if (name !== 'resolve_receipt_vendor') throw new Error(`Unexpected rpc: ${name}`)
+        return {
+          data: { vendor_id: 'vendor-1', canonical_name: String(args.p_name), vendor_key: String(args.p_name).toLowerCase(), status: 'confirmed', kind: 'business', default_expense_category: null, created: false },
+          error: null,
+        }
+      }),
       from: vi.fn((table: string) => {
         if (table === 'receipt_transactions') {
           return {
             select: vi.fn().mockReturnValue({ eq: fetchEq }),
             update: vi.fn().mockReturnValue({ eq: updateEq }),
           }
-        }
-
-        if (table === 'receipt_vendors') {
-          return { select: vendorSelect }
-        }
-
-        if (table === 'receipt_vendor_aliases') {
-          return { insert: aliasInsert }
         }
 
         throw new Error(`Unexpected table: ${table}`)

@@ -655,6 +655,8 @@ export async function updateReceiptClassification(input: {
   transactionId: string
   vendorName?: string | null
   expenseCategory?: string | null
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -676,7 +678,8 @@ export async function updateReceiptClassification(input: {
       additional_info: {
         vendor_changed: hasVendorField,
         expense_changed: hasExpenseField,
-        vendor: input.vendorName ?? null,
+        vendor: hasVendorField ? result.transaction?.vendor_name ?? null : null,
+        vendor_id: hasVendorField ? result.transaction?.vendor_id ?? null : null,
         expense: input.expenseCategory ?? null,
       },
     })
@@ -1065,6 +1068,8 @@ export async function applyReceiptGroupClassification(input: {
   vendorName?: string | null
   expenseCategory?: string | null
   statuses?: BulkStatus[]
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -1102,6 +1107,8 @@ export async function createReceiptRuleFromGroup(input: {
   autoStatus?: string
   vendorName?: string | null
   expenseCategory?: string | null
+  /** Sent after the person confirms that a name not on the vendor list is a new vendor. */
+  createVendor?: boolean
 }) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -1128,6 +1135,9 @@ export async function createReceiptRuleFromGroup(input: {
   formData.set('match_transaction_type', '')
   if (vendor) {
     formData.set('set_vendor_name', vendor)
+    if (input.createVendor) {
+      formData.set('create_vendor', 'true')
+    }
   }
   if (expense) {
     formData.set('set_expense_category', expense)

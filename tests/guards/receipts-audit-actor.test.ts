@@ -71,6 +71,30 @@ describe('receipts audit entries name an actor', () => {
     }
   })
 
+  it('vendor actions go through one helper that adds the actor, and audit every change', () => {
+    const vendors = read('src/app/actions/receipt-vendors.ts')
+
+    expect([...vendors.matchAll(/\blogAuditEvent\(/g)]).toHaveLength(1)
+    const helperStart = vendors.indexOf('async function logVendorAudit(')
+    expect(helperStart).toBeGreaterThan(-1)
+    const helper = vendors.slice(helperStart, vendors.indexOf('\n}\n', helperStart))
+    expect(helper).toContain('user_id: actor.user_id')
+
+    const calls = [...vendors.matchAll(/\blogVendorAudit\(([^,)]*)/g)].filter(
+      (match) => !match[1].includes('actor: VendorActor') && match[1].trim() !== ''
+    )
+    for (const call of calls) {
+      expect(call[1].trim()).toBe('actor')
+    }
+
+    const functions = vendors.split(/^(?=export async function )/m)
+    for (const name of ['mergeReceiptVendors', 'renameReceiptVendor', 'undoReceiptVendorOperation', 'updateReceiptVendorDetails']) {
+      const body = functions.find((chunk) => chunk.startsWith(`export async function ${name}(`))
+      expect(body, `${name} should exist`).toBeTruthy()
+      expect(body, `${name} should write an audit entry`).toContain('logVendorAudit(actor,')
+    }
+  })
+
   it('has no other receipts action file writing an audit entry without one', () => {
     // If a second receipts action module appears, it must follow the same pattern.
     const actionFiles = readdirSync(join(ROOT, 'src/app/actions')).filter(

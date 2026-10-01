@@ -31,6 +31,9 @@ test:release-2-before-migration.sql
 migration:20261001150000_receipts_release_2_import.sql
 test:release-2-import.test.sql
 race:import_statement
+# Release 3.
+migration:20261001160000_receipts_release_3_vendors.sql
+test:release-3-vendors.test.sql
 "
 
 ENGINE=""

@@ -14,7 +14,6 @@ import {
   buildRuleSuggestion,
   getTransactionDirection,
   guessAmountValue,
-  normalizeVendorInput,
 } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
 
@@ -30,75 +29,6 @@ type ConflictTransactionRow = Pick<
   ReceiptTransaction,
   'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out'
 >
-
-export async function resolveReceiptVendorId(
-  supabase: AdminClient,
-  vendorName: string | null | undefined
-): Promise<string | null> {
-  const normalizedName = normalizeVendorInput(vendorName ?? null)
-  const vendorKey = normalizeReceiptVendorKey(normalizedName)
-
-  if (!normalizedName || !vendorKey) {
-    return null
-  }
-
-  const { data: existing, error: existingError } = await supabase
-    .from('receipt_vendors')
-    .select('id')
-    .eq('vendor_key', vendorKey)
-    .maybeSingle()
-
-  if (existingError) {
-    console.warn('Failed to resolve receipt vendor', existingError)
-  }
-
-  if (existing?.id) {
-    const { error: aliasError } = await supabase
-      .from('receipt_vendor_aliases')
-      .insert({
-        vendor_id: existing.id,
-        alias: normalizedName,
-        alias_key: vendorKey,
-        source: 'system',
-        confidence: 100,
-      })
-    if (aliasError && aliasError.code !== '23505') {
-      console.warn('Failed to create receipt vendor alias', aliasError)
-    }
-
-    return existing.id
-  }
-
-  const { data: created, error: createError } = await supabase
-    .from('receipt_vendors')
-    .insert({
-      canonical_name: normalizedName,
-      vendor_key: vendorKey,
-      status: 'unconfirmed',
-    })
-    .select('id')
-    .maybeSingle()
-
-  if (createError || !created?.id) {
-    console.warn('Failed to create receipt vendor', createError)
-    return null
-  }
-
-  const { error: aliasError } = await supabase
-    .from('receipt_vendor_aliases')
-    .insert({
-      vendor_id: created.id,
-      alias: normalizedName,
-      alias_key: vendorKey,
-      source: 'system',
-      confidence: 100,
-    })
-  if (aliasError && aliasError.code !== '23505') {
-    console.warn('Failed to create receipt vendor alias', aliasError)
-  }
-
-  return created.id
-}
 
 export async function recordReceiptClassificationSignals(
   supabase: AdminClient,

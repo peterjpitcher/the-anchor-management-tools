@@ -22,6 +22,8 @@ Recorded here so they travel with the commits. Each is a working default from sp
 - W4: the lock date applies to every automated or bulk writer.
 - W6: receipts actions pass the actor explicitly; the shared audit service is unchanged.
 - W10: running a rule over all history is super admin only.
+- The vendor picker is alphabetical, not most used first (reason in spec 7.2 item 5).
+- Undo of a vendor merge or rename runs newest first; an older one is refused while a later one stands.
 - Invoice pairing may still move a "can't find" payment to "no receipt required" (the reference-free pass always could); it never moves a completed one, and never a pending one a person reopened.
 
 ## Release 1: safety
@@ -54,7 +56,16 @@ Recorded here so they travel with the commits. Each is a working default from sp
 
 ## Release 3: vendors
 
-- [ ] 7.2 items 1 to 7
+- [x] 7.2 item 1: looser matching key for suggestions only (`src/lib/receipts/vendor-matching.ts`): same name without suffixes, joined words, one name starting another, close spelling
+- [x] 7.2 item 2: one resolver (`resolve_receipt_vendor`, `src/services/receipts/receiptVendors.ts`) used by manual edit, bulk apply, both rule forms, the rule engine and invoice pairing; the name saved on a payment is always the vendor's own
+- [x] 7.2 item 3: `merge_receipt_vendor`, `rename_receipt_vendor`, `undo_receipt_vendor_operation` with a full before-image in `receipt_vendor_operations`; super admin only; audited
+- [x] 7.2 item 4: `/receipts/vendors/manage`: list with status, kind, payments, total, last payment, other names; possible duplicates; confirm, rename, merge, deactivate, kind and default category; recent changes with undo
+- [x] 7.2 item 5: a new vendor name is asked about before it is created, on the row, the phone card, the bulk screen and the rule forms
+- [x] 7.2 item 6: view `receipt_transaction_vendors`; the three report functions, the vendor month view and expense gaps read it; live totals identical before and after; `vendor_id` on watchlist and reviews
+- [x] 7.2 item 7: default category can be set per vendor (used by Release 4)
+- [x] Tests: matching (34), vendor service and writers (38), permission matrix and audit (20), row and card prompt (8), reconciliation (3 new), SQL on Postgres 15 (resolver, merge, rename, undo, blocked undo, grants)
+- [x] Migration drafted: `supabase/migrations/20261001160000_receipts_release_3_vendors.sql` (not applied)
+- [ ] Owner go-ahead, apply the migration, deploy, open the screen on the deployed build, then D3 to D5
 
 ## Release 4: AI
 
