@@ -1,6 +1,7 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
@@ -365,6 +366,8 @@ async function refundPayPalDeposit(
     }
   }
 
+  await recordPayPalDepositRefund({ tableBookingId, captureId, refund, refundGbp, depositGbp, tier })
+
   const isFull = Math.abs(refundGbp - depositGbp) < 0.005
 
   /*
@@ -425,5 +428,109 @@ async function refundPayPalDeposit(
     amountPence: Math.round(refundGbp * 100),
     refundId: refund.refundId,
     tier,
+  }
+}
+
+/** What the Refund History shows as the reason. Internal only, never sent to the guest. */
+const CANCELLATION_REFUND_REASON: Record<Exclude<RefundTier, 'none'>, string> = {
+  full: 'Booking cancelled: deposit refunded in full',
+  half: 'Booking cancelled: half the deposit refunded',
+}
+
+const PAYPAL_REFUND_STATUSES = ['PENDING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const
+
+/**
+ * Writes the refund to `payment_refunds`, the ledger the booking page and the staff refund dialog
+ * read, at the moment it is made.
+ *
+ * Without this the ledger only learned of a cancellation refund if the PayPal webhook was
+ * delivered, and then recorded it as a refund made in the PayPal dashboard. Until that arrived the
+ * ledger said the whole deposit was still held, which is the figure a staff refund is checked
+ * against. The webhook finds this row by its PayPal refund id and settles it, so there is still
+ * one row per refund.
+ *
+ * Never throws. The money has already gone back, so a failure here must not turn into "the refund
+ * failed" for the caller: it is logged and audited for a person to look at.
+ */
+async function recordPayPalDepositRefund(args: {
+  tableBookingId: string
+  captureId: string
+  refund: Awaited<ReturnType<typeof refundPayPalPayment>>
+  refundGbp: number
+  depositGbp: number
+  tier: RefundTier
+}): Promise<void> {
+  const { tableBookingId, captureId, refund, refundGbp, depositGbp, tier } = args
+  const reason = CANCELLATION_REFUND_REASON[tier === 'half' ? 'half' : 'full']
+
+  const paypalStatus = PAYPAL_REFUND_STATUSES.find((status) => status === String(refund.status ?? '').toUpperCase()) ?? null
+  // The same reading of PayPal's status as the refund webhook: only COMPLETED is money returned.
+  const status = paypalStatus === 'COMPLETED'
+    ? 'completed'
+    : paypalStatus === 'FAILED' || paypalStatus === 'CANCELLED' ? 'failed' : 'pending'
+  const now = new Date().toISOString()
+
+  try {
+    // payment_refunds is service-role only under RLS.
+    const admin = createAdminClient()
+    const { error } = await admin.from('payment_refunds').insert({
+      source_type: 'table_booking',
+      source_id: tableBookingId,
+      paypal_capture_id: captureId,
+      paypal_refund_id: refund.refundId,
+      paypal_status: paypalStatus,
+      paypal_status_details: refund.statusDetails ?? null,
+      refund_method: 'paypal',
+      amount: refundGbp,
+      original_amount: depositGbp,
+      reason,
+      status,
+      // Nobody chose this refund: the cancellation terms did. initiated_by references auth.users,
+      // so there is nothing to put there.
+      initiated_by: null,
+      initiated_by_type: 'system',
+      completed_at: status === 'completed' ? now : null,
+      failed_at: status === 'failed' ? now : null,
+      failure_message: status === 'failed' ? (refund.statusDetails ?? `PayPal status: ${paypalStatus}`) : null,
+    })
+
+    if (!error) return
+
+    if (error.code === '23505') {
+      // One PayPal refund id is one row (unique index): the webhook recorded this refund first, as
+      // a dashboard refund. Keep its row and say what the refund really was.
+      const { error: reasonError } = await admin
+        .from('payment_refunds')
+        .update({ reason })
+        .eq('paypal_refund_id', refund.refundId)
+      if (reasonError) {
+        logger.error('Could not relabel the refund row the PayPal webhook recorded for a cancellation', {
+          metadata: { tableBookingId, refundId: refund.refundId, dbError: reasonError.message },
+        })
+      }
+      return
+    }
+
+    throw new Error(error.message)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('PayPal refund succeeded but was not written to the refund ledger', {
+      metadata: { tableBookingId, captureId, refundId: refund.refundId, refundGbp, dbError: message },
+    })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.refund_paypal_success_ledger_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: message,
+      additional_info: {
+        paypal_refund_id: refund.refundId,
+        paypal_capture_id: captureId,
+        amount_gbp: refundGbp,
+        tier,
+        action_needed:
+          'PayPal refund succeeded but is missing from the Refund History. The PayPal webhook normally records it; check before refunding this booking again',
+      },
+    }).catch(() => undefined)
   }
 }
