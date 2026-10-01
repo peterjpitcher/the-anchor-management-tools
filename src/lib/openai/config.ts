@@ -1,5 +1,5 @@
-'use server';
-
+// Server only. This module returns the OpenAI API key, so it must never be a server action:
+// with a 'use server' directive every exported function here became callable from a browser.
 import { createAdminClient } from '@/lib/supabase/admin';
 
 type OpenAIConfig = {

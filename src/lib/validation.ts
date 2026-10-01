@@ -159,7 +159,16 @@ export const receiptTransactionStatusSchema = z.enum([
   'cant_find',
 ]);
 
-const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);
+/**
+ * What a rule may do to a payment's status: leave it pending, or mark it as needing no receipt.
+ * A rule cannot mark a payment completed (that needs a receipt or a written reason) or "can't
+ * find" (that is something a person concludes after looking).
+ */
+export const receiptRuleOutcomeSchema = z.enum(['pending', 'no_receipt_required'], {
+  message: 'A rule can leave a transaction pending or mark it as not needing a receipt',
+});
+
+const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import', 'invoice', 'ai_accepted']);
 
 export const receiptExpenseCategorySchema = z.enum([
   'Total Staff',
@@ -203,15 +212,17 @@ export const receiptRuleKindSchema = z.enum([
 
 export const receiptRuleSchema = z.object({
   name: z.string().min(1, 'Rule name is required').max(120, 'Keep the name under 120 characters'),
-  // Absent means "leave the stored description alone" (the rule edit screen has no
-  // description input), null means "clear it". See getRuleFormData in receiptMutations.ts.
+  // Absent means "leave the stored description alone" (a caller that sends no description
+  // field, such as a rule made from a bulk group), null means "clear it". See getRuleFormData
+  // in receiptMutations.ts.
   description: z.string().trim().max(500).nullable().optional(),
   priority: z.number().int().min(0).max(100000).optional(),
   kind: receiptRuleKindSchema.default('standard'),
   match_description: z.string().trim().max(300).refine(
     (val) => {
       if (!val) return true
-      return val.split(',').map((t) => t.trim()).every((t) => t.length > 0)
+      // A comma written `\,` belongs to the keyword and does not separate two.
+      return val.replace(/\\,/g, 'x').split(',').every((t) => t.trim().length > 0)
     },
     { message: 'Match description must not contain empty tokens (check for double commas)' }
   ).optional(),
@@ -219,20 +230,22 @@ export const receiptRuleSchema = z.object({
   match_direction: receiptRuleDirectionSchema.default('both'),
   match_min_amount: z.number().nonnegative().optional(),
   match_max_amount: z.number().nonnegative().optional(),
-  auto_status: receiptTransactionStatusSchema.default('no_receipt_required'),
+  // A rule with no outcome chosen only classifies. Closing a payment has to be asked for.
+  auto_status: receiptRuleOutcomeSchema.default('pending'),
   set_vendor_name: z.string().trim().max(120).optional(),
   set_expense_category: receiptExpenseCategorySchema.optional(),
+  // The rule marks its payments "no category applies". Never together with a category.
+  set_no_category: z.boolean().optional(),
+}).refine((data) => !(data.set_no_category && data.set_expense_category), {
+  path: ['set_expense_category'],
+  message: 'A rule sets a category or "no category applies", not both',
 }).refine((data) => {
-  return Boolean(
-    data.match_description ||
-    data.match_transaction_type ||
-    data.match_direction !== 'both' ||
-    data.match_min_amount != null ||
-    data.match_max_amount != null
-  );
+  // Direction and amount only narrow a match. On their own they would catch every otherwise
+  // unmatched payment going that way, so a rule needs words to look for or a bank type.
+  return Boolean(data.match_description || data.match_transaction_type);
 }, {
   path: ['match_description'],
-  message: 'Add at least one match condition before saving this rule',
+  message: 'Add match keywords or a bank transaction type before saving this rule',
 }).refine((data) => {
   if (data.match_min_amount != null && data.match_max_amount != null) {
     return data.match_min_amount <= data.match_max_amount;

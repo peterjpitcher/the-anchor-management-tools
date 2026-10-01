@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import {
   escapeCsvCell,
   formatDateDdMmYyyy,
@@ -42,19 +43,26 @@ export async function buildExpensesCsv(
   year: number,
   quarter: number
 ): Promise<{ csv: Buffer; summary: ExpensesSummary; rows: ExpenseRow[] }> {
-  const { data: expenses, error } = await supabase
-    .from('expenses')
-    .select('id, expense_date, company_ref, justification, amount, vat_applicable, vat_amount, notes, expense_files ( id )')
-    .gte('expense_date', startDate)
-    .lte('expense_date', endDate)
-    .order('expense_date', { ascending: true })
-
-  if (error) {
+  // Paged on a unique order: one request returns at most 1,000 rows and reports no error when
+  // it stops there.
+  let rows: ExpenseRow[]
+  try {
+    rows = await fetchAllRows<ExpenseRow>(
+      (from, to) =>
+        supabase
+          .from('expenses')
+          .select('id, expense_date, company_ref, justification, amount, vat_applicable, vat_amount, notes, expense_files ( id )')
+          .gte('expense_date', startDate)
+          .lte('expense_date', endDate)
+          .order('expense_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'expenses for export' }
+    )
+  } catch (error) {
     console.error('Failed to fetch expenses for export:', error)
     throw new Error('Failed to load expenses data for export')
   }
-
-  const rows = (expenses ?? []) as ExpenseRow[]
 
   const totalEntries = rows.length
   const grossTotal = rows.reduce((sum, e) => sum + Number(e.amount), 0)

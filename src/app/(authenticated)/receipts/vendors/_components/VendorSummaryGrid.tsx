@@ -30,6 +30,7 @@ import {
   Empty,
   Icon,
   IconButton,
+  LinkButton,
   PageLoading,
   Section,
   Segmented,
@@ -287,13 +288,18 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
       navState={{ view: 'vendors' }}
       canManage={canManage}
       headerActions={
-        <Segmented
-          options={COMPARISON_OPTIONS}
-          value={comparison}
-          onChange={(value) => setComparison(value as ReceiptVendorMovementComparison)}
-          size="sm"
-          aria-label="Compare against"
-        />
+        <>
+          <Segmented
+            options={COMPARISON_OPTIONS}
+            value={comparison}
+            onChange={(value) => setComparison(value as ReceiptVendorMovementComparison)}
+            size="sm"
+            aria-label="Compare against"
+          />
+          <LinkButton href="/receipts/vendors/manage" variant="secondary" size="sm">
+            Manage Vendors
+          </LinkButton>
+        </>
       }
     >
       <VendorMovementPanel
@@ -318,6 +324,7 @@ export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [
         aiLoading={detailAiLoading}
         watched={activeVendorWatched}
         watchLoading={activeVendorWatchLoading}
+        canGenerateAi={canManage}
         onToggleWatched={() => {
           if (!activeVendorLabel) return
           toggleVendorWatched(activeVendorLabel, !activeVendorWatched)
@@ -709,10 +716,13 @@ function VendorDetailDrawer({
   aiLoading,
   watched,
   watchLoading,
+  canGenerateAi,
   onToggleWatched,
   onGenerateAi,
   onClose,
 }: {
+  /** Asking for a written summary calls OpenAI, so it is offered to those who may manage receipts. */
+  canGenerateAi: boolean
   open: boolean
   vendorLabel: string
   detail: ReceiptVendorDetail | null
@@ -758,16 +768,18 @@ function VendorDetailDrawer({
           <Section
             title="AI Summary"
             actions={
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                icon={<Icon name="sparkles" size={16} />}
-                loading={aiLoading}
-                onClick={onGenerateAi}
-              >
-                Generate Summary
-              </Button>
+              canGenerateAi ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  icon={<Icon name="sparkles" size={16} />}
+                  loading={aiLoading}
+                  onClick={onGenerateAi}
+                >
+                  Generate Summary
+                </Button>
+              ) : undefined
             }
           >
             <div className="space-y-3">

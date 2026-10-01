@@ -14,9 +14,23 @@ export type ReceiptTransactionMatchable = {
   transaction_type: string | null
 }
 
-type MatchContext = {
+/**
+ * How a keyword is looked for in a bank description.
+ *
+ *  - `substring`: as it has always worked. A keyword of four or more characters matches anywhere,
+ *    including inside another word; shorter ones must stand alone.
+ *  - `word`: every keyword must stand alone, whatever its length, and runs of spaces count as
+ *    one. "shell" no longer matches "SHELLFISH CO".
+ *
+ * The section's setting decides which is used. It stays on `substring` until someone has looked
+ * at the comparison of the two and switched it.
+ */
+export type RuleMatcherMode = 'substring' | 'word'
+
+export type MatchContext = {
   direction: 'in' | 'out'
   amountValue: number
+  matcher?: RuleMatcherMode
 }
 
 export type RuleMatchResult = {
@@ -34,8 +48,52 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function matchesNeedle(haystackLower: string, needleLower: string): boolean {
+function collapseSpaces(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The keywords in a rule's match text. Keywords are separated by commas; a comma that belongs
+ * to the keyword itself is written `\,`. A rule made from a whole bank description used to be
+ * cut into pieces at every comma in it.
+ */
+export function splitRuleKeywords(matchDescription: string | null | undefined): string[] {
+  if (!matchDescription) return []
+  const keywords: string[] = []
+  let current = ''
+  for (let index = 0; index < matchDescription.length; index += 1) {
+    const char = matchDescription[index]
+    if (char === '\\' && matchDescription[index + 1] === ',') {
+      current += ','
+      index += 1
+    } else if (char === ',') {
+      keywords.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  keywords.push(current)
+  return keywords.map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0)
+}
+
+/** Writes one keyword so that `splitRuleKeywords` reads it back whole. */
+export function escapeRuleKeyword(keyword: string): string {
+  return keyword.replace(/,/g, '\\,')
+}
+
+function matchesNeedle(haystackLower: string, needleLower: string, matcher: RuleMatcherMode): boolean {
   if (!needleLower.length) return false
+
+  if (matcher === 'word') {
+    const needle = collapseSpaces(needleLower)
+    if (!needle.length) return false
+    // A boundary is asked for only where the keyword itself starts or ends with a letter or
+    // digit, so a keyword such as "*amazon" or "co." still matches as written.
+    const before = /^[a-z0-9]/.test(needle) ? '(^|[^a-z0-9])' : ''
+    const after = /[a-z0-9]$/.test(needle) ? '([^a-z0-9]|$)' : ''
+    return new RegExp(`${before}${escapeRegExp(needle)}${after}`).test(collapseSpaces(haystackLower))
+  }
 
   if (needleLower.length <= SHORT_TOKEN_LENGTH && ALPHANUMERIC_PATTERN.test(needleLower)) {
     const escaped = escapeRegExp(needleLower)
@@ -87,14 +145,10 @@ export function getRuleMatch(
 
   let matchedNeedleLength = 0
   if (rule.match_description) {
-    const needles = rule.match_description
-      .toLowerCase()
-      .split(',')
-      .map((needle) => needle.trim())
-      .filter((needle) => needle.length > 0)
+    const needles = splitRuleKeywords(rule.match_description.toLowerCase())
 
     for (const needle of needles) {
-      if (matchesNeedle(detailTextLower, needle)) {
+      if (matchesNeedle(detailTextLower, needle, context.matcher ?? 'substring')) {
         matchedNeedleLength = Math.max(matchedNeedleLength, needle.length)
       }
     }
@@ -205,6 +259,24 @@ function isBetterMatch(
   currentBest: RuleMatchResult
 ): boolean {
   return compareReceiptRuleMatches(candidateRule, candidate, currentRule, currentBest) < 0
+}
+
+/**
+ * Every rule that matches the payment, best first. The first decides the status. The vendor
+ * comes from the first that sets a vendor and the category from the first that sets a category,
+ * so a rule that only names the vendor no longer blocks a lower rule from giving the category.
+ */
+export function rankMatchingReceiptRules<TRule extends ReceiptRuleMatchable>(
+  rules: readonly TRule[],
+  transaction: ReceiptTransactionMatchable,
+  context: MatchContext
+): Array<{ rule: TRule; match: RuleMatchResult }> {
+  const matches: Array<{ rule: TRule; match: RuleMatchResult }> = []
+  for (const rule of rules) {
+    const match = getRuleMatch(rule, transaction, context)
+    if (match.matched) matches.push({ rule, match })
+  }
+  return matches.sort((left, right) => compareReceiptRuleMatches(left.rule, left.match, right.rule, right.match))
 }
 
 export function selectBestReceiptRule<TRule extends ReceiptRuleMatchable>(

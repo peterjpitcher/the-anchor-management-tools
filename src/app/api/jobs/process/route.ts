@@ -18,6 +18,7 @@ function isHealthCheck(request: NextRequest): boolean {
 }
 
 async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
+  const startedAt = Date.now()
   // Reduced default to 30 and hard-capped to prevent large accidental flood runs.
   const requestedBatch = Number.parseInt(request.nextUrl.searchParams.get('batch') || '30', 10)
   const batchSize = Number.isFinite(requestedBatch)
@@ -31,7 +32,9 @@ async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
     }
   })
 
-  await jobQueue.processJobs(batchSize)
+  // The queue is told when this request must be done, so work that could not finish in what is
+  // left is handed back for the next run and not started.
+  await jobQueue.processJobs(batchSize, { deadlineAt: startedAt + maxDuration * 1000 - 3_000 })
 
   return NextResponse.json({
     success: true,

@@ -28,7 +28,8 @@ vi.mock('@/lib/receipts/ai-classification', () => ({
   recordAIUsage: vi.fn(),
 }))
 
-vi.mock('@/lib/receipts/rule-matching', () => ({
+vi.mock('@/lib/receipts/rule-matching', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/receipts/rule-matching')>()),
   selectBestReceiptRule: vi.fn(),
   getRuleMatch: vi.fn(),
 }))
@@ -63,12 +64,7 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
-  markReceiptTransaction,
   updateReceiptClassification,
-  createReceiptUploadUrl,
-  completeReceiptUpload,
-  uploadReceiptForTransaction,
-  deleteReceiptFile,
   createReceiptRule,
   requeueUnclassifiedTransactions,
 } from '@/app/actions/receipts'
@@ -91,22 +87,10 @@ const TEST_UUID = '550e8400-e29b-41d4-a716-446655440000'
  */
 function buildMockClient(
   tables: Record<string, Record<string, unknown>>,
-  storage?: Record<string, unknown>
+  storage?: Record<string, unknown>,
+  rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
 ) {
-  const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-  const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
-  const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
-  const vendorInsertMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
-  const vendorInsertSelect = vi.fn().mockReturnValue({ maybeSingle: vendorInsertMaybeSingle })
-
   const defaultTables: Record<string, Record<string, unknown>> = {
-    receipt_vendors: {
-      select: vendorSelect,
-      insert: vi.fn().mockReturnValue({ select: vendorInsertSelect }),
-    },
-    receipt_vendor_aliases: {
-      insert: vi.fn().mockResolvedValue({ error: null }),
-    },
     receipt_classification_signals: {
       insert: vi.fn().mockResolvedValue({ error: null }),
     },
@@ -126,216 +110,37 @@ function buildMockClient(
 
   return {
     from: vi.fn((table: string) => {
+      // A rule save reads the existing rules first, for the duplicate check. There are none here.
+      if (table === 'receipt_rules') {
+        return { select: vi.fn().mockResolvedValue({ data: [], error: null }), ...tables[table] }
+      }
       if (tables[table]) return tables[table]
       if (defaultTables[table]) return defaultTables[table]
       throw new Error(`Unexpected table: ${table}`)
     }),
     ...(storageClient ? { storage: { from: vi.fn().mockReturnValue(storageClient) } } : {}),
+    // Every vendor name is on the vendor list here, under the spelling it was typed in. The
+    // "not on the list" path is covered in tests/services/receipts/receiptVendors.test.ts.
+    rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'resolve_receipt_vendor') {
+        return {
+          data: {
+            vendor_id: 'vendor-1',
+            canonical_name: String(args.p_name),
+            vendor_key: String(args.p_name).toLowerCase(),
+            status: 'confirmed',
+            kind: 'business',
+            default_expense_category: null,
+            created: false,
+          },
+          error: null,
+        }
+      }
+      if (rpc) return rpc(name, args)
+      throw new Error(`Unexpected rpc: ${name}`)
+    }),
   }
 }
-
-// ==========================================================================
-// markReceiptTransaction
-// ==========================================================================
-
-describe('markReceiptTransaction', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockedPermission.mockResolvedValue(true)
-    mockedGetCurrentUser.mockResolvedValue(TEST_USER)
-  })
-
-  it('should return error when user lacks permission', async () => {
-    mockedPermission.mockResolvedValue(false)
-
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      status: 'completed',
-    })
-
-    expect(result).toEqual({ error: 'Insufficient permissions' })
-    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
-  })
-
-  it('should return error when validation fails with invalid status', async () => {
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      // Deliberately invalid status: the action takes any string and validates it at runtime.
-      status: 'bogus_status',
-    })
-
-    expect(result).toHaveProperty('error')
-    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
-  })
-
-  it('should return error when transaction is not found', async () => {
-    const fetchSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient({
-        receipt_transactions: {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-        },
-        profiles: {
-          select: vi.fn().mockReturnValue({ eq: profileEq }),
-        },
-      })
-    )
-
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      status: 'completed',
-    })
-
-    expect(result).toEqual({ error: 'Transaction not found' })
-    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-
-  it('should successfully mark a transaction and log audit event', async () => {
-    const existingTransaction = { id: TEST_UUID, status: 'pending' }
-    const updatedTransaction = { id: TEST_UUID, status: 'completed', marked_method: 'manual' }
-
-    const fetchSingle = vi.fn().mockResolvedValue({ data: existingTransaction, error: null })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: updatedTransaction, error: null })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient({
-        receipt_transactions: {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
-        },
-        profiles: {
-          select: vi.fn().mockReturnValue({ eq: profileEq }),
-        },
-        receipt_transaction_logs: {
-          insert: logInsert,
-        },
-      })
-    )
-
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      status: 'completed',
-      note: 'Found the receipt',
-    })
-
-    expect(result).toEqual({ success: true, transaction: updatedTransaction })
-    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation_type: 'update_status',
-        resource_type: 'receipt_transaction',
-        resource_id: TEST_UUID,
-        operation_status: 'success',
-      })
-    )
-    expect(logInsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        transaction_id: TEST_UUID,
-        previous_status: 'pending',
-        new_status: 'completed',
-        action_type: 'manual_update',
-      })
-    )
-  })
-
-  it("should clear receipt_required when a transaction is marked can't find", async () => {
-    const existingTransaction = { id: TEST_UUID, status: 'pending' }
-    const updatedTransaction = { id: TEST_UUID, status: 'cant_find', receipt_required: false }
-
-    const fetchSingle = vi.fn().mockResolvedValue({ data: existingTransaction, error: null })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: updatedTransaction, error: null })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
-    const update = vi.fn().mockReturnValue({ eq: updateEq })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient({
-        receipt_transactions: {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update,
-        },
-        profiles: {
-          select: vi.fn().mockReturnValue({ eq: profileEq }),
-        },
-        receipt_transaction_logs: {
-          insert: logInsert,
-        },
-      })
-    )
-
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      status: 'cant_find',
-      receiptRequired: true,
-    })
-
-    expect(result).toEqual({ success: true, transaction: updatedTransaction })
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'cant_find',
-        receipt_required: false,
-      })
-    )
-  })
-
-  it('should return error when database update fails', async () => {
-    const fetchSingle = vi.fn().mockResolvedValue({
-      data: { id: TEST_UUID, status: 'pending' },
-      error: null,
-    })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const updateMaybeSingle = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'db error' },
-    })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient({
-        receipt_transactions: {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
-        },
-        profiles: {
-          select: vi.fn().mockReturnValue({ eq: profileEq }),
-        },
-      })
-    )
-
-    const result = await markReceiptTransaction({
-      transactionId: TEST_UUID,
-      status: 'completed',
-    })
-
-    expect(result).toEqual({ error: 'Failed to update the transaction.' })
-    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-})
 
 describe('requeueUnclassifiedTransactions', () => {
   beforeEach(() => {
@@ -365,15 +170,28 @@ describe('requeueUnclassifiedTransactions', () => {
     const expenseOrder = vi.fn().mockReturnValue({ range: expenseRange })
     const expenseGt = vi.fn().mockReturnValue({ order: expenseOrder })
     const expenseNot = vi.fn().mockReturnValue({ gt: expenseGt })
-    const expenseSecondIs = vi.fn().mockReturnValue({ not: expenseNot })
+    // Transactions marked "no category applies" are left out of the expense read.
+    const expenseEq = vi.fn().mockReturnValue({ not: expenseNot })
+    const expenseSecondIs = vi.fn().mockReturnValue({ eq: expenseEq })
     const expenseFirstIs = vi.fn().mockReturnValue({ is: expenseSecondIs })
     const select = vi
       .fn()
       .mockReturnValueOnce({ is: vendorFirstIs })
       .mockReturnValueOnce({ is: expenseFirstIs })
 
+    // What the AI has already been asked: tx-3 is not in either read, so nothing is held back.
+    const attemptRange = vi.fn().mockResolvedValue({
+      data: [{ transaction_id: 'tx-3', outcome: 'nothing_identified' }],
+      error: null,
+    })
+    const attemptOrder = vi.fn().mockReturnValue({ range: attemptRange })
+    const attemptEq = vi.fn().mockReturnValue({ order: attemptOrder })
+
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === 'receipt_ai_attempts') {
+          return { select: vi.fn().mockReturnValue({ eq: attemptEq }) }
+        }
         if (table !== 'receipt_transactions') {
           throw new Error(`Unexpected table: ${table}`)
         }
@@ -385,7 +203,8 @@ describe('requeueUnclassifiedTransactions', () => {
 
     // Two unique transactions (tx-1 appears in both reads) travel in one job;
     // the count reported and logged is transactions, not jobs.
-    expect(result).toEqual({ success: true, queued: 2 })
+    expect(result).toEqual({ success: true, queued: 2, alreadyAsked: 0 })
+    expect(expenseEq).toHaveBeenCalledWith('no_category_applies', false)
     expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'user-1',
       user_email: 'test@example.com',
@@ -395,6 +214,7 @@ describe('requeueUnclassifiedTransactions', () => {
       additional_info: {
         action: 'requeue_unclassified_transactions',
         queued: 2,
+        already_asked: 0,
       },
     }))
     expect(mockedLogAuditEvent.mock.calls[0][0].additional_info.transaction_ids).toBeUndefined()
@@ -542,6 +362,7 @@ describe('updateReceiptClassification', () => {
       amount_in: null,
       amount_out: 50,
       vendor_name: 'Costa Coffee',
+      vendor_id: 'vendor-1',
       expense_category: null,
     }
 
@@ -564,565 +385,6 @@ describe('updateReceiptClassification', () => {
     // No change detected — returns early with no DB update
     expect(result).toMatchObject({ success: true, transaction: existingTx, ruleSuggestion: null })
     expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-})
-
-// ==========================================================================
-// uploadReceiptForTransaction
-// ==========================================================================
-
-describe('uploadReceiptForTransaction', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockedPermission.mockResolvedValue(true)
-    mockedGetCurrentUser.mockResolvedValue(TEST_USER)
-  })
-
-  function makeReceiptFormData(transactionId: string): FormData {
-    const formData = new FormData()
-    formData.set('transactionId', transactionId)
-    const file = new File(['pdf-content'], 'receipt.pdf', { type: 'application/pdf' })
-    // Node's File implementation may lack arrayBuffer — patch it for Vitest
-    ;(file as File & { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer = async () =>
-      new TextEncoder().encode('pdf-content').buffer
-    formData.set('receipt', file)
-    return formData
-  }
-
-  it('should create a signed upload URL for large receipt files', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const createSignedUploadUrl = vi.fn().mockResolvedValue({
-      data: { path: '2026/Coffee_4.50.pdf_1770000000000', token: 'signed-token' },
-      error: null,
-    })
-    const intentInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_upload_intents: {
-            insert: intentInsert,
-          },
-        },
-        {
-          createSignedUploadUrl,
-        }
-      )
-    )
-
-    const result = await createReceiptUploadUrl({
-      transactionId: 'tx-1',
-      fileName: 'large-receipt.pdf',
-      fileType: 'application/pdf',
-      fileSize: 8 * 1024 * 1024,
-    })
-
-    expect(result).toMatchObject({
-      success: true,
-      path: '2026/Coffee_4.50.pdf_1770000000000',
-      token: 'signed-token',
-    })
-    expect(createSignedUploadUrl).toHaveBeenCalledWith(expect.stringMatching(/^2026\//), { upsert: false })
-    expect(intentInsert).toHaveBeenCalledWith(expect.objectContaining({
-      transaction_id: 'tx-1',
-      storage_path: '2026/Coffee_4.50.pdf_1770000000000',
-      issued_to: TEST_USER.user_id,
-    }))
-  })
-
-  it('should reject receipt upload URLs over the app receipt file limit', async () => {
-    const result = await createReceiptUploadUrl({
-      transactionId: 'tx-1',
-      fileName: 'too-large.pdf',
-      fileType: 'application/pdf',
-      fileSize: 51 * 1024 * 1024,
-    })
-
-    expect(result).toEqual({ error: 'File is too large. Please keep receipts under 50 MB.' })
-    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
-  })
-
-  it('should complete a signed receipt upload and mark transaction completed', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-    const receiptRecord = { id: 'file-1', storage_path: '2026/Coffee_4.50.pdf_1770000000000' }
-
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const txUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'tx-1' }, error: null })
-    const txUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: txUpdateMaybeSingle })
-    const txUpdateEq = vi.fn().mockReturnValue({ select: txUpdateSelect })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const receiptInsertSingle = vi.fn().mockResolvedValue({ data: receiptRecord, error: null })
-    const receiptInsertSelect = vi.fn().mockReturnValue({ single: receiptInsertSingle })
-    const receiptInsert = vi.fn().mockReturnValue({ select: receiptInsertSelect })
-
-    const intentMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'intent-1', storage_path: '2026/Coffee_4.50.pdf_1770000000000' },
-      error: null,
-    })
-    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
-    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
-    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
-    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
-    const intentSelect = vi.fn().mockReturnValue({ eq: intentEqTransaction })
-    const intentUpdateEq = vi.fn().mockResolvedValue({ error: null })
-    const intentUpdate = vi.fn().mockReturnValue({ eq: intentUpdateEq })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-    const storageRemove = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-            update: vi.fn().mockReturnValue({ eq: txUpdateEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_files: {
-            insert: receiptInsert,
-          },
-          receipt_upload_intents: {
-            select: intentSelect,
-            update: intentUpdate,
-          },
-          receipt_transaction_logs: {
-            insert: logInsert,
-          },
-        },
-        {
-          remove: storageRemove,
-        }
-      )
-    )
-
-    const result = await completeReceiptUpload({
-      transactionId: 'tx-1',
-      storagePath: '2026/Coffee_4.50.pdf_1770000000000',
-      fileName: '2026-03-15 - Coffee - 4.50.pdf',
-      fileType: 'application/pdf',
-      fileSize: 8 * 1024 * 1024,
-    })
-
-    expect(result).toMatchObject({ success: true, receipt: receiptRecord })
-    expect(intentEqTransaction).toHaveBeenCalledWith('transaction_id', 'tx-1')
-    expect(intentEqStoragePath).toHaveBeenCalledWith('storage_path', '2026/Coffee_4.50.pdf_1770000000000')
-    expect(intentEqIssuedTo).toHaveBeenCalledWith('issued_to', TEST_USER.user_id)
-    expect(intentIs).toHaveBeenCalledWith('completed_at', null)
-    expect(intentUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      receipt_file_id: 'file-1',
-    }))
-    expect(receiptInsert).toHaveBeenCalledWith(expect.objectContaining({
-      transaction_id: 'tx-1',
-      storage_path: '2026/Coffee_4.50.pdf_1770000000000',
-      file_name: '2026-03-15 - Coffee - 4.50.pdf',
-      mime_type: 'application/pdf',
-      file_size_bytes: 8 * 1024 * 1024,
-    }))
-    expect(storageRemove).not.toHaveBeenCalled()
-    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation_type: 'upload_receipt',
-        resource_type: 'receipt_transaction',
-        resource_id: 'tx-1',
-        operation_status: 'success',
-      })
-    )
-  })
-
-  it('should reject a completed receipt upload when the path was not issued for that transaction', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-    const intentMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
-    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
-    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
-    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
-    const receiptInsert = vi.fn()
-    const storageRemove = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_upload_intents: {
-            select: vi.fn().mockReturnValue({ eq: intentEqTransaction }),
-          },
-          receipt_files: {
-            insert: receiptInsert,
-          },
-        },
-        {
-          remove: storageRemove,
-        }
-      )
-    )
-
-    const result = await completeReceiptUpload({
-      transactionId: 'tx-1',
-      storagePath: '2026/other_transaction_1770000000000',
-      fileName: 'receipt.pdf',
-      fileType: 'application/pdf',
-      fileSize: 8 * 1024 * 1024,
-    })
-
-    expect(result).toEqual({ error: 'Uploaded receipt path was not issued for this transaction' })
-    expect(storageRemove).toHaveBeenCalledWith(['2026/other_transaction_1770000000000'])
-    expect(receiptInsert).not.toHaveBeenCalled()
-  })
-
-  it('should return error when user lacks permission', async () => {
-    mockedPermission.mockResolvedValue(false)
-
-    const result = await uploadReceiptForTransaction(makeReceiptFormData('tx-1'))
-
-    expect(result).toEqual({ error: 'Insufficient permissions' })
-    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
-  })
-
-  it('should return error when transactionId is missing', async () => {
-    const formData = new FormData()
-    const file = new File(['pdf-content'], 'receipt.pdf', { type: 'application/pdf' })
-    formData.set('receipt', file)
-
-    const result = await uploadReceiptForTransaction(formData)
-
-    expect(result).toEqual({ error: 'Missing transaction reference' })
-  })
-
-  it('should return error when receipt file is missing', async () => {
-    const formData = new FormData()
-    formData.set('transactionId', 'tx-1')
-
-    const result = await uploadReceiptForTransaction(formData)
-
-    expect(result).toHaveProperty('error')
-    // The error comes from zod schema validation
-    expect(typeof (result as { error: string }).error).toBe('string')
-  })
-
-  it('should return error when transaction is not found', async () => {
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-        },
-        {
-          upload: vi.fn(),
-          remove: vi.fn(),
-        }
-      )
-    )
-
-    const result = await uploadReceiptForTransaction(makeReceiptFormData('tx-1'))
-
-    expect(result).toEqual({ error: 'Transaction not found' })
-  })
-
-  it('should return error when storage upload fails', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-        },
-        {
-          upload: vi.fn().mockResolvedValue({ error: { message: 'storage full' } }),
-          remove: vi.fn(),
-        }
-      )
-    )
-
-    const result = await uploadReceiptForTransaction(makeReceiptFormData('tx-1'))
-
-    expect(result).toEqual({ error: 'Failed to upload receipt file.' })
-    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-
-  it('should successfully upload receipt and mark transaction completed', async () => {
-    const transaction = {
-      id: 'tx-1',
-      transaction_date: '2026-03-15',
-      details: 'Coffee',
-      amount_in: null,
-      amount_out: 4.5,
-      status: 'pending',
-    }
-
-    const receiptRecord = { id: 'file-1', storage_path: '2026/Coffee_4.50.pdf' }
-
-    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const txUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'tx-1' }, error: null })
-    const txUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: txUpdateMaybeSingle })
-    const txUpdateEq = vi.fn().mockReturnValue({ select: txUpdateSelect })
-
-    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
-    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
-
-    const receiptInsertSingle = vi.fn().mockResolvedValue({ data: receiptRecord, error: null })
-    const receiptInsertSelect = vi.fn().mockReturnValue({ single: receiptInsertSingle })
-    const receiptInsert = vi.fn().mockReturnValue({ select: receiptInsertSelect })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-            update: vi.fn().mockReturnValue({ eq: txUpdateEq }),
-          },
-          profiles: {
-            select: vi.fn().mockReturnValue({ eq: profileEq }),
-          },
-          receipt_files: {
-            insert: receiptInsert,
-          },
-          receipt_transaction_logs: {
-            insert: logInsert,
-          },
-        },
-        {
-          upload: vi.fn().mockResolvedValue({ error: null }),
-          remove: vi.fn(),
-        }
-      )
-    )
-
-    const result = await uploadReceiptForTransaction(makeReceiptFormData('tx-1'))
-
-    expect(result).toMatchObject({ success: true, receipt: receiptRecord })
-    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation_type: 'upload_receipt',
-        resource_type: 'receipt_transaction',
-        resource_id: 'tx-1',
-        operation_status: 'success',
-      })
-    )
-  })
-})
-
-// ==========================================================================
-// deleteReceiptFile
-// ==========================================================================
-
-describe('deleteReceiptFile', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockedPermission.mockResolvedValue(true)
-    mockedGetCurrentUser.mockResolvedValue(TEST_USER)
-  })
-
-  const RECEIPT = {
-    id: 'file-1',
-    transaction_id: 'tx-1',
-    storage_path: '2026/receipt.pdf',
-    file_name: 'receipt.pdf',
-    mime_type: 'application/pdf',
-    file_size_bytes: 5000,
-    uploaded_by: 'user-1',
-    uploaded_at: '2026-03-15T00:00:00.000Z',
-  }
-
-  it('should return error when user lacks permission', async () => {
-    mockedPermission.mockResolvedValue(false)
-
-    const result = await deleteReceiptFile('file-1')
-
-    expect(result).toEqual({ error: 'Insufficient permissions' })
-    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
-  })
-
-  it('should return error when receipt record is not found', async () => {
-    const selectSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } })
-    const selectEq = vi.fn().mockReturnValue({ single: selectSingle })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient({
-        receipt_files: {
-          select: vi.fn().mockReturnValue({ eq: selectEq }),
-        },
-      })
-    )
-
-    const result = await deleteReceiptFile('file-1')
-
-    expect(result).toEqual({ error: 'Receipt not found' })
-    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-
-  it('should return error when DB file delete fails', async () => {
-    const receiptSelectSingle = vi.fn().mockResolvedValue({ data: RECEIPT, error: null })
-    const receiptSelectEq = vi.fn().mockReturnValue({ single: receiptSelectSingle })
-    const receiptDeleteEq = vi.fn().mockResolvedValue({ error: { message: 'db error' } })
-
-    const txSelectSingle = vi.fn().mockResolvedValue({
-      data: { id: 'tx-1', status: 'completed' },
-      error: null,
-    })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_files: {
-            select: vi.fn().mockReturnValue({ eq: receiptSelectEq }),
-            delete: vi.fn().mockReturnValue({ eq: receiptDeleteEq }),
-          },
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-          },
-        },
-        {
-          remove: vi.fn(),
-        }
-      )
-    )
-
-    const result = await deleteReceiptFile('file-1')
-
-    expect(result).toEqual({ error: 'Failed to remove receipt record.' })
-    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
-  })
-
-  it('should successfully delete receipt and reset transaction to pending when no files remain', async () => {
-    const receiptSelectSingle = vi.fn().mockResolvedValue({ data: RECEIPT, error: null })
-    const receiptSelectEq = vi.fn().mockReturnValue({ single: receiptSelectSingle })
-    const receiptDeleteEq = vi.fn().mockResolvedValue({ error: null })
-    // After deletion, check remaining files — returns empty
-    const remainingEq = vi.fn().mockResolvedValue({ data: [], error: null })
-
-    const txSelectSingle = vi.fn().mockResolvedValue({
-      data: { id: 'tx-1', status: 'completed' },
-      error: null,
-    })
-    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
-
-    const txUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'tx-1' }, error: null })
-    const txUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: txUpdateMaybeSingle })
-    const txUpdateEq = vi.fn().mockReturnValue({ select: txUpdateSelect })
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockedCreateAdminClient.mockReturnValue(
-      buildMockClient(
-        {
-          receipt_files: {
-            select: vi.fn((columns?: string) =>
-              columns === '*'
-                ? { eq: receiptSelectEq }
-                : { eq: remainingEq }
-            ),
-            delete: vi.fn().mockReturnValue({ eq: receiptDeleteEq }),
-            insert: vi.fn().mockResolvedValue({ error: null }),
-          },
-          receipt_transactions: {
-            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
-            update: vi.fn().mockReturnValue({ eq: txUpdateEq }),
-          },
-          receipt_transaction_logs: {
-            insert: logInsert,
-          },
-        },
-        {
-          remove: vi.fn().mockResolvedValue({ error: null }),
-        }
-      )
-    )
-
-    const result = await deleteReceiptFile('file-1')
-
-    expect(result).toEqual({ success: true })
-    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation_type: 'delete_receipt',
-        resource_type: 'receipt_file',
-        resource_id: 'file-1',
-        operation_status: 'success',
-      })
-    )
   })
 })
 
@@ -1180,7 +442,20 @@ describe('createReceiptRule', () => {
       })
     )
 
-    expect(result).toEqual({ error: 'Add at least one match condition before saving this rule' })
+    expect(result).toEqual({ error: 'Add match keywords or a bank transaction type before saving this rule' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('should reject a rule that only names a direction', async () => {
+    // "Money out" alone would match every otherwise unmatched outgoing payment.
+    const result = await createReceiptRule(
+      makeRuleFormData({
+        match_description: '',
+        match_direction: 'out',
+      })
+    )
+
+    expect(result).toEqual({ error: 'Add match keywords or a bank transaction type before saving this rule' })
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 

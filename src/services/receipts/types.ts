@@ -19,11 +19,8 @@ import type {
 } from '@/types/database'
 import type { BankBalancePoint } from '@/lib/receipts/bank-balance'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  MAX_RECEIPT_FILE_UPLOAD_BYTES,
-  MAX_RECEIPT_STATEMENT_UPLOAD_BYTES,
-  RECEIPT_BUCKET_NAME,
-} from '@/lib/receipts/upload-constraints'
+import { RECEIPT_BUCKET_NAME } from '@/lib/receipts/upload-constraints'
+import type { VendorGroupTotal } from '@/lib/receipts/vendor-group-key'
 
 // ---------------------------------------------------------------------------
 // Internal utility types
@@ -92,6 +89,8 @@ export type ReceiptWorkspaceFilters = {
   groupByVendor?: boolean
   missingVendorOnly?: boolean
   missingExpenseOnly?: boolean
+  /** Completed with neither a file nor a reason: the ones to review. */
+  completedWithoutReceipt?: boolean
   month?: string
   page?: number
   pageSize?: number
@@ -99,19 +98,13 @@ export type ReceiptWorkspaceFilters = {
   sortDirection?: 'asc' | 'desc'
 }
 
-type AIModelBreakdown = {
-  model: string
-  total_cost: number
-  total_tokens: number
-  call_count: number
-}
-
+/** What the receipts AI has cost. The figures are US dollars, as OpenAI charges them. */
 export type AIUsageBreakdown = {
   total_cost: number
   this_month_cost: number
-  total_classifications: number
-  this_month_classifications: number
-  model_breakdown: AIModelBreakdown[] | null
+  /** Calls to the model, not payments: one call classifies a batch. */
+  total_calls: number
+  this_month_calls: number
 }
 
 export type RulePreviewResult = {
@@ -131,18 +124,49 @@ export type ReceiptWorkspaceSummary = {
     noReceiptRequired: number
     cantFind: number
   }
+  /** True when the status counts could not be read. The totals are then unknown, not zero. */
+  totalsUnavailable?: boolean
   needsAttentionValue: number
   lastImport?: ReceiptBatch | null
   openAICost: number
   aiUsageBreakdown?: AIUsageBreakdown | null
   failedAiJobCount: number
+  /** Payments completed with neither a file nor a reason. Null when it could not be counted. */
+  completedWithoutReceipt: number | null
+}
+
+/** A category the AI has suggested for a payment, waiting for a person to accept, change or dismiss. */
+export type ReceiptAiSuggestion = {
+  /** Null with `noCategoryApplies` true: the suggestion is that no category applies. */
+  category: ReceiptExpenseCategory | null
+  noCategoryApplies: boolean
+  confidence: number | null
+  reasoning: string | null
+}
+
+export type ReceiptWorkspaceTransaction = ReceiptTransaction & {
+  files: ReceiptFile[]
+  autoRule?: Pick<ReceiptRule, 'id' | 'name'> | null
+  aiSuggestion?: ReceiptAiSuggestion | null
+  /** Something about this payment a person should know: a possible wage payment, or a failed classification. */
+  aiNote?: string | null
+}
+
+/** What the AI could not do, shown above the list. Null when it could not be worked out. */
+export type ReceiptWorkspaceAiStatus = {
+  failed: number
+  failedForGood: number
+  payrollChecks: number
 }
 
 export type ReceiptWorkspaceData = {
-  transactions: (ReceiptTransaction & {
-    files: ReceiptFile[]
-    autoRule?: Pick<ReceiptRule, 'id' | 'name'> | null
-  })[]
+  transactions: ReceiptWorkspaceTransaction[]
+  aiStatus: ReceiptWorkspaceAiStatus | null
+  /**
+   * Totals for each vendor group across every page, keyed as `vendorGroupKey` keys them. Null
+   * when the list is not grouped, or the totals could not be read.
+   */
+  vendorGroupTotals: Record<string, VendorGroupTotal> | null
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
@@ -401,7 +425,6 @@ export type ReceiptBulkReviewData = {
     limit: number
     statuses: ReceiptTransaction['status'][]
     onlyUnclassified: boolean
-    openAIEnabled: boolean
     useFuzzyGrouping: boolean
   }
 }
@@ -444,6 +467,14 @@ export type AutomationResult = {
   matched: number
   vendorIntended: number
   expenseIntended: number
+  /** Matched payments where a different value was left alone because a person, the import or invoice pairing decided it. */
+  protectedCount: number
+  /** Payments that changed between the read and the write, so the rule left them alone. */
+  conflicts: number
+  /** Payments the rule tried to update and could not. */
+  failed: number
+  /** Payments the rules would have changed, left alone because they are on or before the lock date. */
+  locked: number
   samples: Array<{
     id: string
     status: ReceiptTransaction['status']
@@ -474,23 +505,8 @@ export type ClassificationRuleSuggestion = RuleSuggestion
 export type RuleMutationResult =
   | { success: true; rule: ReceiptRule; canPromptRetro: true }
   | { error: string }
-
-export type RetroStepSuccess = {
-  success: true
-  reviewed: number
-  matched: number
-  statusAutoUpdated: number
-  classificationUpdated: number
-  vendorIntended: number
-  expenseIntended: number
-  samples: AutomationResult['samples']
-  nextOffset: number
-  total: number
-  done: boolean
-  durationMs: number
-}
-
-export type RetroStepResult = RetroStepSuccess | { success: false; error: string }
+  /** The rule names a vendor that is not on the list. Nothing was saved; ask, then send again. */
+  | { vendorConfirmation: { name: string; similar: Array<{ id: string; name: string }> } }
 
 export type BulkStatus = ReceiptTransaction['status']
 
@@ -499,16 +515,7 @@ export type BulkStatus = ReceiptTransaction['status']
 // ---------------------------------------------------------------------------
 
 export const RECEIPT_BUCKET = RECEIPT_BUCKET_NAME
-const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
-const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
-const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
-export const DEFAULT_PAGE_SIZE = 25
-// Supabase returns at most 1,000 rows per request and reports no error when it
-// truncates, so asking for more than this hands back 1,000 rows while the pager
-// still divides the total by the requested size. At 5,000 the month and
-// group-by-vendor views showed the first 1,000 rows and then jumped to row
-// 5,001, making everything between unreachable.
-export const MAX_MONTH_PAGE_SIZE = 1000
+/** Rows on one page of the workspace list, whatever the view. */
+export const WORKSPACE_PAGE_SIZE = 100
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10
-export const RETRO_CHUNK_SIZE = 100
 export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']

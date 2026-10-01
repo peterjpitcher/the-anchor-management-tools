@@ -4,12 +4,14 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/ds'
 import {
-  runReceiptRuleRetroactivelyStep,
-  finalizeReceiptRuleRetroRun,
-} from '@/app/actions/receipts'
+  applyReceiptRuleRunStep,
+  previewReceiptRuleRun,
+  undoReceiptRuleRunStep,
+} from '@/app/actions/receipt-rules'
+import type { RuleRunPreview } from '@/services/receipts/receiptRuleRuns'
 
-const CHUNK_SIZE = 100
-const MAX_ITERATIONS = 300
+/** A run is applied 200 changes at a time; this is far more steps than any run needs. */
+const MAX_STEPS = 500
 
 type RetroOptions = {
   ruleId: string
@@ -17,113 +19,147 @@ type RetroOptions = {
 }
 
 type RetroRunnerReturn = {
-  runRetro: (options: RetroOptions) => void
+  /**
+   * Works out exactly what a run would change and stores it. Nothing is changed. Null when it
+   * could not be worked out (the reason is shown).
+   */
+  previewRetro: (options: RetroOptions) => Promise<RuleRunPreview | null>
+  /** Applies a stored preview. Only what the preview showed is written. */
+  runRetro: (preview: RuleRunPreview & { runId: string }, ruleId: string) => void
+  /** Puts back what a run changed. */
+  undoRun: (runId: string, onDone?: () => void) => void
   isRunning: boolean
+  isPreviewing: boolean
+  isUndoing: boolean
   activeRuleId: string | null
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
 }
 
 export function useRetroRuleRunner(): RetroRunnerReturn {
   const router = useRouter()
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
   const [isRetroPending, startRetroTransition] = useTransition()
+  const [isUndoPending, startUndoTransition] = useTransition()
 
-  function runRetro({ ruleId, scope }: RetroOptions) {
+  async function previewRetro(options: RetroOptions): Promise<RuleRunPreview | null> {
+    setActiveRuleId(options.ruleId)
+    setIsPreviewing(true)
+    try {
+      const result = await previewReceiptRuleRun(options)
+      if (!result.success) {
+        toast.error(result.error ?? 'Could not work out what the rule would change. Please try again.')
+        return null
+      }
+      return result
+    } catch (error) {
+      console.error('Failed to preview receipt rule run', error)
+      toast.error('Could not work out what the rule would change. Please try again.')
+      return null
+    } finally {
+      setIsPreviewing(false)
+      setActiveRuleId(null)
+    }
+  }
+
+  function runRetro(preview: RuleRunPreview & { runId: string }, ruleId: string) {
     setActiveRuleId(ruleId)
     startRetroTransition(async () => {
       try {
-        // Keyset cursor, not an offset: applying a rule moves rows out of the pending set, so an
-        // offset would skip the rows that shifted up under it. Null asks for the first chunk.
-        let cursor: string | null = null
-        let iterations = 0
-        let lastSamples: Array<Record<string, unknown>> = []
-        const totals = {
-          reviewed: 0,
-          matched: 0,
-          statusAutoUpdated: 0,
-          classificationUpdated: 0,
-          vendorIntended: 0,
-          expenseIntended: 0,
-        }
-
-        while (iterations < MAX_ITERATIONS) {
-          const step = await runReceiptRuleRetroactivelyStep({
-            ruleId,
-            scope,
-            cursor,
-            offset: totals.reviewed,
-            chunkSize: CHUNK_SIZE,
-          })
+        let steps = 0
+        while (steps < MAX_STEPS) {
+          const step = await applyReceiptRuleRunStep(preview.runId)
+          steps += 1
 
           if (!step.success) {
+            // One message: the server's reason. What was applied before it stopped is recorded.
             toast.error(step.error)
-            break
-          }
-
-          totals.reviewed += step.reviewed
-          totals.matched += step.matched
-          totals.statusAutoUpdated += step.statusAutoUpdated
-          totals.classificationUpdated += step.classificationUpdated
-          totals.vendorIntended += step.vendorIntended
-          totals.expenseIntended += step.expenseIntended
-
-          if (step.samples.length) {
-            lastSamples = step.samples
-          }
-
-          iterations += 1
-
-          if (step.done) {
-            await finalizeReceiptRuleRetroRun({
-              ruleId,
-              scope,
-              reviewed: totals.reviewed,
-              statusAutoUpdated: totals.statusAutoUpdated,
-              classificationUpdated: totals.classificationUpdated,
-              matched: totals.matched,
-              vendorIntended: totals.vendorIntended,
-              expenseIntended: totals.expenseIntended,
-            })
-
-            const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
-            toast.success(
-              `Rule processed ${totals.matched} / ${totals.reviewed} ${scopeLabel} · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications`
-            )
-
-            if (lastSamples.length) {
-              // eslint-disable-next-line no-console
-              console.groupCollapsed(`Receipt rule analysis (${lastSamples.length} sample transactions)`)
-              // eslint-disable-next-line no-console
-              console.table(lastSamples)
-              // eslint-disable-next-line no-console
-              console.groupEnd()
-            }
-
             router.refresh()
             return
           }
 
-          // The cursor must move on every unfinished step, or the next request would read the
-          // same chunk again. Stop rather than loop.
-          if (!step.nextCursor || step.nextCursor === cursor || step.reviewed === 0) {
-            break
+          if (step.done) {
+            const parts = [`${plural(step.appliedTotal, 'transaction', 'transactions')} updated`]
+            if (step.skippedChangedTotal > 0) {
+              parts.push(`${step.skippedChangedTotal} changed since the preview and were left alone`)
+            }
+            if (step.skippedLockedTotal > 0) {
+              parts.push(`${step.skippedLockedTotal} are locked and were left alone`)
+            }
+            if (step.skippedChangedTotal > 0 || step.skippedLockedTotal > 0) {
+              toast.warning(parts.join(' · '))
+            } else {
+              toast.success(parts.join(' · '))
+            }
+            router.refresh()
+            return
           }
 
-          cursor = step.nextCursor
+          // Each unfinished step must write or skip something, or the loop would never end.
+          if (step.applied + step.skippedChanged + step.skippedLocked === 0) break
         }
 
-        toast.error('Stopped before completion. Please run again to continue.')
+        toast.error('The run stopped before it finished. What it changed is recorded and can be undone.')
+        router.refresh()
       } catch (error) {
-        console.error('Failed to run receipt rule retroactively', error)
-        toast.error('Failed to run the rule. Please try again.')
+        console.error('Failed to run receipt rule', error)
+        toast.error('The run did not finish. What it changed is recorded and can be undone.')
+        router.refresh()
       } finally {
         setActiveRuleId(null)
       }
     })
   }
 
+  function undoRun(runId: string, onDone?: () => void) {
+    startUndoTransition(async () => {
+      try {
+        let steps = 0
+        while (steps < MAX_STEPS) {
+          const step = await undoReceiptRuleRunStep(runId)
+          steps += 1
+
+          if (!step.success) {
+            toast.error(step.error)
+            router.refresh()
+            return
+          }
+
+          if (step.done) {
+            const restored = `${plural(step.restoredTotal, 'transaction', 'transactions')} put back`
+            if (step.conflictTotal > 0) {
+              toast.warning(`${restored} · ${step.conflictTotal} had been changed since and were left as they are`)
+            } else {
+              toast.success(restored)
+            }
+            onDone?.()
+            router.refresh()
+            return
+          }
+
+          if (step.restored + step.conflicts === 0) break
+        }
+
+        toast.error('The undo stopped before it finished. Run it again to continue.')
+        router.refresh()
+      } catch (error) {
+        console.error('Failed to undo receipt rule run', error)
+        toast.error('The undo did not finish. Run it again to continue.')
+        router.refresh()
+      }
+    })
+  }
+
   return {
+    previewRetro,
     runRetro,
+    undoRun,
     isRunning: isRetroPending,
+    isPreviewing,
+    isUndoing: isUndoPending,
     activeRuleId,
   }
 }

@@ -22,10 +22,19 @@ export function ReceiptReclassify() {
         return
       }
       const count = result.queued ?? 0
+      const alreadyAsked = result.alreadyAsked ?? 0
+      // A payment is only sent once per version of the question, so a second click no longer
+      // pays to ask the same thing again. Say so, or "nothing queued" reads like a fault.
+      const asked =
+        alreadyAsked > 0
+          ? ` ${alreadyAsked} already asked and not sent again.`
+          : ''
       toast.success(
         count > 0
-          ? `Queued ${count} transaction${count !== 1 ? 's' : ''} for AI classification`
-          : 'No untagged transactions found'
+          ? `Queued ${count} transaction${count !== 1 ? 's' : ''} for AI classification.${asked}`
+          : alreadyAsked > 0
+            ? `Nothing new to send.${asked}`
+            : 'No untagged transactions found'
       )
       if (count > 0) {
         router.refresh()

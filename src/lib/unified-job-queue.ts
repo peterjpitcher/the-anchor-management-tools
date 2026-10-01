@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { claimIdempotencyKey, releaseIdempotencyClaim } from '@/lib/api/idempotency'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 const DEBUG_JOB_QUEUE = process.env.JOB_QUEUE_DEBUG === '1'
 
@@ -39,6 +40,8 @@ export type JobType =
   | 'suggest_receipt_rules'
   | 'refresh_receipt_duplicate_candidates'
   | 'reconcile_receipt_invoice_payments'
+  | 'process_receipt_batch'
+  | 'attach_invoice_to_receipt'
   | 'checklist_generate_day'
   | 'checklist_sweep'
   | 'checklist_email_outbox_process'
@@ -62,6 +65,8 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'suggest_receipt_rules',
   'refresh_receipt_duplicate_candidates',
   'reconcile_receipt_invoice_payments',
+  'process_receipt_batch',
+  'attach_invoice_to_receipt',
   'checklist_generate_day',
   'checklist_sweep',
   'checklist_email_outbox_process',
@@ -81,11 +86,36 @@ const DEFAULT_LEASE_SECONDS = Number.isFinite(Number(process.env.JOB_QUEUE_LEASE
 const HEARTBEAT_MS = Number.isFinite(Number(process.env.JOB_QUEUE_HEARTBEAT_MS))
   ? Number(process.env.JOB_QUEUE_HEARTBEAT_MS)
   : 30000
+/**
+ * Receipts background work: classification, the work after an import, invoice matching and the
+ * rule housekeeping. It runs after everything else in a claimed batch, messages included, and has
+ * its own timeout below the 60 seconds the processing route is allowed. A slow call to OpenAI can
+ * therefore never hold up a text message, and never outlives the request that started it.
+ */
+const RECEIPT_JOB_TYPES: JobType[] = [
+  'classify_receipt_transactions',
+  'process_receipt_batch',
+  'reconcile_receipt_invoice_payments',
+  'suggest_receipt_rules',
+  'detect_receipt_rule_conflicts',
+  'refresh_receipt_duplicate_candidates',
+  'attach_invoice_to_receipt',
+]
+const RECEIPT_JOB_TIMEOUT_MS = 45_000
+/**
+ * Receipts jobs that start a headless browser to render a PDF. One of these runs at a time: ten
+ * browsers in one function would exhaust its memory. The rest are handed back for the next run.
+ */
+const RENDERING_RECEIPT_JOB_TYPES: JobType[] = ['attach_invoice_to_receipt']
+/** Time left in the run below which receipts jobs are handed back instead of started. */
+const RECEIPT_JOB_MIN_REMAINING_MS = RECEIPT_JOB_TIMEOUT_MS + 2_000
+
 const JOB_TIMEOUTS_MS: Partial<Record<JobType, number>> = {
   send_bulk_sms: 0,
   send_event_reschedule_notifications: 0,
   send_event_postponed_notifications: 0,
   cancel_event_bookings: 0,
+  ...Object.fromEntries(RECEIPT_JOB_TYPES.map((type) => [type, RECEIPT_JOB_TIMEOUT_MS])),
 }
 
 function resolveJobTimeoutMs(type: JobType): number {
@@ -657,7 +687,7 @@ export class UnifiedJobQueue {
   /**
    * Process pending jobs
    */
-  async processJobs(limit = 10): Promise<void> {
+  async processJobs(limit = 10, options: { /** When this run must be finished, as epoch milliseconds. */ deadlineAt?: number } = {}): Promise<void> {
     const supabase = await createAdminClient()
     await this.resetStaleJobs(supabase)
 
@@ -681,7 +711,8 @@ export class UnifiedJobQueue {
 
     const sendJobTypes: JobType[] = ['send_sms', 'send_bulk_sms']
     const sendJobs = jobs.filter((job) => sendJobTypes.includes(job.type))
-    const otherJobs = jobs.filter((job) => !sendJobTypes.includes(job.type))
+    const receiptJobs = jobs.filter((job) => RECEIPT_JOB_TYPES.includes(job.type))
+    const otherJobs = jobs.filter((job) => !sendJobTypes.includes(job.type) && !RECEIPT_JOB_TYPES.includes(job.type))
 
     // Non-SMS jobs can run concurrently.
     if (otherJobs.length > 0) {
@@ -712,6 +743,47 @@ export class UnifiedJobQueue {
             error: abort.message,
           }
         })
+      }
+    }
+
+    // Receipts work goes last, so nothing above waits on it. If the run has too little time left
+    // for one of these jobs to finish, they are handed back for the next run and not started:
+    // the wait is not counted against their attempts.
+    if (receiptJobs.length > 0) {
+      const remainingMs = options.deadlineAt ? options.deadlineAt - Date.now() : Number.POSITIVE_INFINITY
+      if (remainingMs < RECEIPT_JOB_MIN_REMAINING_MS) {
+        logQueueDebug('Handing receipts jobs back: not enough time left in this run', {
+          count: receiptJobs.length,
+          remainingMs,
+        })
+        await Promise.allSettled(
+          receiptJobs.map((job) =>
+            this.persistJobReschedule(
+              supabase,
+              job,
+              job.processing_token ?? null,
+              new JobReschedule(new Date(), { deferred: 'not enough time left in the run' })
+            )
+          )
+        )
+      } else {
+        const rendering = receiptJobs.filter((job) => RENDERING_RECEIPT_JOB_TYPES.includes(job.type))
+        const startNow = [
+          ...receiptJobs.filter((job) => !RENDERING_RECEIPT_JOB_TYPES.includes(job.type)),
+          ...rendering.slice(0, 1),
+        ]
+        const nextRun = rendering.slice(1)
+        await Promise.allSettled([
+          ...startNow.map((job) => this.processJob(job)),
+          ...nextRun.map((job) =>
+            this.persistJobReschedule(
+              supabase,
+              job,
+              job.processing_token ?? null,
+              new JobReschedule(new Date(), { deferred: 'one document is rendered per run' })
+            )
+          ),
+        ])
       }
     }
   }
@@ -887,12 +959,21 @@ export class UnifiedJobQueue {
 
       // Execute job based on type with timeout protection
       const timeoutMs = resolveJobTimeoutMs(job.type)
+      // A handler that takes the signal stops its outside calls when the job times out or loses
+      // its lease. Without it a timed-out handler ran on, and could overlap its own retry.
+      const cancel = new AbortController()
       const execution = withTimeout(
-        this.executeJob(job.type, { ...job.payload, __job_id: job.id }),
+        this.executeJob(job.type, { ...job.payload, __job_id: job.id }, cancel.signal),
         timeoutMs,
         `Job execution timeout (${timeoutMs}ms)`
       )
-      const result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
+      let result: any
+      try {
+        result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
+      } catch (executionError) {
+        cancel.abort()
+        throw executionError
+      }
 
       if (result instanceof JobReschedule) {
         await this.persistJobReschedule(supabase, job, token, result)
@@ -1060,7 +1141,7 @@ export class UnifiedJobQueue {
   /**
    * Execute job based on type
    */
-  private async executeJob(type: JobType, payload: JobPayload): Promise<any> {
+  private async executeJob(type: JobType, payload: JobPayload, signal?: AbortSignal): Promise<any> {
     // Import handlers dynamically to avoid circular dependencies
     switch (type) {
       case 'classify_receipt_transactions': {
@@ -1075,8 +1156,22 @@ export class UnifiedJobQueue {
         const { classifyReceiptTransactionsWithAI } = await import('@/lib/receipts/ai-classification')
         const supabase = createAdminClient()
 
-        await classifyReceiptTransactionsWithAI(supabase, transactionIds)
-        return { processed: transactionIds.length }
+        // A failed call throws from here, so the queue retries it. What it did before failing
+        // is already recorded against each payment.
+        const summary = await classifyReceiptTransactionsWithAI(supabase, transactionIds, {
+          signal,
+          retryFinalFailures: payload.retryFinalFailures === true,
+        })
+
+        // New vendors on payments are what rule proposals are worked out from.
+        if (summary.vendorsWritten > 0) {
+          await this.enqueue(
+            'suggest_receipt_rules',
+            {},
+            { priority: -10, unique: `receipts:suggest_receipt_rules:${getTodayIsoDate()}` }
+          )
+        }
+        return summary
       }
 
       case 'detect_receipt_rule_conflicts': {
@@ -1103,7 +1198,35 @@ export class UnifiedJobQueue {
         const transactionIds = Array.isArray(payload.transaction_ids)
           ? payload.transaction_ids.filter((id): id is string => typeof id === 'string')
           : undefined
-        return performReconcileReceiptInvoicePayments({ transactionIds })
+        const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
+        return performReconcileReceiptInvoicePayments({ transactionIds, initiatedBy })
+      }
+
+      // Written by import_receipt_statement in the same transaction as the lines, so the work
+      // that follows an import survives the importing request dying. Safe to run twice: each
+      // step records that it is done.
+      case 'process_receipt_batch': {
+        const batchId = typeof payload.batch_id === 'string' ? payload.batch_id : null
+        if (!batchId) {
+          return { skipped: true }
+        }
+        const { processReceiptBatchFollowup } = await import('@/services/receipts/receiptImport')
+        const initiatedBy = typeof payload.initiated_by === 'string' ? payload.initiated_by : null
+        return processReceiptBatchFollowup(batchId, { initiatedBy })
+      }
+
+      // A copy of one of our invoices, added to the bank payment that settled it. Safe to run
+      // twice: an invoice is attached to a payment once. A failure to render or store throws,
+      // so the job is retried.
+      case 'attach_invoice_to_receipt': {
+        const transactionId = typeof payload.transactionId === 'string' ? payload.transactionId : null
+        const invoiceId = typeof payload.invoiceId === 'string' ? payload.invoiceId : null
+        if (!transactionId || !invoiceId) {
+          return { skipped: true }
+        }
+        const { performAttachInvoiceToReceipt } = await import('@/services/receipts/receiptInvoiceFiles')
+        const result = await performAttachInvoiceToReceipt({ transactionId, invoiceId })
+        return { outcome: result.outcome, statusUpdated: Boolean(result.statusUpdated) }
       }
 
       case 'send_sms':

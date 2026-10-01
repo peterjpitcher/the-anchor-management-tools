@@ -69,12 +69,15 @@ function makeAdmin(): Handles {
     rpc,
     from: vi.fn((table: string) => {
       if (table === 'receipt_transactions') {
-        // refreshAutomationForPendingTransactions: select('id').eq('status','pending').limit(500)
-        const limit = vi.fn(() => {
+        // refreshAutomationForPendingTransactions pages through every pending row in id order:
+        // select('id').eq('status','pending').order('id').range(from, to). It used to read the
+        // first 500 in no order, so a newly approved rule could miss its own evidence.
+        const range = vi.fn(() => {
           pendingRefreshCount += 1
           return Promise.resolve({ data: [], error: null })
         })
-        const eq = vi.fn().mockReturnValue({ limit })
+        const order = vi.fn().mockReturnValue({ range })
+        const eq = vi.fn().mockReturnValue({ order })
         return { select: vi.fn().mockReturnValue({ eq }) }
       }
       if (table === 'receipt_rules') {
@@ -88,7 +91,11 @@ function makeAdmin(): Handles {
           error: null,
         })
         const eq = vi.fn().mockReturnValue({ maybeSingle })
-        return { select: vi.fn().mockReturnValue({ eq }) }
+        // The bulk path reads the selected suggestions once, to check the keywords of those that
+        // name a vendor against every transaction. None here names one; that checking is tested
+        // in receiptGovernance.approval.test.ts.
+        const inIds = vi.fn().mockResolvedValue({ data: [], error: null })
+        return { select: vi.fn().mockReturnValue({ eq, in: inIds }) }
       }
       if (table === 'receipt_classification_signals') {
         return { insert: vi.fn().mockResolvedValue({ error: null }) }
