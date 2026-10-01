@@ -505,10 +505,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     },
     booking.party_size ?? 0,
   )
+  // A deposit that was taken and has not all gone back: staff may refund it, or the rest of it.
+  const depositCanBeRefunded = booking.payment_status === 'completed' || booking.payment_status === 'partial_refund'
   const refundableDepositAmount =
     booking.payment_status === 'completed'
       ? Math.max(0, canonicalDepositAmount)
-      : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
+      : booking.payment_status === 'partial_refund'
+        ? // The ceiling the refund actions enforce: the locked amount is what PayPal captured, and
+          // deposit_amount can move after capture (a party size change).
+          Math.max(0, Number(booking.deposit_amount_locked ?? booking.deposit_amount ?? 0))
+        : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
 
   const notes = [
     { label: 'Special requirements', value: normaliseNote(booking.special_requirements) },
@@ -1326,7 +1332,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </Alert>
                 )}
 
-                {canRefund && depositRefunds !== null && booking.payment_status === 'completed' && refundTotals.totalRefunded < refundableDepositAmount && (
+                {canRefund && depositRefunds !== null && depositCanBeRefunded && refundTotals.totalRefunded < refundableDepositAmount && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1749,7 +1755,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           </div>
         </Modal>
 
-        {canRefund && depositRefunds !== null && booking.payment_status === 'completed' && (
+        {canRefund && depositRefunds !== null && depositCanBeRefunded && (
           <RefundDialog
             open={showRefundDialog}
             onOpenChange={setShowRefundDialog}
