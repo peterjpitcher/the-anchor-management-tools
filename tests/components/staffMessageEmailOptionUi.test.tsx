@@ -109,7 +109,7 @@ describe('single-guest message card (P7)', () => {
 
   it('defaults to email for a guest with a usable address and sends it to the email route', async () => {
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} emailOption={{ enabled: true, usable: true }} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} emailOption={{ enabled: true, usable: true }} />)
 
     expect(screen.getByText('Message Guest')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Email' })).toBeChecked()
@@ -128,7 +128,7 @@ describe('single-guest message card (P7)', () => {
   it('shows the real failure from the email route', async () => {
     requestTableBookingActionMock.mockRejectedValue(new Error('This guest has no usable email address'))
     const user = userEvent.setup()
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} emailOption={{ enabled: true, usable: true }} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} emailOption={{ enabled: true, usable: true }} />)
 
     await user.type(screen.getByPlaceholderText('Type message...'), 'Hello')
     await user.click(screen.getByRole('button', { name: 'Send Email' }))
@@ -139,14 +139,14 @@ describe('single-guest message card (P7)', () => {
   })
 
   it('a guest with no usable address defaults to a text, and email cannot be picked', () => {
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} emailOption={{ enabled: true, usable: false }} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} emailOption={{ enabled: true, usable: false }} />)
     expect(screen.getByRole('radio', { name: 'Text' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Email' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Send SMS' })).toBeInTheDocument()
   })
 
   it('with the option off the card is exactly today', () => {
-    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
     expect(screen.getByText('Send SMS', { selector: 'h2, h3, h4, span, p, div' })).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: 'Email' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send SMS' })).toBeInTheDocument()

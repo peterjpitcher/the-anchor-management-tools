@@ -87,13 +87,13 @@ LANGUAGE sql AS $$ SELECT nextval('fixture_invoice_sequence')::integer $$;
             print(sql("SELECT fixture_assert(to_regprocedure('public.private_booking_settlement_rows(uuid)') IS NULL,'DDL rollback removed new helper'); SELECT 'PASS full DDL transaction rollback';"))
             sql('BEGIN;\n' + migration + '\nCOMMIT;')
             zero_cost_items_migration = (
-                MIGRATIONS / '20260918075730_allow_zero_cost_items_on_invoiced_private_bookings.sql'
+                MIGRATIONS / '20260918122623_allow_zero_cost_items_on_invoiced_private_bookings.sql'
             ).read_text()
             sql('BEGIN;\n' + zero_cost_items_migration + '\nROLLBACK;')
             sql('BEGIN;\n' + zero_cost_items_migration + '\nCOMMIT;')
             print(sql(claims + (FIXTURES / 'regression-zero-cost-items.sql').read_text()))
             rollback = (
-                ROOT / 'supabase/rollbacks/20260918075730_allow_zero_cost_items_on_invoiced_private_bookings.sql'
+                ROOT / 'supabase/rollbacks/20260918122623_allow_zero_cost_items_on_invoiced_private_bookings.sql'
             ).read_text()
             sql('BEGIN;\n' + rollback + '\nCOMMIT;')
             print(sql(claims + "SELECT fixture_throws($q$INSERT INTO private_booking_items(booking_id,item_type,description,unit_price) VALUES('c28527fe-a373-460d-85a8-e509b78d6eba','other','Fixture rollback room',0)$q$,'Resolve the linked invoice'); SELECT 'PASS zero-cost item rollback restores the original guard';"))
