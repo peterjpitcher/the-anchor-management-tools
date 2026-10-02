@@ -642,17 +642,17 @@ Every SECURITY DEFINER function states its `search_path` and grants. Each migrat
 
 | # | What | Size | State |
 |---|---|---|---|
-| D1 | NEST payments: vendor "NEST Pension", category Total Staff, and the rule changed to match. | 11 payments, £193.09, 1 rule | Approved 1 October 2026 (O7). Applied with the owner's go-ahead at release. |
-| D2 | Expire the 68 pending AI rule proposals once Release 4 is live. | 68 rows | Needs a yes |
-| D3 | Merge near-duplicate vendors, pair by pair. | about 25 pairs | Needs a yes per pair, through the Release 3 screen |
-| D4 | Fix case differences between a payment's vendor name and its vendor. | 6 payments | Needs a yes |
-| D5 | Link payments that have a vendor name and no vendor id; give vendor ids to rules that lack one. | 19 payments, 8 rules | Needs a yes |
+| D1 | NEST payments: vendor "NEST Pension", category Total Staff, and the rule changed to match. | 11 payments, £193.09, 1 rule | Done 1 October 2026 (O7). A new vendor "NEST Pension" holds the 11 payments, the rule is renamed "NEST pension" and sets Total Staff. The empty "Nest Heating" vendor is left. Two older NEST payments with no vendor were outside the 11 and are untouched. |
+| D2 | Expire the 68 pending AI rule proposals once Release 4 is live. | 68 rows | Done 1 October 2026. 37 dated from July and August; 31 had been raised by the old code that morning. |
+| D3 | Merge near-duplicate vendors, pair by pair. | about 25 pairs | 19 merged on 2 October 2026 on the owner's instruction to merge those recommended; each can be undone on the vendor screen. Left for the owner, as not certainly the same: the HMRC family (separate taxes), the two Kier names, Uber and Uber Eats, the two Firewood names, B Summers and Billy Summers, P&Q and B&Q, "M S Food Order". |
+| D4 | Fix case differences between a payment's vendor name and its vendor. | 6 payments | Done 1 October 2026. Five payments took the vendor list's spelling; for TikTok the vendor list was corrected, as the payment had the right capitals. |
+| D5 | Link payments that have a vendor name and no vendor id; give vendor ids to rules that lack one. | 19 payments, 8 rules | Done 1 October 2026. "Indeed" and "Staines MOT Centre" were not on the vendor list and were added; "IZMSAB HARDWARE" was renamed to match its rule. |
 | D6 | Empty legacy batches. No longer deleted: Release 2 marks them superseded. | 26 batches | Covered by the Release 2 migration |
-| D7 | Review completed 2026 payments that have no receipt. | 119 (57 money out) | For the owner, through the Release 6 tile |
+| D7 | Review completed 2026 payments that have no receipt. | 119 (57 money out) | For the owner, through the Release 6 tile. The tile counted every year (7,254 on 1 October 2026), so from migration `20261002061500` it counts only payments after the lock date: set the lock date to the last filed period and the tile shows what is still open. |
 | D8 | Remove two abandoned uploads from 18 August 2026. | 2 objects, 2 intents | Covered by the Release 6 sweep |
-| D9 | The "Uber" rule also catches Uber Eats and files it under Travel/Car. | 1 payment | Needs a yes |
+| D9 | The "Uber" rule also catches Uber Eats and files it under Travel/Car. | 1 payment | Done 1 October 2026. The rule's keyword is now "uber trip", which still matches all 27 rides. The one Uber Eats payment has vendor "Uber Eats" and no category. |
 | D10 | Review legacy AI classifications from before June 2026, starting with those under 70 confidence. | 200 vendor, 153 category | For the owner |
-| D11 | Resolve the open rule conflict between "Mr Fizz" and "Oak Farm Gas". | 7 payments | For the owner |
+| D11 | Resolve the open rule conflict between "Mr Fizz" and "Oak Farm Gas". | 7 payments | Done 2 October 2026: the owner ruled they are one vendor. Both are merged into "Oak Farm Gas Co Ltd"; one rule remains ("Oak Farm auto-tag", keyword "oak farm"), the narrower one is switched off and the conflict is closed. 15 older "OAK FARM LEISURE" payments still have no vendor: a rule run over history would fill them. |
 | D12 | Review the 71 active rules that have matched nothing dated 2026, and the 6 that never matched. | 77 rules | For the owner, through Release 5 rule health |
 | D13 | Attach invoices to the payments already matched. | 25 payments | Follows from O9; happens through 10.6 item 5 |
 | D14 | Recover the bank lines the old import dropped (IMP-15): upload the historic statement files again once Release 2 is live. Each upload adds only the lines not yet held. Then add a rule for "Transaction Charges" and "Account Maintenance Fee" so they are filed as bank charges. | 45 lines in the 79 files checked | Needs a yes. The owner uploads the files; nothing is done automatically |

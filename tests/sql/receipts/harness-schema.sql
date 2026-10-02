@@ -44,7 +44,7 @@ CREATE TABLE public.invoice_payments (
   notes text
 );
 
--- Stand-in for the invoice ledger function (20260918124021). The real one also checks the
+-- Stand-in for the invoice ledger function (20260918160300). The real one also checks the
 -- caller's permission, takes the invoice settlement lock and lets triggers work out the paid
 -- amount. What the receipts functions rely on is kept: one payment row per call, a refusal when
 -- the invoice cannot take the money, and the payment returned as JSON.
