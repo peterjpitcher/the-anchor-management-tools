@@ -63,7 +63,13 @@ export function describeChristmasCourseCounts(counts?: number[] | null): string 
 
 export type TableBookingCancellationRefundResult =
   | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
-  | { refunded: true; amountPence: number; tier: string }
+  | {
+      refunded: true
+      amountPence: number
+      tier: string
+      /** Pence already returned before this refund (a staff part refund), when any had been. */
+      alreadyReturnedPence?: number
+    }
 
 function formatGbpFromPence(pence: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
@@ -77,6 +83,15 @@ function formatGbpFromPence(pence: number): string {
 export function describeTableBookingCancellationRefund(refundResult: TableBookingCancellationRefundResult): string {
   if (refundResult.refunded) {
     const amountGbp = formatGbpFromPence(refundResult.amountPence)
+
+    // Part of the deposit had already gone back, so this refund is only the rest of what is due.
+    // Say so: a bare "your £25.00 refund" to someone who paid £150 looks like a mistake.
+    if (refundResult.alreadyReturnedPence && refundResult.alreadyReturnedPence > 0) {
+      const alreadyGbp = formatGbpFromPence(refundResult.alreadyReturnedPence)
+      return refundResult.tier === 'half'
+        ? `As it's within a week, half the deposit is refundable. You've already had ${alreadyGbp} back, so the remaining ${amountGbp} will land within 5-10 days.`
+        : `You've already had ${alreadyGbp} of the deposit back, so the remaining ${amountGbp} will land within 5-10 days. Hope to see you again soon!`
+    }
 
     // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
     // full refund of a £75 deposit, so the one number they can check looks wrong.

@@ -143,6 +143,8 @@ export function cancellationFacts(input: {
     refund_outcome: refund.refunded ? 'refunded' : refund.reason,
     refund_tier: refund.refunded ? refund.tier : null,
     refund_amount_pence: refund.refunded ? refund.amountPence : null,
+    refund_already_returned_pence:
+      refund.refunded && typeof refund.alreadyReturnedPence === 'number' ? refund.alreadyReturnedPence : null,
     deposit_owed: refund.refunded ? null : yesNo(refund.depositOwed === true),
     amount_owed_pence: !refund.refunded && typeof refund.amountOwedPence === 'number' ? refund.amountOwedPence : null,
   }
@@ -161,7 +163,15 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
     const amountPence = Number(facts?.refund_amount_pence)
     const tier = facts?.refund_tier
     if (!Number.isFinite(amountPence) || amountPence <= 0 || typeof tier !== 'string' || !tier) return null
-    return { refunded: true, amountPence, tier }
+    const alreadyReturned = facts?.refund_already_returned_pence
+    const alreadyReturnedPence =
+      alreadyReturned === null || alreadyReturned === undefined || alreadyReturned === '' ? Number.NaN : Number(alreadyReturned)
+    return {
+      refunded: true,
+      amountPence,
+      tier,
+      ...(Number.isFinite(alreadyReturnedPence) && alreadyReturnedPence > 0 ? { alreadyReturnedPence } : {}),
+    }
   }
 
   const owed = facts?.amount_owed_pence
