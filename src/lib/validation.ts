@@ -218,6 +218,9 @@ export const receiptRuleSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   priority: z.number().int().min(0).max(100000).optional(),
   kind: receiptRuleKindSchema.default('standard'),
+  // The "Mark reviewed" box. It has to be named here: zod drops any key the schema does not
+  // list, and for a long time that silently threw the tick away before the rule was saved.
+  reviewed: z.boolean().optional(),
   match_description: z.string().trim().max(300).refine(
     (val) => {
       if (!val) return true

@@ -1054,7 +1054,6 @@ function buildRuleWritePayload(
     description?: string | null
     priority?: number
     kind?: ReceiptRule['kind']
-    reviewed?: boolean
     match_description?: string
     match_transaction_type?: string
     match_direction: ReceiptRule['match_direction']
@@ -1096,10 +1095,6 @@ function buildRuleWritePayload(
   if (options.canGovernRules) {
     payload.priority = data.priority ?? 1000
     payload.kind = data.kind ?? 'standard'
-    if (data.reviewed) {
-      payload.reviewed_at = new Date().toISOString()
-      payload.reviewed_by = userId
-    }
   }
 
   if (isInsert) {
@@ -1107,6 +1102,39 @@ function buildRuleWritePayload(
   }
 
   return payload
+}
+
+/**
+ * What a save does to a rule's review mark: the columns to add to the write, or nothing to
+ * leave the mark as it is.
+ *
+ * Only someone who governs rules is shown the "Mark reviewed" box, and for them the box is the
+ * answer. Ticked marks the rule reviewed by them now, unless it is already reviewed and still
+ * matches and does the same thing, in which case the earlier review stands. Unticked clears it.
+ *
+ * Anyone else cannot set the mark, whatever their form sends. A review covers what the rule
+ * matched and did when it was reviewed, though, so their change to either still clears it.
+ */
+function ruleReviewWrite(input: {
+  ticked: boolean
+  canGovernRules: boolean
+  userId: string
+  /** The stored rule on an update. A new rule has none. */
+  current?: Pick<ReceiptRule, 'reviewed_at'>
+  behaviourChanged?: boolean
+}): { reviewed_at?: string | null; reviewed_by?: string | null } {
+  const cleared = { reviewed_at: null, reviewed_by: null }
+
+  if (!input.canGovernRules) {
+    return input.behaviourChanged ? cleared : {}
+  }
+  if (!input.ticked) {
+    return input.current ? cleared : {}
+  }
+  if (input.current?.reviewed_at && !input.behaviourChanged) {
+    return {}
+  }
+  return { reviewed_at: new Date().toISOString(), reviewed_by: input.userId }
 }
 
 /**
@@ -1189,10 +1217,17 @@ export async function performCreateReceiptRule(
 
   const { data: rule, error } = await supabase
     .from('receipt_rules')
-    .insert(buildRuleWritePayload(ruleData, userId, true, {
-      canGovernRules: options.canGovernRules,
-      vendorId,
-    }))
+    .insert({
+      ...buildRuleWritePayload(ruleData, userId, true, {
+        canGovernRules: options.canGovernRules,
+        vendorId,
+      }),
+      ...ruleReviewWrite({
+        ticked: Boolean(ruleData.reviewed),
+        canGovernRules: Boolean(options.canGovernRules),
+        userId,
+      }),
+    })
     .select('*')
     .single()
 
@@ -1248,15 +1283,18 @@ export async function performUpdateReceiptRule(
     return { error: duplicateRuleMessage(duplicate) }
   }
 
-  const payload = buildRuleWritePayload(ruleData, userId, false, {
-    canGovernRules: options.canGovernRules,
-    vendorId,
-  })
-  // A review covers what the rule matched and did when it was reviewed. Change either and the
-  // rule needs looking at again, unless the person saving it is reviewing it now.
-  if (ruleBehaviourChanged(current, { ...ruleData, vendor_id: vendorId }) && !payload.reviewed_at) {
-    payload.reviewed_at = null
-    payload.reviewed_by = null
+  const payload = {
+    ...buildRuleWritePayload(ruleData, userId, false, {
+      canGovernRules: options.canGovernRules,
+      vendorId,
+    }),
+    ...ruleReviewWrite({
+      ticked: Boolean(ruleData.reviewed),
+      canGovernRules: Boolean(options.canGovernRules),
+      userId,
+      current,
+      behaviourChanged: ruleBehaviourChanged(current, { ...ruleData, vendor_id: vendorId }),
+    }),
   }
 
   const { data: updated, error } = await supabase
