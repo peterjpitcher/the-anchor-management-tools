@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Run the employee separation migration against an isolated PostgreSQL cluster."""
 
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PG = Path('/opt/homebrew/bin')
+PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20260914075843_employee_separation_shift_policy.sql'
 ROLLBACK = ROOT / 'supabase/rollbacks/20260914075843_employee_separation_shift_policy.sql'
 TEST = ROOT / 'tests/db/employee-separation-shifts.sql'

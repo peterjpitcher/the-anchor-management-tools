@@ -5,12 +5,13 @@ The real booking function runs against synthetic records. Capacity and table
 allocation are fixture functions; this checks the policy and its event-row lock,
 not the production allocator or external confirmations.
 """
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PG = Path('/opt/homebrew/bin')
+PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20260906143610_event_standing_after_seated_sold_out.sql'
 ROLLBACK = ROOT / 'tasks/standing-ticket-policy/rollback.sql'
 

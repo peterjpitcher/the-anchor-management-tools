@@ -18,7 +18,8 @@
     "eval:seo": "tsx scripts/eval-event-seo-generation.ts",
     "test": "TEST_TZ=Europe/London VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:utc": "TEST_TZ=UTC VITE_CJS_IGNORE_WARNING=true vitest run",
-    "test:coverage": "TEST_TZ=Europe/London vitest run --coverage"
+    "test:coverage": "TEST_TZ=Europe/London vitest run --coverage",
+    "test:pg": "fail=0; for f in scripts/testing/*-postgres.py; do echo \"== $f\"; LC_ALL=C python3 \"$f\" || fail=1; done; exit $fail"
   },
   "dependencies": {
     "@azure/identity": "^4.10.2",

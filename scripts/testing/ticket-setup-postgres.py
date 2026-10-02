@@ -6,8 +6,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 import json
+import os
 ROOT=Path(__file__).resolve().parents[2]
-PG=Path('/opt/homebrew/bin')
+PG=Path(os.environ.get('PG_BIN','/opt/homebrew/bin'))
 MIGRATION=ROOT/'supabase/migrations/20260910075712_ticket_setup_and_attendees.sql'
 SETUP=(ROOT/'scripts/testing/fixtures/ticket-setup-base.sql').read_text()+"""
 ALTER TABLE booking_holds ADD consumed_at timestamptz;

@@ -101,6 +101,36 @@ jobs:
       - name: Assert the database contract
         run: psql "$PGURL" -v ON_ERROR_STOP=1 -f tests/db/schema-contract.sql
 
+  postgres-harnesses:
+    # The isolated harnesses in scripts/testing/*-postgres.py. Each starts its own throwaway
+    # cluster on a Unix socket with no network listener, applies the REAL migration and rollback
+    # files and runs SQL assertions, so none of them can reach production.
+    #
+    # Nothing ran these automatically, and the settlement harness failed every day from
+    # 10 September to 1 October 2026 on a hardcoded fixture due date before anyone noticed. That
+    # failure came from the calendar, not from a changed file, so this job has no path filter.
+    #
+    # Production is PostgreSQL 15 and the runner image ships 16 only, so 15 comes from the PGDG
+    # repository. Local machines run 17, which makes this the one place these migrations meet
+    # production's major version before they ship.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PG_BIN: /usr/lib/postgresql/15/bin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 15
+        run: |
+          # Binaries only: stop the package creating and starting a cluster of its own.
+          sudo sed -i 's/^#\?create_main_cluster.*/create_main_cluster = false/' /etc/postgresql-common/createcluster.conf
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-15
+
+      - name: Run the harnesses
+        run: npm run test:pg
+
   supabase-dry-run:
     runs-on: ubuntu-latest
     if: ${{ (vars.RUN_SUPABASE_DRY_RUN == 'true') }}
