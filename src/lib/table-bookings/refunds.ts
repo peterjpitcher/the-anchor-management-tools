@@ -26,7 +26,17 @@ export type RefundResult =
       /** Pence still held, when known, so the caller can say so. */
       amountOwedPence?: number
     }
-  | { refunded: true; amountPence: number; refundId: string; tier: RefundTier }
+  | {
+      refunded: true
+      amountPence: number
+      refundId: string
+      tier: RefundTier
+      /**
+       * Pence that had already gone back before this refund (a staff part refund), when any had.
+       * `amountPence` is then only the rest of what the guest was due, and the message says so.
+       */
+      alreadyReturnedPence?: number
+    }
 
 /**
  * Returns the refund tier based on days until the booking.
@@ -297,7 +307,7 @@ async function refundPayPalDeposit(
 
   // Entitlement: the seasonal promise the guest was shown wins over the sliding tier,
   // exactly as on the Stripe path.
-  let refundGbp: number
+  let entitledGbp: number
   let tier: RefundTier
   const seasonalCutoff = booking?.deposit_refund_cutoff_days
 
@@ -318,16 +328,48 @@ async function refundPayPalDeposit(
       })
       return { refunded: false, reason: 'zero_tier' }
     }
-    refundGbp = decision.amount
+    entitledGbp = decision.amount
     tier = 'full'
   } else {
     const { percent, tier: sliding } = calculateRefundTier(bookingDate)
     if (percent === 0) return { refunded: false, reason: 'zero_tier' }
-    refundGbp = Math.round(depositGbp * percent) / 100
+    entitledGbp = Math.round(depositGbp * percent) / 100
     tier = sliding
   }
 
-  if (refundGbp <= 0) return { refunded: false, reason: 'zero_tier' }
+  if (entitledGbp <= 0) return { refunded: false, reason: 'zero_tier' }
+
+  /*
+   * What the guest is due now is their entitlement LESS what has already gone back.
+   *
+   * Staff can part refund a deposit before the booking is cancelled. This used to ask PayPal for
+   * the whole entitlement regardless; PayPal refused anything past what was left on the capture,
+   * and the guest was told we owed them the full figure. A part refund made in cash would not
+   * have been refused at all, and the guest would have been paid twice.
+   */
+  const soFar = await readDepositRefundsSoFar(tableBookingId)
+  if (!soFar) {
+    // FAIL CLOSED, as with unreadable terms: not knowing what has gone back is not evidence that
+    // nothing has. A person has to look, and the guest is told we will be in touch.
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.refund_ledger_unreadable',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      additional_info: {
+        paypal_capture_id: captureId,
+        entitled_gbp: entitledGbp,
+        tier,
+        action_needed:
+          'The booking was cancelled but no deposit refund was issued, because the refunds already made could not be read. Check the Refund History and refund what is due by hand',
+      },
+    })
+    return { refunded: false, reason: 'terms_unreadable' }
+  }
+
+  const refundGbp = Math.round((entitledGbp - soFar.reservedGbp) * 100) / 100
+  // Everything they were due has already gone back, or is on its way.
+  if (refundGbp <= 0) return { refunded: false, reason: 'already_refunded' }
 
   let refund: Awaited<ReturnType<typeof refundPayPalPayment>>
   try {
@@ -368,7 +410,9 @@ async function refundPayPalDeposit(
 
   await recordPayPalDepositRefund({ tableBookingId, captureId, refund, refundGbp, depositGbp, tier })
 
-  const isFull = Math.abs(refundGbp - depositGbp) < 0.005
+  // Over everything that has gone back, not this refund alone: the rest of a part-refunded
+  // deposit completes it.
+  const isFull = soFar.completedGbp + refundGbp >= depositGbp - 0.005
 
   /*
    * Reconcile BOTH columns.
@@ -428,6 +472,47 @@ async function refundPayPalDeposit(
     amountPence: Math.round(refundGbp * 100),
     refundId: refund.refundId,
     tier,
+    ...(soFar.reservedGbp > 0 ? { alreadyReturnedPence: Math.round(soFar.reservedGbp * 100) } : {}),
+  }
+}
+
+/**
+ * What the refund ledger says has already gone back on this deposit, or null when it cannot be read.
+ *
+ * `reservedGbp` counts completed and pending refunds, the same sum `reserve_refund_balance` caps a
+ * staff refund against, so a refund still settling at PayPal is not sent a second time.
+ * `completedGbp` is money that has actually been returned.
+ */
+async function readDepositRefundsSoFar(
+  tableBookingId: string,
+): Promise<{ reservedGbp: number; completedGbp: number } | null> {
+  try {
+    // payment_refunds is service-role only under RLS.
+    const { data, error } = await createAdminClient()
+      .from('payment_refunds')
+      .select('amount, status')
+      .eq('source_type', 'table_booking')
+      .eq('source_id', tableBookingId)
+      .in('status', ['completed', 'pending'])
+
+    if (error) throw new Error(error.message)
+
+    let reservedGbp = 0
+    let completedGbp = 0
+    for (const row of data ?? []) {
+      const amount = Number(row.amount) || 0
+      reservedGbp += amount
+      if (row.status === 'completed') completedGbp += amount
+    }
+    return {
+      reservedGbp: Math.round(reservedGbp * 100) / 100,
+      completedGbp: Math.round(completedGbp * 100) / 100,
+    }
+  } catch (error) {
+    logger.error('Could not read the refunds already made on this deposit, so no automatic refund was issued', {
+      metadata: { tableBookingId, error: error instanceof Error ? error.message : String(error) },
+    })
+    return null
   }
 }
 

@@ -61,10 +61,20 @@ vi.mock('@/lib/supabase/server', () => ({
 const refundRowInserts: Record<string, unknown>[] = []
 const refundRowUpdates: { values: Record<string, unknown>; paypalRefundId: unknown }[] = []
 let refundInsertError: { code?: string; message: string } | null = null
+/** The completed and pending payment_refunds rows already on the booking. */
+let ledgerRows: { amount: number; status: 'completed' | 'pending' }[] = []
+let ledgerReadError: { message: string } | null = null
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            in: async () => ({ data: ledgerReadError ? null : ledgerRows, error: ledgerReadError }),
+          }),
+        }),
+      }),
       insert: async (values: Record<string, unknown>) => {
         refundRowInserts.push(values)
         return { error: refundInsertError }
@@ -94,6 +104,8 @@ beforeEach(() => {
   refundRowInserts.length = 0
   refundRowUpdates.length = 0
   refundInsertError = null
+  ledgerRows = []
+  ledgerReadError = null
   paymentRow = null
   bookingRow = null
   refundPayPalPayment.mockResolvedValue({
@@ -375,5 +387,105 @@ describe('refundTableBookingDeposit, the refund ledger', () => {
     expect(logAuditEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ operation_type: 'table_booking.refund_paypal_success_ledger_failed' }),
     )
+  })
+})
+
+/**
+ * CANCELLING A BOOKING STAFF HAVE ALREADY PART REFUNDED.
+ *
+ * The cancellation asked PayPal for the whole entitlement whatever had already gone back. PayPal
+ * refused anything past what was left on the capture, and the guest was told we owed them the full
+ * figure. The guest is due their entitlement less what they have already had.
+ */
+describe('refundTableBookingDeposit, after a staff part refund', () => {
+  function paidBooking(overrides: Record<string, unknown> = {}): BookingRow {
+    return {
+      paypal_deposit_capture_id: 'CAP-1',
+      deposit_amount_locked: 150,
+      deposit_amount: null,
+      payment_status: 'partial_refund',
+      deposit_refund_status: 'partially_refunded',
+      booking_date: null,
+      deposit_refund_cutoff_days: null,
+      booking_period_code: null,
+      ...overrides,
+    }
+  }
+
+  /** Four days out: the sliding tier returns half. */
+  function fourDaysOut(): Date {
+    const d = new Date()
+    d.setDate(d.getDate() + 4)
+    return d
+  }
+
+  it('refunds the rest of a full entitlement, not the whole deposit again', async () => {
+    ledgerRows = [{ amount: 50, status: 'completed' }]
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(refundPayPalPayment.mock.calls[0][1]).toBe(100)
+    expect(result).toMatchObject({ refunded: true, amountPence: 10000, tier: 'full', alreadyReturnedPence: 5000 })
+    expect(refundRowInserts[0]).toMatchObject({ amount: 100, original_amount: 150 })
+    // £50 then £100 is the whole £150, so the booking reads as refunded, not part refunded.
+    expect(bookingUpdates[0]).toMatchObject({ deposit_refund_status: 'refunded', payment_status: 'refunded' })
+  })
+
+  it('refunds what is left of a half entitlement', async () => {
+    ledgerRows = [{ amount: 50, status: 'completed' }]
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', fourDaysOut())
+
+    // Half of £150 is £75, and £50 has gone back already.
+    expect(refundPayPalPayment.mock.calls[0][1]).toBe(25)
+    expect(result).toMatchObject({ refunded: true, amountPence: 2500, tier: 'half', alreadyReturnedPence: 5000 })
+    expect(bookingUpdates[0]).toMatchObject({ deposit_refund_status: 'partially_refunded', payment_status: 'partial_refund' })
+  })
+
+  it('sends nothing when the guest has already had what they are due', async () => {
+    ledgerRows = [{ amount: 100, status: 'completed' }]
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', fourDaysOut())
+
+    expect(result).toEqual({ refunded: false, reason: 'already_refunded' })
+    expect(refundPayPalPayment).not.toHaveBeenCalled()
+    expect(refundRowInserts).toHaveLength(0)
+  })
+
+  it('counts a refund still settling at PayPal, so the same money is not sent twice', async () => {
+    ledgerRows = [{ amount: 150, status: 'pending' }]
+    bookingRow = paidBooking({ payment_status: 'completed', deposit_refund_status: null })
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(result).toEqual({ refunded: false, reason: 'already_refunded' })
+    expect(refundPayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('refuses to guess when the refunds already made cannot be read', async () => {
+    ledgerReadError = { message: 'schema cache' }
+    bookingRow = paidBooking()
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    // Not "no deposit" and not a refund: a person has to look, and the guest is told we will be in touch.
+    expect(result).toEqual({ refunded: false, reason: 'terms_unreadable' })
+    expect(refundPayPalPayment).not.toHaveBeenCalled()
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'table_booking.refund_ledger_unreadable' }),
+    )
+  })
+
+  it('says nothing about earlier refunds when there were none', async () => {
+    bookingRow = paidBooking({ payment_status: 'completed', deposit_refund_status: null })
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(refundPayPalPayment.mock.calls[0][1]).toBe(150)
+    expect(result).toMatchObject({ refunded: true, amountPence: 15000, tier: 'full' })
+    expect(result).not.toHaveProperty('alreadyReturnedPence')
   })
 })
