@@ -13,6 +13,8 @@ import { recordAIUsage } from '@/lib/receipts/ai-classification'
 import { buildDailyBankBalanceSeries, type BankBalanceRow } from '@/lib/receipts/bank-balance'
 import type { ReceiptRule, ReceiptTransaction } from '@/types/database'
 
+import { loadReceiptSettings } from './receiptSettings'
+
 import type {
   AdminClient,
   ReceiptWorkspaceFilters,
@@ -166,9 +168,22 @@ function buildGroupSuggestion(
 // fetchSummary — dashboard summary data
 // ---------------------------------------------------------------------------
 
+/**
+ * The lock date, for reads that only need it to narrow what is shown. A failure here is logged
+ * and answered with "no lock date": the list then shows more, never less.
+ */
+async function readLockDateForDisplay(supabase: AdminClient): Promise<string | null> {
+  try {
+    return (await loadReceiptSettings(supabase)).lockDate
+  } catch (error) {
+    console.error('Failed to read the receipts lock date:', error)
+    return null
+  }
+}
+
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }, { data: bareCount, error: bareCountError }] = await Promise.all([
+  const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }, { data: bareCount, error: bareCountError }, lockDate] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -184,7 +199,9 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .select('id', { count: 'exact', head: true })
       .eq('type', 'classify_receipt_transactions')
       .eq('status', 'failed'),
+    // Counted after the lock date, where one is set: a filed period is not waiting for receipts.
     (supabase as any).rpc('count_receipts_completed_without_receipt'),
+    readLockDateForDisplay(supabase),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
@@ -230,6 +247,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     failedAiJobCount: failedJobCount ?? 0,
     // Unknown is not zero: the tile says so.
     completedWithoutReceipt: bareCountError || bareCount === null || bareCount === undefined ? null : Number(bareCount),
+    completedWithoutReceiptAfter: lockDate,
   }
 }
 
@@ -389,7 +407,8 @@ function parseSearchAmount(search: string): number | null {
 function applyWorkspaceFilters<Query>(
   query: Query,
   filters: ReceiptWorkspaceFilters,
-  monthRange: { start: string; end: string } | null
+  monthRange: { start: string; end: string } | null,
+  lockDate: string | null = null
 ): Query {
   let filtered = query as any
 
@@ -445,6 +464,10 @@ function applyWorkspaceFilters<Query>(
     // Completed, no reason, and no file: the last is an anti-join on the embedded files, so any
     // read using these filters must embed `receipt_files`.
     filtered = filtered.eq('status', 'completed').is('completed_reason', null).is('receipt_files', null)
+    // The same payments the tile counts: those after the lock date, where one is set.
+    if (lockDate) {
+      filtered = filtered.gt('transaction_date', lockDate)
+    }
   }
 
   if (monthRange) {
@@ -462,7 +485,8 @@ function applyWorkspaceFilters<Query>(
 async function loadVendorGroupTotals(
   supabase: AdminClient,
   filters: ReceiptWorkspaceFilters,
-  monthRange: { start: string; end: string } | null
+  monthRange: { start: string; end: string } | null,
+  lockDate: string | null
 ): Promise<Record<string, VendorGroupTotal> | null> {
   try {
     const rows = await fetchAllRows<{
@@ -481,7 +505,8 @@ async function loadVendorGroupTotals(
                 : 'vendor_name, amount_in, amount_out, amount_total'
             ),
           filters,
-          monthRange
+          monthRange,
+          lockDate
         )
           .order('id', { ascending: true })
           .range(from, to),
@@ -515,12 +540,16 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   const sortColumn: ReceiptSortColumn = filters.sortBy ?? defaultSortColumn
   const ascending = filters.sortDirection === 'asc'
 
+  // Only the "completed without a receipt" view is narrowed by the lock date, so only it reads it.
+  const lockDate = filters.completedWithoutReceipt ? await readLockDateForDisplay(supabase) : null
+
   let baseQuery: any = applyWorkspaceFilters(
     supabase
       .from('receipt_transactions')
       .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id,name)', { count: 'exact' }),
     filters,
-    monthRange
+    monthRange,
+    lockDate
   )
 
   // Grouped by vendor, the vendors are kept together across pages: a group never has its rows
@@ -540,7 +569,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   baseQuery = baseQuery.order('id', { ascending: true }).range(offset, offset + pageSize - 1)
 
   const vendorGroupTotalsQuery = filters.groupByVendor
-    ? loadVendorGroupTotals(supabase, filters, monthRange)
+    ? loadVendorGroupTotals(supabase, filters, monthRange, lockDate)
     : Promise.resolve(null)
 
   // The vendor picker offers the vendors that are standing: not merged into another and not
