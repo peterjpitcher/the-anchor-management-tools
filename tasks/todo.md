@@ -969,3 +969,18 @@ CI release check: run 36602223673 passed 10,954 tests but the unchanged design-s
 - [x] Supply the missing closing line directly from the selected channel and booking/details destination, before length checks and factual review.
 - [x] Both real-provider generation paths pass; 68 focused tests, app typecheck and targeted lint pass.
 - [ ] Verify both final browser paths after deployment.
+
+## Self-host webfonts so the build needs no network, 2 October 2026
+
+Branch `fix/self-host-fonts`. The build failed three times on Vercel (25 and 27 September, 1 October) because `next/font/google` could not fetch its CSS from Google Fonts.
+
+- [x] Found every Google loader call: `src/app/layout.tsx` (Inter, JetBrains Mono) and `src/lib/fonts/guest.ts` (DM Serif Display, Outfit, Clicker Script).
+- [x] Downloaded the five latin woff2 files and checked each is byte for byte the file the live site serves.
+- [x] Added the five SIL Open Font License texts and a README beside the fonts in `src/app/fonts/`.
+- [x] Switched both modules to `next/font/local`, keeping the variable names, `display: swap` and the real family names.
+- [x] Pointed the Vitest font mocks at `next/font/local`; added `tests/guards/font-self-hosting.test.ts`.
+- [x] Checked the CSP: it never allowed the Google font hosts, so nothing to remove. PDF templates still load Google Fonts themselves and are untouched.
+- [x] Gates on Node 20: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,210 files, 12,056 tests each) all clean on the tree rebased onto main at 2a8f2f9c.
+- [x] Cold `npm run build` passed with the network available and again with all network access denied (`sandbox-exec`). The same blocked build of `main` fails in `next/font`, naming both `layout.tsx` and `guest.ts`.
+- [x] `/auth/login`, `/privacy` and a specimen of every weight: computed font-family identical to the live site and screenshots identical pixel for pixel.
+- [ ] Owner's yes to push, then merge and confirm the deployment.

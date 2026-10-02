@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
@@ -8,18 +8,27 @@ import { ChunkErrorReloader } from "@/components/features/shared/ChunkErrorReloa
 import { getDeploymentVersion } from "@/lib/foh/deployment-version";
 import { STAFF } from "@/lib/brand/palette";
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+// Self-hosted, so the build never calls Google Fonts (see ./fonts/README.md). Each file is the
+// latin variable font the Google loader used to download, so one file covers the weight range.
+// The font-family declaration keeps the real family name, which global-error.tsx and the
+// --font-sans and --font-mono stacks in globals.css name directly; without it next/font/local
+// would generate a private name and those references would fall back to system fonts.
+const inter = localFont({
+  src: "./fonts/inter-latin.woff2",
+  weight: "400 800",
+  style: "normal",
   variable: "--font-inter",
   display: "swap",
+  declarations: [{ prop: "font-family", value: "Inter" }],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-latin.woff2",
+  weight: "400 600",
+  style: "normal",
   variable: "--font-jetbrains",
   display: "swap",
+  declarations: [{ prop: "font-family", value: "JetBrains Mono" }],
 });
 
 export const metadata: Metadata = {
