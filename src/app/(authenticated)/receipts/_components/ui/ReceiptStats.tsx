@@ -1,5 +1,6 @@
 import { Alert, LinkButton, Stat, StatGrid } from '@/ds'
 import type { ReceiptWorkspaceSummary, AIUsageBreakdown } from '@/app/actions/receipts'
+import { formatDate } from '@/app/(authenticated)/receipts/utils'
 
 /** OpenAI charges in US dollars, and the figure is stored as charged. It is not pounds. */
 function formatUsd(value: number) {
@@ -51,6 +52,9 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
       {(summary.completedWithoutReceipt ?? 0) > 0 && (
         <Alert tone="info" role="status" title={`${summary.completedWithoutReceipt} completed ${summary.completedWithoutReceipt === 1 ? 'transaction has' : 'transactions have'} no receipt and no reason`}>
           They were marked as done before a reason was asked for.{' '}
+          {summary.completedWithoutReceiptAfter
+            ? `Transactions on or before the lock date, ${formatDate(summary.completedWithoutReceiptAfter)}, are not counted. `
+            : null}
           <LinkButton href="/receipts?noReceipt=1" variant="secondary" size="sm" className="mt-2">
             Review Them
           </LinkButton>
@@ -64,7 +68,15 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
         <Stat
           label="Completed, no receipt"
           value={summary.completedWithoutReceipt ?? '?'}
-          hint={summary.completedWithoutReceipt === null ? 'Could not load' : summary.completedWithoutReceipt === 0 ? 'All clear' : 'No file and no reason'}
+          hint={
+            summary.completedWithoutReceipt === null
+              ? 'Could not load'
+              : summary.completedWithoutReceipt === 0
+                ? 'All clear'
+                : summary.completedWithoutReceiptAfter
+                  ? `No file and no reason, after ${formatDate(summary.completedWithoutReceiptAfter)}`
+                  : 'No file and no reason'
+          }
           tone={(summary.completedWithoutReceipt ?? 0) > 0 ? 'warning' : 'default'}
         />
         <Stat label="Auto completed" value={countValue(summary.totals.autoCompleted)} hint={countHint(summary.totals.autoCompleted)} />

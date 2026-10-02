@@ -52,6 +52,21 @@ afterEach(() => {
 })
 
 describe('ReceiptStats', () => {
+  it('says where the count starts when a lock date is set', () => {
+    render(<ReceiptStats summary={summary({ completedWithoutReceipt: 119, completedWithoutReceiptAfter: '2025-12-31' })} />)
+
+    expect(screen.getByText('119 completed transactions have no receipt and no reason')).toBeTruthy()
+    expect(screen.getByText(/Transactions on or before the lock date, 31\/12\/2025, are not counted\./)).toBeTruthy()
+    expect(screen.getByText('No file and no reason, after 31/12/2025')).toBeTruthy()
+  })
+
+  it('says nothing about a lock date when none is set', () => {
+    render(<ReceiptStats summary={summary({ completedWithoutReceipt: 25 })} />)
+
+    expect(screen.queryByText(/lock date/)).toBeNull()
+    expect(screen.getByText('No file and no reason')).toBeTruthy()
+  })
+
   it('flags completed transactions with no receipt and no reason, and links to them', () => {
     render(<ReceiptStats summary={summary({ completedWithoutReceipt: 25 })} />)
 
