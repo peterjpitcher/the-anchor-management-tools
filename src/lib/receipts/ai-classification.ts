@@ -439,6 +439,23 @@ export async function classifyReceiptTransactionsWithAI(
       // Without the record the payments would be asked about again, so this is a failure.
       throw new Error(`Failed to record AI attempts: ${error.message}`)
     }
+
+    // A payment asked again under a new version of the question has a new answer. A suggestion
+    // still open from an older version is closed, so the screen never shows the old one beside
+    // or in place of the new one.
+    const ids = attempts.map((entry) => entry.transaction_id)
+    for (let index = 0; index < ids.length; index += 200) {
+      const { error: supersedeError } = await client
+        .from('receipt_ai_attempts')
+        .update({ category_state: 'superseded', updated_at: now })
+        .in('transaction_id', ids.slice(index, index + 200))
+        .neq('prompt_version', RECEIPT_AI_PROMPT_VERSION)
+        .eq('category_state', 'proposed')
+      if (supersedeError) {
+        // The new answers are saved. An old suggestion left open is a nuisance, not a wrong figure.
+        console.error('Failed to close AI suggestions from an older prompt version', supersedeError)
+      }
+    }
   }
 
   const [employees, vendors, aliases] = await Promise.all([

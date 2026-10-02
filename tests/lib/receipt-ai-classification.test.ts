@@ -401,6 +401,42 @@ describe('a payment is asked about once', () => {
     expect(db.rows('receipt_ai_attempts')).toHaveLength(2)
   })
 
+  it('closes a suggestion left open by an older version of the question when it asks again', async () => {
+    const db = arrange({
+      payments: [payment('p1'), payment('p2')],
+      attempts: [
+        { transaction_id: 'p1', prompt_version: '2025-01-01.0', outcome: 'category_proposed', proposed_no_category: true, category_state: 'proposed', tries: 1 },
+        // Not asked about this time: its old suggestion is left as it is.
+        { transaction_id: 'other', prompt_version: '2025-01-01.0', outcome: 'category_proposed', proposed_no_category: true, category_state: 'proposed', tries: 1 },
+        // Already answered by a person: not reopened and not relabelled.
+        { transaction_id: 'p2', prompt_version: '2025-01-01.0', outcome: 'category_proposed', proposed_no_category: true, category_state: 'dismissed', tries: 1 },
+      ],
+    })
+    modelAnswers([answerItem('p1', { vendor_id: 'v-bt', expense_category: 'Telephone' }), answerItem('p2', { vendor_id: 'v-booker' })])
+
+    await classify(db, ['p1', 'p2'])
+
+    const states = (id: string) =>
+      db
+        .rows('receipt_ai_attempts')
+        .filter((row) => row.transaction_id === id)
+        .map((row) => `${row.prompt_version}:${row.category_state}`)
+        .sort()
+    expect(states('p1')).toEqual(['2025-01-01.0:superseded', `${RECEIPT_AI_PROMPT_VERSION}:written`])
+    expect(states('other')).toEqual(['2025-01-01.0:proposed'])
+    expect(states('p2')).toEqual(['2025-01-01.0:dismissed', `${RECEIPT_AI_PROMPT_VERSION}:none`])
+  })
+
+  it('treats "no category applies" with no reason as nothing identified', async () => {
+    const db = arrange({ payments: [payment('p1', { details: 'Card Purchase NCP CSL P D' })] })
+    modelAnswers([answerItem('p1', { no_category_applies: true, confidence: 100, reasoning: null })])
+
+    const summary = await classify(db, ['p1'])
+
+    expect(summary).toMatchObject({ categoriesProposed: 0, nothingIdentified: 1 })
+    expect(attemptFor(db, 'p1')).toMatchObject({ outcome: 'nothing_identified', proposed_no_category: false, category_state: 'none' })
+  })
+
   it('tries again after a failure that may not happen twice, and counts the tries', async () => {
     const db = arrange({
       payments: [payment('p1')],
