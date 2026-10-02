@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('next/font/google', () => {
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return { DM_Serif_Display: font, Outfit: font, Clicker_Script: font }
+  return { default: font }
 })
 
 vi.mock('next/navigation', () => ({

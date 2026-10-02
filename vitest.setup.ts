@@ -39,22 +39,16 @@ vi.mock('@azure/identity', () => ({
   }))
 }))
 
-// Global Mock for next/font/google.
+// Global Mock for next/font/local.
 // next/font is a build-time transform with no loader under Vitest, so any test that
 // renders a component importing the guest font module (anything pulling in GuestShell,
 // including the @/components/features/guest barrel) would fail without this.
-vi.mock('next/font/google', () => {
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return {
-    DM_Serif_Display: font,
-    Outfit: font,
-    Clicker_Script: font,
-    Inter: font,
-    JetBrains_Mono: font,
-  }
+  return { default: font }
 })
 
 // jsdom has no ResizeObserver, and Headless UI's Menu constructs one as soon as
