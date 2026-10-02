@@ -124,6 +124,11 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this
   }
 
+  neq(column: string, value: unknown) {
+    this.filters.push((row) => row[column] !== value)
+    return this
+  }
+
   gt(column: string, value: string | number) {
     this.filters.push((row) => (row[column] as string | number) > value)
     return this
