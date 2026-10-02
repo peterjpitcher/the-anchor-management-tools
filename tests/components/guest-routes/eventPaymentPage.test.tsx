@@ -2,14 +2,14 @@ import { render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
-// next/font/google is a build-time transform with no loader under Vitest, and
+// next/font/local is a build-time transform with no loader under Vitest, and
 // the guest barrel pulls in the font module through GuestShell.
-vi.mock('next/font/google', () => {
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return { DM_Serif_Display: font, Outfit: font, Clicker_Script: font }
+  return { default: font }
 })
 
 vi.mock('next/headers', () => ({

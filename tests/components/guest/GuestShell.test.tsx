@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
-// next/font/google is a build-time transform. Under Vitest the real module has
-// no loader, so stub the three faces the guest font module asks for.
-vi.mock('next/font/google', () => {
+// next/font/local is a build-time transform. Under Vitest the real module has
+// no loader, so stub the call the guest font module makes for each face.
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return { DM_Serif_Display: font, Outfit: font, Clicker_Script: font }
+  return { default: font }
 })
 
 describe('GuestShell', () => {
