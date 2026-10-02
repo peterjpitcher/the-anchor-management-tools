@@ -43,6 +43,12 @@ test:release-4-ai.test.sql
 # Release 6. It replaces two Release 1 functions and uses the lock date from Release 5.
 migration:20261001190000_receipts_release_6_files_status_invoices.sql
 test:release-6-files.test.sql
+# The count of completed payments with no receipt starts after the lock date. The Release 6 test
+# sets no lock date, so it still holds afterwards and is run again to prove it. (No double quotes
+# in these comments: they sit inside a double-quoted string.)
+migration:20261002061500_receipts_no_receipt_count_after_lock.sql
+test:no-receipt-count-after-lock.test.sql
+test:release-6-files.test.sql
 # The earlier tests still hold once every migration is in. The Release 1 grants test is left
 # out: it names complete_receipt_upload by its old argument list, which Release 6 replaces, and
 # the Release 6 test checks the grants on the new one.

@@ -97,6 +97,9 @@ type Stubs = {
   vendorStubs: Array<{ calls: QueryCall[] }>
 }
 
+/** The rows of `receipt_settings`, or 'fail' when the table cannot be read. Reset before each test. */
+let settingsRows: Array<{ key: string; value: Record<string, unknown> }> | 'fail' = []
+
 function mockAdminClient(
   transactions: ReturnType<typeof buildTransactions>,
   vendors: ReturnType<typeof buildVendors>,
@@ -143,6 +146,12 @@ function mockAdminClient(
         return createQueryStub(() => ({ data: null, error: null })).builder
       }
 
+      if (table === 'receipt_settings') {
+        return createQueryStub(() =>
+          settingsRows === 'fail' ? { data: null, error: { message: 'timeout' } } : { data: settingsRows, error: null }
+        ).builder
+      }
+
       if (table === 'jobs') {
         return createQueryStub(() => ({ error: null, count: 0 })).builder
       }
@@ -184,6 +193,7 @@ describe('receipts workspace paging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedCreateAdminClient.mockReset()
+    settingsRows = []
   })
 
   it('pages every view at a hundred, and honours page two of the month view', async () => {
@@ -314,6 +324,61 @@ describe('receipts workspace paging', () => {
     expect(calls).toContainEqual({ method: 'eq', args: ['status', 'completed'] })
     expect(calls).toContainEqual({ method: 'is', args: ['completed_reason', null] })
     expect(calls).toContainEqual({ method: 'is', args: ['receipt_files', null] })
+    // No lock date is set, so every year is in the review.
+    expect(calls.some((call) => call.method === 'gt')).toBe(false)
+  })
+
+  describe('the lock date and the "completed without a receipt" review', () => {
+    const LOCK = [{ key: 'locked_before', value: { date: '2025-12-31' } }]
+    const dateFilters = (calls: QueryCall[]) => calls.filter((call) => call.method === 'gt')
+
+    it('reviews only transactions after the lock date, in the rows and in the group totals', async () => {
+      settingsRows = LOCK
+      const stubs = mockAdminClient(buildTransactions(), buildVendors())
+
+      const data = await queryReceiptWorkspaceData({ completedWithoutReceipt: true, groupByVendor: true })
+
+      // The page of rows, then the totals of its vendor groups: the same transactions in both.
+      expect(stubs.transactionStubs.length).toBeGreaterThanOrEqual(2)
+      for (const stub of stubs.transactionStubs.slice(0, 2)) {
+        expect(dateFilters(stub.calls)).toEqual([{ method: 'gt', args: ['transaction_date', '2025-12-31'] }])
+      }
+      // The tile says where its count starts.
+      expect(data.summary.completedWithoutReceiptAfter).toBe('2025-12-31')
+    })
+
+    it('leaves every other view alone, whatever the lock date', async () => {
+      settingsRows = LOCK
+      const stubs = mockAdminClient(buildTransactions(), buildVendors())
+
+      await queryReceiptWorkspaceData({ month: '2025-06', groupByVendor: true })
+
+      for (const stub of stubs.transactionStubs) {
+        expect(dateFilters(stub.calls)).toEqual([])
+      }
+    })
+
+    it('says there is no starting date when no lock date is set', async () => {
+      mockAdminClient(buildTransactions(), buildVendors())
+
+      const data = await queryReceiptWorkspaceData({ completedWithoutReceipt: true })
+
+      expect(data.summary.completedWithoutReceiptAfter).toBeNull()
+    })
+
+    it('shows more, not less, when the lock date cannot be read', async () => {
+      settingsRows = 'fail'
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const stubs = mockAdminClient(buildTransactions(), buildVendors())
+
+      const data = await queryReceiptWorkspaceData({ completedWithoutReceipt: true })
+
+      expect(dateFilters(stubs.transactionStubs[0].calls)).toEqual([])
+      expect(data.summary.completedWithoutReceiptAfter).toBeNull()
+      expect(data.transactions).toHaveLength(100)
+      expect(logged).toHaveBeenCalledWith('Failed to read the receipts lock date:', expect.any(Error))
+      logged.mockRestore()
+    })
   })
 
   describe('the same file on other transactions', () => {

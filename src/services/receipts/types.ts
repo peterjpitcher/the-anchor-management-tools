@@ -133,6 +133,8 @@ export type ReceiptWorkspaceSummary = {
   failedAiJobCount: number
   /** Payments completed with neither a file nor a reason. Null when it could not be counted. */
   completedWithoutReceipt: number | null
+  /** The lock date that count starts after, when one is set. */
+  completedWithoutReceiptAfter?: string | null
 }
 
 /** A category the AI has suggested for a payment, waiting for a person to accept, change or dismiss. */
