@@ -18,13 +18,13 @@ import NotFound from '@/app/not-found'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 // The barrel re-exports GuestShell, which loads the guest webfonts, and
-// next/font/google is a build-time transform with no loader under Vitest.
-vi.mock('next/font/google', () => {
+// next/font/local is a build-time transform with no loader under Vitest.
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return { DM_Serif_Display: font, Outfit: font, Clicker_Script: font }
+  return { default: font }
 })
 
 // The chunk recovery navigates the window, which jsdom cannot do. Keep the detection real.

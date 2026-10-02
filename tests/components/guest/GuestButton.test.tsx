@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { GuestButton } from '@/components/features/guest'
 
 // The barrel re-exports GuestShell, which loads the guest webfonts, and
-// next/font/google is a build-time transform with no loader under Vitest.
+// next/font/local is a build-time transform with no loader under Vitest.
 // Any test importing from '@/components/features/guest' needs this stub.
-vi.mock('next/font/google', () => {
+vi.mock('next/font/local', () => {
   const font = (): { variable: string; className: string } => ({
     variable: 'mock-font-variable',
     className: 'mock-font',
   })
-  return { DM_Serif_Display: font, Outfit: font, Clicker_Script: font }
+  return { default: font }
 })
 
 // next/link needs an App Router context to render. The harness has none, and
