@@ -129,7 +129,7 @@ describe('classifyReceiptPayments', () => {
     fetchMock.mockResolvedValue(
       answer([
         item({ id: 'p1', vendor_id: 'v-bt', expense_category: 'Telephone', confidence: 93.6, reasoning: '  Phone line  ' }),
-        item({ id: 'p2', no_category_applies: true, confidence: 80 }),
+        item({ id: 'p2', no_category_applies: true, confidence: 80, reasoning: 'Tax paid to HMRC' }),
       ])
     )
 
@@ -137,10 +137,37 @@ describe('classifyReceiptPayments', () => {
 
     expect(outcome.results).toEqual([
       { id: 'p1', vendorId: 'v-bt', newVendorName: null, expenseCategory: 'Telephone', noCategoryApplies: false, confidence: 94, reasoning: 'Phone line' },
-      { id: 'p2', vendorId: null, newVendorName: null, expenseCategory: null, noCategoryApplies: true, confidence: 80, reasoning: null },
+      { id: 'p2', vendorId: null, newVendorName: null, expenseCategory: null, noCategoryApplies: true, confidence: 80, reasoning: 'Tax paid to HMRC' },
     ])
     expect(outcome.model).toBe('gpt-test')
     expect(outcome.usage).toMatchObject({ model: 'gpt-test', promptTokens: 100, completionTokens: 20, totalTokens: 120 })
+  })
+
+  it('does not take "no category applies" when the model gives no reason for it', async () => {
+    // On its first day live the model answered this way, with full confidence and no reason,
+    // for a car park and a builder it could not place.
+    fetchMock.mockResolvedValue(
+      answer([
+        item({ id: 'p1', no_category_applies: true, confidence: 100, reasoning: null }),
+        item({ id: 'p2', no_category_applies: true, confidence: 100, reasoning: '   ' }),
+      ])
+    )
+
+    const outcome = await classifyReceiptPayments({ payments, vendors, categories })
+
+    expect(outcome.results.map((result) => result.noCategoryApplies)).toEqual([false, false])
+  })
+
+  it('tells the model what "no category applies" is for, and what the type line means', async () => {
+    fetchMock.mockResolvedValue(answer([]))
+    await classifyReceiptPayments({ payments, vendors, categories })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const system = body.messages.find((message: { role: string }) => message.role === 'system').content as string
+    expect(system).toContain('only when you can say what the payment is')
+    expect(system).toContain('Not knowing what a payment is for is never a reason for no_category_applies')
+    expect(system).toContain("the bank's label for how the money moved")
+    expect(system).toContain('not a transfer between the business\'s own accounts')
   })
 
   it('asks for a strict schema that only allows our categories', async () => {
