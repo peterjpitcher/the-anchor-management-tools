@@ -10,7 +10,10 @@
  *  - the call is abandoned after 30 seconds, and when the job that started it is cancelled;
  *  - a reply cut short by the token limit is a failure, not a partial answer;
  *  - a vendor id that is not on the list we sent is ignored, and a missing confidence is treated
- *    as no confidence.
+ *    as no confidence;
+ *  - "no category applies" with no reason given is not taken. On its first day live the model
+ *    used it as a catch-all for payments it could not place (a car park, a builder paid by bank
+ *    transfer), about 800 times, often with no reason and full confidence.
  *
  * The caller decides what may be sent. Nothing here adds to the prompt beyond what it is given.
  */
@@ -20,7 +23,7 @@ import { getOpenAIConfig } from '@/lib/openai/config'
 import type { ReceiptExpenseCategory } from '@/types/database'
 
 /** Bump when the prompt or the schema changes in a way that could change answers. */
-export const RECEIPT_AI_PROMPT_VERSION = '2026-10-01.1'
+export const RECEIPT_AI_PROMPT_VERSION = '2026-10-02.1'
 
 /** Below this the model's answer is not used. */
 export const RECEIPT_AI_MIN_CONFIDENCE = 70
@@ -91,9 +94,10 @@ Vendor:
 
 Category:
 - Choose expense_category from the CATEGORIES list for money going out, when the payment is an expense of the business.
-- If the payment is not an expense that belongs in any category (tax paid to HMRC, drawings, transfers between the business's own accounts, loan or brewery account payments), set no_category_applies to true and leave expense_category null.
-- If you are not sure, leave expense_category null and no_category_applies false.
-- Money coming in never takes a category.
+- Set no_category_applies to true, and leave expense_category null, only when you can say what the payment is and it is one of these: tax paid to HMRC; drawings or a director's loan; a transfer between the business's own accounts; a loan repayment; a payment on the brewery account; cash taken out of the bank. Say which one in reasoning.
+- Not knowing what a payment is for is never a reason for no_category_applies. If you cannot tell who was paid or what was bought, leave expense_category null and no_category_applies false.
+- The "type" line is the bank's label for how the money moved (Card Transaction, Direct Debit, TRANSFER, Outward Faster Payment). A transfer or faster payment to a person or another business is an ordinary payment, not a transfer between the business's own accounts.
+- Use the direction given for each payment. Money coming in never takes a category.
 
 Give confidence from 0 to 100 for your answer as a whole. Return one entry for every payment, using the id you were given.`
 
@@ -309,15 +313,18 @@ export async function classifyReceiptPayments(input: {
         ? input.categories.find((option) => option.toLowerCase() === (item.expense_category as string).trim().toLowerCase()) ?? null
         : null
 
+    const reasoning = typeof item.reasoning === 'string' ? item.reasoning.trim().slice(0, 300) || null : null
+
     results.push({
       id,
       vendorId,
       // A name is only taken when no vendor from the list was chosen.
       newVendorName: vendorId ? null : normaliseVendorName(item.new_vendor_name),
       expenseCategory: category,
-      noCategoryApplies: !category && item.no_category_applies === true,
+      // Taking a payment out of the figures needs a reason. Without one it is not taken.
+      noCategoryApplies: !category && item.no_category_applies === true && Boolean(reasoning),
       confidence: confidenceOf(item.confidence),
-      reasoning: typeof item.reasoning === 'string' ? item.reasoning.trim().slice(0, 300) || null : null,
+      reasoning,
     })
   }
 
