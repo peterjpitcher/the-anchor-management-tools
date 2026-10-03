@@ -67,6 +67,42 @@ const tableBookingGuestLimiter = createRateLimiter({
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
 type NotificationChannelMeta = TableBookingNotificationChannel
 
+// Page-source labels: which web page and advert a website booking came from. The website reads
+// them from the page address, never from a cookie or browser storage. They are reporting hints
+// only: never a permission, and never proof that someone saw an advert. Once stored they are
+// personal data, because they sit against a named booking, so only these six bounded strings are
+// ever kept. A click id (fbclid, gclid) or any other key is not listed here, so the schema below
+// drops it and it never enters this path.
+const PAGE_SOURCE_LABEL_CAPS = {
+  booking_source: 80,
+  utm_source: 80,
+  utm_medium: 80,
+  utm_campaign: 160,
+  utm_content: 160,
+  short_code: 32
+} as const
+
+type PageSourceLabelKey = keyof typeof PAGE_SOURCE_LABEL_CAPS
+type TableBookingAttribution = Partial<Record<PageSourceLabelKey, string>>
+
+const PAGE_SOURCE_LABEL_KEYS = Object.keys(PAGE_SOURCE_LABEL_CAPS) as PageSourceLabelKey[]
+
+/**
+ * A bad label must never reject a booking. `z.string()` refuses a null, a number, an array or an
+ * object before any transform runs, and a schema failure here is a 400, so each label is cleaned
+ * BEFORE it is validated: anything that is not a string, or is blank, counts as not sent, and a
+ * long one is cut to its cap. The rejected input is never logged.
+ */
+function cleanPageSourceLabel(value: unknown, cap: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const cleaned = value.trim().slice(0, cap)
+  return cleaned || undefined
+}
+
+function pageSourceLabel(cap: number) {
+  return z.preprocess((value) => cleanPageSourceLabel(value, cap), z.string().optional())
+}
+
 const CreateTableBookingSchema = z.object({
   fixture_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32),
@@ -137,8 +173,52 @@ const CreateTableBookingSchema = z.object({
       })
     )
     .max(20)
-    .optional()
+    .optional(),
+  // Page-source labels (see PAGE_SOURCE_LABEL_CAPS). Optional and cleaned leniently. They change
+  // nothing about the booking: they stay out of the idempotency hash and out of the booking
+  // RPCs, and reach only the `table_booking_created` analytics event.
+  booking_source: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.booking_source),
+  utm_source: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_source),
+  utm_medium: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_medium),
+  utm_campaign: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_campaign),
+  utm_content: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_content),
+  short_code: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.short_code)
 })
+
+type CreateTableBookingPayload = z.infer<typeof CreateTableBookingSchema>
+
+/** Only the labels actually sent, or null when none was. Mirrors the event-bookings route. */
+function buildTableBookingAttribution(data: CreateTableBookingPayload): TableBookingAttribution | null {
+  const attribution: TableBookingAttribution = {}
+  for (const key of PAGE_SOURCE_LABEL_KEYS) {
+    const value = data[key]
+    if (value) attribution[key] = value
+  }
+  return Object.keys(attribution).length > 0 ? attribution : null
+}
+
+/**
+ * The labels as the `table_booking_created` event stores them: nested under `attribution` and
+ * repeated as flat keys, the shape event bookings already use, so one query reads both. Empty
+ * when no label was sent, which leaves the metadata exactly as it was before the labels existed.
+ */
+function pageSourceMetadata(attribution: TableBookingAttribution | null): Record<string, unknown> {
+  if (!attribution) return {}
+  const flat: Record<string, string | null> = {}
+  for (const key of PAGE_SOURCE_LABEL_KEYS) {
+    flat[key] = attribution[key] ?? null
+  }
+  return { attribution, ...flat }
+}
+
+/** The booking request with the labels taken out, for anything that creates the booking itself. */
+function withoutPageSourceLabels(data: CreateTableBookingPayload): Omit<CreateTableBookingPayload, PageSourceLabelKey> {
+  const rest: Partial<CreateTableBookingPayload> = { ...data }
+  for (const key of PAGE_SOURCE_LABEL_KEYS) {
+    delete rest[key]
+  }
+  return rest as Omit<CreateTableBookingPayload, PageSourceLabelKey>
+}
 
 type TableBookingResponseData = {
   state: 'confirmed' | 'pending_payment' | 'blocked'
@@ -422,6 +502,11 @@ export async function POST(request: NextRequest) {
       preorder: payload.preorder,
       christmas_course_counts: payload.christmas_course_counts
     })
+    // Collected after the hash, and deliberately not part of it: a retry that carries different
+    // labels is the same booking and must replay, not conflict with a 409. First success wins.
+    // A replay returns the original response below, before any analytics is written, so the
+    // retry's labels are ignored and the first request's labels stay on the booking's event.
+    const attribution = buildTableBookingAttribution(payload)
 
     const supabase = createAdminClient()
     const idempotencyState = replayOnly
@@ -481,7 +566,9 @@ export async function POST(request: NextRequest) {
       // this switch is inert until the flag is turned on.
       const { data: rpcResultRaw, error: rpcError } = await (payload.christmas_course_counts
         ? supabase.rpc('create_table_booking_christmas_v01', {
-            p_request: { ...payload, customer_id: customerResolution.customerId, time: bookingTime, source: 'brand_site' },
+            // The page-source labels are taken out of the spread: the function ignores unknown
+            // keys today, but the request should carry only what the function reads.
+            p_request: { ...withoutPageSourceLabels(payload), customer_id: customerResolution.customerId, time: bookingTime, source: 'brand_site' },
             p_course_counts: payload.christmas_course_counts
           })
         : supabase.rpc('create_table_booking_public_v06', {
@@ -771,7 +858,8 @@ export async function POST(request: NextRequest) {
               booking_purpose: payload.purpose,
               sunday_lunch: false,
               status: bookingResult.status || bookingResult.state,
-              table_name: bookingResult.table_name || null
+              table_name: bookingResult.table_name || null,
+              ...pageSourceMetadata(attribution)
             }
           }, {
             tableBookingId: bookingResult.table_booking_id,
