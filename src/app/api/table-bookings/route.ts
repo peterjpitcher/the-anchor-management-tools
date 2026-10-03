@@ -96,7 +96,12 @@ const PAGE_SOURCE_LABEL_KEYS = Object.keys(PAGE_SOURCE_LABEL_CAPS) as PageSource
 function cleanPageSourceLabel(value: unknown, cap: number): string | undefined {
   if (typeof value !== 'string') return undefined
   const cleaned = value.trim().slice(0, cap)
-  return cleaned || undefined
+  if (!cleaned) return undefined
+  // Postgres jsonb refuses a NUL, and a lone surrogate (which a cut through an emoji leaves
+  // behind). Storing either would fail the whole analytics insert and lose the booking's event
+  // along with the label, so the label alone is dropped.
+  if (cleaned.includes('\u0000') || !cleaned.isWellFormed()) return undefined
+  return cleaned
 }
 
 function pageSourceLabel(cap: number) {
