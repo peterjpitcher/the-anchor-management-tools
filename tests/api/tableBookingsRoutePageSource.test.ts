@@ -443,6 +443,30 @@ describe('POST /api/table-bookings: page-source labels', () => {
     expect(bookingCreatedMetadata(supabase)).toEqual(BASE_METADATA)
   })
 
+  it('drops a label Postgres could not store, rather than losing the whole event', async () => {
+    const supabase = useSupabase(buildSupabase())
+
+    const response = await POST(buildRequest({
+      ...BASE_BOOKING,
+      ...LABELS,
+      // A NUL, which jsonb refuses.
+      utm_campaign: 'weekday\u0000lunch',
+      // The cut at 160 lands in the middle of the emoji and would leave half of it behind.
+      utm_content: `${'c'.repeat(159)}\u{1F600}`,
+    }))
+
+    expect(response.status).toBe(201)
+    const metadata = bookingCreatedMetadata(supabase)
+    expect(metadata.attribution).toEqual({
+      booking_source: LABELS.booking_source,
+      utm_source: LABELS.utm_source,
+      utm_medium: LABELS.utm_medium,
+      short_code: LABELS.short_code,
+    })
+    expect(metadata.utm_campaign).toBeNull()
+    expect(metadata.utm_content).toBeNull()
+  })
+
   it('never lets a click id or any other key into the event or the booking', async () => {
     const supabase = useSupabase(buildSupabase())
 
