@@ -5,6 +5,8 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { formBooleanSchema } from '@/lib/forms/formBoolean'
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
+import { isValidIsoDate } from '@/lib/dateUtils'
 
 const RecurringChargeSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -69,7 +71,7 @@ export async function getRecurringCharges(vendorId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('oj_vendor_recurring_charges')
-    .select('id, vendor_id, description, amount_ex_vat, vat_rate, frequency, is_active, sort_order, created_at, updated_at')
+    .select('*')
     .eq('vendor_id', vendorId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
@@ -218,4 +220,68 @@ export async function disableRecurringCharge(formData: FormData) {
   })
 
   return { discarded, success: true as const }
+}
+
+
+export type EndChargePreview = {
+  chargeId: string
+  endDate: string
+  items: Array<{
+    id: string | null
+    start: string
+    end: string
+    originalEnd: string
+    amountExVat: number
+    amountIncVat: number
+    previousAmountExVat: number
+    removed: boolean
+  }>
+  totalExVat: number
+  totalIncVat: number
+  preview: boolean
+}
+
+const EndChargeSchema = z.object({
+  chargeId: z.string().uuid('Invalid charge ID'),
+  endDate: z.string().refine(isValidIsoDate, 'Choose a valid last service date'),
+})
+
+export async function previewEndRecurringCharge(
+  chargeId: string, endDate: string,
+): Promise<{ preview?: EndChargePreview; error?: string }> {
+  return runEndRecurringCharge(chargeId, endDate)
+}
+
+export async function endRecurringCharge(
+  chargeId: string, endDate: string, expected: EndChargePreview,
+): Promise<{ preview?: EndChargePreview; error?: string }> {
+  return runEndRecurringCharge(chargeId, endDate, expected)
+}
+
+async function runEndRecurringCharge(
+  chargeId: string, endDate: string, expected?: EndChargePreview,
+): Promise<{ preview?: EndChargePreview; error?: string }> {
+  const parsed = EndChargeSchema.safeParse({ chargeId, endDate })
+  if (!parsed.success) return { error: parsed.error.errors[0].message }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+  if (!await checkUserPermission('oj_projects', 'edit')) {
+    return { error: 'You do not have permission to end recurring charges' }
+  }
+  const { data, error } = await supabase.rpc('oj_end_recurring_charge', {
+    p_charge_id: parsed.data.chargeId,
+    p_end_date: parsed.data.endDate,
+    p_preview: expected === undefined,
+    p_expected: expected ?? null,
+  })
+  if (error) {
+    if (error.code === 'PGRST202') {
+      return { error: 'End charge is awaiting its database update. No charge has been changed.' }
+    }
+    return { error: error.message }
+  }
+  if (!data) return { error: 'No final charge preview returned' }
+  if (expected) revalidatePath('/oj-projects/clients')
+  return { preview: data as EndChargePreview }
 }

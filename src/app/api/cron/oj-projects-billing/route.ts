@@ -1,3 +1,4 @@
+import { getFinalRecurringCoverage } from '@/lib/oj-projects/recurring-proration'
 import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -20,7 +21,6 @@ import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@
 import {
   buildLastChargedPeriodStarts,
   buildRecurringChargeDescription,
-  getRecurringChargeCoverage,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
 import { shouldSkipConcurrentBillingRun } from '@/lib/oj-projects/billing-run-guard'
@@ -1649,7 +1649,8 @@ async function buildDryRunPreview(input: {
     )
     if (alreadyExists) continue
 
-    const coverage = getRecurringChargeCoverage(String(c.frequency || 'monthly'), chargePeriod)
+    const coverage = getFinalRecurringCoverage(String(c.frequency || 'monthly'), chargePeriod, Number(c.amount_ex_vat || 0), c.end_date)
+    if (!coverage) continue
     virtualInstances.push({
       vendor_id: vendorId,
       recurring_charge_id: c.id,
@@ -1658,8 +1659,8 @@ async function buildDryRunPreview(input: {
       period_end: chargePeriod.period_end,
       coverage_start: coverage.start,
       coverage_end: coverage.end,
-      description_snapshot: String(c.description || ''),
-      amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
+      description_snapshot: coverage.isProrated ? `${c.description} (final charge, prorated through ${coverage.end})` : String(c.description || ''),
+      amount_ex_vat_snapshot: coverage.amountExVat,
       vat_rate_snapshot: Number(c.vat_rate || 0),
       sort_order_snapshot: Number(c.sort_order || 0),
       created_at: new Date().toISOString(),
@@ -3012,7 +3013,8 @@ export async function GET(request: Request) {
             lastChargedPeriodStarts.get(String(c.id)) ?? null
           )
           if (!chargePeriod) return []
-          const coverage = getRecurringChargeCoverage(String(c.frequency || 'monthly'), chargePeriod)
+          const coverage = getFinalRecurringCoverage(String(c.frequency || 'monthly'), chargePeriod, Number(c.amount_ex_vat || 0), c.end_date)
+          if (!coverage) return []
           return [{
             vendor_id: vendorId,
             recurring_charge_id: c.id,
@@ -3021,8 +3023,8 @@ export async function GET(request: Request) {
             period_end: chargePeriod.period_end,
             coverage_start: coverage.start,
             coverage_end: coverage.end,
-            description_snapshot: String(c.description || ''),
-            amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
+            description_snapshot: coverage.isProrated ? `${c.description} (final charge, prorated through ${coverage.end})` : String(c.description || ''),
+            amount_ex_vat_snapshot: coverage.amountExVat,
             vat_rate_snapshot: Number(c.vat_rate || 0),
             sort_order_snapshot: Number(c.sort_order || 0),
           }]

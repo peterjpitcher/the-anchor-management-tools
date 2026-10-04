@@ -9780,6 +9780,7 @@ export type Database = {
           amount_ex_vat: number
           created_at: string
           description: string
+          end_date: string | null
           frequency: string
           id: string
           is_active: boolean
@@ -9792,6 +9793,7 @@ export type Database = {
           amount_ex_vat: number
           created_at?: string
           description: string
+          end_date?: string | null
           frequency?: string
           id?: string
           is_active?: boolean
@@ -9804,6 +9806,7 @@ export type Database = {
           amount_ex_vat?: number
           created_at?: string
           description?: string
+          end_date?: string | null
           frequency?: string
           id?: string
           is_active?: boolean
@@ -18972,6 +18975,18 @@ export type Database = {
       }
     }
     Functions: {
+      oj_reissue_invoice_with_charge_versions: {
+        Args: {
+          p_source_invoice_id: string; p_mode: string; p_invoice_data: Json; p_line_items: Json
+          p_entry_ids: string[]; p_recurring_instance_ids: string[]
+          p_virtual_recurring_instances: Json; p_charge_versions: Json
+        }
+        Returns: Json
+      }
+      oj_end_recurring_charge: {
+        Args: { p_charge_id: string; p_end_date: string; p_preview?: boolean; p_expected?: Json | null }
+        Returns: Json
+      }
       accept_waitlist_offer_v05: {
         Args: { p_hashed_token: string; p_source?: string }
         Returns: Json
