@@ -135,6 +135,59 @@ describe('OJ invoice reissue preview', () => {
     mockedPermission.mockResolvedValue(true)
   })
 
+  it('prorates an ended monthly virtual charge through its inclusive end date', async () => {
+    mockedCreateAdminClient.mockReturnValue(makeAdminClient({ activeCharges: [{
+      id: 'ended-monthly', description: 'baronshub', amount_ex_vat: 31, vat_rate: 20,
+      sort_order: 0, frequency: 'monthly', is_active: true, end_date: '2026-05-15',
+      created_at: '2026-01-01T00:00:00Z',
+    }] }) as unknown as ReturnType<typeof createAdminClient>)
+    const preview = await getOjInvoiceReissuePreview(SOURCE_INVOICE_ID)
+    expect(preview.eligible).toBe(true)
+    if (!preview.eligible) throw new Error('Expected an eligible reissue')
+    expect(preview.includedRecurring).toEqual([expect.objectContaining({
+      is_virtual: true, period_yyyymm: '2026-05', amount_ex_vat: 15,
+    })])
+    expect(preview.includedRecurring).toHaveLength(1)
+    expect(preview.lineItems.map((item) => item.description).join(' ')).toContain('prorated through 2026-05-15')
+  })
+
+  it('does not create virtual charges after the last service date', async () => {
+    mockedCreateAdminClient.mockReturnValue(makeAdminClient({ entries: [{
+      id: 'work-entry', entry_type: 'one_off', entry_date: '2026-05-07', billable: true,
+      amount_ex_vat_snapshot: 20, vat_rate_snapshot: 20, status: 'unbilled', description: 'Remaining work',
+    }], activeCharges: [{
+      id: 'ended-monthly', description: 'baronshub', amount_ex_vat: 31, vat_rate: 20,
+      sort_order: 0, frequency: 'monthly', is_active: true, end_date: '2026-04-30',
+      created_at: '2026-01-01T00:00:00Z',
+    }] }) as unknown as ReturnType<typeof createAdminClient>)
+    const preview = await getOjInvoiceReissuePreview(SOURCE_INVOICE_ID)
+    expect(preview.eligible).toBe(true)
+    if (!preview.eligible) throw new Error('Expected an eligible reissue')
+    expect(preview.includedRecurring).toEqual([])
+  })
+
+  it('retains the ended quarterly final instance when rebuilding its invoice', async () => {
+    mockedCreateAdminClient.mockReturnValue(makeAdminClient({
+      activeCharges: [{ id: 'ended-quarterly', description: 'baronshub quarterly', amount_ex_vat: 920,
+        vat_rate: 20, sort_order: 0, frequency: 'quarterly', is_active: true,
+        end_date: '2026-06-15', created_at: '2026-01-01T00:00:00Z' }],
+      sourceRecurringInstances: [{ id: 'final-quarter', vendor_id: VENDOR_ID,
+        recurring_charge_id: 'ended-quarterly', period_yyyymm: '2026-05',
+        period_start: '2026-05-01', period_end: '2026-05-31',
+        coverage_start: '2026-05-01', coverage_end: '2026-06-15',
+        description_snapshot: 'baronshub quarterly final charge', amount_ex_vat_snapshot: 460,
+        vat_rate_snapshot: 20, sort_order_snapshot: 0, status: 'billed',
+        invoice_id: SOURCE_INVOICE_ID, created_at: '2026-05-01T00:00:00Z',
+        recurring_charge: { is_active: true }, invoice: { id: SOURCE_INVOICE_ID, status: 'sent' },
+      }],
+    }) as unknown as ReturnType<typeof createAdminClient>)
+    const preview = await getOjInvoiceReissuePreview(SOURCE_INVOICE_ID)
+    expect(preview.eligible).toBe(true)
+    if (!preview.eligible) throw new Error('Expected an eligible reissue')
+    expect(preview.includedRecurring).toEqual([expect.objectContaining({ id: 'final-quarter', amount_ex_vat: 460, is_virtual: false })])
+    expect(preview.excludedRecurring).toEqual([])
+  })
+
   it('blocks paid OJ invoices', async () => {
     mockedCreateAdminClient.mockReturnValue(makeAdminClient({
       invoice: makeInvoice({ status: 'paid', paid_amount: 120 }),
