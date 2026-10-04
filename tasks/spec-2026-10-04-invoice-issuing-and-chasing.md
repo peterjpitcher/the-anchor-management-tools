@@ -1,7 +1,7 @@
 # Spec: invoice issuing and chasing, email only and personal
 
 **Date:** 4 October 2026
-**Status:** Version 4. Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`. For the owner to approve. Nothing built, nothing changed in production.
+**Status:** Version 4, built on 4 October 2026 (not deployed). Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`. For the owner to approve. Nothing built, nothing changed in production.
 **Goal (owner's words):** "Everything should be over email and should feel personal."
 **Scope:** every email that issues, chases or acknowledges an Orange Jelly invoice, and the screens staff use to send and follow them.
 **Paired repository:** no change needed in the website repo. It does not read invoices.
@@ -38,6 +38,8 @@ Building this does not start any new customer email. Three switches are off unti
 | `INVOICE_PAYPAL_RECEIPTS_FROM=YYYY-MM-DD` | PayPal payments send no receipt, as today | PayPal payments recorded on or after that date send a receipt (R5) |
 
 Four steps stay with the owner whatever is built, and none is taken without his explicit yes: a deployment to production, the production migration for R2, the two data fixes in R0, and the test email in R1a.
+
+On Vercel a changed environment variable only reaches a new deployment, so each switch needs a redeploy after it is set.
 
 ## What happens today
 
@@ -159,7 +161,7 @@ Two jobs running at the same moment (a manual chase sent in the very second the 
 - A reason is optional and goes in the audit log with who set it.
 - A hold never resets what has already been sent. If it runs past a window, that reminder is not caught up and the invoice goes to "Needs you".
 
-The three new columns go in one additive migration, applied to production through the `prod-migrate` process with the owner's yes, before the code that reads them is deployed.
+The three new columns go in one additive migration (`supabase/migrations/20261004180000_invoice_reminder_columns.sql`), with a fourth, `cron_job_runs.result`, where the job saves what each run did. It is applied to production through the `prod-migrate` process with the owner's yes, before the code that reads the columns is deployed.
 
 **One daily summary to the owner, replacing the alert per reminder.** Sent after the run to the Orange Jelly mailbox by the ordinary email route, only when there is something to say. The job still marks invoices overdue.
 - **Sent today:** each reminder, and who it went to.
@@ -171,7 +173,7 @@ The run's results (what was sent, what failed, the "Needs you" list and whether 
 
 75 separate alerts have been sent so far. The few that needed action looked the same as the rest.
 
-**Go-live check.** Before the switch is set, the owner is shown the list the first run would send, produced read-only against production, and says yes.
+**Go-live check.** Before the switch is set, the owner is shown the list the first run would send, produced read-only against production, and says yes. The reminder route produces it: `?preview=true&go_live=YYYY-MM-DD` lists what a run would send for that go-live date and does nothing else (no email, no record, no change). `&as_of=YYYY-MM-DD` asks about another day.
 
 **Tests.** The window and skip rules as a pure function, shared by the job, the "Going next" list and the R3 "next reminder" line, tested in both time zones: Friday to Monday, day 13 and day 20 at a weekend, the October clock change, a month end and a leap day. A first reminder that fails on day 5 and is retried on day 6. A due date changed after the first reminder, with no repeat. A send that fails raises an alert and is not recorded as sent. A send that succeeds but cannot be recorded is not sent twice.
 
@@ -196,7 +198,8 @@ Ships after R2.
 
 **Monthly billing run** (`src/app/api/cron/oj-projects-billing/route.ts`): run at 09:05 UTC, Monday to Friday.
 - The billing pass for last month starts on the first weekday of the month.
-- The job keeps one record per month saying whether that month's pass has finished (a `cron_job_runs` row keyed by the billing month). Until it says finished, each weekday run during the first seven days of the month carries on: it bills every eligible client that has no billing run for that month yet, and retries runs marked failed. So a pass cut short after one client is completed the next weekday, instead of leaving the other clients until next month.
+- The job keeps one record per month saying whether that month's pass has finished (a `cron_job_runs` row keyed by the billing month). Until it says finished, each weekday run during the first seven days of the month carries on: it bills every eligible client that has no billing run for that month yet, and retries runs marked failed or left half done. So a pass cut short after one client is completed the next weekday, instead of leaving the other clients until next month. The pass is finished only when a run gets through every client with none failing.
+- A failed email is one of two things. Refused (nothing went): tried again the next weekday. Outcome unknown (the request left, then the connection dropped): reported once, never emailed again automatically, and it does not hold the pass open.
 - Once the pass is finished, nothing more is billed that month. The existing guard (one run per client per month) still stops a client being invoiced twice.
 - If the pass has not finished by the eighth, the job stops trying and raises an alert. Unbilled work then rolls into next month's invoice, as it does today.
 - The billing period is still the previous calendar month. Work added during the few days a pass is being completed, for a client not yet billed, is included; that is the same period and the same rule, and the alternative is leaving it a month.
@@ -209,8 +212,8 @@ The recurring-charges work that was in progress in another session landed on `ma
 
 ## R5. Close the loop
 **PayPal receipts.** Off until `INVOICE_PAYPAL_RECEIPTS_FROM` is set. Then a customer who pays online gets the receipt email, once per payment.
-- The receipt is sent straight after the payment is recorded, by `applyInvoicePayPalCapture` in `src/lib/invoices/paypal-capture.ts`, whichever of the three paths (payment page, PayPal's notification, the 15 minute check) records it.
-- That alone is not enough: if the process stops between recording the payment and sending the receipt, every later attempt sees a payment already recorded and would skip the receipt for good. So the 15 minute PayPal check also sweeps for PayPal payments from the last seven days, recorded on or after the switch date, that have no receipt recorded against them, and sends those. The payment itself is the lasting record that a receipt is owed; nothing new is stored.
+- The 15 minute PayPal check is the only sender. It sweeps for PayPal payments from the last seven days, recorded on or after the switch date, that have no receipt recorded against them, and sends those. So a receipt arrives within 15 minutes of paying. The payment itself is the lasting record that a receipt is owed; nothing new is stored.
+- It is deliberately not sent from the request that records the payment (the payment page, PayPal's notification). Those requests have short time limits and a receipt renders a PDF: a request cut off part way through a send leaves an unknown outcome and risks a second receipt. Sending only from the sweep also means a receipt cannot be lost when a request dies between recording the payment and sending it.
 - Each receipt is guarded by a claim on the payment, so two paths cannot both send it. A definite refusal releases the claim and the sweep tries again. An unknown outcome keeps the claim, sends nothing more, and raises an alert for a person to check.
 - A receipt problem never fails the payment or the customer's page.
 - Payments recorded before the switch date never get a late receipt.
@@ -316,7 +319,7 @@ I've received your payment of {amount} for invoice {number}, thank you. [That se
 | R0 | No robotic reminders, recurring invoices tracked again, one scheduler, client records stop being wiped | None. Two data fixes | Small |
 | R1a | Emails come from the real mailbox | None | Small |
 | R1b | First names, one sign-off, one voice | None | Medium, in a few parts |
-| R2 | Automatic reminders return: weekdays only, two at most, can be held, one daily summary | Three columns, one migration | Medium |
+| R2 | Automatic reminders return: weekdays only, two at most, can be held, one daily summary | Four columns, one migration | Medium |
 | R3 | Email history and next reminder on the invoice | None | Small |
 | R4 | Monthly and recurring invoices sent on a weekday morning (09:00 UTC) | None | Small, but touches the billing job |
 | R5 | PayPal receipts, receipt tick, correct PDF terms | None | Small |
@@ -353,13 +356,55 @@ Things only the owner can supply. None blocks R0.
 7. The other session's billing and reissue work landed on `main` on 4 October (pull request 176). Everything here is built on top of it.
 8. Receipts carry no pay online line. Copies keep going to everyone they go to today. A reminder window that is missed is not caught up. The private booking receipt keeps its own wording with the shared greeting and sign-off. These are the developer review's recommended defaults.
 
+## As built
+
+Where the build differs from the text above, or settles something it left open.
+
+**R1**
+- The button that replaces "Email Payment Link" reads "Resend Invoice" (the UI standard is Title Case on buttons).
+- The default invoice wording no longer copies the invoice's notes into the email. They are on the PDF.
+- The additional charges email takes the same subject shape as the private hire invoice.
+- With the mailbox switch on, a statement's replies go to the Orange Jelly mailbox. With it off, a statement is sent exactly as before.
+- A contact saved as a role, a couple or a company ("Accounts Team", "Mr & Mrs Smith", "Golden Barrels Limited") is greeted "Hi there", not by its first word.
+- Resend Invoice on a private hire invoice drafts the private hire wording, naming the booking at The Anchor. It leaves the deposit sentence out, because that dialog does not know how the deposit was treated.
+- A fully paid private hire invoice sent again says it is paid in full and asks for nothing.
+- An identical email sent twice within an hour is still stopped as a duplicate, but the dialog now says so instead of closing as if it had gone.
+- The shared email sender now says when a failed send has an unknown outcome, separately from a definite refusal. Only a clear "no" from the provider (a 4xx answer), a kill switch, a blocked address or a failed sign-in counts as refused. A timeout, a dropped connection or a server error counts as unknown. Reminders, receipts, the billing run, the recurring job and the manual sends all act on that, not on the wording of an error.
+- Alert emails keep record links and dates intact. The redaction that strips phone numbers used to read a record id as one, which broke about a third of "open this draft" links. The manual send and chase tell staff when an email may already have gone, and when it went but could not be saved to the invoice history.
+
+**R2**
+- A reminder whose earlier attempt has an unknown outcome is listed under "Needs you" (a standing matter), not under "Problems" every day.
+- The job stops starting new sends 200 seconds into a run and leaves the rest for the next run, so a send is never cut off part way.
+
+**R4**
+- Months before October 2026 are left as the old rule left them: the first month with a pass record is October 2026, billed in November. Without that, the first run after go-live would have re-opened September's billing.
+- A billing run left half done by a timeout is picked up the next weekday, as a failed one is.
+- A recurring schedule that could not raise its invoice at all now raises an alert. It is tried again on the next run.
+- The alert on the eighth marks the month as given up, so it is raised once.
+- A recurring schedule's end date is compared with the scheduled date, not today, so a last invoice due on a Saturday end date is still raised on the Monday.
+
+**R5**
+- The 15 minute sweep is the only sender of PayPal receipts (see R5). An independent review found that sending from the payment request itself risked a second receipt if the request was cut off.
+- The sweep sends at most 20 receipts a run, and gives a payment up, with one alert, after three refusals.
+- The PDF's "For payment queries or to arrange card payment" line was left as it is.
+
+**Known and accepted**
+- A manual chase sent in the same second as the reminder job could still both go.
+- If the 15 minute job dies in the instant after the mailbox accepts a receipt, the receipt could be sent twice (the claim is taken over after ten minutes). The job stops starting sends 40 seconds in, so this needs a crash, not a slow run. The reminder job does not have this gap: its claims are never taken over.
+- A provider outage (a server error) parks that day's reminders and receipts as "outcome unknown" rather than retrying them. The owner is told and chases or sends by hand. That is the price of never sending twice.
+- Calling the billing route by hand with `preview=true` but without `force` can create draft invoices on any weekday up to the 7th while a pass is open, and the next scheduled run then emails them. Before, that was possible on the 1st only. The preview screen is not affected: it uses `force` with `dry_run`, which writes nothing.
+- Setting `INVOICE_PAYPAL_RECEIPTS_FROM` to a past date sends receipts for PayPal payments back to that date, up to seven days. Set it to the day it is switched on.
+- An email the app sent but could not record is missing from the history. Its reminder date is still recorded on the invoice.
+- Bank holidays are working days. A reminder could go on Friday 25 December 2026 unless held, and January's monthly invoices would go on Friday 1 January 2027.
+- No screen was opened in a signed-in browser. The new screens (hold control, email history, receipt tick) are covered by component tests only.
+
 ## What the developer review changed
 
 | Finding | What changed |
 |---|---|
 | INV-01 reminder claims cannot be kept as they are | R2: two lasting columns record each accepted reminder; new fixed claim keys; old claims ignored; accepted, refused and unknown outcomes defined |
-| INV-02 a receipt can be lost after payment | R5: the 15 minute PayPal check sweeps for payments with no receipt; a claim per payment; unknown outcomes are not retried |
-| INV-03 a billing pass cut short is neither missed nor failed | R4: one record per month says whether the pass finished; weekday runs in the first seven days complete it |
+| INV-02 a receipt can be lost after payment | R5: the 15 minute PayPal check is the only sender and works from the payments themselves, so none can be lost; a claim per payment; unknown outcomes are not retried |
+| INV-03 a billing pass cut short is neither missed nor failed | R4: one record per month says whether the pass finished; weekday runs in the first seven days complete it, retrying failed and half-done clients |
 | INV-04 sent and recorded are different | R1a: an accepted send is never repeated because its record failed; R2 keeps its own lasting record; R3 says what it cannot show |
 | INV-05 the three day rule and the forecast were loose | R2: today plus the two London dates before; accepted customer emails only; no catch-up; "Going next" is a forecast; rechecked before each send |
 | INV-06 the summary needs state and a fallback | R2: results saved on the run record; "Needs you" compared with the last summary that went; R0.3: every failure exit keeps the draft and links to it |
