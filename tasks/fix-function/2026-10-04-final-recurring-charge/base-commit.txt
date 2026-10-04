@@ -1,0 +1,19 @@
+b5a1bba43356a3b114bcfd5b5fb618eb7cee9b82
+ M src/services/__tests__/marketing-frequency-cap.test.ts
+ M src/services/marketing-campaigns.ts
+ M tasks/lessons.md
+ M tasks/todo.md
+?? docs/reviews/2026-09-15-mileage-owner-decisions.md
+?? docs/reviews/2026-09-15-mileage-spec-developer-review.md
+?? docs/reviews/2026-10-01-receipts-spec-developer-review.md
+?? src/lib/oj-projects/__tests__/recurring-proration.test.ts
+?? src/lib/oj-projects/recurring-proration.ts
+?? tasks/plan-2026-09-15-mileage-r1-rates-recalculation.md
+?? tasks/plan-2026-09-15-mileage-r2-complete-counts.md
+?? tasks/plan-2026-09-15-mileage-r3-drivers.md
+?? tasks/plan-2026-09-15-mileage-r4-accountant-report.md
+?? tasks/plan-2026-09-15-mileage-r5-trip-filters.md
+?? tasks/plan-2026-09-15-mileage-rebuild.md
+?? tasks/spec-2026-09-15-mileage-section-design.md
+?? tasks/spec-2026-10-01-neutral-feedback-page.md
+?? tasks/spec-2026-10-01-receipts-section-review.md
