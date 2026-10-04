@@ -215,7 +215,7 @@
     },
     {
       "path": "/api/cron/recurring-invoices",
-      "schedule": "0 1 * * *"
+      "schedule": "0 9 * * 1-5"
     },
     {
       "path": "/api/cron/generate-slots",
