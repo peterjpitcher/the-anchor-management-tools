@@ -245,6 +245,41 @@ const BODY_CSS = `    .addresses {
     
 `
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+/** A calendar date string (its leading YYYY-MM-DD) as UTC midnight, or null when unreadable. */
+function calendarDateUtcMs(value: string | null | undefined): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? '').trim())
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const ms = Date.UTC(year, month - 1, day)
+  const date = new Date(ms)
+  // Rejects a date that parses but does not exist (31 February), rather than rolling it on.
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null
+  }
+  return ms
+}
+
+/**
+ * Whole calendar days from one date string to another, or null when either is unreadable.
+ *
+ * Counted in UTC from the two date strings alone, so the answer cannot change with the
+ * server's time zone or across a clock change. A PDF rendered on a UTC server and one rendered
+ * in London must print the same terms.
+ */
+function calendarDaysBetween(from: string | null | undefined, to: string | null | undefined): number | null {
+  const start = calendarDateUtcMs(from)
+  const end = calendarDateUtcMs(to)
+  if (start === null || end === null) return null
+  return Math.round((end - start) / MS_PER_DAY)
+}
+
+/** Statuses with nothing left to collect. The same three as `payment-link-footer.ts`. */
+const NOTHING_TO_COLLECT = new Set(['void', 'written_off', 'paid'])
+
 export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote, deposit } = data
   const isRemittanceAdvice = documentKind === 'remittance_advice'
@@ -279,12 +314,15 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     return `£${amount.toFixed(2)}`
   }
 
+  // The Terms box states the gap between THIS invoice's own dates. It used to print the
+  // client's standing terms (30 days when none were set), which told a customer "7 days" on an
+  // invoice due today. Where the dates cannot give a sensible gap it falls back to the plain
+  // due date, which is never wrong.
   const formatPaymentTerms = () => {
-    const terms = invoice.vendor?.payment_terms
-    if (typeof terms !== 'number') {
-      return '30 days'
-    }
-    return terms === 0 ? 'Due upon receipt' : `${terms} days`
+    const days = calendarDaysBetween(invoice.invoice_date, invoice.due_date)
+    if (days === null || days < 0) return formatDateOrDash(invoice.due_date)
+    if (days === 0) return 'Due on receipt'
+    return days === 1 ? '1 day' : `${days} days`
   }
 
   const formatDateOrDash = (date: string | null | undefined) => {
@@ -353,6 +391,18 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
   const creditTotal = invoiceIssuedCreditTotal(invoice)
   const outstandingBalance = invoiceBalanceDue(invoice)
+
+  // "Pay online" is printed only when the email this invoice goes out with carries the pay
+  // link: the client has online payment switched on and there is a balance to collect. It is
+  // the rule in `invoiceCanOfferPayPal` (src/lib/invoices/payment-link-footer.ts), restated
+  // because that module is server-only and mints the link token; a test holds the two in step.
+  // In every other case, including a caller that did not load the client's flag, no line is
+  // printed: better silent than promising a link the customer was never sent.
+  const offersOnlinePayment =
+    documentKind === 'invoice' &&
+    invoice.vendor?.paypal_payments_enabled === true &&
+    !NOTHING_TO_COLLECT.has(String(invoice.status ?? '')) &&
+    outstandingBalance > 0
 
   // An invoice raised for a private booking can be born with payments already
   // on it, so the plain invoice view has to be able to show a balance rather
@@ -621,8 +671,8 @@ ${renderDocumentHeader({
           <p><strong>Reference:</strong> ${escapeHtml(invoice.invoice_number)}</p>
         </div>
         <div class="payment-method">
-          <h4>Other Methods</h4>
-          <p><strong>Card Payments:</strong> Available on request</p>
+          <h4>Other Methods</h4>${offersOnlinePayment ? `
+          <p><strong>Pay online:</strong> use the link in your invoice email</p>` : ''}
           <p>For payment queries or to arrange card payment:</p>
           <p>Contact: ${escapeHtml(CONTACT_NAME)}</p>
           <p>Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
