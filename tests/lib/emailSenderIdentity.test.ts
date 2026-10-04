@@ -10,7 +10,12 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { UNSUBSCRIBE_HEADERS } from '@/lib/email/emailService'
-import { invoiceReplyToAddress, invoiceSenderIdentity } from '@/lib/email/invoice-sender'
+import {
+  invoiceEmailRouting,
+  invoiceProviderPin,
+  invoiceReplyToAddress,
+  invoiceSenderIdentity,
+} from '@/lib/email/invoice-sender'
 
 describe('List-Unsubscribe headers', () => {
   it('offers the HTTPS route only, with the one-click post', () => {
@@ -40,6 +45,7 @@ describe('invoice sender identity', () => {
     delete process.env.INVOICE_EMAIL_REPLY_TO
     delete process.env.EMAIL_FROM_ADDRESS
     delete process.env.MICROSOFT_USER_EMAIL
+    delete process.env.INVOICE_EMAIL_PROVIDER
   })
 
   it('keeps the verified address and puts Orange Jelly in front of it', () => {
@@ -86,5 +92,52 @@ describe('invoice sender identity', () => {
     process.env.INVOICE_EMAIL_REPLY_TO = 'accounts@orangejelly.co.uk'
 
     expect(invoiceReplyToAddress()).toBe('accounts@orangejelly.co.uk')
+  })
+
+  describe('the mailbox pin (INVOICE_EMAIL_PROVIDER)', () => {
+    // Every invoice email since 25 June 2026 left from the Resend address rather than the
+    // Orange Jelly mailbox. The switch puts them back, and until the owner sets it nothing
+    // about a send may change.
+    it('adds nothing at all while the switch is unset', () => {
+      expect(invoiceProviderPin()).toEqual({})
+      expect(invoiceProviderPin()).not.toHaveProperty('provider')
+    })
+
+    it('pins Microsoft Graph when the switch is set to graph, whatever the case or spacing', () => {
+      process.env.INVOICE_EMAIL_PROVIDER = '  Graph '
+
+      expect(invoiceProviderPin()).toEqual({ provider: 'graph' })
+    })
+
+    it.each(['resend', 'true', 'yes', 'microsoft', ''])('fails closed on the mistyped value %j', (value) => {
+      process.env.INVOICE_EMAIL_PROVIDER = value
+
+      expect(invoiceProviderPin()).toEqual({})
+    })
+
+    it('gives a send the same sender and reply-to as before, with no provider, while unset', () => {
+      process.env.EMAIL_FROM_ADDRESS = 'The Anchor <noreply@auth.orangejelly.co.uk>'
+      process.env.MICROSOFT_USER_EMAIL = 'peter@orangejelly.co.uk'
+
+      const routing = invoiceEmailRouting()
+
+      expect(routing).toEqual({
+        from: 'Orange Jelly Limited <noreply@auth.orangejelly.co.uk>',
+        replyTo: 'peter@orangejelly.co.uk',
+      })
+      expect(routing).not.toHaveProperty('provider')
+    })
+
+    it('adds the pin, and changes nothing else, once the switch is on', () => {
+      process.env.EMAIL_FROM_ADDRESS = 'The Anchor <noreply@auth.orangejelly.co.uk>'
+      process.env.MICROSOFT_USER_EMAIL = 'peter@orangejelly.co.uk'
+      process.env.INVOICE_EMAIL_PROVIDER = 'graph'
+
+      expect(invoiceEmailRouting()).toEqual({
+        from: 'Orange Jelly Limited <noreply@auth.orangejelly.co.uk>',
+        replyTo: 'peter@orangejelly.co.uk',
+        provider: 'graph',
+      })
+    })
   })
 })

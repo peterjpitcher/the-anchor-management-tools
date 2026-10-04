@@ -1,8 +1,8 @@
 /**
  * Who an invoice, receipt or quote comes from.
  *
- * THE OWNER DECIDED THIS ON 28 AUGUST 2026, recorded at
- * `src/app/actions/privateBookingInvoice.ts:489`: every invoice goes out from Orange Jelly
+ * THE OWNER DECIDED THIS ON 28 AUGUST 2026, recorded in `deliverInvoice` in
+ * `src/app/actions/privateBookingInvoice.ts`: every invoice goes out from Orange Jelly
  * Limited, the official business name, and nothing else. The venue is named in the body only
  * as a description of the booking, never as the sender.
  *
@@ -24,6 +24,7 @@
  */
 
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import { invoiceEmailProvider } from '@/lib/invoices/release-switches'
 
 function readTrimmed(name: string): string | undefined {
   const value = process.env[name]?.trim()
@@ -62,4 +63,39 @@ export function invoiceSenderIdentity(): string | undefined {
  */
 export function invoiceReplyToAddress(): string | undefined {
   return readTrimmed('INVOICE_EMAIL_REPLY_TO') ?? readTrimmed('MICROSOFT_USER_EMAIL')
+}
+
+/**
+ * The provider pin on its own, to spread into a `sendEmail` call.
+ *
+ * Every invoice email since 25 June 2026 has left from `noreply@auth.orangejelly.co.uk`
+ * rather than the Orange Jelly mailbox: a side effect of the communications logging change,
+ * not a decision. `INVOICE_EMAIL_PROVIDER=graph` puts them back on the mailbox, so they sit
+ * in its Sent Items and a reply comes straight back.
+ *
+ * Returns an EMPTY object while the switch is off, never `{ provider: undefined }`, so a
+ * send made with the switch unset is exactly the send it was before this existed.
+ *
+ * Use this alone only where the sender and reply-to are deliberately left as they are (the
+ * client statement). Everything else wants `invoiceEmailRouting`.
+ */
+export function invoiceProviderPin(): { provider?: 'graph' } {
+  const provider = invoiceEmailProvider()
+  return provider ? { provider } : {}
+}
+
+/**
+ * Who an invoice email is from, where a reply goes and which provider carries it: the three
+ * things every invoice, chase and receipt must agree on. One helper so a new sender cannot
+ * take the identity and forget the pin, which is how the mailbox was lost in June.
+ *
+ * `from` only matters on the Resend route. Microsoft Graph sends as the mailbox itself and
+ * ignores it, so it is safe to pass on both.
+ */
+export function invoiceEmailRouting(): { from: string | undefined; replyTo: string | undefined; provider?: 'graph' } {
+  return {
+    from: invoiceSenderIdentity(),
+    replyTo: invoiceReplyToAddress(),
+    ...invoiceProviderPin(),
+  }
 }
