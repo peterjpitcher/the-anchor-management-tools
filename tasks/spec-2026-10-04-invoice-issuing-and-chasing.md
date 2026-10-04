@@ -69,7 +69,7 @@ Small fixes, no new wording. **Order matters: R0.1, the R0.2 code fix and R0.5 a
 The form at `src/app/(authenticated)/invoices/vendors/page.tsx` does not send those two fields, and `VendorService.updateVendor` in `src/services/vendors.ts` writes null for both. Every record the audit log shows as saved there (seven) is now blank.
 - Fix: `updateVendor` stops writing `email` and `contact_name`. No form sends them.
 - Test: saving the form leaves the stored email and contact name unchanged.
-- Data: restore the email on the four private hire records, from the booking's contact email, so the Chase Payment dialog prefills. The business records are left as they are: each has a primary contact holding the same address. After the restore, recording a payment for these four guests emails them a receipt, as it already does for every other client.
+- Data: restore the email on the four private hire records, from the booking's contact email, so the Chase Payment dialog prefills. The statements are written and checked, not applied: `tasks/data-fixes-2026-10-04-invoice-r0.sql`. The business records are left as they are: each has a primary contact holding the same address. After the restore, recording a payment for these four guests emails them a receipt, as it already does for every other client.
 
 **R0.3 Recurring invoices are sent but never chased.**
 `src/app/api/cron/recurring-invoices/route.ts` marks the invoice sent before it emails it, and never records `sent_at`. The reminder job skips any invoice without `sent_at`. If the email fails, the invoice still shows as sent and is never retried.
@@ -187,7 +187,7 @@ An "Emails" panel on the invoice page: every customer email about the invoice, n
 
 Above the list, one line: "Next automatic reminder: Tuesday 13 October (forecast)", or "Reminders held until 20 October", or "No automatic reminders: both have been sent", or "No automatic reminders: chase by hand".
 
-The Chase Payment dialog's "recent reminder" warning reads the same data, and both send dialogs show the server's warnings instead of closing as a plain success.
+The Chase Payment dialog's "recent reminder" warning keeps reading the invoice's own email log, which now includes manual chases (R0.7) and the automatic reminders. Both send dialogs show the server's warnings instead of closing as a plain success.
 
 Ships after R2.
 
