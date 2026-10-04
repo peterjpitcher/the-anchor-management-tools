@@ -101,25 +101,20 @@ const RECEIPT_INVOICE_SELECT = `
 `
 
 /**
- * `sendInvoiceEmail` catches a provider call that threw and hands back `success: false`, so a
- * timeout arrives here looking like a refusal. It is not one: the mailbox may have taken the
- * email before the answer was lost. An error that reads like a lost answer is therefore treated
- * as unknown, which is the safe side: at worst a person checks Sent Items for an email that
- * never left, rather than a customer getting the same receipt twice.
- *
- * The last two alternatives are the sender's own "the send could not be logged" errors. It
- * raises those both after a send the provider accepted and after one it refused, so on their
- * own they do not say which happened.
+ * `sendInvoiceEmail` never throws: a failed send comes back as `success: false`. That is two
+ * different things. `uncertain` marks the one where the request left and no answer came back
+ * (a timeout, a dropped connection): the mailbox may have taken the email. That is treated as
+ * unknown, which is the safe side: at worst a person checks Sent Items for an email that never
+ * left, rather than a customer getting the same receipt twice. Every other failure is a
+ * definite refusal and nothing was sent.
  */
-const LOST_ANSWER_ERROR = /tim(?:e|ed)[\s-]?out|ETIMEDOUT|ECONNRESET|ECONNABORTED|EPIPE|socket hang up|fetch failed|abort|gateway|could not be logged|logging failed/i
-
 type SendResult = Awaited<ReturnType<typeof sendInvoiceEmail>>
 
 function classifySend(result: SendResult): 'accepted' | 'accepted_unrecorded' | 'refused' | 'unknown' {
   if (result.success) return 'accepted'
   // A provider message id means the provider took it. Only our own record of the send failed.
   if (result.messageId) return 'accepted_unrecorded'
-  return LOST_ANSWER_ERROR.test(result.error ?? '') ? 'unknown' : 'refused'
+  return result.uncertain ? 'unknown' : 'refused'
 }
 
 function receiptClaim(paymentId: string): { key: string; hash: string } {
