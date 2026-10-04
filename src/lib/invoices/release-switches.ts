@@ -2,8 +2,9 @@
  * The three switches that keep new invoice email behaviour off until the owner turns it on.
  *
  * Each one FAILS CLOSED: unset, empty or mistyped means off. Deploying this code therefore
- * starts no new customer email. They are read at send time, not at build time, so setting one
- * in Vercel takes effect on the next request with no redeploy of the logic.
+ * starts no new customer email. They are read when an email is about to be sent, never cached.
+ * On Vercel a changed environment variable only reaches a NEW deployment, so setting one means
+ * redeploying before it takes effect.
  *
  * See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md, "Release switches".
  */
