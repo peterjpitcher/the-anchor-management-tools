@@ -40,26 +40,41 @@ const quote = {
 
 describe('invoice email draft text', () => {
   it('quotes the amount it is given', () => {
-    expect(buildDefaultInvoiceEmailBody(invoice)).toContain('Amount Due: £460.50')
+    expect(buildDefaultInvoiceEmailBody(invoice)).toContain('Invoice INV-003WC is attached: £460.50, due Wednesday 8 July.')
   })
 
   it('follows the invoice when the total changes, rather than keeping the old figure', () => {
     const rebuilt = { ...invoice, total_amount: 500 }
     const body = buildDefaultInvoiceEmailBody(rebuilt)
 
-    expect(body).toContain('Amount Due: £500.00')
+    expect(body).toContain('is attached: £500.00, due Wednesday 8 July.')
     expect(body).not.toContain('460.50')
   })
 
-  it('names the invoice in the subject', () => {
-    expect(buildDefaultInvoiceEmailSubject(invoice)).toBe(
-      'Invoice INV-003WC from Orange Jelly Limited'
-    )
+  it('follows the invoice when a payment or a credit note lands while the page is open', () => {
+    const partPaid = { ...invoice, paid_amount: 100, credits: [{ status: 'issued', amount_inc_vat: 60.5 }] }
+    const body = buildDefaultInvoiceEmailBody(partPaid)
+
+    expect(body).toContain('is attached: £300.00, due Wednesday 8 July.')
+    expect(body).not.toContain('is attached: £460.50')
   })
 
-  it('addresses the client by contact name when there is one', () => {
-    const withContact = { ...invoice, vendor: { ...invoice.vendor, contact_name: 'Mihiir' } }
-    expect(buildDefaultInvoiceEmailBody(withContact)).toContain('Hi Mihiir,')
+  it('names the invoice in the subject', () => {
+    expect(buildDefaultInvoiceEmailSubject(invoice)).toBe('Invoice INV-003WC from Orange Jelly')
+  })
+
+  it('addresses the person by the first name the server resolved', () => {
+    expect(buildDefaultInvoiceEmailBody(invoice, 'Mihiir')).toContain('Hi Mihiir,')
+  })
+
+  it('never addresses the company, even when the legacy contact_name column is filled in', () => {
+    // contact_name used to be read here. It is blank on most records (the Vendors page
+    // wiped it) and, where it survives, is not reliably a person.
+    const withContact = { ...invoice, vendor: { ...invoice.vendor, contact_name: 'Golden Barrels Accounts' } }
+    const body = buildDefaultInvoiceEmailBody(withContact)
+
+    expect(body).toContain('Hi there,')
+    expect(body).not.toContain('Golden')
   })
 })
 

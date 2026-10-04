@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { Alert, Card } from '@/ds'
 import { cn } from '@/lib/utils'
@@ -53,7 +54,7 @@ export default async function InvoicePortalPage({
   const admin = createAdminClient()
   const { data: invoice, error: loadError } = await admin
     .from('invoices')
-    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name, paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)')
+    .select('id, invoice_number, vendor_id, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)')
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -91,8 +92,6 @@ export default async function InvoicePortalPage({
 
   const vendor = (invoice as unknown as {
     vendor?: {
-      name?: string | null
-      contact_name?: string | null
       paypal_payments_enabled?: boolean | null
     } | null
   }).vendor
@@ -100,7 +99,11 @@ export default async function InvoicePortalPage({
   const paypalEnabled = vendor?.paypal_payments_enabled === true
   const payable = invoiceCollectible && paypalEnabled
   const paymentUnavailable = invoiceCollectible && !paypalEnabled
-  const firstName = (vendor?.contact_name || vendor?.name || '').trim().split(' ')[0]
+  // The same greeting rule as the invoice emails: the primary contact's first name, else
+  // the linked guest's, else none, and the lead below is then worded without a name. This
+  // used to take the first word of the company name, which greeted Golden Barrels Limited
+  // as "Hi Golden".
+  const firstName = await resolveInvoiceGreetingName(admin, invoice.vendor_id)
   // The heading and the headline figure must agree with the state. A cancelled
   // invoice showing "Pay your invoice" over "Amount due now GBP 975.60"
   // contradicts the notice sitting directly under it, and the big number is the

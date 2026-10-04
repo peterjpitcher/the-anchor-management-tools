@@ -442,10 +442,16 @@ describe('generatePrivateBookingInvoice', () => {
       expect(mockedSendInvoiceEmail).not.toHaveBeenCalled()
     })
 
-    it('sends from Orange Jelly Limited, never a trading name', async () => {
+    it('signs off as Orange Jelly Limited and names the venue only to describe the booking', async () => {
       // Owner decision 2026-08-28: every invoice goes out from the official
       // business name and nothing else. This was considered and rejected as a
       // per-booking variant, so the test exists to stop a well-meaning revert.
+      //
+      // The sender itself is set in `invoice-sender.ts` and tested there. What
+      // is pinned here is the wording approved on 4 October 2026: the customer
+      // booked a party at the pub and has only ever dealt with The Anchor, so
+      // the subject and opening line name the booking, and the sign-off is
+      // still Orange Jelly.
       mockedCreateAdminClient.mockReturnValue(
         makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
       )
@@ -456,11 +462,119 @@ describe('generatePrivateBookingInvoice', () => {
       })
 
       const [, , subject, body] = mockedSendInvoiceEmail.mock.calls[0]
-      expect(subject).toContain('Orange Jelly Limited')
-      expect(subject).not.toContain('The Anchor')
-      expect(body).toContain('Orange Jelly Limited')
-      // The sign-off is the last line, and it must be the legal entity.
-      expect(String(body).trimEnd().endsWith('Orange Jelly Limited')).toBe(true)
+      expect(subject).toBe('Invoice INV-003WD for your booking at The Anchor on Thursday 15 October')
+      expect(body).toContain('Thanks again for booking with us at The Anchor. Your invoice for Thursday 15 October 2026 is attached.')
+      expect(subject).not.toMatch(/from The Anchor/i)
+      expect(body).not.toMatch(/from The Anchor/i)
+      // The sign-off is the last thing in the body, and it is the legal entity.
+      expect(String(body).endsWith('Many thanks,\nPeter Pitcher\nOrange Jelly Limited\n07990 587315')).toBe(true)
+    })
+
+    it('greets the customer by first name, never by full name or a placeholder', async () => {
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+      )
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+      // Only a full name on the booking: the first name is taken out of it.
+      expect(String(mockedSendInvoiceEmail.mock.calls[0][3]).startsWith('Hi Test,\n\n')).toBe(true)
+
+      mockedSendInvoiceEmail.mockClear()
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({
+          booking: buildBooking({ customer_first_name: 'Priya', customer_full_name: 'Priya Example' }),
+          invoice: buildInvoice(),
+        }),
+      )
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+      expect(String(mockedSendInvoiceEmail.mock.calls[0][3]).startsWith('Hi Priya,\n\n')).toBe(true)
+
+      mockedSendInvoiceEmail.mockClear()
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({
+          booking: buildBooking({ customer_full_name: null, customer_name: '' }),
+          invoice: buildInvoice(),
+        }),
+      )
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+      const fallback = String(mockedSendInvoiceEmail.mock.calls[0][3])
+      expect(fallback.startsWith('Hi there,\n\n')).toBe(true)
+      expect(fallback).not.toContain('Hi Customer')
+    })
+
+    it('says the deposit is held separately when that was the treatment chosen', async () => {
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+      )
+
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+
+      const body = String(mockedSendInvoiceEmail.mock.calls[0][3])
+      expect(body).toContain(
+        'Your booking and damage deposit of £250.00 received on Wednesday 12 August 2026 is held separately and will be refunded within 48 hours after your event, less any documented deductions. It is not part of the amounts above.',
+      )
+      expect(body).not.toContain('has been applied to this invoice')
+      // Nothing has come off this invoice, so the balance is the whole of it.
+      expect(body).toContain('Balance due: £1,140.00\nDue date: Thursday 1 October 2026')
+    })
+
+    it('says the deposit was applied when it was deducted, and shows it as a payment received', async () => {
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({
+          booking: buildBooking(),
+          invoice: buildInvoice({ paid_amount: 250, status: 'partially_paid' }),
+        }),
+      )
+
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'deducted' })
+
+      const body = String(mockedSendInvoiceEmail.mock.calls[0][3])
+      expect(body).toContain('Your deposit of £250.00 received on Wednesday 12 August 2026 has been applied to this invoice.')
+      expect(body).not.toContain('held separately')
+      expect(body).toContain('Invoice total: £1,140.00\nPayments received: £250.00\nBalance due: £890.00')
+    })
+
+    it('says nothing about a deposit that was waived', async () => {
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({
+          booking: buildBooking({ deposit_waived: true, deposit_paid_date: null }),
+          invoice: buildInvoice(),
+        }),
+      )
+
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+
+      const body = String(mockedSendInvoiceEmail.mock.calls[0][3])
+      expect(body).not.toMatch(/deposit/i)
+    })
+
+    it('dates the deposit on the London calendar, not the UTC one', async () => {
+      // 23:30 UTC on 12 August is 00:30 on 13 August in London. deposit_paid_date is a
+      // timestamp, and reading its first ten characters would print the day before.
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({
+          booking: buildBooking({ deposit_paid_date: '2026-08-12T23:30:00.000Z' }),
+          invoice: buildInvoice(),
+        }),
+      )
+
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+
+      expect(String(mockedSendInvoiceEmail.mock.calls[0][3])).toContain('received on Thursday 13 August 2026')
+    })
+
+    it('renders nothing broken, and no banned dash, in the email it sends', async () => {
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+      )
+
+      await generatePrivateBookingInvoice({ bookingId: BOOKING_ID, depositTreatment: 'held_separately' })
+
+      const [, , subject, body] = mockedSendInvoiceEmail.mock.calls[0]
+      for (const text of [String(subject), String(body)]) {
+        expect(text).not.toMatch(/undefined|NaN|Invalid Date|[{}]/)
+        expect(text.includes(String.fromCharCode(0x2013))).toBe(false)
+        expect(text.includes(String.fromCharCode(0x2014))).toBe(false)
+      }
     })
 
     it('passes the deposit statement to the PDF when it is held separately', async () => {

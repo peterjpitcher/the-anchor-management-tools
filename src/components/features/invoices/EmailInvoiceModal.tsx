@@ -2,27 +2,38 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendInvoiceViaEmail } from '@/app/actions/email'
-import { Modal, Icon, Button, Input, Textarea, Field, Alert } from '@/ds'
+import { Modal, Icon, Button, Input, Textarea, Field, Alert, toast } from '@/ds'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
-  buildDefaultInvoiceEmailBody,
-  buildDefaultInvoiceEmailSubject,
+  buildDefaultInvoiceEmailDraft,
+  invoiceCanOfferPayPal,
+  PAY_ONLINE_POSTSCRIPT_NOTE,
 } from '@/lib/invoices/email-drafts'
 
 interface EmailInvoiceModalProps {
   invoice: InvoiceWithDetails
+  /**
+   * The first name to greet, resolved on the server (`getInvoiceEmailDraftContext`). The
+   * contacts it comes from cannot be read from the browser by most staff, and the draft
+   * must never fall back to the company name. Nothing means "Hi there".
+   */
+  greetingName?: string | null
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
+export function EmailInvoiceModal({ invoice, greetingName, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
   const supabase = useSupabase()
   const [toEmails, setToEmails] = useState('')
   const [ccEmails, setCcEmails] = useState('')
-  const [subject, setSubject] = useState(() => buildDefaultInvoiceEmailSubject(invoice))
-  const [body, setBody] = useState(() => buildDefaultInvoiceEmailBody(invoice))
+  // Rebuilt on every render and compared as text, so the draft follows anything the wording
+  // quotes (number, reference, balance, credits, due date, greeting) without a list of
+  // fields here to fall out of date.
+  const { subject: defaultSubject, body: defaultBody } = buildDefaultInvoiceEmailDraft(invoice, greetingName)
+  const [subject, setSubject] = useState(defaultSubject)
+  const [body, setBody] = useState(defaultBody)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,22 +49,13 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
    *
    * Rebuilding whenever the dialog opens, and whenever a figure the text quotes
    * changes, keeps the body honest. Edits made while it is open survive, because
-   * none of these dependencies move until the invoice itself does.
+   * the default text does not move until the invoice itself does.
    */
   useEffect(() => {
     if (!isOpen) return
-    setSubject(buildDefaultInvoiceEmailSubject(invoice))
-    setBody(buildDefaultInvoiceEmailBody(invoice))
-  }, [
-    isOpen,
-    invoice.id,
-    invoice.invoice_number,
-    invoice.total_amount,
-    invoice.due_date,
-    invoice.notes,
-    invoice.vendor?.contact_name,
-    invoice.vendor?.name,
-  ])
+    setSubject(defaultSubject)
+    setBody(defaultBody)
+  }, [isOpen, defaultSubject, defaultBody])
 
   // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
@@ -101,6 +103,13 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
 
       if (result.error) {
         throw new Error(result.error)
+      }
+
+      // The email has gone, so the dialog closes either way: leaving it open invites a
+      // second send. A warning means something after the send did not save (the log, the
+      // sent date, the status), and closing silently used to hide that.
+      if ('warnings' in result && result.warnings && result.warnings.length > 0) {
+        toast.warning(`Invoice emailed, but check this: ${result.warnings.join('. ')}`, { duration: 10000 })
       }
 
       onSuccess?.()
@@ -173,6 +182,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
+          hint={invoiceCanOfferPayPal(invoice) ? PAY_ONLINE_POSTSCRIPT_NOTE : undefined}
         />
 
         <Alert tone="info"

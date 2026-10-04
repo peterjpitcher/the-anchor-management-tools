@@ -1,6 +1,9 @@
 'use server'
 
-import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+import type { InvoiceEmailDraft } from '@/lib/invoices/email-copy'
+import { buildDefaultChaseEmailDraft, buildDefaultInvoiceEmailDraft } from '@/lib/invoices/email-drafts'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -18,9 +21,6 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
-
-const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
 // Email validation schema
 const SendInvoiceEmailSchema = z.object({
@@ -102,12 +102,6 @@ function toUtcMidnightMs(isoDate: string): number {
   return Date.parse(`${isoDate}T00:00:00.000Z`)
 }
 
-function formatIsoDateForUk(isoDate: string): string {
-  const dt = new Date(`${isoDate}T00:00:00.000Z`)
-  if (Number.isNaN(dt.getTime())) return isoDate
-  return dt.toLocaleDateString('en-GB', { timeZone: 'UTC' })
-}
-
 function buildEmailDispatchIdempotency(
   kind: 'invoice_send' | 'invoice_chase' | 'quote_send',
   targetId: string,
@@ -132,6 +126,110 @@ function buildEmailDispatchIdempotency(
   return {
     key: `action:${kind}:${targetId}:${requestHash.slice(0, 16)}`,
     requestHash
+  }
+}
+
+/**
+ * What the send and chase dialogs cannot work out in the browser: who to greet, and which
+ * booking a private hire invoice is for.
+ */
+export interface InvoiceEmailDraftContext {
+  /** A person's first name, or null for "Hi there". Never a company name. */
+  greetingName: string | null
+  /** The event date of the private booking this invoice belongs to, or null. */
+  bookingEventDate: string | null
+}
+
+const NO_DRAFT_CONTEXT: InvoiceEmailDraftContext = { greetingName: null, bookingEventDate: null }
+
+/**
+ * The event date of the private booking an invoice belongs to, or null for any other
+ * invoice. `private_booking_invoices` holds one row per booking invoice, original or
+ * additional. Never throws: a chase that cannot name the booking is still worth sending.
+ */
+async function loadInvoiceBookingEventDate(
+  admin: ReturnType<typeof createAdminClient>,
+  invoiceId: string
+): Promise<string | null> {
+  try {
+    const { data: link, error: linkError } = await admin
+      .from('private_booking_invoices')
+      .select('booking_id')
+      .eq('invoice_id', invoiceId)
+      .maybeSingle()
+    if (linkError || !link?.booking_id) return null
+
+    const { data: booking, error: bookingError } = await admin
+      .from('private_bookings')
+      .select('event_date')
+      .eq('id', link.booking_id)
+      .maybeSingle()
+    if (bookingError) return null
+
+    return booking?.event_date ? String(booking.event_date) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The subject and body to send: the dialog's own text where it gave any, otherwise the
+ * shared default wording.
+ *
+ * The dialogs send what the operator saw, so the default is built only when the subject or
+ * the body arrives blank. Working it out here, rather than leaving it to `sendInvoiceEmail`,
+ * means the text saved in the email log is the text that went, not a placeholder.
+ */
+async function resolveEmailText(
+  given: { subject?: string; body?: string },
+  buildDefault: () => Promise<InvoiceEmailDraft>
+): Promise<InvoiceEmailDraft> {
+  if (given.subject && given.body) return { subject: given.subject, body: given.body }
+  const fallback = await buildDefault()
+  return { subject: given.subject || fallback.subject, body: given.body || fallback.body }
+}
+
+async function loadInvoiceEmailDraftContext(
+  admin: ReturnType<typeof createAdminClient>,
+  invoiceId: string,
+  vendorId: string | null | undefined
+): Promise<InvoiceEmailDraftContext> {
+  const [greetingName, bookingEventDate] = await Promise.all([
+    resolveInvoiceGreetingName(admin, vendorId),
+    loadInvoiceBookingEventDate(admin, invoiceId),
+  ])
+  return { greetingName, bookingEventDate }
+}
+
+/**
+ * The greeting and booking date for an invoice's email dialogs, resolved on the server.
+ *
+ * The dialogs build their draft in the browser, but the contacts and guest records the
+ * greeting comes from are readable by super admins only under row level security, so the
+ * lookup runs here on the admin client, behind the invoice view permission. It returns a
+ * first name and a date and nothing else. Any failure gives the neutral answer ("Hi there",
+ * no booking named) rather than an error: a greeting is not worth failing a page over.
+ */
+export async function getInvoiceEmailDraftContext(invoiceId: string): Promise<InvoiceEmailDraftContext> {
+  try {
+    const hasPermission = await checkUserPermission('invoices', 'view')
+    if (!hasPermission) return NO_DRAFT_CONTEXT
+
+    if (!z.string().uuid().safeParse(invoiceId).success) return NO_DRAFT_CONTEXT
+
+    const admin = createAdminClient()
+    const { data: invoice, error } = await admin
+      .from('invoices')
+      .select('vendor_id')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (error || !invoice) return NO_DRAFT_CONTEXT
+
+    return await loadInvoiceEmailDraftContext(admin, invoiceId, invoice.vendor_id)
+  } catch (error) {
+    console.error('Error in getInvoiceEmailDraftContext:', error)
+    return NO_DRAFT_CONTEXT
   }
 }
 
@@ -226,8 +324,11 @@ export async function sendInvoiceViaEmail(formData: FormData) {
 
     const toAddress = recipientResolution.to
     const ccAddresses = recipientResolution.cc
-    const subject = validatedData.subject || `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-    const body = validatedData.body || 'Default invoice email template used'
+
+    const { subject, body } = await resolveEmailText(validatedData, async () => {
+      const context = await loadInvoiceEmailDraftContext(admin, invoice.id, invoice.vendor_id)
+      return buildDefaultInvoiceEmailDraft(invoice, context.greetingName)
+    })
     const senderId = (await supabase.auth.getUser()).data.user?.id || null
 
     const idempotencyContext = buildEmailDispatchIdempotency(
@@ -262,9 +363,11 @@ export async function sendInvoiceViaEmail(formData: FormData) {
       const result = await sendInvoiceEmail(
         invoice,
         toAddress,
-        validatedData.subject,
-        validatedData.body,
-        ccAddresses
+        subject,
+        body,
+        ccAddresses,
+        undefined,
+        { emailKind: 'invoice' }
       )
       if (!result.success) {
         await releaseIdempotencyClaim(admin, idempotencyContext.key, idempotencyContext.requestHash)
@@ -473,25 +576,6 @@ export async function sendChasePaymentEmail(formData: FormData) {
       return { error: 'Cannot send a chase email when there is no outstanding balance' }
     }
 
-    // Default subject and body for chase
-    const defaultSubject = `Gentle reminder: Invoice ${invoice.invoice_number} - ${daysOverdue} days overdue`
-    const defaultBody = `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
-
-I hope you're well!
-
-Just a gentle reminder that invoice ${invoice.invoice_number} was due on ${formatIsoDateForUk(dueDateIso)} and is now ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue.
-
-${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits applied: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Amount Outstanding: £${outstandingAmount.toFixed(2)}
-
-I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
-
-Many thanks,
-${CONTACT_NAME}
-Orange Jelly Limited
-${CONTACT_PHONE}
-
-P.S. I've attached a copy of the invoice for your reference.`
-
     const recipientValidation = validateRecipientInput(String(validatedData.recipientEmail))
     if ('error' in recipientValidation) {
       return { error: recipientValidation.error }
@@ -514,8 +598,16 @@ P.S. I've attached a copy of the invoice for your reference.`
     const toAddress = recipientResolution.to
     const ccAddresses = recipientResolution.cc
     const senderId = (await supabase.auth.getUser()).data.user?.id || null
-    const finalSubject = validatedData.subject || defaultSubject
-    const finalBody = validatedData.body || defaultBody
+    // For a private hire invoice the default chase names the booking at The Anchor, so the
+    // customer can place an email from a company they have never dealt with.
+    const { subject: finalSubject, body: finalBody } = await resolveEmailText(validatedData, async () => {
+      const context = await loadInvoiceEmailDraftContext(admin, invoice.id, invoice.vendor_id)
+      return buildDefaultChaseEmailDraft(invoice, {
+        firstName: context.greetingName,
+        todayIso,
+        bookingEventDate: context.bookingEventDate,
+      })
+    })
 
     const idempotencyContext = buildEmailDispatchIdempotency(
       'invoice_chase',
@@ -546,12 +638,16 @@ P.S. I've attached a copy of the invoice for your reference.`
     const warnings: string[] = []
 
     try {
+      // Labelled as a chase so the invoice history and the reminder job can tell a chase
+      // sent by hand from the invoice itself.
       const result = await sendInvoiceEmail(
         invoice,
         toAddress,
         finalSubject,
         finalBody,
-        ccAddresses
+        ccAddresses,
+        undefined,
+        { emailKind: 'chase' }
       )
       if (!result.success) {
         await releaseIdempotencyClaim(admin, idempotencyContext.key, idempotencyContext.requestHash)

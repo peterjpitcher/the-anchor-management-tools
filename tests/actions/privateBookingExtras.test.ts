@@ -33,10 +33,12 @@ let invoiceCount: number
 let deliveryState: string
 let deliveryClaimCount: number
 let rpc: ReturnType<typeof vi.fn>
+/** Extra columns on the booking row: who to greet and which event the invoice is for. */
+let guestFields: Record<string, unknown>
 
 function database(): void {
   const from = vi.fn((table: string) => {
-    const response = () => ({ data: table === 'private_booking_charge_batches' ? batch : table === 'private_bookings' ? { id: bookingId, invoice_id: originalId, contact_email: 'test@example.com', status: 'confirmed' } : table === 'private_booking_invoices' ? { kind: 'supplementary' } : null, error: null })
+    const response = () => ({ data: table === 'private_booking_charge_batches' ? batch : table === 'private_bookings' ? { id: bookingId, invoice_id: originalId, contact_email: 'test@example.com', status: 'confirmed', ...guestFields } : table === 'private_booking_invoices' ? { kind: 'supplementary' } : null, error: null })
     const chain: Record<string, unknown> = {}
     for (const method of ['select', 'eq', 'order', 'in', 'is']) chain[method] = vi.fn(() => chain)
     chain.single = vi.fn(async () => response())
@@ -71,6 +73,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   batch = { id: batchId, booking_id: bookingId, status: 'draft', invoice_id: null, lines, due_date: '2026-09-25', reference: 'Extra food', revision: 1, created_at: '2026-09-18T10:00:00Z', updated_at: '2026-09-18T10:00:00Z' }
   sentAt = null; paypalEnabled = true; invoiceCount = 0; deliveryState = 'not_sent'; deliveryClaimCount = 0
+  guestFields = {}
   vi.mocked(requirePrivateBookingBillingAdmin).mockResolvedValue({ userId: actorId })
   vi.mocked(createClient).mockResolvedValue({ auth: { getUser: async () => ({ data: { user: { id: actorId } } }) } } as unknown as Awaited<ReturnType<typeof createClient>>)
   vi.mocked(checkUserPermission).mockResolvedValue(true)
@@ -125,6 +128,33 @@ describe('private booking additional invoice actions', () => {
     const body = vi.mocked(sendInvoiceEmail).mock.calls[0][3]
     expect(body).toContain('£30.00')
     expect(body).not.toMatch(/undefined|NaN|Invalid Date/)
+  })
+
+  it('emails the additional invoice in the shared private hire wording, greeted by first name', async () => {
+    guestFields = { event_date: '2026-11-14', customer_first_name: 'Priya', customer_full_name: 'Priya Example' }
+    const input = await issueInput()
+    await issuePrivateBookingExtras(input)
+    const [, , subject, body] = vi.mocked(sendInvoiceEmail).mock.calls[0]
+    expect(subject).toBe('Invoice INV-EXTRA for your booking at The Anchor on Saturday 14 November')
+    expect(String(body).startsWith('Hi Priya,\n\n')).toBe(true)
+    expect(body).toContain("Here's the invoice for the extras we agreed for your booking at The Anchor on Saturday 14 November 2026. It covers those additional charges only, and your original invoice remains separate.")
+    expect(body).toContain('Balance due: £30.00\nDue date: Friday 25 September 2026')
+    // The deposit belongs to the original invoice, so this email never mentions one.
+    expect(body).not.toMatch(/deposit/i)
+    expect(String(body).endsWith('Many thanks,\nPeter Pitcher\nOrange Jelly Limited\n07990 587315')).toBe(true)
+  })
+
+  it('greets from the linked guest record, and "Hi there" when the booking names nobody', async () => {
+    guestFields = { customer: [{ first_name: 'Sam' }] }
+    await issuePrivateBookingExtras(await issueInput())
+    expect(String(vi.mocked(sendInvoiceEmail).mock.calls[0][3]).startsWith('Hi Sam,\n\n')).toBe(true)
+
+    vi.mocked(sendInvoiceEmail).mockClear()
+    guestFields = {}
+    expect(await resendPrivateBookingExtraInvoice(bookingId, invoiceId)).toMatchObject({ sent: true })
+    const body = String(vi.mocked(sendInvoiceEmail).mock.calls[0][3])
+    expect(body.startsWith('Hi there,\n\n')).toBe(true)
+    expect(body).not.toMatch(/^Hello,/)
   })
 
   it('keeps the invoice recoverable when suspended email fails, and retry uses it', async () => {

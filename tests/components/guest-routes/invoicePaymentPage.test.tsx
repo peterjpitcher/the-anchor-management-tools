@@ -33,6 +33,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
+// The greeting comes from the same lookup the invoice emails use: the primary contact's first
+// name, else the linked guest's, else none. It is stood in here; its own rules are tested in
+// tests/lib/invoiceGreeting.test.ts.
+const resolveInvoiceGreetingName = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/invoices/greeting', () => ({ resolveInvoiceGreetingName }))
+
 vi.mock('@/app/invoice-portal/[token]/InvoicePayClient', () => ({
   InvoicePayClient: () => <button type="button">Pay invoice</button>,
 }))
@@ -47,6 +53,7 @@ function invoice(paypalPaymentsEnabled: boolean) {
   return {
     id: 'invoice-1',
     invoice_number: 'INV-001',
+    vendor_id: 'vendor-1',
     status: 'sent',
     total_amount: 120,
     paid_amount: 0,
@@ -54,8 +61,6 @@ function invoice(paypalPaymentsEnabled: boolean) {
     due_date: '2026-09-30',
     sent_at: '2026-09-01T12:00:00.000Z',
     vendor: {
-      name: 'Acme Ltd',
-      contact_name: 'Alex',
       paypal_payments_enabled: paypalPaymentsEnabled,
     },
   }
@@ -72,6 +77,7 @@ async function renderPage(searchParams: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   invoiceRow = invoice(true)
+  resolveInvoiceGreetingName.mockResolvedValue('Alex')
 
   const chain: Record<string, ReturnType<typeof vi.fn>> = {}
   chain.eq = vi.fn(() => chain)
@@ -121,6 +127,31 @@ describe('invoice payment page', () => {
     expect(screen.queryByRole('button', { name: 'Pay invoice' })).not.toBeInTheDocument()
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
+  })
+
+  it('greets by the first name the shared lookup finds, asked for by the invoice\'s client', async () => {
+    await renderPage()
+
+    expect(screen.getByText("Hi Alex, here's what's outstanding on this invoice.")).toBeInTheDocument()
+    expect(resolveInvoiceGreetingName).toHaveBeenCalledWith(expect.anything(), 'vendor-1')
+  })
+
+  it('uses a neutral line when there is no name, never the first word of the company name', async () => {
+    // "Hi Golden," is what Golden Barrels Limited used to be shown here.
+    resolveInvoiceGreetingName.mockResolvedValue(null)
+
+    await renderPage()
+
+    expect(screen.getByText("Here's what's outstanding on this invoice.")).toBeInTheDocument()
+    expect(screen.queryByText(/^Hi /)).not.toBeInTheDocument()
+  })
+
+  it('does not ask the database for the company name or the legacy contact_name', async () => {
+    await renderPage()
+
+    const columns = String(select.mock.calls[0][0])
+    expect(columns).toContain('vendor_id')
+    expect(columns).not.toContain('contact_name')
   })
 
   it('mounts capture recovery after the vendor is disabled', async () => {
