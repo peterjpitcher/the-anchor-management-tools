@@ -179,7 +179,7 @@
     },
     {
       "path": "/api/cron/invoice-reminders",
-      "schedule": "0 9 * * *"
+      "schedule": "30 9 * * 1-5"
     },
     {
       "path": "/api/cron/birthday-reminders",
