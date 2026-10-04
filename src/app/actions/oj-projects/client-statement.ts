@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { roundMoney } from '@/lib/oj-projects/utils'
 import { sendEmail } from '@/lib/email/emailService'
-import { invoiceProviderPin } from '@/lib/email/invoice-sender'
+import { invoiceProviderPin, invoiceReplyToAddress } from '@/lib/email/invoice-sender'
 import { generateStatementPDF } from '@/lib/oj-statement'
 import { logAuditEvent } from '@/app/actions/audit'
 import { escapeHtml } from '@/lib/cron/alerting'
@@ -437,6 +437,7 @@ export async function sendStatementEmail(
     .replace(/-+/g, '-')
     .toLowerCase()
 
+  const statementPin = invoiceProviderPin()
   const emailResult = await sendEmail({
     to: recipientResult.to,
     subject,
@@ -450,9 +451,11 @@ export async function sendStatementEmail(
       },
     ],
     // A statement leaves from the same mailbox as the invoices it lists, once the owner has
-    // set INVOICE_EMAIL_PROVIDER=graph. Only the pin: nothing else about this send changes,
-    // and with the switch unset this adds nothing at all.
-    ...invoiceProviderPin(),
+    // set INVOICE_EMAIL_PROVIDER=graph. With the switch unset this adds nothing at all, so
+    // the send is exactly what it was. With it set, the reply-to goes with the pin: the
+    // mailbox route otherwise falls back to EMAIL_REPLY_TO, the venue manager's inbox, and a
+    // client's question about their statement would land on the wrong desk.
+    ...(statementPin.provider ? { ...statementPin, replyTo: invoiceReplyToAddress() } : {}),
   })
 
   // Looked up before the send so the failure path can be attributed too.
