@@ -96,4 +96,17 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 
 ## Results
 
-Filled in as each part is verified. See the end of this file.
+**R0 (pull request 1), 4 October 2026.** Run on the committed branch in a clean worktree:
+- `npm run lint`: clean.
+- `npx tsc --noEmit`: clean. `npm run typecheck:tests`: clean.
+- `npm test` (Europe/London): 1,217 files, 12,315 tests passed, 2 skipped.
+- `npm run test:utc`: 1,217 files, 12,315 tests passed, 2 skipped.
+- `npm run build`: compiled, 144 static pages generated.
+- Not done: nothing was run against production and no screen was opened in a browser. The
+  reminder job's new behaviour is proven by its test (one email, to the owner, with the new
+  wording), not by a live run.
+- The two data fixes are written in `tasks/data-fixes-2026-10-04-invoice-r0.sql` with their
+  before and after checks. The source rows were checked read-only against production: four
+  client records, each with one booking and one contact email that matches where its invoices
+  were sent; INV-003WD emailed 1 September 2026 and INV-003WV emailed 1 October 2026, one log
+  row each.
