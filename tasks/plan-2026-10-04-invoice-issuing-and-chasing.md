@@ -42,7 +42,8 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 - [x] `INVOICE_EMAIL_PROVIDER=graph` pins the provider in one helper used by `sendInvoiceEmail`, the statement send, the private booking receipt and the payment link email
 - [x] Copied addresses checked against the block list; proposed, dropped and sent recipients recorded in the email's metadata
 - [x] `.env.example` documents the switch and corrects the mistyped mobile
-- [ ] Owner: test email, then set the switch in Vercel
+- [x] Test email sent and checked on 4 October 2026 (see Results)
+- [ ] Owner: check the From name and the reply address on the test email, then set the switch in Vercel
 
 ## R1b. One voice (pull request 2)
 
@@ -55,13 +56,13 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 
 ## R2. Reminders (pull request 2)
 
-- [x] Migration written, not applied: `invoices.reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at`, and `cron_job_runs.result`
+- [x] Migration: `invoices.reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at`, and `cron_job_runs.result`. Applied to production on 4 October 2026 with the owner's approval (see Results)
 - [x] Pure rules module with tests (windows, skips, forecast, working days)
 - [x] New reminder job: off without the go-live date; durable stage record; claim per stage; accepted, refused and unknown outcomes; recheck before each send
 - [x] Daily summary with saved state on the run record
 - [x] Hold and Resume on the invoice page, server-checked
 - [x] `vercel.json`: `30 9 * * 1-5`
-- [ ] Owner: apply the migration to production (prod-migrate), approve the first run's list, set `INVOICE_REMINDERS_GO_LIVE_DATE`
+- [ ] Owner: approve the first run's list, then set `INVOICE_REMINDERS_GO_LIVE_DATE`
 
 ## R3. Email history (pull request 2)
 
