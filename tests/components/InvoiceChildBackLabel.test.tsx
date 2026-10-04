@@ -25,6 +25,8 @@ const mockGetInvoice = vi.fn()
 
 vi.mock('@/app/actions/invoices', () => ({
   getInvoice: (...args: unknown[]) => mockGetInvoice(...args),
+  // The record payment page asks who a receipt would go to as it loads.
+  getReceiptEmailContext: vi.fn().mockResolvedValue({ context: { firstName: null, to: null, ccCount: 0 } }),
   recordPayment: vi.fn(),
   updateInvoice: vi.fn(),
   getLineItemCatalog: vi.fn().mockResolvedValue({ items: [] }),
