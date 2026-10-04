@@ -1,277 +1,295 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock all external dependencies
-vi.mock('@/lib/supabase/server', () => ({
+/**
+ * Record Payment and its receipt.
+ *
+ * The payment is the thing that matters: once it is saved, nothing about the receipt may turn
+ * the result into an error. The tick on the page is a choice the server enforces, and the
+ * sending itself lives in `@/lib/invoices/receipt-email`, which has its own tests.
+ */
+
+const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
-}))
-
-vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
-}))
-
-vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn(),
+  sendInvoiceReceipt: vi.fn(),
+  resolveReceiptRecipients: vi.fn(),
+  resolveInvoiceGreetingName: vi.fn(),
+  recordPayment: vi.fn(),
 }))
 
-vi.mock('@/app/actions/audit', () => ({
-  logAuditEvent: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/lib/supabase/server', () => ({ createClient: mocks.createClient }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: mocks.createAdminClient }))
+vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: mocks.checkUserPermission }))
+vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/lib/invoices/receipt-email', () => ({
+  sendInvoiceReceipt: mocks.sendInvoiceReceipt,
+  resolveReceiptRecipients: mocks.resolveReceiptRecipients,
 }))
-
-vi.mock('@/lib/microsoft-graph', () => ({
-  isGraphConfigured: vi.fn().mockReturnValue(true),
-  sendInvoiceEmail: vi.fn(),
-}))
-
+vi.mock('@/lib/invoices/greeting', () => ({ resolveInvoiceGreetingName: mocks.resolveInvoiceGreetingName }))
 vi.mock('@/services/invoices', () => ({
-  InvoiceService: {
-    getInvoiceById: vi.fn(),
-    recordPayment: vi.fn(),
-  },
+  InvoiceService: { recordPayment: mocks.recordPayment },
   CreateInvoiceSchema: { parse: vi.fn() },
 }))
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 
-vi.mock('@/lib/errors', () => ({
-  getErrorMessage: vi.fn((e: unknown) => (e as Error)?.message || String(e)),
-}))
+import { getReceiptEmailContext, recordPayment } from '@/app/actions/invoices'
 
-vi.mock('next/cache', () => ({
-  revalidatePath: vi.fn(),
-  revalidateTag: vi.fn(),
-}))
+const INVOICE_ID = '7f06990b-7636-4d72-b610-460168da18ec'
+const adminClient = { marker: 'admin client' }
 
-import { recordPayment } from '@/app/actions/invoices'
-import { createClient } from '@/lib/supabase/server'
-import { checkUserPermission } from '@/app/actions/rbac'
-import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
-import { InvoiceService } from '@/services/invoices'
-
-// Helper: build a mock Supabase client for receipt/payment tests
-function buildMockSupabase(overrides: {
-  invoiceBeforeStatus?: string
-  invoiceAfterStatus?: string
-  existingEmailLog?: boolean
-  invoiceData?: Record<string, unknown>
-  emailLogInsertError?: boolean
-}) {
-  const {
-    invoiceBeforeStatus = 'sent',
-    invoiceAfterStatus = 'paid',
-    existingEmailLog = false,
-    emailLogInsertError = false,
-  } = overrides
-
-  let fromCallCount = 0
-  const invoiceSelectCalls: string[] = []
-
-  const mock = {
-    from: vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        const callIdx = invoiceSelectCalls.length
-        invoiceSelectCalls.push(table)
-        const statusForCall =
-          callIdx === 0 ? invoiceBeforeStatus : invoiceAfterStatus
-        return chainMock({
-          data: { status: statusForCall },
-          error: null,
-        })
-      }
-      if (table === 'invoice_email_logs') {
-        fromCallCount++
-        // First call is the dedup check (select), subsequent calls are insert
-        if (fromCallCount === 1) {
-          return chainMock({
-            data: existingEmailLog ? { id: 'existing-log' } : null,
-            error: null,
-          })
-        }
-        // insert call
-        return {
-          insert: vi.fn().mockReturnValue({
-            data: null,
-            error: emailLogInsertError ? { message: 'insert failed' } : null,
+/** The signed-in user's client: the two status reads either side of the payment. */
+function sessionClient(statuses: { before?: string; after?: string; afterError?: boolean } = {}) {
+  const { before = 'sent', after = 'paid', afterError = false } = statuses
+  let reads = 0
+  return {
+    from: vi.fn(() => ({
+      select: () => ({
+        eq: () => ({
+          is: () => ({
+            maybeSingle: async () => {
+              reads += 1
+              if (reads === 1) return { data: { status: before }, error: null }
+              return afterError
+                ? { data: null, error: { message: 'read failed' } }
+                : { data: { status: after }, error: null }
+            },
           }),
-        }
-      }
-      return chainMock({ data: null, error: null })
-    }),
-    auth: {
-      getUser: vi
-        .fn()
-        .mockResolvedValue({ data: { user: { id: 'user-1', email: 'u@test.com' } } }),
-    },
+        }),
+      }),
+    })),
+    auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
   }
-
-  return mock
 }
 
-function chainMock(result: { data: unknown; error: unknown }) {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {}
-  const methods = ['select', 'eq', 'is', 'ilike', 'order', 'limit', 'maybeSingle', 'single']
-  for (const m of methods) {
-    chain[m] = vi.fn().mockReturnValue(chain)
-  }
-  // Make the chain thenable
-  const proxy = new Proxy(chain, {
-    get(target, prop) {
-      if (prop === 'then') {
-        return (resolve: (v: unknown) => void) => resolve(result)
-      }
-      if (typeof target[prop as string] === 'function') {
-        return (..._args: unknown[]) => proxy
-      }
-      return target[prop as string]
-    },
-  })
-  return proxy
+function paymentForm(overrides: Record<string, string> = {}): FormData {
+  const form = new FormData()
+  form.set('invoiceId', INVOICE_ID)
+  form.set('paymentDate', '2026-10-12')
+  form.set('amount', '100')
+  form.set('paymentMethod', 'bank_transfer')
+  for (const [key, value] of Object.entries(overrides)) form.set(key, value)
+  return form
 }
 
-function makeFormData(overrides: Record<string, string> = {}): FormData {
-  const fd = new FormData()
-  fd.set('invoiceId', overrides.invoiceId || 'inv-1')
-  fd.set('paymentDate', overrides.paymentDate || '2026-04-14')
-  fd.set('amount', overrides.amount || '100')
-  fd.set('paymentMethod', overrides.paymentMethod || 'bank_transfer')
-  if (overrides.reference) fd.set('reference', overrides.reference)
-  if (overrides.notes) fd.set('notes', overrides.notes)
-  return fd
-}
+const savedPayment = { id: 'pay-1', invoice_id: INVOICE_ID, amount: 100 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Default: permission granted
-  vi.mocked(checkUserPermission).mockResolvedValue(true)
-  // Default: email is configured
-  vi.mocked(isGraphConfigured).mockReturnValue(true)
+  mocks.checkUserPermission.mockResolvedValue(true)
+  mocks.createClient.mockResolvedValue(sessionClient())
+  mocks.createAdminClient.mockReturnValue(adminClient)
+  mocks.recordPayment.mockResolvedValue(savedPayment)
+  mocks.sendInvoiceReceipt.mockResolvedValue({ outcome: 'sent', invoiceNumber: 'INV-003WK' })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
-describe('recordPayment — receipt triggering logic', () => {
-  it('triggers receipt when status changes to paid', async () => {
-    const mockSb = buildMockSupabase({
-      invoiceBeforeStatus: 'sent',
-      invoiceAfterStatus: 'paid',
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('recordPayment: when a receipt is sent', () => {
+  it('sends it through the receipt module on the admin client when the invoice becomes paid', async () => {
+    const result = await recordPayment(paymentForm())
+
+    expect(result).toMatchObject({ success: true, payment: savedPayment, receipt: { outcome: 'sent' } })
+    expect(result).not.toHaveProperty('warning')
+    expect(mocks.sendInvoiceReceipt).toHaveBeenCalledTimes(1)
+    // The admin client: the email log and the contact tables are closed to most staff.
+    expect(mocks.sendInvoiceReceipt).toHaveBeenCalledWith(adminClient, {
+      invoiceId: INVOICE_ID,
+      paymentId: 'pay-1',
+      sentByUserId: 'user-1',
     })
-    vi.mocked(createClient).mockResolvedValue(mockSb as any)
-    vi.mocked(InvoiceService.recordPayment).mockResolvedValue({
-      id: 'pay-1',
-      invoice_id: 'inv-1',
-      amount: 100,
-      payment_date: '2026-04-14',
-      payment_method: 'bank_transfer',
-    } as any)
-
-    // Mock the InvoiceService.getInvoiceById for receipt flow
-    vi.mocked(InvoiceService.getInvoiceById).mockResolvedValue({
-      id: 'inv-1',
-      invoice_number: 'INV-001',
-      status: 'paid',
-      vendor_id: 'v-1',
-      vendor: { email: 'vendor@test.com', name: 'Test Vendor', contact_name: 'John' },
-      total_amount: 100,
-      paid_amount: 100,
-      payments: [{ id: 'pay-1', amount: 100, payment_date: '2026-04-14', payment_method: 'bank_transfer' }],
-    } as any)
-
-    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
-
-    const result = await recordPayment(makeFormData())
-
-    expect(result.success).toBe(true)
-    // sendInvoiceEmail should have been called for the receipt
-    expect(sendInvoiceEmail).toHaveBeenCalled()
   })
 
-  it('reports zero outstanding when a £30 credit and £90 receipt settle a £120 invoice', async () => {
-    const mockSb = buildMockSupabase({
-      invoiceBeforeStatus: 'sent',
-      invoiceAfterStatus: 'paid',
-    })
-    vi.mocked(createClient).mockResolvedValue(mockSb as any)
-    vi.mocked(InvoiceService.recordPayment).mockResolvedValue({
-      id: 'pay-1',
-      invoice_id: 'inv-1',
-      amount: 90,
-      payment_date: '2026-04-14',
-      payment_method: 'bank_transfer',
-    } as any)
+  it('sends it when the payment leaves the invoice part paid', async () => {
+    mocks.createClient.mockResolvedValue(sessionClient({ after: 'partially_paid' }))
 
-    // Mock the InvoiceService.getInvoiceById for receipt flow
-    vi.mocked(InvoiceService.getInvoiceById).mockResolvedValue({
-      id: 'inv-1',
-      invoice_number: 'INV-001',
-      status: 'paid',
-      vendor_id: 'v-1',
-      vendor: { email: 'vendor@test.com', name: 'Test Vendor', contact_name: 'John' },
-      total_amount: 120,
-      paid_amount: 90,
-      credits: [{ status: 'issued', amount_inc_vat: 30 }],
-      payments: [{ id: 'pay-1', amount: 90, payment_date: '2026-04-14', payment_method: 'bank_transfer' }],
-    } as any)
-
-    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
-
-    const result = await recordPayment(makeFormData({ amount: '90' }))
-
-    expect(result.success).toBe(true)
-    // sendInvoiceEmail should have been called for the receipt
-    expect(sendInvoiceEmail).toHaveBeenCalled()
-    const body = vi.mocked(sendInvoiceEmail).mock.calls[0][3]
-    expect(body).toContain('Invoice Total: £120.00')
-    expect(body).toContain('Credits Applied: £30.00')
-    expect(body).toContain('Outstanding Balance: £0.00')
-    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][2]).toContain('Settled with Credits')
+    expect(await recordPayment(paymentForm({ amount: '50' }))).toMatchObject({ success: true })
+    expect(mocks.sendInvoiceReceipt).toHaveBeenCalledTimes(1)
   })
 
-  it('triggers receipt when status changes to partially_paid', async () => {
-    const mockSb = buildMockSupabase({
-      invoiceBeforeStatus: 'sent',
-      invoiceAfterStatus: 'partially_paid',
-    })
-    vi.mocked(createClient).mockResolvedValue(mockSb as any)
-    vi.mocked(InvoiceService.recordPayment).mockResolvedValue({
-      id: 'pay-1',
-      invoice_id: 'inv-1',
-      amount: 50,
-      payment_date: '2026-04-14',
-      payment_method: 'bank_transfer',
-    } as any)
+  it('sends nothing when the invoice was already paid before this payment', async () => {
+    mocks.createClient.mockResolvedValue(sessionClient({ before: 'paid', after: 'paid' }))
 
-    vi.mocked(InvoiceService.getInvoiceById).mockResolvedValue({
-      id: 'inv-1',
-      invoice_number: 'INV-001',
-      status: 'partially_paid',
-      vendor_id: 'v-1',
-      vendor: { email: 'vendor@test.com', name: 'Test Vendor', contact_name: 'John' },
-      total_amount: 200,
-      paid_amount: 50,
-      payments: [{ id: 'pay-1', amount: 50, payment_date: '2026-04-14', payment_method: 'bank_transfer' }],
-    } as any)
-
-    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
-
-    const result = await recordPayment(makeFormData({ amount: '50' }))
-
-    expect(result.success).toBe(true)
-    expect(sendInvoiceEmail).toHaveBeenCalled()
+    expect(await recordPayment(paymentForm({ amount: '10' }))).toMatchObject({ success: true })
+    expect(mocks.sendInvoiceReceipt).not.toHaveBeenCalled()
   })
 
-  it('does NOT trigger receipt when status was already paid', async () => {
-    const mockSb = buildMockSupabase({
-      invoiceBeforeStatus: 'paid',
-      invoiceAfterStatus: 'paid',
+  it('sends nothing when the payment itself could not be saved', async () => {
+    mocks.recordPayment.mockRejectedValue(new Error('Payment exceeds the balance'))
+
+    expect(await recordPayment(paymentForm())).toEqual({ error: 'Payment exceeds the balance' })
+    expect(mocks.sendInvoiceReceipt).not.toHaveBeenCalled()
+  })
+})
+
+describe('recordPayment: the receipt tick is enforced on the server', () => {
+  it('sends nothing when the tick is off, and still records the payment', async () => {
+    const result = await recordPayment(paymentForm({ send_receipt: 'false' }))
+
+    expect(mocks.recordPayment).toHaveBeenCalledTimes(1)
+    expect(mocks.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ invoice_id: INVOICE_ID, amount: 100 }))
+    expect(mocks.sendInvoiceReceipt).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ success: true, payment: savedPayment, receipt: { outcome: 'not_requested' } })
+    expect(result).not.toHaveProperty('warning')
+    expect(result).not.toHaveProperty('error')
+  })
+
+  it('sends exactly one when the tick is on', async () => {
+    await recordPayment(paymentForm({ send_receipt: 'true' }))
+
+    expect(mocks.sendInvoiceReceipt).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends when the field is absent, so callers that predate the tick behave as before', async () => {
+    await recordPayment(paymentForm())
+
+    expect(mocks.sendInvoiceReceipt).toHaveBeenCalledTimes(1)
+  })
+
+  // Boolean('false') is true, and a hand-built request could carry anything. Only the exact
+  // string the page sends for a tick counts as a yes.
+  it.each(['False', 'no', '0', 'on', 'TRUE', ''])('treats %j as a no', async (value) => {
+    const result = await recordPayment(paymentForm({ send_receipt: value }))
+
+    expect(mocks.sendInvoiceReceipt).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ success: true, receipt: { outcome: 'not_requested' } })
+  })
+})
+
+describe('recordPayment: a receipt problem never fails the payment', () => {
+  it('returns success with a warning when the receipt is refused', async () => {
+    mocks.sendInvoiceReceipt.mockResolvedValue({
+      outcome: 'refused',
+      error: 'Recipient email address is suppressed',
+      attemptLogged: true,
+      invoiceNumber: 'INV-003WK',
     })
-    vi.mocked(createClient).mockResolvedValue(mockSb as any)
-    vi.mocked(InvoiceService.recordPayment).mockResolvedValue({
-      id: 'pay-2',
-      invoice_id: 'inv-1',
-      amount: 10,
-      payment_date: '2026-04-14',
-      payment_method: 'bank_transfer',
-    } as any)
 
-    const result = await recordPayment(makeFormData({ amount: '10' }))
+    const result = await recordPayment(paymentForm({ send_receipt: 'true' }))
 
-    expect(result.success).toBe(true)
-    // Receipt should NOT have been triggered because before status was already paid
-    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ success: true, payment: savedPayment, receipt: { outcome: 'refused' } })
+    expect(result).not.toHaveProperty('error')
+    expect(result.warning).toBe(
+      'Payment recorded, but the receipt email was not sent (Recipient email address is suppressed). Please send the customer a receipt by hand.'
+    )
+  })
+
+  it('says to check Sent Items when it cannot tell whether the receipt went', async () => {
+    mocks.sendInvoiceReceipt.mockResolvedValue({ outcome: 'unknown', error: 'Request timed out', invoiceNumber: 'INV-003WK' })
+
+    const result = await recordPayment(paymentForm())
+
+    expect(result).toMatchObject({ success: true, payment: savedPayment })
+    expect(result.warning).toBe(
+      'Payment recorded. The receipt email may or may not have been sent: check Sent Items before sending one by hand.'
+    )
+  })
+
+  it('says so when the client has no email address to send it to', async () => {
+    mocks.sendInvoiceReceipt.mockResolvedValue({ outcome: 'skipped', reason: 'no_recipient', invoiceNumber: 'INV-003WK' })
+
+    const result = await recordPayment(paymentForm())
+
+    expect(result).toMatchObject({ success: true })
+    expect(result.warning).toBe('Payment recorded. No receipt was sent because this client has no email address.')
+  })
+
+  it('passes on the warning when the receipt went but its record could not be saved', async () => {
+    mocks.sendInvoiceReceipt.mockResolvedValue({
+      outcome: 'sent',
+      invoiceNumber: 'INV-003WK',
+      warning: 'The receipt was sent, but the app could not save its record of the email.',
+    })
+
+    const result = await recordPayment(paymentForm())
+
+    expect(result).toMatchObject({ success: true })
+    expect(result.warning).toBe('Payment recorded. The receipt was sent, but the app could not save its record of the email.')
+  })
+
+  it('stays quiet when a receipt for the payment has already gone', async () => {
+    mocks.sendInvoiceReceipt.mockResolvedValue({ outcome: 'skipped', reason: 'already_sent', invoiceNumber: 'INV-003WK' })
+
+    expect(await recordPayment(paymentForm())).not.toHaveProperty('warning')
+  })
+
+  it('still returns success when the sender blows up or its client cannot be built', async () => {
+    mocks.sendInvoiceReceipt.mockRejectedValue(new Error('unexpected'))
+    const thrown = await recordPayment(paymentForm())
+
+    mocks.createAdminClient.mockImplementation(() => {
+      throw new Error('Missing Supabase environment variables')
+    })
+    mocks.createClient.mockResolvedValue(sessionClient())
+    const noClient = await recordPayment(paymentForm())
+
+    for (const result of [thrown, noClient]) {
+      expect(result).toMatchObject({ success: true, payment: savedPayment, receipt: { outcome: 'refused' } })
+      expect(result).not.toHaveProperty('error')
+      expect(result.warning).toContain('Payment recorded, but the receipt email was not sent')
+    }
+  })
+
+  it('warns, without sending, when it cannot re-read the invoice after the payment', async () => {
+    mocks.createClient.mockResolvedValue(sessionClient({ afterError: true }))
+
+    const result = await recordPayment(paymentForm())
+
+    expect(result).toMatchObject({ success: true, payment: savedPayment })
+    expect(result.warning).toContain('the receipt email was not sent')
+    expect(mocks.sendInvoiceReceipt).not.toHaveBeenCalled()
+  })
+})
+
+describe('getReceiptEmailContext (who the tick on the page names)', () => {
+  function adminWithInvoice(result: { data: unknown; error: unknown }) {
+    return {
+      from: vi.fn(() => ({
+        select: () => ({ eq: () => ({ is: () => ({ maybeSingle: async () => result }) }) }),
+      })),
+    }
+  }
+
+  it('returns the first name and where the receipt would go', async () => {
+    const admin = adminWithInvoice({ data: { vendor_id: 'vendor-1', vendor: { email: 'accounts@client.example' } }, error: null })
+    mocks.createAdminClient.mockReturnValue(admin)
+    mocks.resolveReceiptRecipients.mockResolvedValue({ to: 'sam@client.example', cc: ['ledger@client.example'], forced: false })
+    mocks.resolveInvoiceGreetingName.mockResolvedValue('Sam')
+
+    expect(await getReceiptEmailContext(INVOICE_ID)).toEqual({
+      context: { firstName: 'Sam', to: 'sam@client.example', ccCount: 1 },
+    })
+    expect(mocks.resolveReceiptRecipients).toHaveBeenCalledWith(admin, 'vendor-1', 'accounts@client.example')
+    expect(mocks.resolveInvoiceGreetingName).toHaveBeenCalledWith(admin, 'vendor-1')
+  })
+
+  it('reports no address rather than inventing one', async () => {
+    mocks.createAdminClient.mockReturnValue(adminWithInvoice({ data: { vendor_id: 'vendor-1', vendor: null }, error: null }))
+    mocks.resolveReceiptRecipients.mockResolvedValue({ to: null, cc: [], forced: false })
+    mocks.resolveInvoiceGreetingName.mockResolvedValue(null)
+
+    expect(await getReceiptEmailContext(INVOICE_ID)).toEqual({ context: { firstName: null, to: null, ccCount: 0 } })
+  })
+
+  it('refuses someone who may not record payments, before reading anything', async () => {
+    mocks.checkUserPermission.mockResolvedValue(false)
+
+    expect(await getReceiptEmailContext(INVOICE_ID)).toEqual({ error: 'You do not have permission to record payments' })
+    expect(mocks.checkUserPermission).toHaveBeenCalledWith('invoices', 'edit')
+    expect(mocks.createAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('returns an error, not a guess, when the id is not an invoice id or a lookup fails', async () => {
+    expect(await getReceiptEmailContext('not-an-id')).toEqual({ error: 'Invoice not found' })
+    expect(mocks.createAdminClient).not.toHaveBeenCalled()
+
+    mocks.createAdminClient.mockReturnValue(adminWithInvoice({ data: { vendor_id: 'vendor-1', vendor: null }, error: null }))
+    mocks.resolveReceiptRecipients.mockResolvedValue({ error: 'permission denied' })
+    mocks.resolveInvoiceGreetingName.mockResolvedValue(null)
+
+    expect(await getReceiptEmailContext(INVOICE_ID)).toEqual({ error: 'permission denied' })
   })
 })

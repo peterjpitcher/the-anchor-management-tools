@@ -1,31 +1,31 @@
 'use server'
 
-import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
-
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
-import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { z } from 'zod'
 import { getErrorMessage } from '@/lib/errors'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type {
   Invoice,
-  InvoiceWithDetails,
   InvoiceStatus,
   InvoiceLineItemInput,
   LineItemCatalogItem
 } from '@/types/invoices'
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-
-const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
+import {
+  resolveReceiptRecipients,
+  sendInvoiceReceipt,
+  type InvoiceReceiptOutcome,
+} from '@/lib/invoices/receipt-email'
 
 type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
-type InvoiceEmailRecipients = { to: string | null; cc: string[] }
-type RemittanceAdviceResult = { sent: boolean; skippedReason?: string; error?: string }
+
+/** What Record Payment did about the receipt email. `not_requested`: the tick was off. */
+type RecordPaymentReceipt = InvoiceReceiptOutcome | { outcome: 'not_requested' }
 
 async function markLinkedOjRowsBilled(invoiceId: string) {
   const admin = createAdminClient()
@@ -102,295 +102,86 @@ async function reverseLinkedOjRowsForVoid(invoiceId: string) {
   return { success: true as const }
 }
 
-function parseRecipientList(raw: string | null | undefined): string[] {
-  if (!raw) return []
-  return String(raw)
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
+/**
+ * What the Record Payment page should tell staff about the receipt, or nothing when there is
+ * nothing to say. Every message starts with the payment having been recorded, because it has:
+ * a receipt problem is never a failed payment.
+ */
+function receiptWarning(receipt: RecordPaymentReceipt): string | undefined {
+  switch (receipt.outcome) {
+    case 'sent':
+      return receipt.warning ? `Payment recorded. ${receipt.warning}` : undefined
+    case 'refused':
+      return `Payment recorded, but the receipt email was not sent (${receipt.error}). Please send the customer a receipt by hand.`
+    case 'unknown':
+      return 'Payment recorded. The receipt email may or may not have been sent: check Sent Items before sending one by hand.'
+    case 'skipped':
+      switch (receipt.reason) {
+        case 'no_recipient':
+          return 'Payment recorded. No receipt was sent because this client has no email address.'
+        case 'email_suspended':
+          return 'Payment recorded. No receipt was sent because email is switched off at the moment.'
+        case 'email_not_configured':
+          return 'Payment recorded. No receipt was sent because email is not set up.'
+        case 'already_sent':
+        case 'in_progress':
+          return undefined
+        default:
+          return 'Payment recorded, but the receipt email was not sent. Please send the customer a receipt by hand.'
+      }
+    default:
+      return undefined
+  }
 }
 
-function formatDateForEmail(dateIso: string | null | undefined): string {
-  if (!dateIso) return 'N/A'
-  const date = new Date(dateIso)
-  if (Number.isNaN(date.getTime())) return 'N/A'
-  return date.toLocaleDateString('en-GB')
-}
+/**
+ * Who a receipt for this invoice would go to, for the tick on the Record Payment page. The
+ * contact tables are readable by super admins only, so this reads them with the admin client
+ * after checking the same permission that recording a payment needs.
+ */
+export async function getReceiptEmailContext(invoiceId: string): Promise<{
+  context?: { firstName: string | null; to: string | null; ccCount: number }
+  error?: string
+}> {
+  try {
+    const hasPermission = await checkUserPermission('invoices', 'edit')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to record payments' }
+    }
 
-function formatCurrencyForEmail(amount: number | null | undefined): string {
-  const safe = Number.isFinite(Number(amount)) ? Number(amount) : 0
-  return `£${safe.toFixed(2)}`
-}
+    const parsedId = z.string().uuid().safeParse(invoiceId)
+    if (!parsedId.success) {
+      return { error: 'Invoice not found' }
+    }
 
-function formatPaymentMethodForEmail(method: string | null | undefined): string | null {
-  if (!method) return null
-  return String(method)
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
+    const admin = createAdminClient()
+    const { data: invoice, error } = await admin
+      .from('invoices')
+      .select('vendor_id, vendor:invoice_vendors(email)')
+      .eq('id', parsedId.data)
+      .is('deleted_at', null)
+      .maybeSingle()
 
-function getForcedRemittanceTestRecipient(): string | null {
-  const candidate = process.env.INVOICE_REMITTANCE_TEST_RECIPIENT?.trim()
-  if (!candidate || !candidate.includes('@')) return null
-  return candidate
-}
+    if (error || !invoice) {
+      return { error: error ? getErrorMessage(error) : 'Invoice not found' }
+    }
 
-async function resolveInvoiceRecipientsForVendor(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  vendorId: string,
-  vendorEmailRaw: string | null | undefined
-): Promise<InvoiceEmailRecipients | { error: string }> {
-  const recipientsFromVendor = parseRecipientList(vendorEmailRaw)
+    // PostgREST types a to-one embed as an array; at runtime it is a single row or null.
+    const vendor = invoice.vendor as unknown as { email?: string | null } | null
+    const [recipients, firstName] = await Promise.all([
+      resolveReceiptRecipients(admin, invoice.vendor_id, vendor?.email ?? null),
+      resolveInvoiceGreetingName(admin, invoice.vendor_id),
+    ])
 
-  const { data: contacts, error } = await supabase
-    .from('invoice_vendor_contacts')
-    .select('email, is_primary, receive_invoice_copy')
-    .eq('vendor_id', vendorId)
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
+    if ('error' in recipients) {
+      return { error: recipients.error }
+    }
 
-  if (error) {
+    return { context: { firstName, to: recipients.to, ccCount: recipients.cc.length } }
+  } catch (error: unknown) {
+    console.error('Error in getReceiptEmailContext:', error)
     return { error: getErrorMessage(error) }
   }
-
-  const contactEmails = (contacts || [])
-    .map((contact: any) => ({
-      email: typeof contact?.email === 'string' ? contact.email.trim() : '',
-      isPrimary: !!contact?.is_primary,
-      cc: !!contact?.receive_invoice_copy,
-    }))
-    .filter((contact) => contact.email && contact.email.includes('@'))
-
-  const primaryEmail = contactEmails.find((contact) => contact.isPrimary)?.email || null
-  const firstVendorEmail = recipientsFromVendor[0] || null
-  const to = primaryEmail || firstVendorEmail || contactEmails[0]?.email || null
-
-  const ccRaw = [
-    ...recipientsFromVendor.slice(firstVendorEmail ? 1 : 0),
-    ...contactEmails.filter((contact) => contact.cc).map((contact) => contact.email),
-  ]
-
-  const seen = new Set<string>()
-  const toLower = to ? to.toLowerCase() : null
-  const cc = ccRaw
-    .map((email) => email.trim())
-    .filter((email) => email && email.includes('@') && email.toLowerCase() !== toLower)
-    .filter((email) => {
-      const key = email.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-  return { to, cc }
-}
-
-async function sendPaymentReceipt(
-  invoiceId: string,
-  paymentId: string,
-  sentByUserId?: string | null
-): Promise<RemittanceAdviceResult> {
-  if (!isGraphConfigured()) {
-    return { sent: false, skippedReason: 'email_not_configured' }
-  }
-
-  let invoice: InvoiceWithDetails
-  try {
-    invoice = await InvoiceService.getInvoiceById(invoiceId)
-  } catch (error: unknown) {
-    const message = getErrorMessage(error)
-    console.error('[Invoices] Receipt dispatch aborted:', message)
-    return { sent: false, skippedReason: 'invoice_lookup_failed', error: message }
-  }
-
-  if (invoice.status !== 'paid' && invoice.status !== 'partially_paid') {
-    return { sent: false, skippedReason: 'invoice_not_paid' }
-  }
-
-  const supabase = await createClient()
-
-  // Dedup guard: skip if a receipt was already sent for this specific payment
-  const { data: existingLog } = await supabase
-    .from('invoice_email_logs')
-    .select('id')
-    .eq('payment_id', paymentId)
-    .eq('status', 'sent')
-    .limit(1)
-    .maybeSingle()
-  if (existingLog) {
-    return { sent: false, skippedReason: 'already_sent' }
-  }
-
-  const forcedRecipient = getForcedRemittanceTestRecipient()
-  let toAddress: string | null = null
-  let ccAddresses: string[] = []
-  let resolvedRecipients: InvoiceEmailRecipients | null = null
-
-  if (forcedRecipient) {
-    toAddress = forcedRecipient
-    ccAddresses = []
-  } else {
-    const recipientResult = await resolveInvoiceRecipientsForVendor(
-      supabase,
-      invoice.vendor_id,
-      invoice.vendor?.email || null
-    )
-
-    if ('error' in recipientResult) {
-      console.error('[Invoices] Failed to resolve remittance recipients:', recipientResult.error)
-      return { sent: false, skippedReason: 'recipient_lookup_failed', error: recipientResult.error }
-    }
-
-    if (!recipientResult.to) {
-      return { sent: false, skippedReason: 'no_recipient' }
-    }
-
-    resolvedRecipients = recipientResult
-    toAddress = recipientResult.to
-    ccAddresses = recipientResult.cc
-  }
-
-  const payment = (invoice.payments || []).find(p => p.id === paymentId)
-  if (!payment) {
-    return { sent: false, skippedReason: 'payment_not_found' }
-  }
-
-  const paymentAmount = payment.amount ?? invoice.paid_amount
-  const paymentDate = formatDateForEmail(payment.payment_date || null)
-  const paymentMethod = formatPaymentMethodForEmail(payment.payment_method || null)
-  const outstandingBalance = invoiceBalanceDue(invoice)
-  const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
-
-  const isFullPayment = invoice.status === 'paid' && outstandingBalance === 0
-  const creditTotal = invoiceIssuedCreditTotal(invoice)
-  const subject = isFullPayment
-    ? `Receipt: Invoice ${invoice.invoice_number} (${creditTotal > 0 ? 'Settled with Credits' : 'Paid in Full'})`
-    : `Receipt: Invoice ${invoice.invoice_number} (Payment Received, Balance: £${outstandingBalance.toFixed(2)})`
-  const pdfFilename = isFullPayment
-    ? `receipt-${invoice.invoice_number}.pdf`
-    : `receipt-${invoice.invoice_number}-partial.pdf`
-  const body = `Hi ${recipientName},
-
-I hope you're doing well!
-
-This is a receipt confirming payment has been received for invoice ${invoice.invoice_number}.
-
-Invoice Total: ${formatCurrencyForEmail(invoice.total_amount)}
-Payment Received: ${formatCurrencyForEmail(paymentAmount)}
-Total Paid: ${formatCurrencyForEmail(invoice.paid_amount)}
-${creditTotal > 0 ? `Credits Applied: ${formatCurrencyForEmail(creditTotal)}\n` : ''}Outstanding Balance: ${formatCurrencyForEmail(outstandingBalance)}
-Payment Date: ${paymentDate}
-${paymentMethod ? `Payment Method: ${paymentMethod}` : ''}
-${payment.reference ? `Reference: ${payment.reference}` : ''}
-
-If you have any questions, just let me know.
-
-Many thanks,
-${CONTACT_NAME}
-Orange Jelly Limited
-${CONTACT_PHONE}`
-
-  const emailResult = await sendInvoiceEmail(
-    invoice,
-    toAddress,
-    subject,
-    body,
-    ccAddresses,
-    undefined,
-    {
-      documentKind: 'remittance_advice',
-      pdfFilename,
-      remittance: {
-        paymentDate: payment.payment_date || null,
-        paymentAmount: paymentAmount,
-        paymentMethod: payment.payment_method || null,
-        paymentReference: payment.reference || null,
-      },
-    }
-  )
-
-  const recipients = [toAddress, ...ccAddresses]
-
-  if (emailResult.success) {
-    const { error: logError } = await supabase.from('invoice_email_logs').insert(
-      recipients.map((address) => ({
-        invoice_id: invoiceId,
-        payment_id: paymentId,
-        sent_to: address,
-        sent_by: sentByUserId || null,
-        subject,
-        body,
-        status: 'sent',
-      }))
-    )
-
-    if (logError) {
-      console.error('[Invoices] Failed to write remittance email logs:', logError)
-    }
-
-    await logAuditEvent({
-      operation_type: 'send',
-      resource_type: 'invoice',
-      resource_id: invoiceId,
-      operation_status: 'success',
-      additional_info: {
-        action: 'receipt_sent',
-        invoice_number: invoice.invoice_number,
-        recipient: toAddress,
-        cc: ccAddresses,
-        receipt_test_override: forcedRecipient
-          ? {
-              forced_to: forcedRecipient,
-              original_to: resolvedRecipients?.to || null,
-              original_cc: resolvedRecipients?.cc || [],
-            }
-          : null,
-      },
-    })
-
-    return { sent: true }
-  }
-
-  const errorMessage = emailResult.error || 'Failed to send receipt'
-  const { error: failedLogError } = await supabase.from('invoice_email_logs').insert({
-    invoice_id: invoiceId,
-    payment_id: paymentId,
-    sent_to: toAddress,
-    sent_by: sentByUserId || null,
-    subject,
-    body,
-    status: 'failed',
-    error_message: errorMessage,
-  })
-
-  if (failedLogError) {
-    console.error('[Invoices] Failed to write receipt failure log:', failedLogError)
-  }
-
-  await logAuditEvent({
-    operation_type: 'send',
-    resource_type: 'invoice',
-    resource_id: invoiceId,
-    operation_status: 'failure',
-    error_message: errorMessage,
-    additional_info: {
-      action: 'receipt_send_failed',
-      invoice_number: invoice.invoice_number,
-      recipient: toAddress,
-      cc: ccAddresses,
-      receipt_test_override: forcedRecipient
-        ? {
-            forced_to: forcedRecipient,
-            original_to: resolvedRecipients?.to || null,
-            original_cc: resolvedRecipients?.cc || [],
-          }
-        : null,
-    },
-  })
-
-  return { sent: false, skippedReason: 'email_send_failed', error: errorMessage }
 }
 
 export async function getInvoices(
@@ -812,6 +603,11 @@ export async function recordPayment(formData: FormData) {
     const paymentMethod = String(formData.get('paymentMethod') || '').trim()
     const reference = String(formData.get('reference') || '').trim()
     const notes = String(formData.get('notes') || '').trim()
+    // The tick on the Record Payment page. Absent means send, so a caller that predates the
+    // tick behaves as it always did. When it is present only the exact string 'true' sends:
+    // anything else is a no, because the choice is the member of staff's and is enforced here.
+    const sendReceiptField = formData.get('send_receipt')
+    const receiptWanted = sendReceiptField === null || String(sendReceiptField).trim() === 'true'
 
     if (!invoiceId || !paymentDate || !paymentMethod || !amountRaw) {
       return { error: 'Missing required fields' }
@@ -860,29 +656,59 @@ export async function recordPayment(formData: FormData) {
       }
     })
 
-    let remittanceAdvice: RemittanceAdviceResult | null = null
-    const { data: invoiceAfterPayment, error: invoiceAfterError } = await supabase
-      .from('invoices')
-      .select('status')
-      .eq('id', invoiceId)
-      .is('deleted_at', null)
-      .maybeSingle()
+    // The payment is saved by this point whatever happens to its receipt. Nothing below may
+    // turn that into an error: a receipt problem comes back as a warning beside `success`.
+    let receipt: RecordPaymentReceipt | null = null
+    if (!receiptWanted) {
+      receipt = { outcome: 'not_requested' }
+    } else {
+      try {
+        const { data: invoiceAfterPayment, error: invoiceAfterError } = await supabase
+          .from('invoices')
+          .select('status')
+          .eq('id', invoiceId)
+          .is('deleted_at', null)
+          .maybeSingle()
 
-    if (invoiceAfterError) {
-      console.error('Error checking invoice status after payment:', invoiceAfterError)
-    } else if (
-      invoiceBeforePayment.status !== 'paid' &&
-      (invoiceAfterPayment?.status === 'paid' || invoiceAfterPayment?.status === 'partially_paid')
-    ) {
-      remittanceAdvice = await sendPaymentReceipt(invoiceId, payment.id, user?.id || null)
+        if (invoiceAfterError) {
+          console.error('Error checking invoice status after payment:', invoiceAfterError)
+          receipt = {
+            outcome: 'refused',
+            error: 'the invoice could not be re-read after the payment',
+            attemptLogged: false,
+          }
+        } else if (
+          invoiceBeforePayment.status !== 'paid' &&
+          (invoiceAfterPayment?.status === 'paid' || invoiceAfterPayment?.status === 'partially_paid')
+        ) {
+          // The admin client, not the signed-in user's: the email log and the contact tables
+          // are closed to everyone but super admins. Permission was checked at the top.
+          receipt = await sendInvoiceReceipt(createAdminClient(), {
+            invoiceId,
+            paymentId: payment.id,
+            sentByUserId: user?.id || null,
+          })
+        }
+      } catch (receiptError: unknown) {
+        // The sender does not throw, but building its client can. Nothing was sent.
+        console.error('Error sending payment receipt:', receiptError)
+        receipt = { outcome: 'refused', error: getErrorMessage(receiptError), attemptLogged: false }
+      }
     }
+
+    const warning = receipt ? receiptWarning(receipt) : undefined
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
 
     revalidatePath('/private-bookings', 'layout')
-    return { payment, success: true, remittanceAdvice }
+    // Two plain returns rather than a spread, so `warning` is only present when there is one
+    // and callers can still read `result.error` and `result.warning` off the union.
+    if (warning) {
+      return { payment, success: true, receipt, warning }
+    }
+    return { payment, success: true, receipt }
   } catch (error: unknown) {
     console.error('Error in recordPayment:', error)
     return { error: getErrorMessage(error) }
