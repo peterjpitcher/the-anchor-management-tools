@@ -673,7 +673,7 @@ ${renderDocumentHeader({
         <div class="payment-method">
           <h4>Other Methods</h4>${offersOnlinePayment ? `
           <p><strong>Pay online:</strong> use the link in your invoice email</p>` : ''}
-          <p>For payment queries or to arrange card payment:</p>
+          <p>For payment queries:</p>
           <p>Contact: ${escapeHtml(CONTACT_NAME)}</p>
           <p>Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
           <p>Office: ${COMPANY_DETAILS.phone}</p>

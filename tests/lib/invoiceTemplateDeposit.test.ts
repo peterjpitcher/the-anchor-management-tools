@@ -390,7 +390,7 @@ describe('generateCompactInvoiceHTML payment information', () => {
       '        </div>',
     ].join('\n')
     const contactLines = [
-      '          <p>For payment queries or to arrange card payment:</p>',
+      '          <p>For payment queries:</p>',
       '          <p>Contact: ',
     ].join('\n')
 
