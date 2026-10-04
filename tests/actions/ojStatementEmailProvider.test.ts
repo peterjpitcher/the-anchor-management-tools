@@ -78,8 +78,12 @@ describe('sendStatementEmail and the mailbox switch', () => {
     expect(payload.to).toBe('accounts@example.com')
   })
 
-  it('pins Microsoft Graph, and changes nothing else, once the switch is set to graph', async () => {
+  // The mailbox route falls back to EMAIL_REPLY_TO, the venue manager's inbox, when no reply
+  // address is given. A client's question about their statement must come back to Orange Jelly.
+  it('pins Microsoft Graph and sends replies to the Orange Jelly mailbox once the switch is set to graph', async () => {
     process.env.INVOICE_EMAIL_PROVIDER = 'graph'
+    process.env.MICROSOFT_USER_EMAIL = 'accounts@orangejelly.example'
+    delete process.env.INVOICE_EMAIL_REPLY_TO
 
     const result = await sendStatementEmail(VENDOR_ID, '2026-09-01', '2026-09-30')
 
@@ -87,7 +91,7 @@ describe('sendStatementEmail and the mailbox switch', () => {
     const payload = sentPayload()
     expect(payload.provider).toBe('graph')
     expect(payload).not.toHaveProperty('from')
-    expect(payload).not.toHaveProperty('replyTo')
+    expect(payload.replyTo).toBe('accounts@orangejelly.example')
     expect(payload.subject).toBe('Account Statement: Golden Barrels Limited, September 2026 to September 2026')
   })
 
