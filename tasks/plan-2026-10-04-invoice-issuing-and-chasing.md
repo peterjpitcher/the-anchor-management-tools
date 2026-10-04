@@ -33,9 +33,9 @@ Pull request 2 changes nothing a customer receives until the owner sets a switch
 - [x] R0.7 Remove the non-existent `email_type` field from the chase log insert; the "recent reminder" warning ignores owner alerts (`src/app/actions/email.ts`, `src/components/modals/ChasePaymentModal.tsx`)
 - [x] Gates: lint, typecheck, typecheck:tests, tests in both time zones, build
 
-Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are confirmed live:
-- [ ] Restore the email on the four private hire client records from the booking contact email. Exact ids listed and checked before and after.
-- [ ] Backfill `sent_at` and `sent_to` on INV-003WD and INV-003WV from their email log rows.
+Data fixes, applied on 4 October 2026 with the owner's yes, after R0.1, R0.2 and R0.5 were confirmed live (see Results):
+- [x] Restore the email on the four private hire client records from the booking contact email. Exact ids listed and checked before and after.
+- [x] Backfill `sent_at` and `sent_to` on INV-003WD and INV-003WV from their email log rows.
 
 ## R1a. Sender switch (pull request 2)
 
@@ -43,7 +43,7 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 - [x] Copied addresses checked against the block list; proposed, dropped and sent recipients recorded in the email's metadata
 - [x] `.env.example` documents the switch and corrects the mistyped mobile
 - [x] Test email sent and checked on 4 October 2026 (see Results)
-- [ ] Owner: check the From name and the reply address on the test email, then set the switch in Vercel
+- [ ] Owner: the From name is confirmed fine (4 October 2026). Still to do: press Reply on the second test email (see Results) and check it addresses the Orange Jelly mailbox, then set the switch in Vercel and redeploy
 
 ## R1b. One voice (pull request 2)
 
@@ -84,10 +84,10 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 
 ## Release checklist (for the owner, in order)
 
-1. Deploy pull request 1. Confirm on the production deployment: the reminder job ran and emailed no customer; the owner alert arrived; `auto-send-invoices` returns 404; the GitHub workflows no longer list the two jobs.
-2. Apply the two data fixes.
-3. Apply the R2 migration to production (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
-4. Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
+1. DONE 4 October 2026. Deploy pull request 1. Confirm on the production deployment: the reminder job ran and emailed no customer; the owner alert arrived; `auto-send-invoices` returns 404; the GitHub workflows no longer list the two jobs.
+2. DONE 4 October 2026. Apply the two data fixes.
+3. DONE 4 October 2026. Apply the R2 migration to production (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
+4. PART DONE 4 October 2026: sent and found in Sent Items, From name confirmed by the owner. Still open: the owner's Reply check on the second test (see Results). Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
 5. Add contact names for the two clients greeted "Hi there"; fix the refused address at Barons Pubs.
 6. Review the first reminder run's list: call the reminder route with `?preview=true&go_live=YYYY-MM-DD` (it sends and changes nothing). Then set `INVOICE_REMINDERS_GO_LIVE_DATE` and redeploy.
 7. Set `INVOICE_PAYPAL_RECEIPTS_FROM` to the day it is switched on (an earlier date sends late receipts), and redeploy.
@@ -127,7 +127,7 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 
 **Independent review.** Two reviewers read the sending, payment and screen code against the spec before it was pushed. They confirmed that nothing can email a customer while the three switches are off. They found fifteen faults. Thirteen are fixed, with tests, in the commit "act on the independent review before anything is switched on". The hold control is still not shown on a draft (a draft gets no reminders). The PDF's "or to arrange card payment" wording was removed afterwards, on the owner's decision. What was accepted rather than fixed is in the spec under "As built", "Known and accepted".
 
-**Not done, by design.** Nothing was deployed. The migration was not applied. No email was sent, including the R1a test email. The two data fixes were not applied. No screen was opened in a signed-in browser, so the hold control, the Emails panel, the receipt tick and the reworded dialogs are proven by component tests only. The reminder job's go-live preview was not run against production.
+**Not done, by design (as it stood when the build finished; the entries below record what was released afterwards).** Nothing was deployed. The migration was not applied. No email was sent, including the R1a test email. The two data fixes were not applied. No screen was opened in a signed-in browser, so the hold control, the Emails panel, the receipt tick and the reworded dialogs are proven by component tests only. The reminder job's go-live preview was not run against production.
 
 **R1a test email, 4 October 2026, 18:38 UTC (owner approved).** One email, marked as a test and on made-up figures, was sent through the Orange Jelly mailbox by Microsoft Graph to the owner's own address, copied to the mailbox itself, with a PDF attached.
 - Microsoft accepted it (`success: true`), and the app saved its record (from the mailbox's address, not the no-reply one).
@@ -144,3 +144,24 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 - Checked afterwards: the four columns exist, nullable, with no default; all 72 invoices have the three new columns empty; all job run rows have `result` empty; the two views that read `invoices` are still defined; a test write to `cron_job_runs.result` on a dedicated row worked and was rolled back.
 - Tested beforehand on a throwaway local database: applied cleanly, a second run changed nothing, and the rollback removed the columns.
 - Rollback, if ever needed: drop the four columns (`reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at` on `invoices`; `result` on `cron_job_runs`).
+
+**Data fixes applied to production, 4 October 2026, 18:53 UTC (owner approved).** Run from `tasks/data-fixes-2026-10-04-invoice-r0.sql` once R0 was confirmed live on deployment `dpl_13oUNALBe4qioAL12muJg2ZfEmi4` (the reminder job answered with no customer email sent, and the removed auto-send route answered 404).
+- Fix 1: four private hire client records had their email restored from their own booking's contact email. Read back afterwards: four of four have an address.
+- Fix 2: INV-003WD and INV-003WV now carry the date and address they were really emailed to (1 September and 1 October 2026). Read back afterwards: both are `sent`, with `sent_at` and `sent_to` filled.
+- Both rows of evidence carry the same change time (18:53:14 UTC), so the two fixes went in together. Read back afterwards: 4 client records and 2 invoices changed, as expected.
+
+**Owner's feedback on the first test email, and a second test, 4 October 2026.** The From name was fine. Pressing Reply addressed the owner's own outlook.com address, not the Orange Jelly mailbox.
+- Not proven, but the likely cause is the test's own design: it was copied to the sending mailbox, so there were copies in that mailbox's Sent Items and Inbox, and replying to a message you sent addresses the person you sent it to.
+- The code sets the reply address on every invoice email sent through the mailbox (`invoiceReplyToAddress()`, the mailbox itself unless `INVOICE_EMAIL_REPLY_TO` says otherwise), and a reply to an email that is From the mailbox goes to the mailbox in any case.
+- A second test went at 19:01 UTC to the owner's outlook.com address only, with no copies. Microsoft accepted it and the app saved its record. Read back from Sent Items: from Peter Pitcher at the Orange Jelly mailbox, one recipient, nobody copied, PDF attached.
+- The header itself could not be read back: the app's permission on the mailbox can send but not read, and the mailbox view available does not show the reply address. So the reply address is confirmed in code and by the route, and still needs the owner to press Reply on that single copy.
+
+**Payment link check (owner asked), 4 October 2026.** A pay online link is offered only to a client with PayPal payments switched on, and only while a balance is due.
+- One rule, `invoiceCanOfferPayPal` (`src/lib/invoices/email-drafts.ts`), decides it. Everything that can produce a link goes through it: the P.S. on every invoice, reminder and chase email, the note in the two send dialogs, the "Pay online" line on the PDF, the private hire balance email, the staff "copy link" action, and the payment page itself, which refuses a client without it.
+- Production: the setting cannot be empty and is off unless switched on. 4 of the 13 client records have it on.
+- The test emails showed the P.S. on purpose, with a made-up link, to show how it reads. That was not clear and prompted the question.
+
+**R1 to R5 merged and live, 4 October 2026.** Pull request 178 merged to main as `25bc5ec6` after its CI passed (lint, type checks, tests, build, database contract, Postgres harnesses). Production deployment `dpl_7TRJAuD1J7Fyx7BkUJnhLRiVaNHV`, ready at 19:33 UTC.
+- Checked on the live site: the reminder preview answers and says nothing was sent or changed (asked with a go-live date of 5 October 2026: no invoice would be emailed, and five overdue invoices are listed for the owner to chase by hand, INV-003W8, INV-003WN, INV-003WG, INV-003WD and INV-003WT); a preview with a date that does not exist is refused (400); a mistyped preview query is refused (400) and does not start a run; the route refuses a call with no secret (401); the removed auto-send route still answers 404.
+- The three switches are still off, so no new customer email has started. Invoice emails keep leaving by the old route, with the new wording, until `INVOICE_EMAIL_PROVIDER=graph` is set.
+- Not checked: the new screens in a signed-in browser (hold control, Emails panel, receipt tick, reworded dialogs). That is the owner's check.
