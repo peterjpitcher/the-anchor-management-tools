@@ -1,4 +1,5 @@
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import type { InvoiceEmailKind } from '@/lib/invoices/email-copy'
 // import { Client } from '@microsoft/microsoft-graph-client'
 // import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -76,6 +77,12 @@ type InvoiceEmailOptions = {
   pdfFilename?: string
   /** Private booking deposit statement, printed on the PDF. Never a total. */
   deposit?: InvoiceDepositNotice
+  /**
+   * What this email is (invoice, reminder, chase, receipt), saved with it as
+   * `metadata.email_kind`. The reminder job and the invoice history read it. Defaults to
+   * 'receipt' for a receipt and 'invoice' otherwise.
+   */
+  emailKind?: InvoiceEmailKind
 }
 
 // Send invoice email
@@ -215,6 +222,7 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       metadata: {
         invoice_number: invoice.invoice_number,
         document_kind: documentKind,
+        email_kind: emailOptions?.emailKind ?? (isRemittanceAdvice ? 'receipt' : 'invoice'),
       },
     })
 
