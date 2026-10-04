@@ -15,6 +15,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import { attributionLabel } from '@/lib/api/attribution-labels'
 import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -87,27 +88,6 @@ type TableBookingAttribution = Partial<Record<PageSourceLabelKey, string>>
 
 const PAGE_SOURCE_LABEL_KEYS = Object.keys(PAGE_SOURCE_LABEL_CAPS) as PageSourceLabelKey[]
 
-/**
- * A bad label must never reject a booking. `z.string()` refuses a null, a number, an array or an
- * object before any transform runs, and a schema failure here is a 400, so each label is cleaned
- * BEFORE it is validated: anything that is not a string, or is blank, counts as not sent, and a
- * long one is cut to its cap. The rejected input is never logged.
- */
-function cleanPageSourceLabel(value: unknown, cap: number): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const cleaned = value.trim().slice(0, cap)
-  if (!cleaned) return undefined
-  // Postgres jsonb refuses a NUL, and a lone surrogate (which a cut through an emoji leaves
-  // behind). Storing either would fail the whole analytics insert and lose the booking's event
-  // along with the label, so the label alone is dropped.
-  if (cleaned.includes('\u0000') || !cleaned.isWellFormed()) return undefined
-  return cleaned
-}
-
-function pageSourceLabel(cap: number) {
-  return z.preprocess((value) => cleanPageSourceLabel(value, cap), z.string().optional())
-}
-
 const CreateTableBookingSchema = z.object({
   fixture_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32),
@@ -179,15 +159,16 @@ const CreateTableBookingSchema = z.object({
     )
     .max(20)
     .optional(),
-  // Page-source labels (see PAGE_SOURCE_LABEL_CAPS). Optional and cleaned leniently. They change
+  // Page-source labels (see PAGE_SOURCE_LABEL_CAPS). Optional and cleaned leniently by the shared
+  // helper in src/lib/api/attribution-labels.ts, so a bad label never rejects a booking. They change
   // nothing about the booking: they stay out of the idempotency hash and out of the booking
   // RPCs, and reach only the `table_booking_created` analytics event.
-  booking_source: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.booking_source),
-  utm_source: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_source),
-  utm_medium: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_medium),
-  utm_campaign: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_campaign),
-  utm_content: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.utm_content),
-  short_code: pageSourceLabel(PAGE_SOURCE_LABEL_CAPS.short_code)
+  booking_source: attributionLabel(PAGE_SOURCE_LABEL_CAPS.booking_source),
+  utm_source: attributionLabel(PAGE_SOURCE_LABEL_CAPS.utm_source),
+  utm_medium: attributionLabel(PAGE_SOURCE_LABEL_CAPS.utm_medium),
+  utm_campaign: attributionLabel(PAGE_SOURCE_LABEL_CAPS.utm_campaign),
+  utm_content: attributionLabel(PAGE_SOURCE_LABEL_CAPS.utm_content),
+  short_code: attributionLabel(PAGE_SOURCE_LABEL_CAPS.short_code)
 })
 
 type CreateTableBookingPayload = z.infer<typeof CreateTableBookingSchema>
