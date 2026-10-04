@@ -51,6 +51,11 @@ export interface Invoice {
   sent_at?: string | null
   /** Recipient address at first successful delivery. */
   sent_to?: string | null
+  /** Automatic reminders are held through this calendar date, inclusive. */
+  reminders_held_until?: string | null
+  /** When each automatic reminder was accepted for sending. The lasting record of the stage. */
+  reminder_first_sent_at?: string | null
+  reminder_second_sent_at?: string | null
   /** Generated column. Use this rather than `status` for payment questions. */
   payment_state?: 'unpaid' | 'part_paid' | 'paid'
   is_fixed_price?: boolean
