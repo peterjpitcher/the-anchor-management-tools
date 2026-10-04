@@ -161,7 +161,7 @@ Two jobs running at the same moment (a manual chase sent in the very second the 
 - A reason is optional and goes in the audit log with who set it.
 - A hold never resets what has already been sent. If it runs past a window, that reminder is not caught up and the invoice goes to "Needs you".
 
-The three new columns go in one additive migration (`supabase/migrations/20261004180000_invoice_reminder_columns.sql`), with a fourth, `cron_job_runs.result`, where the job saves what each run did. It is applied to production through the `prod-migrate` process with the owner's yes, before the code that reads the columns is deployed.
+The three new columns go in one additive migration (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`), with a fourth, `cron_job_runs.result`, where the job saves what each run did. It is applied to production through the `prod-migrate` process with the owner's yes, before the code that reads the columns is deployed.
 
 **One daily summary to the owner, replacing the alert per reminder.** Sent after the run to the Orange Jelly mailbox by the ordinary email route, only when there is something to say. The job still marks invoices overdue.
 - **Sent today:** each reminder, and who it went to.

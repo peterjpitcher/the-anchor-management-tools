@@ -85,7 +85,7 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 
 1. Deploy pull request 1. Confirm on the production deployment: the reminder job ran and emailed no customer; the owner alert arrived; `auto-send-invoices` returns 404; the GitHub workflows no longer list the two jobs.
 2. Apply the two data fixes.
-3. Apply the R2 migration to production (`supabase/migrations/20261004180000_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
+3. Apply the R2 migration to production (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
 4. Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
 5. Add contact names for the two clients greeted "Hi there"; fix the refused address at Barons Pubs.
 6. Review the first reminder run's list: call the reminder route with `?preview=true&go_live=YYYY-MM-DD` (it sends and changes nothing). Then set `INVOICE_REMINDERS_GO_LIVE_DATE` and redeploy.
@@ -133,3 +133,13 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 - Checked in the mailbox: the copy is in Sent Items, and the copied message arrived in the Inbox three seconds later, with its attachment.
 - Still for the owner to check, in the copy that reached his own address: the name shown in the From line, and that pressing reply addresses the Orange Jelly mailbox.
 - So the mailbox route works today. `INVOICE_EMAIL_PROVIDER=graph` can be set once pull request 2 is live.
+
+**R0 merged, 4 October 2026, 18:46 UTC.** Pull request 177 merged to main as `42183ec6` after its CI passed (lint, type checks, tests, build, database contract, Postgres harnesses).
+
+**Migration applied to production, 4 October 2026, 18:50 UTC (owner approved the exact SQL and checksum).**
+- Project `the-anchor-management-tools`, ref `tfcasgxopxegwrabvwat`.
+- File checksum (SHA-256) `9dfa63ccea73664a9af5baa6855ceb00fbf0f9a89068e34c13b12001987563dd`, unchanged between approval and apply.
+- Applied through the Supabase migration tool. Production recorded it as version `20261004185059`, name `invoice_reminder_columns`. The repo file was written as `20261004180000_...` and has been renamed to `20261004185059_invoice_reminder_columns.sql` so the repo matches production's history. Its contents are unchanged.
+- Checked afterwards: the four columns exist, nullable, with no default; all 72 invoices have the three new columns empty; all job run rows have `result` empty; the two views that read `invoices` are still defined; a test write to `cron_job_runs.result` on a dedicated row worked and was rolled back.
+- Tested beforehand on a throwaway local database: applied cleanly, a second run changed nothing, and the rollback removed the columns.
+- Rollback, if ever needed: drop the four columns (`reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at` on `invoices`; `result` on `cron_job_runs`).

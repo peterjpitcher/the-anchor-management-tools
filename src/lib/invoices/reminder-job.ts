@@ -316,7 +316,7 @@ async function acquireRun(supabase: AdminClient, runKey: string): Promise<RunLoc
 
 /**
  * Saves the run's results on its `cron_job_runs` row, in the `result` column (added with the
- * reminder columns in 20261004180000). `error_message` stays what its name says: it is set
+ * reminder columns in 20261004185059). `error_message` stays what its name says: it is set
  * only on a failed run. Returns false when the save did not happen.
  */
 async function saveRun(
