@@ -127,3 +127,9 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 **Independent review.** Two reviewers read the sending, payment and screen code against the spec before it was pushed. They confirmed that nothing can email a customer while the three switches are off. They found fifteen faults. Thirteen are fixed, with tests, in the commit "act on the independent review before anything is switched on". The hold control is still not shown on a draft (a draft gets no reminders). The PDF's "or to arrange card payment" wording was removed afterwards, on the owner's decision. What was accepted rather than fixed is in the spec under "As built", "Known and accepted".
 
 **Not done, by design.** Nothing was deployed. The migration was not applied. No email was sent, including the R1a test email. The two data fixes were not applied. No screen was opened in a signed-in browser, so the hold control, the Emails panel, the receipt tick and the reworded dialogs are proven by component tests only. The reminder job's go-live preview was not run against production.
+
+**R1a test email, 4 October 2026, 18:38 UTC (owner approved).** One email, marked as a test and on made-up figures, was sent through the Orange Jelly mailbox by Microsoft Graph to the owner's own address, copied to the mailbox itself, with a PDF attached.
+- Microsoft accepted it (`success: true`), and the app saved its record (from the mailbox's address, not the no-reply one).
+- Checked in the mailbox: the copy is in Sent Items, and the copied message arrived in the Inbox three seconds later, with its attachment.
+- Still for the owner to check, in the copy that reached his own address: the name shown in the From line, and that pressing reply addresses the Orange Jelly mailbox.
+- So the mailbox route works today. `INVOICE_EMAIL_PROVIDER=graph` can be set once pull request 2 is live.
