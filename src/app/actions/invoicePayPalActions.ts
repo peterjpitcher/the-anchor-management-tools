@@ -3,10 +3,15 @@
 /**
  * Letting a customer pay an invoice by PayPal.
  *
- * Modelled directly on the private booking deposit flow: staff either copy a
- * link or send one, the customer lands on a signed public page, and the money
- * can arrive back by four independent routes (customer return, webhook,
- * reconciliation cron, or a staff-side retry).
+ * Modelled directly on the private booking deposit flow: the customer lands on
+ * a signed public page, and the money can arrive back by four independent
+ * routes (customer return, webhook, reconciliation cron, or a staff-side retry).
+ *
+ * The link reaches the customer as the P.S. on every invoice email (see
+ * `src/lib/invoices/payment-link-footer.ts`), or staff copy it. There used to be
+ * a separate "payment link" email as well; it was retired on 4 October 2026
+ * because it was one more wording and one more sender for a link the invoice
+ * email already carries. Resending the invoice is how the link is sent again.
  *
  * The rule that makes that safe is that no path writes the payment itself.
  * They all call `record_invoice_paypal_payment_atomic`, which keys on PayPal's
@@ -14,12 +19,9 @@
  * between the webhook and the customer's browser records the money once.
  */
 
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { getErrorMessage } from '@/lib/errors'
 import {
@@ -28,8 +30,6 @@ import {
   getPayPalOrder,
 } from '@/lib/paypal'
 import { generateInvoiceToken, verifyInvoiceToken } from '@/lib/invoices/invoice-token'
-import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
-import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { invoicePaymentCustomId } from '@/lib/invoices/paypal-custom-id'
 import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
 import { invoiceBalanceDue, type InvoiceBalanceInput } from '@/lib/invoices/balance'
@@ -259,7 +259,7 @@ async function ensurePayPalOrder(
 
 /**
  * The copyable link. Returns the portal URL, never a raw PayPal URL: PayPal
- * approval links expire in hours, and a staff member pasting one into WhatsApp
+ * approval links expire in hours, and a staff member pasting one into an email
  * has no idea it has gone stale. The portal page mints a fresh one on demand.
  */
 export async function getInvoicePortalLink(
@@ -277,94 +277,6 @@ export async function getInvoicePortalLink(
     return { url: portalUrl(generateInvoiceToken(invoiceId)), invoiceNumber: invoice!.invoice_number }
   } catch (error) {
     logger.error('[InvoicePayPal] Failed to build the portal link', {
-      error: error instanceof Error ? error : new Error(String(error)),
-      metadata: { invoiceId },
-    })
-    return { error: getErrorMessage(error) }
-  }
-}
-
-/**
- * Email the customer a payment link.
- *
- * Sends two routes on purpose, as the deposit email does: a PayPal link they
- * can press now, and the portal link that still works after the PayPal one
- * expires.
- */
-export async function sendInvoicePaymentLink(
-  invoiceId: string,
-): Promise<{ success?: boolean; sentTo?: string; error?: string }> {
-  try {
-    if (!(await checkUserPermission('invoices', 'edit'))) {
-      return { error: 'You do not have permission to send invoices' }
-    }
-
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    const invoice = await loadInvoice(invoiceId)
-    const unpayable = await describeUnpayable(invoice)
-    if (unpayable) return { error: unpayable }
-
-    const admin = createAdminClient()
-    const recipients = await resolveVendorInvoiceRecipients(
-      admin,
-      invoice!.vendor_id,
-      invoice!.vendor?.email,
-    )
-
-    if ('error' in recipients) return { error: recipients.error }
-    if (!recipients.to) {
-      return { error: 'This customer has no email address on their billing record.' }
-    }
-
-    const token = generateInvoiceToken(invoiceId)
-    const url = portalUrl(token)
-
-    const order = await ensurePayPalOrder(invoice!, `${url}?payment_pending=1`, url)
-    if ('error' in order) return { error: order.error }
-
-    // Unlike a receipt, this email IS the payment request, so a failure has to
-    // reach the operator rather than being logged and forgotten.
-    const delivery = await sendInvoicePaymentLinkEmail({
-      to: recipients.to,
-      cc: recipients.cc,
-      invoiceNumber: invoice!.invoice_number,
-      customerName: invoice!.vendor?.name ?? null,
-      amountDue: outstanding(invoice!),
-      dueDate: invoice!.due_date,
-      paypalApproveUrl: order.approveUrl,
-      portalUrl: url,
-    })
-
-    await logAuditEvent({
-      user_id: user?.id,
-      operation_type: 'send',
-      resource_type: 'invoice',
-      resource_id: invoiceId,
-      operation_status: delivery.success ? 'success' : 'failure',
-      new_values: {
-        action: 'paypal_payment_link_sent',
-        invoice_number: invoice!.invoice_number,
-        amount_due: outstanding(invoice!),
-        recipient: recipients.to,
-        email_error: delivery.error ?? null,
-      },
-    })
-
-    revalidatePath(`/invoices/${invoiceId}`)
-
-    if (!delivery.success) {
-      // The order is left in place deliberately: it is still payable from the
-      // portal link, so a failed email does not strand the customer.
-      return { error: delivery.error ?? 'The email could not be sent.' }
-    }
-
-    return { success: true, sentTo: recipients.to }
-  } catch (error) {
-    logger.error('[InvoicePayPal] Failed to send the payment link', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { invoiceId },
     })
