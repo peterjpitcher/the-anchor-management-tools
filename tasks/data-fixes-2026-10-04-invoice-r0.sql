@@ -1,8 +1,11 @@
 -- Data fixes that follow R0 of tasks/spec-2026-10-04-invoice-issuing-and-chasing.md.
 --
--- NOT APPLIED. These write to the live database, so they need the owner's explicit yes, and
--- they are run only AFTER R0.1 (reminders paused), the R0.2 code fix and R0.5 (auto-send
--- removed) are confirmed live on the production deployment. Run before that and:
+-- APPLIED to production on 4 October 2026 at 18:53 UTC, with the owner's yes. Read back
+-- afterwards: the expected rows changed (4 client records, 2 invoices). Kept as the record of
+-- what was run: do not run it again.
+--
+-- They were run only AFTER R0.1 (reminders paused), the R0.2 code fix and R0.5 (auto-send
+-- removed) were confirmed live on the production deployment. Run before that and:
 --   - the next save on the Vendors page wipes fix 1 again (the R0.2 code fix stops that), and
 --   - the old reminder job would start emailing these customers its "Final Reminder".
 --
