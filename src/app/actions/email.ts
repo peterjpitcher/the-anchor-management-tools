@@ -372,9 +372,20 @@ export async function sendInvoiceViaEmail(formData: FormData) {
       if (!result.success) {
         await releaseIdempotencyClaim(admin, idempotencyContext.key, idempotencyContext.requestHash)
         claimHeld = false
-        return { error: result.error || 'Failed to send email' }
+        // A timeout after the request left: the customer may already have the email. Say so,
+        // or staff will press send again and they will get it twice.
+        return {
+          error: result.uncertain
+            ? 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before sending it again.'
+            : result.error || 'Failed to send email',
+        }
       }
       emailSent = true
+      // The email went but the app could not save its record of it. It is NOT sent again;
+      // staff are told so the gap in the invoice's email history is not a surprise.
+      if (result.recorded === false) {
+        warnings.push('Email sent, but it could not be saved to the invoice history')
+      }
 
       const logRows = [
         {
@@ -652,9 +663,20 @@ export async function sendChasePaymentEmail(formData: FormData) {
       if (!result.success) {
         await releaseIdempotencyClaim(admin, idempotencyContext.key, idempotencyContext.requestHash)
         claimHeld = false
-        return { error: result.error || 'Failed to send email' }
+        // A timeout after the request left: the customer may already have the email. Say so,
+        // or staff will press send again and they will get it twice.
+        return {
+          error: result.uncertain
+            ? 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before sending it again.'
+            : result.error || 'Failed to send email',
+        }
       }
       emailSent = true
+      // The email went but the app could not save its record of it. It is NOT sent again;
+      // staff are told so the gap in the invoice's email history is not a surprise.
+      if (result.recorded === false) {
+        warnings.push('Email sent, but it could not be saved to the invoice history')
+      }
 
       // No `email_type` here: invoice_email_logs has no such column, and the field made this
       // insert fail every time, so no manual chase was ever logged and the "recent reminder"
