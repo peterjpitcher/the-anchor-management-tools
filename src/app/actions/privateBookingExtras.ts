@@ -8,9 +8,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getErrorMessage } from '@/lib/errors'
-import { formatDateFull, getTodayIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
-import { COMPANY_DETAILS } from '@/lib/company-details'
+import { buildPrivateHireInvoiceEmail } from '@/lib/invoices/email-copy'
+import { bookingGreetingName, type BookingGreetingSource } from '@/lib/invoices/email-drafts'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { invoiceCanOfferPayPal, invoicePortalUrl } from '@/lib/invoices/payment-link-footer'
 import { storeContractSnapshot } from '@/lib/private-bookings/contract-lifecycle'
@@ -179,11 +180,25 @@ async function deliverExtraInvoice(bookingId: string, invoiceId: string, actorId
   if (linkError || link?.kind !== 'supplementary') throw new Error('This additional invoice does not belong to this booking.')
   const invoice = await loadInvoiceForSending(invoiceId)
   if (!invoice || ['void', 'written_off'].includes(invoice.status)) throw new Error('This invoice is no longer available to send.')
-  const { data: booking, error } = await db.from('private_bookings').select('contact_email').eq('id', bookingId).single()
+  const { data: booking, error } = await db.from('private_bookings').select('contact_email, event_date, customer_first_name, customer_full_name, customer_name, customer:customers(first_name)').eq('id', bookingId).single()
   if (error || !booking) throw new Error('Booking not found.')
   const recipient = z.string().email().parse(String(booking.contact_email ?? '').trim())
-  const subject = `Additional invoice ${invoice.invoice_number} from ${COMPANY_DETAILS.legalName}`
-  const body = `Hello,\n\nYour invoice for the additional charges agreed for your private booking is attached.\n\nInvoice total: £${Number(invoice.total_amount).toFixed(2)}\nPayments received: £${Number(invoice.paid_amount).toFixed(2)}\n${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Balance due: £${invoiceBalanceDue(invoice).toFixed(2)}\nDue date: ${formatDateFull(invoice.due_date)}\n${invoice.reference ? `Reference: ${invoice.reference}\n` : ''}\nThis invoice covers these additional charges only. Your original invoice remains separate.\n\nIf anything looks wrong, please reply to this email.\n\nMany thanks,\n${COMPANY_DETAILS.legalName}`
+  // The shared private hire wording, greeted by first name. It used to open "Hello," and
+  // sign off as the company. No deposit line: the deposit belongs to the original invoice,
+  // and this one covers the extras only.
+  const guest = booking as unknown as BookingGreetingSource & { event_date?: string | null }
+  const { subject, body } = buildPrivateHireInvoiceEmail({
+    firstName: bookingGreetingName(guest),
+    invoiceNumber: invoice.invoice_number,
+    eventDate: guest.event_date || null,
+    dueDate: invoice.due_date,
+    reference: invoice.reference,
+    total: Number(invoice.total_amount) || 0,
+    paid: Math.max(0, Number(invoice.paid_amount) || 0),
+    credits: invoiceIssuedCreditTotal(invoice),
+    balance: invoiceBalanceDue(invoice),
+    additionalCharges: true,
+  })
   const claim = await callBillingRpc<{ claimed: boolean; state: string; claim_id?: string }>('claim_private_booking_extra_delivery', {
     p_booking_id: bookingId, p_invoice_id: invoiceId, p_actor_id: actorId, p_resend: resend,
   })
@@ -202,6 +217,8 @@ async function deliverExtraInvoice(bookingId: string, invoiceId: string, actorId
     return { sent: delivery.success, warning: 'The email delivery outcome could not be saved. Check delivery before trying to send again.' }
   }
   const { error: logError } = await db.from('invoice_email_logs').insert({ invoice_id: invoiceId, sent_to: recipient, sent_by: actorId, subject, body, status: delivery.success ? 'sent' : 'failed', error_message: delivery.error ?? null, message_id: delivery.messageId ?? null })
+  // A timeout after the request left: the customer may already have it. Do not invite a resend.
+  if (!delivery.success && delivery.uncertain) return { sent: false, warning: 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before using resend on this invoice.' }
   if (!delivery.success) return { sent: false, warning: delivery.error || 'Invoice created but email failed. Use resend on this invoice.' }
   const { error: stampError } = await db.from('invoices').update({ sent_at: new Date().toISOString(), sent_to: recipient }).eq('id', invoiceId)
   let archiveWarning: string | undefined

@@ -93,6 +93,22 @@ describe('buildInvoicePaymentLinkFooter', () => {
   it('returns the portal link for an enabled vendor with an outstanding balance', () => {
     expect(buildInvoicePaymentLinkFooter(invoice())).toContain('/invoice-portal/')
   })
+
+  it('is a P.S. after a blank line, in the same voice as the email', () => {
+    const footer = buildInvoicePaymentLinkFooter(invoice())
+
+    expect(footer).toMatch(
+      /^\n\nP\.S\. You can also pay this online by card or PayPal: https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\/\S+$/,
+    )
+  })
+
+  it('no longer offers to send bank details, which are printed on every invoice', () => {
+    const footer = buildInvoicePaymentLinkFooter(invoice())
+
+    expect(footer).not.toContain('Bank transfer')
+    expect(footer).not.toContain("I'll send the details")
+    expect(footer).not.toContain('Prefer to pay online?')
+  })
 })
 
 describe('invoiceCanOfferPayPal', () => {
@@ -114,5 +130,13 @@ describe('withInvoicePaymentLink', () => {
   it('leaves the body exactly alone when nothing is owed', () => {
     const body = 'Hi Kim,\n\nThanks for your payment.'
     expect(withInvoicePaymentLink(body, invoice({ status: 'paid' }))).toBe(body)
+  })
+
+  it('puts the P.S. after the sign-off, as the last thing in the email', () => {
+    const body = 'Hi Kim,\n\nInvoice INV-003WK is attached.\n\nMany thanks,\nPeter Pitcher\nOrange Jelly Limited\n07990 587315'
+    const result = withInvoicePaymentLink(body, invoice())
+
+    expect(result).toMatch(/07990 587315\n\nP\.S\. You can also pay this online by card or PayPal: https:\/\/\S+$/)
+    expect(result.match(/P\.S\./g)).toHaveLength(1)
   })
 })

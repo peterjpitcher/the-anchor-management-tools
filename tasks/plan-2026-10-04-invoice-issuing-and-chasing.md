@@ -39,57 +39,61 @@ Data fixes, not done, owner's yes needed, only after R0.1, R0.2 and R0.5 are con
 
 ## R1a. Sender switch (pull request 2)
 
-- [ ] `INVOICE_EMAIL_PROVIDER=graph` pins the provider in one helper used by `sendInvoiceEmail`, the statement send, the private booking receipt and the payment link email
-- [ ] Copied addresses checked against the block list; proposed, dropped and sent recipients recorded in the email's metadata
-- [ ] `.env.example` documents the switch and corrects the mistyped mobile
-- [ ] Owner: test email, then set the switch in Vercel
+- [x] `INVOICE_EMAIL_PROVIDER=graph` pins the provider in one helper used by `sendInvoiceEmail`, the statement send, the private booking receipt and the payment link email
+- [x] Copied addresses checked against the block list; proposed, dropped and sent recipients recorded in the email's metadata
+- [x] `.env.example` documents the switch and corrects the mistyped mobile
+- [x] Test email sent and checked on 4 October 2026 (see Results)
+- [ ] Owner: check the From name and the reply address on the test email, then set the switch in Vercel
 
 ## R1b. One voice (pull request 2)
 
-- [ ] `src/lib/invoices/email-copy.ts`: sign-off, greeting helper, every default wording, kind labels
-- [ ] `resolveInvoiceGreeting` on the server (primary contact, else guest record, else "there")
-- [ ] Wire into: manual send and chase dialogs, monthly billing job, recurring job, private hire invoice and extras, receipts, payment page greeting, private booking receipt
-- [ ] Pay online line becomes a P.S.; receipts carry none
-- [ ] Retire the separate payment link email; button becomes "Resend invoice"; no WhatsApp wording
-- [ ] Fixture render test over the full set in the spec, in both time zones
+- [x] `src/lib/invoices/email-copy.ts`: sign-off, greeting helper, every default wording, kind labels
+- [x] `resolveInvoiceGreeting` on the server (primary contact, else guest record, else "there")
+- [x] Wire into: manual send and chase dialogs, monthly billing job, recurring job, private hire invoice and extras, receipts, payment page greeting, private booking receipt
+- [x] Pay online line becomes a P.S.; receipts carry none
+- [x] Retire the separate payment link email; button becomes "Resend invoice"; no WhatsApp wording
+- [x] Fixture render test over the full set in the spec, in both time zones
 
 ## R2. Reminders (pull request 2)
 
-- [ ] Migration: `invoices.reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at`
-- [ ] Pure rules module with tests (windows, skips, forecast, working days)
-- [ ] New reminder job: off without the go-live date; durable stage record; claim per stage; accepted, refused and unknown outcomes; recheck before each send
-- [ ] Daily summary with saved state on the run record
-- [ ] Hold and Resume on the invoice page, server-checked
-- [ ] `vercel.json`: `30 9 * * 1-5`
-- [ ] Owner: apply the migration to production (prod-migrate), approve the first run's list, set `INVOICE_REMINDERS_GO_LIVE_DATE`
+- [x] Migration: `invoices.reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at`, and `cron_job_runs.result`. Applied to production on 4 October 2026 with the owner's approval (see Results)
+- [x] Pure rules module with tests (windows, skips, forecast, working days)
+- [x] New reminder job: off without the go-live date; durable stage record; claim per stage; accepted, refused and unknown outcomes; recheck before each send
+- [x] Daily summary with saved state on the run record
+- [x] Hold and Resume on the invoice page, server-checked
+- [x] `vercel.json`: `30 9 * * 1-5`
+- [ ] Owner: approve the first run's list, then set `INVOICE_REMINDERS_GO_LIVE_DATE`
 
 ## R3. Email history (pull request 2)
 
-- [ ] Server action with view permission, admin client, escaped text
-- [ ] Emails panel and the "next reminder" line on the invoice page
-- [ ] Chase dialog warning reads the same data; dialogs show server warnings
+- [x] Server action with view permission, admin client, escaped text
+- [x] Emails panel and the "next reminder" line on the invoice page
+- [x] Chase dialog warning reads the same data; dialogs show server warnings
 
 ## R4. Weekday issuing (pull request 2)
 
-- [ ] Recurring job: `0 9 * * 1-5`; invoice dated the day it is raised; schedule advances from its own date
-- [ ] Monthly billing job: `5 9 * * 1-5`; per-month pass record; completes an interrupted pass in the first seven days; alert on the eighth
+- [x] Recurring job: `0 9 * * 1-5`; invoice dated the day it is raised; schedule advances from its own date
+- [x] Monthly billing job: `5 9 * * 1-5`; per-month pass record; completes an interrupted pass in the first seven days; alert on the eighth
 
 ## R5. Close the loop (pull request 2)
 
-- [ ] Receipt sender as a server-only module on the admin client
-- [ ] PayPal receipt after capture, plus the sweep in the 15 minute check; off without `INVOICE_PAYPAL_RECEIPTS_FROM`
-- [ ] Receipt tick on Record Payment, enforced on the server
-- [ ] PDF Terms box and online payment line
+- [x] Receipt sender as a server-only module on the admin client
+- [x] PayPal receipts sent by the sweep in the 15 minute check (the only sender); off without `INVOICE_PAYPAL_RECEIPTS_FROM`
+- [x] Receipt tick on Record Payment, enforced on the server
+- [x] PDF Terms box and online payment line
 
 ## Release checklist (for the owner, in order)
 
 1. Deploy pull request 1. Confirm on the production deployment: the reminder job ran and emailed no customer; the owner alert arrived; `auto-send-invoices` returns 404; the GitHub workflows no longer list the two jobs.
 2. Apply the two data fixes.
-3. Apply the R2 migration to production. Then deploy pull request 2.
-4. Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph`.
+3. Apply the R2 migration to production (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
+4. Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
 5. Add contact names for the two clients greeted "Hi there"; fix the refused address at Barons Pubs.
-6. Review the first reminder run's list. Then set `INVOICE_REMINDERS_GO_LIVE_DATE`.
-7. Set `INVOICE_PAYPAL_RECEIPTS_FROM` when ready.
+6. Review the first reminder run's list: call the reminder route with `?preview=true&go_live=YYYY-MM-DD` (it sends and changes nothing). Then set `INVOICE_REMINDERS_GO_LIVE_DATE` and redeploy.
+7. Set `INVOICE_PAYPAL_RECEIPTS_FROM` to the day it is switched on (an earlier date sends late receipts), and redeploy.
+   Before any switch: confirm `CRON_ALERT_EMAIL` is set in production and reaches the owner. It is the only route for "outcome unknown" and "raised but not emailed" alerts.
+
+Each switch is an environment variable. On Vercel a changed variable only reaches a new deployment.
 8. After two weeks: compare a few received emails with the approved wording, count clients still greeted "Hi there", and check no send failures are outstanding.
 
 Rollback keeps reminders paused. It never restores the old automatic reminders.
@@ -110,3 +114,33 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
   client records, each with one booking and one contact email that matches where its invoices
   were sent; INV-003WD emailed 1 September 2026 and INV-003WV emailed 1 October 2026, one log
   row each.
+
+**R0, later the same day.** One more commit on the R0 branch: alert emails no longer mangle record links and dates as phone numbers. R0.3's alert relies on that link to point at the exact draft. Its tests pass in both time zones.
+
+**R1 to R5 (pull request 2), 4 October 2026.** Run on the final committed branch:
+- `npm run lint`: clean.
+- `npx tsc --noEmit`: clean. `npm run typecheck:tests`: clean.
+- `npm test` (Europe/London): 1,238 files, 12,895 tests passed, 2 skipped.
+- `npm run test:utc`: 1,238 files, 12,895 tests passed, 2 skipped.
+- `npm run build`: compiled, 144 static pages generated.
+- The last change after the test runs was a one-line type annotation; both type checks, lint and the build were re-run after it.
+
+**Independent review.** Two reviewers read the sending, payment and screen code against the spec before it was pushed. They confirmed that nothing can email a customer while the three switches are off. They found fifteen faults. Thirteen are fixed, with tests, in the commit "act on the independent review before anything is switched on". The hold control is still not shown on a draft (a draft gets no reminders). The PDF's "or to arrange card payment" wording was removed afterwards, on the owner's decision. What was accepted rather than fixed is in the spec under "As built", "Known and accepted".
+
+**Not done, by design.** Nothing was deployed. The migration was not applied. No email was sent, including the R1a test email. The two data fixes were not applied. No screen was opened in a signed-in browser, so the hold control, the Emails panel, the receipt tick and the reworded dialogs are proven by component tests only. The reminder job's go-live preview was not run against production.
+
+**R1a test email, 4 October 2026, 18:38 UTC (owner approved).** One email, marked as a test and on made-up figures, was sent through the Orange Jelly mailbox by Microsoft Graph to the owner's own address, copied to the mailbox itself, with a PDF attached.
+- Microsoft accepted it (`success: true`), and the app saved its record (from the mailbox's address, not the no-reply one).
+- Checked in the mailbox: the copy is in Sent Items, and the copied message arrived in the Inbox three seconds later, with its attachment.
+- Still for the owner to check, in the copy that reached his own address: the name shown in the From line, and that pressing reply addresses the Orange Jelly mailbox.
+- So the mailbox route works today. `INVOICE_EMAIL_PROVIDER=graph` can be set once pull request 2 is live.
+
+**R0 merged, 4 October 2026, 18:46 UTC.** Pull request 177 merged to main as `42183ec6` after its CI passed (lint, type checks, tests, build, database contract, Postgres harnesses).
+
+**Migration applied to production, 4 October 2026, 18:50 UTC (owner approved the exact SQL and checksum).**
+- Project `the-anchor-management-tools`, ref `tfcasgxopxegwrabvwat`.
+- File checksum (SHA-256) `9dfa63ccea73664a9af5baa6855ceb00fbf0f9a89068e34c13b12001987563dd`, unchanged between approval and apply.
+- Applied through the Supabase migration tool. Production recorded it as version `20261004185059`, name `invoice_reminder_columns`. The repo file was written as `20261004180000_...` and has been renamed to `20261004185059_invoice_reminder_columns.sql` so the repo matches production's history. Its contents are unchanged.
+- Checked afterwards: the four columns exist, nullable, with no default; all 72 invoices have the three new columns empty; all job run rows have `result` empty; the two views that read `invoices` are still defined; a test write to `cron_job_runs.result` on a dedicated row worked and was rolled back.
+- Tested beforehand on a throwaway local database: applied cleanly, a second run changed nothing, and the rollback removed the columns.
+- Rollback, if ever needed: drop the four columns (`reminders_held_until`, `reminder_first_sent_at`, `reminder_second_sent_at` on `invoices`; `result` on `cron_job_runs`).

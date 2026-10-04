@@ -9,6 +9,7 @@ import {
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { logger } from '@/lib/logger'
 import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
+import { sweepPayPalReceipts, type PayPalReceiptSweepResult } from '@/lib/invoices/receipt-email'
 
 /**
  * Settles invoice PayPal orders the return trip and the webhook both missed.
@@ -20,10 +21,18 @@ import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
  *
  * Everything lands through `record_invoice_paypal_payment_atomic`, keyed on the
  * capture id, so racing the webhook records nothing twice.
+ *
+ * It then sends any PayPal receipt that is owed and never went (see
+ * `sweepPayPalReceipts`). That part is off unless INVOICE_PAYPAL_RECEIPTS_FROM is
+ * set, and it never changes the result of the reconciliation above.
  */
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+// Each receipt renders a PDF and sends an email, so the sweep stops starting new
+// ones this long after the run began. What is left waits for the next run.
+const RECEIPT_SWEEP_BUDGET_MS = 40 * 1000
 
 // Drafts are included because an invoice emailed by the auto-send run can carry
 // an order while its status flip is still catching up. Only genuinely
@@ -79,12 +88,43 @@ async function clearOrder(
   if (error) throw error
 }
 
+/**
+ * Sends the PayPal receipts that are owed and never went.
+ *
+ * Returns nothing, having read nothing, when the switch is off. Never throws: this
+ * job exists to get money onto invoices, and a receipt problem must not turn a good
+ * reconciliation into a failed one. A sweep that cannot run raises its own alert.
+ */
+async function sweepReceipts(
+  admin: ReturnType<typeof createAdminClient>,
+  startedAt: number,
+): Promise<PayPalReceiptSweepResult | { error: string } | undefined> {
+  try {
+    const result = await sweepPayPalReceipts(admin, { deadline: startedAt + RECEIPT_SWEEP_BUDGET_MS })
+    return result ?? undefined
+  } catch (error) {
+    logger.error('[InvoiceReconciliation] Receipt sweep failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    try {
+      await reportCronFailure('invoice-paypal-receipt', error)
+    } catch (alertError) {
+      // The alert is best effort. The log line above is the record if it cannot be raised.
+      logger.error('[InvoiceReconciliation] Could not raise the receipt sweep alert', {
+        error: alertError instanceof Error ? alertError : new Error(String(alertError)),
+      })
+    }
+    return { error: 'Receipt sweep failed' }
+  }
+}
+
 export async function GET(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const startedAt = Date.now()
   const admin = createAdminClient()
   const summary = { checked: 0, settled: 0, cleared: 0, failed: 0 }
 
@@ -177,12 +217,24 @@ export async function GET(request: NextRequest) {
     if (summary.failed > 0) {
       await reportCronFailure('invoice-paypal-reconciliation', new Error('Invoice payments need reconciliation'), summary)
     }
-    return NextResponse.json({ success: summary.failed === 0, ...summary }, { status: summary.failed > 0 ? 500 : 200 })
+    // After the money, and outside its success or failure: `receipts` is reported
+    // beside the reconciliation figures and never changes the status below.
+    const receipts = await sweepReceipts(admin, startedAt)
+    return NextResponse.json(
+      { success: summary.failed === 0, ...summary, ...(receipts ? { receipts } : {}) },
+      { status: summary.failed > 0 ? 500 : 200 },
+    )
   } catch (error) {
     logger.error('[InvoiceReconciliation] Run failed', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     await reportCronFailure('invoice-paypal-reconciliation', error, summary)
-    return NextResponse.json({ success: false, error: 'Reconciliation failed' }, { status: 500 })
+    // A failed reconciliation still sweeps: a receipt owed for a payment recorded
+    // earlier does not depend on this run having settled anything.
+    const receipts = await sweepReceipts(admin, startedAt)
+    return NextResponse.json(
+      { success: false, error: 'Reconciliation failed', ...(receipts ? { receipts } : {}) },
+      { status: 500 },
+    )
   }
 }

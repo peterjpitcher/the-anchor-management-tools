@@ -8,7 +8,10 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
 
-vi.mock('@/lib/dateUtils', () => ({
+// Only "today" is faked. The date maths (the due date, the schedule's next date, the weekday
+// check) runs for real, because those are the rules under test.
+vi.mock('@/lib/dateUtils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/dateUtils')>()),
   getTodayIsoDate: vi.fn(() => '2026-06-24'),
 }))
 
@@ -18,11 +21,6 @@ vi.mock('@/services/invoices', () => ({
   },
 }))
 
-vi.mock('@/lib/recurringInvoiceSchedule', () => ({
-  addDaysIsoDate: vi.fn(() => '2026-07-24'),
-  calculateNextInvoiceIsoDate: vi.fn(() => '2026-07-24'),
-}))
-
 vi.mock('@/lib/microsoft-graph', () => ({
   isGraphConfigured: vi.fn(() => true),
   sendInvoiceEmail: vi.fn(),
@@ -30,6 +28,10 @@ vi.mock('@/lib/microsoft-graph', () => ({
 
 vi.mock('@/lib/invoice-recipients', () => ({
   resolveVendorInvoiceRecipients: vi.fn(),
+}))
+
+vi.mock('@/lib/invoices/greeting', () => ({
+  resolveInvoiceGreetingName: vi.fn(),
 }))
 
 vi.mock('@/app/actions/audit', () => ({
@@ -60,11 +62,14 @@ vi.mock('@/lib/api/idempotency', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getIsoWeekday, getTodayIsoDate } from '@/lib/dateUtils'
 import { InvoiceService } from '@/services/invoices'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
 import { claimIdempotencyKey, persistIdempotencyResponse } from '@/lib/api/idempotency'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { INVOICE_SIGN_OFF } from '@/lib/invoices/email-copy'
 import { GET } from '@/app/api/cron/recurring-invoices/route'
 
 const recurringInvoice = {
@@ -77,7 +82,7 @@ const recurringInvoice = {
   invoice_discount_percentage: 0,
   notes: null,
   internal_notes: null,
-  end_date: null,
+  end_date: null as string | null,
   vendor: {
     id: 'vendor-1',
     name: 'Client Ltd',
@@ -95,8 +100,27 @@ const recurringInvoice = {
   }],
 }
 
-function makeSupabase() {
-  const dueOrder = vi.fn().mockResolvedValue({ data: [recurringInvoice], error: null })
+// The invoice as the route reloads it for emailing, once it has been created.
+const reloadedInvoice = {
+  id: 'invoice-1',
+  invoice_number: 'INV-1',
+  status: 'draft',
+  reference: 'Monthly services',
+  invoice_date: '2026-06-24',
+  due_date: '2026-07-24',
+  total_amount: 120,
+  paid_amount: 0,
+  vendor: recurringInvoice.vendor,
+  line_items: [],
+  payments: [],
+}
+
+function makeSupabase(overrides: {
+  recurring?: Partial<typeof recurringInvoice>
+  invoice?: Record<string, unknown>
+} = {}) {
+  const dueRow = { ...recurringInvoice, ...overrides.recurring }
+  const dueOrder = vi.fn().mockResolvedValue({ data: [dueRow], error: null })
   const dueLte = vi.fn(() => ({ order: dueOrder }))
   const dueEq = vi.fn(() => ({ lte: dueLte }))
   const dueSelect = vi.fn(() => ({ eq: dueEq }))
@@ -104,17 +128,10 @@ function makeSupabase() {
   const recurringUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'recurring-1' }, error: null })
   const recurringUpdateSelect = vi.fn(() => ({ maybeSingle: recurringUpdateMaybeSingle }))
   const recurringUpdateEq = vi.fn(() => ({ select: recurringUpdateSelect }))
-  const recurringUpdate = vi.fn(() => ({ eq: recurringUpdateEq }))
+  const recurringUpdate = vi.fn((_patch: Record<string, unknown>) => ({ eq: recurringUpdateEq }))
 
   const invoiceLoadSingle = vi.fn().mockResolvedValue({
-    data: {
-      id: 'invoice-1',
-      invoice_number: 'INV-1',
-      status: 'draft',
-      vendor: recurringInvoice.vendor,
-      line_items: [],
-      payments: [],
-    },
+    data: { ...reloadedInvoice, ...overrides.invoice },
     error: null,
   })
   const invoiceLoadEq = vi.fn(() => ({ single: invoiceLoadSingle }))
@@ -147,7 +164,7 @@ function makeSupabase() {
     }),
   }
 
-  return { supabase, invoiceUpdate, emailLogInsert }
+  return { supabase, invoiceUpdate, emailLogInsert, recurringUpdate }
 }
 
 function makeFetchErrorSupabase() {
@@ -172,9 +189,14 @@ function makeFetchErrorSupabase() {
   }
 }
 
+function run() {
+  return GET(new Request('http://localhost/api/cron/recurring-invoices'))
+}
+
 describe('recurring invoices cron A-046', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getTodayIsoDate).mockReturnValue('2026-06-24')
     vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'claimed' } as any)
     vi.mocked(persistIdempotencyResponse).mockResolvedValue(undefined)
     vi.mocked(InvoiceService.createInvoiceAsAdmin).mockResolvedValue({
@@ -185,6 +207,7 @@ describe('recurring invoices cron A-046', () => {
       to: 'billing@example.com',
       cc: [],
     })
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue('Sam')
     vi.mocked(sendInvoiceEmail).mockResolvedValue({
       success: false,
       error: 'Graph send failed',
@@ -198,7 +221,7 @@ describe('recurring invoices cron A-046', () => {
     const { supabase, invoiceUpdate } = makeSupabase()
     vi.mocked(createAdminClient).mockReturnValue(supabase as any)
 
-    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const response = await run()
     const payload = await response.json()
 
     expect(response.status).toBe(200)
@@ -211,6 +234,8 @@ describe('recurring invoices cron A-046', () => {
       expect.any(String),
       expect.any(String),
       [],
+      undefined,
+      { emailKind: 'invoice' },
     )
     expect(reportCronFailure).toHaveBeenCalledWith(
       'recurring-invoices',
@@ -241,7 +266,7 @@ describe('recurring invoices cron A-046', () => {
     vi.mocked(createAdminClient).mockReturnValue(supabase as any)
     vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
 
-    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const response = await run()
     const payload = await response.json()
 
     expect(response.status).toBe(200)
@@ -265,7 +290,7 @@ describe('recurring invoices cron A-046', () => {
     vi.mocked(createAdminClient).mockReturnValue(supabase as any)
     vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue({ to: null, cc: [] } as any)
 
-    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const response = await run()
     const payload = await response.json()
 
     expect(response.status).toBe(200)
@@ -281,10 +306,27 @@ describe('recurring invoices cron A-046', () => {
     )
   })
 
+  // The request left and no answer came back: the customer may already hold the invoice. The
+  // alert must not tell the owner to "open the draft and send it" without looking first.
+  it('says to check Sent Items first when the outcome of the send is unknown', async () => {
+    const { supabase, invoiceUpdate } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, error: 'Unable to fetch data', uncertain: true } as any)
+
+    await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+
+    expect(invoiceUpdate).not.toHaveBeenCalled()
+    const call = vi.mocked(reportCronFailure).mock.calls.find(([, error]) =>
+      String((error as Error).message).includes('may or may not have been emailed')
+    )
+    expect(call).toBeDefined()
+    expect(String((call?.[2] as { what_to_do: string }).what_to_do)).toContain('Check Sent Items first')
+  })
+
   it('does not leak raw database errors when loading due recurring invoices fails', async () => {
     vi.mocked(createAdminClient).mockReturnValue(makeFetchErrorSupabase() as any)
 
-    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const response = await run()
     const payload = await response.json()
 
     expect(response.status).toBe(500)
@@ -298,7 +340,7 @@ describe('recurring invoices cron A-046', () => {
       throw new Error('database password leaked in stack')
     })
 
-    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const response = await run()
     const payload = await response.json()
 
     expect(response.status).toBe(500)
@@ -307,6 +349,204 @@ describe('recurring invoices cron A-046', () => {
     expect(reportCronFailure).toHaveBeenCalledWith(
       'recurring-invoices',
       expect.any(Error),
+    )
+  })
+})
+
+// R4: invoices go out on a weekday morning. Saturday 7 November 2026 and Monday 9 November 2026
+// are the pair used throughout; the first test pins their weekdays so a wrong fixture cannot
+// pass by accident.
+describe('recurring invoices cron: raised on a weekday, dated the day it is raised', () => {
+  const SATURDAY = '2026-11-07'
+  const SUNDAY = '2026-11-08'
+  const MONDAY = '2026-11-09'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'claimed' } as any)
+    vi.mocked(persistIdempotencyResponse).mockResolvedValue(undefined)
+    vi.mocked(InvoiceService.createInvoiceAsAdmin).mockResolvedValue({
+      id: 'invoice-1',
+      invoice_number: 'INV-1',
+    } as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue({ to: 'billing@example.com', cc: [] })
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue('Sam')
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
+  })
+
+  it('uses a real Saturday, Sunday and Monday', () => {
+    expect(getIsoWeekday(SATURDAY)).toBe(6)
+    expect(getIsoWeekday(SUNDAY)).toBe(7)
+    expect(getIsoWeekday(MONDAY)).toBe(1)
+  })
+
+  it('dates a Saturday schedule the Monday it is raised, and keeps the schedule on its own day', async () => {
+    vi.mocked(getTodayIsoDate).mockReturnValue(MONDAY)
+    const { supabase, recurringUpdate } = makeSupabase({ recurring: { next_invoice_date: SATURDAY } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    const response = await run()
+    const payload = await response.json()
+
+    expect(payload.results.sent).toBe(1)
+    // Dated the Monday, with the 30 day terms counted from the Monday (not Monday 7 December,
+    // which is 30 days from the Saturday).
+    expect(InvoiceService.createInvoiceAsAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({ invoice_date: '2026-11-09', due_date: '2026-12-09' }),
+    )
+    // The schedule moves on from the Saturday it was due, so it stays on the 7th.
+    expect(recurringUpdate).toHaveBeenCalledTimes(1)
+    expect(recurringUpdate.mock.calls[0][0]).toMatchObject({
+      next_invoice_date: '2026-12-07',
+      last_invoice_id: 'invoice-1',
+    })
+    // The claim is still keyed on the scheduled date, so a second run cannot raise it twice.
+    expect(claimIdempotencyKey).toHaveBeenCalledWith(
+      supabase,
+      'cron:recurring-invoice:recurring-1:2026-11-07',
+      'hash',
+      24 * 90,
+    )
+  })
+
+  it.each([SATURDAY, SUNDAY])('does nothing when it is called on a weekend day (%s)', async (weekendDay) => {
+    vi.mocked(getTodayIsoDate).mockReturnValue(weekendDay)
+    const { supabase } = makeSupabase({ recurring: { next_invoice_date: SATURDAY } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    const response = await run()
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toEqual({ success: true, skipped: true, reason: 'Not a weekday in Europe/London' })
+    expect(supabase.from).not.toHaveBeenCalled()
+    expect(InvoiceService.createInvoiceAsAdmin).not.toHaveBeenCalled()
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+  })
+
+  // The job used to run every day, so "has the end date passed?" could be asked of today. Now a
+  // last invoice due on a Saturday is handled on the Monday, by which time the end date is behind
+  // us. It must still be raised.
+  it('still raises a last invoice whose scheduled date and end date fell at the weekend', async () => {
+    vi.mocked(getTodayIsoDate).mockReturnValue(MONDAY)
+    const { supabase, recurringUpdate } = makeSupabase({
+      recurring: { next_invoice_date: SATURDAY, end_date: SATURDAY },
+    })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await run()
+
+    expect(InvoiceService.createInvoiceAsAdmin).toHaveBeenCalledTimes(1)
+    expect(recurringUpdate.mock.calls[0][0]).not.toHaveProperty('is_active')
+  })
+
+  it('switches off a schedule whose end date is before its next scheduled invoice', async () => {
+    vi.mocked(getTodayIsoDate).mockReturnValue(MONDAY)
+    const { supabase, recurringUpdate } = makeSupabase({
+      recurring: { next_invoice_date: SATURDAY, end_date: '2026-11-06' },
+    })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await run()
+
+    expect(InvoiceService.createInvoiceAsAdmin).not.toHaveBeenCalled()
+    expect(recurringUpdate).toHaveBeenCalledTimes(1)
+    expect(recurringUpdate.mock.calls[0][0]).toMatchObject({ is_active: false })
+  })
+})
+
+describe('recurring invoices cron: the email wording', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getTodayIsoDate).mockReturnValue('2026-11-09')
+    vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'claimed' } as any)
+    vi.mocked(persistIdempotencyResponse).mockResolvedValue(undefined)
+    vi.mocked(InvoiceService.createInvoiceAsAdmin).mockResolvedValue({
+      id: 'invoice-1',
+      invoice_number: 'INV-1',
+    } as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue({ to: 'billing@example.com', cc: [] })
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
+  })
+
+  function sentEmail() {
+    const call = vi.mocked(sendInvoiceEmail).mock.calls[0]
+    return { subject: String(call[2]), body: String(call[3]), options: call[6] }
+  }
+
+  it('greets the contact by first name and says what is owed and when', async () => {
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue('Sam')
+    const { supabase } = makeSupabase({ invoice: { due_date: '2026-12-09' } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await run()
+
+    const { subject, body, options } = sentEmail()
+    expect(resolveInvoiceGreetingName).toHaveBeenCalledWith(supabase, 'vendor-1')
+    expect(subject).toBe('Invoice INV-1 from Orange Jelly')
+    expect(body).toBe(
+      [
+        'Hi Sam,',
+        "I hope you're well. Invoice INV-1 is attached (your reference: Monthly services): £120.00, due Wednesday 9 December.",
+        'The bank details are on the invoice. Any questions, just reply to this email or give me a ring.',
+        INVOICE_SIGN_OFF,
+      ].join('\n\n'),
+    )
+    expect(options).toEqual({ emailKind: 'invoice' })
+  })
+
+  it('says "Hi there" when the client has no named contact, never the company name', async () => {
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue(null)
+    const { supabase } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await run()
+
+    const { body } = sentEmail()
+    expect(body.startsWith('Hi there,\n\n')).toBe(true)
+    // The old wording greeted the vendor's contact_name or, failing that, the company.
+    expect(body).not.toContain('Client Ltd')
+    expect(body).not.toContain('Billing')
+    expect(body).not.toContain('Dear')
+    expect(body).not.toContain('generated automatically')
+    expect(body).not.toContain('Best regards')
+    expect(body).not.toMatch(/undefined|NaN|Invalid Date/)
+  })
+
+  it('asks for what is still to pay, not the invoice total', async () => {
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue('Sam')
+    const { supabase } = makeSupabase({ invoice: { total_amount: 120, paid_amount: 20 } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await run()
+
+    const { body } = sentEmail()
+    expect(body).toContain(': £100.00, due ')
+    expect(body).toContain('Payments received: £20.00')
+    expect(body).toContain('Balance due: £100.00')
+  })
+
+  // The balance helpers throw on an amount they cannot read. That must not escape to the catch
+  // at the bottom of the loop, which raises no alert: the schedule has already moved on, so the
+  // draft would be left unsent and nobody told.
+  it('keeps the draft and alerts the owner when the wording cannot be built', async () => {
+    vi.mocked(resolveInvoiceGreetingName).mockResolvedValue('Sam')
+    const { supabase, invoiceUpdate } = makeSupabase({ invoice: { total_amount: 'not a number' } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    const response = await run()
+    const payload = await response.json()
+
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(invoiceUpdate).not.toHaveBeenCalled()
+    expect(payload.results.send_failed).toBe(1)
+    expect(payload.results.failed).toBe(0)
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'recurring-invoices',
+      expect.objectContaining({
+        message: 'Invoice INV-1 was raised but not emailed: the email wording could not be built from the invoice figures',
+      }),
+      expect.objectContaining({ draft: 'https://management.example.test/invoices/invoice-1' }),
     )
   })
 })

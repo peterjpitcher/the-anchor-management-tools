@@ -28,8 +28,9 @@ import { requirePrivateBookingBillingAdmin as requireSuperAdmin, loadInvoiceForS
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from './audit'
 import { getErrorMessage } from '@/lib/errors'
-import { getTodayIsoDate } from '@/lib/dateUtils'
-import { COMPANY_DETAILS } from '@/lib/company-details'
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { buildPrivateHireInvoiceEmail } from '@/lib/invoices/email-copy'
+import { bookingGreetingName } from '@/lib/invoices/email-drafts'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import {
   InvoiceMappingError,
@@ -179,6 +180,18 @@ function bookingCustomerName(booking: PrivateBookingWithDetails): string {
   const parts = [booking.customer_first_name, booking.customer_last_name].filter(Boolean)
   if (parts.length > 0) return parts.join(' ').trim()
   return (booking.customer_name || '').trim() || 'Customer'
+}
+
+/**
+ * The London calendar date of a stored instant, as YYYY-MM-DD, or null when it cannot be
+ * read. `deposit_paid_date` is a timestamp, and the shared wording formats calendar dates:
+ * slicing the first ten characters would read the UTC date, which is the day before for a
+ * deposit taken late in the evening during British Summer Time.
+ */
+function londonDateOf(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : toLocalIsoDate(parsed)
 }
 
 /**
@@ -468,32 +481,37 @@ async function deliverInvoice(
   const deposit = depositContext(booking)
   const outstanding = invoiceBalanceDue(invoice)
 
-  const depositSentence = (() => {
-    if (!deposit || deposit.waived) return ''
-    const paidOn = deposit.paidOn ? formatDateFull(deposit.paidOn) : null
-    if (treatment === 'deducted') {
-      return `\nYour deposit of £${deposit.amount.toFixed(2)}${paidOn ? ` received on ${paidOn}` : ''} has been applied to this invoice.\n`
-    }
-    return `\nYour booking and damage deposit of £${deposit.amount.toFixed(2)}${paidOn ? ` received on ${paidOn}` : ''} is held separately and will be refunded within 48 hours after your event, less any documented deductions. It is not part of the amount below.\n`
-  })()
-
   // Owner decision 2026-08-28: every invoice goes out from Orange Jelly
   // Limited, the official business name, and nothing else. The venue is named
-  // in the body only as a description of the booking, never as the sender.
-  const subject = `Invoice ${invoice.invoice_number} from ${COMPANY_DETAILS.legalName}`
-  const body = `Hi ${bookingCustomerName(booking)},
-
-Thanks again for booking with us. Your invoice for ${booking.event_date ? formatDateFull(booking.event_date) : 'your event'} is attached.
-
-Invoice total: £${invoice.total_amount.toFixed(2)}
-Payments received: £${invoice.paid_amount.toFixed(2)}
-${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Balance due: £${outstanding.toFixed(2)}
-Due date: ${formatDateFull(invoice.due_date)}${invoice.reference ? `\nReference: ${invoice.reference}` : ''}
-${depositSentence}
-If anything looks wrong, just reply to this email and we will sort it out.
-
-Many thanks,
-${COMPANY_DETAILS.legalName}`
+  // in the subject and body only as a description of the booking, never as the
+  // sender.
+  //
+  // The wording is the shared private hire wording (`email-copy.ts`), greeted by
+  // first name: never the full name, and never the placeholder "Customer" that
+  // `bookingCustomerName` falls back to, because "Hi Customer," is worse than
+  // "Hi there,". The deposit line follows the treatment chosen in the confirmation
+  // dialog and nothing else: 'deducted' means it was applied to this invoice,
+  // anything else means it is the separately held bond. A waived or unpaid
+  // deposit gets no line at all, as before.
+  const { subject, body } = buildPrivateHireInvoiceEmail({
+    firstName: bookingGreetingName(booking),
+    invoiceNumber: invoice.invoice_number,
+    eventDate: booking.event_date || null,
+    dueDate: invoice.due_date,
+    reference: invoice.reference,
+    total: Number(invoice.total_amount) || 0,
+    paid: Math.max(0, Number(invoice.paid_amount) || 0),
+    credits: invoiceIssuedCreditTotal(invoice),
+    balance: outstanding,
+    deposit:
+      deposit && !deposit.waived
+        ? {
+            amount: deposit.amount,
+            treatment: treatment === 'deducted' ? 'applied' : 'held',
+            paidOn: londonDateOf(deposit.paidOn),
+          }
+        : null,
+  })
 
   const result = await sendInvoiceEmail(invoice, recipient, subject, body, undefined, undefined, {
     // Snapshotted at issue: a later refund must not rewrite what the customer
@@ -521,7 +539,14 @@ ${COMPANY_DETAILS.legalName}`
   })
 
   if (!result.success) {
-    return { sent: false, error: result.error ?? 'The email could not be sent.' }
+    // A timeout after the request left: the customer may already have the invoice. Say so,
+    // or staff will press retry and they will get it twice.
+    return {
+      sent: false,
+      error: result.uncertain
+        ? 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before sending it again.'
+        : result.error ?? 'The email could not be sent.',
+    }
   }
 
   // Archive the exact bytes the customer received. Regenerating later would

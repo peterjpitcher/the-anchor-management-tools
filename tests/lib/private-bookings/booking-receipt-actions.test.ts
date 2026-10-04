@@ -23,15 +23,17 @@ const document = { id: documentId, booking_id: bookingId, file_name: 'booking-re
 let download: ReturnType<typeof vi.fn>
 let rpc: ReturnType<typeof vi.fn>
 let queries: Array<{ table: string; filters: Array<[string, unknown]> }>
+let bookingRow: Record<string, unknown>
 function database() {
  return { rpc, storage: { from: () => ({ download }) }, from(table: string) {
   const query = { table, filters: [] as Array<[string, unknown]> }; queries.push(query)
-  const chain = { select: () => chain, eq: (column: string, value: unknown) => { query.filters.push([column, value]); return chain }, order: () => chain, single: async () => ({ data: table === 'private_bookings' ? { contact_email: 'test@example.invalid' } : document, error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: table === 'private_booking_documents' ? [document] : [], error: null }).then(resolve) }
+  const chain = { select: () => chain, eq: (column: string, value: unknown) => { query.filters.push([column, value]); return chain }, order: () => chain, single: async () => ({ data: table === 'private_bookings' ? bookingRow : document, error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: table === 'private_booking_documents' ? [document] : [], error: null }).then(resolve) }
   return chain
  } }
 }
 beforeEach(() => {
  vi.resetAllMocks(); queries = []
+ bookingRow = { contact_email: 'test@example.invalid' }
  mocks.user.mockResolvedValue({ data: { user: { id: 'staff-user' } } })
  mocks.permission.mockResolvedValue(true)
  mocks.loader.mockResolvedValue(model)
@@ -87,6 +89,32 @@ describe('receipt permissions and immutable delivery', () => {
   expect(mocks.send.mock.calls[1][0].attachments[0].content).toEqual(bytes)
   expect(mocks.store).not.toHaveBeenCalled()
   expect(mocks.pdf).not.toHaveBeenCalled()
+ })
+ it('greets by first name, signs off as every invoice email does, and keeps its own wording', async () => {
+  bookingRow = { contact_email: 'test@example.invalid', customer_first_name: 'Priya', customer_full_name: 'Priya Example' }
+  expect(await sendPrivateBookingReceipt(bookingId, documentId)).toEqual({ success: true })
+  const sent = mocks.send.mock.calls[0][0]
+  expect(sent.subject).toBe('Final receipt for your private booking')
+  expect(sent.text).toBe('Hi Priya,\n\nPlease find your final receipt attached. It lists the booking charges and recorded payments.\n\nMany thanks,\nPeter Pitcher\nOrange Jelly Limited\n07990 587315')
+  // Still a booking document: logged against the booking, under its own type.
+  expect(sent).toMatchObject({ privateBookingId: bookingId, commType: 'private_booking_receipt' })
+ })
+ it('greets "Hi there" when the booking holds no name', async () => {
+  expect(await sendPrivateBookingReceipt(bookingId, documentId)).toEqual({ success: true })
+  expect(String(mocks.send.mock.calls[0][0].text).startsWith('Hi there,\n\n')).toBe(true)
+ })
+ it('sends as before while INVOICE_EMAIL_PROVIDER is unset, and pins the Orange Jelly mailbox once it is graph', async () => {
+  process.env.MICROSOFT_USER_EMAIL = 'peter@example.invalid'
+  delete process.env.INVOICE_EMAIL_PROVIDER
+  expect(await sendPrivateBookingReceipt(bookingId, documentId)).toEqual({ success: true })
+  expect(mocks.send.mock.calls[0][0]).not.toHaveProperty('provider')
+  expect(mocks.send.mock.calls[0][0].replyTo).toBe('peter@example.invalid')
+  process.env.INVOICE_EMAIL_PROVIDER = 'graph'
+  expect(await sendPrivateBookingReceipt(bookingId, documentId)).toEqual({ success: true })
+  expect(mocks.send.mock.calls[1][0].provider).toBe('graph')
+  expect(mocks.send.mock.calls[1][0].replyTo).toBe('peter@example.invalid')
+  delete process.env.INVOICE_EMAIL_PROVIDER
+  delete process.env.MICROSOFT_USER_EMAIL
  })
  it('will not send an outdated account or tampered PDF', async () => {
   mocks.loader.mockResolvedValueOnce({ ...model, kind: 'payment_statement' })

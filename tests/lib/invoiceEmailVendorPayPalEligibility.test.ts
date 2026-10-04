@@ -22,8 +22,10 @@ vi.mock('@/lib/email/emailService', () => ({
 }))
 
 vi.mock('@/lib/email/invoice-sender', () => ({
-  invoiceSenderIdentity: vi.fn(() => 'Orange Jelly Limited <billing@example.com>'),
-  invoiceReplyToAddress: vi.fn(() => 'billing@example.com'),
+  invoiceEmailRouting: vi.fn(() => ({
+    from: 'Orange Jelly Limited <billing@example.com>',
+    replyTo: 'billing@example.com',
+  })),
 }))
 
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
@@ -91,8 +93,11 @@ describe('sendInvoiceEmail vendor PayPal eligibility', () => {
 
     expect(result).toMatchObject({ success: true, pdfBuffer: PDF_BYTES })
     const payload = sentPayload()
-    expect(String(payload.text)).toContain('Prefer to pay online?')
-    expect(String(payload.text)).toContain('https://management.orangejelly.co.uk/invoice-portal/')
+    // The link is the last thing in the email: a P.S. after the sign-off.
+    expect(String(payload.text)).toMatch(
+      /07990 587315\n\nP\.S\. You can also pay this online by card or PayPal: https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\/\S+$/,
+    )
+    expect(String(payload.text)).not.toContain('Bank transfer is still fine')
     expectInvoicePdfAttachment(payload)
   })
 
@@ -104,7 +109,7 @@ describe('sendInvoiceEmail vendor PayPal eligibility', () => {
 
     expect(result).toMatchObject({ success: true, pdfBuffer: PDF_BYTES })
     const payload = sentPayload()
-    expect(String(payload.text)).not.toContain('Prefer to pay online?')
+    expect(String(payload.text)).not.toContain('P.S.')
     expect(String(payload.text)).not.toContain('/invoice-portal/')
     expect(String(payload.text)).not.toContain('card or PayPal')
     expectInvoicePdfAttachment(payload)

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getInvoice, recordPayment } from '@/app/actions/invoices'
+import { getInvoice, getReceiptEmailContext, recordPayment } from '@/app/actions/invoices'
 import {
   PageLayout,
   Icon,
@@ -20,15 +20,26 @@ import {
   Textarea,
   Field,
   Alert,
+  Checkbox,
   FormFooter,
   StatGrid,
   Stat,
   toast,
 } from '@/ds'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { buildReceiptEmail } from '@/lib/invoices/email-copy'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { invoicePageTitle } from '../../_shared/nav'
+
+/**
+ * Who the receipt would go to. `unknown` means the lookup failed: the page then says so
+ * rather than guessing, and the server still decides who gets it when the payment is saved.
+ */
+type ReceiptRecipient =
+  | { state: 'loading' }
+  | { state: 'unknown' }
+  | { state: 'known'; firstName: string | null; to: string | null; ccCount: number }
 
 export default function RecordPaymentPage() {
   const params = useParams()
@@ -51,6 +62,14 @@ export default function RecordPaymentPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank_transfer')
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
+  // On by default: a receipt is the normal case, and the tick is there to hold one back.
+  const [sendReceipt, setSendReceipt] = useState(true)
+  const [receiptRecipient, setReceiptRecipient] = useState<ReceiptRecipient>({ state: 'loading' })
+
+  // A client with no email address cannot be sent one, so the tick is off and locked.
+  const receiptHasNowhereToGo = receiptRecipient.state === 'known' && !receiptRecipient.to
+  const receiptTicked = sendReceipt && !receiptHasNowhereToGo
+  const receiptFirstName = receiptRecipient.state === 'known' ? receiptRecipient.firstName : null
 
   useEffect(() => {
     if (!invoiceId) {
@@ -92,7 +111,21 @@ export default function RecordPaymentPage() {
       }
     }
 
+    // Separate from the invoice load so a failed lookup costs the page the name on the tick,
+    // not the form. The contact tables are closed to most staff, hence a server action.
+    async function loadReceiptRecipient() {
+      try {
+        const result = await getReceiptEmailContext(currentInvoiceId)
+        setReceiptRecipient(
+          result?.context ? { state: 'known', ...result.context } : { state: 'unknown' }
+        )
+      } catch {
+        setReceiptRecipient({ state: 'unknown' })
+      }
+    }
+
     loadInvoice()
+    loadReceiptRecipient()
   }, [invoiceId, permissionsLoading, canEdit, router])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -131,6 +164,8 @@ export default function RecordPaymentPage() {
       formData.append('paymentMethod', paymentMethod)
       formData.append('reference', reference)
       formData.append('notes', notes)
+      // Sent as a string and checked on the server, which is where the choice is enforced.
+      formData.append('send_receipt', receiptTicked ? 'true' : 'false')
 
       const result = await recordPayment(formData)
 
@@ -140,6 +175,11 @@ export default function RecordPaymentPage() {
 
       // The toast confirms it; the page redirects straight away, so an inline banner would never be read.
       toast.success('Payment recorded successfully!')
+      // A receipt problem is not a failed payment: the payment is saved, so it is a warning
+      // on top of the success, kept up longer because it asks the reader to do something.
+      if (result.warning) {
+        toast.warning(result.warning, { duration: 12000 })
+      }
       router.push(`/invoices/${invoice.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record payment')
@@ -171,6 +211,33 @@ export default function RecordPaymentPage() {
   }
 
   const outstanding = invoiceBalanceDue(invoice)
+
+  // The wording the customer will get, for the amount typed so far. The server builds the real
+  // one from the saved payment with the same function, so the two cannot drift apart.
+  const typedAmount = parseFloat(amount)
+  const receiptPreview =
+    Number.isFinite(typedAmount) && typedAmount > 0
+      ? buildReceiptEmail({
+          firstName: receiptFirstName,
+          invoiceNumber: invoice.invoice_number,
+          paymentAmount: typedAmount,
+          balance: Math.max(0, Math.round((outstanding - typedAmount) * 100) / 100),
+        })
+      : null
+
+  const receiptDestination = (() => {
+    if (receiptRecipient.state === 'loading') return 'Checking who this goes to.'
+    if (receiptRecipient.state === 'unknown') {
+      return 'We could not check who this goes to. It will be sent to the invoice contact on the client record, if there is one.'
+    }
+    if (!receiptRecipient.to) {
+      return 'This client has no email address, so a receipt cannot be sent.'
+    }
+    const copies = receiptRecipient.ccCount
+    return copies > 0
+      ? `Goes to ${receiptRecipient.to}, with ${copies} copied ${copies === 1 ? 'address' : 'addresses'}.`
+      : `Goes to ${receiptRecipient.to}.`
+  })()
 
   return (
     <PageLayout {...layoutProps}>
@@ -248,6 +315,33 @@ export default function RecordPaymentPage() {
                 placeholder="Any additional notes about this payment"
               />
             </Field>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Receipt" subtitle="The payment is saved whether or not a receipt is sent" />
+          <CardBody className="space-y-4">
+            <Checkbox
+              label={receiptFirstName ? `Email a receipt to ${receiptFirstName}` : 'Email a receipt to the customer'}
+              description={receiptDestination}
+              checked={receiptTicked}
+              onChange={setSendReceipt}
+              disabled={submitting || receiptHasNowhereToGo}
+            />
+
+            {receiptTicked && (
+              <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-2">
+                <p className="text-xs text-text-muted">What the email will say, with the receipt attached as a PDF</p>
+                {receiptPreview ? (
+                  <>
+                    <p className="text-ui font-medium text-text">{receiptPreview.subject}</p>
+                    <p className="text-ui text-text whitespace-pre-wrap">{receiptPreview.body}</p>
+                  </>
+                ) : (
+                  <p className="text-ui text-text-muted">Enter the amount to see the wording.</p>
+                )}
+              </div>
+            )}
           </CardBody>
         </Card>
 

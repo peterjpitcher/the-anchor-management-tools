@@ -89,6 +89,14 @@ type EmailSendResult = {
   emailMessageId?: string | null;
   /** True when the suppression list could not be read and the send was refused because of it. */
   suppressionCheckUnavailable?: boolean;
+  /**
+   * True when the send failed WITHOUT a definite answer from the provider: the request had
+   * been submitted and then timed out or the connection dropped. The email may have been
+   * sent. A caller that retries automatically (a cron) must NOT retry on this: it has to be
+   * checked by a person first. Absent or false on a failure means the provider, or a check
+   * before it, definitely refused, and nothing was sent.
+   */
+  uncertain?: boolean;
 };
 
 /**
@@ -277,6 +285,12 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     return { success: false, error };
   }
 
+  // Set immediately before the request leaves. A failure before this point sent nothing. After
+  // it, the Resend SDK does not throw: it returns `error`, with the HTTP status when the service
+  // answered and `statusCode: null` when the connection failed. See
+  // `providerGaveNoDefiniteAnswer`. The catch below covers anything it does throw.
+  let submitted = false;
+
   try {
     const resendPayload: Record<string, unknown> = {
       from: fromAddress,
@@ -309,6 +323,7 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       resendPayload.headers = UNSUBSCRIBE_HEADERS(options.unsubscribeUrl);
     }
 
+    submitted = true;
     const { data, error } = options.idempotencyKey
       ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
       : await client.emails.send(resendPayload as any);
@@ -329,6 +344,7 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       return {
         success: false,
         error: error.message,
+        ...(providerGaveNoDefiniteAnswer((error as { statusCode?: unknown }).statusCode) ? { uncertain: true } : {}),
       };
     }
 
@@ -372,13 +388,36 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     }
     return {
       success: false,
-      error: message
+      error: message,
+      ...(submitted ? { uncertain: true } : {}),
     };
   }
 }
 
+/**
+ * Whether a provider's failure leaves it unknown if the email was sent.
+ *
+ * Only a 4xx answer is a definite refusal: the provider read the request and said no. No
+ * status at all (a timeout or dropped connection: Resend reports `null`, the Graph client
+ * `-1`) means the request may have been accepted before the answer was lost. A 5xx is treated
+ * the same way, because a gateway error can follow a message the service had already taken.
+ * The cost of calling a real refusal "unknown" is a person checking Sent Items; the cost of
+ * calling an accepted email "refused" is a customer getting it twice.
+ */
+function providerGaveNoDefiniteAnswer(statusCode: unknown): boolean {
+  const status = typeof statusCode === 'number' ? statusCode : Number.NaN;
+  return !(Number.isFinite(status) && status >= 400 && status < 500);
+}
+
 async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult> {
   const senderEmail = options.graphSender?.trim() || process.env.MICROSOFT_USER_EMAIL || '';
+  // Set immediately before the request leaves. See the same flag in `sendEmailViaResend`.
+  let submitted = false;
+  // The Graph client fetches its access token inside `.post()`, after `submitted` is set. A
+  // sign-in failure (an expired client secret, say) never reaches the mail service, so it is a
+  // definite non-send. Without this flag it would look like a lost answer, and every invoice
+  // job would park its email as "may have been sent" for as long as the secret stayed expired.
+  let signInFailed = false;
 
   try {
     if (!isGraphConfigured()) {
@@ -401,7 +440,9 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
       };
     }
 
-    const client = getGraphClient();
+    const client = getGraphClient(() => {
+      signInFailed = true;
+    });
 
     // Build recipients
     const toRecipients = [{ emailAddress: { address: options.to } }];
@@ -454,6 +495,7 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     }
 
     // Send email
+    submitted = true;
     const response = await client
       .api(`/users/${senderEmail}/sendMail`)
       .post({
@@ -499,7 +541,10 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     }
     return {
       success: false,
-      error: message
+      error: message,
+      ...(submitted && !signInFailed && providerGaveNoDefiniteAnswer((error as { statusCode?: unknown } | null)?.statusCode)
+        ? { uncertain: true }
+        : {}),
     };
   }
 }
@@ -518,7 +563,7 @@ async function sendSimpleEmail(
 /**
  * Helper to get the configured graph client
  */
-function getGraphClient() {
+function getGraphClient(onSignInFailure?: () => void) {
   
   const credential = new ClientSecretCredential(
     process.env.MICROSOFT_TENANT_ID!,
@@ -529,8 +574,13 @@ function getGraphClient() {
   const client = Client.initWithMiddleware({
     authProvider: {
       getAccessToken: async () => {
-        const token = await credential.getToken('https://graph.microsoft.com/.default');
-        return token?.token || '';
+        try {
+          const token = await credential.getToken('https://graph.microsoft.com/.default');
+          return token?.token || '';
+        } catch (error) {
+          onSignInFailure?.();
+          throw error;
+        }
       }
     }
   });
