@@ -1,12 +1,15 @@
 import 'server-only'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { capturePayPalPayment, getPayPalOrder, isPayPalOrderAlreadyCapturedError, PAYPAL_DEFAULT_CURRENCY } from '@/lib/paypal'
 import { invoiceBalanceDue, type InvoiceBalanceInput } from './balance'
 import { invoicePaymentCustomId } from './paypal-custom-id'
+import { sendReceiptForPayPalCapture } from './receipt-email'
+import { invoicePayPalReceiptsFrom } from './release-switches'
 
 type InvoicePaymentState = InvoiceBalanceInput & {
   id: string
@@ -99,6 +102,32 @@ export async function settleInvoicePayPalOrder(
   return applyInvoicePayPalCapture({ invoiceId: invoice.id, amount: pennies / 100, captureId: capture.id, orderId, source, capturedAt: capture.create_time ?? null })
 }
 
+/**
+ * Queues the customer's receipt for a PayPal payment this call has just recorded.
+ *
+ * It runs once the response has gone (`after`), so it cannot slow the customer's payment page,
+ * throw into the capture, or change what the capture returns. The price is that the request
+ * can end before the receipt does. That is covered: the payment row is the lasting record that
+ * a receipt is owed, and the 15 minute reconciliation job sweeps for any that never went.
+ */
+function queueReceiptForRecordedCapture(
+  admin: ReturnType<typeof createAdminClient>,
+  capture: { invoiceId: string; captureId: string; source: CaptureSource },
+): void {
+  // Read first. With the switch off this adds nothing at all: no query, no claim, no task.
+  if (!invoicePayPalReceiptsFrom()) return
+
+  try {
+    after(() => sendReceiptForPayPalCapture(admin, capture))
+  } catch (error) {
+    // `after` needs a request to run after. Without one the sweep sends the receipt instead.
+    logger.error('[InvoicePayPal] Could not queue the receipt; the reconciliation sweep will send it', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { invoiceId: capture.invoiceId, captureId: capture.captureId },
+    })
+  }
+}
+
 export async function applyInvoicePayPalCapture(params: {
   invoiceId: string
   amount: number
@@ -161,6 +190,16 @@ export async function applyInvoicePayPalCapture(params: {
   if (data.private_booking_id) {
     revalidatePath(`/private-bookings/${data.private_booking_id}`)
     revalidatePath('/private-bookings')
+  }
+
+  // Only the call that recorded the payment sends its receipt. A later path that finds it
+  // already recorded sends nothing here; the sweep is what catches a receipt that was missed.
+  if (data.recorded === true) {
+    queueReceiptForRecordedCapture(admin, {
+      invoiceId: params.invoiceId,
+      captureId: params.captureId,
+      source: params.source,
+    })
   }
 
   return { success: true, alreadyRecorded: data.already_recorded, ...(newlyOverpaid ? { overpaidAmount } : {}) }
