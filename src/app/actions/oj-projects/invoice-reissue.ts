@@ -1,5 +1,7 @@
 'use server'
 
+import { getFinalRecurringCoverage } from '@/lib/oj-projects/recurring-proration'
+
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -12,7 +14,6 @@ import {
 } from '@/lib/oj-projects/invoice-revision'
 import {
   buildLastChargedPeriodStarts,
-  getRecurringChargeCoverage,
   getRecurringChargeIntervalMonths,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
@@ -259,7 +260,7 @@ async function resolveInvoicePeriod(admin: ReturnType<typeof createAdminClient>,
   return { error: 'This invoice is not linked to a monthly OJ Projects billing period.' }
 }
 
-async function buildReissuePreview(invoiceId: string, options?: { replacementInvoiceNumber?: string }): Promise<OjInvoiceReissuePreview & { virtualRecurringInstances?: VirtualRecurringInstance[] }> {
+async function buildReissuePreview(invoiceId: string, options?: { replacementInvoiceNumber?: string }): Promise<OjInvoiceReissuePreview & { virtualRecurringInstances?: VirtualRecurringInstance[]; chargeVersions?: Record<string, string> }> {
   const admin = createAdminClient()
 
   const { data: invoiceRow, error: invoiceError } = await admin
@@ -392,7 +393,7 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       .limit(10000),
     admin
       .from('oj_vendor_recurring_charges')
-      .select('id, description, amount_ex_vat, vat_rate, sort_order, frequency, is_active, created_at')
+      .select('*')
       .eq('vendor_id', invoice.vendor_id)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true }),
@@ -515,6 +516,13 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
 
   for (const charge of activeCharges || []) {
     if (charge.is_active === false) continue
+    for (const instance of allRecurringInstances.values()) {
+      if (String(instance.recurring_charge_id) === String(charge.id)
+        && instance.period_start === period.period_start
+        && (!charge.end_date || String(instance.coverage_end || instance.period_end) <= charge.end_date)) {
+        dueChargePeriods.set(`${charge.id}:${instance.period_yyyymm}`, period)
+      }
+    }
     const isNonMonthly = getRecurringChargeIntervalMonths(charge.frequency) > 1
     if (isNonMonthly && chargeIdsWithLaterInstance.has(String(charge.id))) continue
     const chargePeriod = getRecurringChargePeriod(
@@ -526,7 +534,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
     dueChargePeriods.set(`${charge.id}:${chargePeriod.period_yyyymm}`, chargePeriod)
     const existingKey = `${charge.id}:${chargePeriod.period_yyyymm}`
     if (existingByChargePeriod.has(existingKey)) continue
-    const coverage = getRecurringChargeCoverage(String(charge.frequency || 'monthly'), chargePeriod)
+    const coverage = getFinalRecurringCoverage(String(charge.frequency || 'monthly'), chargePeriod, Number(charge.amount_ex_vat || 0), charge.end_date)
+    if (!coverage) continue
     const virtualId = `virtual:${charge.id}:${chargePeriod.period_yyyymm}`
     const virtual = {
       id: virtualId,
@@ -537,8 +546,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       period_end: chargePeriod.period_end,
       coverage_start: coverage.start,
       coverage_end: coverage.end,
-      description_snapshot: String(charge.description || ''),
-      amount_ex_vat_snapshot: roundMoney(Number(charge.amount_ex_vat || 0)),
+      description_snapshot: coverage.isProrated ? `${charge.description} (final charge, prorated through ${coverage.end})` : String(charge.description || ''),
+      amount_ex_vat_snapshot: coverage.amountExVat,
       vat_rate_snapshot: Number(charge.vat_rate || 0),
       sort_order_snapshot: Number(charge.sort_order || 0),
       status: 'unbilled',
@@ -556,8 +565,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       period_end: chargePeriod.period_end,
       coverage_start: coverage.start,
       coverage_end: coverage.end,
-      description_snapshot: String(charge.description || ''),
-      amount_ex_vat_snapshot: roundMoney(Number(charge.amount_ex_vat || 0)),
+      description_snapshot: coverage.isProrated ? `${charge.description} (final charge, prorated through ${coverage.end})` : String(charge.description || ''),
+      amount_ex_vat_snapshot: coverage.amountExVat,
       vat_rate_snapshot: Number(charge.vat_rate || 0),
       sort_order_snapshot: Number(charge.sort_order || 0),
     })
@@ -655,6 +664,7 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
     invoiceNotes: revision.notes,
     internalNotes: revision.internalNotes,
     virtualRecurringInstances,
+    chargeVersions: Object.fromEntries((activeCharges || []).map((charge) => [String(charge.id), String(charge.updated_at)])),
   }
 }
 
@@ -707,7 +717,7 @@ export async function reissueOjInvoice(formData: FormData) {
     internal_notes: `${directPreview.internalNotes}\n\n[OJ_PROJECTS_REISSUE ${new Date().toISOString()}] ${directPreview.mode === 'rebuild_draft' ? 'Draft rebuilt' : `Replacement draft created from ${directPreview.sourceInvoice.invoice_number}`} for ${directPreview.period.label}.`,
   }
 
-  const { data: result, error } = await (admin as any).rpc('reissue_oj_invoice_transaction', {
+  const { data: result, error } = await admin.rpc('oj_reissue_invoice_with_charge_versions', {
     p_source_invoice_id: invoiceId,
     p_mode: directPreview.mode,
     p_invoice_data: invoiceData,
@@ -717,6 +727,7 @@ export async function reissueOjInvoice(formData: FormData) {
       .filter((instance) => !instance.is_virtual)
       .map((instance) => instance.id),
     p_virtual_recurring_instances: directPreview.virtualRecurringInstances || [],
+    p_charge_versions: directPreview.chargeVersions || {},
   })
 
   if (error) return { error: error.message || 'Failed to reissue OJ invoice' }

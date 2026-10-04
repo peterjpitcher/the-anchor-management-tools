@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { EndRecurringChargeModal } from './EndRecurringChargeModal'
 import {
   Alert,
   Card,
@@ -86,6 +87,7 @@ type RecurringCharge = {
   sort_order: number
   created_at: string
   updated_at: string
+  end_date?: string | null
 }
 
 type RecurringChargeForm = {
@@ -252,6 +254,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
   const [chargeModalOpen, setChargeModalOpen] = useState(false)
   const [chargeForm, setChargeForm] = useState<RecurringChargeForm>(emptyRecurringChargeForm)
   const [chargeSaving, setChargeSaving] = useState(false)
+  const [endingCharge, setEndingCharge] = useState<RecurringCharge | null>(null)
   const [disableChargeId, setDisableChargeId] = useState<string | null>(null)
   const [clientModalOpen, setClientModalOpen] = useState(false)
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm)
@@ -1028,10 +1031,12 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                               {formatFrequency(charge.frequency)} · {formatCurrency(Number(charge.amount_ex_vat || 0))} ex VAT · {formatCurrency(incVat)} inc VAT
                             </p>
                           </div>
-                          <Badge tone={ojActive(charge.is_active).tone}>{ojActive(charge.is_active).label}</Badge>
+                          <Badge tone={charge.end_date ? 'neutral' : ojActive(charge.is_active).tone}>
+                            {charge.end_date ? `${charge.end_date < getTodayIsoDate() ? 'Ended' : 'Ends'} ${formatDateDdMmmmYyyy(charge.end_date)}` : ojActive(charge.is_active).label}
+                          </Badge>
                         </div>
 
-                        {canEditRecurringCharges && (
+                        {canEditRecurringCharges && !charge.end_date && (
                           <RowActions
                             className="mt-3"
                             actions={[
@@ -1040,6 +1045,12 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                                 label: 'Edit',
                                 icon: <Icon name="edit" size={16} />,
                                 onSelect: () => openEditCharge(charge),
+                              },
+                              charge.is_active && {
+                                key: 'end',
+                                label: 'End charge',
+                                icon: <Icon name="calendar" size={16} />,
+                                onSelect: () => setEndingCharge(charge),
                               },
                               charge.is_active && {
                                 key: 'disable',
@@ -1405,6 +1416,22 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
           </Field>
         </form>
       </Modal>
+
+      {endingCharge && (
+        <EndRecurringChargeModal
+          key={endingCharge.id}
+          charge={endingCharge}
+          onClose={() => setEndingCharge(null)}
+          onEnded={async () => {
+            await reloadRecurringCharges()
+            if (drawerVendor) {
+              const result = await getClientBalance(drawerVendor.id)
+              if (result.error) setBalanceError(result.error)
+              else setBalance(result.balance ?? null)
+            }
+          }}
+        />
+      )}
 
       <Modal
         open={chargeModalOpen}
