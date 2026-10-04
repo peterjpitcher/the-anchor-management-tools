@@ -9,6 +9,8 @@ import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } from '@/types/invoices'
 import { logAuditEvent } from '@/app/actions/audit'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { buildInvoiceSentUpdate } from '@/lib/invoices/delivery-state'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import {
   claimIdempotencyKey,
@@ -20,6 +22,33 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 1 minute max
+
+/**
+ * Tells the owner that an invoice was raised but never reached the customer.
+ *
+ * Every exit below this point runs AFTER the schedule has moved on to its next date, so
+ * nothing will ever try this invoice again. It used to be marked sent before the email was
+ * attempted, which left an unsent invoice looking delivered. It now stays a draft, and this
+ * alert is the only thing that gets it sent: it names the exact draft and says how.
+ */
+async function alertUnsentDraft(input: {
+  reason: string
+  invoiceId: string
+  invoiceNumber: string
+  vendorName?: string | null
+}): Promise<void> {
+  await reportCronFailure(
+    'recurring-invoices',
+    new Error(`Invoice ${input.invoiceNumber} was raised but not emailed: ${input.reason}`),
+    {
+      invoice: input.invoiceNumber,
+      client: input.vendorName ?? 'Unknown',
+      draft: `${getAppUrl()}/invoices/${input.invoiceId}`,
+      what_to_do:
+        'Open the draft and send it with the Email Invoice button once the cause is fixed. Do not re-run the schedule: it has already moved to its next date.',
+    }
+  )
+}
 
 export async function GET(request: Request) {
   const authResult = authorizeCronRequest(request)
@@ -218,6 +247,12 @@ export async function GET(request: Request) {
         if (!emailConfigured) {
           results.skipped_send_not_configured++
           results.successful++
+          await alertUnsentDraft({
+            reason: 'email is not configured',
+            invoiceId: newInvoice.id,
+            invoiceNumber: newInvoice.invoice_number,
+            vendorName: recurringInvoice.vendor?.name,
+          })
           if (claimHeld) {
             await persistIdempotencyResponse(
               supabase,
@@ -252,6 +287,12 @@ export async function GET(request: Request) {
             error: recipientResult.error || 'Failed to resolve invoice recipients'
           })
           results.successful++
+          await alertUnsentDraft({
+            reason: 'the client\'s email address could not be looked up',
+            invoiceId: newInvoice.id,
+            invoiceNumber: newInvoice.invoice_number,
+            vendorName: recurringInvoice.vendor?.name,
+          })
           if (claimHeld) {
             await persistIdempotencyResponse(
               supabase,
@@ -275,6 +316,12 @@ export async function GET(request: Request) {
         if (!recipientResult.to) {
           results.skipped_send_no_recipient++
           results.successful++
+          await alertUnsentDraft({
+            reason: 'the client has no email address on file',
+            invoiceId: newInvoice.id,
+            invoiceNumber: newInvoice.invoice_number,
+            vendorName: recurringInvoice.vendor?.name,
+          })
           if (claimHeld) {
             await persistIdempotencyResponse(
               supabase,
@@ -315,6 +362,12 @@ export async function GET(request: Request) {
             error: invoiceFetchError?.message || 'Failed to load invoice for email'
           })
           results.successful++
+          await alertUnsentDraft({
+            reason: 'the invoice could not be loaded for emailing',
+            invoiceId: newInvoice.id,
+            invoiceNumber: newInvoice.invoice_number,
+            vendorName: recurringInvoice.vendor?.name,
+          })
           if (claimHeld) {
             await persistIdempotencyResponse(
               supabase,
@@ -339,28 +392,10 @@ export async function GET(request: Request) {
         const greetingName = fullInvoice.vendor?.contact_name || fullInvoice.vendor?.name || 'there'
         const body = `Dear ${greetingName},\n\nPlease find attached invoice ${fullInvoice.invoice_number} for your records.\n\nThis invoice was generated automatically from a recurring schedule.\n\nBest regards,\nOrange Jelly Limited`
 
-        const { data: statusTransition, error: invoiceUpdateError } = await supabase
-          .from('invoices')
-          .update({
-            status: 'sent',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', fullInvoice.id)
-          .eq('status', 'draft')
-          .select('id')
-          .maybeSingle()
-
-        if (invoiceUpdateError) {
-          throw new Error(invoiceUpdateError.message || 'Failed to update invoice status to sent')
-        }
-        if (!statusTransition) {
-          console.warn(
-            `[Cron] Invoice ${fullInvoice.invoice_number} was already transitioned before recurring send`
-          )
-        } else {
-          ;(fullInvoice as { status?: string }).status = 'sent'
-        }
-
+        // The invoice is NOT marked sent here. It is marked sent only once the email has been
+        // accepted (below), the order the OJ Projects billing run uses. Marking it first left an
+        // invoice whose email failed looking delivered, with no sent_at, so it was never retried
+        // and never chased.
         const emailResult = await sendInvoiceEmail(
           fullInvoice as InvoiceWithDetails,
           recipientResult.to,
@@ -395,6 +430,12 @@ export async function GET(request: Request) {
           }
 
           results.successful++
+          await alertUnsentDraft({
+            reason: emailResult.error || 'the email could not be sent',
+            invoiceId: fullInvoice.id,
+            invoiceNumber: fullInvoice.invoice_number,
+            vendorName: recurringInvoice.vendor?.name,
+          })
           if (claimHeld) {
             await persistIdempotencyResponse(
               supabase,
@@ -413,6 +454,36 @@ export async function GET(request: Request) {
             claimHeld = false
           }
           continue
+        }
+
+        // The email has gone. Record it: sent_at is what the reminder job reads to decide an
+        // invoice was ever delivered, and its absence is why recurring invoices were never chased.
+        // From here nothing may throw into the catch below: that would release the claim and
+        // report a failure for an email the customer already has.
+        const { data: sentInvoiceRow, error: sentInvoiceError } = await supabase
+          .from('invoices')
+          .update(buildInvoiceSentUpdate(recipientResult.to))
+          .eq('id', fullInvoice.id)
+          .eq('status', 'draft')
+          .select('id')
+          .maybeSingle()
+
+        if (sentInvoiceError || !sentInvoiceRow) {
+          console.error(
+            `[Cron] Invoice ${fullInvoice.invoice_number} was emailed but could not be marked sent:`,
+            sentInvoiceError ?? 'no draft row matched'
+          )
+          await reportCronFailure(
+            'recurring-invoices',
+            new Error(`Invoice ${fullInvoice.invoice_number} was emailed but could not be marked sent`),
+            {
+              invoice: fullInvoice.invoice_number,
+              client: recurringInvoice.vendor?.name ?? 'Unknown',
+              link: `${getAppUrl()}/invoices/${fullInvoice.id}`,
+              what_to_do:
+                'The customer HAS this invoice. Do not email it again. Open it and use Mark as Sent.',
+            }
+          )
         }
 
         const { error: sentEmailLogError } = await supabase

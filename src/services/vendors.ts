@@ -62,10 +62,13 @@ export class VendorService {
   }) {
     const supabase = await createClient();
 
-    const payload = {
+    // `contact_name` and `email` are written ONLY when the caller supplied them. The Vendors
+    // page form has no field for either, so they arrive undefined, and this used to write null
+    // over whatever was stored: every client saved there lost its email and contact name, and
+    // four private hire customers then had nowhere for a payment chase to go. `undefined`
+    // means "leave it alone"; an empty string still means "clear it".
+    const payload: Record<string, unknown> = {
       name: input.name,
-      contact_name: emptyToNull(input.contact_name),
-      email: emptyToNull(input.email),
       phone: emptyToNull(input.phone),
       address: emptyToNull(input.address),
       vat_number: emptyToNull(input.vat_number),
@@ -73,6 +76,12 @@ export class VendorService {
       notes: emptyToNull(input.notes),
       paypal_payments_enabled: input.paypal_payments_enabled,
     };
+    if (input.contact_name !== undefined) {
+      payload.contact_name = emptyToNull(input.contact_name);
+    }
+    if (input.email !== undefined) {
+      payload.email = emptyToNull(input.email);
+    }
 
     const { data: vendor, error } = await supabase
       .from('invoice_vendors')
