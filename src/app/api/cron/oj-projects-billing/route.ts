@@ -24,7 +24,24 @@ import {
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
 import { shouldSkipConcurrentBillingRun } from '@/lib/oj-projects/billing-run-guard'
+import { decideBillingPass } from '@/lib/oj-projects/billing-pass'
+import {
+  finishBillingPass,
+  loadBillingPassRecord,
+  reportUnfinishedBillingPass,
+  startBillingPass,
+  type BillingPassRecord,
+} from '@/lib/oj-projects/billing-pass-record'
+import {
+  buildOjMonthlyInvoiceEmail,
+  OJ_NOTES_MILEAGE_HEADING,
+  OJ_NOTES_STATEMENT_HEADING,
+  OJ_NOTES_TIME_HEADING,
+} from '@/lib/oj-projects/billing-email'
 import { buildInvoiceSentUpdate } from '@/lib/invoices/delivery-state'
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 export const runtime = 'nodejs'
@@ -607,7 +624,7 @@ function buildInvoiceNotes(input: {
 
   if (timeByProject.size > 0) {
     lines.push('')
-    lines.push('Time')
+    lines.push(OJ_NOTES_TIME_HEADING)
     for (const [, bucket] of timeByProject) {
       lines.push(`- ${bucket.projectLabel}`)
 
@@ -652,7 +669,7 @@ function buildInvoiceNotes(input: {
 
   if ((input.selectedMileageEntries?.length ?? 0) > 0) {
     lines.push('')
-    lines.push('Mileage')
+    lines.push(OJ_NOTES_MILEAGE_HEADING)
     if (input.includeEntryDetails) {
       for (const e of input.selectedMileageEntries) {
         const miles = Number(e.miles || 0)
@@ -2133,7 +2150,7 @@ async function buildStatementNotes(input: {
   }
 
   const lines: string[] = []
-  lines.push('Account balance summary (inc VAT)')
+  lines.push(OJ_NOTES_STATEMENT_HEADING)
   lines.push(`Billing month: ${input.period_start} to ${input.period_end}`)
   lines.push(`Balance before this invoice: ${formatCurrency(balanceBefore)}`)
   lines.push(`This invoice: ${formatCurrency(input.invoiceTotalIncVat)}`)
@@ -2240,20 +2257,66 @@ export async function GET(request: Request) {
   const vendorFilter = url.searchParams.get('vendor_id')
 
   const now = new Date()
-  const londonDay = Number(formatInTimeZone(now, LONDON_TZ, 'd'))
-  if (londonDay !== 1 && !force) {
-    return NextResponse.json({ skipped: true, reason: 'Not the 1st in Europe/London' })
-  }
-
   const period = getPreviousMonthPeriod(now)
   const invoiceDate = formatInTimeZone(now, LONDON_TZ, 'yyyy-MM-dd')
 
   const supabase = createAdminClient()
 
+  // The day check. The job is scheduled every weekday at 09:05 UTC. Last month's pass starts
+  // on the first weekday of the month, and one record per billed month says whether it has
+  // finished: until it has, each weekday run up to the 7th carries on with it, and once it
+  // has, nothing more is billed that month. The rules are in @/lib/oj-projects/billing-pass.
+  // `force` skips all of it, as it always skipped the old "is it the 1st" check.
+  //
+  // Only a scheduled, real, every-client run keeps the record. A dry run, a preview, a forced
+  // run or a single-client run reads it at most and never creates or changes it.
+  const tracksPass = !force && !dryRun && !preview && !vendorFilter
+  let passRecord: BillingPassRecord | null = null
+  if (!force) {
+    try {
+      passRecord = await loadBillingPassRecord(supabase, period.period_yyyymm)
+    } catch (passRecordError) {
+      // Fail closed: without the record we cannot tell a finished pass from an unfinished one.
+      console.error('Failed to read the OJ billing pass record', passRecordError)
+      if (tracksPass) {
+        await reportCronFailure('oj-projects-billing', passRecordError, {
+          billed_month: period.period_yyyymm,
+          what_happened: 'The billing pass record could not be read, so nothing was billed on this run.',
+        })
+      }
+      return NextResponse.json({ error: 'Failed to read the billing pass record' }, { status: 500 })
+    }
+  }
+
+  const passDecision = decideBillingPass({
+    todayIso: invoiceDate,
+    billedMonth: period.period_yyyymm,
+    force,
+    record: passRecord,
+  })
+  if (passDecision.action === 'skip' || (passDecision.action === 'alert_unfinished' && !tracksPass)) {
+    return NextResponse.json({ skipped: true, reason: passDecision.reason })
+  }
+
+  if (tracksPass && passDecision.action === 'run' && !passRecord) {
+    try {
+      await startBillingPass(supabase, period.period_yyyymm)
+    } catch (passStartError) {
+      // No record, no pass: billing without one would leave nothing to say it had finished.
+      console.error('Failed to record the start of the OJ billing pass', passStartError)
+      await reportCronFailure('oj-projects-billing', passStartError, {
+        billed_month: period.period_yyyymm,
+        what_happened: 'The billing pass record could not be created, so nothing was billed on this run.',
+      })
+      return NextResponse.json({ error: 'Failed to record the start of the billing pass' }, { status: 500 })
+    }
+  }
+
   // Unblock anything left locked by a run that never finished in an earlier
-  // month, before we work out who to bill. Read-only modes skip this.
+  // month, before we work out who to bill. Read-only modes skip this, and so
+  // does the run that only reports an unfinished pass, which bills nothing.
   let recovery: Awaited<ReturnType<typeof recoverUnfinishedBillingRuns>> | null = null
-  if (!dryRun && !preview) {
+  if (!dryRun && !preview && passDecision.action === 'run') {
     try {
       recovery = await recoverUnfinishedBillingRuns(supabase, period.period_yyyymm)
     } catch (recoveryError) {
@@ -2314,17 +2377,41 @@ export async function GET(request: Request) {
       if (row?.vendor_id) vendorIds.add(String(row.vendor_id))
     }
 
-    // Vendors with failed runs for this period (retry)
+    // Vendors with failed runs for this period (retry), and runs left at
+    // 'processing'. A run cut short part-way through a client (a timeout) never
+    // gets the chance to mark itself failed, and its entries are locked at
+    // billing_pending, so none of the queries above would find that client
+    // again: the next weekday's run would finish the pass without it. The loop
+    // below already knows what to do with such a run: it stands down if the run
+    // is still in flight, and picks it up once it is provably dead.
     const { data: failedRuns } = await supabase
       .from('oj_billing_runs')
       .select('vendor_id')
       .eq('period_yyyymm', period.period_yyyymm)
-      .eq('status', 'failed')
+      .in('status', ['failed', 'processing'])
       .limit(10000)
 
     for (const row of failedRuns || []) {
       if (row?.vendor_id) vendorIds.add(String(row.vendor_id))
     }
+  }
+
+  // The 8th or later and last month's pass never finished: give up on it, say
+  // so once, and bill nothing. Only a scheduled, real, every-client run gets
+  // here (see tracksPass above); the record remembers that the alert went.
+  if (passDecision.action === 'alert_unfinished') {
+    const unbilled = await reportUnfinishedBillingPass(supabase, {
+      billedMonth: period.period_yyyymm,
+      record: passRecord,
+      candidateVendorIds: [...vendorIds],
+    })
+    return NextResponse.json({
+      skipped: true,
+      reason: passDecision.reason,
+      period: period.period_yyyymm,
+      alerted: true,
+      ...unbilled,
+    })
   }
 
   if (dryRun) {
@@ -2580,9 +2667,6 @@ export async function GET(request: Request) {
           continue
         }
 
-        const subject = `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-        const body = `Hi ${vendor.contact_name || vendor.name || 'there'},\n\nPlease find attached invoice ${invoice.invoice_number}.\n\nBest regards,\nPeter\nOrange Jelly Limited`
-
         const shouldAttachTimesheet =
           String(invoice.internal_notes || '').includes(OJ_TIMESHEET_MARKER) ||
           String(invoice.notes || '').includes('Full breakdown attached as Timesheet PDF.')
@@ -2664,6 +2748,21 @@ export async function GET(request: Request) {
           ]
         }
 
+        // Worded after the attachment is built, so the email only says the
+        // timesheet is attached when it is. What the invoice itself carries is
+        // read from the notes on this draft, which an earlier attempt wrote.
+        // The subject must not vary between attempts: it is part of the send
+        // claim below, which is what stops a retry emailing the client twice.
+        const { subject, body } = buildOjMonthlyInvoiceEmail({
+          firstName: await resolveInvoiceGreetingName(supabase, vendorId),
+          invoiceNumber: invoice.invoice_number,
+          periodDate: String(billingRun.period_start),
+          balance: invoiceBalanceDue(invoice),
+          dueDate: invoice.due_date,
+          notes: invoice.notes,
+          timesheetAttached: Boolean(additionalAttachments?.length),
+        })
+
         const { claimKey, claimHash } = buildOjInvoiceSendClaimParams({
           invoiceId: invoice.id,
           billingRunId: billingRun.id,
@@ -2706,7 +2805,7 @@ export async function GET(request: Request) {
         const skipEmailSend = sendClaim.state === 'replay'
 
         if (!skipEmailSend) {
-          const sendRes = await sendInvoiceEmail(invoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
+          const sendRes = await sendInvoiceEmail(invoice, recipients.to, subject, body, recipients.cc, additionalAttachments, { emailKind: 'invoice' })
           if (!sendRes.success) {
             if (claimHeld) {
               try {
@@ -3493,11 +3592,6 @@ export async function GET(request: Request) {
         continue
       }
 
-      const subject = `Invoice ${invoiceNumber} from Orange Jelly Limited`
-      const body = statementMode
-        ? `Hi ${vendor.contact_name || vendor.name || 'there'},\n\nPlease find attached invoice ${invoiceNumber}.\n\nThe invoice includes a balance summary and payment projection.\n\nBest regards,\nPeter\nOrange Jelly Limited`
-        : `Hi ${vendor.contact_name || vendor.name || 'there'},\n\nPlease find attached invoice ${invoiceNumber}.\n\nThe invoice notes include a breakdown of hours and mileage.\n\nBest regards,\nPeter\nOrange Jelly Limited`
-
       let additionalAttachments: Array<{ name: string; contentType: string; buffer: Buffer }> | undefined
       if (attachTimesheet) {
         const timesheetPdf = await generateOjTimesheetPDF({
@@ -3516,6 +3610,22 @@ export async function GET(request: Request) {
           },
         ]
       }
+
+      // Worded after the attachment is built, and from the notes stored on the
+      // invoice, so the email promises only what this client is really sent: a
+      // breakdown of hours and mileage when the notes carry one (an invoice for
+      // recurring charges alone has none), the balance summary for a client on
+      // a statement, and the timesheet only when it is attached. The subject is
+      // the same on every attempt: it is part of the send claim below.
+      const { subject, body } = buildOjMonthlyInvoiceEmail({
+        firstName: await resolveInvoiceGreetingName(supabase, vendorId),
+        invoiceNumber,
+        periodDate: period.period_start,
+        balance: invoiceBalanceDue(fullInvoice),
+        dueDate: fullInvoice.due_date,
+        notes: fullInvoice.notes,
+        timesheetAttached: Boolean(additionalAttachments?.length),
+      })
 
       const { claimKey, claimHash } = buildOjInvoiceSendClaimParams({
         invoiceId,
@@ -3559,7 +3669,7 @@ export async function GET(request: Request) {
       const skipEmailSend = sendClaim.state === 'replay'
 
       if (!skipEmailSend) {
-        const sendRes = await sendInvoiceEmail(fullInvoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
+        const sendRes = await sendInvoiceEmail(fullInvoice, recipients.to, subject, body, recipients.cc, additionalAttachments, { emailKind: 'invoice' })
         if (!sendRes.success) {
           if (claimHeld) {
             try {
@@ -3800,6 +3910,20 @@ export async function GET(request: Request) {
     }
   }
 
+  // The loop has been through every eligible client, so the month's pass is
+  // finished (a client that failed has been attempted, and is reported below).
+  // A run cut short never reaches this line: the record stays 'running' and
+  // the next weekday's run carries on. If the record cannot be written the
+  // same thing happens, which is safe: clients already billed are skipped.
+  let billingPass: Awaited<ReturnType<typeof finishBillingPass>> | null = null
+  if (tracksPass) {
+    try {
+      billingPass = await finishBillingPass(supabase, period.period_yyyymm)
+    } catch (passFinishError) {
+      console.error('[oj-billing] Failed to mark the billing pass completed:', passFinishError)
+    }
+  }
+
   // Send billing alert if any vendors failed
   if (results.failed > 0) {
     try {
@@ -3809,5 +3933,6 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(recovery ? { ...results, recovered_runs: recovery } : results)
+  const payload = recovery ? { ...results, recovered_runs: recovery } : results
+  return NextResponse.json(billingPass ? { ...payload, billing_pass: billingPass } : payload)
 }
