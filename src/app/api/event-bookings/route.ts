@@ -15,6 +15,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import { attributionLabel, attributionNumber, attributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -45,23 +46,27 @@ const CreateEventBookingSchema = z.object({
   ),
   seating_preference: z.enum(['seated', 'standing']).optional(),
   expected_event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  source_url: z.string().trim().url().max(2048).optional(),
-  landing_path: z.string().trim().min(1).max(512).optional(),
-  utm_source: z.string().trim().min(1).max(200).optional(),
-  utm_medium: z.string().trim().min(1).max(200).optional(),
-  utm_campaign: z.string().trim().min(1).max(300).optional(),
-  utm_content: z.string().trim().min(1).max(300).optional(),
-  utm_term: z.string().trim().min(1).max(300).optional(),
-  fbclid: z.string().trim().min(1).max(500).optional(),
-  short_code: z.string().trim().min(1).max(64).optional(),
-  event_slug: z.string().trim().min(1).max(200).optional(),
-  event_name: z.string().trim().min(1).max(300).optional(),
-  event_category_name: z.string().trim().min(1).max(200).optional(),
-  event_category_slug: z.string().trim().min(1).max(200).optional(),
-  event_date: z.string().trim().min(1).max(80).optional(),
-  event_price: z.number().min(0).optional(),
-  event_value: z.number().min(0).optional(),
-  food_intent: z.string().trim().min(1).max(80).optional(),
+  // Attribution labels (see ATTRIBUTION_KEYS). Reporting hints only, so they are cleaned
+  // leniently: a malformed, blank or over-long label is dropped or cut to its cap, and never
+  // rejects the booking. They stay out of the idempotency hash and reach only the
+  // `event_booking_created` analytics event (source_url is also kept as consent evidence).
+  source_url: attributionUrl(2048),
+  landing_path: attributionLabel(512),
+  utm_source: attributionLabel(200),
+  utm_medium: attributionLabel(200),
+  utm_campaign: attributionLabel(300),
+  utm_content: attributionLabel(300),
+  utm_term: attributionLabel(300),
+  fbclid: attributionLabel(500),
+  short_code: attributionLabel(64),
+  event_slug: attributionLabel(200),
+  event_name: attributionLabel(300),
+  event_category_name: attributionLabel(200),
+  event_category_slug: attributionLabel(200),
+  event_date: attributionLabel(80),
+  event_price: attributionNumber(),
+  event_value: attributionNumber(),
+  food_intent: attributionLabel(80),
   dining_request: z.enum(['before_event', 'during_event', 'not_sure']).optional(),
   early_arrival_request: z.boolean().optional(),
   communication_consent: OptionalCommunicationConsentSchema,
