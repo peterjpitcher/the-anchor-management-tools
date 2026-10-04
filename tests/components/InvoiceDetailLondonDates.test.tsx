@@ -41,7 +41,6 @@ vi.mock('@/app/actions/oj-projects/invoice-reissue', () => ({
 
 vi.mock('@/app/actions/invoicePayPalActions', () => ({
   getInvoicePortalLink: vi.fn(),
-  sendInvoicePaymentLink: vi.fn(),
 }))
 
 vi.mock('@/lib/invoices/download-pdf', () => ({

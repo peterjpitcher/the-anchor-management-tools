@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { roundMoney } from '@/lib/oj-projects/utils'
 import { sendEmail } from '@/lib/email/emailService'
+import { invoiceProviderPin } from '@/lib/email/invoice-sender'
 import { generateStatementPDF } from '@/lib/oj-statement'
 import { logAuditEvent } from '@/app/actions/audit'
 import { escapeHtml } from '@/lib/cron/alerting'
@@ -448,6 +449,10 @@ export async function sendStatementEmail(
         contentType: 'application/pdf',
       },
     ],
+    // A statement leaves from the same mailbox as the invoices it lists, once the owner has
+    // set INVOICE_EMAIL_PROVIDER=graph. Only the pin: nothing else about this send changes,
+    // and with the switch unset this adds nothing at all.
+    ...invoiceProviderPin(),
   })
 
   // Looked up before the send so the failure path can be attributed too.

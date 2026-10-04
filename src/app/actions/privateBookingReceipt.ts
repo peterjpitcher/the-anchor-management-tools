@@ -10,7 +10,9 @@ import { generateBookingReceiptPDF } from '@/lib/private-bookings/booking-receip
 import { CONTRACT_DOCUMENTS_BUCKET, storeContractSnapshot } from '@/lib/private-bookings/contract-lifecycle'
 import type { BookingReceiptDocument, BookingReceiptModel } from '@/lib/private-bookings/booking-receipt'
 import { sendEmail } from '@/lib/email/emailService'
-import { invoiceReplyToAddress, invoiceSenderIdentity } from '@/lib/email/invoice-sender'
+import { invoiceEmailRouting } from '@/lib/email/invoice-sender'
+import { INVOICE_SIGN_OFF, invoiceGreeting } from '@/lib/invoices/email-copy'
+import { bookingGreetingName, type BookingGreetingSource } from '@/lib/invoices/email-drafts'
 import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
 
@@ -71,7 +73,7 @@ export async function sendPrivateBookingReceipt(bookingId: string, documentId: s
     const userId = await authorise(true)
     const db = createAdminClient()
     const [{ data: booking, error: bookingError }, { data: document, error: documentError }] = await Promise.all([
-      db.from('private_bookings').select('contact_email').eq('id', bookingId).single(),
+      db.from('private_bookings').select('contact_email, customer_first_name, customer_full_name, customer_name, customer:customers(first_name)').eq('id', bookingId).single(),
       db.from('private_booking_documents').select('*').eq('id', documentId).eq('booking_id', bookingId).eq('document_type', 'receipt').single(),
     ])
     if (bookingError || documentError || !document || !booking) throw new Error('The booking receipt could not be loaded.')
@@ -84,7 +86,11 @@ export async function sendPrivateBookingReceipt(bookingId: string, documentId: s
     const content = Buffer.from(await stored.arrayBuffer())
     if (createHash('sha256').update(content).digest('hex') !== document.metadata?.sha256) throw new Error('The stored receipt failed its integrity check. Nothing was sent.')
     const title = document.metadata?.kind === 'final_receipt' ? 'Final receipt' : 'Payment statement'
-    const sent = await sendEmail({ to: email.data, subject: `${title} for your private booking`, text: `Please find your ${title.toLowerCase()} attached. It lists the booking charges and recorded payments.\n\nOrange Jelly Limited`, from: invoiceSenderIdentity(), replyTo: invoiceReplyToAddress(), privateBookingId: bookingId, commType: 'private_booking_receipt', requireLog: true, attachments: [{ name: document.file_name, content, contentType: 'application/pdf' }], metadata: { receipt_document_id: documentId, version: document.version } })
+    // This stays a booking document with its own wording. It takes only what every invoice
+    // email shares: a greeting by first name (the booking's own, else the guest record's, else
+    // "Hi there"), the one sign-off, and the same sender, reply-to and mailbox pin.
+    const text = [invoiceGreeting(bookingGreetingName(booking as unknown as BookingGreetingSource)), `Please find your ${title.toLowerCase()} attached. It lists the booking charges and recorded payments.`, INVOICE_SIGN_OFF].join('\n\n')
+    const sent = await sendEmail({ to: email.data, subject: `${title} for your private booking`, text, ...invoiceEmailRouting(), privateBookingId: bookingId, commType: 'private_booking_receipt', requireLog: true, attachments: [{ name: document.file_name, content, contentType: 'application/pdf' }], metadata: { receipt_document_id: documentId, version: document.version } })
     await logAuditEvent({ user_id: userId, operation_type: 'send', resource_type: 'private_booking_receipt', resource_id: documentId, operation_status: sent.success ? 'success' : 'failure', additional_info: { booking_id: bookingId, version: document.version, error: sent.error ?? null } })
     if (!sent.success) return { error: sent.error ?? 'Receipt delivery failed. The stored receipt is available to download or retry.' }
     return { success: true }

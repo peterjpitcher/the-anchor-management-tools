@@ -24,16 +24,9 @@ vi.mock('@/lib/paypal', () => ({
   getPayPalOrder: vi.fn(),
   isPayPalOrderAlreadyCapturedError: vi.fn().mockReturnValue(false),
 }))
-vi.mock('@/lib/email/invoice-payment-emails', () => ({
-  sendInvoicePaymentLinkEmail: vi.fn().mockResolvedValue({ success: true }),
-}))
-vi.mock('@/lib/invoice-recipients', () => ({
-  resolveVendorInvoiceRecipients: vi.fn().mockResolvedValue({ to: 'kim@example.com', cc: [] }),
-}))
 
 import {
   getInvoicePortalLink,
-  sendInvoicePaymentLink,
   createInvoicePaymentOrderByToken,
   captureInvoicePaymentByToken,
 } from '@/app/actions/invoicePayPalActions'
@@ -45,7 +38,6 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createSimplePayPalOrder, getPayPalOrder, capturePayPalPayment, isPayPalOrderAlreadyCapturedError } from '@/lib/paypal'
 import { generateInvoiceToken } from '@/lib/invoices/invoice-token'
-import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
 
 const INVOICE_ID = '7f06990b-7636-4d72-b610-460168da18ec'
 
@@ -198,57 +190,6 @@ describe('getInvoicePortalLink', () => {
   })
 })
 
-describe('sendInvoicePaymentLink', () => {
-  it('charges only what is outstanding, not the invoice total', async () => {
-    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice()))
-
-    const result = await sendInvoicePaymentLink(INVOICE_ID)
-
-    expect(result.error).toBeUndefined()
-    expect(createSimplePayPalOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amount: 725.6,
-        customId: `inv-pay-${INVOICE_ID}`,
-        reference: INVOICE_ID,
-        currency: 'GBP',
-      }),
-    )
-    expect(sendInvoicePaymentLinkEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'kim@example.com',
-        amountDue: 725.6,
-        portalUrl: expect.stringMatching(/^https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\/[A-Za-z0-9_-]{88}$/),
-      }),
-    )
-  })
-
-  it('reports a failed email rather than claiming it was sent', async () => {
-    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice()))
-    vi.mocked(sendInvoicePaymentLinkEmail).mockResolvedValueOnce({
-      success: false,
-      error: 'Mailbox unavailable',
-    })
-
-    const result = await sendInvoicePaymentLink(INVOICE_ID)
-
-    expect(result.success).toBeUndefined()
-    expect(result.error).toBe('Mailbox unavailable')
-  })
-
-  it.each([
-    ['disabled', { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false }],
-    ['missing', { name: 'Kim Renyard', email: 'kim@example.com' }],
-  ])('does not create or email a payment link when the vendor setting is %s', async (_setting, vendor) => {
-    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ vendor })))
-
-    const result = await sendInvoicePaymentLink(INVOICE_ID)
-
-    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
-    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
-    expect(sendInvoicePaymentLinkEmail).not.toHaveBeenCalled()
-  })
-})
-
 describe('createInvoicePaymentOrderByToken', () => {
   it('rejects a token that is not a valid invoice token', async () => {
     const result = await createInvoicePaymentOrderByToken('not-a-real-token')
@@ -263,6 +204,25 @@ describe('createInvoicePaymentOrderByToken', () => {
 
     expect(result.error).toBeUndefined()
     expect(result.approveUrl).toContain('paypal.com')
+  })
+
+  it('charges only what is outstanding, not the invoice total', async () => {
+    // Moved here from the staff "email payment link" action when that email was retired on
+    // 4 October 2026. The portal is now the only place an order is opened, so this is
+    // where the amount has to be right.
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice()))
+
+    const result = await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
+
+    expect(result.error).toBeUndefined()
+    expect(createSimplePayPalOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 725.6,
+        customId: `inv-pay-${INVOICE_ID}`,
+        reference: INVOICE_ID,
+        currency: 'GBP',
+      }),
+    )
   })
 
   it.each([
