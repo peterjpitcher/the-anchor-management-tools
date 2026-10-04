@@ -129,6 +129,26 @@ async function screenCopiedAddresses(
   }
 }
 
+export interface InvoiceEmailSendResult {
+  /** True when the provider accepted the email. Nothing else decides this. */
+  success: boolean
+  error?: string
+  /** 'email_suspended' when a kill switch refused the send. */
+  code?: string
+  messageId?: string
+  /**
+   * True when the send failed with no definite answer (a timeout after the request left):
+   * the customer may have the email. An automatic sender must not retry on this.
+   */
+  uncertain?: boolean
+  /**
+   * Only on success: false when the email went but the app could not save its record of it,
+   * so it will be missing from the invoice's email history. Never a reason to send again.
+   */
+  recorded?: boolean
+  pdfBuffer?: Buffer
+}
+
 // Send invoice email
 export async function sendInvoiceEmail(
   invoice: InvoiceWithDetails,
@@ -138,7 +158,7 @@ export async function sendInvoiceEmail(
   ccRecipients?: string[],
   additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>,
   emailOptions?: InvoiceEmailOptions
-): Promise<{ success: boolean; error?: string; messageId?: string; pdfBuffer?: Buffer }> {
+): Promise<InvoiceEmailSendResult> {
   try {
     // Generate invoice PDF with 'sent' status if currently draft
     const invoiceForPDF = invoice.status === 'draft'
@@ -245,7 +265,11 @@ export async function sendInvoiceEmail(
     return {
       success: result.success,
       error: result.error,
+      code: result.code,
       messageId: result.messageId,
+      uncertain: result.uncertain === true,
+      // A send can succeed with no record of it (see the note on `requireLog` above).
+      recorded: result.success ? Boolean(result.emailMessageId) : undefined,
       // Returned so a caller can archive the exact bytes the customer
       // received, rather than regenerating a document that may since have
       // drifted.

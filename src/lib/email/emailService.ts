@@ -89,6 +89,14 @@ type EmailSendResult = {
   emailMessageId?: string | null;
   /** True when the suppression list could not be read and the send was refused because of it. */
   suppressionCheckUnavailable?: boolean;
+  /**
+   * True when the send failed WITHOUT a definite answer from the provider: the request had
+   * been submitted and then timed out or the connection dropped. The email may have been
+   * sent. A caller that retries automatically (a cron) must NOT retry on this: it has to be
+   * checked by a person first. Absent or false on a failure means the provider, or a check
+   * before it, definitely refused, and nothing was sent.
+   */
+  uncertain?: boolean;
 };
 
 /**
@@ -277,6 +285,11 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     return { success: false, error };
   }
 
+  // Set immediately before the request leaves. A failure before this point sent nothing; an
+  // exception after it has no definite answer (the SDK returns API refusals as `error`, it
+  // does not throw them), so the email may have gone.
+  let submitted = false;
+
   try {
     const resendPayload: Record<string, unknown> = {
       from: fromAddress,
@@ -309,6 +322,7 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       resendPayload.headers = UNSUBSCRIBE_HEADERS(options.unsubscribeUrl);
     }
 
+    submitted = true;
     const { data, error } = options.idempotencyKey
       ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
       : await client.emails.send(resendPayload as any);
@@ -372,13 +386,26 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     }
     return {
       success: false,
-      error: message
+      error: message,
+      ...(submitted ? { uncertain: true } : {}),
     };
   }
 }
 
+/**
+ * Whether a thrown Graph error is a definite refusal. The Graph client throws an error
+ * carrying the HTTP status when the service answered; a timeout or dropped connection has no
+ * status (the client uses -1).
+ */
+function graphAnsweredWithError(error: unknown): boolean {
+  const status = Number((error as { statusCode?: unknown } | null)?.statusCode);
+  return Number.isFinite(status) && status >= 400;
+}
+
 async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult> {
   const senderEmail = options.graphSender?.trim() || process.env.MICROSOFT_USER_EMAIL || '';
+  // Set immediately before the request leaves. See the same flag in `sendEmailViaResend`.
+  let submitted = false;
 
   try {
     if (!isGraphConfigured()) {
@@ -454,6 +481,7 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     }
 
     // Send email
+    submitted = true;
     const response = await client
       .api(`/users/${senderEmail}/sendMail`)
       .post({
@@ -499,7 +527,8 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     }
     return {
       success: false,
-      error: message
+      error: message,
+      ...(submitted && !graphAnsweredWithError(error) ? { uncertain: true } : {}),
     };
   }
 }
