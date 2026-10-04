@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 const mockAuthorizeCronRequest = vi.fn()
@@ -144,5 +144,51 @@ describe('invoice-paypal-reconciliation: orders PayPal no longer has', () => {
     expect(mockReportCronFailure).toHaveBeenCalledTimes(1)
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ paypal_reconciliation_attempts: 1 }))
     expect(mockUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ paypal_order_id: null }))
+  })
+})
+
+/**
+ * These run the real receipt sweep against the client above, which throws on any table but
+ * `invoices`. That makes it a tripwire: with the switch off the sweep must not touch the
+ * database at all, and with it on a sweep that falls over must not take the job with it.
+ */
+describe('invoice-paypal-reconciliation: the receipt switch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    invoiceRows = []
+    updateEqCalls.length = 0
+    mockAuthorizeCronRequest.mockReturnValue({ authorized: true })
+    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('reads no table but invoices, and reports nothing about receipts, while the switch is off', async () => {
+    const { status, body } = await runRoute()
+
+    expect(status).toBe(200)
+    expect(body).toEqual({ success: true, checked: 0, settled: 0, cleared: 0, failed: 0 })
+    expect(mockLoggerError).not.toHaveBeenCalled()
+    expect(mockReportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('stays a success when the switch is on and the sweep cannot read its tables', async () => {
+    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
+
+    const { status, body } = await runRoute()
+
+    expect(status).toBe(200)
+    expect(body).toEqual({
+      success: true, checked: 0, settled: 0, cleared: 0, failed: 0,
+      receipts: { error: 'Receipt sweep failed' },
+    })
+    // The fault is not swallowed: it is logged and raised under its own name.
+    expect(mockLoggerError).toHaveBeenCalledTimes(1)
+    expect(mockReportCronFailure).toHaveBeenCalledTimes(1)
+    expect(mockReportCronFailure.mock.calls[0][0]).toBe('invoice-paypal-receipt')
+    expect(String(mockReportCronFailure.mock.calls[0][1])).toContain('Unexpected table: invoice_payments')
   })
 })
