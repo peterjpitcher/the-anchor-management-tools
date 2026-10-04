@@ -1,7 +1,7 @@
 # Spec: invoice issuing and chasing, email only and personal
 
 **Date:** 4 October 2026
-**Status:** Version 4, built on 4 October 2026 (not deployed). Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`. For the owner to approve. Nothing built, nothing changed in production.
+**Status:** Version 4, built and live on 4 October 2026 (pull requests 177 and 178, production deployment `dpl_7TRJAuD1J7Fyx7BkUJnhLRiVaNHV`), with its three switches still off. Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`; its Results section records what was released and checked.
 **Goal (owner's words):** "Everything should be over email and should feel personal."
 **Scope:** every email that issues, chases or acknowledges an Orange Jelly invoice, and the screens staff use to send and follow them.
 **Paired repository:** no change needed in the website repo. It does not read invoices.
@@ -71,7 +71,7 @@ Small fixes, no new wording. **Order matters: R0.1, the R0.2 code fix and R0.5 a
 The form at `src/app/(authenticated)/invoices/vendors/page.tsx` does not send those two fields, and `VendorService.updateVendor` in `src/services/vendors.ts` writes null for both. Every record the audit log shows as saved there (seven) is now blank.
 - Fix: `updateVendor` stops writing `email` and `contact_name`. No form sends them.
 - Test: saving the form leaves the stored email and contact name unchanged.
-- Data: restore the email on the four private hire records, from the booking's contact email, so the Chase Payment dialog prefills. The statements are written and checked, not applied: `tasks/data-fixes-2026-10-04-invoice-r0.sql`. The business records are left as they are: each has a primary contact holding the same address. After the restore, recording a payment for these four guests emails them a receipt, as it already does for every other client.
+- Data: restore the email on the four private hire records, from the booking's contact email, so the Chase Payment dialog prefills. The statements were applied to production on 4 October 2026 with the owner's yes: `tasks/data-fixes-2026-10-04-invoice-r0.sql`. The business records are left as they are: each has a primary contact holding the same address. After the restore, recording a payment for these four guests emails them a receipt, as it already does for every other client.
 
 **R0.3 Recurring invoices are sent but never chased.**
 `src/app/api/cron/recurring-invoices/route.ts` marks the invoice sent before it emails it, and never records `sent_at`. The reminder job skips any invoice without `sent_at`. If the email fails, the invoice still shows as sent and is never retried.
