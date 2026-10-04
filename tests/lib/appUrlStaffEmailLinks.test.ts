@@ -61,7 +61,6 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { generateInvoiceToken } from '@/lib/invoices/invoice-token'
 import { GET as runInvoiceReminders } from '@/app/api/cron/invoice-reminders/route'
 import { GET as runEventChecklistReminders } from '@/app/api/cron/event-checklist-reminders/route'
 import { GET as runOjProjectsBillingReminders } from '@/app/api/cron/oj-projects-billing-reminders/route'
@@ -168,7 +167,9 @@ afterEach(() => {
 })
 
 describe('invoice reminders cron', () => {
-  it('internal reminder links the invoice, and both reminders carry a clean portal link', async () => {
+  // Automatic customer reminders are paused (owner decision, 4 October 2026). The job alerts the
+  // owner on the same days and emails nobody else.
+  it('alerts the owner with a link to the invoice and emails no customer', async () => {
     // Invoice INV-2026-0042 for £1,250.00, due Thursday 24 September 2026: seven days overdue today.
     vi.mocked(createAdminClient).mockReturnValue(
       fixtureDb({
@@ -207,23 +208,21 @@ describe('invoice reminders cron', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload.results).toMatchObject({ processed: 1, internal_notifications: 1, reminders_sent: 1, errors: [] })
-    expect(sentEmails()).toHaveLength(2)
-
-    const portalLink = `${APP_URL}/invoice-portal/${generateInvoiceToken(INVOICE_ID)}`
+    expect(payload.results).toMatchObject({ processed: 1, internal_notifications: 1, reminders_sent: 0, errors: [] })
+    expect(sentEmails()).toHaveLength(1)
 
     const internal = sentEmailTo(STAFF_MAILBOX)
     expect(internal.subject).toBe('[First Reminder] Invoice INV-2026-0042 - Acme Events Ltd - £1250.00 overdue')
     expect(internal.text).toContain('Amount Due: £1250.00')
     expect(internal.text).toContain('Due Date: 24/09/2026')
+    expect(internal.text).toContain('No customer email was sent. Automatic reminders are paused. Chase from the invoice page.')
+    expect(internal.text).not.toContain('Customer reminder has been sent')
     expect(internal.text).toContain(`View invoice: ${APP_URL}/invoices/${INVOICE_ID}`)
-    expect(linksIn(internal.text ?? '')).toEqual([`${APP_URL}/invoices/${INVOICE_ID}`, portalLink])
+    // The alert is not an invoice email: it carries the staff link only, never a payment link.
+    expect(linksIn(internal.text ?? '')).toEqual([`${APP_URL}/invoices/${INVOICE_ID}`])
     expectCleanEmail(internal)
 
-    const customer = sentEmailTo('accounts@acme-events.example')
-    expect(customer.subject).toBe('First Reminder: Invoice INV-2026-0042 from Orange Jelly Limited')
-    expect(linksIn(customer.text ?? '')).toEqual([portalLink])
-    expectCleanEmail(customer)
+    expect(sentEmails().map((email) => email.to)).not.toContain('accounts@acme-events.example')
   })
 })
 

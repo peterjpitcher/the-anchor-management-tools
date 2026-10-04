@@ -6,12 +6,8 @@ on:
     - cron: '* * * * *'
     # Reminders (9 AM daily)
     - cron: '0 9 * * *'
-    # Invoice Reminders (10 AM daily)
-    - cron: '0 10 * * *'
     # Birthday Reminders (8 AM daily)
     - cron: '0 8 * * *'
-    # Auto Send Invoices (7 AM daily)
-    - cron: '0 7 * * *'
     # Apply Customer Labels (2 AM daily)
     - cron: '0 2 * * *'
     # Table Booking Monitoring (Hourly)
@@ -35,8 +31,6 @@ on:
           - all
           - process-jobs
           - reminders
-          - invoice-reminders
-          - auto-send-invoices
           - apply-customer-labels
           - birthday-reminders
           - table-booking-monitoring
@@ -98,20 +92,14 @@ jobs:
             run_job "/api/cron/event-checklist-reminders" "Event Checklist"
           fi
 
-          # 3. Invoice Reminders (10 AM)
-          if [ "${{ github.event.schedule }}" == "0 10 * * *" ] || [ "${{ inputs.job }}" == "invoice-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/invoice-reminders" "Invoice Reminders"
-          fi
+          # Invoice reminders are scheduled by vercel.json only. This workflow used to call the
+          # route a second time, hours late (as late as 22:04 London), and that late run sent
+          # "Payment Due Today" minutes after the invoice itself. Do not add it back here.
 
           # 4. Birthday Reminders (8 AM)
           # Recurring invoices are scheduled via Vercel cron.
           if [ "${{ github.event.schedule }}" == "0 8 * * *" ] || [ "${{ inputs.job }}" == "birthday-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/birthday-reminders" "Birthday Reminders"
-          fi
-
-          # 5. Auto Send Invoices (7 AM)
-          if [ "${{ github.event.schedule }}" == "0 7 * * *" ] || [ "${{ inputs.job }}" == "auto-send-invoices" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/auto-send-invoices" "Auto Send Invoices"
           fi
 
           # 6. Customer Labels (2 AM)

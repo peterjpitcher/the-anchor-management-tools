@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const routes = [
-  'src/app/api/cron/auto-send-invoices/route.ts',
   'src/app/api/cron/invoice-reminders/route.ts',
 ]
 

@@ -114,10 +114,13 @@ export async function updateVendor(formData: FormData) {
       return { error: 'Vendor ID is required' }
     }
 
+    // `contact_name` and `email` are passed on only when the form actually carried the field.
+    // The Vendors page form does not, and treating "absent" as "blank" wiped both on every save.
+    // A field that is present but empty is a deliberate clear and is passed on as ''.
     const validatedData = VendorSchema.parse({
       name: formData.get('name'),
-      contact_name: formData.get('contact_name') || undefined,
-      email: formData.get('email') || undefined,
+      ...(formData.has('contact_name') ? { contact_name: String(formData.get('contact_name') ?? '') } : {}),
+      ...(formData.has('email') ? { email: String(formData.get('email') ?? '') } : {}),
       phone: formData.get('phone') || undefined,
       address: formData.get('address') || undefined,
       vat_number: formData.get('vat_number') || undefined,
