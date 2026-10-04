@@ -217,6 +217,8 @@ async function deliverExtraInvoice(bookingId: string, invoiceId: string, actorId
     return { sent: delivery.success, warning: 'The email delivery outcome could not be saved. Check delivery before trying to send again.' }
   }
   const { error: logError } = await db.from('invoice_email_logs').insert({ invoice_id: invoiceId, sent_to: recipient, sent_by: actorId, subject, body, status: delivery.success ? 'sent' : 'failed', error_message: delivery.error ?? null, message_id: delivery.messageId ?? null })
+  // A timeout after the request left: the customer may already have it. Do not invite a resend.
+  if (!delivery.success && delivery.uncertain) return { sent: false, warning: 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before using resend on this invoice.' }
   if (!delivery.success) return { sent: false, warning: delivery.error || 'Invoice created but email failed. Use resend on this invoice.' }
   const { error: stampError } = await db.from('invoices').update({ sent_at: new Date().toISOString(), sent_to: recipient }).eq('id', invoiceId)
   let archiveWarning: string | undefined

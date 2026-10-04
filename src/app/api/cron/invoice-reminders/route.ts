@@ -33,6 +33,16 @@ export async function GET(request: Request) {
     return NextResponse.json(preview.body, { status: preview.status })
   }
 
+  // The scheduler calls this route with no query string. Anything else is a person asking for
+  // a preview and getting it slightly wrong (`preview=1`, a misspelt name). That must never fall
+  // through to a real run, which uses up the day's run and, once live, emails customers.
+  if ([...url.searchParams.keys()].length > 0) {
+    return NextResponse.json(
+      { error: 'Unrecognised query. For a preview use ?preview=true&go_live=YYYY-MM-DD. A real run takes no query.' },
+      { status: 400 }
+    )
+  }
+
   const { status, body } = await runInvoiceReminders()
   return NextResponse.json(body, { status })
 }

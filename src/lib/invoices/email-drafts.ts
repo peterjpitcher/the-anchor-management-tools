@@ -1,5 +1,11 @@
 import { invoiceBalanceDue, invoiceIssuedCreditTotal, type InvoiceBalanceInput } from '@/lib/invoices/balance'
-import { buildChaseEmail, buildInvoiceEmail, firstNameFrom, type InvoiceEmailDraft } from '@/lib/invoices/email-copy'
+import {
+  buildChaseEmail,
+  buildInvoiceEmail,
+  buildPrivateHireInvoiceEmail,
+  firstNameFrom,
+  type InvoiceEmailDraft,
+} from '@/lib/invoices/email-copy'
 /**
  * Default subject and body for the invoice and quote email dialogs.
  *
@@ -73,7 +79,28 @@ export const PAY_ONLINE_POSTSCRIPT_NOTE = 'A pay online link will be added as a 
 export function buildDefaultInvoiceEmailDraft(
   invoice: InvoiceWithDetails,
   firstName?: string | null,
+  /**
+   * Set when the invoice belongs to a private booking. A private hire customer has only ever
+   * dealt with The Anchor, so a resend from the invoice page uses the private hire wording,
+   * which names the booking. The deposit line is left out: this dialog does not know how the
+   * deposit was treated, and it must never guess.
+   */
+  privateHire?: { eventDate: string | null } | null,
 ): InvoiceEmailDraft {
+  if (privateHire) {
+    return buildPrivateHireInvoiceEmail({
+      firstName,
+      invoiceNumber: invoice.invoice_number,
+      eventDate: privateHire.eventDate,
+      reference: invoice.reference,
+      dueDate: invoice.due_date,
+      total: Number(invoice.total_amount) || 0,
+      paid: Math.max(0, Number(invoice.paid_amount) || 0),
+      credits: invoiceIssuedCreditTotal(invoice),
+      balance: invoiceBalanceDue(invoice),
+    })
+  }
+
   return buildInvoiceEmail({
     firstName,
     invoiceNumber: invoice.invoice_number,

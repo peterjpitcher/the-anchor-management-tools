@@ -50,7 +50,6 @@ import { INVOICE_SIGN_OFF } from '@/lib/invoices/email-copy'
 import {
   resolveReceiptRecipients,
   sendInvoiceReceipt,
-  sendReceiptForPayPalCapture,
   sweepPayPalReceipts,
 } from '@/lib/invoices/receipt-email'
 
@@ -575,93 +574,7 @@ function payPalDb(payments: Row[], extra: Record<string, Row[]> = {}) {
   })
 }
 
-describe('sendReceiptForPayPalCapture (straight after a PayPal payment is recorded)', () => {
-  it('does nothing at all while the switch is off: no query, no claim, no email', async () => {
-    const payment = payPalPayment('a', '2026-10-12T10:00:00Z')
-    const db = payPalDb([payment])
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })
-
-    expect(db.touched).toEqual([])
-    expect(mocks.claims.size).toBe(0)
-    expect(mocks.sendInvoiceEmail).not.toHaveBeenCalled()
-  })
-
-  it('treats a mistyped switch as off', async () => {
-    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '12/10/2026')
-    const db = payPalDb([payPalPayment('a', '2026-10-12T10:00:00Z')])
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })
-
-    expect(db.touched).toEqual([])
-    expect(mocks.sendInvoiceEmail).not.toHaveBeenCalled()
-  })
-
-  it('finds the payment by its capture reference and sends its receipt once', async () => {
-    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
-    const db = payPalDb([payPalPayment('a', '2026-10-12T10:00:00Z'), payPalPayment('b', '2026-10-12T10:05:00Z')])
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-b', captureId: ' CAPTURE-b ', source: 'portal' })
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-b', captureId: 'CAPTURE-b', source: 'webhook' })
-
-    expect(mocks.sendInvoiceEmail).toHaveBeenCalledTimes(1)
-    expect(mocks.sendInvoiceEmail.mock.calls[0][2]).toBe('Payment received for invoice INV-B')
-    expect(db.tables.invoice_email_logs).toEqual([expect.objectContaining({ payment_id: 'b', status: 'sent', sent_by: null })])
-  })
-
-  // The switch date is a London calendar date. These instants sit either side of London
-  // midnight, which is 23:00 UTC in summer and 00:00 UTC in winter, so a rule written against
-  // the server's own clock gets one of them wrong in one of the two zones the suite runs in.
-  it.each([
-    { season: 'summer time', switchDate: '2026-10-12', before: '2026-10-11T22:59:59Z', onTheDay: '2026-10-11T23:00:00Z' },
-    { season: 'winter time', switchDate: '2026-11-02', before: '2026-11-01T23:59:59Z', onTheDay: '2026-11-02T00:00:00Z' },
-  ])('sends from the first London second of the switch date and not the second before ($season)', async ({ switchDate, before, onTheDay }) => {
-    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', switchDate)
-    const db = payPalDb([payPalPayment('early', before), payPalPayment('due', onTheDay)])
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-early', captureId: 'CAPTURE-early', source: 'webhook' })
-    expect(mocks.sendInvoiceEmail).not.toHaveBeenCalled()
-    expect(mocks.claims.size).toBe(0)
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-due', captureId: 'CAPTURE-due', source: 'webhook' })
-    expect(mocks.sendInvoiceEmail).toHaveBeenCalledTimes(1)
-    expect(mocks.sendInvoiceEmail.mock.calls[0][2]).toBe('Payment received for invoice INV-DUE')
-  })
-
-  it('raises one alert, naming the invoice and never the customer, when the outcome is unknown', async () => {
-    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
-    mocks.sendInvoiceEmail.mockRejectedValueOnce(new Error('socket closed'))
-    const db = payPalDb([payPalPayment('a', '2026-10-12T10:00:00Z')])
-
-    await sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })
-
-    expect(mocks.reportCronFailure).toHaveBeenCalledTimes(1)
-    const [job, error, context] = mocks.reportCronFailure.mock.calls[0]
-    expect(job).toBe('invoice-paypal-receipt')
-    expect((error as Error).message).toContain('invoice INV-A')
-    expect((error as Error).message).toContain('Check Sent Items')
-    expect((error as Error).message).toContain('before sending a receipt by hand')
-    expect(JSON.stringify([(error as Error).message, context])).not.toMatch(/@|client\.example/)
-  })
-
-  it('resolves quietly, with no alert, when the receipt is refused or the lookup fails', async () => {
-    vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
-    mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error: 'Recipient email address is suppressed' })
-    const db = payPalDb([payPalPayment('a', '2026-10-12T10:00:00Z')])
-
-    await expect(sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })).resolves.toBeUndefined()
-
-    db.fail('invoice_payments', 'select')
-    await expect(sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })).resolves.toBeUndefined()
-
-    const broken = { from: () => { throw new Error('connection refused') } } as never
-    await expect(sendReceiptForPayPalCapture(broken, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'webhook' })).resolves.toBeUndefined()
-
-    expect(mocks.reportCronFailure).not.toHaveBeenCalled()
-  })
-})
-
-describe('sweepPayPalReceipts (the 15 minute safety net)', () => {
+describe('sweepPayPalReceipts (the only sender of PayPal receipts)', () => {
   const now = new Date('2026-10-20T09:00:00Z')
 
   it('returns nothing and reads nothing while the switch is off', async () => {
@@ -725,21 +638,21 @@ describe('sweepPayPalReceipts (the 15 minute safety net)', () => {
     expect(mocks.sendInvoiceEmail.mock.calls[0][2]).toBe('Payment received for invoice INV-DUE')
   })
 
-  it('sends once when the sweep and the capture path race for the same payment', async () => {
+  it('sends once when two sweeps overlap on the same payment', async () => {
     vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
     let release: (value: typeof accepted) => void = () => {}
     mocks.sendInvoiceEmail.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
     const db = payPalDb([payPalPayment('a', '2026-10-19T10:00:00Z')])
 
-    const afterCapture = sendReceiptForPayPalCapture(db.client, { invoiceId: 'inv-a', captureId: 'CAPTURE-a', source: 'portal' })
-    // The capture path is now mid-send and holding the claim when the sweep comes round.
+    const first = sweepPayPalReceipts(db.client, { now })
+    // The first sweep is mid-send and holding the claim when a second one comes round.
     await vi.waitFor(() => expect(mocks.sendInvoiceEmail).toHaveBeenCalledTimes(1))
-    const summary = await sweepPayPalReceipts(db.client, { now })
+    const second = await sweepPayPalReceipts(db.client, { now })
 
-    expect(summary).toEqual({ owed: 1, sent: 0, skipped: 1, refused: 0, unknown: 0 })
+    expect(second).toEqual({ owed: 1, sent: 0, skipped: 1, refused: 0, unknown: 0 })
 
     release(accepted)
-    await afterCapture
+    expect(await first).toMatchObject({ owed: 1, sent: 1 })
     expect(mocks.sendInvoiceEmail).toHaveBeenCalledTimes(1)
     expect(db.tables.invoice_email_logs).toHaveLength(1)
   })

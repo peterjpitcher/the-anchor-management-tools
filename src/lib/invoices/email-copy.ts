@@ -42,6 +42,20 @@ export interface InvoiceEmailDraft {
 const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'mx', 'dr', 'prof', 'sir', 'dame', 'rev'])
 
 /**
+ * Words that show a "name" is a role, a department or a company, not a person. A contact
+ * saved as "Accounts Team" or "The Manager" must be greeted "Hi there", not "Hi Accounts".
+ */
+const NOT_A_PERSON = new Set([
+  'the', 'accounts', 'account', 'accounting', 'finance', 'billing', 'payments', 'payable', 'purchase',
+  'purchasing', 'admin', 'office', 'team', 'dept', 'department', 'manager', 'management', 'director',
+  'reception', 'bookings', 'sales', 'info', 'enquiries', 'support', 'ltd', 'limited', 'plc', 'llp', 'inc',
+  'company', 'group', 'and',
+])
+
+/** Letters, with apostrophes and hyphens inside: "Mary-Jane", "O'Neill". Nothing else. */
+const NAME_WORD = /^\p{L}[\p{L}'’-]*$/u
+
+/**
  * The first name out of a person's full name, for a greeting.
  *
  * "Sam Example" gives "Sam"; "Dr Sam Example" gives "Sam"; a single word is returned as it is.
@@ -60,6 +74,12 @@ export function firstNameFrom(fullName: string | null | undefined): string | nul
   }
   const first = (words[0] ?? '').replace(/[,;:]+$/, '')
   if (!first || TITLES.has(first.replace(/\.$/, '').toLowerCase())) return null
+  // "Mr & Mrs Smith" leaves "&" here, and a typed email address or number is not a name.
+  if (!NAME_WORD.test(first)) return null
+  // Any word that marks a role or a company spoils the whole name: "Sam at Accounts" is
+  // rare, "Accounts Team" and "Golden Barrels Limited" are not.
+  const marksNonPerson = words.some((word) => NOT_A_PERSON.has(word.replace(/[.,;:]+$/, '').toLowerCase()))
+  if (marksNonPerson) return null
   return first
 }
 
@@ -243,13 +263,28 @@ export function buildPrivateHireInvoiceEmail(input: PrivateHireInvoiceEmailInput
     ? `Here's the invoice for the extras we agreed for your booking at The Anchor${eventDayWithYear ? ` on ${eventDayWithYear}` : ''}. It covers those additional charges only, and your original invoice remains separate.`
     : `Thanks again for booking with us at The Anchor. Your invoice${eventDayWithYear ? ` for ${eventDayWithYear}` : ''} is attached.`
 
-  const figures = [
-    figuresBlock(input) ?? `Balance due: ${formatInvoiceMoney(Math.max(0, input.balance))}`,
-    `Due date: ${formatInvoiceDate(input.dueDate, { withYear: true })}`,
-    reference ? `Reference: ${reference}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n')
+  // A paid invoice sent again (or one born paid) must not read as a request for money: no
+  // "Balance due: £0.00", no due date, no bank details.
+  const settled = !(input.balance > 0)
+  const credits = Number(input.credits) || 0
+
+  const figures = settled
+    ? [
+        `Invoice total: ${formatInvoiceMoney(input.total)}`,
+        `Payments received: ${formatInvoiceMoney(input.paid)}`,
+        credits > 0 ? `Credits: ${formatInvoiceMoney(credits)}` : null,
+        reference ? `Reference: ${reference}` : null,
+        'It is paid in full, so there is nothing to pay.',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : [
+        figuresBlock(input) ?? `Balance due: ${formatInvoiceMoney(input.balance)}`,
+        `Due date: ${formatInvoiceDate(input.dueDate, { withYear: true })}`,
+        reference ? `Reference: ${reference}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
 
   let depositLine: string | null = null
   if (input.deposit && input.deposit.amount > 0) {
@@ -267,7 +302,9 @@ export function buildPrivateHireInvoiceEmail(input: PrivateHireInvoiceEmailInput
       opening,
       figures,
       depositLine,
-      `${BANK_LINE} If anything looks wrong, just reply to this email and I'll sort it out.`,
+      settled
+        ? "If anything looks wrong, just reply to this email and I'll sort it out."
+        : `${BANK_LINE} If anything looks wrong, just reply to this email and I'll sort it out.`,
     ]),
   }
 }

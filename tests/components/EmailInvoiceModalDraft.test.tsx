@@ -197,6 +197,18 @@ describe('EmailInvoiceModal send result', () => {
     warning.mockRestore()
   })
 
+  // The server treats an identical email within the hour as a duplicate and sends nothing. The
+  // dialog used to close as if it had gone, so a deliberate resend silently did nothing.
+  it('stays open and says so when the server treated the send as a duplicate', async () => {
+    vi.mocked(sendInvoiceViaEmail).mockResolvedValue({ success: true, deduplicated: true })
+    const onClose = vi.fn()
+
+    await send(onClose)
+
+    expect(await screen.findByText(/already sent in the last hour, so it was not sent again/)).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('stays open and shows the error when the send is refused', async () => {
     vi.mocked(sendInvoiceViaEmail).mockResolvedValue({ error: 'Mailbox unavailable' })
     const onClose = vi.fn()

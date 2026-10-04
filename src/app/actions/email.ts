@@ -138,37 +138,41 @@ export interface InvoiceEmailDraftContext {
   greetingName: string | null
   /** The event date of the private booking this invoice belongs to, or null. */
   bookingEventDate: string | null
+  /** True when the invoice belongs to a private booking, whether or not its date is known. */
+  isPrivateHire: boolean
 }
 
-const NO_DRAFT_CONTEXT: InvoiceEmailDraftContext = { greetingName: null, bookingEventDate: null }
+const NO_DRAFT_CONTEXT: InvoiceEmailDraftContext = { greetingName: null, bookingEventDate: null, isPrivateHire: false }
 
 /**
  * The event date of the private booking an invoice belongs to, or null for any other
  * invoice. `private_booking_invoices` holds one row per booking invoice, original or
  * additional. Never throws: a chase that cannot name the booking is still worth sending.
  */
-async function loadInvoiceBookingEventDate(
+async function loadInvoiceBooking(
   admin: ReturnType<typeof createAdminClient>,
   invoiceId: string
-): Promise<string | null> {
+): Promise<{ isPrivateHire: boolean; eventDate: string | null }> {
+  const none = { isPrivateHire: false, eventDate: null }
   try {
     const { data: link, error: linkError } = await admin
       .from('private_booking_invoices')
       .select('booking_id')
       .eq('invoice_id', invoiceId)
       .maybeSingle()
-    if (linkError || !link?.booking_id) return null
+    if (linkError || !link?.booking_id) return none
 
     const { data: booking, error: bookingError } = await admin
       .from('private_bookings')
       .select('event_date')
       .eq('id', link.booking_id)
       .maybeSingle()
-    if (bookingError) return null
+    // The link alone says it is private hire, even if the booking's date cannot be read.
+    if (bookingError) return { isPrivateHire: true, eventDate: null }
 
-    return booking?.event_date ? String(booking.event_date) : null
+    return { isPrivateHire: true, eventDate: booking?.event_date ? String(booking.event_date) : null }
   } catch {
-    return null
+    return none
   }
 }
 
@@ -194,11 +198,11 @@ async function loadInvoiceEmailDraftContext(
   invoiceId: string,
   vendorId: string | null | undefined
 ): Promise<InvoiceEmailDraftContext> {
-  const [greetingName, bookingEventDate] = await Promise.all([
+  const [greetingName, booking] = await Promise.all([
     resolveInvoiceGreetingName(admin, vendorId),
-    loadInvoiceBookingEventDate(admin, invoiceId),
+    loadInvoiceBooking(admin, invoiceId),
   ])
-  return { greetingName, bookingEventDate }
+  return { greetingName, bookingEventDate: booking.eventDate, isPrivateHire: booking.isPrivateHire }
 }
 
 /**
@@ -327,7 +331,11 @@ export async function sendInvoiceViaEmail(formData: FormData) {
 
     const { subject, body } = await resolveEmailText(validatedData, async () => {
       const context = await loadInvoiceEmailDraftContext(admin, invoice.id, invoice.vendor_id)
-      return buildDefaultInvoiceEmailDraft(invoice, context.greetingName)
+      return buildDefaultInvoiceEmailDraft(
+        invoice,
+        context.greetingName,
+        context.isPrivateHire ? { eventDate: context.bookingEventDate } : null
+      )
     })
     const senderId = (await supabase.auth.getUser()).data.user?.id || null
 

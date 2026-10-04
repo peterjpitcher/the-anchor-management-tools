@@ -998,6 +998,21 @@ describe('go-live preview', () => {
     expect(sendInvoiceEmail).not.toHaveBeenCalled()
   })
 
+  // A person asking for a preview and getting it slightly wrong must never trigger a real run:
+  // that would use up the day's run and, once live, email customers.
+  it('refuses any other query rather than fall through to a real run', async () => {
+    const { queries } = fakeDb({ invoices: [invoice()] })
+
+    for (const query of ['preview=1', 'preview=yes&go_live=2026-10-01', 'previw=true&go_live=2026-10-01', 'go_live=2026-10-01']) {
+      const { status, payload } = await preview(query)
+      expect(status).toBe(400)
+      expect(payload.error).toContain('preview=true')
+    }
+    expect(queries).toHaveLength(0)
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
   it('can answer for another day', async () => {
     fakeDb({ invoices: [invoice({ due_date: '2026-10-12' })] })
 

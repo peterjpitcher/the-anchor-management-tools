@@ -164,12 +164,12 @@ it('returns the warnings from a send whose follow-up writes failed, so the dialo
 it('resolves the draft context for the dialogs: first name and booking date, nothing else', async () => {
   draftContextDatabase({ primaryContact: 'Dr Priya Example', bookingEventDate: '2026-11-14' })
 
-  expect(await getInvoiceEmailDraftContext(INVOICE_ID)).toEqual({ greetingName: 'Priya', bookingEventDate: '2026-11-14' })
+  expect(await getInvoiceEmailDraftContext(INVOICE_ID)).toEqual({ greetingName: 'Priya', bookingEventDate: '2026-11-14', isPrivateHire: true })
 })
 
 it('gives the neutral draft context without the view permission, a valid id or a working lookup', async () => {
   draftContextDatabase({ primaryContact: 'Priya Example', bookingEventDate: '2026-11-14' })
-  const neutral = { greetingName: null, bookingEventDate: null }
+  const neutral = { greetingName: null, bookingEventDate: null, isPrivateHire: false }
 
   vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
   expect(await getInvoiceEmailDraftContext(INVOICE_ID)).toEqual(neutral)
