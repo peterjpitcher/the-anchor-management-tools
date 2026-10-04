@@ -40,6 +40,10 @@ vi.mock('@/lib/cron/alerting', () => ({
   reportCronFailure: vi.fn(),
 }))
 
+vi.mock('@/lib/env', () => ({
+  getAppUrl: vi.fn(() => 'https://management.example.test'),
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -187,7 +191,10 @@ describe('recurring invoices cron A-046', () => {
     })
   })
 
-  it('marks generated invoices sent before email so failed sends cannot leave sealed drafts', async () => {
+  // The invoice used to be marked sent BEFORE the email was attempted. A failed email then left
+  // it looking delivered, with no sent_at, so it was never retried and never chased. It now
+  // stays a draft and the owner is told which one to send by hand.
+  it('leaves the invoice a draft and alerts the owner when the email fails', async () => {
     const { supabase, invoiceUpdate } = makeSupabase()
     vi.mocked(createAdminClient).mockReturnValue(supabase as any)
 
@@ -196,13 +203,22 @@ describe('recurring invoices cron A-046', () => {
 
     expect(response.status).toBe(200)
     expect(payload.results.send_failed).toBe(1)
-    expect(invoiceUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }))
+    expect(payload.results.sent).toBe(0)
+    expect(invoiceUpdate).not.toHaveBeenCalled()
     expect(sendInvoiceEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'invoice-1', status: 'sent' }),
+      expect.objectContaining({ id: 'invoice-1', status: 'draft' }),
       'billing@example.com',
       expect.any(String),
       expect.any(String),
       [],
+    )
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'recurring-invoices',
+      expect.objectContaining({ message: 'Invoice INV-1 was raised but not emailed: Graph send failed' }),
+      expect.objectContaining({
+        invoice: 'INV-1',
+        draft: 'https://management.example.test/invoices/invoice-1',
+      }),
     )
     expect(persistIdempotencyResponse).toHaveBeenCalledWith(
       supabase,
@@ -215,6 +231,53 @@ describe('recurring invoices cron A-046', () => {
         reason: 'email_send_failed',
       }),
       24 * 90,
+    )
+  })
+
+  // sent_at is what the reminder job reads to decide an invoice was ever delivered. The job never
+  // wrote it, so recurring invoices were never chased.
+  it('marks the invoice sent, with sent_at and sent_to, only after the email succeeds', async () => {
+    const { supabase, invoiceUpdate } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
+
+    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.results.sent).toBe(1)
+    expect(invoiceUpdate).toHaveBeenCalledTimes(1)
+    expect(invoiceUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'sent',
+        sent_to: 'billing@example.com',
+        sent_at: expect.any(String),
+      }),
+    )
+    const sendOrder = vi.mocked(sendInvoiceEmail).mock.invocationCallOrder[0]
+    const updateOrder = invoiceUpdate.mock.invocationCallOrder[0]
+    expect(sendOrder).toBeLessThan(updateOrder)
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('leaves the invoice a draft and alerts the owner when the client has no address', async () => {
+    const { supabase, invoiceUpdate } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue({ to: null, cc: [] } as any)
+
+    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.results.skipped_send_no_recipient).toBe(1)
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(invoiceUpdate).not.toHaveBeenCalled()
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'recurring-invoices',
+      expect.objectContaining({
+        message: 'Invoice INV-1 was raised but not emailed: the client has no email address on file',
+      }),
+      expect.objectContaining({ draft: 'https://management.example.test/invoices/invoice-1' }),
     )
   })
 

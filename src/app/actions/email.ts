@@ -149,10 +149,15 @@ export async function getInvoiceEmailLogs(invoiceId: string) {
     // we should use admin client for reading logs but ensure we validate access first.
     const supabase = createAdminClient()
 
+    // Owner alerts from the reminder job were logged here with a subject in square brackets
+    // ("[First Reminder] Invoice ..."). They are not emails to the customer, so they are left
+    // out: otherwise the chase dialog warns "recent reminder sent" on the very day the alert
+    // tells the owner to chase.
     const { data: logs, error } = await supabase
       .from('invoice_email_logs')
       .select('*')
       .eq('invoice_id', invoiceId)
+      .not('subject', 'like', '[%')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -555,6 +560,9 @@ P.S. I've attached a copy of the invoice for your reference.`
       }
       emailSent = true
 
+      // No `email_type` here: invoice_email_logs has no such column, and the field made this
+      // insert fail every time, so no manual chase was ever logged and the "recent reminder"
+      // warning could not see one. The subject line is what identifies a chase.
       const logRows = [
         {
           invoice_id: validatedData.invoiceId,
@@ -562,8 +570,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           sent_by: senderId,
           subject: finalSubject,
           body: finalBody,
-          status: 'sent' as const,
-          email_type: 'chase' as const
+          status: 'sent' as const
         },
         ...ccAddresses.map((cc) => ({
           invoice_id: validatedData.invoiceId,
@@ -571,8 +578,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           sent_by: senderId,
           subject: finalSubject,
           body: finalBody,
-          status: 'sent' as const,
-          email_type: 'chase' as const
+          status: 'sent' as const
         }))
       ]
 
