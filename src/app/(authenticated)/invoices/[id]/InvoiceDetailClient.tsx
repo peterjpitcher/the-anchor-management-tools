@@ -10,10 +10,7 @@ import {
   reissueOjInvoice,
   type OjInvoiceReissuePreview,
 } from '@/app/actions/oj-projects/invoice-reissue'
-import {
-  getInvoicePortalLink,
-  sendInvoicePaymentLink,
-} from '@/app/actions/invoicePayPalActions'
+import { getInvoicePortalLink } from '@/app/actions/invoicePayPalActions'
 import {
   PageLayout,
   PageLoading,
@@ -60,10 +57,21 @@ import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { BACK_TO_INVOICES, invoicePageTitle } from '../_shared/nav'
 import { DetailHeaderActions, type DetailHeaderAction } from '../_components/DetailHeaderActions'
+import { ReminderHoldControl } from './_components/ReminderHoldControl'
+import { InvoiceEmailsPanel } from './_components/InvoiceEmailsPanel'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
   emailConfigured: boolean
+  /**
+   * Resolved on the server for the email dialogs, which draft in the browser: the first
+   * name to greet (never the company name; null means "Hi there") and, for a private hire
+   * invoice, the booking's event date so a chase can name the booking.
+   */
+  emailGreetingName?: string | null
+  emailBookingEventDate?: string | null
+  /** True when the invoice belongs to a private booking: its emails use the private hire wording. */
+  emailIsPrivateHire?: boolean
 }
 
 type EligibleOjInvoiceReissuePreview = Extract<OjInvoiceReissuePreview, { eligible: true }>
@@ -242,7 +250,10 @@ function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[
 
 export default function InvoiceDetailClient({ 
   initialInvoice, 
-  emailConfigured: initialEmailConfigured 
+  emailConfigured: initialEmailConfigured,
+  emailGreetingName = null,
+  emailBookingEventDate = null,
+  emailIsPrivateHire = false,
 }: InvoiceDetailClientProps) {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
@@ -257,6 +268,8 @@ export default function InvoiceDetailClient({
   const [error, setError] = useState<string | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showChaseModal, setShowChaseModal] = useState(false)
+  // Bumped after a manual send or chase so the Emails panel reloads: neither changes the invoice row.
+  const [emailsSentTick, setEmailsSentTick] = useState(0)
   // We accept initial state but can also check again if needed, though passing from server is better
   const [emailConfigured] = useState(initialEmailConfigured) 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -273,7 +286,6 @@ export default function InvoiceDetailClient({
   const [dueDateReason, setDueDateReason] = useState('')
   const [savingDueDate, setSavingDueDate] = useState(false)
   const [copyingPayLink, setCopyingPayLink] = useState(false)
-  const [sendingPayLink, setSendingPayLink] = useState(false)
   const [showVoidConfirm, setShowVoidConfirm] = useState(false)
   // Set when voiding was refused because the invoice has linked OJ Projects items: the second
   // confirm step, which voids anyway and unbills them.
@@ -580,29 +592,11 @@ export default function InvoiceDetailClient({
         return
       }
       await navigator.clipboard.writeText(result.url)
-      toast.success('Payment link copied, ready to paste into WhatsApp or an email')
+      toast.success('Payment link copied, ready to paste into an email')
     } catch {
       toast.error('Could not copy the payment link')
     } finally {
       setCopyingPayLink(false)
-    }
-  }
-
-  async function handleSendPaymentLink() {
-    if (sendingPayLink) return
-    setSendingPayLink(true)
-    try {
-      const result = await sendInvoicePaymentLink(invoice.id)
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(`Payment link sent to ${result.sentTo}`)
-      router.refresh()
-    } catch {
-      toast.error('Could not send the payment link')
-    } finally {
-      setSendingPayLink(false)
     }
   }
 
@@ -933,6 +927,11 @@ export default function InvoiceDetailClient({
               </CardBody>
             </Card>
           )}
+
+          <InvoiceEmailsPanel
+            invoiceId={invoice.id}
+            reloadKey={`${invoice.updated_at}|${invoice.status}|${invoice.due_date}|${invoice.reminders_held_until ?? ''}|${emailsSentTick}`}
+          />
         </div>
 
         <div className="space-y-6">
@@ -959,6 +958,14 @@ export default function InvoiceDetailClient({
               </CardBody>
             </Card>
           )}
+
+          <ReminderHoldControl
+            invoiceId={invoice.id}
+            status={invoice.status}
+            heldUntil={invoice.reminders_held_until}
+            canEdit={canEdit}
+            onChanged={(heldUntil) => setInvoice((current) => ({ ...current, reminders_held_until: heldUntil }))}
+          />
 
           <Card>
             <CardHeader title="Actions" />
@@ -1017,24 +1024,29 @@ export default function InvoiceDetailClient({
 
               {canShowPaymentLinkActions && (
                 <>
-                  <Button
-                    variant="primary"
-                    fullWidth
-                    onClick={() => void handleSendPaymentLink()}
-                    disabled={actionLoading || sendingPayLink || copyingPayLink}
-                    loading={sendingPayLink}
-                    leftIcon={<Icon name="creditCard" size={16} />}
-                  >
-                    Email Payment Link
-                  </Button>
+                  {/* There is no separate payment link email any more: every invoice
+                      email carries the link as a P.S., so resending the invoice is how
+                      the customer gets it again, from the same sender and in the same
+                      voice. */}
+                  {emailConfigured && (
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      onClick={() => setShowEmailModal(true)}
+                      disabled={actionLoading || copyingPayLink}
+                      leftIcon={<Icon name="mail" size={16} />}
+                    >
+                      Resend Invoice
+                    </Button>
+                  )}
                   {/* Copies our own portal URL, never a raw PayPal one: PayPal
                       approval links die after a few hours and a stale link
-                      pasted into WhatsApp just fails for the customer. */}
+                      pasted into a message just fails for the customer. */}
                   <Button
                     variant="secondary"
                     fullWidth
                     onClick={() => void handleCopyPaymentLink()}
-                    disabled={actionLoading || sendingPayLink || copyingPayLink}
+                    disabled={actionLoading || copyingPayLink}
                     loading={copyingPayLink}
                     leftIcon={<Icon name="link" size={16} />}
                   >
@@ -1341,9 +1353,13 @@ export default function InvoiceDetailClient({
         <>
           <EmailInvoiceModal
             invoice={invoice}
+            greetingName={emailGreetingName}
+            privateHire={emailIsPrivateHire ? { eventDate: emailBookingEventDate } : null}
             isOpen={showEmailModal}
             onClose={() => setShowEmailModal(false)}
             onSuccess={async () => {
+              // A resend changes nothing on the invoice row, so the Emails panel is told directly.
+              setEmailsSentTick((tick) => tick + 1)
               const result = await getInvoice(invoice.id)
               if (result.invoice) {
                 setInvoice(result.invoice)
@@ -1352,9 +1368,13 @@ export default function InvoiceDetailClient({
           />
           <ChasePaymentModal
             invoice={invoice}
+            greetingName={emailGreetingName}
+            bookingEventDate={emailBookingEventDate}
             isOpen={showChaseModal}
             onClose={() => setShowChaseModal(false)}
             onSuccess={async () => {
+              // A chase changes nothing on the invoice row, so the Emails panel is told directly.
+              setEmailsSentTick((tick) => tick + 1)
               const result = await getInvoice(invoice.id)
               if (result.invoice) {
                 setInvoice(result.invoice)

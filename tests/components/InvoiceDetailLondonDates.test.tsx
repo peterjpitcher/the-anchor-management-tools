@@ -19,6 +19,13 @@ vi.mock('next/dynamic', () => ({
   default: () => () => null,
 }))
 
+// The reminder hold control and the Emails panel sit on this page and call these on mount.
+vi.mock('@/app/actions/invoice-reminders', () => ({
+  getInvoiceEmailHistory: vi.fn().mockResolvedValue({ history: null }),
+  holdInvoiceReminders: vi.fn(),
+  resumeInvoiceReminders: vi.fn(),
+}))
+
 vi.mock('@/contexts/PermissionContext', () => ({
   usePermissions: () => ({
     loading: false,
@@ -41,7 +48,6 @@ vi.mock('@/app/actions/oj-projects/invoice-reissue', () => ({
 
 vi.mock('@/app/actions/invoicePayPalActions', () => ({
   getInvoicePortalLink: vi.fn(),
-  sendInvoicePaymentLink: vi.fn(),
 }))
 
 vi.mock('@/lib/invoices/download-pdf', () => ({

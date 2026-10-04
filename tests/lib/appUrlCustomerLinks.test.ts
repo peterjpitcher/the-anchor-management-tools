@@ -47,8 +47,7 @@ import { getOrCreateUnsubscribeUrl } from '@/lib/email/unsubscribe'
 import { marketingContentSchema } from '@/lib/email/marketing/registry'
 import { renderMarketingEmail } from '@/lib/email/marketing/render'
 import { issueRecruitmentBookingLink } from '@/services/recruitment'
-import { buildInvoicePaymentLinkFooter, invoicePortalUrl } from '@/lib/invoices/payment-link-footer'
-import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
+import { buildInvoicePaymentLinkFooter, invoicePortalUrl, withInvoicePaymentLink } from '@/lib/invoices/payment-link-footer'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 
 type Row = Record<string, unknown>
@@ -170,26 +169,14 @@ describe('invoice payment links', () => {
     expect(verifyInvoiceToken(url.split('/invoice-portal/')[1])).toBe(INVOICE_ID)
   })
 
-  it('sends the payment link email with the portal link on the app host', async () => {
-    const portalUrl = invoicePortalUrl(INVOICE_ID)
+  it('carries that link as the P.S. on the invoice email, the only email that sends it now', () => {
+    // The separate payment link email was retired on 4 October 2026: every invoice email
+    // already ends with this line, so resending the invoice is how the link goes out again.
+    const body = withInvoicePaymentLink('Hi Kim,\n\nInvoice INV-0042 is attached.', invoice)
 
-    const result = await sendInvoicePaymentLinkEmail({
-      to: 'kim@example.com',
-      invoiceNumber: 'INV-0042',
-      customerName: 'Kim Renyard',
-      amountDue: 725.6,
-      dueDate: '2026-10-15',
-      paypalApproveUrl: 'https://www.paypal.com/checkoutnow?token=ORDER-1',
-      portalUrl,
-    })
-
-    expect(result.success).toBe(true)
-    const email = vi.mocked(sendEmail).mock.calls[0][0] as { subject: string; html: string; text?: string }
-    assertCleanText(email.subject)
-    assertCleanText(email.html)
-    if (email.text) assertCleanText(email.text)
-    expect(email.subject).toContain('£725.60')
-    expect(email.html).toContain(portalUrl)
-    expectAppLink(email.html, '/invoice-portal/')
+    assertCleanText(body)
+    expect(body).toContain(`\n\nP.S. You can also pay this online by card or PayPal: ${APP_URL}/invoice-portal/`)
+    expectAppLink(body, '/invoice-portal/')
+    expectAppLink(invoicePortalUrl(INVOICE_ID), '/invoice-portal/')
   })
 })

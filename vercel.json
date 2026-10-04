@@ -179,7 +179,7 @@
     },
     {
       "path": "/api/cron/invoice-reminders",
-      "schedule": "0 9 * * *"
+      "schedule": "30 9 * * 1-5"
     },
     {
       "path": "/api/cron/birthday-reminders",
@@ -211,11 +211,11 @@
     },
     {
       "path": "/api/cron/oj-projects-billing",
-      "schedule": "5 1 * * *"
+      "schedule": "5 9 * * 1-5"
     },
     {
       "path": "/api/cron/recurring-invoices",
-      "schedule": "0 1 * * *"
+      "schedule": "0 9 * * 1-5"
     },
     {
       "path": "/api/cron/generate-slots",

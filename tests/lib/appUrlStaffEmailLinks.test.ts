@@ -167,12 +167,15 @@ afterEach(() => {
 })
 
 describe('invoice reminders cron', () => {
-  // Automatic customer reminders are paused (owner decision, 4 October 2026). The job alerts the
-  // owner on the same days and emails nobody else.
-  it('alerts the owner with a link to the invoice and emails no customer', async () => {
+  // INVOICE_REMINDERS_GO_LIVE_DATE is not set here, so the job emails no customer. The owner
+  // gets one summary of the run, with a link to each invoice that needs him.
+  it('sends the owner a summary with a link to the invoice and emails no customer', async () => {
+    vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '')
     // Invoice INV-2026-0042 for £1,250.00, due Thursday 24 September 2026: seven days overdue today.
     vi.mocked(createAdminClient).mockReturnValue(
       fixtureDb({
+        // The day's run record: the insert that takes the run answers with this row.
+        cron_job_runs: { id: 'run-1' },
         invoices: {
           id: INVOICE_ID,
           invoice_number: 'INV-2026-0042',
@@ -208,21 +211,22 @@ describe('invoice reminders cron', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload.results).toMatchObject({ processed: 1, internal_notifications: 1, reminders_sent: 0, errors: [] })
+    expect(payload.reminders_on).toBe(false)
+    expect(payload.results).toMatchObject({ processed: 1, reminders_sent: 0, needs_you: 1, problems: 0, summary: 'accepted' })
     expect(sentEmails()).toHaveLength(1)
 
     const internal = sentEmailTo(STAFF_MAILBOX)
-    expect(internal.subject).toBe('[First Reminder] Invoice INV-2026-0042 - Acme Events Ltd - £1250.00 overdue')
-    expect(internal.text).toContain('Amount Due: £1250.00')
-    expect(internal.text).toContain('Due Date: 24/09/2026')
-    expect(internal.text).toContain('No customer email was sent. Automatic reminders are paused. Chase from the invoice page.')
-    expect(internal.text).not.toContain('Customer reminder has been sent')
-    expect(internal.text).toContain(`View invoice: ${APP_URL}/invoices/${INVOICE_ID}`)
-    // The alert is not an invoice email: it carries the staff link only, never a payment link.
+    expect(internal.subject).toBe('Invoice reminders, Thursday 1 October: 1 needs you')
+    expect(internal.text).toContain('Automatic reminders are switched off, so no customer was emailed. Chase from the invoice page.')
+    expect(internal.text).toContain(
+      '- INV-2026-0042, Acme Events Ltd: £1,250.00 owed. 7 days overdue. Automatic reminders are switched off: chase by hand'
+    )
+    // The summary is not an invoice email: it carries the staff link only, never a payment link.
     expect(linksIn(internal.text ?? '')).toEqual([`${APP_URL}/invoices/${INVOICE_ID}`])
     expectCleanEmail(internal)
 
     expect(sentEmails().map((email) => email.to)).not.toContain('accounts@acme-events.example')
+    expect(internal.text).not.toContain('accounts@acme-events.example')
   })
 })
 

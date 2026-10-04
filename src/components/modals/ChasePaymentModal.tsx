@@ -1,22 +1,38 @@
 'use client'
 
-import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
-import { Modal, Icon, Button, Input, Textarea, Field, Alert } from '@/ds'
+import { Modal, Icon, Button, Input, Textarea, Field, Alert, toast } from '@/ds'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
+import {
+  buildDefaultChaseEmailDraft,
+  invoiceCanOfferPayPal,
+  invoiceDaysOverdue,
+  PAY_ONLINE_POSTSCRIPT_NOTE,
+} from '@/lib/invoices/email-drafts'
 
 interface ChasePaymentModalProps {
   invoice: InvoiceWithDetails
+  /**
+   * The first name to greet, resolved on the server (`getInvoiceEmailDraftContext`).
+   * Never the company name. Nothing means "Hi there".
+   */
+  greetingName?: string | null
+  /**
+   * The event date of the private booking this invoice belongs to, also from the server.
+   * When set, the draft names the booking at The Anchor so the customer can place it.
+   */
+  bookingEventDate?: string | null
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export function ChasePaymentModal({ invoice, isOpen, onClose, onSuccess }: ChasePaymentModalProps) {
+export function ChasePaymentModal({ invoice, greetingName, bookingEventDate, isOpen, onClose, onSuccess }: ChasePaymentModalProps) {
   const supabase = useSupabase()
   // Separate To and CC fields for clarity
   const [toEmails, setToEmails] = useState('')
@@ -26,29 +42,18 @@ export function ChasePaymentModal({ invoice, isOpen, onClose, onSuccess }: Chase
   const [lastChaseDate, setLastChaseDate] = useState<string | null>(null)
   const [recentChaseWarning, setRecentChaseWarning] = useState<boolean>(false)
   
-  // Calculate days overdue
-  const dueDate = new Date(invoice.due_date)
-  const today = new Date()
-  const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+  // Days overdue are counted between two London calendar dates, the same way the server
+  // counts them before it agrees to send. Subtracting `new Date()` from the due date here
+  // made the figure depend on the time of day and on the laptop's time zone.
+  const todayIso = getTodayIsoDate()
+  const daysOverdue = invoiceDaysOverdue(invoice.due_date, todayIso)
   const outstandingAmount = invoiceBalanceDue(invoice)
-  
-  const defaultSubject = `Gentle reminder: Invoice ${invoice.invoice_number} - ${daysOverdue} days overdue`
-  const defaultBody = `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
 
-I hope you're well!
-
-Just a gentle reminder that invoice ${invoice.invoice_number} was due on ${dueDate.toLocaleDateString('en-GB')} and is now ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue.
-
-${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits applied: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Amount Outstanding: £${outstandingAmount.toFixed(2)}
-
-I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
-
-Many thanks,
-Peter Pitcher
-Orange Jelly Limited
-07990587315
-
-P.S. I've attached a copy of the invoice for your reference.`
+  const { subject: defaultSubject, body: defaultBody } = buildDefaultChaseEmailDraft(invoice, {
+    firstName: greetingName,
+    todayIso,
+    bookingEventDate,
+  })
   const [subject, setSubject] = useState(defaultSubject)
   const [body, setBody] = useState(defaultBody)
 
@@ -128,7 +133,18 @@ P.S. I've attached a copy of the invoice for your reference.`
 
       if (result.error) {
         setError(result.error)
+      } else if ('deduplicated' in result && result.deduplicated) {
+        // An identical chase within the hour is treated as a duplicate and nothing is sent.
+        // Say so, or a deliberate second chase closes as if it had gone.
+        setError(
+          'This exact chase was already sent in the last hour, so it was not sent again. Change the wording to send it again now.'
+        )
       } else {
+        // The chase has gone, so the dialog closes either way. A warning means something
+        // after the send did not save, and closing silently used to hide that.
+        if ('warnings' in result && result.warnings && result.warnings.length > 0) {
+          toast.warning(`Chase sent, but check this: ${result.warnings.join('. ')}`, { duration: 10000 })
+        }
         if (onSuccess) {
           onSuccess()
         }
@@ -213,12 +229,13 @@ P.S. I've attached a copy of the invoice for your reference.`
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={12}
+          hint={invoiceCanOfferPayPal(invoice) ? PAY_ONLINE_POSTSCRIPT_NOTE : undefined}
         />
 
         <Alert tone="warning" title="Attachment">
           <p>{`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}</p>
           <p className="mt-2">
-            <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
+            <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {formatDateInLondon(invoice.due_date)}
           </p>
         </Alert>
       </div>

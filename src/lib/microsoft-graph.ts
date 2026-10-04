@@ -1,4 +1,6 @@
-import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+import { buildReceiptEmail, type InvoiceEmailKind } from '@/lib/invoices/email-copy'
+import { buildDefaultInvoiceEmailDraft } from '@/lib/invoices/email-drafts'
 // import { Client } from '@microsoft/microsoft-graph-client'
 // import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -6,6 +8,9 @@ import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
 import type { InvoiceDepositNotice, InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
 import { getErrorMessage, getErrorStatusCode } from '@/lib/errors'
 
+// Quote emails only. Invoice emails sign off with the fixed INVOICE_SIGN_OFF in
+// `invoices/email-copy.ts`: COMPANY_CONTACT_PHONE holds the pub landline in production, which
+// is how 35 of 36 receipts came to carry the wrong number.
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
@@ -54,28 +59,94 @@ function bufferToBase64(buffer: Buffer): string {
   return buffer.toString('base64')
 }
 
-function formatEmailDate(value: string | null | undefined): string {
-  if (!value) return 'N/A'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'N/A'
-  return date.toLocaleDateString('en-GB')
-}
-
-function formatEmailPaymentMethod(value: string | null | undefined): string {
-  if (!value) return 'N/A'
-  return String(value)
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
 type InvoiceEmailOptions = {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
   pdfFilename?: string
   /** Private booking deposit statement, printed on the PDF. Never a total. */
   deposit?: InvoiceDepositNotice
+  /**
+   * What this email is (invoice, reminder, chase, receipt), saved with it as
+   * `metadata.email_kind`. The reminder job and the invoice history read it. Defaults to
+   * 'receipt' for a receipt and 'invoice' otherwise.
+   */
+  emailKind?: InvoiceEmailKind
+  /**
+   * The first name to greet, from `resolveInvoiceGreetingName`. Only read when the caller
+   * passes no body, so the default wording still greets a person. Nothing means "Hi there":
+   * the default never falls back to the company name.
+   */
+  greetingName?: string | null
+}
+
+/**
+ * Checks each copied address against the block list and drops the blocked ones.
+ *
+ * `sendEmail` checks the block list for the To address only, so a copied address that had
+ * bounced or complained kept being mailed on every invoice. The To address is deliberately
+ * not touched here: `sendEmail` already refuses a blocked one and records why.
+ *
+ * FAILS OPEN, the same default `sendEmail` uses: if the list cannot be read the address is
+ * kept. An accounts contact missing an invoice because of a database wobble is worse than
+ * one more email to an address that may have bounced.
+ */
+async function screenCopiedAddresses(
+  ccRecipients: string[] | undefined
+): Promise<{ proposed: string[]; kept: string[]; dropped: string[] }> {
+  const proposed = (ccRecipients ?? []).map((address) => String(address ?? '').trim()).filter(Boolean)
+  if (proposed.length === 0) return { proposed, kept: [], dropped: [] }
+
+  // A failed check keeps the address. The message is logged without the address, which is
+  // personal data.
+  const keepUnchecked = (error: unknown): false => {
+    console.warn('Could not check a copied invoice address against the block list; keeping it:', getErrorMessage(error))
+    return false
+  }
+
+  let blocked: boolean[]
+  try {
+    // Loaded once, before the addresses are checked side by side, and lazily like the other
+    // email modules in this file.
+    const { getEmailSuppressionStatus } = await import('@/lib/email/logging')
+    blocked = await Promise.all(
+      proposed.map(async (address) => {
+        try {
+          return (await getEmailSuppressionStatus(address)) === 'suppressed'
+        } catch (error: unknown) {
+          return keepUnchecked(error)
+        }
+      })
+    )
+  } catch (error: unknown) {
+    keepUnchecked(error)
+    blocked = proposed.map(() => false)
+  }
+
+  return {
+    proposed,
+    kept: proposed.filter((_, index) => !blocked[index]),
+    dropped: proposed.filter((_, index) => blocked[index]),
+  }
+}
+
+export interface InvoiceEmailSendResult {
+  /** True when the provider accepted the email. Nothing else decides this. */
+  success: boolean
+  error?: string
+  /** 'email_suspended' when a kill switch refused the send. */
+  code?: string
+  messageId?: string
+  /**
+   * True when the send failed with no definite answer (a timeout after the request left):
+   * the customer may have the email. An automatic sender must not retry on this.
+   */
+  uncertain?: boolean
+  /**
+   * Only on success: false when the email went but the app could not save its record of it,
+   * so it will be missing from the invoice's email history. Never a reason to send again.
+   */
+  recorded?: boolean
+  pdfBuffer?: Buffer
 }
 
 // Send invoice email
@@ -87,7 +158,7 @@ export async function sendInvoiceEmail(
   ccRecipients?: string[],
   additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>,
   emailOptions?: InvoiceEmailOptions
-): Promise<{ success: boolean; error?: string; messageId?: string; pdfBuffer?: Buffer }> {
+): Promise<InvoiceEmailSendResult> {
   try {
     // Generate invoice PDF with 'sent' status if currently draft
     const invoiceForPDF = invoice.status === 'draft'
@@ -102,67 +173,20 @@ export async function sendInvoiceEmail(
       deposit: emailOptions?.deposit,
     })
 
-    const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
-    const outstandingBalance = invoiceBalanceDue(invoice)
-    const creditTotal = invoiceIssuedCreditTotal(invoice)
-    // Asking for the full total on an invoice that has already been part-paid
-    // is the same fault the contract email had with its deposit: it reads as
-    // though the money never arrived. `outstandingBalance` already existed here
-    // but was only used by the remittance branch.
-    const paidAlready = Math.max(0, Number(invoice.paid_amount) || 0)
-    const remittancePaymentAmount = remittanceData?.paymentAmount ?? invoice.paid_amount
-    const remittancePaymentDate = formatEmailDate(remittanceData?.paymentDate)
-    const remittancePaymentMethod = formatEmailPaymentMethod(remittanceData?.paymentMethod)
-    const remittancePaymentReference = remittanceData?.paymentReference || 'N/A'
-
-    // Default subject and body
-    const emailSubject = subject || (isRemittanceAdvice
-      ? `Receipt: Invoice ${invoice.invoice_number} (Paid)`
-      : `Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
-    const emailBody = body || (isRemittanceAdvice
-      ? `Hi ${recipientName},
-
-I hope you're doing well!
-
-This is a receipt confirming payment has been received for invoice ${invoice.invoice_number}.
-
-Invoice Total: £${invoice.total_amount.toFixed(2)}
-Payment Received: £${remittancePaymentAmount.toFixed(2)}
-Total Paid: £${invoice.paid_amount.toFixed(2)}
-Outstanding Balance: £${outstandingBalance.toFixed(2)}
-Payment Date: ${remittancePaymentDate}
-Payment Method: ${remittancePaymentMethod}
-Reference: ${remittancePaymentReference}
-
-If you have any questions, just let me know.
-
-Many thanks,
-${CONTACT_NAME}
-Orange Jelly Limited
-${CONTACT_PHONE}
-
-P.S. The receipt is attached as a PDF for your records.`
-      : `Hi ${recipientName},
-
-I hope you're doing well!
-
-Please find attached invoice ${invoice.invoice_number} with the following details:
-
-${paidAlready > 0 || creditTotal > 0
-  ? `Invoice total: £${Number(invoice.total_amount).toFixed(2)}
-Payments received: £${paidAlready.toFixed(2)}
-${creditTotal > 0 ? `Credits: £${creditTotal.toFixed(2)}\n` : ''}Balance due: £${outstandingBalance.toFixed(2)}`
-  : `Amount Due: £${Number(invoice.total_amount).toFixed(2)}`}
-Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
-
-${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
-
-Many thanks,
-${CONTACT_NAME}
-Orange Jelly Limited
-${CONTACT_PHONE}
-
-P.S. The invoice is attached as a PDF for easy viewing and printing.`)
+    // Default subject and body, used only for whichever of the two the caller did not pass.
+    // They come from the shared wording module so an email nobody drafted still greets a
+    // person by first name, quotes only what is still to pay (never the total on a part-paid
+    // invoice) and signs off the same way as every other invoice email.
+    const defaultDraft = isRemittanceAdvice
+      ? buildReceiptEmail({
+          firstName: emailOptions?.greetingName,
+          invoiceNumber: invoice.invoice_number,
+          paymentAmount: Number(remittanceData?.paymentAmount ?? invoice.paid_amount) || 0,
+          balance: invoiceBalanceDue(invoice),
+        })
+      : buildDefaultInvoiceEmailDraft(invoice, emailOptions?.greetingName)
+    const emailSubject = subject || defaultDraft.subject
+    const emailBody = body || defaultDraft.body
 
     const attachments = [
       {
@@ -185,9 +209,9 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
     }
 
     // Every invoice email that may offer online payment passes through the
-    // vendor eligibility check here. The manual send, chase, reminder cron and
-    // 07:00 auto-send all funnel through this path, so enabled vendors receive
-    // the link consistently and disabled vendors never receive it.
+    // vendor eligibility check here. The manual send, the chase and the automatic
+    // runs all funnel through this path, so enabled vendors receive the link
+    // consistently and disabled vendors never receive it.
     //
     // Appended here rather than in the operator's draft because the draft is
     // composed in the browser and the signed token must never be minted there.
@@ -197,31 +221,55 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       ? emailBody
       : withInvoicePaymentLink(emailBody, invoice)
 
+    const copied = await screenCopiedAddresses(ccRecipients)
+    if (copied.dropped.length > 0) {
+      // Addresses are personal data, so only the count is logged. The addresses themselves
+      // are saved with the email, in `metadata.cc_dropped`.
+      console.warn(
+        `Invoice ${invoice.invoice_number}: ${copied.dropped.length} copied address(es) left off because they are on the block list`
+      )
+    }
+
     // Owner decision 2026-08-28: an invoice comes from Orange Jelly Limited, never from the
     // venue. Passing no sender let all 80 invoices and receipts in the last 120 days go out
-    // as "The Anchor" while signing off as Orange Jelly in the body. See `invoice-sender.ts`.
-    const { invoiceReplyToAddress, invoiceSenderIdentity } = await import('@/lib/email/invoice-sender')
+    // as "The Anchor" while signing off as Orange Jelly in the body. `invoiceEmailRouting`
+    // also carries the pin to the Orange Jelly mailbox once INVOICE_EMAIL_PROVIDER=graph is
+    // set, and adds nothing while it is not. See `invoice-sender.ts`.
+    const { invoiceEmailRouting } = await import('@/lib/email/invoice-sender')
     const { sendEmail } = await import('@/lib/email/emailService')
+    // No `requireLog` here, on purpose. With it, `sendEmail` reports a send the provider has
+    // already accepted as a failure when its log row cannot be written, and every caller of
+    // this function retries a failure: the customer would get the invoice twice. Sent and
+    // recorded are two different things, and only "sent" decides `success` below.
     const result = await sendEmail({
       to: recipientEmail,
       subject: emailSubject,
       text: bodyWithPaymentLink,
-      cc: ccRecipients,
+      // An array is passed only when the caller passed one, as before this check existed.
+      cc: ccRecipients ? copied.kept : undefined,
       attachments,
-      from: invoiceSenderIdentity(),
-      replyTo: invoiceReplyToAddress(),
+      ...invoiceEmailRouting(),
       commType: isRemittanceAdvice ? 'invoice_receipt' : 'invoice',
       invoiceId: invoice.id,
       metadata: {
         invoice_number: invoice.invoice_number,
         document_kind: documentKind,
+        email_kind: emailOptions?.emailKind ?? (isRemittanceAdvice ? 'receipt' : 'invoice'),
+        // Who was asked for, who was left off, and who the email was actually submitted to.
+        cc_proposed: copied.proposed,
+        cc_dropped: copied.dropped,
+        cc: copied.kept,
       },
     })
 
     return {
       success: result.success,
       error: result.error,
+      code: result.code,
       messageId: result.messageId,
+      uncertain: result.uncertain === true,
+      // A send can succeed with no record of it (see the note on `requireLog` above).
+      recorded: result.success ? Boolean(result.emailMessageId) : undefined,
       // Returned so a caller can archive the exact bytes the customer
       // received, rather than regenerating a document that may since have
       // drifted.

@@ -9,12 +9,14 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   select: vi.fn(),
   limit: vi.fn(),
+  sweep: vi.fn(),
 }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: mocks.alert }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/cron-auth', () => ({ authorizeCronRequest: mocks.auth }))
 vi.mock('@/lib/paypal', () => ({ getPayPalOrder: mocks.get, PayPalApiError: class extends Error {} }))
 vi.mock('@/lib/invoices/paypal-capture', () => ({ settleInvoicePayPalOrder: mocks.settle }))
+vi.mock('@/lib/invoices/receipt-email', () => ({ sweepPayPalReceipts: mocks.sweep }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: () => {
   const select = { not: () => select, in: () => select, is: () => select, limit: mocks.limit }
@@ -36,6 +38,8 @@ beforeEach(() => {
   mocks.limit.mockResolvedValue({ data: [invoice], error: null })
   mocks.get.mockResolvedValue({ status: 'COMPLETED' })
   mocks.settle.mockResolvedValue({ success: true })
+  // Null is what the sweep returns while INVOICE_PAYPAL_RECEIPTS_FROM is unset.
+  mocks.sweep.mockResolvedValue(null)
   mocks.update.mockImplementation(() => {
     const chain = { eq: () => chain, then: (resolve: (value: unknown) => void) => resolve({ error: null }) }
     return chain
@@ -114,5 +118,67 @@ describe('invoice PayPal reconciliation', () => {
     expect((await GET(request())).status).toBe(200)
     expect(mocks.settle).not.toHaveBeenCalled()
     expect(mocks.update).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The receipt sweep rides on this job and must never be able to change its result. The job
+ * exists to get money PayPal has taken onto the invoice; a receipt is a courtesy after that.
+ */
+describe('invoice PayPal reconciliation: the receipt sweep', () => {
+  const swept = { owed: 2, sent: 1, skipped: 0, refused: 1, unknown: 0 }
+
+  it('says nothing about receipts while the switch is off', async () => {
+    const response = await GET(request())
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, checked: 1, settled: 1, cleared: 0, failed: 0 })
+  })
+  it('reports the sweep beside the reconciliation figures without changing them', async () => {
+    mocks.sweep.mockResolvedValue(swept)
+    const response = await GET(request())
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, checked: 1, settled: 1, cleared: 0, failed: 0, receipts: swept })
+    expect(mocks.sweep).toHaveBeenCalledTimes(1)
+    // A deadline, so a queue of receipts cannot run the job out of time.
+    expect(mocks.sweep.mock.calls[0][1]).toEqual({ deadline: expect.any(Number) })
+    expect(mocks.alert).not.toHaveBeenCalled()
+  })
+  it('sweeps after the money has been dealt with, not before', async () => {
+    const order: string[] = []
+    mocks.settle.mockImplementation(async () => { order.push('settle'); return { success: true } })
+    mocks.sweep.mockImplementation(async () => { order.push('sweep'); return swept })
+    await GET(request())
+    expect(order).toEqual(['settle', 'sweep'])
+  })
+  it('stays a success when the sweep throws, and raises the sweep fault as its own alert', async () => {
+    mocks.sweep.mockRejectedValue(new Error('Could not read PayPal payments: timeout'))
+    const response = await GET(request())
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      success: true, checked: 1, settled: 1, cleared: 0, failed: 0,
+      receipts: { error: 'Receipt sweep failed' },
+    })
+    expect(mocks.alert).toHaveBeenCalledTimes(1)
+    expect(mocks.alert.mock.calls[0][0]).toBe('invoice-paypal-receipt')
+  })
+  it('keeps a failed reconciliation failed whatever the sweep did', async () => {
+    mocks.settle.mockResolvedValue({ error: 'Payment could not be recorded' })
+    mocks.sweep.mockResolvedValue(swept)
+    const response = await GET(request())
+    expect(response.status).toBe(500)
+    expect(await response.json()).toMatchObject({ success: false, failed: 1, receipts: swept })
+  })
+  it('still sweeps when the reconciliation could not run at all', async () => {
+    mocks.limit.mockResolvedValue({ data: null, error: new Error('Database unavailable') })
+    mocks.sweep.mockResolvedValue(swept)
+    const response = await GET(request())
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ success: false, error: 'Reconciliation failed', receipts: swept })
+    expect(mocks.sweep).toHaveBeenCalledTimes(1)
+  })
+  it('does not sweep without cron authorisation', async () => {
+    mocks.auth.mockReturnValue({ authorized: false })
+    expect((await GET(request())).status).toBe(401)
+    expect(mocks.sweep).not.toHaveBeenCalled()
   })
 })

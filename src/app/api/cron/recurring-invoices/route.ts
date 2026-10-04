@@ -10,6 +10,10 @@ import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } fro
 import { logAuditEvent } from '@/app/actions/audit'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { buildInvoiceSentUpdate } from '@/lib/invoices/delivery-state'
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+import { buildInvoiceEmail, type InvoiceEmailDraft } from '@/lib/invoices/email-copy'
+import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
+import { isWeekday } from '@/lib/invoices/reminder-rules'
 import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import {
@@ -36,16 +40,26 @@ async function alertUnsentDraft(input: {
   invoiceId: string
   invoiceNumber: string
   vendorName?: string | null
+  /**
+   * True when the send has no definite answer (the request left, then the connection dropped):
+   * the customer may already hold the invoice, so the owner must look before sending it again.
+   */
+  outcomeUnknown?: boolean
 }): Promise<void> {
   await reportCronFailure(
     'recurring-invoices',
-    new Error(`Invoice ${input.invoiceNumber} was raised but not emailed: ${input.reason}`),
+    new Error(
+      input.outcomeUnknown
+        ? `Invoice ${input.invoiceNumber} may or may not have been emailed: ${input.reason}`
+        : `Invoice ${input.invoiceNumber} was raised but not emailed: ${input.reason}`
+    ),
     {
       invoice: input.invoiceNumber,
       client: input.vendorName ?? 'Unknown',
       draft: `${getAppUrl()}/invoices/${input.invoiceId}`,
-      what_to_do:
-        'Open the draft and send it with the Email Invoice button once the cause is fixed. Do not re-run the schedule: it has already moved to its next date.',
+      what_to_do: input.outcomeUnknown
+        ? 'Check Sent Items first. If the invoice is there, the customer has it: do not send it again. If it is not, open the draft and send it with the Email Invoice button. Do not re-run the schedule: it has already moved to its next date.'
+        : 'Open the draft and send it with the Email Invoice button once the cause is fixed. Do not re-run the schedule: it has already moved to its next date.',
     }
   )
 }
@@ -63,6 +77,21 @@ export async function GET(request: Request) {
     const supabase = createAdminClient()
     const emailConfigured = isGraphConfigured()
     const todayIso = getTodayIsoDate()
+
+    // Invoices go out on a weekday morning, never at a weekend: the schedule in vercel.json is
+    // Monday to Friday. If something calls this on a Saturday or Sunday anyway, do nothing. A
+    // schedule that fell due at the weekend is not lost: the query below takes everything dated
+    // today or earlier, so Monday's run raises it.
+    if (!isWeekday(todayIso)) {
+      logger.info('[Cron] Recurring invoices skipped: not a weekday', {
+        metadata: { today: todayIso }
+      })
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: 'Not a weekday in Europe/London'
+      })
+    }
 
     // Get all active recurring invoices due for processing
     const { data: dueRecurringInvoices, error: fetchError } = await supabase
@@ -131,8 +160,11 @@ export async function GET(request: Request) {
       try {
         console.warn(`[Cron] Processing recurring invoice ${recurringInvoice.id}`)
         
-        // Check if end date has passed
-        if (recurringInvoice.end_date && recurringInvoice.end_date < todayIso) {
+        // Check if end date has passed. Compared with the date the invoice was DUE to be raised,
+        // not with today: the job no longer runs at weekends, so a last invoice scheduled for a
+        // Saturday that is also the end date is raised on the Monday. Measured against today it
+        // would look past its end and be dropped without ever being raised.
+        if (recurringInvoice.end_date && recurringInvoice.end_date < scheduledInvoiceDate) {
           console.warn(`[Cron] Recurring invoice ${recurringInvoice.id} has passed end date, deactivating`)
           
           const { data: deactivatedRecurringInvoice, error: deactivateError } = await supabase
@@ -176,8 +208,10 @@ export async function GET(request: Request) {
 
         claimHeld = claim.state === 'claimed'
 
-        // Generate the invoice
-        const invoiceDateIso = recurringInvoice.next_invoice_date
+        // Generate the invoice. It is dated the London day it is raised, and its due date counts
+        // from that day: a schedule dated a Saturday is raised on the Monday, and dating it the
+        // Saturday would hand the customer an invoice already two days into its payment terms.
+        const invoiceDateIso = todayIso
         const vendorPaymentTerms = typeof recurringInvoice.vendor?.payment_terms === 'number'
           ? recurringInvoice.vendor.payment_terms
           : null
@@ -206,8 +240,10 @@ export async function GET(request: Request) {
         createdInvoiceId = newInvoice.id
         createdInvoiceNumber = newInvoice.invoice_number
 
+        // The schedule moves on from its OWN date, not from the day the invoice was raised, so a
+        // monthly schedule stays on its day of the month however many weekends it lands on.
         const nextInvoiceDateIso = calculateNextInvoiceIsoDate(
-          invoiceDateIso,
+          scheduledInvoiceDate,
           recurringInvoice.frequency as RecurringFrequency
         )
 
@@ -388,21 +424,47 @@ export async function GET(request: Request) {
           continue
         }
 
-        const subject = `Invoice ${fullInvoice.invoice_number} from Orange Jelly Limited`
-        const greetingName = fullInvoice.vendor?.contact_name || fullInvoice.vendor?.name || 'there'
-        const body = `Dear ${greetingName},\n\nPlease find attached invoice ${fullInvoice.invoice_number} for your records.\n\nThis invoice was generated automatically from a recurring schedule.\n\nBest regards,\nOrange Jelly Limited`
+        // The shared wording (src/lib/invoices/email-copy.ts): a person's first name or "Hi there",
+        // never the company name, with what is owed and when. Built inside its own try because the
+        // balance helpers throw on an unreadable amount, and a throw here would land in the catch
+        // at the bottom, which raises no alert. A wording fault takes the failed-email exit
+        // instead: the draft is kept and the owner is told which one to send by hand.
+        let emailDraft: InvoiceEmailDraft | null = null
+        try {
+          emailDraft = buildInvoiceEmail({
+            firstName: await resolveInvoiceGreetingName(supabase, recurringInvoice.vendor_id),
+            invoiceNumber: fullInvoice.invoice_number,
+            reference: fullInvoice.reference,
+            dueDate: fullInvoice.due_date,
+            total: Number(fullInvoice.total_amount) || 0,
+            paid: Number(fullInvoice.paid_amount) || 0,
+            credits: invoiceIssuedCreditTotal(fullInvoice),
+            balance: invoiceBalanceDue(fullInvoice),
+          })
+        } catch (wordingError) {
+          console.error(
+            `[Cron] Could not build the email for invoice ${fullInvoice.invoice_number}:`,
+            wordingError
+          )
+        }
+        const subject = emailDraft?.subject ?? `Invoice ${fullInvoice.invoice_number} from Orange Jelly`
+        const body = emailDraft?.body ?? ''
 
         // The invoice is NOT marked sent here. It is marked sent only once the email has been
         // accepted (below), the order the OJ Projects billing run uses. Marking it first left an
         // invoice whose email failed looking delivered, with no sent_at, so it was never retried
         // and never chased.
-        const emailResult = await sendInvoiceEmail(
-          fullInvoice as InvoiceWithDetails,
-          recipientResult.to,
-          subject,
-          body,
-          recipientResult.cc
-        )
+        const emailResult: { success: boolean; error?: string; uncertain?: boolean } = emailDraft
+          ? await sendInvoiceEmail(
+              fullInvoice as InvoiceWithDetails,
+              recipientResult.to,
+              subject,
+              body,
+              recipientResult.cc,
+              undefined,
+              { emailKind: 'invoice' }
+            )
+          : { success: false, error: 'the email wording could not be built from the invoice figures' }
 
         if (!emailResult.success) {
           results.send_failed++
@@ -435,6 +497,7 @@ export async function GET(request: Request) {
             invoiceId: fullInvoice.id,
             invoiceNumber: fullInvoice.invoice_number,
             vendorName: recurringInvoice.vendor?.name,
+            outcomeUnknown: emailResult.uncertain === true,
           })
           if (claimHeld) {
             await persistIdempotencyResponse(
@@ -583,6 +646,16 @@ export async function GET(request: Request) {
     logger.info('[Cron] Recurring invoices processing completed', {
       metadata: { results }
     })
+
+    // A schedule that could not raise its invoice at all used to end as a line in the JSON
+    // nobody reads. Its claim is released, so the next run tries again, but say so.
+    if (results.failed > 0) {
+      await reportCronFailure(
+        'recurring-invoices',
+        new Error(`${results.failed} recurring invoice schedule(s) could not be processed and will be tried again on the next run`),
+        { schedules: results.errors.map((entry) => entry.recurring_invoice_id).join(', ') }
+      )
+    }
 
     return NextResponse.json({
       success: true,

@@ -14,7 +14,9 @@ import { describe, expect, it } from 'vitest'
  *    surfaces when someone pays the wrong amount.
  */
 
+import { COMPANY_DETAILS } from '@/lib/company-details'
 import { generateCompactInvoiceHTML } from '@/lib/invoice-template-compact'
+import { invoiceCanOfferPayPal } from '@/lib/invoices/payment-link-footer'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
 // Deliberately non-colliding figures: subtotal 950, VAT 190, total 1140, deposit 250.
@@ -245,7 +247,7 @@ describe('generateCompactInvoiceHTML deposit notice', () => {
     // Proves the slice really is just the totals block: if the helper ran past the
     // matching close tag, the assertions below would be testing the whole document.
     expect(summary).not.toContain('Your Deposit')
-    expect(summary).not.toContain('Card Payments')
+    expect(summary).not.toContain('Payment Information')
     expect(summary.length).toBeLessThan(html.length / 4)
     expect(summary).not.toContain('250')
     expect(summary).not.toContain('Deposit')
@@ -268,14 +270,236 @@ describe('generateCompactInvoiceHTML deposit notice', () => {
   })
 })
 
+const PAY_ONLINE_LINE = '<p><strong>Pay online:</strong> use the link in your invoice email</p>'
+
+/** A copy of the fixture's client with online payment switched on or off. */
+function vendorWith(overrides: Partial<NonNullable<InvoiceWithDetails['vendor']>>): NonNullable<InvoiceWithDetails['vendor']> {
+  return { ...makeInvoice().vendor!, ...overrides }
+}
+
 describe('generateCompactInvoiceHTML payment information', () => {
-  it('offers card payment on request rather than claiming a surcharge', () => {
+  it('makes no claim about card surcharges or card payment on request', () => {
     const html = generateCompactInvoiceHTML({ invoice: makeInvoice() })
 
     // Consumer card surcharges are restricted in the UK, so the old wording was a
     // claim the business cannot make.
     expect(html).not.toContain('Subject to additional fees')
-    expect(html).toContain('<strong>Card Payments:</strong> Available on request')
+    // "Available on request" promised something nobody had set up. A client either has
+    // online payment, and is told how to use it, or the line is not there.
+    expect(html).not.toContain('Card Payments')
+    expect(html).not.toContain('Available on request')
+  })
+
+  it('tells a client with online payment to use the link in their email, while there is something to pay', () => {
+    const unpaid = generateCompactInvoiceHTML({
+      invoice: makeInvoice({ vendor: vendorWith({ paypal_payments_enabled: true }) }),
+    })
+    const partPaid = generateCompactInvoiceHTML({
+      invoice: makeInvoice({ vendor: vendorWith({ paypal_payments_enabled: true }), paid_amount: DEPOSIT, status: 'partially_paid' }),
+    })
+
+    expect(unpaid).toContain(PAY_ONLINE_LINE)
+    expect(partPaid).toContain(PAY_ONLINE_LINE)
+    expect(unpaid).not.toContain('Card Payments')
+  })
+
+  it('prints no online payment line for a client without it', () => {
+    const switchedOff = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: vendorWith({ paypal_payments_enabled: false }) }) })
+    const noClient = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: undefined }) })
+
+    expect(switchedOff).not.toContain('Pay online')
+    expect(noClient).not.toContain('Pay online')
+  })
+
+  it('prints no line, rather than guessing, when the caller did not load the client setting', () => {
+    // Some callers select a handful of client columns. A missing flag is not a yes.
+    const { paypal_payments_enabled: _flag, ...vendorWithoutFlag } = vendorWith({})
+    const html = generateCompactInvoiceHTML({
+      invoice: makeInvoice({ vendor: vendorWithoutFlag as InvoiceWithDetails['vendor'] }),
+    })
+
+    expect(html).not.toContain('Pay online')
+  })
+
+  it('prints no online payment line once there is nothing left to pay', () => {
+    const enabled = vendorWith({ paypal_payments_enabled: true })
+    const paid = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: enabled, paid_amount: TOTAL, status: 'paid' }) })
+    const credited = generateCompactInvoiceHTML({
+      invoice: makeInvoice({ vendor: enabled, credits: [{ status: 'issued', amount_inc_vat: TOTAL }] }),
+    })
+    const voided = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: enabled, status: 'void' }) })
+    const writtenOff = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: enabled, status: 'written_off' }) })
+
+    for (const html of [paid, credited, voided, writtenOff]) {
+      expect(html).not.toContain('Pay online')
+    }
+  })
+
+  it('prints no online payment line on a credit note or a receipt', () => {
+    const invoice = makeInvoice({ vendor: vendorWith({ paypal_payments_enabled: true }), paid_amount: DEPOSIT, status: 'partially_paid' })
+    const creditNote = generateCompactInvoiceHTML({
+      invoice,
+      documentKind: 'credit_note',
+      creditNote: { creditNoteNumber: 'CN-TEST-0001', amountExVat: 100, vatRate: 20, amountIncVat: 120, reason: 'Test credit' },
+    })
+    const receipt = generateCompactInvoiceHTML({ invoice, documentKind: 'remittance_advice' })
+
+    expect(creditNote).not.toContain('Pay online')
+    expect(receipt).not.toContain('Pay online')
+    // The receipt layout is untouched: it never had a payment information block.
+    expect(receipt).not.toContain('Payment Information')
+    expect(receipt).toContain('Receipt Details')
+  })
+
+  // The line says "use the link in your invoice email", so it must appear exactly when the
+  // email carries that link. `invoiceCanOfferPayPal` is the rule the email uses; the template
+  // restates it because that module is server-only. This holds the two in step.
+  it('appears exactly when the invoice email carries a pay link', () => {
+    const statuses: InvoiceWithDetails['status'][] = ['draft', 'sent', 'overdue', 'partially_paid', 'paid', 'void', 'written_off']
+    const cases: InvoiceWithDetails[] = []
+    for (const status of statuses) {
+      for (const enabled of [true, false]) {
+        for (const paid_amount of [0, DEPOSIT, TOTAL]) {
+          for (const credits of [undefined, [{ status: 'issued', amount_inc_vat: TOTAL - DEPOSIT }], [{ status: 'void', amount_inc_vat: TOTAL }]]) {
+            cases.push(makeInvoice({ status, paid_amount, credits, vendor: vendorWith({ paypal_payments_enabled: enabled }) }))
+          }
+        }
+      }
+    }
+
+    expect(cases).toHaveLength(126)
+    for (const invoice of cases) {
+      const printed = generateCompactInvoiceHTML({ invoice }).includes(PAY_ONLINE_LINE)
+      expect({ status: invoice.status, paid: invoice.paid_amount, credits: invoice.credits, printed })
+        .toEqual({ status: invoice.status, paid: invoice.paid_amount, credits: invoice.credits, printed: invoiceCanOfferPayPal(invoice) })
+    }
+    // Both answers occur, so the loop above is not agreeing on a constant.
+    expect(cases.some((invoice) => invoiceCanOfferPayPal(invoice))).toBe(true)
+    expect(cases.some((invoice) => !invoiceCanOfferPayPal(invoice))).toBe(true)
+  })
+
+  it('leaves the bank details, and the contact lines beside them, exactly as they were', () => {
+    const bankBlock = [
+      '        <div class="payment-method">',
+      '          <h4>Bank Transfer</h4>',
+      `          <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>`,
+      `          <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>`,
+      `          <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>`,
+      `          <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>`,
+      '          <p><strong>Reference:</strong> INV-TEST-0001</p>',
+      '        </div>',
+    ].join('\n')
+    const contactLines = [
+      '          <p>For payment queries:</p>',
+      '          <p>Contact: ',
+    ].join('\n')
+
+    const withoutOnline = generateCompactInvoiceHTML({ invoice: makeInvoice() })
+    const withOnline = generateCompactInvoiceHTML({ invoice: makeInvoice({ vendor: vendorWith({ paypal_payments_enabled: true }) }) })
+
+    for (const html of [withoutOnline, withOnline]) {
+      expect(html).toContain(bankBlock)
+      expect(html).toContain(contactLines)
+      expect(html).toContain(`<p>Office: ${COMPANY_DETAILS.phone}</p>`)
+      expect(html).toContain(`<p>Email: ${COMPANY_DETAILS.email}</p>`)
+      expect(html.match(/<h4>Bank Transfer<\/h4>/g)).toHaveLength(1)
+    }
+    // The fixture would pass with blank details, so pin that the real ones are there.
+    for (const detail of Object.values(COMPANY_DETAILS.bank)) {
+      expect(detail).not.toBe('')
+    }
+  })
+})
+
+/** The value printed in the Terms box of the invoice header. */
+function termsOf(html: string): string {
+  const match = /<span class="meta-label">Terms<\/span>\s*<span class="meta-value">([^<]*)<\/span>/.exec(html)
+  expect(match).not.toBeNull()
+  return match![1]
+}
+
+/** The value printed in the Due Date box beside it. */
+function dueDateOf(html: string): string {
+  const match = /<span class="meta-label">Due Date<\/span>\s*<span class="meta-value">([^<]*)<\/span>/.exec(html)
+  expect(match).not.toBeNull()
+  return match![1]
+}
+
+function termsFor(invoice_date: string, due_date: string, overrides: Partial<InvoiceWithDetails> = {}): string {
+  return termsOf(generateCompactInvoiceHTML({ invoice: makeInvoice({ invoice_date, due_date, ...overrides }) }))
+}
+
+// These run under Europe/London (`npm test`) and under UTC (`npm run test:utc`). The terms are
+// counted from the two date strings, so every figure below must be the same in both.
+describe('generateCompactInvoiceHTML terms box', () => {
+  it('says "Due on receipt" when the invoice is due the day it is dated', () => {
+    expect(termsFor('2026-10-05', '2026-10-05')).toBe('Due on receipt')
+  })
+
+  it('counts the days between the invoice date and the due date', () => {
+    expect(termsFor('2026-10-05', '2026-10-06')).toBe('1 day')
+    expect(termsFor('2026-10-05', '2026-10-07')).toBe('2 days')
+    expect(termsFor('2026-10-05', '2026-10-12')).toBe('7 days')
+    expect(termsFor('2026-08-01', '2026-08-31')).toBe('30 days')
+    expect(termsFor('2026-12-20', '2027-01-19')).toBe('30 days')
+    expect(termsFor('2028-02-01', '2028-03-02')).toBe('30 days')
+  })
+
+  it('prints this invoice\'s own terms, not the standing terms on the client record', () => {
+    // The fault this replaced: a client on 7 day terms, invoiced and due the same day, was
+    // told "7 days" beside a due date of today.
+    expect(termsFor('2026-10-05', '2026-10-05', { vendor: vendorWith({ payment_terms: 7 }) })).toBe('Due on receipt')
+    expect(termsFor('2026-10-05', '2026-10-12', { vendor: vendorWith({ payment_terms: 30 }) })).toBe('7 days')
+    // No standing terms used to print "30 days" whatever the dates said.
+    expect(termsFor('2026-10-05', '2026-10-19', { vendor: vendorWith({ payment_terms: undefined }) })).toBe('14 days')
+    expect(termsFor('2026-10-05', '2026-10-19', { vendor: undefined })).toBe('14 days')
+  })
+
+  it('counts calendar days across both clock changes', () => {
+    // Sunday 25 October 2026 lasts 25 hours in London, Sunday 29 March 2026 only 23. Counting
+    // elapsed hours in local time gets one of these wrong.
+    expect(termsFor('2026-10-20', '2026-10-27')).toBe('7 days')
+    expect(termsFor('2026-10-24', '2026-10-25')).toBe('1 day')
+    expect(termsFor('2026-10-25', '2026-10-26')).toBe('1 day')
+    expect(termsFor('2026-03-25', '2026-04-01')).toBe('7 days')
+    expect(termsFor('2026-03-28', '2026-03-29')).toBe('1 day')
+    expect(termsFor('2026-03-29', '2026-03-30')).toBe('1 day')
+  })
+
+  it('prints the plain due date when the due date is before the invoice date', () => {
+    const html = generateCompactInvoiceHTML({ invoice: makeInvoice({ invoice_date: '2026-08-01', due_date: '2026-07-25' }) })
+
+    expect(termsOf(html)).toBe(dueDateOf(html))
+    expect(termsOf(html)).toContain('25 July 2026')
+    expect(termsOf(html)).not.toMatch(/days?$/)
+  })
+
+  it('prints the plain due date when the invoice date is missing or is not a real date', () => {
+    for (const invoice_date of ['', 'not-a-date', '2026-02-31']) {
+      const html = generateCompactInvoiceHTML({ invoice: makeInvoice({ invoice_date, due_date: '2026-08-31' }) })
+      expect(termsOf(html)).toContain('31 August 2026')
+    }
+  })
+
+  it('prints a dash, never a guess or "Invalid Date", when there is no usable due date', () => {
+    for (const due_date of ['', 'not-a-date']) {
+      const html = generateCompactInvoiceHTML({ invoice: makeInvoice({ invoice_date: '2026-08-01', due_date }) })
+      expect(termsOf(html)).toBe('-')
+    }
+  })
+
+  it('is not printed on a receipt or a credit note, whose fourth box says something else', () => {
+    const receipt = generateCompactInvoiceHTML({ invoice: makeInvoice(), documentKind: 'remittance_advice' })
+    const creditNote = generateCompactInvoiceHTML({
+      invoice: makeInvoice(),
+      documentKind: 'credit_note',
+      creditNote: { creditNoteNumber: 'CN-TEST-0001', amountExVat: 100, vatRate: 20, amountIncVat: 120, reason: 'Test credit' },
+    })
+
+    expect(receipt).not.toContain('<span class="meta-label">Terms</span>')
+    expect(receipt).toContain('<span class="meta-label">Payment Ref</span>')
+    expect(creditNote).not.toContain('<span class="meta-label">Terms</span>')
+    expect(creditNote).toContain('<span class="meta-label">VAT Rate</span>')
   })
 })
 
