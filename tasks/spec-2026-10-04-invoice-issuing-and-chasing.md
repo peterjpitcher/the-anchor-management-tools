@@ -386,7 +386,7 @@ Where the build differs from the text above, or settles something it left open.
 **R5**
 - The 15 minute sweep is the only sender of PayPal receipts (see R5). An independent review found that sending from the payment request itself risked a second receipt if the request was cut off.
 - The sweep sends at most 20 receipts a run, and gives a payment up, with one alert, after three refusals.
-- The PDF's "For payment queries or to arrange card payment" line was left as it is.
+- The PDF's "For payment queries or to arrange card payment" line now reads "For payment queries" (owner decision, 4 October 2026): nothing offers card payment by arrangement any more.
 
 **Known and accepted**
 - A manual chase sent in the same second as the reminder job could still both go.
