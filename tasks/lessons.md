@@ -399,3 +399,7 @@ The extras release selected invoice_id from private_bookings_with_details, but t
 ## 19 September 2026: navigation alignment is state-specific
 
 The owner clarified that off-centre icons occur only when the navigation is collapsed. Centre icons in the collapsed rail, and retain left-aligned icon-and-label rows when expanded. Verify both states visually.
+
+## 4 October 2026: a reply-address test needs one copy, in the recipient's inbox
+
+The first test of the invoice mailbox route went to the owner's address with a copy to the sending mailbox itself. That left copies in the sender's Sent Items and Inbox, and pressing Reply on a message you sent addresses the person you sent it to, so the owner saw the reply going to the wrong address and the test proved nothing. Send a route test to one outside address with no copies, and say which copy to press Reply on. The app's permission on the mailbox can send but not read, so a reply address cannot be read back by script: say that it is unchecked instead of leaving it implied. The same test showed a pay online line with a made-up link, which made the owner ask whether every client gets one. A test email shows only what a real customer in that position would get, or labels the part that is optional.
