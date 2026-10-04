@@ -211,7 +211,7 @@
     },
     {
       "path": "/api/cron/oj-projects-billing",
-      "schedule": "5 1 * * *"
+      "schedule": "5 9 * * 1-5"
     },
     {
       "path": "/api/cron/recurring-invoices",
