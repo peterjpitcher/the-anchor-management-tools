@@ -432,24 +432,28 @@ describe('sendInvoiceReceipt', () => {
       expect(mocks.sendInvoiceEmail).toHaveBeenCalledTimes(1)
     })
 
-    it.each([
-      'Request timed out',
-      'network timeout at: https://graph.microsoft.com/v1.0/users/x/sendMail',
-      'read ECONNRESET',
-      'fetch failed',
-      'Gateway Timeout',
-      // Raised by the sender after an accepted send as well as a refused one.
-      'Email sent state could not be logged',
-    ])('treats a lost answer reported as a failure as unknown, not as a refusal: %s', async (error) => {
-      // The sender swallows a thrown provider call and reports it as a failure. The mailbox may
-      // have taken the email before the answer was lost, so this must not be retried.
-      mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error })
+    it('treats a failure the sender marks as uncertain as unknown, not as a refusal', async () => {
+      // The sender never throws: a timeout after the request left comes back as a failure with
+      // `uncertain` set. The mailbox may have taken the email, so this must not be retried.
+      mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error: 'Request timed out', uncertain: true })
       const db = createDb({ invoices: [invoice()] })
 
       const outcome = await sendInvoiceReceipt(db.client, { invoiceId: 'inv-1', paymentId: 'pay-1' })
 
-      expect(outcome).toMatchObject({ outcome: 'unknown', error })
+      expect(outcome).toMatchObject({ outcome: 'unknown', error: 'Request timed out' })
       expect(mocks.claims.get('invoice-receipt:pay-1')?.response.state).toBe('unknown')
+    })
+
+    // The wording of an error is not evidence. Only the sender's own `uncertain` flag is: a
+    // definite refusal that happens to mention a timeout is still a refusal and can be retried.
+    it('does not guess from the wording of an error', async () => {
+      mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error: 'Gateway Timeout' })
+      const db = createDb({ invoices: [invoice()] })
+
+      const outcome = await sendInvoiceReceipt(db.client, { invoiceId: 'inv-1', paymentId: 'pay-1' })
+
+      expect(outcome).toMatchObject({ outcome: 'refused', error: 'Gateway Timeout' })
+      expect(mocks.claims.has('invoice-receipt:pay-1')).toBe(false)
     })
   })
 
@@ -772,7 +776,7 @@ describe('sweepPayPalReceipts (the 15 minute safety net)', () => {
 
   it('alerts once for an unknown outcome and does not try that payment again', async () => {
     vi.stubEnv('INVOICE_PAYPAL_RECEIPTS_FROM', '2026-10-12')
-    mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error: 'Request timed out' })
+    mocks.sendInvoiceEmail.mockResolvedValueOnce({ success: false, error: 'Request timed out', uncertain: true })
     const db = payPalDb([payPalPayment('a', '2026-10-19T10:00:00Z')])
 
     expect(await sweepPayPalReceipts(db.client, { now })).toMatchObject({ unknown: 1 })
