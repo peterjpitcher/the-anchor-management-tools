@@ -454,7 +454,7 @@ export async function GET(request: Request) {
         // accepted (below), the order the OJ Projects billing run uses. Marking it first left an
         // invoice whose email failed looking delivered, with no sent_at, so it was never retried
         // and never chased.
-        const emailResult: { success: boolean; error?: string } = emailDraft
+        const emailResult: { success: boolean; error?: string; uncertain?: boolean } = emailDraft
           ? await sendInvoiceEmail(
               fullInvoice as InvoiceWithDetails,
               recipientResult.to,
