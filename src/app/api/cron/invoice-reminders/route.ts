@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
-import { runInvoiceReminders } from '@/lib/invoices/reminder-job'
+import { previewInvoiceReminders, runInvoiceReminders } from '@/lib/invoices/reminder-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +19,18 @@ export async function GET(request: Request) {
 
   if (!authResult.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // `?preview=true&go_live=YYYY-MM-DD` answers "what would a run send if reminders went live
+  // from that date?" and does nothing else: no email, no record, no change. It is how the list
+  // for the owner's go-live check is produced. `as_of=YYYY-MM-DD` asks about another day.
+  const url = new URL(request.url)
+  if (url.searchParams.get('preview') === 'true') {
+    const preview = await previewInvoiceReminders({
+      goLiveDate: url.searchParams.get('go_live'),
+      asOf: url.searchParams.get('as_of'),
+    })
+    return NextResponse.json(preview.body, { status: preview.status })
   }
 
   const { status, body } = await runInvoiceReminders()

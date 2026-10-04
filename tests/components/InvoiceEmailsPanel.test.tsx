@@ -23,6 +23,7 @@ function entry(overrides: Partial<InvoiceEmailHistoryEntry> = {}): InvoiceEmailH
     kindInferred: false,
     to: 'accounts@acme.example',
     copies: ['director@acme.example'],
+    droppedCopies: [],
     outcome: 'Sent (delivery not tracked)',
     outcomeTone: 'neutral',
     subject: 'Invoice INV-0101 from Orange Jelly',

@@ -94,13 +94,17 @@ function isDelivery(value: unknown): value is SummaryDelivery {
  * are missing a field are dropped one by one, so a damaged record can never put "undefined"
  * into the owner's summary.
  */
-export function parseRunState(raw: string | null | undefined): ReminderRunState | null {
+export function parseRunState(raw: unknown): ReminderRunState | null {
   if (!raw) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
+  // The column is jsonb, so it normally arrives as an object. A string is accepted too, so a
+  // record saved as text is still read.
+  let parsed: unknown = raw
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return null
+    }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
   const record = parsed as Record<string, unknown>

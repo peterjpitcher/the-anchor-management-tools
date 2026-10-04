@@ -119,18 +119,16 @@ const REMINDER_INVOICE_SELECT = `
 `
 
 /**
- * Failure text that does NOT prove the email was refused. `sendInvoiceEmail` reports a dropped
- * connection the same way as a refusal (success false, with the error as text), so the text is
- * all there is to go on. Anything matching this may have reached the mailbox, and is treated
- * as an unknown outcome: kept, not retried.
+ * Whether a failed send may nonetheless have reached the mailbox.
+ *
+ * `sendInvoiceEmail` never throws: a failure comes back as `success: false`. It marks the kind
+ * where the request left and no answer came back (a timeout, a dropped connection) as
+ * `uncertain`. That one is an unknown outcome: kept, not retried. A failure with no reason
+ * given is treated the same way, because no reason is no proof of refusal. Everything else is
+ * a definite refusal and nothing was sent.
  */
-const AMBIGUOUS_FAILURE =
-  /timed?[ -]?out|ETIMEDOUT|ECONNRESET|ECONNABORTED|EPIPE|EAI_AGAIN|socket hang up|fetch failed|network|aborted|terminated|UND_ERR|gateway|service unavailable|internal server error/i
-
-function failureIsAmbiguous(error: string | null | undefined): boolean {
-  const text = String(error ?? '').trim()
-  // No reason given is no proof of refusal.
-  return text === '' || AMBIGUOUS_FAILURE.test(text)
+function failureIsAmbiguous(result: { uncertain?: boolean; error?: string | null }): boolean {
+  return result.uncertain === true || String(result.error ?? '').trim() === ''
 }
 
 type BlockedReason = 'no_address' | 'reminder_outcome_unknown'
@@ -278,7 +276,7 @@ async function acquireRun(supabase: AdminClient, runKey: string): Promise<RunLoc
 
   const { data: existing, error: fetchError } = await supabase
     .from('cron_job_runs')
-    .select('id, status, started_at, error_message')
+    .select('id, status, started_at, result')
     .eq('job_name', INVOICE_REMINDERS_JOB)
     .eq('run_key', runKey)
     .maybeSingle()
@@ -297,8 +295,8 @@ async function acquireRun(supabase: AdminClient, runKey: string): Promise<RunLoc
   }
 
   // Guarded on what was read, so two triggers arriving together cannot both take it over.
-  // `error_message` is left alone: it holds what the earlier attempt recorded, and must
-  // survive if this attempt dies too.
+  // `result` is left alone: it holds what the earlier attempt recorded, and must survive if
+  // this attempt dies too.
   const { data: restarted, error: restartError } = await supabase
     .from('cron_job_runs')
     .update({ status: 'running', started_at: nowIso, finished_at: null })
@@ -313,13 +311,13 @@ async function acquireRun(supabase: AdminClient, runKey: string): Promise<RunLoc
     return { skip: true, reason: 'already_running' }
   }
 
-  return { skip: false, runId: existing.id, earlierAttempt: parseRunState(existing.error_message) }
+  return { skip: false, runId: existing.id, earlierAttempt: parseRunState(existing.result) }
 }
 
 /**
- * Saves the run's results on its `cron_job_runs` row. The table has no column for results, so
- * they go in `error_message` as JSON. Nothing treats that column as an error unless the row's
- * status is "failed". Returns false when the save did not happen.
+ * Saves the run's results on its `cron_job_runs` row, in the `result` column (added with the
+ * reminder columns in 20261004180000). `error_message` stays what its name says: it is set
+ * only on a failed run. Returns false when the save did not happen.
  */
 async function saveRun(
   supabase: AdminClient,
@@ -328,7 +326,11 @@ async function saveRun(
   state: ReminderRunState
 ): Promise<boolean> {
   try {
-    const payload: Record<string, unknown> = { status, error_message: serialiseRunState(state) }
+    const payload: Record<string, unknown> = {
+      status,
+      result: JSON.parse(serialiseRunState(state)),
+      error_message: status === 'failed' ? state.error ?? 'The run failed' : null,
+    }
     if (status !== 'running') payload.finished_at = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -360,7 +362,7 @@ interface EarlierRuns {
 async function loadEarlierRuns(supabase: AdminClient, today: string): Promise<EarlierRuns> {
   const { data, error } = await supabase
     .from('cron_job_runs')
-    .select('run_key, status, error_message')
+    .select('run_key, status, result')
     .eq('job_name', INVOICE_REMINDERS_JOB)
     .lt('run_key', today)
     .order('run_key', { ascending: false })
@@ -371,9 +373,7 @@ async function loadEarlierRuns(supabase: AdminClient, today: string): Promise<Ea
     return { previousNeedsYouKeys: null, carriedOver: null, readFailed: true }
   }
 
-  const states = ((data ?? []) as Array<{ error_message?: string | null }>).map((row) =>
-    parseRunState(row.error_message)
-  )
+  const states = ((data ?? []) as Array<{ result?: unknown }>).map((row) => parseRunState(row.result))
 
   // Walk back from the latest run, gathering what every run recorded until one is reached whose
   // summary did get through. A run with no readable record died before it could save one and
@@ -703,7 +703,7 @@ async function attemptReminder(context: RunContext, candidate: Candidate, stage:
   const accepted = result.success === true || Boolean(result.messageId)
 
   if (!accepted) {
-    if (failureIsAmbiguous(result.error)) {
+    if (failureIsAmbiguous(result)) {
       await unknownOutcome(String(result.error ?? '').trim() || 'no reason was given')
       return true
     }
@@ -1201,5 +1201,163 @@ export async function runInvoiceReminders(): Promise<ReminderRunResponse> {
       status: 500,
       body: { error: 'Failed to process invoice reminders', details: getErrorMessage(error) },
     }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The go-live preview
+// ---------------------------------------------------------------------------------------------
+
+interface PreviewLine {
+  invoice_number: string
+  client: string
+  days_overdue: number | null
+  balance: string | null
+}
+
+/**
+ * What a run WOULD send with a given go-live date, without doing anything.
+ *
+ * READ ONLY. No run record, no invoice marked overdue, no claim, no email, no summary. This is
+ * the list the owner is shown, and says yes to, before INVOICE_REMINDERS_GO_LIVE_DATE is set
+ * (spec R2, "Go-live check"). It uses the same rules as the real run, and the same
+ * one-reminder-per-client order. `asOf` lets it answer for a day other than today, with the
+ * balances and emails as they stand now, so it is a forecast for any day but today.
+ *
+ * Addresses are not returned, only whether one exists: the output is for a person to read and
+ * may be pasted into a message.
+ */
+export async function previewInvoiceReminders(input: {
+  goLiveDate: string | null
+  asOf?: string | null
+}): Promise<ReminderRunResponse> {
+  // A real calendar date: one that survives a round trip. The date parser rolls 31 February
+  // over into March rather than refusing it.
+  const isIsoDate = (value: string | null | undefined): value is string => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+    const parsed = new Date(`${value}T00:00:00.000Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+  }
+
+  if (!isIsoDate(input.goLiveDate)) {
+    return { status: 400, body: { error: 'go_live must be a date written as YYYY-MM-DD' } }
+  }
+  if (input.asOf && !isIsoDate(input.asOf)) {
+    return { status: 400, body: { error: 'as_of must be a date written as YYYY-MM-DD' } }
+  }
+
+  const today = input.asOf || getTodayIsoDate()
+  const goLiveDate = input.goLiveDate
+
+  try {
+    const supabase = createAdminClient()
+    const context: RunContext = {
+      supabase,
+      today,
+      goLiveDate,
+      appUrl: getAppUrl(),
+      startedMs: Date.now(),
+      lastEmailByVendor: new Map(),
+      sent: [],
+      problems: [],
+      sendFailures: [],
+      warnings: 0,
+    }
+
+    const invoices = await loadOverdueInvoices(supabase, today)
+    const privateHireIds = await loadPrivateHireInvoiceIds(
+      supabase,
+      invoices.map((invoice) => invoice.id)
+    )
+    const vendorIds = [...new Set(invoices.map((invoice) => invoice.vendor_id).filter(Boolean))]
+    for (const [vendorId, date] of await loadLastClientEmailDates(supabase, vendorIds, today)) {
+      context.lastEmailByVendor.set(vendorId, date)
+    }
+
+    const candidates: Candidate[] = invoices
+      .map((invoice) => ({
+        invoice,
+        vendorId: invoice.vendor_id,
+        clientName: invoice.vendor?.name?.trim() || 'Unknown client',
+        isPrivateHire: privateHireIds.has(invoice.id),
+        decision: { action: 'none', reason: 'not_collectable' } as ReminderDecision,
+        balance: null,
+      }))
+      .sort(
+        (left, right) =>
+          String(left.invoice.due_date).localeCompare(String(right.invoice.due_date)) ||
+          String(left.invoice.invoice_number).localeCompare(String(right.invoice.invoice_number))
+      )
+
+    const wouldSend: Array<PreviewLine & { reminder: string; has_address: boolean }> = []
+    const needsYou: Array<PreviewLine & { why: string }> = []
+    const waiting: Array<PreviewLine & { why: string }> = []
+    const unreadable: string[] = []
+    const doneVendors = new Set<string>()
+
+    for (const candidate of candidates) {
+      const line = (): PreviewLine => ({
+        invoice_number: candidate.invoice.invoice_number,
+        client: candidate.clientName,
+        days_overdue: daysBetween(String(candidate.invoice.due_date ?? '').slice(0, 10), today),
+        balance: candidate.balance !== null ? formatInvoiceMoney(candidate.balance) : null,
+      })
+
+      try {
+        candidate.decision = decide(candidate, context)
+      } catch {
+        unreadable.push(candidate.invoice.invoice_number)
+        continue
+      }
+      const decision = candidate.decision
+
+      if (decision.action === 'needs_owner') {
+        needsYou.push({ ...line(), why: describeNeedsOwner(decision) })
+      } else if (decision.action === 'wait') {
+        waiting.push({ ...line(), why: decision.reason })
+      } else if (decision.action === 'send') {
+        if (doneVendors.has(candidate.vendorId)) {
+          waiting.push({ ...line(), why: 'one_reminder_per_client_per_run' })
+          continue
+        }
+        let hasAddress = false
+        try {
+          const recipients = await resolveVendorInvoiceRecipients(
+            supabase,
+            candidate.vendorId,
+            candidate.invoice.vendor?.email
+          )
+          hasAddress = !('error' in recipients) && Boolean(recipients.to)
+        } catch {
+          hasAddress = false
+        }
+        if (!hasAddress) {
+          needsYou.push({ ...line(), why: 'No email address on the client record or its contacts: chase by hand' })
+          continue
+        }
+        // The client's other invoices are reported as waiting for this reason, which says more
+        // than "recent email" would.
+        doneVendors.add(candidate.vendorId)
+        wouldSend.push({ ...line(), reminder: stageWord(decision.stage), has_address: true })
+      }
+    }
+
+    return {
+      status: 200,
+      body: {
+        preview: true,
+        nothing_was_sent_or_changed: true,
+        as_of: today,
+        go_live_date: goLiveDate,
+        is_a_run_day: isWeekday(today),
+        would_send: wouldSend,
+        needs_you: needsYou,
+        waiting,
+        could_not_read: unreadable,
+      },
+    }
+  } catch (error) {
+    console.error('[invoice-reminders] Preview failed:', error)
+    return { status: 500, body: { error: 'Failed to build the reminder preview', details: getErrorMessage(error) } }
   }
 }

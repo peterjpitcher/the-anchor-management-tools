@@ -265,6 +265,8 @@ export default function InvoiceDetailClient({
   const [error, setError] = useState<string | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showChaseModal, setShowChaseModal] = useState(false)
+  // Bumped after a manual send or chase so the Emails panel reloads: neither changes the invoice row.
+  const [emailsSentTick, setEmailsSentTick] = useState(0)
   // We accept initial state but can also check again if needed, though passing from server is better
   const [emailConfigured] = useState(initialEmailConfigured) 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -925,7 +927,7 @@ export default function InvoiceDetailClient({
 
           <InvoiceEmailsPanel
             invoiceId={invoice.id}
-            reloadKey={`${invoice.updated_at}|${invoice.status}|${invoice.due_date}|${invoice.reminders_held_until ?? ''}`}
+            reloadKey={`${invoice.updated_at}|${invoice.status}|${invoice.due_date}|${invoice.reminders_held_until ?? ''}|${emailsSentTick}`}
           />
         </div>
 
@@ -1352,6 +1354,8 @@ export default function InvoiceDetailClient({
             isOpen={showEmailModal}
             onClose={() => setShowEmailModal(false)}
             onSuccess={async () => {
+              // A resend changes nothing on the invoice row, so the Emails panel is told directly.
+              setEmailsSentTick((tick) => tick + 1)
               const result = await getInvoice(invoice.id)
               if (result.invoice) {
                 setInvoice(result.invoice)
@@ -1365,6 +1369,8 @@ export default function InvoiceDetailClient({
             isOpen={showChaseModal}
             onClose={() => setShowChaseModal(false)}
             onSuccess={async () => {
+              // A chase changes nothing on the invoice row, so the Emails panel is told directly.
+              setEmailsSentTick((tick) => tick + 1)
               const result = await getInvoice(invoice.id)
               if (result.invoice) {
                 setInvoice(result.invoice)
