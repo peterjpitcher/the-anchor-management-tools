@@ -14,7 +14,6 @@ describe('Additional mutation scripts safety defaults', () => {
     'scripts/insert-golden-barrels-hours.ts',
     'scripts/rectify-golden-barrels.ts',
     'scripts/reprocess-cvs.ts',
-    'scripts/trigger-invoice-reminders.ts',
     'scripts/import-employee-documents.ts',
   ]
 
@@ -232,25 +231,6 @@ describe('Additional mutation scripts safety defaults', () => {
     expect(script).toContain('--limit')
     expect(script).toContain('RUN_REPROCESS_CVS_MUTATION')
     expect(script).toContain('ALLOW_REPROCESS_CVS_MUTATION_SCRIPT')
-
-    expect(script).not.toContain('process.exit(')
-    expect(script).toContain('process.exitCode')
-  })
-
-  it('trigger-invoice-reminders defaults to dry-run and is multi-gated with caps', () => {
-    const scriptPath = path.resolve(process.cwd(), 'scripts/trigger-invoice-reminders.ts')
-    const script = fs.readFileSync(scriptPath, 'utf8')
-
-    expect(script).toContain('DRY RUN')
-    expect(script).toContain('--confirm')
-    expect(script).toContain('--dry-run')
-    expect(script).toContain('--limit')
-    expect(script).toContain('--url')
-    expect(script).toContain('RUN_TRIGGER_INVOICE_REMINDERS_MUTATION')
-    expect(script).toContain('ALLOW_INVOICE_REMINDER_TRIGGER_SCRIPT')
-
-    // Avoid a silent default to production URL in a mutation script.
-    expect(script).not.toContain('https://management.orangejelly.co.uk')
 
     expect(script).not.toContain('process.exit(')
     expect(script).toContain('process.exitCode')

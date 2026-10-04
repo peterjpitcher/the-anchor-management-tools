@@ -23,9 +23,22 @@ export function escapeHtml(input: string): string {
  * - Email addresses: replaces with [REDACTED_EMAIL]
  */
 export function redactPii(input: string): string {
+  // Record ids and calendar dates are set aside first. Both are runs of digits and dashes,
+  // which the phone pattern below reads as a phone number: it turned about a third of the
+  // links in alerts ("open this draft: .../invoices/<id>") into [REDACTED_PHONE], and every
+  // date. Neither is personal data, and a link the owner cannot follow defeats the alert.
+  const kept: string[] = []
+  const setAside = (match: string): string => {
+    kept.push(match)
+    return `\u27E6k${kept.length - 1}\u27E7`
+  }
+  let result = input
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, setAside)
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, setAside)
+
   // Redact phone numbers: international (+44...), UK (07...), or general digit sequences
   // that look like phone numbers (7+ consecutive digits, optionally separated by spaces/dashes)
-  let result = input.replace(
+  result = result.replace(
     /\+?\d[\d\s\-().]{6,}\d/g,
     '[REDACTED_PHONE]'
   )
@@ -36,7 +49,7 @@ export function redactPii(input: string): string {
     '[REDACTED_EMAIL]'
   )
 
-  return result
+  return result.replace(/\u27E6k(\d+)\u27E7/g, (_, index: string) => kept[Number(index)] ?? '')
 }
 
 /**
