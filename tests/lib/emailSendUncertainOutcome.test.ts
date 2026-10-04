@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const resendSend = vi.hoisted(() => vi.fn())
 const graphPost = vi.hoisted(() => vi.fn())
 const graphConfigured = vi.hoisted(() => vi.fn(() => true))
+const getToken = vi.hoisted(() => vi.fn())
 
 vi.mock('resend', () => ({
   Resend: vi.fn(function Resend() {
@@ -24,14 +25,25 @@ vi.mock('@/lib/microsoft-graph', () => ({
   isGraphConfigured: graphConfigured,
 }))
 
+// Like the real client, the stand-in fetches its access token inside `post()`, so a sign-in
+// failure surfaces from the same call as a mail failure.
 vi.mock('@microsoft/microsoft-graph-client', () => ({
   Client: {
-    initWithMiddleware: vi.fn(() => ({ api: vi.fn(() => ({ post: graphPost })) })),
+    initWithMiddleware: vi.fn((options: { authProvider: { getAccessToken: () => Promise<string> } }) => ({
+      api: vi.fn(() => ({
+        post: async (body: unknown) => {
+          await options.authProvider.getAccessToken()
+          return graphPost(body)
+        },
+      })),
+    })),
   },
 }))
 
 vi.mock('@azure/identity', () => ({
-  ClientSecretCredential: vi.fn(),
+  ClientSecretCredential: vi.fn(function ClientSecretCredential() {
+    return { getToken }
+  }),
 }))
 
 const createAdminClient = vi.hoisted(() => vi.fn())
@@ -63,6 +75,7 @@ describe('sendEmail tells a refusal from an unknown outcome', () => {
     vi.resetModules()
     vi.clearAllMocks()
     graphConfigured.mockReturnValue(true)
+    getToken.mockResolvedValue({ token: 'token-1' })
     mockAdminClient()
     process.env.RESEND_API_KEY = 're_test'
     process.env.EMAIL_FROM_ADDRESS = 'Orange Jelly Limited <noreply@auth.orangejelly.co.uk>'
@@ -95,8 +108,35 @@ describe('sendEmail tells a refusal from an unknown outcome', () => {
       expect(result).toMatchObject({ success: false, uncertain: true })
     })
 
+    // A gateway error can follow a message the service had already taken, so only a 4xx
+    // ("I read your request and the answer is no") is treated as a definite refusal.
+    it('a server error from Microsoft is uncertain', async () => {
+      for (const statusCode of [500, 502, 503, 504]) {
+        graphPost.mockRejectedValue(Object.assign(new Error('server error'), { statusCode }))
+        const { sendEmail } = await import('@/lib/email/emailService')
+
+        const result = await sendEmail({ ...message, provider: 'graph' })
+
+        expect(result).toMatchObject({ success: false, uncertain: true })
+      }
+    })
+
+    // An expired client secret fails inside the same call, with no status. Nothing reached the
+    // mail service, so it must NOT be parked as "may have been sent": every reminder and
+    // receipt would be stopped for good for as long as the secret stayed expired.
+    it('a sign-in failure is a definite non-send', async () => {
+      getToken.mockRejectedValue(new Error('AADSTS7000222: the client secret has expired'))
+      const { sendEmail } = await import('@/lib/email/emailService')
+
+      const result = await sendEmail({ ...message, provider: 'graph' })
+
+      expect(result.success).toBe(false)
+      expect(result.uncertain).toBeUndefined()
+      expect(graphPost).not.toHaveBeenCalled()
+    })
+
     it('an answer from Microsoft saying no is a definite refusal', async () => {
-      for (const statusCode of [400, 401, 403, 429, 503]) {
+      for (const statusCode of [400, 401, 403, 404, 429]) {
         graphPost.mockRejectedValue(Object.assign(new Error('refused'), { statusCode }))
         const { sendEmail } = await import('@/lib/email/emailService')
 
@@ -139,8 +179,32 @@ describe('sendEmail tells a refusal from an unknown outcome', () => {
       expect(result).toMatchObject({ success: false, uncertain: true })
     })
 
+    // What the Resend SDK really does when the connection fails: it does not throw, it returns
+    // an error with no status. Without this the reminder job released its claim and sent the
+    // same reminder again the next weekday.
+    it('a dropped connection reported by the SDK is uncertain', async () => {
+      resendSend.mockResolvedValue({
+        data: null,
+        error: { name: 'application_error', statusCode: null, message: 'Unable to fetch data. The request could not be resolved.' },
+      })
+      const { sendEmail } = await import('@/lib/email/emailService')
+
+      const result = await sendEmail({ ...message, provider: 'resend' })
+
+      expect(result).toMatchObject({ success: false, uncertain: true })
+    })
+
+    it('a server error from the service is uncertain', async () => {
+      resendSend.mockResolvedValue({ data: null, error: { name: 'internal_server_error', statusCode: 500, message: 'Something went wrong' } })
+      const { sendEmail } = await import('@/lib/email/emailService')
+
+      const result = await sendEmail({ ...message, provider: 'resend' })
+
+      expect(result).toMatchObject({ success: false, uncertain: true })
+    })
+
     it('a refusal returned by the service is definite', async () => {
-      resendSend.mockResolvedValue({ data: null, error: { message: 'Invalid `to` field' } })
+      resendSend.mockResolvedValue({ data: null, error: { name: 'validation_error', statusCode: 422, message: 'Invalid `to` field' } })
       const { sendEmail } = await import('@/lib/email/emailService')
 
       const result = await sendEmail({ ...message, provider: 'resend' })

@@ -306,6 +306,23 @@ describe('recurring invoices cron A-046', () => {
     )
   })
 
+  // The request left and no answer came back: the customer may already hold the invoice. The
+  // alert must not tell the owner to "open the draft and send it" without looking first.
+  it('says to check Sent Items first when the outcome of the send is unknown', async () => {
+    const { supabase, invoiceUpdate } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, error: 'Unable to fetch data', uncertain: true } as any)
+
+    await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+
+    expect(invoiceUpdate).not.toHaveBeenCalled()
+    const call = vi.mocked(reportCronFailure).mock.calls.find(([, error]) =>
+      String((error as Error).message).includes('may or may not have been emailed')
+    )
+    expect(call).toBeDefined()
+    expect(String((call?.[2] as { what_to_do: string }).what_to_do)).toContain('Check Sent Items first')
+  })
+
   it('does not leak raw database errors when loading due recurring invoices fails', async () => {
     vi.mocked(createAdminClient).mockReturnValue(makeFetchErrorSupabase() as any)
 

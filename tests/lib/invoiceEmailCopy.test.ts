@@ -61,6 +61,29 @@ describe('firstNameFrom', () => {
     expect(firstNameFrom('Mrs. Pat O\'Neill')).toBe('Pat')
   })
 
+  // A contact is sometimes saved as a role, a couple or a company. Greeting its first word as
+  // if it were a first name ("Hi Accounts,", "Hi The,", "Hi &,") is worse than "Hi there".
+  it('does not treat a role, a couple or a company as a person', () => {
+    for (const notAPerson of [
+      'Accounts Team',
+      'The Manager',
+      'Mr & Mrs Smith',
+      'Mr and Mrs Smith',
+      'Golden Barrels Limited',
+      'Acme Events Ltd',
+      'Finance Dept.',
+      'accounts@example.com',
+      '07990 587315',
+    ]) {
+      expect(firstNameFrom(notAPerson)).toBeNull()
+    }
+    // Real names with unusual shapes still work.
+    expect(firstNameFrom('Mary-Jane Smith')).toBe('Mary-Jane')
+    expect(firstNameFrom("D'Arcy Jones")).toBe("D'Arcy")
+    expect(firstNameFrom('Zoë Müller')).toBe('Zoë')
+    expect(firstNameFrom('Andy Sales-Jones')).toBe('Andy')
+  })
+
   it('returns null when there is no usable name, so the greeting falls back to "there"', () => {
     expect(firstNameFrom(null)).toBeNull()
     expect(firstNameFrom(undefined)).toBeNull()
@@ -290,6 +313,25 @@ describe('private hire invoice', () => {
     expect(draft.body).toContain('Your invoice is attached.')
     expect(draft.body).not.toContain('deposit')
     expect(draft.body).not.toContain('Reference')
+  })
+
+  // A paid invoice sent again, or one born paid, must not read as a request for money.
+  it('a settled invoice says so and asks for nothing', () => {
+    for (const balance of [0, -10]) {
+      const draft = buildPrivateHireInvoiceEmail({
+        firstName: 'Alex',
+        invoiceNumber: 'INV-0203',
+        eventDate: '2026-11-14',
+        total: 1140,
+        paid: 1140 - balance,
+        balance,
+        dueDate: '2026-10-30',
+      })
+      expect(draft.body).toContain('It is paid in full, so there is nothing to pay.')
+      expect(draft.body).not.toMatch(/Balance due|Due date|bank details|£0\.00|-£|£-/)
+      expect(draft.body.startsWith('Hi Alex,\n\n')).toBe(true)
+      expect(draft.body.endsWith(INVOICE_SIGN_OFF)).toBe(true)
+    }
   })
 
   it('additional charges say what the invoice covers', () => {

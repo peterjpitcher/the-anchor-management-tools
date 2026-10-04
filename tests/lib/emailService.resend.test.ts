@@ -162,7 +162,8 @@ describe('sendEmail Resend provider', () => {
     mockAdminClient()
     resendSend.mockResolvedValue({
       data: null,
-      error: { message: 'invalid from address' },
+      // The shape the SDK really returns for a refusal: the service's own HTTP status with it.
+      error: { name: 'validation_error', statusCode: 422, message: 'invalid from address' },
     })
 
     const { sendEmail } = await import('@/lib/email/emailService')

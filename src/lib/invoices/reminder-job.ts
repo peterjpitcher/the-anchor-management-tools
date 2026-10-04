@@ -920,6 +920,16 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
 
       if (await attemptReminder(context, candidate, candidate.decision.stage)) {
         doneVendors.add(candidate.vendorId)
+        // Saved after every attempt, not only at the end. A run killed part way through the
+        // loop would otherwise leave no record of the reminders it had already sent, and they
+        // would never appear in any summary. The row stays "running" until the run finishes.
+        await saveRun(supabase, runId, 'running', {
+          v: 1,
+          sent: context.sent,
+          problems: context.problems,
+          needs_you_keys: [],
+          summary: 'pending',
+        })
       }
     }
 

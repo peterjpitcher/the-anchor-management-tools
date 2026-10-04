@@ -539,7 +539,14 @@ async function deliverInvoice(
   })
 
   if (!result.success) {
-    return { sent: false, error: result.error ?? 'The email could not be sent.' }
+    // A timeout after the request left: the customer may already have the invoice. Say so,
+    // or staff will press retry and they will get it twice.
+    return {
+      sent: false,
+      error: result.uncertain
+        ? 'The email may have been sent: the connection dropped before an answer came back. Check Sent Items before sending it again.'
+        : result.error ?? 'The email could not be sent.',
+    }
   }
 
   // Archive the exact bytes the customer received. Regenerating later would

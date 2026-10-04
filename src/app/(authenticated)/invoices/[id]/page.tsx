@@ -37,6 +37,7 @@ export default async function InvoicePage({ params }: Props) {
       emailConfigured={!emailConfigResult.error && !!emailConfigResult.configured}
       emailGreetingName={emailDraftContext.greetingName}
       emailBookingEventDate={emailDraftContext.bookingEventDate}
+      emailIsPrivateHire={emailDraftContext.isPrivateHire}
     />
   )
 }

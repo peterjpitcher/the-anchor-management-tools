@@ -70,6 +70,8 @@ interface InvoiceDetailClientProps {
    */
   emailGreetingName?: string | null
   emailBookingEventDate?: string | null
+  /** True when the invoice belongs to a private booking: its emails use the private hire wording. */
+  emailIsPrivateHire?: boolean
 }
 
 type EligibleOjInvoiceReissuePreview = Extract<OjInvoiceReissuePreview, { eligible: true }>
@@ -251,6 +253,7 @@ export default function InvoiceDetailClient({
   emailConfigured: initialEmailConfigured,
   emailGreetingName = null,
   emailBookingEventDate = null,
+  emailIsPrivateHire = false,
 }: InvoiceDetailClientProps) {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
@@ -1351,6 +1354,7 @@ export default function InvoiceDetailClient({
           <EmailInvoiceModal
             invoice={invoice}
             greetingName={emailGreetingName}
+            privateHire={emailIsPrivateHire ? { eventDate: emailBookingEventDate } : null}
             isOpen={showEmailModal}
             onClose={() => setShowEmailModal(false)}
             onSuccess={async () => {

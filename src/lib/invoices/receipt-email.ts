@@ -539,54 +539,6 @@ async function alertUnknownOutcome(invoiceNumber: string | undefined, path: stri
   )
 }
 
-/**
- * The receipt for a PayPal payment this request has just recorded.
- *
- * Never throws and returns nothing: the capture that called it has already answered. Anything
- * that stops it here is picked up by `sweepPayPalReceipts` within 15 minutes.
- */
-export async function sendReceiptForPayPalCapture(
-  admin: AdminClient,
-  params: { invoiceId: string; captureId: string; source: string }
-): Promise<void> {
-  try {
-    const switchDate = invoicePayPalReceiptsFrom()
-    if (!switchDate) return
-
-    // The payment RPC does not return the row it wrote. The capture id is its reference, and
-    // is unique among PayPal payments.
-    const { data: payment, error } = await admin
-      .from('invoice_payments')
-      .select('id, created_at')
-      .eq('source_kind', 'paypal')
-      .eq('reference', params.captureId.trim())
-      .maybeSingle()
-
-    if (error || !payment) {
-      console.error(
-        '[InvoiceReceipt] Could not find the PayPal payment to send its receipt; the sweep will retry:',
-        error ? getErrorMessage(error) : 'no payment row for the capture'
-      )
-      return
-    }
-
-    const row = payment as { id: string; created_at: string | null }
-    if (!payPalReceiptIsDue(row.created_at, switchDate)) return
-
-    const outcome = await sendInvoiceReceipt(admin, { invoiceId: params.invoiceId, paymentId: row.id })
-
-    if (outcome.outcome === 'unknown') {
-      await alertUnknownOutcome(outcome.invoiceNumber, `after capture (${params.source})`)
-    } else if (outcome.outcome === 'refused') {
-      console.error('[InvoiceReceipt] PayPal receipt refused; the sweep will retry:', outcome.error)
-    } else if (outcome.outcome === 'sent' && outcome.warning) {
-      console.warn(`[InvoiceReceipt] ${outcome.warning} (invoice ${outcome.invoiceNumber})`)
-    }
-  } catch (error) {
-    console.error('[InvoiceReceipt] PayPal receipt after capture failed; the sweep will retry:', getErrorMessage(error))
-  }
-}
-
 export interface PayPalReceiptSweepResult {
   /** PayPal payments in the window with no receipt on record. */
   owed: number
@@ -597,10 +549,15 @@ export interface PayPalReceiptSweepResult {
 }
 
 /**
- * Sends the receipts that `sendReceiptForPayPalCapture` did not get to.
+ * Sends the receipt for each PayPal payment that has none. This is the ONLY sender of PayPal
+ * receipts, run by the 15 minute reconciliation job.
  *
- * If the process stops between a PayPal payment being recorded and its receipt being sent,
- * every later path finds the payment already recorded and would skip the receipt for good.
+ * The receipt is deliberately not sent from the request that records the payment (the payment
+ * page, PayPal's notification). Those requests have short time limits and a receipt renders a
+ * PDF: a request cut off part way through a send leaves an unknown outcome and risks a second
+ * receipt. A job with its own time budget does not, and a receipt within 15 minutes of paying
+ * is soon enough.
+ *
  * The payment row is the lasting record that a receipt is owed, so this looks for PayPal
  * payments from the last seven days, recorded on or after the switch date, with no `sent` row
  * in `invoice_email_logs`, and sends those. Nothing new is stored.

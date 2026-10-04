@@ -133,6 +133,12 @@ export function ChasePaymentModal({ invoice, greetingName, bookingEventDate, isO
 
       if (result.error) {
         setError(result.error)
+      } else if ('deduplicated' in result && result.deduplicated) {
+        // An identical chase within the hour is treated as a duplicate and nothing is sent.
+        // Say so, or a deliberate second chase closes as if it had gone.
+        setError(
+          'This exact chase was already sent in the last hour, so it was not sent again. Change the wording to send it again now.'
+        )
       } else {
         // The chase has gone, so the dialog closes either way. A warning means something
         // after the send did not save, and closing silently used to hide that.

@@ -2225,6 +2225,22 @@ async function loadInvoiceWithDetails(supabase: ReturnType<typeof createAdminCli
   return { invoice: data as InvoiceWithDetails }
 }
 
+/**
+ * A send whose outcome is unknown: the request left and no answer came back, so the client may
+ * already hold the invoice. The claim is KEPT with this state, so no later run emails it again,
+ * and a person checks Sent Items. A definite refusal still releases the claim, as before, so
+ * the next weekday's run can retry it.
+ */
+const OJ_SEND_OUTCOME_UNKNOWN = 'outcome_unknown'
+const OJ_UNKNOWN_SEND_MESSAGE =
+  'The invoice email may or may not have been sent: the connection dropped before an answer came back. Check Sent Items. If it is there, the client has it: do not send it again. If it is not, send it from the invoice page. It will not be sent automatically.'
+
+function ojSendOutcomeWasUnknown(response: unknown): boolean {
+  return Boolean(
+    response && typeof response === 'object' && (response as { state?: unknown }).state === OJ_SEND_OUTCOME_UNKNOWN
+  )
+}
+
 function buildOjInvoiceSendClaimParams(input: {
   invoiceId: string
   billingRunId: string
@@ -2801,6 +2817,18 @@ export async function GET(request: Request) {
           continue
         }
 
+        if (sendClaim.state === 'replay' && ojSendOutcomeWasUnknown(sendClaim.response)) {
+          results.skipped++
+          results.vendors.push({
+            vendor_id: vendorId,
+            status: 'skipped',
+            invoice_id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            error: OJ_UNKNOWN_SEND_MESSAGE
+          })
+          continue
+        }
+
         let claimHeld = sendClaim.state === 'claimed'
         const skipEmailSend = sendClaim.state === 'replay'
 
@@ -2809,16 +2837,24 @@ export async function GET(request: Request) {
           if (!sendRes.success) {
             if (claimHeld) {
               try {
-                await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+                if (sendRes.uncertain) {
+                  await persistIdempotencyResponse(supabase, claimKey, claimHash, {
+                    state: OJ_SEND_OUTCOME_UNKNOWN,
+                    error: sendRes.error ?? null,
+                    attempted_at: new Date().toISOString(),
+                  }, 24 * 180)
+                } else {
+                  await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+                }
               } catch (releaseError) {
-                console.error('Failed to release OJ billing invoice send claim:', releaseError)
+                console.error('Failed to settle OJ billing invoice send claim:', releaseError)
               }
               claimHeld = false
             }
 
             await updateBillingRunById(supabase, billingRun.id, {
               status: 'failed',
-              error_message: sendRes.error || 'Failed to send invoice email',
+              error_message: sendRes.uncertain ? OJ_UNKNOWN_SEND_MESSAGE : sendRes.error || 'Failed to send invoice email',
               updated_at: new Date().toISOString(),
             })
 
@@ -2828,7 +2864,7 @@ export async function GET(request: Request) {
               status: 'failed',
               invoice_id: invoice.id,
               invoice_number: invoice.invoice_number,
-              error: sendRes.error || 'Failed to send invoice email',
+              error: sendRes.uncertain ? OJ_UNKNOWN_SEND_MESSAGE : sendRes.error || 'Failed to send invoice email',
             })
             continue
           }
@@ -3665,6 +3701,18 @@ export async function GET(request: Request) {
         continue
       }
 
+      if (sendClaim.state === 'replay' && ojSendOutcomeWasUnknown(sendClaim.response)) {
+        results.skipped++
+        results.vendors.push({
+          vendor_id: vendorId,
+          status: 'skipped',
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+          error: OJ_UNKNOWN_SEND_MESSAGE
+        })
+        continue
+      }
+
       let claimHeld = sendClaim.state === 'claimed'
       const skipEmailSend = sendClaim.state === 'replay'
 
@@ -3673,22 +3721,31 @@ export async function GET(request: Request) {
         if (!sendRes.success) {
           if (claimHeld) {
             try {
-              await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+              if (sendRes.uncertain) {
+                await persistIdempotencyResponse(supabase, claimKey, claimHash, {
+                  state: OJ_SEND_OUTCOME_UNKNOWN,
+                  error: sendRes.error ?? null,
+                  attempted_at: new Date().toISOString(),
+                }, 24 * 180)
+              } else {
+                await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+              }
             } catch (releaseError) {
-              console.error('Failed to release OJ billing invoice send claim:', releaseError)
+              console.error('Failed to settle OJ billing invoice send claim:', releaseError)
             }
             claimHeld = false
           }
 
+          const sendFailure = sendRes.uncertain ? OJ_UNKNOWN_SEND_MESSAGE : sendRes.error || 'Failed to send invoice email'
           await updateBillingRunById(supabase, billingRun.id, {
             status: 'failed',
-            error_message: sendRes.error || 'Failed to send invoice email',
+            error_message: sendFailure,
             run_finished_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
 
           results.failed++
-          results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: sendRes.error || 'Failed to send invoice email' })
+          results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: sendFailure })
           continue
         }
       }
@@ -3910,13 +3967,17 @@ export async function GET(request: Request) {
     }
   }
 
-  // The loop has been through every eligible client, so the month's pass is
-  // finished (a client that failed has been attempted, and is reported below).
+  // The loop has been through every eligible client. The month's pass is
+  // finished only if none of them failed: a client whose run failed (no
+  // address, a refused email, an invoice that could not be raised) is tried
+  // again on the next weekday, up to the 7th, instead of being left until
+  // someone forces a run. A send with an unknown outcome is reported as failed
+  // once, then skipped on later days, so it does not hold the pass open.
   // A run cut short never reaches this line: the record stays 'running' and
   // the next weekday's run carries on. If the record cannot be written the
   // same thing happens, which is safe: clients already billed are skipped.
   let billingPass: Awaited<ReturnType<typeof finishBillingPass>> | null = null
-  if (tracksPass) {
+  if (tracksPass && results.failed === 0) {
     try {
       billingPass = await finishBillingPass(supabase, period.period_yyyymm)
     } catch (passFinishError) {

@@ -256,3 +256,43 @@ describe('bookingGreetingName', () => {
     expect(bookingGreetingName(null)).toBeNull()
   })
 })
+
+// Resend Invoice is the way to send a private hire customer their pay link again. They have
+// only ever dealt with The Anchor, so the draft must name the booking, not read as a business
+// invoice from a company they have not heard of.
+describe('default invoice email for an invoice that belongs to a private booking', () => {
+  const bookingInvoice = {
+    id: 'inv-pb',
+    invoice_number: 'INV-003WT',
+    reference: null,
+    due_date: '2026-10-30',
+    status: 'sent',
+    total_amount: 1140,
+    paid_amount: 250,
+    credits: [],
+  } as unknown as Parameters<typeof buildDefaultInvoiceEmailDraft>[0]
+
+  it('uses the private hire wording and names the booking', () => {
+    const draft = buildDefaultInvoiceEmailDraft(bookingInvoice, 'Alex', { eventDate: '2026-11-14' })
+
+    expect(draft.subject).toBe('Invoice INV-003WT for your booking at The Anchor on Saturday 14 November')
+    expect(draft.body).toContain('Thanks again for booking with us at The Anchor.')
+    expect(draft.body).toContain('Balance due: £890.00')
+    // This dialog does not know how the deposit was treated, so it says nothing about it.
+    expect(draft.body).not.toMatch(/deposit/i)
+  })
+
+  it('still names The Anchor when the booking has no date on record', () => {
+    const draft = buildDefaultInvoiceEmailDraft(bookingInvoice, null, { eventDate: null })
+
+    expect(draft.subject).toBe('Invoice INV-003WT for your booking at The Anchor')
+    expect(draft.body.startsWith('Hi there,')).toBe(true)
+  })
+
+  it('keeps the business wording for every other invoice', () => {
+    const draft = buildDefaultInvoiceEmailDraft(bookingInvoice, 'Sam', null)
+
+    expect(draft.subject).toBe('Invoice INV-003WT from Orange Jelly')
+    expect(draft.body).not.toContain('The Anchor')
+  })
+})

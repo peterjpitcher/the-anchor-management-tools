@@ -19,19 +19,21 @@ interface EmailInvoiceModalProps {
    * must never fall back to the company name. Nothing means "Hi there".
    */
   greetingName?: string | null
+  /** Set for an invoice that belongs to a private booking, so the draft names the booking. */
+  privateHire?: { eventDate: string | null } | null
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export function EmailInvoiceModal({ invoice, greetingName, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
+export function EmailInvoiceModal({ invoice, greetingName, privateHire, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
   const supabase = useSupabase()
   const [toEmails, setToEmails] = useState('')
   const [ccEmails, setCcEmails] = useState('')
   // Rebuilt on every render and compared as text, so the draft follows anything the wording
   // quotes (number, reference, balance, credits, due date, greeting) without a list of
   // fields here to fall out of date.
-  const { subject: defaultSubject, body: defaultBody } = buildDefaultInvoiceEmailDraft(invoice, greetingName)
+  const { subject: defaultSubject, body: defaultBody } = buildDefaultInvoiceEmailDraft(invoice, greetingName, privateHire)
   const [subject, setSubject] = useState(defaultSubject)
   const [body, setBody] = useState(defaultBody)
   const [sending, setSending] = useState(false)
@@ -103,6 +105,15 @@ export function EmailInvoiceModal({ invoice, greetingName, isOpen, onClose, onSu
 
       if (result.error) {
         throw new Error(result.error)
+      }
+
+      // The server treats an identical email within the hour as a duplicate and sends nothing.
+      // That is right for a double click, but it used to close this dialog as a success, so a
+      // deliberate resend of an unchanged draft silently did nothing.
+      if ('deduplicated' in result && result.deduplicated) {
+        throw new Error(
+          'This exact email was already sent in the last hour, so it was not sent again. Change the wording to send it again now.'
+        )
       }
 
       // The email has gone, so the dialog closes either way: leaving it open invites a

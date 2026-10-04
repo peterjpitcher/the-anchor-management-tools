@@ -40,16 +40,26 @@ async function alertUnsentDraft(input: {
   invoiceId: string
   invoiceNumber: string
   vendorName?: string | null
+  /**
+   * True when the send has no definite answer (the request left, then the connection dropped):
+   * the customer may already hold the invoice, so the owner must look before sending it again.
+   */
+  outcomeUnknown?: boolean
 }): Promise<void> {
   await reportCronFailure(
     'recurring-invoices',
-    new Error(`Invoice ${input.invoiceNumber} was raised but not emailed: ${input.reason}`),
+    new Error(
+      input.outcomeUnknown
+        ? `Invoice ${input.invoiceNumber} may or may not have been emailed: ${input.reason}`
+        : `Invoice ${input.invoiceNumber} was raised but not emailed: ${input.reason}`
+    ),
     {
       invoice: input.invoiceNumber,
       client: input.vendorName ?? 'Unknown',
       draft: `${getAppUrl()}/invoices/${input.invoiceId}`,
-      what_to_do:
-        'Open the draft and send it with the Email Invoice button once the cause is fixed. Do not re-run the schedule: it has already moved to its next date.',
+      what_to_do: input.outcomeUnknown
+        ? 'Check Sent Items first. If the invoice is there, the customer has it: do not send it again. If it is not, open the draft and send it with the Email Invoice button. Do not re-run the schedule: it has already moved to its next date.'
+        : 'Open the draft and send it with the Email Invoice button once the cause is fixed. Do not re-run the schedule: it has already moved to its next date.',
     }
   )
 }
@@ -487,6 +497,7 @@ export async function GET(request: Request) {
             invoiceId: fullInvoice.id,
             invoiceNumber: fullInvoice.invoice_number,
             vendorName: recurringInvoice.vendor?.name,
+            outcomeUnknown: emailResult.uncertain === true,
           })
           if (claimHeld) {
             await persistIdempotencyResponse(
@@ -635,6 +646,16 @@ export async function GET(request: Request) {
     logger.info('[Cron] Recurring invoices processing completed', {
       metadata: { results }
     })
+
+    // A schedule that could not raise its invoice at all used to end as a line in the JSON
+    // nobody reads. Its claim is released, so the next run tries again, but say so.
+    if (results.failed > 0) {
+      await reportCronFailure(
+        'recurring-invoices',
+        new Error(`${results.failed} recurring invoice schedule(s) could not be processed and will be tried again on the next run`),
+        { schedules: results.errors.map((entry) => entry.recurring_invoice_id).join(', ') }
+      )
+    }
 
     return NextResponse.json({
       success: true,
