@@ -14,6 +14,12 @@
 -- deployed before this migration never reads them. APPLY THIS BEFORE deploying the code that
 -- reads them (a query naming a missing column is a hard 400 in PostgREST).
 --
+-- cron_job_runs.result   What a run recorded about itself, for the next run to read. The
+--                         reminder job saves what it sent, what went wrong and what it told
+--                         the owner, so a summary that failed to send is carried forward and
+--                         problems can still be read if email is down. `error_message` stays
+--                         what its name says.
+--
 -- No new table, view or function, so nothing changes for the anon role.
 
 ALTER TABLE public.invoices
@@ -27,3 +33,9 @@ COMMENT ON COLUMN public.invoices.reminder_first_sent_at IS
   'When the first automatic reminder was accepted for sending. NULL means not sent.';
 COMMENT ON COLUMN public.invoices.reminder_second_sent_at IS
   'When the second automatic reminder was accepted for sending. NULL means not sent.';
+
+ALTER TABLE public.cron_job_runs
+  ADD COLUMN IF NOT EXISTS result jsonb;
+
+COMMENT ON COLUMN public.cron_job_runs.result IS
+  'What a run recorded about itself, for the next run to read. Used by the invoice reminder job.';

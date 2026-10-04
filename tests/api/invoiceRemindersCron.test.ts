@@ -214,6 +214,11 @@ function summary(): { to: string; subject: string; text: string } {
   return calls[0][0] as { to: string; subject: string; text: string }
 }
 
+/** A run record's `result` column is jsonb, so it comes back as the object that was saved. */
+function asSaved<T>(state: T): T {
+  return state
+}
+
 function updatesTo(queries: Query[], table: string): Row[] {
   return queries.filter((query) => query.table === table && query.op === 'update').map((query) => query.payload as Row)
 }
@@ -226,9 +231,11 @@ function reminderColumnWrites(queries: Query[]): Row[] {
 
 /** The run record as it was last saved. */
 function savedRun(queries: Query[]): { status: unknown; state: Record<string, any> } {
-  const saves = updatesTo(queries, 'cron_job_runs').filter((payload) => typeof payload.error_message === 'string')
+  const saves = updatesTo(queries, 'cron_job_runs').filter(
+    (payload) => payload.result !== null && typeof payload.result === 'object'
+  )
   const last = saves[saves.length - 1]
-  return { status: last.status, state: JSON.parse(last.error_message as string) }
+  return { status: last.status, state: last.result as Record<string, any> }
 }
 
 beforeAll(() => {
@@ -290,7 +297,7 @@ describe('invoice reminders cron: who may run it and when', () => {
   it('does nothing on a second trigger the same day, and says so', async () => {
     const { queries } = fakeDb({
       invoices: [invoice()],
-      todayRun: { id: 'run-1', status: 'completed', started_at: '2026-10-13T09:30:00.000Z', error_message: null },
+      todayRun: { id: 'run-1', status: 'completed', started_at: '2026-10-13T09:30:00.000Z', result: null },
     })
 
     const { status, payload } = await run()
@@ -305,7 +312,7 @@ describe('invoice reminders cron: who may run it and when', () => {
   it('leaves a run that is still in progress alone', async () => {
     fakeDb({
       invoices: [invoice()],
-      todayRun: { id: 'run-1', status: 'running', started_at: '2026-10-13T09:29:00.000Z', error_message: null },
+      todayRun: { id: 'run-1', status: 'running', started_at: '2026-10-13T09:29:00.000Z', result: null },
     })
 
     const { payload } = await run()
@@ -321,7 +328,7 @@ describe('invoice reminders cron: who may run it and when', () => {
         id: 'run-1',
         status: 'failed',
         started_at: '2026-10-13T09:30:00.000Z',
-        error_message: JSON.stringify({
+        result: asSaved({
           v: 1,
           sent: [
             { invoiceNumber: 'INV-0090', clientName: 'Earlier Ltd', to: 'pay@earlier.example', stage: 'first', date: '2026-10-13' },
@@ -528,10 +535,11 @@ describe('invoice reminders cron: sending', () => {
     expect(email.text).not.toContain('Going next')
   })
 
-  it('treats a dropped connection reported as a failure as unknown, not as refused', async () => {
-    // sendInvoiceEmail catches a dropped connection and reports it as a plain failure. The
-    // email may still have reached the mailbox, so the claim must not be released.
-    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, error: 'TypeError: fetch failed' })
+  it('treats a failure the sender marks as uncertain as unknown, not as refused', async () => {
+    // sendInvoiceEmail never throws. A dropped connection after the request left comes back as
+    // a failure marked `uncertain`: the email may have reached the mailbox, so the claim must
+    // not be released.
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, error: 'TypeError: fetch failed', uncertain: true })
     fakeDb({ invoices: [invoice()] })
 
     await run()
@@ -786,7 +794,7 @@ describe('invoice reminders cron: the summary', () => {
   const needsYouRun = (runKey: string, keys: string[], delivery = 'accepted'): Row => ({
     run_key: runKey,
     status: 'completed',
-    error_message: JSON.stringify({ v: 1, sent: [], problems: [], needs_you_keys: keys, summary: delivery }),
+    result: asSaved({ v: 1, sent: [], problems: [], needs_you_keys: keys, summary: delivery }),
   })
 
   it('does not repeat an unchanged Needs you list on a Tuesday, and sends nothing at all', async () => {
@@ -901,7 +909,7 @@ describe('invoice reminders cron: the summary', () => {
     vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'summary-2' } as never)
     fakeDb({
       invoices: [],
-      earlierRuns: [{ run_key: '2026-10-13', status: 'completed', error_message: JSON.stringify(saved.state) }],
+      earlierRuns: [{ run_key: '2026-10-13', status: 'completed', result: asSaved(saved.state) }],
     })
 
     await run()
@@ -933,5 +941,72 @@ describe('invoice reminders cron: the summary', () => {
     expect(text).not.toContain('acme')
     expect(text).not.toContain('Acme')
     expect(text).not.toContain('INV-0101')
+  })
+})
+
+// The list the owner approves before INVOICE_REMINDERS_GO_LIVE_DATE is set. It has to be safe
+// to run against production at any time, so it must read and do nothing else.
+describe('go-live preview', () => {
+  async function preview(query: string): Promise<{ status: number; payload: Record<string, any> }> {
+    const response = await GET(new Request(`http://cron.internal/api/cron/invoice-reminders?${query}`))
+    return { status: response.status, payload: await response.json() }
+  }
+
+  it('says what a run would send, and sends, records and changes nothing', async () => {
+    // The switch itself is off: the preview answers for the date it is given.
+    vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '')
+    const { queries } = fakeDb({
+      invoices: [
+        invoice(),
+        invoice({ id: 'inv-2', invoice_number: 'INV-0102', due_date: '2026-10-07' }),
+        invoice({ id: 'inv-3', invoice_number: 'INV-0103', vendor_id: 'vendor-2', due_date: '2026-09-01', vendor: { id: 'vendor-2', name: 'Older Ltd', email: 'pay@older.example' } }),
+        invoice({ id: 'inv-4', invoice_number: 'INV-0104', vendor_id: 'vendor-3', vendor: { id: 'vendor-3', name: 'Party Guest', email: 'guest@example.com' } }),
+      ],
+      privateHireInvoiceIds: ['inv-4'],
+    })
+
+    const { status, payload } = await preview('preview=true&go_live=2026-10-01')
+
+    expect(status).toBe(200)
+    expect(payload).toMatchObject({ preview: true, nothing_was_sent_or_changed: true, as_of: '2026-10-13', go_live_date: '2026-10-01' })
+    expect(payload.would_send).toEqual([
+      { invoice_number: 'INV-0101', client: 'Acme Events Ltd', days_overdue: 7, balance: '£1,200.00', reminder: 'first', has_address: true },
+    ])
+    // The same client's second invoice waits: one reminder per client per run.
+    expect(payload.waiting).toEqual([
+      expect.objectContaining({ invoice_number: 'INV-0102', why: 'one_reminder_per_client_per_run' }),
+    ])
+    expect(payload.needs_you.map((entry: { invoice_number: string }) => entry.invoice_number).sort()).toEqual(['INV-0103', 'INV-0104'])
+    // No customer address ever appears in the output.
+    expect(JSON.stringify(payload)).not.toContain('@')
+
+    expect(queries.every((query) => query.op === 'select')).toBe(true)
+    expect(queries.some((query) => query.table === 'cron_job_runs')).toBe(false)
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(claimIdempotencyKey).not.toHaveBeenCalled()
+  })
+
+  it('refuses a go-live date it cannot read rather than guess one', async () => {
+    fakeDb({ invoices: [invoice()] })
+
+    for (const query of ['preview=true', 'preview=true&go_live=13/10/2026', 'preview=true&go_live=2026-02-31']) {
+      const { status, payload } = await preview(query)
+      expect(status).toBe(400)
+      expect(payload.error).toContain('go_live')
+    }
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+  })
+
+  it('can answer for another day', async () => {
+    fakeDb({ invoices: [invoice({ due_date: '2026-10-12' })] })
+
+    // Due Monday 12 October: five days overdue on Saturday the 17th, not a run day.
+    const saturday = await preview('preview=true&go_live=2026-10-01&as_of=2026-10-17')
+    expect(saturday.payload).toMatchObject({ as_of: '2026-10-17', is_a_run_day: false })
+
+    const monday = await preview('preview=true&go_live=2026-10-01&as_of=2026-10-19')
+    expect(monday.payload.is_a_run_day).toBe(true)
+    expect(monday.payload.would_send).toEqual([expect.objectContaining({ invoice_number: 'INV-0101', reminder: 'first', days_overdue: 7 })])
   })
 })

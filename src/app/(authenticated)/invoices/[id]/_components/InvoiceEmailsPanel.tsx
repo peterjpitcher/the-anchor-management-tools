@@ -37,6 +37,11 @@ function EmailEntry({ email }: { email: InvoiceEmailHistoryEntry }) {
       <p className="break-words text-sm text-text-muted">{email.sentAtLabel}</p>
       <p className="break-words text-sm text-text-muted">To {email.to}</p>
       <p className="break-words text-sm text-text-muted">{copiesText(email.copies)}</p>
+      {email.droppedCopies.length > 0 && (
+        <p className="break-words text-sm text-text-muted">
+          Not copied to {email.droppedCopies.join(', ')}: that address has bounced or been refused before
+        </p>
+      )}
       <Button
         type="button"
         variant="link"

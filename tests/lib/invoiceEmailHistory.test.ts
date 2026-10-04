@@ -145,7 +145,24 @@ describe('toInvoiceEmailHistory', () => {
       subject: '(no subject)',
       body: null,
       copies: null,
+      droppedCopies: [],
     })
+  })
+
+  // A copied address on the block list is left off the email. The history says so, as that,
+  // not as a failed email: everyone else still received it.
+  it('lists copied addresses that were left off because they are blocked', () => {
+    const [entry, plain] = toInvoiceEmailHistory([
+      row({
+        id: 'dropped',
+        metadata: { email_kind: 'invoice', cc: ['accounts@acme.example'], cc_dropped: ['old@acme.example', '  ', 7] },
+      }),
+      row({ id: 'plain', metadata: { email_kind: 'invoice', cc: [] } }),
+    ])
+
+    expect(entry.copies).toEqual(['accounts@acme.example'])
+    expect(entry.droppedCopies).toEqual(['old@acme.example'])
+    expect(plain.droppedCopies).toEqual([])
   })
 
   it('passes the wording through untouched, as text', () => {

@@ -59,6 +59,11 @@ export interface InvoiceEmailHistoryEntry {
   to: string
   /** Who was copied. Null means it was not recorded, which is not the same as nobody. */
   copies: string[] | null
+  /**
+   * Copied addresses that were left off because they are on the block list (an earlier bounce
+   * or complaint). Shown as that, not as a failed email: everyone else still got it.
+   */
+  droppedCopies: string[]
   outcome: string
   outcomeTone: InvoiceEmailOutcomeTone
   subject: string
@@ -160,6 +165,12 @@ function copiesOf(row: InvoiceEmailRow): string[] | null {
   return copies.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
 }
 
+function droppedCopiesOf(row: InvoiceEmailRow): string[] {
+  const dropped = emailMetadata(row).cc_dropped
+  if (!Array.isArray(dropped)) return []
+  return dropped.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+}
+
 function sentAtLabelOf(row: InvoiceEmailRow): string {
   const timestamp = row.sent_at ?? row.created_at
   if (!timestamp || Number.isNaN(new Date(timestamp).getTime())) return 'Date not recorded'
@@ -189,6 +200,7 @@ export function toInvoiceEmailHistory(rows: InvoiceEmailRow[]): InvoiceEmailHist
         kindInferred: inferred,
         to: String(row.to_address ?? '').trim() || 'Address not recorded',
         copies: copiesOf(row),
+        droppedCopies: droppedCopiesOf(row),
         outcome,
         outcomeTone: tone,
         subject: String(row.subject ?? '').trim() || '(no subject)',
