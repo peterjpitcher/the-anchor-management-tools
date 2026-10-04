@@ -61,6 +61,7 @@ import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { BACK_TO_INVOICES, invoicePageTitle } from '../_shared/nav'
 import { DetailHeaderActions, type DetailHeaderAction } from '../_components/DetailHeaderActions'
 import { ReminderHoldControl } from './_components/ReminderHoldControl'
+import { InvoiceEmailsPanel } from './_components/InvoiceEmailsPanel'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -934,6 +935,11 @@ export default function InvoiceDetailClient({
               </CardBody>
             </Card>
           )}
+
+          <InvoiceEmailsPanel
+            invoiceId={invoice.id}
+            reloadKey={`${invoice.updated_at}|${invoice.status}|${invoice.due_date}|${invoice.reminders_held_until ?? ''}`}
+          />
         </div>
 
         <div className="space-y-6">
