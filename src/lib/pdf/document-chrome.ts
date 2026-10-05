@@ -51,6 +51,24 @@ export function statusBadgeStyle(tone: DocumentStatusTone): string {
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
+/**
+ * Whether two phone numbers are one number written two ways ("01753682707" and
+ * "01753 682 707", or with a +44 in front).
+ *
+ * The documents print a contact number beside the office number. In production
+ * `COMPANY_CONTACT_PHONE` IS the office number (the owner confirmed on 5 October 2026 that
+ * 01753 682707 is the company's phone), so every invoice printed it twice in one block, once
+ * under the label "Mobile". Each template asks this before printing the second one.
+ */
+export function isSamePhoneNumber(a: string, b: string): boolean {
+  const digits = (value: string): string =>
+    String(value ?? '').replace(/\D/g, '').replace(/^44/, '0')
+  return digits(a) !== '' && digits(a) === digits(b)
+}
+
+/** True when the contact number is the office number, so it is printed once, not twice. */
+export const CONTACT_PHONE_IS_OFFICE_PHONE = isSamePhoneNumber(CONTACT_PHONE, COMPANY_DETAILS.phone)
+
 function escapeHtml(value: string): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -212,12 +230,16 @@ ${options.metaHtml}
 
 /**
  * The legal footer. Company identity comes from `COMPANY_DETAILS`; contact name
- * and mobile come from the environment, which is where they already lived.
+ * and phone come from the environment, which is where they already lived.
+ *
+ * The contact number is left off the last line when it is the office number, which the line
+ * above has just printed. It is labelled "Phone", never "Mobile": the value is whatever the
+ * environment holds, and in production that is a landline.
  */
 export function renderDocumentFooter(): string {
   return `  <div class="footer">
     <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
     <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: ${escapeHtml(CONTACT_NAME)} | Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
+    <p>Contact: ${escapeHtml(CONTACT_NAME)}${CONTACT_PHONE_IS_OFFICE_PHONE ? '' : ` | Phone: ${escapeHtml(CONTACT_PHONE)}`}</p>
   </div>`
 }

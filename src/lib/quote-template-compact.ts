@@ -3,6 +3,7 @@ import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { STAFF } from '@/lib/brand/palette'
 import {
+  CONTACT_PHONE_IS_OFFICE_PHONE,
   renderDocumentFooter,
   renderDocumentHead,
   renderDocumentHeader,
@@ -374,8 +375,8 @@ ${renderDocumentHeader({
     <h3>How to Accept This Quote</h3>
     <p>To accept this quote and proceed with the work:</p>
     <p>• Email us at ${COMPANY_DETAILS.email} with your acceptance</p>
-    <p>• Call ${CONTACT_NAME} directly on ${CONTACT_PHONE}</p>
-    <p>• Call our office on ${COMPANY_DETAILS.phone}</p>
+${CONTACT_PHONE_IS_OFFICE_PHONE ? `    <p>• Call ${CONTACT_NAME} on ${CONTACT_PHONE}</p>` : `    <p>• Call ${CONTACT_NAME} directly on ${CONTACT_PHONE}</p>
+    <p>• Call our office on ${COMPANY_DETAILS.phone}</p>`}
     <p>• Reply to the email this quote was attached to</p>
     <p><strong>This quote is valid until ${formatDate(quote.valid_until)}</strong></p>
   </div>

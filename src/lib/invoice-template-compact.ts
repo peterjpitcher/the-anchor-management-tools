@@ -4,6 +4,7 @@ import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { STAFF } from '@/lib/brand/palette'
 import {
+  CONTACT_PHONE_IS_OFFICE_PHONE,
   renderDocumentFooter,
   renderDocumentHead,
   renderDocumentHeader,
@@ -675,8 +676,8 @@ ${renderDocumentHeader({
           <p><strong>Pay online:</strong> use the link in your invoice email</p>` : ''}
           <p>For payment queries:</p>
           <p>Contact: ${escapeHtml(CONTACT_NAME)}</p>
-          <p>Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
-          <p>Office: ${COMPANY_DETAILS.phone}</p>
+          <p>Phone: ${escapeHtml(CONTACT_PHONE)}</p>${CONTACT_PHONE_IS_OFFICE_PHONE ? '' : `
+          <p>Office: ${COMPANY_DETAILS.phone}</p>`}
           <p>Email: ${COMPANY_DETAILS.email}</p>
         </div>
       </div>
