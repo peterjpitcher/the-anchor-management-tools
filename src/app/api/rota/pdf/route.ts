@@ -10,6 +10,7 @@ import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/a
 import { getShiftTemplates } from '@/app/actions/rota-templates';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
@@ -206,6 +207,8 @@ function buildRotaHTML(
   days: string[],
   generatedAt: string,
   templates: ShiftTemplate[],
+  /** The Orange Jelly wordmark as a data URI. Left out when absent. */
+  logoUrl?: string,
 ): string {
   const templateById = new Map(templates.map(template => [template.id, template]));
   const openShifts = shifts.filter(s => s.is_open_shift || !s.employee_id);
@@ -303,9 +306,12 @@ function buildRotaHTML(
 <div style="padding: 10px 12px">
   <!-- Header -->
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-    <div>
-      <div style="font-size:16px;font-weight:700">Weekly Rota</div>
-      <div style="font-size:11px;color:${STAFF.text};margin-top:2px">${formatWeekRange(days)}</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      ${logoUrl ? `<img src="${logoUrl}" alt="Orange Jelly" style="display:block;height:24px;width:auto">` : ''}
+      <div>
+        <div style="font-size:16px;font-weight:700">Weekly Rota</div>
+        <div style="font-size:11px;color:${STAFF.text};margin-top:2px">${formatWeekRange(days)}</div>
+      </div>
     </div>
     <div style="text-align:right">
       <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:600;
@@ -410,7 +416,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
 
   // Build HTML
-  const html = buildRotaHTML(week, employees, shifts, leaveDays, days, generatedAt, templates);
+  // Inlined rather than fetched over the network. See getDocumentLogoDataUri.
+  const html = buildRotaHTML(week, employees, shifts, leaveDays, days, generatedAt, templates, getDocumentLogoDataUri());
 
   // Generate PDF (A4 landscape, single page)
   let pdfBuffer: Buffer;

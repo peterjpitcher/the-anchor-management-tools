@@ -51,6 +51,8 @@ export interface IngredientAllergenReportInput {
   ingredients: IngredientAllergenReportRow[]
   generatedAt: Date
   department?: MenuPurchaseDepartment | 'all'
+  /** The Anchor logo as a data URI. Left out when absent. */
+  logoUrl?: string
 }
 
 export interface DishAllergenReportRow {
@@ -67,6 +69,8 @@ export interface DishAllergenReportInput {
   dishes: DishAllergenReportRow[]
   generatedAt: Date
   category?: DishAllergenCategory | 'all'
+  /** The Anchor logo as a data URI. Left out when absent. */
+  logoUrl?: string
 }
 
 const ALLERGEN_KEYS = new Set(INGREDIENT_ALLERGEN_COLUMNS.map((column) => column.key))
@@ -78,6 +82,10 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
+}
+
+function logoMarkup(logoUrl: string | undefined): string {
+  return logoUrl ? `<img class="report-logo" src="${escapeHtml(logoUrl)}" alt="The Anchor" />` : ''
 }
 
 function normalizeAllergens(allergens?: string[] | null): Set<string> {
@@ -159,6 +167,17 @@ const REPORT_STYLES = `
     margin-bottom: 8px;
     border-bottom: 1px solid ${STAFF.text};
     padding-bottom: 6px;
+  }
+
+  .report-logo {
+    flex: none;
+    height: 34px;
+    width: auto;
+  }
+
+  .report-title {
+    flex: 1;
+    min-width: 0;
   }
 
   h1 {
@@ -459,7 +478,8 @@ export function generateIngredientAllergenReportHTML(input: IngredientAllergenRe
       <body>
         <main class="report">
           <header class="report-header">
-            <div>
+            ${logoMarkup(input.logoUrl)}
+            <div class="report-title">
               <h1>${escapeHtml(title)}</h1>
               <div class="subtitle">All current ingredients with recorded allergen flags. Tick means the allergen is included.</div>
             </div>
@@ -541,7 +561,8 @@ export function generateDishAllergenReportHTML(input: DishAllergenReportInput): 
       <body>
         <main class="report">
           <header class="report-header">
-            <div>
+            ${logoMarkup(input.logoUrl)}
+            <div class="report-title">
               <h1>${escapeHtml(title)}</h1>
               <div class="subtitle">Allergens are the union of each dish's ingredient allergens (direct + via recipes). Claims reflect the dish's recorded dietary status.</div>
             </div>
