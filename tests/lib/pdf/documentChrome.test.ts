@@ -20,6 +20,14 @@ describe('renderDocumentHead', () => {
   it('no longer prints status badges as white text on a bright fill', () => {
     expect(renderDocumentHead(base)).not.toContain('color: white')
   })
+
+  it('keeps the legal footer whole and on the same page as the block above it', () => {
+    // Either rule alone still strands the footer. Without the first it splits between its
+    // lines; without the second it moves whole to a page that holds nothing else.
+    const footerRule = renderDocumentHead(base).match(/\.footer \{([^}]*)\}/)?.[1] ?? ''
+    expect(footerRule).toContain('page-break-inside: avoid;')
+    expect(footerRule).toContain('page-break-before: avoid;')
+  })
 })
 
 describe('statusBadgeStyle', () => {
