@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { STAFF } from '@/lib/brand/palette'
-import { isSamePhoneNumber, renderDocumentHead, statusBadgeStyle } from '@/lib/pdf/document-chrome'
+import {
+  isSamePhoneNumber,
+  LONG_NOTES_MIN_LINES,
+  notesSectionClass,
+  renderDocumentHead,
+  statusBadgeStyle,
+} from '@/lib/pdf/document-chrome'
 import { invoiceStatusTone, quoteStatusTone } from '@/lib/invoices/status-ui'
 
 const base = { titleHtml: 'Title', metaClass: '.meta', numberClass: '.number', bodyCss: '' }
@@ -27,6 +33,31 @@ describe('renderDocumentHead', () => {
     const footerRule = renderDocumentHead(base).match(/\.footer \{([^}]*)\}/)?.[1] ?? ''
     expect(footerRule).toContain('page-break-inside: avoid;')
     expect(footerRule).toContain('page-break-before: avoid;')
+  })
+})
+
+describe('notesSectionClass', () => {
+  const lines = (count: number): string => Array.from({ length: count }, (_, i) => `Line ${i + 1}`).join('\n')
+
+  it('keeps ordinary notes in one piece', () => {
+    expect(notesSectionClass('Payment is due within 7 days.')).toBe('notes-section keep-together')
+    expect(notesSectionClass(lines(LONG_NOTES_MIN_LINES - 1))).toBe('notes-section keep-together')
+  })
+
+  it('lets long notes run onto the next page', () => {
+    // A box that cannot split and fills a page leaves no room beside it for the footer.
+    expect(notesSectionClass(lines(LONG_NOTES_MIN_LINES))).toBe('notes-section notes-section-long')
+    expect(notesSectionClass(lines(LONG_NOTES_MIN_LINES).replace(/\n/g, '\r\n'))).toBe('notes-section notes-section-long')
+  })
+
+  it('counts a line that wraps as more than one', () => {
+    const paragraph = 'word '.repeat(30 * LONG_NOTES_MIN_LINES)
+    expect(notesSectionClass(paragraph)).toBe('notes-section notes-section-long')
+  })
+
+  it('treats missing notes as short', () => {
+    expect(notesSectionClass(null)).toBe('notes-section keep-together')
+    expect(notesSectionClass(undefined)).toBe('notes-section keep-together')
   })
 })
 

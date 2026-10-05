@@ -5,6 +5,7 @@ import { COMPANY_DETAILS } from '@/lib/company-details'
 import { STAFF } from '@/lib/brand/palette'
 import {
   CONTACT_PHONE_IS_OFFICE_PHONE,
+  notesSectionClass,
   renderDocumentFooter,
   renderDocumentHead,
   renderDocumentHeader,
@@ -242,6 +243,19 @@ const BODY_CSS = `    .addresses {
       color: ${STAFF.textMuted};
       white-space: pre-wrap;
       font-size: 8pt;
+    }
+    
+    .notes-section-long {
+      page-break-inside: auto;
+    }
+    
+    .notes-section-long h3 {
+      page-break-after: avoid;
+    }
+    
+    .notes-section-long p {
+      orphans: 6;
+      widows: 6;
     }
     
 `
@@ -685,7 +699,7 @@ ${renderDocumentHeader({
   `}
 
   ${invoice.notes ? `
-    <div class="notes-section keep-together">
+    <div class="${notesSectionClass(invoice.notes)}">
       <h3>Notes</h3>
       <p>${escapeHtml(invoice.notes)}</p>
     </div>

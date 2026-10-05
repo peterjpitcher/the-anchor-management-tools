@@ -69,6 +69,31 @@ export function isSamePhoneNumber(a: string, b: string): boolean {
 /** True when the contact number is the office number, so it is printed once, not twice. */
 export const CONTACT_PHONE_IS_OFFICE_PHONE = isSamePhoneNumber(CONTACT_PHONE, COMPANY_DETAILS.phone)
 
+/**
+ * Notes of at least this many printed lines may run from one page onto the next. Shorter
+ * notes stay in one piece.
+ *
+ * A notes box that could never split had two costs once notes grew long: it left most of the
+ * first page empty by jumping whole to the second, and when it filled a page there was no
+ * room beside it for the footer, which then printed alone on a third.
+ */
+export const LONG_NOTES_MIN_LINES = 24
+
+/**
+ * Deliberately generous (about 150 characters fit on a line), so wrapping is under-counted and
+ * a note near the threshold is kept whole rather than split into a few stray lines.
+ */
+const NOTES_CHARS_PER_LINE = 150
+
+/** The class list for a document's notes box, chosen by how long the notes are. */
+export function notesSectionClass(notes: string | null | undefined): string {
+  const printedLines = String(notes ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .reduce((count, line) => count + Math.max(1, Math.ceil(line.length / NOTES_CHARS_PER_LINE)), 0)
+  return printedLines >= LONG_NOTES_MIN_LINES ? 'notes-section notes-section-long' : 'notes-section keep-together'
+}
+
 function escapeHtml(value: string): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
