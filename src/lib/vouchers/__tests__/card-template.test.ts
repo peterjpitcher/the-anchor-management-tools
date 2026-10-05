@@ -262,4 +262,12 @@ describe('buildTermsSheetHtml', () => {
   it('rejects an empty clause list', () => {
     expect(() => buildTermsSheetHtml({ version: TERMS_VERSION, clauses: [] })).toThrow('no clauses')
   })
+
+  it('keeps the closing footer whole and with the last clause', () => {
+    // Left as an ordinary block it prints alone on a second page once the clauses fill the first.
+    const html = buildTermsSheetHtml({ version: TERMS_VERSION, clauses: CLAUSES })
+    const footerRule = html.match(/\.sheet-foot\{([^}]*)\}/)?.[1] ?? ''
+    expect(footerRule).toContain('break-inside:avoid')
+    expect(footerRule).toContain('break-before:avoid')
+  })
 })
