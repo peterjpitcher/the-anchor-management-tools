@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { Alert, ConfirmDialog, Modal, Button, Field, Fieldset, Input, Textarea, toast, Icon } from '@/ds'
+import { Alert, Checkbox, ConfirmDialog, Modal, Button, Field, Fieldset, Input, Textarea, toast, Icon } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -97,6 +97,8 @@ export interface VenueCalendarNote {
   start_time: string | null
   end_time: string | null
   color: string
+  /** True when staff see this note in the staff portal. */
+  show_to_staff: boolean
 }
 
 export interface VenueCalendarParking {
@@ -178,6 +180,7 @@ interface NoteEditorState {
   title: string
   notes: string
   color: string
+  show_to_staff: boolean
   /**
    * The row the editor was opened from. Held so hidden columns the calendar does
    * not render (start_time, end_time) survive a save.
@@ -551,6 +554,7 @@ export function VenueCalendar({
       title: '',
       notes: '',
       color: DEFAULT_CALENDAR_NOTE_COLOUR,
+      show_to_staff: true,
       original: null,
     })
   }
@@ -567,6 +571,7 @@ export function VenueCalendar({
       // Keep whatever colour is stored, including values outside the palette.
       // Forcing a palette choice would silently recolour older notes.
       color: note.color || DEFAULT_CALENDAR_NOTE_COLOUR,
+      show_to_staff: note.show_to_staff,
       original: note,
     })
   }
@@ -598,6 +603,7 @@ export function VenueCalendar({
         title: editor.title.trim(),
         notes: editor.notes.trim() || null,
         color: editor.color,
+        show_to_staff: editor.show_to_staff,
       }
       const result =
         editor.mode === 'edit' && editor.noteId
@@ -915,6 +921,12 @@ export function VenueCalendar({
                 maxLength={4000}
               />
             </Field>
+            <Checkbox
+              label="Show to staff"
+              description="Staff see the title and dates on their My Shifts page. Untick to keep it to managers. It goes to the Google calendar either way."
+              checked={noteEditor.show_to_staff}
+              onChange={(checked) => setNoteEditor((f) => (f ? { ...f, show_to_staff: checked } : f))}
+            />
           </form>
 
           {/* Rendered inside the note dialog so it stacks above it as a nested dialog. It stays
