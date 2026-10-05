@@ -378,7 +378,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
           <h4>Other Methods</h4>
           <p>For payment queries:</p>
           <p>Contact: Peter Pitcher</p>
-          <p>Mobile: 07990587315</p>
+          <p>Phone: 07990587315</p>
           <p>Office: 01753 682 707</p>
           <p>Email: manager@the-anchor.pub</p>
         </div>
@@ -396,7 +396,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
   <div class="footer">
     <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
     <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
-    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
+    <p>Contact: Peter Pitcher | Phone: 07990587315</p>
   </div>
 </body>
 </html>
@@ -821,7 +821,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
           <h4>Other Methods</h4>
           <p>For payment queries:</p>
           <p>Contact: Peter Pitcher</p>
-          <p>Mobile: 07990587315</p>
+          <p>Phone: 07990587315</p>
           <p>Office: 01753 682 707</p>
           <p>Email: manager@the-anchor.pub</p>
         </div>
@@ -839,7 +839,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
   <div class="footer">
     <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
     <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
-    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
+    <p>Contact: Peter Pitcher | Phone: 07990587315</p>
   </div>
 </body>
 </html>
@@ -1247,7 +1247,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
   <div class="footer">
     <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
     <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
-    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
+    <p>Contact: Peter Pitcher | Phone: 07990587315</p>
   </div>
 </body>
 </html>
