@@ -1,6 +1,8 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { STAFF } from '@/lib/brand/palette'
+import { LOGO_MAX_WIDTH_PX } from '@/lib/pdf/document-chrome'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 
 export async function generateOjTimesheetPDF(input: {
   invoiceNumber: string
@@ -13,6 +15,9 @@ export async function generateOjTimesheetPDF(input: {
   const vendorLabel = input.vendorName ? `Client: ${input.vendorName}` : ''
   const meta = `Invoice: ${input.invoiceNumber} • Billing month: ${input.periodStart} to ${input.periodEnd}`
   const generatedAt = `Generated: ${new Date().toISOString()}`
+  // The timesheet goes to the client beside the invoice, so it carries the same logo at the same
+  // width. Inlined, never fetched; left out if the file cannot be read, as on the invoice.
+  const logoUrl = getDocumentLogoDataUri()
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -27,6 +32,12 @@ export async function generateOjTimesheetPDF(input: {
         color: ${STAFF.text};
         font-size: 11px;
         line-height: 1.4;
+      }
+      .logo {
+        display: block;
+        max-width: ${LOGO_MAX_WIDTH_PX}px;
+        height: auto;
+        margin: 0 0 12px 0;
       }
       h1 {
         font-size: 16px;
@@ -52,6 +63,7 @@ export async function generateOjTimesheetPDF(input: {
     </style>
   </head>
   <body>
+    ${logoUrl ? `<img src="${logoUrl}" alt="Orange Jelly" class="logo" />` : ''}
     <h1>${escapeHtml(title)}</h1>
     <div class="meta">
       <div>${escapeHtml(meta)}</div>
