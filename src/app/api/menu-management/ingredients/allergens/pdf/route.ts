@@ -4,6 +4,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { generateIngredientAllergenReportHTML, type IngredientAllergenReportRow } from '@/lib/menu/allergen-report'
 import { isMenuPurchaseDepartment, type MenuPurchaseDepartment } from '@/lib/menu/purchase-departments'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { createClient } from '@/lib/supabase/server'
 
@@ -118,6 +119,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ingredients,
       generatedAt: now,
       department,
+      logoUrl: getAnchorLogoDataUri(),
     })
     const pdfBuffer = await generatePDFFromHTML(html, {
       format: 'A4',

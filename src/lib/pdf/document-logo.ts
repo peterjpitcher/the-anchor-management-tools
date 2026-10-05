@@ -6,13 +6,21 @@
  * modest height; the round "OJ" badge it replaced was nearly square.
  *
  * Documents read their own copy, logo-horizontal-document.png: the supplied artwork at the same
- * 1200 by 260 pixels, reduced to 64 colours. Chromium re-encodes an image when it writes a PDF,
- * and the faint texture in the supplied file made it add about 180KB to every invoice. This copy
- * adds about 35KB, a little less than the old badge did, and looks the same on paper. Rebuild it
- * whenever logo-horizontal.png changes (tests/lib/pdf/documentLogo.test.ts checks the shape):
+ * 1200 by 260 pixels, reduced to 64 colours. Both PDF engines re-encode an image when they write
+ * a PDF, and the faint texture in the supplied file made it add about 180KB to every invoice.
+ * This copy adds about 35KB, a little less than the old badge did, and looks the same on paper.
  *
- *   sharp('public/orange-jelly/logo-horizontal.png')
- *     .png({ palette: true, colours: 64, dither: 0, compressionLevel: 9, effort: 10 })
+ * The copy is saved as full-colour RGBA, not as a palette PNG, on purpose: pdfkit (the claim
+ * summary) draws a 4-bit palette PNG with transparency doubled and discoloured. Rebuild it
+ * whenever logo-horizontal.png changes (tests/lib/pdf/documentLogo.test.ts checks its shape and
+ * format):
+ *
+ *   const reduced = await sharp('public/orange-jelly/logo-horizontal.png')
+ *     .png({ palette: true, colours: 64, dither: 0, effort: 10 })
+ *     .toBuffer()
+ *   await sharp(reduced)
+ *     .ensureAlpha()
+ *     .png({ palette: false, compressionLevel: 9, adaptiveFiltering: true })
  *     .toFile('public/orange-jelly/logo-horizontal-document.png')
  *
  * Invoices and quotes used to point the renderer at
@@ -32,6 +40,9 @@ import fs from 'fs'
 import path from 'path'
 
 const LOGO_RELATIVE_PATH = 'public/orange-jelly/logo-horizontal-document.png'
+
+/** Width over height of the wordmark (1200 by 260 pixels), for renderers that need both dimensions. */
+export const DOCUMENT_LOGO_ASPECT_RATIO = 1200 / 260
 
 let cached: string | null | undefined
 
