@@ -252,6 +252,8 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
       text-align: center;
       border-top: 1px solid ${STAFF.border};
       padding-top: 8px;
+      page-break-inside: avoid;
+      page-break-before: avoid;
     }
   </style>
 </head>

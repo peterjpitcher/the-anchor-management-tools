@@ -267,6 +267,19 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
       font-size: 8pt;
     }
     
+    .notes-section-long {
+      page-break-inside: auto;
+    }
+    
+    .notes-section-long h3 {
+      page-break-after: avoid;
+    }
+    
+    .notes-section-long p {
+      orphans: 6;
+      widows: 6;
+    }
+    
     .footer {
       margin-top: 20px;
       padding-top: 10px;
@@ -670,6 +683,19 @@ exports[`invoice PDF template > renders a stable document 1`] = `
       color: #4A4C58;
       white-space: pre-wrap;
       font-size: 8pt;
+    }
+    
+    .notes-section-long {
+      page-break-inside: auto;
+    }
+    
+    .notes-section-long h3 {
+      page-break-after: avoid;
+    }
+    
+    .notes-section-long p {
+      orphans: 6;
+      widows: 6;
     }
     
     .footer {
@@ -1104,6 +1130,19 @@ exports[`quote PDF template > renders a stable document 1`] = `
       color: #4A4C58;
       white-space: pre-wrap;
       font-size: 8pt;
+    }
+    
+    .notes-section-long {
+      page-break-inside: auto;
+    }
+    
+    .notes-section-long h3 {
+      page-break-after: avoid;
+    }
+    
+    .notes-section-long p {
+      orphans: 6;
+      widows: 6;
     }
     
     .footer {

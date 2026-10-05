@@ -128,6 +128,35 @@ describe('quote PDF template', () => {
   })
 })
 
+describe('long notes on invoices and quotes', () => {
+  // Notes that could never split left most of the first page empty and, once they filled a
+  // page, pushed the footer onto a page of its own.
+  const LONG_NOTES = Array.from({ length: 40 }, (_, i) => `Work item ${i + 1} & <detail>`).join('\n')
+
+  it('lets them run onto the next page instead of keeping the box whole', () => {
+    for (const html of [
+      generateCompactInvoiceHTML({ invoice: { ...INVOICE, notes: LONG_NOTES } }),
+      generateCompactQuoteHTML({ quote: { ...QUOTE, notes: LONG_NOTES } }),
+    ]) {
+      expect(html).toContain('<div class="notes-section notes-section-long">')
+      expect(html).not.toContain('notes-section keep-together')
+    }
+  })
+
+  it('still keeps short notes in one piece', () => {
+    for (const html of [generateCompactInvoiceHTML({ invoice: INVOICE }), generateCompactQuoteHTML({ quote: QUOTE })]) {
+      expect(html).toContain('<div class="notes-section keep-together">')
+    }
+  })
+
+  it('never leaves fewer than six note lines on either side of the break', () => {
+    const css = generateCompactInvoiceHTML({ invoice: INVOICE }).match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? ''
+    const rule = css.match(/\.notes-section-long p \{([^}]*)\}/)?.[1] ?? ''
+    expect(rule).toContain('orphans: 6;')
+    expect(rule).toContain('widows: 6;')
+  })
+})
+
 /**
  * Every customer financial document must join this registry and render its
  * chrome through `@/lib/pdf/document-chrome`. Comparing declarations catches
