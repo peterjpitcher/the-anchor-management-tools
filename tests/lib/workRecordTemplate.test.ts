@@ -73,7 +73,7 @@ describe('work record template', () => {
   it('uses the shared chrome, so it matches the invoice and statement', () => {
     expect(html).toContain('<html lang="en">')
     expect(html).toContain('Company Reg:')
-    expect(html).toContain('max-width: 90px')
+    expect(html).toContain('max-width: 160px')
   })
 
   it('keeps page one as a self-contained answer', () => {

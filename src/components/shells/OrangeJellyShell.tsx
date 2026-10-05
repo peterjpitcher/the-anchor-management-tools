@@ -8,10 +8,10 @@ import { COMPANY_DETAILS } from '@/lib/company-details'
  * Jelly name, logo and legal line instead of the Anchor guest shell (owner decision,
  * 18 September 2026).
  *
- * Orange Jelly has no colour system yet: docs/design/brief-orange-jelly.md asks a designer to
- * create one. Until it lands the page uses the neutral staff tokens and no invented brand
- * colours. The logo is the only Orange Jelly asset there is, a JPEG with a white background, so
- * it sits on a white bar.
+ * The staff tokens are the Orange Jelly colours (owner design pack, 20 September 2026), so the
+ * page uses them as they are. The logo is the horizontal wordmark the sign-in page shows. It
+ * already spells out the name, so the header carries nothing else; the legal name stays in the
+ * footer.
  *
  * This is the page chrome for those routes, like AppShell for staff pages, so it owns the only
  * <main>.
@@ -20,16 +20,15 @@ export function OrangeJellyShell({ children }: { children: React.ReactNode }): R
   return (
     <div className="flex min-h-screen flex-col bg-bg font-sans text-text">
       <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex w-full max-w-xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-xl items-center px-4 py-3">
           <Image
-            src="/logo-oj.jpg"
+            src="/orange-jelly/logo-horizontal.png"
             alt="Orange Jelly"
-            width={40}
-            height={39}
-            className="h-10 w-auto"
+            width={1200}
+            height={260}
+            className="h-8 w-auto"
             priority
           />
-          <span className="text-sm font-semibold text-text-strong">{COMPANY_DETAILS.legalName}</span>
         </div>
       </header>
 

@@ -43,7 +43,7 @@ Data fixes, applied on 4 October 2026 with the owner's yes, after R0.1, R0.2 and
 - [x] Copied addresses checked against the block list; proposed, dropped and sent recipients recorded in the email's metadata
 - [x] `.env.example` documents the switch and corrects the mistyped mobile
 - [x] Test email sent and checked on 4 October 2026 (see Results)
-- [ ] Owner: the From name is confirmed fine (4 October 2026). Still to do: press Reply on the second test email (see Results) and check it addresses the Orange Jelly mailbox, then set the switch in Vercel and redeploy
+- [x] Owner confirmed the From name (4 October 2026) and that Reply addresses the Orange Jelly mailbox (5 October 2026). Switch set and deployed on 5 October 2026 (see Results)
 
 ## R1b. One voice (pull request 2)
 
@@ -62,7 +62,7 @@ Data fixes, applied on 4 October 2026 with the owner's yes, after R0.1, R0.2 and
 - [x] Daily summary with saved state on the run record
 - [x] Hold and Resume on the invoice page, server-checked
 - [x] `vercel.json`: `30 9 * * 1-5`
-- [ ] Owner: approve the first run's list, then set `INVOICE_REMINDERS_GO_LIVE_DATE`
+- [x] Owner asked for reminders to go live on 5 October 2026. Preview read first, then `INVOICE_REMINDERS_GO_LIVE_DATE=2026-10-05` set and deployed (see Results)
 
 ## R3. Email history (pull request 2)
 
@@ -87,10 +87,10 @@ Data fixes, applied on 4 October 2026 with the owner's yes, after R0.1, R0.2 and
 1. DONE 4 October 2026. Deploy pull request 1. Confirm on the production deployment: the reminder job ran and emailed no customer; the owner alert arrived; `auto-send-invoices` returns 404; the GitHub workflows no longer list the two jobs.
 2. DONE 4 October 2026. Apply the two data fixes.
 3. DONE 4 October 2026. Apply the R2 migration to production (`supabase/migrations/20261004185059_invoice_reminder_columns.sql`). Then deploy pull request 2. Deploying it first breaks the invoice page's hold control and email history.
-4. PART DONE 4 October 2026: sent and found in Sent Items, From name confirmed by the owner. Still open: the owner's Reply check on the second test (see Results). Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
-5. Add contact names for the two clients greeted "Hi there"; fix the refused address at Barons Pubs.
-6. Review the first reminder run's list: call the reminder route with `?preview=true&go_live=YYYY-MM-DD` (it sends and changes nothing). Then set `INVOICE_REMINDERS_GO_LIVE_DATE` and redeploy.
-7. Set `INVOICE_PAYPAL_RECEIPTS_FROM` to the day it is switched on (an earlier date sends late receipts), and redeploy.
+4. DONE 5 October 2026 (the owner confirmed Reply addresses the mailbox; switch set and deployed). Test email through the mailbox route. Check the From name, Sent Items, a reply, and a copied address. Then set `INVOICE_EMAIL_PROVIDER=graph` and redeploy.
+5. PART DONE 5 October 2026: the blocked address at Barons Pubs is cleared (see Results). Still open, low priority: the two clients greeted "Hi there". Add contact names for the two clients greeted "Hi there"; fix the refused address at Barons Pubs.
+6. DONE 5 October 2026. Review the first reminder run's list: call the reminder route with `?preview=true&go_live=YYYY-MM-DD` (it sends and changes nothing). Then set `INVOICE_REMINDERS_GO_LIVE_DATE` and redeploy.
+7. DONE 5 October 2026. Set `INVOICE_PAYPAL_RECEIPTS_FROM` to the day it is switched on (an earlier date sends late receipts), and redeploy.
    Before any switch: confirm `CRON_ALERT_EMAIL` is set in production and reaches the owner. It is the only route for "outcome unknown" and "raised but not emailed" alerts.
 
 Each switch is an environment variable. On Vercel a changed variable only reaches a new deployment.
@@ -165,3 +165,25 @@ Rollback keeps reminders paused. It never restores the old automatic reminders.
 - Checked on the live site: the reminder preview answers and says nothing was sent or changed (asked with a go-live date of 5 October 2026: no invoice would be emailed, and five overdue invoices are listed for the owner to chase by hand, INV-003W8, INV-003WN, INV-003WG, INV-003WD and INV-003WT); a preview with a date that does not exist is refused (400); a mistyped preview query is refused (400) and does not start a run; the route refuses a call with no secret (401); the removed auto-send route still answers 404.
 - The three switches are still off, so no new customer email has started. Invoice emails keep leaving by the old route, with the new wording, until `INVOICE_EMAIL_PROVIDER=graph` is set.
 - Not checked: the new screens in a signed-in browser (hold control, Emails panel, receipt tick, reworded dialogs). That is the owner's check.
+
+**The three switches turned on, 5 October 2026 (owner asked).** The owner confirmed that Reply on the second test email addresses the Orange Jelly mailbox, then asked for the variables to be set, reminders to go live and the payment variable to be deployed.
+- Set on Vercel production and read back exactly: `INVOICE_EMAIL_PROVIDER=graph`, `INVOICE_REMINDERS_GO_LIVE_DATE=2026-10-05`, `INVOICE_PAYPAL_RECEIPTS_FROM=2026-10-05`. Stored as plain settings, so the values show in the dashboard. (The command line tool stores new production variables as secrets by default, which cannot be read back; they were re-added with `--no-sensitive`.)
+- Production redeployed to pick them up: `dpl_GEvEaG97JQ5J1n3MjY5SFm2Uh5uJ`, ready at 07:41 UTC (08:41 London).
+- Variables checked beforehand without printing any secret. The mailbox credentials on Vercel are identical to the ones the test emails used; the mailbox is the Orange Jelly one; PayPal is in live mode; the app address is right; no kill switch is on. `COMPANY_CONTACT_PHONE` is 01753682707, which the owner confirmed is the company's phone number. `CRON_ALERT_EMAIL` is the venue manager's mailbox, which the owner reads every day. Neither was changed.
+- Why 5 October as the go-live date: every invoice that fell due before it is left to the owner, so no customer gets an automatic email about an invoice they were already chased for under the old job. The preview showed that an earlier date would have sent exactly one automatic email (a first reminder for INV-003WD), to a client the owner was about to chase by hand for an older invoice.
+
+**Mailbox route proven on real emails, 5 October 2026.** The owner recorded two payments after the switch. Their receipts (INV-003WT at 08:57 and INV-003WN at 08:58 London) left from the Orange Jelly mailbox, carry no id from the other provider, are in the mailbox's Sent Items with the receipt attached, and use the new wording.
+
+**First reminder run with reminders on, 5 October 2026, 10:30 London.** Read from the run record and the mailbox:
+- The run completed in two seconds with no problems. It emailed no customer: the only invoice emails that day were the two receipts above.
+- The owner's summary was accepted and arrived. It lists three invoices to chase by hand (INV-003W8, INV-003WG, INV-003WD) and one draft dated that day that had not been emailed (INV-003WZ, which its own notes mark as deliberately not ready to send).
+- The summary does not carry the line "Automatic reminders are switched off", which it does whenever the go-live date is not set. That is the proof the setting is live.
+- First automatic reminders expected: Tuesday 13 October 2026 for INV-003WW and INV-003WX, if still unpaid.
+
+**Barons Pubs blocked contact cleared, 5 October 2026 (owner approved).** One contact set to receive a copy of each invoice had been on the app's block list since 1 September 2026, after the old email provider refused the address. She had no copy of the September or October invoice. The owner confirmed the address is right. The block row was deleted and an audit row written; read back, none of the client's three contacts is blocked. The old provider still holds the address on its own list, which no longer matters for invoices now that they leave from the mailbox.
+
+**Clients still greeted "Hi there", 5 October 2026.** Two: one whose primary contact is a shared accounts mailbox (left as it is, on advice: "Hi there" is right for a mailbox), and one private hire client record with no contact and no linked guest record (nothing owed; add a contact if they are emailed again).
+
+**PDF contact number, 5 October 2026 (pull request 180, owner approved).** Found during the variable check: invoice and quote PDFs labelled the company phone "Mobile" and printed it twice. Now labelled "Phone" and printed once per block when it is the office number. Merged as `fa8c1b7a`, live on `dpl_BgLmgDrpe6WUeTsC6KXAiL7U7FA5`. Checked by rendering both documents with the production value; not seen in a live PDF, which needs a sign-in.
+
+**Still open.** The owner's signed-in look at the new screens (hold control, Emails panel, receipt tick, send dialogs). Step 8 of the release checklist, after two weeks.
