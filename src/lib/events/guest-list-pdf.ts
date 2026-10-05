@@ -50,7 +50,7 @@ export async function generateEventGuestListPdf(
 
   const drawPageHeader = () => {
     if (options.logoDataUri) {
-      // Given an explicit box so drawing it never moves the text cursor.
+      // Drawn first. The title is then placed by explicit coordinates, so the image cannot shift it.
       doc.image(options.logoDataUri, right - LOGO_WIDTH, PAGE_MARGIN, {
         width: LOGO_WIDTH,
         height: LOGO_WIDTH / ANCHOR_LOGO_ASPECT_RATIO,

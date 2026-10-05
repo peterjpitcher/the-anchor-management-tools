@@ -129,11 +129,13 @@ export async function appendClaimSummaryPdf(
     const logo = getDocumentLogoDataUri()
     if (logo) {
       const logoHeight = HEADER_LOGO_WIDTH / DOCUMENT_LOGO_ASPECT_RATIO
-      doc.image(logo, (doc.page.width - HEADER_LOGO_WIDTH) / 2, doc.y, {
+      const logoTop = doc.y
+      doc.image(logo, (doc.page.width - HEADER_LOGO_WIDTH) / 2, logoTop, {
         width: HEADER_LOGO_WIDTH,
         height: logoHeight,
       })
-      doc.y += logoHeight + 12
+      // Set outright: pdfkit moves the cursor itself only when the image sits in the text flow.
+      doc.y = logoTop + logoHeight + 14
     }
 
     doc
