@@ -8,6 +8,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Checkbox,
   ConfirmDialog,
   Empty,
   Field,
@@ -39,6 +40,7 @@ type CalendarNoteFormState = {
   title: string
   notes: string
   color: string
+  show_to_staff: boolean
 }
 
 type CalendarGeneratorState = {
@@ -69,6 +71,7 @@ function createEmptyNoteForm(defaultDateIso?: string): CalendarNoteFormState {
     title: '',
     notes: '',
     color: DEFAULT_NOTE_COLOUR,
+    show_to_staff: true,
   }
 }
 
@@ -135,6 +138,7 @@ export default function CalendarNotesManager({
       title: note.title,
       notes: note.notes ?? '',
       color: note.color,
+      show_to_staff: note.show_to_staff,
     })
     setErrorMessage(null)
   }
@@ -176,6 +180,7 @@ export default function CalendarNotesManager({
       title: noteForm.title.trim(),
       notes: noteForm.notes.trim() || null,
       color: normalizeColor(noteForm.color),
+      show_to_staff: noteForm.show_to_staff,
     }
 
     startMutatingTransition(async () => {
@@ -316,6 +321,13 @@ export default function CalendarNotesManager({
                     />
                   </Field>
 
+                  <Checkbox
+                    label="Show to staff"
+                    description="Staff see the title and dates on their My Shifts page. Untick to keep it to managers. It goes to the Google calendar either way."
+                    checked={noteForm.show_to_staff}
+                    onChange={(checked) => setNoteForm((current) => ({ ...current, show_to_staff: checked }))}
+                  />
+
                   <FormFooter>
                     {editingNoteId && (
                       <Button
@@ -429,6 +441,7 @@ export default function CalendarNotesManager({
                         style={{ backgroundColor: normalizeColor(note.color) }}
                       />
                       <span className="font-medium">{note.title}</span>
+                      {!note.show_to_staff && <Badge>Managers only</Badge>}
                     </div>
                   </TableCell>
                   <TableCell>
