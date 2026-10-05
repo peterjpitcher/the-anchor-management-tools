@@ -71,6 +71,17 @@ const nextConfig = {
   // it over HTTP from inside the function. Next does not trace public/ files on its
   // own, so name it here or the serverless bundle ships without it.
   outputFileTracingIncludes: {
+    // The two document logos go into every route's bundle. Documents are generated from API
+    // routes and from server actions on many pages, and the logo helpers
+    // (src/lib/pdf/document-logo.ts and anchor-logo.ts) leave the logo out, without an error,
+    // when the file is absent. Left to automatic tracing, the Orange Jelly logo reached some
+    // pages only by luck of bundling, and the private booking page, which generates the payment
+    // statement, did not get The Anchor logo at all. Both files are small.
+    // tests/guards/document-logo-tracing.test.ts keeps this entry in place.
+    '/**': [
+      './public/orange-jelly/logo-horizontal-document.png',
+      './public/booking-confirmation/anchor-logo-black.png',
+    ],
     '/api/recruitment/applications/[id]/interview-kit': ['./public/booking-confirmation/anchor-logo-black.png'],
     '/api/recruitment/applications/[id]/trial-brief': ['./public/booking-confirmation/anchor-logo-black.png'],
     // Same reason: the artwork compositor reads the venue logo off disk and
