@@ -53,6 +53,7 @@ type CalendarNoteSummary = {
   start_time: string | null
   end_time: string | null
   color: string
+  show_to_staff: boolean
 }
 
 type SpecialHoursSummary = {
@@ -954,7 +955,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const [notesResult, specialHoursResult] = await Promise.all([
             supabase
               .from('calendar_notes')
-              .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
+              .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff')
               // Calendar notes are deliberate long-range reminders. Load the
               // complete note set so future dates remain visible when users
               // navigate the calendar; the rolling horizon still applies to
@@ -982,6 +983,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             start_time: typeof note.start_time === 'string' ? note.start_time : null,
             end_time: typeof note.end_time === 'string' ? note.end_time : null,
             color: typeof note.color === 'string' ? note.color : DEFAULT_CALENDAR_NOTE_COLOUR,
+            show_to_staff: note.show_to_staff !== false,
           }))
 
           events.specialHours = specialHoursResult.data

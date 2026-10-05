@@ -9,6 +9,8 @@ import {
   type PayrollPeriodRecord as PayrollPeriod,
 } from '@/lib/rota/payroll-period-store';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
+import { loadStaffCalendarNotes, staffNotesWindow } from '@/lib/portal/staff-calendar-notes';
+import type { StaffCalendarNotesResult } from '@/lib/portal/staff-calendar-notes';
 import {
   getBatchHourlyRates,
   calculatePaidHours,
@@ -39,6 +41,7 @@ import { ROTA_SHIFT_STATUS_CLASSES, rotaDepartmentClasses } from '@/lib/rota/sta
 import { shiftPremiumTone } from '../_shared/status-ui';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 import PaySummaryCard from './PaySummaryCard';
+import StaffNotesSection from './StaffNotesSection';
 import type { PeriodSummary } from './PaySummaryCard';
 import ShiftDecisionControls from './ShiftDecisionControls';
 import OpenShiftRequestButton from './OpenShiftRequestButton';
@@ -565,6 +568,11 @@ export default async function MyShiftsPage({
     shiftsQuery = shiftsQuery.eq('employee_id', employee.employee_id);
   }
 
+  // Venue calendar notes a manager has ticked "Show to staff". Staff cannot read the table
+  // themselves, so this goes through the service-role client, which is safe here because the
+  // visitor is already known to be a signed-in, linked employee and only titles and dates are read.
+  const notesWindow = staffNotesWindow(today, period.period_start, period.period_end);
+
   const [
     previousPeriod,
     nextPeriod,
@@ -572,6 +580,7 @@ export default async function MyShiftsPage({
     openShiftsResult,
     couldntWorkResult,
     paySettingsResult,
+    staffNotesResult,
   ] = await Promise.all([
     findAdjacentPeriod(supabase, employee.employee_id, period, 'previous', isPortalShiftManager),
     findAdjacentPeriod(supabase, employee.employee_id, period, 'next', isPortalShiftManager),
@@ -601,6 +610,9 @@ export default async function MyShiftsPage({
       .select('pay_type')
       .eq('employee_id', employee.employee_id)
       .single(),
+    notesWindow
+      ? loadStaffCalendarNotes(admin, notesWindow)
+      : Promise.resolve<StaffCalendarNotesResult>({ ok: true, notes: [] }),
   ]);
 
   const now = new Date();
@@ -720,6 +732,12 @@ export default async function MyShiftsPage({
       </Card>
 
       {currentSummary && <PaySummaryCard current={currentSummary} />}
+
+      <StaffNotesSection
+        notes={staffNotesResult.ok ? staffNotesResult.notes : []}
+        failed={!staffNotesResult.ok}
+        today={today}
+      />
 
       {shiftsFailed ? (
         <Alert tone="danger">Your shifts could not be loaded. Refresh the page to try again.</Alert>

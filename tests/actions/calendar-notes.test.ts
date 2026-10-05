@@ -230,3 +230,109 @@ describe('calendar note colour', () => {
     expect(DEFAULT_CALENDAR_NOTE_COLOUR).toBe('#7DD3FC')
   })
 })
+
+describe('calendar note "Show to staff"', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedQueueReady.mockResolvedValue(true)
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'staff@example.com' } },
+          error: null,
+        }),
+      },
+    })
+    mockedProcessSync.mockResolvedValue({ state: 'created', noteId, googleEventId: 'google-note-id' })
+  })
+
+  function insertReturning(row: Record<string, unknown>) {
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: row, error: null }),
+      }),
+    })
+    mockedCreateAdminClient.mockReturnValue({ from: vi.fn().mockReturnValue({ insert }) })
+    return insert
+  }
+
+  function updateReturning(existing: Record<string, unknown>, updated: Record<string, unknown>) {
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({ data: updated, error: null }),
+        }),
+      }),
+    })
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi
+        .fn()
+        .mockReturnValueOnce(selectOne({ data: existing, error: null }))
+        .mockReturnValueOnce({ update }),
+    })
+    return update
+  }
+
+  it('shows a new note to staff unless the tick is cleared', async () => {
+    const insert = insertReturning({ ...baseRow, show_to_staff: true })
+
+    const result = await createCalendarNote({ note_date: baseRow.note_date, title: baseRow.title })
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ show_to_staff: true }))
+    expect(result.data?.show_to_staff).toBe(true)
+  })
+
+  it('saves a new note as managers-only when the tick is cleared, and still syncs it to Google', async () => {
+    const insert = insertReturning({ ...baseRow, show_to_staff: false })
+
+    const result = await createCalendarNote({
+      note_date: baseRow.note_date,
+      title: baseRow.title,
+      show_to_staff: false,
+    })
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ show_to_staff: false }))
+    expect(result.data?.show_to_staff).toBe(false)
+    // Hiding a note from staff must never stop it reaching the Google calendar.
+    expect(mockedProcessSync).toHaveBeenCalledWith(
+      expect.anything(),
+      noteId,
+      expect.objectContaining({ operation: 'upsert' }),
+    )
+  })
+
+  it('keeps a managers-only note hidden when an edit does not mention the tick', async () => {
+    const hidden = { ...baseRow, show_to_staff: false }
+    const update = updateReturning(hidden, { ...hidden, title: 'Renamed' })
+
+    const result = await updateCalendarNote(noteId, { title: 'Renamed' })
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ title: 'Renamed', show_to_staff: false }))
+    expect(result.data?.show_to_staff).toBe(false)
+  })
+
+  it('shows a hidden note to staff once it is ticked, and re-syncs it to Google as any edit does', async () => {
+    const hidden = { ...baseRow, show_to_staff: false }
+    const update = updateReturning(hidden, { ...hidden, show_to_staff: true })
+
+    const result = await updateCalendarNote(noteId, { show_to_staff: true })
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ show_to_staff: true }))
+    expect(result.data?.show_to_staff).toBe(true)
+    expect(mockedProcessSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the tick back with every note it returns', async () => {
+    const select = vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ...baseRow, show_to_staff: false }, error: null }),
+    })
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn().mockReturnValue({ insert: vi.fn().mockReturnValue({ select }) }),
+    })
+
+    await createCalendarNote({ note_date: baseRow.note_date, title: baseRow.title, show_to_staff: false })
+
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('show_to_staff'))
+  })
+})
