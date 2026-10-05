@@ -83,6 +83,17 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+// Imported once, up here, like every other PayPal webhook suite. The route pulls in the shared
+// dispatcher and with it all five payment domains (some 140 modules, plus googleapis and twilio),
+// which takes a second to load and several on a busy machine. Loading it inside each test after
+// vi.resetModules() charged that load to the first test's 5 second budget, and under full-suite
+// load it timed out. Nothing in that graph keeps state between tests, so one load is enough.
+import { gatePayPalWebhook } from '@/lib/paypal-webhook-gate'
+import { claimIdempotencyKey, persistIdempotencyResponse } from '@/lib/api/idempotency'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { gateSignatureRejected } from '@/../tests/helpers/paypalGateMock'
+import { POST } from '../route'
+
 // ── Test data helpers ─────────────────────────────────────────────────────────
 
 const VALID_EVENT_ID = 'WH-PAYPAL-EVENT-001'
@@ -129,16 +140,10 @@ function makeRequest(body: string, headers = VALID_WEBHOOK_HEADERS): NextRequest
 describe('POST /api/webhooks/paypal/table-bookings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
     process.env.PAYPAL_WEBHOOK_ID = 'test-webhook-id'
   })
 
   it('returns 401 when PayPal signature verification fails', async () => {
-    const { gatePayPalWebhook } = await import('@/lib/paypal-webhook-gate')
-    const { gateSignatureRejected } = await import('@/../tests/helpers/paypalGateMock')
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { POST } = await import('../route')
-
     vi.mocked(gatePayPalWebhook).mockResolvedValueOnce(gateSignatureRejected())
     const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
@@ -151,10 +156,6 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('marks booking paid when PAYMENT.CAPTURE.COMPLETED is valid and booking not yet captured', async () => {
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
-    const { POST } = await import('../route')
-
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
     vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
@@ -191,10 +192,6 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 without reprocessing when idempotency claim returns replay', async () => {
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { claimIdempotencyKey } = await import('@/lib/api/idempotency')
-    const { POST } = await import('../route')
-
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'replay', response: null })
 
     const mockSupabase = createSupabaseMock()
@@ -211,10 +208,6 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 without update when booking already has a capture ID', async () => {
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
-    const { POST } = await import('../route')
-
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
     vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
@@ -242,9 +235,6 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 and ignores non-CAPTURE.COMPLETED event types', async () => {
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const { POST } = await import('../route')
-
     const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
 
