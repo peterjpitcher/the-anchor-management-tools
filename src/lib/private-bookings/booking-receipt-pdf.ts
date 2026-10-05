@@ -1,6 +1,7 @@
 import { DOCUMENT_PALETTE } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 import { describePaymentMethod } from './payment-statement'
 import type { BookingReceiptModel } from './booking-receipt'
 
@@ -10,12 +11,20 @@ function escape(value: unknown): string {
 const money = (value: number): string => `£${value.toFixed(2)}`
 const date = (value: string): string => formatDateInLondon(value, { day: '2-digit', month: 'short', year: 'numeric' })
 
-export function renderBookingReceiptHTML(model: BookingReceiptModel, version: number): string {
+/**
+ * The statement is issued by Orange Jelly Limited but is about a booking at the pub, so it carries
+ * The Anchor logo (owner decision, 5 October 2026). `logoUrl` is a data URI; left out when absent.
+ */
+export function renderBookingReceiptHTML(
+  model: BookingReceiptModel,
+  version: number,
+  options: { logoUrl?: string } = {}
+): string {
   const title = model.kind === 'final_receipt' ? 'Final receipt' : 'Payment statement'
   const rows = (cells: string[]): string => `<tr>${cells.map(cell => `<td>${cell}</td>`).join('')}</tr>`
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>
-    @page{size:A4;margin:18mm 15mm}*{box-sizing:border-box}body{font:11px Arial,sans-serif;color:${DOCUMENT_PALETTE.text};line-height:1.45}h1{font-size:25px;margin:0 0 8px}h2{font-size:15px;margin:24px 0 8px;break-after:avoid}h3{font-size:12px;margin:18px 0 7px;break-after:avoid}p{margin:5px 0}.muted{color:${DOCUMENT_PALETTE.textMuted}}.identity{border-bottom:2px solid ${DOCUMENT_PALETTE.text};padding-bottom:14px;margin-bottom:20px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px}thead{display:table-header-group}th,td{padding:7px 5px;text-align:left;border-bottom:1px solid ${DOCUMENT_PALETTE.border};vertical-align:top;overflow-wrap:anywhere}th{background:${DOCUMENT_PALETTE.surface2}}tr{break-inside:avoid}td:first-child{white-space:normal}.charges th:first-child{width:34%}.history th:first-child{width:16%}.history th:last-child{width:14%}.total{font-weight:bold}.summary{margin-top:20px;width:70%;margin-left:auto}.notice{padding:10px;background:${DOCUMENT_PALETTE.surface2};margin-top:12px}footer{font-size:9px;margin-top:22px;border-top:1px solid ${DOCUMENT_PALETTE.border};padding-top:8px}
-    </style></head><body><div class="identity"><h1>${title}</h1><strong>${escape(COMPANY_DETAILS.legalName)}</strong><p>${escape(COMPANY_DETAILS.fullAddress)}</p><p class="muted">Company ${escape(COMPANY_DETAILS.companyNumber)} · VAT ${escape(COMPANY_DETAILS.vatNumber)}</p></div>
+    @page{size:A4;margin:18mm 15mm}*{box-sizing:border-box}body{font:11px Arial,sans-serif;color:${DOCUMENT_PALETTE.text};line-height:1.45}h1{font-size:25px;margin:0 0 8px}h2{font-size:15px;margin:24px 0 8px;break-after:avoid}h3{font-size:12px;margin:18px 0 7px;break-after:avoid}p{margin:5px 0}.muted{color:${DOCUMENT_PALETTE.textMuted}}.identity{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid ${DOCUMENT_PALETTE.text};padding-bottom:14px;margin-bottom:20px}.identity-logo{flex:none;height:52px;width:auto}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px}thead{display:table-header-group}th,td{padding:7px 5px;text-align:left;border-bottom:1px solid ${DOCUMENT_PALETTE.border};vertical-align:top;overflow-wrap:anywhere}th{background:${DOCUMENT_PALETTE.surface2}}tr{break-inside:avoid}td:first-child{white-space:normal}.charges th:first-child{width:34%}.history th:first-child{width:16%}.history th:last-child{width:14%}.total{font-weight:bold}.summary{margin-top:20px;width:70%;margin-left:auto}.notice{padding:10px;background:${DOCUMENT_PALETTE.surface2};margin-top:12px}footer{font-size:9px;margin-top:22px;border-top:1px solid ${DOCUMENT_PALETTE.border};padding-top:8px}
+    </style></head><body><div class="identity"><div><h1>${title}</h1><strong>${escape(COMPANY_DETAILS.legalName)}</strong><p>${escape(COMPANY_DETAILS.fullAddress)}</p><p class="muted">Company ${escape(COMPANY_DETAILS.companyNumber)} · VAT ${escape(COMPANY_DETAILS.vatNumber)}</p></div>${options.logoUrl ? `<img class="identity-logo" src="${escape(options.logoUrl)}" alt="The Anchor">` : ''}</div>
     <p><strong>Reference:</strong> PB-${escape(model.bookingId)}-R${version}</p><p><strong>Generated:</strong> ${escape(formatDateInLondon(model.generatedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))} (London)</p><p><strong>Customer:</strong> ${escape(model.customer)}</p><p><strong>Event:</strong> ${model.eventDate ? escape(date(model.eventDate)) : 'Date to be confirmed'}</p>
     ${model.blockers.length ? `<div class="notice"><strong>This is a current statement.</strong><ul>${model.blockers.map(reason => `<li>${escape(reason)}</li>`).join('')}</ul></div>` : '<p class="notice">All collectible invoices are settled and the deposit account is complete.</p>'}
     <h2>Itemised charges</h2>${model.invoices.map(invoice => `<h3>Invoice ${escape(invoice.number)} · ${escape(date(invoice.date))} · ${escape(invoice.status.replace(/_/g, ' '))}</h3><table class="charges"><thead><tr><th>Description</th><th>Qty</th><th>Net</th><th>Discount</th><th>VAT</th><th>Gross</th></tr></thead><tbody>${invoice.lines.map(line => rows([escape(line.description), escape(line.quantity), money(line.net), money(line.discount), money(line.vat), money(line.gross)])).join('')}</tbody></table><p class="total">Invoice total ${money(invoice.total)}${invoice.discount ? ` · Invoice discount ${money(invoice.discount)} (included in line discounts)` : ''}${invoice.rounding ? ` · Rounding adjustment ${money(invoice.rounding)}` : ''}</p>`).join('')}
@@ -28,5 +37,5 @@ export function renderBookingReceiptHTML(model: BookingReceiptModel, version: nu
 
 export async function generateBookingReceiptPDF(model: BookingReceiptModel, version: number): Promise<Buffer> {
   const { generatePDFFromHTML } = await import('@/lib/pdf-generator')
-  return generatePDFFromHTML(renderBookingReceiptHTML(model, version), { preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: `<div style="width:100%;text-align:center;font-size:8px;color:${DOCUMENT_PALETTE.textMuted}">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`, margin: { top: '18mm', bottom: '18mm', left: '15mm', right: '15mm' } })
+  return generatePDFFromHTML(renderBookingReceiptHTML(model, version, { logoUrl: getAnchorLogoDataUri() }), { preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: `<div style="width:100%;text-align:center;font-size:8px;color:${DOCUMENT_PALETTE.textMuted}">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`, margin: { top: '18mm', bottom: '18mm', left: '15mm', right: '15mm' } })
 }
