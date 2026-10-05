@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261005083112_clear_stored_advert_click_ids.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261005143355_clear_stored_advert_click_ids.sql'
 
 PAGE = 'https://www.example.com/events/quiz-night'
 TAGS = 'utm_source=facebook&utm_medium=paid_social&utm_campaign=quiz&utm_content=a&utm_term=b'
