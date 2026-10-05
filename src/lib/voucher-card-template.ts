@@ -416,7 +416,7 @@ body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:ex
 .terms-list li{margin:0 0 3.2mm;break-inside:avoid;padding-left:1.4mm}
 .terms-list h2{font-family:var(--font-body);font-weight:600;font-size:10.5pt;line-height:1.4;color:var(--ink);margin:0}
 .terms-list p{font-size:10.5pt;line-height:1.5;color:var(--ink-soft);margin:.6mm 0 0}
-.sheet-foot{margin-top:7mm;padding-top:3.6mm;border-top:1px solid var(--rule);font-size:9.5pt;line-height:1.5;color:var(--ink-mute)}
+.sheet-foot{margin-top:7mm;padding-top:3.6mm;border-top:1px solid var(--rule);font-size:9.5pt;line-height:1.5;color:var(--ink-mute);break-inside:avoid;break-before:avoid}
 .sheet-foot b{color:var(--ink);font-weight:600}
 </style>
 </head>
