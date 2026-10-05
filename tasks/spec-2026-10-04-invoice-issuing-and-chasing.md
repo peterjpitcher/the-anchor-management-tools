@@ -1,7 +1,7 @@
 # Spec: invoice issuing and chasing, email only and personal
 
 **Date:** 4 October 2026
-**Status:** Version 4, built and live on 4 October 2026 (pull requests 177 and 178, production deployment `dpl_7TRJAuD1J7Fyx7BkUJnhLRiVaNHV`), with its three switches still off. Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`; its Results section records what was released and checked.
+**Status:** Version 4, built and live on 4 October 2026 (pull requests 177 and 178, production deployment `dpl_7TRJAuD1J7Fyx7BkUJnhLRiVaNHV`). The three switches were turned on on 5 October 2026 (go-live date for reminders: 5 October 2026). Approved to build by the owner on 4 October 2026. The developer review of the same date (`docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md`) is folded in; the table near the end says what changed for each finding. The plan is `tasks/plan-2026-10-04-invoice-issuing-and-chasing.md`; its Results section records what was released and checked.
 **Goal (owner's words):** "Everything should be over email and should feel personal."
 **Scope:** every email that issues, chases or acknowledges an Orange Jelly invoice, and the screens staff use to send and follow them.
 **Paired repository:** no change needed in the website repo. It does not read invoices.
