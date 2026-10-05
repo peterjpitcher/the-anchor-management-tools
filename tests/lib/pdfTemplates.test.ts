@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * Characterisation cover for the invoice and quote PDF templates, which had none.
@@ -201,7 +201,10 @@ describe('the registered document templates agree on shared styling', () => {
     for (const doc of DOCUMENTS) {
       expect(doc.html, doc.name).toContain('Company Reg:')
       expect(doc.html, doc.name).toContain('VAT:')
-      expect(doc.html, doc.name).toContain('Mobile: 07990587315')
+      // "Phone", never "Mobile": the number comes from the environment and in production it
+      // is a landline. See the block at the foot of this file.
+      expect(doc.html, doc.name).toContain('Phone: 07990587315')
+      expect(doc.html, doc.name).not.toContain('Mobile:')
     }
   })
 
@@ -316,5 +319,56 @@ describe('statement ageing strip', () => {
 
   it('omits the strip entirely when no ageing is supplied', () => {
     expect(generateStatementHTML(STATEMENT)).not.toContain('Aged by days overdue')
+  })
+})
+
+/**
+ * Production holds the office landline in COMPANY_CONTACT_PHONE, written without spaces. Until
+ * 5 October 2026 every invoice therefore printed "Mobile: 01753682707" directly above
+ * "Office: 01753 682 707": one number twice, once under the wrong label. The fixtures above
+ * run with the variable unset, so they never saw it.
+ */
+describe('the contact number, when it is the office number', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  async function renderAsProduction(): Promise<{ invoice: string; quote: string }> {
+    vi.stubEnv('COMPANY_CONTACT_PHONE', '01753682707')
+    vi.resetModules()
+    const invoiceTemplate = await import('@/lib/invoice-template-compact')
+    const quoteTemplate = await import('@/lib/quote-template-compact')
+    return {
+      invoice: invoiceTemplate.generateCompactInvoiceHTML({ invoice: INVOICE }),
+      quote: quoteTemplate.generateCompactQuoteHTML({ quote: QUOTE }),
+    }
+  }
+
+  it('prints it once in the invoice payment box, labelled Phone', async () => {
+    const { invoice } = await renderAsProduction()
+    expect(invoice).toContain([
+      '          <p>For payment queries:</p>',
+      '          <p>Contact: Peter Pitcher</p>',
+      '          <p>Phone: 01753682707</p>',
+      '          <p>Email: ',
+    ].join('\n'))
+    expect(invoice).not.toContain('Mobile:')
+    expect(invoice).not.toContain('<p>Office:')
+  })
+
+  it('gives the quote one phone line, not two with the same number', async () => {
+    const { quote } = await renderAsProduction()
+    expect(quote).toContain('<p>• Call Peter Pitcher on 01753682707</p>')
+    expect(quote).not.toContain('Call our office on')
+    expect(quote).not.toContain('directly on')
+  })
+
+  it('leaves it off the last footer line, which follows the office number', async () => {
+    const { invoice, quote } = await renderAsProduction()
+    for (const html of [invoice, quote]) {
+      expect(html).toContain('<p>Contact: Peter Pitcher</p>\n  </div>')
+      expect(html).not.toContain('Mobile:')
+    }
   })
 })
