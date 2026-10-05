@@ -274,6 +274,8 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
       text-align: center;
       color: #4A4C58;
       font-size: 7pt;
+      page-break-inside: avoid;
+      page-break-before: avoid;
     }
     
     .footer p {
@@ -677,6 +679,8 @@ exports[`invoice PDF template > renders a stable document 1`] = `
       text-align: center;
       color: #4A4C58;
       font-size: 7pt;
+      page-break-inside: avoid;
+      page-break-before: avoid;
     }
     
     .footer p {
@@ -1109,6 +1113,8 @@ exports[`quote PDF template > renders a stable document 1`] = `
       text-align: center;
       color: #4A4C58;
       font-size: 7pt;
+      page-break-inside: avoid;
+      page-break-before: avoid;
     }
     
     .footer p {

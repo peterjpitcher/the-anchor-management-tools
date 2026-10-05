@@ -191,6 +191,8 @@ ${options.bodyCss}    .footer {
       text-align: center;
       color: ${STAFF.textMuted};
       font-size: 7pt;
+      page-break-inside: avoid;
+      page-break-before: avoid;
     }
     
     .footer p {
@@ -239,6 +241,11 @@ ${options.metaHtml}
  * The contact number is left off the last line when it is the office number, which the line
  * above has just printed. It is labelled "Phone", never "Mobile": the value is whatever the
  * environment holds, and in production that is a landline.
+ *
+ * The `.footer` rule keeps these three lines on one page and on the same page as the block
+ * above them. Without that, a body ending within about 75px of the foot of a page sent part
+ * or all of the footer to a page of its own: replaying the sizes of the 65 invoices raised in
+ * the year to 5 October 2026, seven printed a last page holding nothing but footer text.
  */
 export function renderDocumentFooter(): string {
   return `  <div class="footer">
