@@ -1555,7 +1555,7 @@ export type Database = {
           color: string
           created_at: string
           created_by: string | null
-          end_date: string | null
+          end_date: string
           end_time: string | null
           generated_context: Json
           id: string
@@ -1571,7 +1571,7 @@ export type Database = {
           color?: string
           created_at?: string
           created_by?: string | null
-          end_date?: string | null
+          end_date: string
           end_time?: string | null
           generated_context?: Json
           id?: string
@@ -1587,7 +1587,7 @@ export type Database = {
           color?: string
           created_at?: string
           created_by?: string | null
-          end_date?: string | null
+          end_date?: string
           end_time?: string | null
           generated_context?: Json
           id?: string
