@@ -13,12 +13,16 @@ import { PassThrough } from 'stream'
 import type { Archiver } from 'archiver'
 import { STAFF } from '@/lib/brand/palette'
 import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
+import { DOCUMENT_LOGO_ASPECT_RATIO, getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { ClaimSummaryMileage } from './mileage-files'
 import type { ExpensesSummary } from './expenses-csv'
 import type { ExpenseRow } from './expenses-csv'
 import type { MgdSummary } from './mgd-csv'
 import type { MgdCollectionRow } from './mgd-csv'
 import { quarterMonthRange } from './csv-helpers'
+
+/** Points. About 30pt tall, centred above the centred title. */
+const HEADER_LOGO_WIDTH = 140
 
 interface ClaimSummaryInput {
   year: number
@@ -120,6 +124,20 @@ export async function appendClaimSummaryPdf(
     doc.on('error', reject)
 
     // ---- Header ----
+    // The claim belongs to Orange Jelly Limited and goes to its accountant, so it carries the
+    // Orange Jelly wordmark (docs/design/brief-orange-jelly.md). Left out if it cannot be read.
+    const logo = getDocumentLogoDataUri()
+    if (logo) {
+      const logoHeight = HEADER_LOGO_WIDTH / DOCUMENT_LOGO_ASPECT_RATIO
+      const logoTop = doc.y
+      doc.image(logo, (doc.page.width - HEADER_LOGO_WIDTH) / 2, logoTop, {
+        width: HEADER_LOGO_WIDTH,
+        height: logoHeight,
+      })
+      // Set outright: pdfkit moves the cursor itself only when the image sits in the text flow.
+      doc.y = logoTop + logoHeight + 14
+    }
+
     doc
       .fontSize(18)
       .font('Helvetica-Bold')

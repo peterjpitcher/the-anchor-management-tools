@@ -89,4 +89,11 @@ describe('consolidated booking receipt', () => {
     expect(html).toContain('Version 3')
     expect(html).not.toMatch(/undefined|NaN|Invalid Date/)
   })
+  it('prints The Anchor logo beside the issuer details when one is given, and not otherwise', () => {
+    const model = buildBookingReceipt(receiptFixture())
+    const branded = renderBookingReceiptHTML(model, 1, { logoUrl: 'data:image/png;base64,AAAA' })
+    expect(branded).toContain('<img class="identity-logo" src="data:image/png;base64,AAAA" alt="The Anchor">')
+    expect(branded).toContain('Orange Jelly Limited')
+    expect(renderBookingReceiptHTML(model, 1)).not.toContain('<img')
+  })
 })

@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit'
 import type { GuestGroup } from '@/lib/events/guest-list-model'
 import { STAFF } from '@/lib/brand/palette'
+import { ANCHOR_LOGO_ASPECT_RATIO } from '@/lib/pdf/anchor-logo'
 
 export interface GuestListEventHeader {
   name: string
@@ -14,6 +15,8 @@ const TICK_BOX = 10
 const ROW_HEIGHT = 26
 const NOTE_LINE_INSET = 220 // x where the blank ruled note area starts, from left margin
 const NAME_COLUMN_WIDTH = NOTE_LINE_INSET - TICK_BOX - 16 // usable width for a guest name line
+const LOGO_WIDTH = 84 // points; about 38pt tall, which sits inside the three header lines
+const LOGO_GAP = 12
 
 /** PDFKit's built-in fonts only encode WinAnsi (cp1252). Make any string safe to render so an
  *  exotic character in a customer name can never 500 the whole sheet. Keeps Latin-1 accents; folds
@@ -29,6 +32,8 @@ export function pdfSafeText(input: string): string {
 export async function generateEventGuestListPdf(
   header: GuestListEventHeader,
   groups: GuestGroup[],
+  /** The Anchor logo as a PNG data URI, drawn top right on every page. Left out when absent. */
+  options: { logoDataUri?: string } = {},
 ): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margin: PAGE_MARGIN, bufferPages: true })
   const chunks: Buffer[] = []
@@ -40,9 +45,19 @@ export async function generateEventGuestListPdf(
   const bottom = doc.page.height - PAGE_MARGIN
   const totalGuests = groups.reduce((n, g) => n + g.lines.length, 0)
 
+  // The title wraps short of the logo instead of running underneath it.
+  const titleWidth = options.logoDataUri ? right - left - LOGO_WIDTH - LOGO_GAP : right - left
+
   const drawPageHeader = () => {
+    if (options.logoDataUri) {
+      // Drawn first. The title is then placed by explicit coordinates, so the image cannot shift it.
+      doc.image(options.logoDataUri, right - LOGO_WIDTH, PAGE_MARGIN, {
+        width: LOGO_WIDTH,
+        height: LOGO_WIDTH / ANCHOR_LOGO_ASPECT_RATIO,
+      })
+    }
     doc.font('Helvetica-Bold').fontSize(16).fillColor(STAFF.text)
-      .text(pdfSafeText(header.name), left, PAGE_MARGIN, { width: right - left })
+      .text(pdfSafeText(header.name), left, PAGE_MARGIN, { width: titleWidth })
     doc.font('Helvetica').fontSize(11).fillColor(STAFF.text)
       .text(`${header.dateLabel} · ${header.timeLabel}`, left, doc.y + 2)
       .text(`Confirmed guests: ${totalGuests}`, left, doc.y + 2)

@@ -5,6 +5,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { generateDishAllergenReportHTML, type DishAllergenReportRow } from '@/lib/menu/allergen-report'
 import { DRINK_MENU_CODES, isDishAllergenCategory, type DishAllergenCategory } from '@/lib/menu/dish-allergen-categories'
 import { buildDishAllergenMap } from '@/lib/menu/dish-allergen-rollup'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { createClient } from '@/lib/supabase/server'
 
@@ -203,7 +204,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const now = new Date()
-    const html = generateDishAllergenReportHTML({ dishes: reportRows, generatedAt: now, category })
+    const html = generateDishAllergenReportHTML({
+      dishes: reportRows,
+      generatedAt: now,
+      category,
+      logoUrl: getAnchorLogoDataUri(),
+    })
     const pdfBuffer = await generatePDFFromHTML(html, {
       format: 'A4',
       landscape: true,

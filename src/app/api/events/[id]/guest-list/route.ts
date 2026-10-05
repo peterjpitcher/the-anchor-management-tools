@@ -9,6 +9,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { buildGuestListModel, type GuestListBookingInput } from '@/lib/events/guest-list-model'
 import { generateEventGuestListPdf } from '@/lib/events/guest-list-pdf'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -94,6 +95,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const pdf = await generateEventGuestListPdf(
       { name: eventRow.name, dateLabel, timeLabel: formatTime12Hour(eventRow.time) },
       groups,
+      { logoDataUri: getAnchorLogoDataUri() },
     )
 
     const filename = `guest-list-${safeFilename(eventRow.slug || eventRow.name)}.pdf`
