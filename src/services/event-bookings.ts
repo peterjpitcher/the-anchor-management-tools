@@ -24,7 +24,6 @@ type EventBookingAttribution = {
   utm_campaign?: string
   utm_content?: string
   utm_term?: string
-  fbclid?: string
   short_code?: string
   event_slug?: string
   event_name?: string
@@ -815,7 +814,6 @@ export class EventBookingService {
                 utm_campaign: attribution?.utm_campaign ?? null,
                 utm_content: attribution?.utm_content ?? null,
                 utm_term: attribution?.utm_term ?? null,
-                fbclid: attribution?.fbclid ?? null,
                 short_code: attribution?.short_code ?? null,
                 event_slug: attribution?.event_slug ?? null,
                 food_intent: attribution?.food_intent ?? null

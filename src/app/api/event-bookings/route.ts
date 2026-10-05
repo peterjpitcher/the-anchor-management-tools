@@ -15,7 +15,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
-import { attributionLabel, attributionNumber, attributionUrl } from '@/lib/api/attribution-labels'
+import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -50,6 +50,8 @@ const CreateEventBookingSchema = z.object({
   // leniently: a malformed, blank or over-long label is dropped or cut to its cap, and never
   // rejects the booking. They stay out of the idempotency hash and reach only the
   // `event_booking_created` analytics event (source_url is also kept as consent evidence).
+  // A click id (fbclid, gclid) is not listed here, so the schema drops it, and attributionUrl
+  // takes any click id out of source_url. None is ever kept against a booking.
   source_url: attributionUrl(2048),
   landing_path: attributionLabel(512),
   utm_source: attributionLabel(200),
@@ -57,7 +59,6 @@ const CreateEventBookingSchema = z.object({
   utm_campaign: attributionLabel(300),
   utm_content: attributionLabel(300),
   utm_term: attributionLabel(300),
-  fbclid: attributionLabel(500),
   short_code: attributionLabel(64),
   event_slug: attributionLabel(200),
   event_name: attributionLabel(300),
@@ -98,7 +99,6 @@ const ATTRIBUTION_KEYS = [
   'utm_campaign',
   'utm_content',
   'utm_term',
-  'fbclid',
   'short_code',
   'event_slug',
   'event_name',
@@ -330,7 +330,8 @@ export async function POST(request: NextRequest) {
         {
           source: 'public_event_booking',
           captureMethod: 'checkbox',
-          sourceUrl: parsed.data.source_url || req.headers.get('referer'),
+          // The referer is a page address too, so it gets the same cleaning: no click id is kept.
+          sourceUrl: parsed.data.source_url || cleanAttributionUrl(req.headers.get('referer'), 2048) || null,
           userAgent: req.headers.get('user-agent'),
           relatedEntityType: 'event_booking',
           metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }

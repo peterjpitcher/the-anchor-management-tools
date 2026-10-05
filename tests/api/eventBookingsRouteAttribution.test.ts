@@ -50,6 +50,10 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
 
+vi.mock('@/services/consent', () => ({
+  ConsentService: { applyBookingContactConsent: vi.fn() },
+}))
+
 vi.mock('@/lib/events/sunday-lunch-only-policy', () => ({
   isSundayLunchOnlyEvent: vi.fn().mockReturnValue(false),
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE: 'Sunday lunch only',
@@ -63,6 +67,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { claimIdempotencyKey, computeIdempotencyRequestHash } from '@/lib/api/idempotency'
 import { consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 import { EventBookingService } from '@/services/event-bookings'
 import { POST } from '@/app/api/event-bookings/route'
 
@@ -85,7 +90,6 @@ const GOOD_TAGS = {
   utm_campaign: 'quiz_night_october',
   utm_content: 'carousel_a',
   utm_term: 'pub quiz',
-  fbclid: 'IwAR0exampleClickId',
   short_code: 'quiz26',
   event_slug: 'quiz-night',
   event_name: 'Quiz Night',
@@ -108,7 +112,6 @@ const TEXT_LABEL_CAPS = {
   utm_campaign: 300,
   utm_content: 300,
   utm_term: 300,
-  fbclid: 500,
   short_code: 64,
   event_slug: 200,
   event_name: 300,
@@ -317,7 +320,6 @@ describe('POST /api/event-bookings: attribution labels', () => {
         utm_campaign: ['a', 'b'],
         utm_content: '   ',
         utm_term: '',
-        fbclid: true,
         short_code: null,
         event_slug: 7,
         event_name: {},
@@ -349,6 +351,76 @@ describe('POST /api/event-bookings: attribution labels', () => {
       expect(response.status).toBe(201)
       const { utm_campaign: _nul, utm_term: _lone, utm_content: _cut, ...kept } = GOOD_TAGS
       expect(attributionPassedToService()).toEqual(kept)
+    })
+  })
+
+  describe('a click id is never kept against the booking', () => {
+    const CLICK_IDS = {
+      fbclid: 'IwAR0exampleMetaClickId',
+      gclid: 'EAIaIQexampleGoogleClickId',
+      fbp: 'fb.1.1700000000000.1234567890',
+      fbc: 'fb.1.1700000000000.IwAR0exampleMetaClickId',
+    }
+
+    function everythingTheRouteKept(): string {
+      return JSON.stringify([
+        vi.mocked(EventBookingService.createBooking).mock.calls,
+        vi.mocked(ConsentService.applyBookingContactConsent).mock.calls,
+      ])
+    }
+
+    it('drops a click id sent as its own field, and still books', async () => {
+      const response = await POST(buildRequest({ ...BASE_BOOKING, ...GOOD_TAGS, ...CLICK_IDS }))
+
+      expect(response.status).toBe(201)
+      expect(attributionPassedToService()).toEqual(GOOD_TAGS)
+      for (const clickId of Object.values(CLICK_IDS)) {
+        expect(everythingTheRouteKept()).not.toContain(clickId)
+      }
+    })
+
+    it('takes a click id out of source_url and keeps the page and its campaign tags', async () => {
+      const response = await POST(buildRequest({
+        ...BASE_BOOKING,
+        ...GOOD_TAGS,
+        source_url: `https://www.example.com/events/quiz-night?utm_source=facebook&fbclid=${CLICK_IDS.fbclid}&utm_campaign=quiz&gclid=${CLICK_IDS.gclid}`,
+      }))
+
+      expect(response.status).toBe(201)
+      const cleanUrl = 'https://www.example.com/events/quiz-night?utm_source=facebook&utm_campaign=quiz'
+      expect(attributionPassedToService()).toEqual({ ...GOOD_TAGS, source_url: cleanUrl })
+      expect(vi.mocked(ConsentService.applyBookingContactConsent).mock.calls[0][2]).toMatchObject({ sourceUrl: cleanUrl })
+      expect(everythingTheRouteKept()).not.toContain(CLICK_IDS.fbclid)
+      expect(everythingTheRouteKept()).not.toContain(CLICK_IDS.gclid)
+    })
+
+    it('takes a click id out of the referer when that is the only page address', async () => {
+      const request = new NextRequest('http://localhost/api/event-bookings', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'idem-1',
+          referer: `https://www.example.com/events/quiz-night?fbclid=${CLICK_IDS.fbclid}`,
+        },
+        body: JSON.stringify(BASE_BOOKING),
+      })
+
+      const response = await POST(request)
+
+      expect(response.status).toBe(201)
+      expect(vi.mocked(ConsentService.applyBookingContactConsent).mock.calls[0][2]).toMatchObject({
+        sourceUrl: 'https://www.example.com/events/quiz-night',
+      })
+      expect(everythingTheRouteKept()).not.toContain(CLICK_IDS.fbclid)
+    })
+
+    it('leaves a source_url with no click id exactly as sent', async () => {
+      const response = await POST(buildRequest({ ...BASE_BOOKING, ...GOOD_TAGS }))
+
+      expect(response.status).toBe(201)
+      expect(vi.mocked(ConsentService.applyBookingContactConsent).mock.calls[0][2]).toMatchObject({
+        sourceUrl: GOOD_TAGS.source_url,
+      })
     })
   })
 
@@ -420,7 +492,7 @@ describe('POST /api/event-bookings: attribution labels', () => {
       rememberFirstHash()
 
       expect((await POST(buildRequest({ ...BASE_BOOKING, ...GOOD_TAGS }))).status).toBe(201)
-      const retry = await POST(buildRequest({ ...BASE_BOOKING, utm_campaign: 'another_campaign', fbclid: null, short_code: 99 }))
+      const retry = await POST(buildRequest({ ...BASE_BOOKING, utm_campaign: 'another_campaign', utm_term: null, short_code: 99 }))
 
       expect(retry.status).toBe(201)
       expect((await retry.json()).data).toMatchObject({ state: 'confirmed', booking_id: 'booking-fixture' })

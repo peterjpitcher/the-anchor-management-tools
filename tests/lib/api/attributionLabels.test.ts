@@ -61,6 +61,25 @@ describe('cleanAttributionUrl', () => {
     expect(cleanAttributionUrl(longUrl, 100)).toBe(longUrl.slice(0, 100))
   })
 
+  it('takes advert click ids out of the query string, whatever their case', () => {
+    expect(cleanAttributionUrl('https://www.example.com/events?utm_source=facebook&fbclid=abc123&utm_campaign=quiz&gclid=def456', 200))
+      .toBe('https://www.example.com/events?utm_source=facebook&utm_campaign=quiz')
+    expect(cleanAttributionUrl('https://www.example.com/events?FBCLID=abc123&msclkid=m1&ttclid=t1&twclid=w1&gbraid=g1&wbraid=g2&dclid=d1', 200))
+      .toBe('https://www.example.com/events')
+  })
+
+  it('removes a click id before the cut, so no part of a long one survives', () => {
+    const cleaned = cleanAttributionUrl(`https://www.example.com/events?fbclid=${'f'.repeat(500)}&utm_source=facebook`, 60)
+    expect(cleaned).toBe('https://www.example.com/events?utm_source=facebook')
+  })
+
+  it('leaves an address with no click id exactly as sent', () => {
+    // No trailing slash is added and nothing is re-encoded.
+    expect(cleanAttributionUrl('https://www.example.com', 200)).toBe('https://www.example.com')
+    expect(cleanAttributionUrl('https://www.example.com/events?utm_term=pub quiz', 200))
+      .toBe('https://www.example.com/events?utm_term=pub quiz')
+  })
+
   it.each([
     ['not a web address', 'not a web address'],
     ['a bare path', '/events/quiz-night'],
