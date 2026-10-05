@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { STAFF } from '@/lib/brand/palette'
-import { renderDocumentHead, statusBadgeStyle } from '@/lib/pdf/document-chrome'
+import { isSamePhoneNumber, renderDocumentHead, statusBadgeStyle } from '@/lib/pdf/document-chrome'
 import { invoiceStatusTone, quoteStatusTone } from '@/lib/invoices/status-ui'
 
 const base = { titleHtml: 'Title', metaClass: '.meta', numberClass: '.number', bodyCss: '' }
@@ -42,5 +42,22 @@ describe('statusBadgeStyle', () => {
     expect(statusBadgeStyle(quoteStatusTone('expired'))).toBe(statusBadgeStyle('neutral'))
     expect(statusBadgeStyle(invoiceStatusTone('credited'))).toBe(statusBadgeStyle('primary'))
     expect(statusBadgeStyle(invoiceStatusTone('overdue'))).toBe(statusBadgeStyle('danger'))
+  })
+})
+
+describe('isSamePhoneNumber', () => {
+  it('sees through spacing, punctuation and a country code', () => {
+    expect(isSamePhoneNumber('01753682707', '01753 682 707')).toBe(true)
+    expect(isSamePhoneNumber('+44 1753 682707', '01753 682 707')).toBe(true)
+    expect(isSamePhoneNumber('(01753) 682-707', '01753682707')).toBe(true)
+  })
+
+  it('keeps two different numbers apart', () => {
+    expect(isSamePhoneNumber('07990587315', '01753 682 707')).toBe(false)
+  })
+
+  it('never calls two blanks the same number', () => {
+    expect(isSamePhoneNumber('', '')).toBe(false)
+    expect(isSamePhoneNumber('n/a', 'none')).toBe(false)
   })
 })
