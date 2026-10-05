@@ -22,8 +22,12 @@
 import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
-/** One place for the cap, so two templates cannot disagree about it again. */
-export const LOGO_MAX_WIDTH_PX = 90
+/**
+ * One place for the cap, so two templates cannot disagree about it again. 160px suits the
+ * horizontal Orange Jelly wordmark (about 35px tall at this width); the round badge it replaced
+ * was capped at 90px.
+ */
+export const LOGO_MAX_WIDTH_PX = 160
 
 /** How a document status reads: the tones of the app's DS Badge. */
 export type DocumentStatusTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
@@ -139,7 +143,7 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
     }
     
     .logo {
-      max-width: 90px;
+      max-width: 160px;
       height: auto;
       margin-bottom: 5px;
     }

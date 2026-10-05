@@ -51,7 +51,7 @@ const SHEET_CSS = `
         .mb-4 { margin-bottom: 1rem; }
         .mt-2 { margin-top: 0.5rem; }
         .flex { display: flex; }
-        .h-16 { height: 4rem; }
+        .h-10 { height: 2.5rem; }
         .h-6 { height: 1.5rem; }
         .h-8 { height: 2rem; }
         .w-1\\/3 { width: 33.333333%; }
@@ -120,7 +120,7 @@ function formatCurrency(val: number) {
 
 export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, logoUrl }: TemplateProps): string {
   const logoHtml = logoUrl 
-    ? `<img src="${logoUrl}" alt="Logo" class="h-16" />` 
+    ? `<img src="${logoUrl}" alt="Logo" class="h-10" />` 
     : `<h1 class="text-2xl font-bold text-right">THE ANCHOR<br><span class="text-sm font-normal text-text-muted">Stanwell Moor Village</span></h1>`;
 
   const weekNum = getWeekNumber(weekStartDate);
