@@ -30,8 +30,12 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 
 // Updated: route now uses createInlinePayPalOrder instead of createSimplePayPalOrder
-const mockCreateSimplePayPalOrder = vi.fn();
-const mockGetPayPalOrder = vi.fn();
+// Hoisted, unlike the mocks above: the factory below reads these two while the route is being
+// imported at the top of the file, before an ordinary const here would exist.
+const { mockCreateSimplePayPalOrder, mockGetPayPalOrder } = vi.hoisted(() => ({
+  mockCreateSimplePayPalOrder: vi.fn(),
+  mockGetPayPalOrder: vi.fn(),
+}));
 
 vi.mock('@/lib/paypal', () => ({
   createInlinePayPalOrder: mockCreateSimplePayPalOrder,
@@ -41,6 +45,13 @@ vi.mock('@/lib/paypal', () => ({
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
+
+// Imported once, after the mocks. The route's imports reach the table-booking SMS and email code
+// (some 80 modules, plus the Twilio, Resend and Microsoft Graph clients): about half a second to
+// load, and far longer in a busy full run. Loading it inside each test after vi.resetModules()
+// charged that to the first test's 5 second budget. These tests never run that code and nothing
+// they do run keeps state between tests, so one load is enough.
+import { POST } from '../route';
 
 // Helper to build a fake booking row
 function makeBooking(overrides: Record<string, unknown> = {}) {
@@ -71,9 +82,7 @@ function mockUpdateSuccess() {
   mockUpdate.mockReturnValue({ eq: mockUpdateEq });
 }
 
-// Import AFTER mocks are declared (dynamic to avoid hoisting issues)
 async function callRoute(id: string) {
-  const { POST } = await import('../route');
   const req = new NextRequest(`http://localhost/api/external/table-bookings/${id}/paypal/create-order`, {
     method: 'POST',
   });
@@ -83,7 +92,6 @@ async function callRoute(id: string) {
 describe('POST /api/external/table-bookings/[id]/paypal/create-order', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.resetModules();
   });
 
   it('creates a PayPal order for a valid booking requiring a deposit', async () => {
