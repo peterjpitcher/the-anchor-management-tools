@@ -30,6 +30,12 @@ import { refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification } from '@/lib/refund-notifications'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
+// Imported once, like the mocked modules above. The actions' imports reach the private-booking
+// email code (some 60 modules, plus the Twilio, Resend and Microsoft Graph clients): about half a
+// second to load, and far longer in a busy full run. Loading it inside each test after
+// vi.resetModules() charged that to the first test's 5 second budget. These tests never run that
+// code and nothing they do run keeps state between tests, so one load is enough.
+import { processManualRefund, processPayPalRefund } from '../refundActions'
 
 function mockSupabaseChain(returnData: any = null, returnError: any = null) {
   const chain: any = {
@@ -50,7 +56,6 @@ function mockSupabaseChain(returnData: any = null, returnError: any = null) {
 describe('refundActions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
     vi.mocked(checkUserPermission).mockResolvedValue(true)
   })
 
@@ -69,10 +74,9 @@ describe('refundActions', () => {
       })
       vi.mocked(createAdminClient).mockReturnValue(db as never)
 
-      const actions = await import('../refundActions')
       const result = method === 'paypal'
-        ? await actions.processPayPalRefund('private_booking', 'booking-1', 250, 'Return deposit')
-        : await actions.processManualRefund('private_booking', 'booking-1', 250, 'Return deposit', 'cash')
+        ? await processPayPalRefund('private_booking', 'booking-1', 250, 'Return deposit')
+        : await processManualRefund('private_booking', 'booking-1', 250, 'Return deposit', 'cash')
 
       expect(result).toEqual({ error: expect.stringContaining('applied to the invoice') })
       expect(db.rpc).not.toHaveBeenCalled()
@@ -85,7 +89,6 @@ describe('refundActions', () => {
       const mockAuth = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) } }
       vi.mocked(createClient).mockResolvedValue(mockAuth as any)
 
-      const { processPayPalRefund } = await import('../refundActions')
       const result = await processPayPalRefund('private_booking', 'booking-1', 10, 'test reason')
 
       expect(result).toEqual({ error: expect.stringContaining('permission') })
@@ -106,7 +109,6 @@ describe('refundActions', () => {
       })
       vi.mocked(createAdminClient).mockReturnValue(db as any)
 
-      const { processPayPalRefund } = await import('../refundActions')
       const result = await processPayPalRefund('private_booking', 'booking-1', 10, 'test')
 
       expect(result).toEqual({ error: expect.stringContaining('No PayPal payment') })
@@ -130,7 +132,6 @@ describe('refundActions', () => {
       })
       vi.mocked(createAdminClient).mockReturnValue(db as any)
 
-      const { processPayPalRefund } = await import('../refundActions')
       const result = await processPayPalRefund('private_booking', 'booking-1', 10, 'test')
 
       expect(result).toEqual({ error: expect.stringContaining('180') })
@@ -194,7 +195,6 @@ describe('refundActions', () => {
       }
       vi.mocked(createAdminClient).mockReturnValue(db as any)
 
-      const { processPayPalRefund } = await import('../refundActions')
       const result = await processPayPalRefund('parking', 'parking-payment-1', 10, 'test')
 
       expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
@@ -272,7 +272,6 @@ describe('refundActions', () => {
       }
       vi.mocked(createAdminClient).mockReturnValue(db as any)
 
-      const { processPayPalRefund } = await import('../refundActions')
       const result = await processPayPalRefund('private_booking', 'booking-1', 10, 'test')
 
       expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
@@ -297,7 +296,6 @@ describe('refundActions', () => {
       db.rpc.mockResolvedValue({ data: 100, error: null })
       vi.mocked(createAdminClient).mockReturnValue(db as any)
 
-      const { processManualRefund } = await import('../refundActions')
       const result = await processManualRefund('private_booking', 'booking-1', 50, 'cash return', 'cash')
 
       expect(refundPayPalPayment).not.toHaveBeenCalled()
