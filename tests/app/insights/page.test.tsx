@@ -89,6 +89,17 @@ describe('InsightsReportView', () => {
     expect(html).toContain('id="actions"')
   })
 
+  it('carries the Orange Jelly logo on paper only, loaded before Print is pressed', () => {
+    const logos = html.match(/<img[^>]*alt="Orange Jelly"[^>]*>/g) ?? []
+    expect(logos.length).toBeGreaterThan(0)
+    for (const logo of logos) {
+      // Hidden on screen, shown in print. Not lazy: a hidden lazy image may never be fetched.
+      expect(logo).toMatch(/class="[^"]*\bhidden\b[^"]*print:block/)
+      expect(logo).toContain('logo-horizontal.png')
+      expect(logo).not.toContain('loading="lazy"')
+    }
+  })
+
   it('keeps the sub-list titles inside a card as headings, so screen readers can jump between them', () => {
     // SubHeading: h4 under the card title (h3), in Title Case like every other sub-heading.
     expect(html).toMatch(/<h4[^>]*>Needs Attention<\/h4>/)
