@@ -38,8 +38,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   })),
 }))
 
-const mockCreatePayPalOrder = vi.fn()
-const mockGetPayPalOrder = vi.fn()
+// Hoisted, unlike the mocks above: the factory below reads these two while the route is being
+// imported at the top of the file, before an ordinary const here would exist.
+const { mockCreatePayPalOrder, mockGetPayPalOrder } = vi.hoisted(() => ({
+  mockCreatePayPalOrder: vi.fn(),
+  mockGetPayPalOrder: vi.fn(),
+}))
 vi.mock('@/lib/paypal', () => ({
   createInlinePayPalOrder: mockCreatePayPalOrder,
   getPayPalOrder: mockGetPayPalOrder,
@@ -48,6 +52,13 @@ vi.mock('@/lib/paypal', () => ({
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
+
+// Imported once, after the mocks. The route's imports reach the table-booking SMS and email code
+// (some 80 modules, plus the Twilio, Resend and Microsoft Graph clients): about half a second to
+// load, and far longer in a busy full run. Loading it inside each test after vi.resetModules()
+// charged that to the first test's 5 second budget. These tests never run that code and nothing
+// they do run keeps state between tests, so one load is enough.
+import { POST } from '@/app/api/external/table-bookings/[id]/paypal/create-order/route'
 
 function buildBookingRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -74,7 +85,6 @@ function mockFetchAndUpdate(booking: ReturnType<typeof buildBookingRow>) {
 }
 
 async function callRoute(id: string) {
-  const { POST } = await import('@/app/api/external/table-bookings/[id]/paypal/create-order/route')
   const req = new NextRequest(
     `http://localhost/api/external/table-bookings/${id}/paypal/create-order`,
     { method: 'POST' }
@@ -85,7 +95,6 @@ async function callRoute(id: string) {
 describe('paypal create-order canonical deposit precedence (walk-in launch)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
   })
 
   it('locked amount wins: uses deposit_amount_locked even when deposit_amount differs', async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 /**
  * Paging by offset needs a total order, or pages repeat and skip people.
@@ -51,6 +51,12 @@ vi.mock('@/lib/email/marketing/attribution', async (importOriginal) => ({
   fetchCampaignLinks: vi.fn(async () => []),
   fetchClicksForLinks: vi.fn(async () => []),
 }))
+
+// Imported once, after the mocks. The service asks createAdminClient() for its client on every
+// call, so each test still gets the fake it set up, and nothing in the service's module graph
+// keeps state between tests. Loading it inside each test after vi.resetModules() bought nothing
+// and charged the whole cold load to the first test's 5 second budget.
+import { listCampaigns, listRecipients } from '@/services/marketing-campaigns'
 
 function compare(left: unknown, right: unknown): number {
   if (left === right) return 0
@@ -188,17 +194,11 @@ describe('marketing recipient paging order', () => {
     state.client = db
   }
 
-  beforeEach(() => {
-    vi.resetModules()
-  })
-
   it('returns every recipient once when all 253 share one created_at', async () => {
     useDb({
       marketing_campaigns: [campaignRow(CAMPAIGN_ID)],
       marketing_campaign_recipients: recipientRows(253, () => 'sent'),
     })
-
-    const { listRecipients } = await import('@/services/marketing-campaigns')
 
     const seen: string[] = []
     let total = 0
@@ -220,7 +220,6 @@ describe('marketing recipient paging order', () => {
       marketing_campaign_recipients: recipientRows(60, () => 'sent'),
     })
 
-    const { listRecipients } = await import('@/services/marketing-campaigns')
     await listRecipients(CAMPAIGN_ID, { page: 1, pageSize: 50 })
 
     const read = db.reads.find((entry) => entry.table === 'marketing_campaign_recipients')
@@ -235,7 +234,6 @@ describe('marketing recipient paging order', () => {
       marketing_campaign_recipients: recipientRows(1_300, (index) => (index < 1_000 ? 'sent' : 'failed')),
     })
 
-    const { listCampaigns } = await import('@/services/marketing-campaigns')
     const { campaigns } = await listCampaigns({ page: 1, pageSize: 25 })
 
     expect(campaigns).toHaveLength(1)
