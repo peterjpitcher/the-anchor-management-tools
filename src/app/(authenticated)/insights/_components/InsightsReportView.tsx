@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { Card, CardBody, CardHeader, LinkButton, PageLayout, SubHeading, Table, TableBody, TableCell, TableRow } from '@/ds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '@/lib/insights/format'
@@ -222,7 +223,29 @@ export function InsightsReportView({ report }: { report: InsightsReport }): Reac
   const notChecked = report.sections.filter((section) => section.status === 'not_checked')
 
   return (
-    <PageLayout {...INSIGHTS_LAYOUT} subtitle={subtitle} headerActions={<InsightsToolbar />}>
+    <PageLayout
+      {...INSIGHTS_LAYOUT}
+      subtitle={subtitle}
+      headerActions={
+        <>
+          <InsightsToolbar />
+          {/*
+            Paper only. The app chrome that shows the logo on screen is hidden in print, so the
+            printout carries its own (owner decision, 5 October 2026). Loaded eagerly: a lazy
+            image that is hidden on screen may not have arrived when Print is pressed.
+          */}
+          <Image
+            src="/orange-jelly/logo-horizontal.png"
+            alt="Orange Jelly"
+            width={1200}
+            height={260}
+            sizes="320px"
+            loading="eager"
+            className="hidden h-8 w-auto print:block"
+          />
+        </>
+      }
+    >
       {/*
         Kept for print: on paper the blocks sit 12px apart and plain text prints in the strong
         ink. On screen this is the same 24px rhythm PageLayout gives its children.
