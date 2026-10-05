@@ -275,7 +275,7 @@ export function generateEventSheetHTML(data: EventSheetData): string {
   .status { font-weight: 700; }
   .status-approved { color: ${STAFF.successFg}; }
   .status-rejected, .status-incomplete { color: ${STAFF.dangerFg}; }
-  .footer { margin-top: 14px; font-size: 9px; color: ${STAFF.textMuted}; border-top: 1px solid ${FORM_RULE}; padding-top: 6px; }
+  .footer { margin-top: 14px; font-size: 9px; color: ${STAFF.textMuted}; border-top: 1px solid ${FORM_RULE}; padding-top: 6px; page-break-inside: avoid; page-break-before: avoid; }
   @media print { body { padding: 0; } }
 </style>
 </head>
