@@ -5,6 +5,7 @@ import {
   type GuestListEventHeader,
 } from '@/lib/events/guest-list-pdf'
 import type { GuestGroup } from '@/lib/events/guest-list-model'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 
 const header: GuestListEventHeader = {
   name: 'Quiz Night',
@@ -78,5 +79,22 @@ describe('generateEventGuestListPdf (Unicode safety)', () => {
     const buf = await generateEventGuestListPdf(header, groupsWith([longName]))
     expect(Buffer.isBuffer(buf)).toBe(true)
     expect(buf.length).toBeGreaterThan(0)
+  })
+})
+
+describe('generateEventGuestListPdf (logo)', () => {
+  const groups: GuestGroup[] = [
+    { bookerName: 'Jane Smith', lines: [{ name: 'Jane Smith', isBooker: true }, { name: '', isBooker: false }] },
+  ]
+
+  it('embeds The Anchor logo when one is given', async () => {
+    const logoDataUri = getAnchorLogoDataUri()
+    expect(logoDataUri).toBeDefined()
+
+    const plain = await generateEventGuestListPdf(header, groups)
+    const branded = await generateEventGuestListPdf(header, groups, { logoDataUri })
+
+    expect(plain.toString('latin1')).not.toContain('/Subtype /Image')
+    expect(branded.toString('latin1')).toContain('/Subtype /Image')
   })
 })

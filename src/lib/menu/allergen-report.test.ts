@@ -193,3 +193,23 @@ describe('generateDishAllergenReportHTML', () => {
     expect(allHtml).toContain('<dd>All dishes</dd>')
   })
 })
+
+describe('allergen reports carry The Anchor logo', () => {
+  const LOGO = 'data:image/png;base64,AAAA'
+  const LOGO_IMG = `<img class="report-logo" src="${LOGO}" alt="The Anchor" />`
+
+  it('prints the logo ahead of the title on both reports', () => {
+    const dishHtml = generateDishAllergenReportHTML({ generatedAt: baseInput.generatedAt, dishes: [], logoUrl: LOGO })
+    const ingredientHtml = generateIngredientAllergenReportHTML({ ...baseInput, ingredients: [], logoUrl: LOGO })
+
+    for (const html of [dishHtml, ingredientHtml]) {
+      expect(html).toContain(LOGO_IMG)
+      expect(html.indexOf(LOGO_IMG)).toBeLessThan(html.indexOf('<h1>'))
+    }
+  })
+
+  it('renders without an image when no logo is given', () => {
+    expect(generateDishAllergenReportHTML({ generatedAt: baseInput.generatedAt, dishes: [] })).not.toContain('<img')
+    expect(generateIngredientAllergenReportHTML({ ...baseInput, ingredients: [] })).not.toContain('<img')
+  })
+})

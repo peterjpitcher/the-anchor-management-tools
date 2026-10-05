@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateEventSheetHTML, type EventSheetData } from '@/lib/private-bookings/event-sheet'
 import { logger } from '@/lib/logger'
+import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 
 /**
  * Staff event sheet (SOP §29): renders the internal run sheet for a booking.
@@ -154,7 +155,8 @@ export async function GET(request: NextRequest) {
       specialRiskNotes: (booking.special_risk_notes as string | null) ?? null,
     }
 
-    const html = generateEventSheetHTML(data)
+    // Inlined rather than fetched, so the sheet prints the same offline. See getAnchorLogoDataUri.
+    const html = generateEventSheetHTML(data, { logoUrl: getAnchorLogoDataUri() })
 
     return new NextResponse(html, {
       headers: {

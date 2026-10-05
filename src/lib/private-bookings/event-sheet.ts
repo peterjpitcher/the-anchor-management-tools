@@ -153,7 +153,7 @@ const LICENSING_HOURS: Array<{ activity: string; times: string }> = [
   { activity: 'Opening hours', times: '08:00–00:30 Mon–Thu; 08:00–01:30 Fri–Sat; 11:00–00:00 Sun' },
 ]
 
-export function generateEventSheetHTML(data: EventSheetData): string {
+export function generateEventSheetHTML(data: EventSheetData, options: { logoUrl?: string } = {}): string {
   const blockers = buildBlockers(data)
   const bookingRef = data.bookingId.slice(0, 8).toUpperCase()
 
@@ -252,6 +252,8 @@ export function generateEventSheetHTML(data: EventSheetData): string {
   @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: ${STAFF.text}; margin: 0; padding: 16px; }
+  .sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .sheet-logo { flex: none; height: 40px; width: auto; }
   h1 { font-size: 18px; margin: 0 0 2px; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1.5px solid ${STAFF.text}; padding-bottom: 3px; margin: 14px 0 6px; }
   .subtitle { color: ${STAFF.textMuted}; margin: 0 0 10px; }
@@ -280,8 +282,13 @@ export function generateEventSheetHTML(data: EventSheetData): string {
 </style>
 </head>
 <body>
-  <h1>Staff Event Sheet — Booking ${escapeHtml(bookingRef)}</h1>
-  <p class="subtitle">The Anchor — internal staff document. Booking status: ${escapeHtml(data.bookingStatus.toUpperCase())}. Not for customers.</p>
+  <div class="sheet-header">
+    <div>
+      <h1>Staff Event Sheet — Booking ${escapeHtml(bookingRef)}</h1>
+      <p class="subtitle">The Anchor — internal staff document. Booking status: ${escapeHtml(data.bookingStatus.toUpperCase())}. Not for customers.</p>
+    </div>
+    ${options.logoUrl ? `<img class="sheet-logo" src="${escapeHtml(options.logoUrl)}" alt="The Anchor" />` : ''}
+  </div>
 
   ${
     blockers.length > 0

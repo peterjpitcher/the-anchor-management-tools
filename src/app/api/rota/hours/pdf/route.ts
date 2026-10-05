@@ -3,6 +3,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo';
 import {
   isIsoDate,
   toIsoDate,
@@ -278,7 +279,7 @@ function buildTableRows(model: ReportModel): { holidayRowsHtml: string; sickRows
   return { holidayRowsHtml, sickRowsHtml };
 }
 
-function buildReportHtml(model: ReportModel): string {
+function buildReportHtml(model: ReportModel, logoUrl?: string): string {
   const { holidayRowsHtml, sickRowsHtml } = buildTableRows(model);
   const employeeLabel = model.series.length === 1
     ? model.series[0].name
@@ -315,6 +316,17 @@ function buildReportHtml(model: ReportModel): string {
       justify-content: space-between;
       gap: 12mm;
       align-items: flex-start;
+    }
+    .title-block {
+      display: flex;
+      align-items: center;
+      gap: 5mm;
+    }
+    .report-logo {
+      flex: none;
+      display: block;
+      height: 9mm;
+      width: auto;
     }
     h1 {
       margin: 0;
@@ -424,9 +436,12 @@ function buildReportHtml(model: ReportModel): string {
 <body>
   <section class="page chart-page">
     <header class="header">
-      <div>
-        <h1>Hours by Week</h1>
-        <div class="meta">${escapeHtml(dateRange)} · ${escapeHtml(employeeLabel)} · generated ${escapeHtml(model.generatedAt)}</div>
+      <div class="title-block">
+        ${logoUrl ? `<img class="report-logo" src="${logoUrl}" alt="Orange Jelly">` : ''}
+        <div>
+          <h1>Hours by Week</h1>
+          <div class="meta">${escapeHtml(dateRange)} · ${escapeHtml(employeeLabel)} · generated ${escapeHtml(model.generatedAt)}</div>
+        </div>
       </div>
       <div class="stats">
         <div class="stat">
@@ -711,7 +726,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const previewInline = url.searchParams.get('preview') === '1';
     const model = await buildReportModel(url.searchParams);
-    const html = buildReportHtml(model);
+    // Inlined rather than fetched over the network. See getDocumentLogoDataUri.
+    const html = buildReportHtml(model, getDocumentLogoDataUri());
     const pdfBuffer = await generatePDFFromHTML(html, {
       format: 'A4',
       landscape: true,

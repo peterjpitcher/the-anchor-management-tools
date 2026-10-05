@@ -50,6 +50,7 @@ import {
 } from '../../src/lib/menu/allergen-report'
 import { buildTermsSheetHtml, buildVoucherBatchHtml } from '../../src/lib/voucher-card-template'
 import { COMPANY_DETAILS } from '../../src/lib/company-details'
+import { getAnchorLogoDataUri } from '../../src/lib/pdf/anchor-logo'
 import { getDocumentLogoDataUri } from '../../src/lib/pdf/document-logo'
 import { CONTRACT_LOGO_DATA_URI } from '../../src/lib/private-bookings/contract-logo'
 import type { InvoiceWithDetails, QuoteWithDetails } from '../../src/types/invoices'
@@ -737,6 +738,7 @@ function buildSamples(): Sample[] {
             dishes: buildDishes(40),
             generatedAt: new Date('2026-03-13T16:12:00Z'),
             category: 'food',
+            logoUrl: getAnchorLogoDataUri(),
           }),
           ALLERGEN_PDF,
           { browser }
@@ -752,6 +754,7 @@ function buildSamples(): Sample[] {
             ingredients: buildIngredients(40),
             generatedAt: new Date('2026-03-13T16:12:00Z'),
             department: 'all',
+            logoUrl: getAnchorLogoDataUri(),
           }),
           ALLERGEN_PDF,
           { browser }
