@@ -45,7 +45,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     }
     
     .logo {
-      max-width: 90px;
+      max-width: 160px;
       height: auto;
       margin-bottom: 5px;
     }
@@ -448,7 +448,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     }
     
     .logo {
-      max-width: 90px;
+      max-width: 160px;
       height: auto;
       margin-bottom: 5px;
     }
@@ -891,7 +891,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     }
     
     .logo {
-      max-width: 90px;
+      max-width: 160px;
       height: auto;
       margin-bottom: 5px;
     }
