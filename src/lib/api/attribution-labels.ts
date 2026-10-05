@@ -22,9 +22,31 @@ export function cleanAttributionLabel(value: unknown, cap: number): string | und
   return cleaned
 }
 
-/** A page address kept as a label: cleaned as text, then dropped unless it still reads as a URL. */
+// Advert click ids. Each one identifies a single person's click on a single advert, so it is
+// never kept against a booking, whether sent as its own field or inside a page address.
+const CLICK_ID_PARAMS = new Set(['fbclid', 'gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'ttclid', 'twclid'])
+
+/** The address with any click id taken out of its query string. Untouched when it carries none. */
+function withoutClickIds(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value.trim())
+  } catch {
+    return value
+  }
+  const clickIdKeys = [...new Set(url.searchParams.keys())].filter((key) => CLICK_ID_PARAMS.has(key.toLowerCase()))
+  if (clickIdKeys.length === 0) return value
+  for (const key of clickIdKeys) url.searchParams.delete(key)
+  return url.toString()
+}
+
+/**
+ * A page address kept as a label: click ids removed, cleaned as text, then dropped unless it
+ * still reads as a URL. The click ids go before the cut, so a long one cannot survive in part.
+ */
 export function cleanAttributionUrl(value: unknown, cap: number): string | undefined {
-  const cleaned = cleanAttributionLabel(value, cap)
+  if (typeof value !== 'string') return undefined
+  const cleaned = cleanAttributionLabel(withoutClickIds(value), cap)
   if (!cleaned) return undefined
   return z.string().url().safeParse(cleaned).success ? cleaned : undefined
 }
