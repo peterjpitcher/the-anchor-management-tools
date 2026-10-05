@@ -52,6 +52,7 @@ const NOTE: VenueCalendarNote = {
   start_time: null,
   end_time: null,
   color: DEFAULT_CALENDAR_NOTE_COLOUR,
+  show_to_staff: true,
 }
 
 function openNote(onNotesChanged = vi.fn()) {

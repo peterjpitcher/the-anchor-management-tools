@@ -29,6 +29,8 @@ const CalendarNoteCreateSchema = z.object({
   start_time: TimeSchema.nullable().optional(),
   end_time: TimeSchema.nullable().optional(),
   color: HexColorSchema.nullable().optional(),
+  // Whether staff see the note in the staff portal. Left out, a new note is shown.
+  show_to_staff: z.boolean().optional(),
 }).refine(
   (value) => !value.end_time || Boolean(value.start_time),
   {
@@ -51,6 +53,8 @@ const CalendarNoteUpdateSchema = z.object({
   start_time: TimeSchema.nullable().optional(),
   end_time: TimeSchema.nullable().optional(),
   color: HexColorSchema.nullable().optional(),
+  // Left out, the note keeps whatever it already had.
+  show_to_staff: z.boolean().optional(),
 })
 
 const CalendarNoteGenerateSchema = z.object({
@@ -83,6 +87,8 @@ type CalendarNoteRow = {
   start_time: string | null
   end_time: string | null
   color: string
+  /** True when staff see this note in the staff portal. Google Calendar sync ignores it. */
+  show_to_staff: boolean
   created_at: string
   updated_at: string
 }
@@ -138,6 +144,8 @@ function mapCalendarNoteRow(row: Record<string, unknown>): CalendarNote {
     start_time: typeof row.start_time === 'string' ? row.start_time : null,
     end_time: typeof row.end_time === 'string' ? row.end_time : null,
     color: normalizeHexColor(typeof row.color === 'string' ? row.color : DEFAULT_NOTE_COLOR),
+    // The column is NOT NULL DEFAULT true, so only an explicit false hides a note.
+    show_to_staff: row.show_to_staff !== false,
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
     updated_at: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
   }
@@ -363,7 +371,7 @@ export async function listCalendarNotes(): Promise<{ data?: CalendarNote[]; erro
   try {
     const admin = createAdminClient()
     const { data, error } = await calendarNotesTable(admin)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at')
       .order('note_date', { ascending: true })
       .order('end_date', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
@@ -404,6 +412,7 @@ export async function createCalendarNote(input: CalendarNoteCreateInput): Promis
     start_time: normalizeOptionalTime(parsed.data.start_time),
     end_time: normalizeOptionalTime(parsed.data.end_time),
     color: normalizeHexColor(parsed.data.color),
+    show_to_staff: parsed.data.show_to_staff ?? true,
     created_by: permission.user.id,
     updated_by: permission.user.id,
     generated_context: {} as Record<string, never>,
@@ -413,7 +422,7 @@ export async function createCalendarNote(input: CalendarNoteCreateInput): Promis
     const admin = createAdminClient()
     const { data, error } = await calendarNotesTable(admin)
       .insert(payload)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at')
       .maybeSingle()
 
     if (error) {
@@ -440,6 +449,7 @@ export async function createCalendarNote(input: CalendarNoteCreateInput): Promis
           end_date: note.end_date,
           title: note.title,
           source: note.source,
+          show_to_staff: note.show_to_staff,
         },
       })
     } catch (auditError) {
@@ -479,7 +489,7 @@ export async function updateCalendarNote(noteId: string, input: CalendarNoteUpda
     const admin = createAdminClient()
 
     const { data: existing, error: existingError } = await calendarNotesTable(admin)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at')
       .eq('id', idParse.data)
       .maybeSingle()
 
@@ -501,6 +511,8 @@ export async function updateCalendarNote(noteId: string, input: CalendarNoteUpda
       start_time: parsedPatch.data.start_time !== undefined ? parsedPatch.data.start_time : existingNote.start_time,
       end_time: parsedPatch.data.end_time !== undefined ? parsedPatch.data.end_time : existingNote.end_time,
       color: parsedPatch.data.color !== undefined ? parsedPatch.data.color : existingNote.color,
+      // An edit that does not mention the tick box must never flip it.
+      show_to_staff: parsedPatch.data.show_to_staff ?? existingNote.show_to_staff,
     }
 
     const validated = CalendarNoteCreateSchema.safeParse(mergedForValidation)
@@ -516,13 +528,14 @@ export async function updateCalendarNote(noteId: string, input: CalendarNoteUpda
       start_time: normalizeOptionalTime(validated.data.start_time),
       end_time: normalizeOptionalTime(validated.data.end_time),
       color: normalizeHexColor(validated.data.color),
+      show_to_staff: mergedForValidation.show_to_staff,
       updated_by: permission.user.id,
     }
 
     const { data: updated, error: updateError } = await calendarNotesTable(admin)
       .update(updatePayload)
       .eq('id', idParse.data)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at')
       .maybeSingle()
 
     if (updateError) {
@@ -581,7 +594,7 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
     // Widened preimage: created_by, updated_by and generated_context were not
     // selected, so even a successful audit write could not reconstruct the row.
     const { data: existing, error: existingError } = await calendarNotesTable(admin)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at, created_by, updated_by, generated_context')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at, created_by, updated_by, generated_context')
       .eq('id', idParse.data)
       .maybeSingle()
 
@@ -887,7 +900,7 @@ export async function generateCalendarNotesWithAI(
 
   const { data: insertedRows, error: insertError } = await calendarNotesTable(admin)
     .insert(insertRows)
-    .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+    .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff, created_at, updated_at')
 
   if (insertError) {
     console.error('Failed to save AI-generated calendar notes:', insertError)

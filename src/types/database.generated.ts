@@ -1561,6 +1561,7 @@ export type Database = {
           id: string
           note_date: string
           notes: string | null
+          show_to_staff: boolean
           source: string
           start_time: string | null
           title: string
@@ -1577,6 +1578,7 @@ export type Database = {
           id?: string
           note_date: string
           notes?: string | null
+          show_to_staff?: boolean
           source?: string
           start_time?: string | null
           title: string
@@ -1593,6 +1595,7 @@ export type Database = {
           id?: string
           note_date?: string
           notes?: string | null
+          show_to_staff?: boolean
           source?: string
           start_time?: string | null
           title?: string
