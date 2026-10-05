@@ -252,6 +252,13 @@ describe('buildTermsSheetHtml', () => {
     }
   })
 
+  it('carries The Anchor logo in its header', () => {
+    const html = buildTermsSheetHtml({ version: TERMS_VERSION, clauses: CLAUSES })
+    const header = html.slice(html.indexOf('<header class="sheet-head">'), html.indexOf('</header>'))
+    expect(header).toContain('<img class="sheet-logo" src="data:image/png;base64,')
+    expect(header).toContain('alt="The Anchor"')
+  })
+
   it('rejects an empty clause list', () => {
     expect(() => buildTermsSheetHtml({ version: TERMS_VERSION, clauses: [] })).toThrow('no clauses')
   })

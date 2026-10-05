@@ -407,7 +407,8 @@ ${VOUCHER_CARD_FONT_FACE_CSS}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:${GUEST.surface}}
 body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.sheet-head{padding-bottom:5mm;margin-bottom:6mm;border-bottom:1.4px solid var(--ink)}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;padding-bottom:5mm;margin-bottom:6mm;border-bottom:1.4px solid var(--ink)}
+.sheet-logo{flex:none;width:34mm;height:auto;display:block}
 .sheet-kicker{font-weight:600;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 2mm}
 .sheet-title{font-family:var(--font-display);font-weight:400;font-size:26px;line-height:1.05;letter-spacing:-.02em;color:var(--ink);margin:0}
 .sheet-meta{font-size:10.5pt;line-height:1.5;color:var(--ink-mute);margin:2.4mm 0 0}
@@ -422,9 +423,12 @@ body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:ex
 </head>
 <body>
 <header class="sheet-head">
+<div>
 <p class="sheet-kicker">Prize voucher &middot; Stanwell Moor Village</p>
 <h1 class="sheet-title">The Anchor - Voucher terms (${safeVersion})</h1>
 <p class="sheet-meta"><b>The Anchor</b>, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ</p>
+</div>
+<img class="sheet-logo" src="${ANCHOR_LOGO_BLACK_DATA_URI}" alt="The Anchor">
 </header>
 <ol class="terms-list" data-terms-version="${safeVersion}">
 ${clausesHtml}
