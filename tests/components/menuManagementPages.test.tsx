@@ -1,10 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+// The pure entry point: the default one unmounts after every test, and three of the tests here read
+// one shared render. Nothing is unmounted for us, so every render below is paired with a cleanup.
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react/pure'
 
 /**
  * The four Menu tabs follow the page contract: one title (the sidebar label, "Menu Management")
  * with the tab named in the subtitle, the MENU_NAV tab row, no back button (the tabs are the section's top level), header
  * actions in the header, and a failed load shown as an error rather than an empty list.
+ *
+ * Buttons and labelled filters are looked up inside the part of the page they live in (the header,
+ * the filter bar, a column's header cell, the table's rows), not across the whole page. Naming a
+ * button reads its `labels`, and jsdom answers each read by walking the whole document, checking
+ * every label on the way. On a full page of ingredients that made one whole-page lookup cost about
+ * a second on a quiet machine, far more than drawing the page.
  */
 
 const pathnameMock = vi.hoisted(() => ({ current: '/menu-management' }))
@@ -106,17 +114,57 @@ const recipe = {
   usage: [],
 }
 
+/**
+ * The page header: the block PageLayout draws round the title, the header actions and the tab row.
+ * PageLayout draws the title twice (phone and desktop) and the header is not a landmark, so walk
+ * up from the first title to the block that also holds the tabs.
+ */
+function pageHeader(): HTMLElement {
+  let block = screen.getAllByRole('heading', { level: 1, name: 'Menu Management' })[0].parentElement
+  while (block && !block.querySelector('[role="tablist"]')) block = block.parentElement
+  if (!block) throw new Error('the page title has no header block with the tab row in it')
+  return block
+}
+
+/**
+ * The filter bar above the table. Not a landmark either, so walk up from the search box to the
+ * block that also holds the filters.
+ */
+function filterBar(): HTMLElement {
+  let block = screen.getByPlaceholderText(/^Search /).parentElement
+  while (block && !block.querySelector('select')) block = block.parentElement
+  if (!block) throw new Error('the search box has no filter bar with a filter in it')
+  return block
+}
+
+/**
+ * A column's sort button, looked up inside that column's header cell. Naming a header cell reads no
+ * `labels`, so this names one button, not every button on the page.
+ */
+function sortButton(column: string): HTMLElement {
+  return within(screen.getByRole('columnheader', { name: column })).getByRole('button', { name: column })
+}
+
+/** The rows of the page's one table, where the row actions live. */
+function tableRows(): HTMLElement {
+  const rows = screen.getByRole('table').querySelector('tbody')
+  if (!rows) throw new Error('the table has no rows')
+  return rows
+}
+
 function expectMenuChrome(subtitle: RegExp): void {
   expect(screen.getAllByRole('heading', { level: 1, name: 'Menu Management' }).length).toBeGreaterThan(0)
   expect(screen.getAllByText(subtitle).length).toBeGreaterThan(0)
   for (const tab of ['Overview', 'Dishes', 'Recipes', 'Ingredients']) {
     expect(screen.getAllByRole('tab', { name: tab }).length).toBeGreaterThan(0)
   }
+  // Page-wide on purpose: narrowed to the header, a back button drawn anywhere else would pass.
   expect(screen.queryByRole('button', { name: /back to/i })).not.toBeInTheDocument()
   expect(screen.queryByRole('navigation', { name: /breadcrumbs/i })).not.toBeInTheDocument()
 }
 
-beforeEach(() => {
+/** What every page loads, and the browser pieces jsdom lacks. */
+function stubPage(): void {
   listMenuDishesMock.mockResolvedValue({ data: [dish], target_gp_pct: 0.7 })
   listMenuIngredientsMock.mockResolvedValue({ data: [ingredient] })
   listMenuRecipesMock.mockResolvedValue({ data: [recipe] })
@@ -136,7 +184,14 @@ beforeEach(() => {
       removeListener: vi.fn(),
     })),
   )
-})
+}
+
+/** Takes the page down and undoes stubPage. */
+function clearPage(): void {
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.clearAllMocks()
+}
 
 /** The value line of the DS Stat with this label. */
 function statValue(label: string): HTMLElement {
@@ -160,29 +215,28 @@ function thirtyDishes() {
   })
 }
 
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-  vi.clearAllMocks()
-})
-
-describe('Menu tabs follow the page contract', () => {
-  it('Overview: one Menu title, tab row, header actions and the figures grid', async () => {
+// None of these changes the page, so they read one render of the Overview between them. The
+// render is made in beforeAll, which runs before any beforeEach, so it sets up its own data.
+describe('Menu tabs follow the page contract: the Overview, read from one render', () => {
+  beforeAll(() => {
+    stubPage()
     pathnameMock.current = '/menu-management'
     render(<MenuManagementClient />)
+  })
 
+  afterAll(clearPage)
+
+  it('Overview: one Menu title, tab row, header actions and the figures grid', async () => {
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     expectMenuChrome(/^Overview: /)
-    expect(screen.getAllByRole('button', { name: 'Export CSV' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Refresh' }).length).toBeGreaterThan(0)
+    const header = within(pageHeader())
+    expect(header.getAllByRole('button', { name: 'Export CSV' }).length).toBeGreaterThan(0)
+    expect(header.getAllByRole('button', { name: 'Refresh' }).length).toBeGreaterThan(0)
     expect(screen.getByText('Total Dishes')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Active status' })).toBeInTheDocument()
   })
 
   it('Overview: no quick-link cards repeating the tabs', async () => {
-    pathnameMock.current = '/menu-management'
-    render(<MenuManagementClient />)
-
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     for (const href of ['/menu-management/dishes', '/menu-management/recipes', '/menu-management/ingredients']) {
       const links = Array.from(document.querySelectorAll(`a[href="${href}"]`))
@@ -193,14 +247,18 @@ describe('Menu tabs follow the page contract', () => {
   })
 
   it('Overview: the costing figures carry their colour', async () => {
-    pathnameMock.current = '/menu-management'
-    render(<MenuManagementClient />)
-
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     // No dish below target is good news; a dish with no costing needs attention.
     expect(statValue('Below GP Target')).toHaveClass('text-success-fg')
     expect(statValue('Missing Costing')).toHaveClass('text-warning-fg')
   })
+})
+
+// Each of these loads its own data or changes the page, so each draws its own.
+describe('Menu tabs follow the page contract', () => {
+  beforeEach(stubPage)
+
+  afterEach(clearPage)
 
   it('Overview: a failed first load is an error with a retry, never an empty menu', async () => {
     pathnameMock.current = '/menu-management'
@@ -209,7 +267,7 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findByText('Database unavailable')).toBeInTheDocument()
     expectMenuChrome(/^Overview: /)
-    expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
+    expect(within(screen.getByRole('alert')).getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
     expect(screen.queryByText('Total Dishes')).not.toBeInTheDocument()
   })
 
@@ -220,11 +278,14 @@ describe('Menu tabs follow the page contract', () => {
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     expectMenuChrome(/^Dishes: /)
     expect(screen.getByPlaceholderText('Search dishes, menus, or ingredients...')).toBeInTheDocument()
-    expect(screen.getByLabelText('Menu')).toBeInTheDocument()
-    expect(screen.getByLabelText('Status')).toBeInTheDocument()
+    const filters = within(filterBar())
+    expect(filters.getByLabelText('Menu')).toBeInTheDocument()
+    expect(filters.getByLabelText('Status')).toBeInTheDocument()
+    // Page-wide on purpose: this one checks the old control is gone from everywhere.
     expect(screen.queryByLabelText('Allergen report category')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Download PDF' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'New Dish' }).length).toBeGreaterThan(0)
+    const header = within(pageHeader())
+    expect(header.getAllByRole('button', { name: 'Download PDF' }).length).toBeGreaterThan(0)
+    expect(header.getAllByRole('button', { name: 'New Dish' }).length).toBeGreaterThan(0)
   })
 
   it('Dishes: the costing figures carry their colour', async () => {
@@ -249,14 +310,14 @@ describe('Menu tabs follow the page contract', () => {
     expect(await screen.findByText('Dish 30')).toBeInTheDocument()
     expect(screen.queryByText('Dish 01')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dish' }))
+    fireEvent.click(sortButton('Dish'))
 
     expect(screen.getByText('Dish 01')).toBeInTheDocument()
     expect(screen.queryByText('Dish 30')).not.toBeInTheDocument()
-    const header = screen.getByRole('button', { name: 'Dish' }).closest('th')
+    const header = sortButton('Dish').closest('th')
     expect(header).toHaveAttribute('aria-sort', 'ascending')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dish' }))
+    fireEvent.click(sortButton('Dish'))
     expect(screen.getByText('Dish 30')).toBeInTheDocument()
     expect(screen.queryByText('Dish 01')).not.toBeInTheDocument()
     expect(header).toHaveAttribute('aria-sort', 'descending')
@@ -283,13 +344,13 @@ describe('Menu tabs follow the page contract', () => {
     expect(await screen.findByText('Ing 01')).toBeInTheDocument()
     expect(screen.queryByText('Ing 26')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dishes' }))
+    fireEvent.click(sortButton('Dishes'))
 
     // Fewest dishes first across all of them: Ing 26 comes onto page 1 and Ing 01 leaves it.
     expect(screen.getByText('Ing 26')).toBeInTheDocument()
     expect(screen.queryByText('Ing 01')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Dishes' }).closest('th')).toHaveAttribute('aria-sort', 'ascending')
-  }, 20_000) // a full page of the ingredients table is slow to render in jsdom when the whole suite runs
+    expect(sortButton('Dishes').closest('th')).toHaveAttribute('aria-sort', 'ascending')
+  })
 
   it('Dishes: the allergen report menu downloads the chosen PDF', async () => {
     pathnameMock.current = '/menu-management/dishes'
@@ -302,7 +363,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuDishesPage />)
 
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Download PDF' })[0])
+    fireEvent.click(within(pageHeader()).getAllByRole('button', { name: 'Download PDF' })[0])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Food' }))
     expect(clicked).toHaveLength(1)
     expect(clicked[0]).toContain('/api/menu-management/dishes/allergens/pdf?download=1&category=food')
@@ -320,7 +381,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuIngredientsPage />)
 
     expect(await screen.findAllByText('Cod fillet')).not.toHaveLength(0)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Download PDF' })[0])
+    fireEvent.click(within(pageHeader()).getAllByRole('button', { name: 'Download PDF' })[0])
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Bar' }))
     expect(clicked).toHaveLength(1)
     expect(clicked[0]).toContain('/api/menu-management/ingredients/allergens/pdf?download=1&department=bar')
@@ -335,7 +396,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuIngredientsPage />)
 
     expect(await screen.findAllByText('Cod fillet')).not.toHaveLength(0)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Prices' })[0])
+    fireEvent.click(within(tableRows()).getAllByRole('button', { name: 'Prices' })[0])
     expect(await screen.findByText('£18.50 per pack')).toBeInTheDocument()
     expect(getMenuIngredientPricesMock).toHaveBeenCalledTimes(1)
     expect(getMenuIngredientPricesMock).toHaveBeenCalledWith('ing-1')
@@ -351,7 +412,7 @@ describe('Menu tabs follow the page contract', () => {
     render(<MenuIngredientsPage />)
 
     expect(await screen.findAllByText('Cod fillet')).not.toHaveLength(0)
-    const prices = screen.getAllByRole('button', { name: 'Prices' })[0]
+    const prices = within(tableRows()).getAllByRole('button', { name: 'Prices' })[0]
     fireEvent.click(prices)
     expect(await screen.findByText('Prices unavailable')).toBeInTheDocument()
     expect(screen.queryByText('No price history recorded yet')).not.toBeInTheDocument()
@@ -381,7 +442,7 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findAllByText('Cod fillet')).not.toHaveLength(0)
     expectMenuChrome(/^Ingredients: /)
-    const allergens = screen.getByLabelText('Allergens') as HTMLSelectElement
+    const allergens = within(filterBar()).getByLabelText('Allergens') as HTMLSelectElement
     expect(allergens.tagName).toBe('SELECT')
     fireEvent.change(allergens, { target: { value: 'milk' } })
     expect(screen.queryByText('Cod fillet')).not.toBeInTheDocument()
@@ -395,7 +456,7 @@ describe('Menu tabs follow the page contract', () => {
 
     expect(await screen.findAllByText('Tartare sauce')).not.toHaveLength(0)
     expectMenuChrome(/^Recipes: /)
-    const newRecipe = screen.getAllByRole('button', { name: 'New Recipe' })[0]
+    const newRecipe = within(pageHeader()).getAllByRole('button', { name: 'New Recipe' })[0]
     expect(newRecipe.className).toContain('h-btn-h-sm')
   })
 
@@ -403,7 +464,7 @@ describe('Menu tabs follow the page contract', () => {
     pathnameMock.current = '/menu-management/dishes'
     render(<MenuDishesPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'New Dish' }))[0])
+    fireEvent.click((await within(pageHeader()).findAllByRole('button', { name: 'New Dish' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription(
       'Cost a dish from its recipes and ingredients, then place it on menus',
@@ -417,7 +478,7 @@ describe('Menu tabs follow the page contract', () => {
     pathnameMock.current = '/menu-management/ingredients'
     render(<MenuIngredientsPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'New Ingredient' }))[0])
+    fireEvent.click((await within(pageHeader()).findAllByRole('button', { name: 'New Ingredient' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription('Add a new ingredient to the catalogue')
     // The allergen and dietary ticks are groups named by their legend, not a label on nothing.
@@ -429,7 +490,7 @@ describe('Menu tabs follow the page contract', () => {
     pathnameMock.current = '/menu-management/recipes'
     render(<MenuRecipesPage />)
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'New Recipe' }))[0])
+    fireEvent.click((await within(pageHeader()).findAllByRole('button', { name: 'New Recipe' }))[0])
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAccessibleDescription('Create a reusable prep recipe from ingredients')
   })
