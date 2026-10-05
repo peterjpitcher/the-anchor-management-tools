@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261005102636_calendar_notes_end_date_required.sql
+-- Rollback for supabase/migrations/20261005110211_calendar_notes_end_date_required.sql
 --
 -- Step 1 is the whole rollback in practice: it makes end_date optional again.
 --

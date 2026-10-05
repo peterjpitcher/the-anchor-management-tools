@@ -18,7 +18,7 @@ HISTORY = [
     MIGRATIONS / '20260421000001_add_calendar_notes_end_date.sql',
     MIGRATIONS / '20260730000000_calendar_note_google_sync_queue.sql',
 ]
-MIGRATION = MIGRATIONS / '20261005102636_calendar_notes_end_date_required.sql'
+MIGRATION = MIGRATIONS / '20261005110211_calendar_notes_end_date_required.sql'
 ROLLBACK = ROOT / 'tasks/calendar-notes-end-date/rollback.sql'
 
 SETUP = r"""
