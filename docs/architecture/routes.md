@@ -148,9 +148,10 @@ Auth legend: **session** = `auth.getUser()`; **rbac** = `checkUserPermission`; *
 | `/api/business-hours`, `/api/business/hours`, `/api/business/amenities` | GET, OPTIONS | public (CORS) | `src/app/api/business*/**/route.ts` |
 | `/api/parking/payment/return` | GET | public (PayPal return URL) | `src/app/api/parking/payment/return/route.ts` |
 | `/api/portal/calendar-feed` | GET | HMAC token (`verifyCalendarToken`) | `src/app/api/portal/calendar-feed/route.ts` |
-| `/api/private-booking-enquiry` | POST | public + ratelimit, action-auth | `src/app/api/private-booking-enquiry/route.ts` |
+| `/api/private-booking-enquiry` | POST | API key with `create:bookings` + ratelimit | `src/app/api/private-booking-enquiry/route.ts` |
 | `/api/private-bookings/outcome/[outcome]/[token]` | GET, POST | token | `src/app/api/private-bookings/outcome/[outcome]/[token]/route.ts` |
-| `/api/public/private-booking`, `/api/public/private-booking/config` | POST / GET | public + ratelimit | `src/app/api/public/private-booking/**/route.ts` |
+| `/api/public/private-booking` | POST | retired 8 October 2026, answers 410 | `src/app/api/public/private-booking/route.ts` |
+| `/api/public/private-booking/config` | GET | public + ratelimit | `src/app/api/public/private-booking/config/route.ts` |
 | `/api/recruitment/booking/[token]` (+`/cancel`, `/reschedule`) | GET, POST | candidate token | `src/app/api/recruitment/booking/[token]/**/route.ts` |
 | `/api/recruitment/postings` | GET, OPTIONS | public (job listings) | `src/app/api/recruitment/postings/route.ts` |
 | `/api/redirect`, `/api/redirect/[code]` | GET | public (short links — `l.the-anchor.pub`, `vip-club.uk` rewrites in `vercel.json`) | `src/app/api/redirect/**/route.ts` |

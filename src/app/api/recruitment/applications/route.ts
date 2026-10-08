@@ -3,6 +3,7 @@ import { NextRequest, after } from 'next/server'
 import {
   createApiResponse,
   createErrorResponse,
+  getApiKeyAuthState,
   withApiAuth,
 } from '@/lib/api/auth'
 import {
@@ -95,7 +96,14 @@ async function resolvePostingId(
   return { postingId: data.id }
 }
 
-async function handleRecruitmentApplication(request: NextRequest) {
+/**
+ * `keyValidated` is true only when withApiAuth has already accepted the caller's
+ * key and its write:recruitment scope. Everyone else must pass the bot check.
+ */
+async function handleRecruitmentApplication(
+  request: NextRequest,
+  { keyValidated }: { keyValidated: boolean }
+) {
   const idempotencyKey = getIdempotencyKey(request)
   if (!idempotencyKey) {
     return createErrorResponse('Missing Idempotency-Key header', 'IDEMPOTENCY_KEY_REQUIRED', 400)
@@ -122,8 +130,7 @@ async function handleRecruitmentApplication(request: NextRequest) {
     }
   }
 
-  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
-  if (!hasApiKey) {
+  if (!keyValidated) {
     const token = request.headers.get('x-turnstile-token') || formString(formData, 'turnstile_token')
     const turnstile = await verifyTurnstileToken(token, getClientIp(request))
     if (!turnstile.success) {
@@ -279,12 +286,27 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
-  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
+  // Three answers, not two. The bot check used to be skipped whenever a key
+  // header was merely present, which is a different question from whether the
+  // key is any good. It was not exploitable, because a request with a header
+  // still had to get through withApiAuth, but it was the last public route
+  // deciding this by header presence, and the next edit could have made it so.
+  //
+  //   authenticated: the key validates. No bot check, the roomier rate limit.
+  //   unavailable:   we could not look the key up. That is our outage, so the
+  //                  caller is told 503 by withApiAuth, never "bot check failed".
+  //   anonymous:     no key, or one nobody issued. A caller that sent a key gets
+  //                  withApiAuth's 401; a caller with none must pass the bot check.
+  const authState = await getApiKeyAuthState(request.headers)
+  const presentedKey = Boolean(
+    request.headers.get('x-api-key')?.trim() || request.headers.get('authorization')?.trim()
+  )
 
   // Authenticated server-to-server callers (the website proxy) funnel every applicant
   // through a handful of Vercel egress IPs, so the strict per-IP ceiling meant for anonymous
   // posts would reject legitimate applicants during a busy spell (e.g. a job-ad burst).
-  const rateLimit = await applyDistributedRateLimit(request, hasApiKey
+  // Only a key that validates earns the roomier limit: a made-up header does not.
+  const rateLimit = await applyDistributedRateLimit(request, authState === 'authenticated'
     ? {
         prefix: 'recruitment-api-upload',
         window: '1 h',
@@ -298,13 +320,14 @@ export async function POST(request: NextRequest) {
         message: 'Too many recruitment applications from this address. Please try again later.',
       })
   if (rateLimit) return rateLimit
-  if (hasApiKey) {
+
+  if (authState !== 'anonymous' || presentedKey) {
     return withApiAuth(
-      () => handleRecruitmentApplication(request),
+      () => handleRecruitmentApplication(request, { keyValidated: true }),
       ['write:recruitment'],
       request
     )
   }
 
-  return handleRecruitmentApplication(request)
+  return handleRecruitmentApplication(request, { keyValidated: false })
 }

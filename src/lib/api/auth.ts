@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
+import type { ApiKeyScope } from '@/lib/api/scopes';
 
 export interface ApiKey {
   id: string;
@@ -398,7 +399,9 @@ export interface WithApiAuthOptions {
 
 export async function withApiAuth(
   handler: (req: Request, apiKey: ApiKey) => Promise<Response>,
-  requiredPermissions: string[] = ['read:events'],
+  // Typed against the one shared list, so a route cannot ask for a scope the
+  // API keys screen is unable to grant. See src/lib/api/scopes.ts.
+  requiredPermissions: ApiKeyScope[] = ['read:events'],
   request?: Request,
   options?: WithApiAuthOptions
 ): Promise<Response> {

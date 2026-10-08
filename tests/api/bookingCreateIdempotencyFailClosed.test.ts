@@ -62,7 +62,6 @@ import {
 } from '@/lib/api/idempotency'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { formatPhoneForStorage } from '@/lib/utils'
-import { POST as publicPrivateBookingPost } from '@/app/api/public/private-booking/route'
 import { POST as externalCreateBookingPost } from '@/app/api/external/create-booking/route'
 
 const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
@@ -76,41 +75,10 @@ describe('booking-create routes idempotency fail-closed guards', () => {
     ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
   })
 
-  it('does not release the public private-booking idempotency claim when response persistence fails after booking creation', async () => {
-    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-1')
-    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('idempotency write failed'))
-    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
-      id: 'private-booking-1',
-      booking_reference: 'PB-1',
-      customer_id: 'customer-1',
-    })
-
-    const request = new Request('http://localhost/api/public/private-booking', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'Idempotency-Key': 'idem-1',
-      },
-      body: JSON.stringify({
-        customer_first_name: 'Pat',
-        contact_phone: '+447700900123',
-        default_country_code: '44',
-        items: [],
-      }),
-    })
-
-    const response = await publicPrivateBookingPost(request as any)
-    const payload = await response.json()
-
-    expect(response.status).toBe(201)
-    expect(payload).toMatchObject({
-      success: true,
-      booking_id: 'private-booking-1',
-    })
-    expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
-    expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
-  })
-
+  // The public private-booking case that sat here went with the route's handler:
+  // POST /api/public/private-booking is retired and answers 410 (see
+  // privateBookingEnquiryAuth.test.ts). Its successor's claim handling is covered
+  // in idempotencyPersistFailClosedAdditionalRoutes.test.ts.
   it('does not release the external create-booking idempotency claim when response persistence fails after booking creation', async () => {
     ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-2')
     ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('idempotency write failed'))
