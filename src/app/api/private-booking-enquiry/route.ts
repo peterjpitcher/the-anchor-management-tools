@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
       rawPayload = await request.json()
     } catch {
       return NextResponse.json(
-        { success: false, error: 'Invalid JSON body' },
+        { success: false, error: 'Invalid JSON body', code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     const idempotencyKey = getIdempotencyKey(request)
     if (!idempotencyKey) {
       return NextResponse.json(
-        { success: false, error: 'Missing Idempotency-Key header' },
+        { success: false, error: 'Missing Idempotency-Key header', code: 'IDEMPOTENCY_KEY_REQUIRED' },
         { status: 400 }
       )
     }
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     const parsed = EnquirySchema.safeParse(rawPayload)
     if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: parsed.error.issues[0]?.message || 'Invalid enquiry payload' },
+        { success: false, error: parsed.error.issues[0]?.message || 'Invalid enquiry payload', code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       })
     } catch {
       return NextResponse.json(
-        { success: false, error: 'Please enter a valid phone number' },
+        { success: false, error: 'Please enter a valid phone number', code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Idempotency key already used with a different request payload'
+          error: 'Idempotency key already used with a different request payload', code: 'IDEMPOTENCY_KEY_CONFLICT'
         },
         { status: 409 }
       )
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'This request is already being processed. Please retry shortly.'
+          error: 'This request is already being processed. Please retry shortly.', code: 'IDEMPOTENCY_KEY_IN_PROGRESS'
         },
         { status: 409 }
       )
@@ -397,7 +397,7 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return NextResponse.json(
-      { success: false, error: 'Failed to create enquiry' },
+      { success: false, error: 'Failed to create enquiry', code: 'INTERNAL_ERROR' },
       { status: 500 }
     )
   }

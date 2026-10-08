@@ -13,6 +13,7 @@ import {
   getPayPalDepositCaptureBlockReason,
   parsePayPalAmountGbp,
   payPalAmountsMatch,
+  payPalDepositCaptureBlockCode,
   payPalDepositCaptureBlockMessage,
   sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit';
@@ -45,7 +46,7 @@ export async function POST(
         const parsed = CaptureOrderSchema.parse(body);
         orderId = parsed.orderId;
       } catch {
-        return NextResponse.json({ error: 'Invalid request body. orderId is required.' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Invalid request body. orderId is required.', code: 'VALIDATION_ERROR' }, { status: 400 });
       }
 
       const supabase = createAdminClient();
@@ -64,7 +65,7 @@ export async function POST(
             metadata: { bookingId, code: fetchError.code, details: fetchError.details },
           });
         }
-        return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+        return NextResponse.json({ success: false, error: 'Booking not found', code: 'BOOKING_NOT_FOUND' }, { status: 404 });
       }
 
       // Idempotent: if already captured, return success without reprocessing
@@ -74,13 +75,13 @@ export async function POST(
 
       // Validate orderId matches what we stored
       if (booking.paypal_deposit_order_id !== orderId) {
-        return NextResponse.json({ error: 'Order ID mismatch' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Order ID mismatch', code: 'ORDER_MISMATCH' }, { status: 400 });
       }
 
       const blockReason = getPayPalDepositCaptureBlockReason(booking);
       if (blockReason) {
         return NextResponse.json(
-          { error: payPalDepositCaptureBlockMessage(blockReason) },
+          { success: false, error: payPalDepositCaptureBlockMessage(blockReason), code: payPalDepositCaptureBlockCode(blockReason) },
           { status: blockReason === 'hold_expired' ? 410 : 409 },
         );
       }
@@ -108,7 +109,7 @@ export async function POST(
           metadata: { bookingId, orderId },
         });
         return NextResponse.json(
-          { error: 'Failed to verify PayPal order amount. Please try again.' },
+          { success: false, error: 'Failed to verify PayPal order amount. Please try again.', code: 'PAYPAL_ORDER_LOOKUP_FAILED' },
           { status: 502 },
         );
       }
@@ -127,7 +128,7 @@ export async function POST(
           },
         });
         return NextResponse.json(
-          { error: 'Payment amount no longer matches this booking. Please refresh and try again.' },
+          { success: false, error: 'Payment amount no longer matches this booking. Please refresh and try again.', code: 'AMOUNT_MISMATCH' },
           { status: 409 },
         );
       }
@@ -148,7 +149,7 @@ export async function POST(
           },
         });
         return NextResponse.json(
-          { error: 'Failed to capture PayPal payment. Please try again.' },
+          { success: false, error: 'Failed to capture PayPal payment. Please try again.', code: 'CAPTURE_FAILED' },
           { status: 502 },
         );
       }
@@ -189,7 +190,7 @@ export async function POST(
         });
         return NextResponse.json(
           {
-            error: 'Payment captured but amount could not be verified. Please contact support; do not retry.',
+            success: false, error: 'Payment captured but amount could not be verified. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_UNVERIFIED',
           },
           { status: 502 },
         );
@@ -211,7 +212,7 @@ export async function POST(
           },
         });
         return NextResponse.json(
-          { error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.' },
+          { success: false, error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_MISMATCH' },
           { status: 502 },
         );
       }
@@ -249,7 +250,7 @@ export async function POST(
           },
         });
         return NextResponse.json(
-          { error: 'Payment captured but booking update failed. Our team has been notified.' },
+          { success: false, error: 'Payment captured but booking update failed. Our team has been notified.', code: 'CAPTURED_BOOKING_UPDATE_FAILED' },
           { status: 502 },
         );
       }
