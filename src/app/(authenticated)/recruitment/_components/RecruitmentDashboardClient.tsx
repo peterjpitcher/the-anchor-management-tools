@@ -1464,12 +1464,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             </Button>
             <ActionStateMessage state={cvBatchState} />
           </form>
-          {/* Irreversible: anonymises candidates and deletes their CVs, so it asks first. */}
+          {/* Irreversible once switched on: removes contact details and deletes CVs, so it asks first. */}
           <ActionFeedbackForm
             action={() => runRecruitmentRetentionAction()}
             confirmTitle="Run Retention"
             confirmLabel="Run"
-            confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details, notes and the text of messages sent to them are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
+            confirmMessage="This looks at everyone who was not hired and whose most recent application is older than the retention period, whether or not a decision was ever recorded. Until the job has been switched on it only reports how many are due and removes nothing. Once it is switched on, their contact details, CV details, application answers, AI screening results, notes and the text of messages sent to them are removed, their interview calendar entries are taken off the calendar, and their CV files are permanently deleted. Their name, the role, the date, the outcome and the reason are kept. Up to 100 applicants are cleared each run. This cannot be undone."
             confirmTone="danger"
             successMessage="Recruitment retention cleanup completed."
           >
