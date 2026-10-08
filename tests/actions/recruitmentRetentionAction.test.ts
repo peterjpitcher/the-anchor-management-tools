@@ -36,6 +36,13 @@ vi.mock('@/services/recruitment-retention', async (importOriginal) => ({
 
 import { runRecruitmentRetentionAction } from '@/app/actions/recruitment'
 
+type Outcome = { success: boolean; message?: string; error?: string }
+
+/** The action answers with a union. The cases below read either side of it. */
+async function press(): Promise<Outcome> {
+  return (await runRecruitmentRetentionAction()) as Outcome
+}
+
 function report(overrides: Record<string, unknown> = {}) {
   return {
     mode: 'dry_run',
@@ -68,7 +75,7 @@ afterEach(() => {
 
 describe('runRecruitmentRetentionAction', () => {
   it('only checks, and says nothing was removed, until the job is switched on', async () => {
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(runRecruitmentRetentionCleanup).toHaveBeenCalledWith({ dryRun: true })
     expect(result.success).toBe(true)
@@ -80,7 +87,7 @@ describe('runRecruitmentRetentionAction', () => {
   it('says so when nobody is due', async () => {
     runRecruitmentRetentionCleanup.mockResolvedValue(report({ due: { candidates: 0, cvFiles: 0 }, remaining: 0 }))
 
-    expect((await runRecruitmentRetentionAction()).message).toBe('Check only: nobody is due. Nothing was removed.')
+    expect((await press()).message).toBe('Check only: nobody is due. Nothing was removed.')
   })
 
   it('applies when the switch is on, and says the names were kept', async () => {
@@ -88,7 +95,7 @@ describe('runRecruitmentRetentionAction', () => {
     runRecruitmentRetentionCleanup.mockResolvedValue(
       report({ mode: 'applied', cleared: 1, cvFilesRemoved: 1, remaining: 0 })
     )
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(runRecruitmentRetentionCleanup).toHaveBeenCalledWith({ dryRun: false })
     expect(result.message).toBe('1 applicant cleared and 1 CV file deleted. Names and outcomes were kept.')
@@ -100,7 +107,7 @@ describe('runRecruitmentRetentionAction', () => {
       report({ mode: 'applied', cleared: 100, cvFilesRemoved: 90, remaining: 12 })
     )
 
-    expect((await runRecruitmentRetentionAction()).message).toContain('12 applicants still to do: run it again.')
+    expect((await press()).message).toContain('12 applicants still to do: run it again.')
   })
 
   it('reports a failure as a failure, not as done', async () => {
@@ -113,7 +120,7 @@ describe('runRecruitmentRetentionAction', () => {
         failed: [{ candidateId: 'candidate-1', step: 'cv_file', message: 'storage said no' }],
       })
     )
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('1 could not be cleared and still hold their details')
@@ -122,7 +129,7 @@ describe('runRecruitmentRetentionAction', () => {
 
   it('refuses someone without permission to manage recruitment, and runs nothing', async () => {
     checkUserPermission.mockResolvedValue(false)
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(result.success).toBe(false)
     expect(runRecruitmentRetentionCleanup).not.toHaveBeenCalled()
@@ -130,7 +137,7 @@ describe('runRecruitmentRetentionAction', () => {
 
   it('refuses when nobody is signed in', async () => {
     getUser.mockResolvedValue({ data: { user: null } })
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(result.success).toBe(false)
     expect(runRecruitmentRetentionCleanup).not.toHaveBeenCalled()
@@ -138,13 +145,13 @@ describe('runRecruitmentRetentionAction', () => {
 
   it('returns the error when the job throws', async () => {
     runRecruitmentRetentionCleanup.mockRejectedValue(new Error('Could not read recruitment_candidates: timeout'))
-    const result = await runRecruitmentRetentionAction()
+    const result = await press()
 
     expect(result).toEqual({ success: false, error: 'Could not read recruitment_candidates: timeout' })
   })
 
   it('records counts in the audit log and never a name', async () => {
-    await runRecruitmentRetentionAction()
+    await press()
 
     const entry = logAuditEvent.mock.calls[0][0]
     expect(entry.operation_type).toBe('retention_cleanup_dry_run')
