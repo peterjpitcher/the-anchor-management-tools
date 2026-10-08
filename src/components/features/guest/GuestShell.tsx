@@ -89,8 +89,9 @@ export function GuestShell({
             Every link here sets referrerPolicy="no-referrer". next.config.mjs
             sends `Referrer-Policy: strict-origin-when-cross-origin`, which
             leaks the FULL path on same-origin navigation. These pages carry a
-            bearer token in the URL, so /privacy would otherwise collect
-            /g/<token>/... in its logs.
+            bearer token in the URL, so the page a link opens would otherwise
+            collect /g/<token>/... in its logs. The Privacy link goes to the
+            website's policy, the one notice guests are shown.
           */}
           <a href={GUEST_CONTACT.telHref} referrerPolicy="no-referrer" className={FOOTER_LINK_CLASS}>
             {GUEST_CONTACT.phoneDisplay}
@@ -104,7 +105,7 @@ export function GuestShell({
             <a href={GUEST_CONTACT.website} referrerPolicy="no-referrer" className={FOOTER_MINOR_LINK_CLASS}>
               The Anchor website
             </a>
-            <a href="/privacy" referrerPolicy="no-referrer" className={FOOTER_MINOR_LINK_CLASS}>
+            <a href={GUEST_CONTACT.privacyPolicy} referrerPolicy="no-referrer" className={FOOTER_MINOR_LINK_CLASS}>
               Privacy
             </a>
           </div>

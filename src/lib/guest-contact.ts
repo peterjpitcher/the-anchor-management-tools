@@ -40,6 +40,17 @@ export const GUEST_CONTACT = {
    * invoices and contracts). Both resolve; this is the guest-facing one.
    */
   website: 'https://www.the-anchor.pub',
+  /**
+   * The privacy policy guests are shown: the website's, not this app's `/privacy`.
+   *
+   * Guest pages used to link to `/privacy`, a notice dated December 2024 that
+   * disagrees with the website's on who is responsible for the data, how long
+   * it is kept and which companies handle it. A guest who booked on the website
+   * and then opened a link in a text was shown two different notices. `/privacy`
+   * stays as the notice for staff, who are linked to it from the staff screens.
+   * Site review of 7 October 2026, finding PC-010.
+   */
+  privacyPolicy: 'https://www.the-anchor.pub/privacy-policy',
   /** Single-line postal address, as the footer renders it. */
   addressLine: `${address.street}, ${address.city}, ${address.county} ${address.postcode}`,
 } as const

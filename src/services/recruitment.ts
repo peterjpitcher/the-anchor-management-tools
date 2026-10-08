@@ -2610,73 +2610,10 @@ export async function completeRecruitmentHireHandoff(
   return { success: true }
 }
 
-export async function runRecruitmentRetentionCleanup(
-  supabase: GenericClient = createAdminClient()
-) {
-  const cutoffIso = addMonths(new Date(), -retentionMonths()).toISOString()
-  const { data: applications, error } = await supabase
-    .from('recruitment_applications')
-    .select('id, candidate_id, status, created_at, candidate:recruitment_candidates(*)')
-    .in('status', TERMINAL_NON_HIRED_STATUSES as unknown as string[])
-    .lt('created_at', cutoffIso)
-    .is('candidate.anonymised_at', null)
-    .limit(100)
-
-  if (error) throw error
-
-  let anonymised = 0
-  let cvDeleted = 0
-  for (const application of applications ?? []) {
-    const candidate = application.candidate as any
-    if (!candidate?.id || candidate.converted_employee_id) continue
-    if (candidate.anonymised_at) continue
-
-    if (candidate.cv_file_path) {
-      const { error: removeError } = await supabase.storage
-        .from(RECRUITMENT_CV_BUCKET)
-        .remove([candidate.cv_file_path])
-      if (!removeError) cvDeleted += 1
-    }
-
-    const { error: updateError } = await supabase
-      .from('recruitment_candidates')
-      .update({
-        first_name: null,
-        last_name: null,
-        email: null,
-        phone: null,
-        phone_e164: null,
-        location: null,
-        cv_file_path: null,
-        cv_file_name: null,
-        cv_mime_type: null,
-        cv_file_size_bytes: null,
-        cv_text: null,
-        provided_details: null,
-        extracted_data: null,
-        cv_summary: null,
-        notes: null,
-        sms_consent: false,
-        future_recruitment_consent: false,
-        anonymised_at: new Date().toISOString(),
-      })
-      .eq('id', candidate.id)
-
-    if (updateError) throw updateError
-
-    await supabase
-      .from('recruitment_communications')
-      .update({
-        final_body: '[anonymised after recruitment retention period]',
-        subject: null,
-      })
-      .eq('candidate_id', candidate.id)
-
-    anonymised += 1
-  }
-
-  return { anonymised, cvDeleted }
-}
+// runRecruitmentRetentionCleanup lives in src/services/recruitment-retention.ts.
+// It was rewritten on 8 October 2026 to match the owner's retention decision:
+// everyone not hired is covered, the name is kept, and it runs dry unless
+// switched on.
 
 export async function eraseRecruitmentCandidate(
   candidateId: string,
