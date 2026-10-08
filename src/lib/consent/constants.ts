@@ -19,7 +19,16 @@
 // changes as they happen, not only events, menus and offers. If you change the wording in
 // either repo, change it in both, and bump the version in both.
 
-export const GUEST_COMMS_CONSENT_TEXT_VERSION = 'guest-comms-consent-v5'
+//
+// Brought to v6 on 2026-10-08 to match the website, which bumped the version when its event
+// booking form's notice began covering email as well as texts. None of the wording held in
+// THIS file changed between v5 and v6: the service notice and the four labels below are word
+// for word what the website shows at v6 (checked against its lib/communication-consent.ts on
+// that date). The two compact booking notices that did change live only in the website, which
+// always sends its own text and version with a consent, so this app keeps no copy of them.
+// The bump is so that a consent this app records by itself is stamped with the same version
+// the website is using for the same words.
+export const GUEST_COMMS_CONSENT_TEXT_VERSION = 'guest-comms-consent-v6'
 
 export const GUEST_SERVICE_CONTACT_NOTICE =
   'We will use your phone and email to manage this booking, including confirmations, reminders, payment links, waitlist updates, and changes.'
