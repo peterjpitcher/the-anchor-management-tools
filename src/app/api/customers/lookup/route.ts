@@ -76,11 +76,56 @@ function toLookupPayload(customer: CustomerLookupRow | null, normalizedPhone: st
  * This endpoint answers with a customer's name, email and phone. createApiResponse
  * marks every GET `public, max-age=60`, which is right for menus and events and
  * wrong here: a shared cache would hold one customer's record and hand it to
- * whoever asks next within the minute. Overridden per response.
+ * whoever asks next within the minute. Every answer below passes NO_STORE, and
+ * withApiAuth is told `private` so its own refusals are not stored either.
  */
+// `private` as well as the header: it also drops the ETag, which would otherwise
+// be a fingerprint of one customer's details.
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
+type LookupInput = { phone: string; defaultCountryCode: string | undefined }
+
+/**
+ * POST is the form to use: the mobile number travels in the body.
+ *
+ * A GET puts the number in the web address, and addresses are what hosting
+ * logs, proxy logs and `api_usage` record. The website asked for this on
+ * 8 October 2026 (site review findings PC-014 and PY-017) and will switch once
+ * it is live. GET stays, unchanged, until the website has moved.
+ */
+export async function POST(request: NextRequest) {
+  return lookup(request, async () => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return null
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+
+    const record = body as Record<string, unknown>
+    return {
+      phone: typeof record.phone === 'string' ? record.phone.trim() : '',
+      defaultCountryCode:
+        typeof record.default_country_code === 'string' && record.default_country_code.trim()
+          ? record.default_country_code.trim()
+          : undefined,
+    }
+  })
+}
+
 export async function GET(request: NextRequest) {
+  return lookup(request, async () => ({
+    phone: request.nextUrl.searchParams.get('phone')?.trim() || '',
+    defaultCountryCode:
+      request.nextUrl.searchParams.get('default_country_code')?.trim() || undefined,
+  }))
+}
+
+async function lookup(
+  request: NextRequest,
+  readInput: () => Promise<LookupInput | null>
+): Promise<Response> {
   return withApiAuth(async (_req, apiKey) => {
     // This endpoint returns customer PII, so it needs the customer scope.
     // read:events and create:bookings used to be enough, which meant a key
@@ -93,9 +138,13 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403)
     }
 
-    const phone = request.nextUrl.searchParams.get('phone')?.trim() || ''
-    const defaultCountryCode =
-      request.nextUrl.searchParams.get('default_country_code')?.trim() || undefined
+    const input = await readInput()
+    if (!input) {
+      return createErrorResponse('Expected a JSON body with a phone number', 'VALIDATION_ERROR', 400)
+    }
+
+    const phone = input.phone
+    const defaultCountryCode = input.defaultCountryCode
 
     const parsed = CustomerLookupQuerySchema.safeParse({
       phone,
@@ -150,7 +199,7 @@ export async function GET(request: NextRequest) {
 
     const canonicalCustomer = ((canonicalData || [])[0] || null) as CustomerLookupRow | null
     if (canonicalCustomer) {
-      return createApiResponse(toLookupPayload(canonicalCustomer, normalizedPhone), 200, NO_STORE)
+      return createApiResponse(toLookupPayload(canonicalCustomer, normalizedPhone), 200, NO_STORE, undefined, 'private')
     }
 
     const { data: legacyData, error: legacyError } = await supabase.from('customers')
@@ -165,7 +214,7 @@ export async function GET(request: NextRequest) {
 
     const legacyCustomer = ((legacyData || [])[0] || null) as CustomerLookupRow | null
     if (legacyCustomer) {
-      return createApiResponse(toLookupPayload(legacyCustomer, normalizedPhone), 200, NO_STORE)
+      return createApiResponse(toLookupPayload(legacyCustomer, normalizedPhone), 200, NO_STORE, undefined, 'private')
     }
 
     // Legacy fallback: recover known customer context from older private bookings.
@@ -183,7 +232,7 @@ export async function GET(request: NextRequest) {
 
     const privateBooking = ((privateBookingData || [])[0] || null) as PrivateBookingLookupRow | null
     if (!privateBooking) {
-      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE)
+      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE, undefined, 'private')
     }
 
     const parsedName = parseNameParts(privateBooking.customer_name)
@@ -196,7 +245,7 @@ export async function GET(request: NextRequest) {
 
     // If there is no usable identity data, keep this as unknown so we still ask for details.
     if (!hasIdentityData) {
-      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE)
+      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE, undefined, 'private')
     }
 
     const resolvedCustomerId = privateBooking.customer_id || null
@@ -210,7 +259,7 @@ export async function GET(request: NextRequest) {
       if (!resolvedError) {
         const resolvedCustomer = ((resolvedData || [])[0] || null) as CustomerLookupRow | null
         if (resolvedCustomer) {
-          return createApiResponse(toLookupPayload(resolvedCustomer, normalizedPhone), 200, NO_STORE)
+          return createApiResponse(toLookupPayload(resolvedCustomer, normalizedPhone), 200, NO_STORE, undefined, 'private')
         }
       }
     }
@@ -228,6 +277,6 @@ export async function GET(request: NextRequest) {
         mobile_e164: normalizedPhone,
         mobile_number: privateBooking.contact_phone || normalizedPhone
       }
-    })
-  }, [], request)
+    }, 200, NO_STORE, undefined, 'private')
+  }, [], request, { cacheMode: 'private' })
 }

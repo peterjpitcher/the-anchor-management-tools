@@ -271,12 +271,23 @@ export function createApiResponse(
   });
 }
 
+/**
+ * An error is never stored by a shared cache.
+ *
+ * The default used to be `public`, and createApiResponse treats a call with no
+ * method as a GET, so every error built here went out as
+ * `public, max-age=60, stale-while-revalidate=120`: a 401, a 404 for one
+ * booking, a 503 during an outage. A proxy in front could keep serving the
+ * outage for two minutes after it ended, or hand one caller's refusal to the
+ * next. The `cacheMode` parameter stays so existing callers compile; `public`
+ * can no longer be asked for by accident because it is no longer the default.
+ */
 export function createErrorResponse(
   message: string, 
   code: string, 
   status: number = 400,
   details?: any,
-  cacheMode: ApiCacheMode = 'public'
+  cacheMode: ApiCacheMode = 'private'
 ) {
   return createApiResponse(
     {
