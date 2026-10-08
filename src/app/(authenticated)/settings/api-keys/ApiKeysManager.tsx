@@ -23,6 +23,7 @@ import {
 import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
 import { formatDateTime } from '@/lib/dateUtils';
 import type { ApiKey } from '@/types/api';
+import { API_KEY_SCOPE_OPTIONS } from '@/lib/api/scopes';
 import { activeStateTone } from '../_shared/status-ui';
 
 interface ApiKeysManagerProps {
@@ -38,27 +39,8 @@ const layoutProps = {
   backButton: { label: 'Back to Settings', href: '/settings' },
 };
 
-const PERMISSION_OPTIONS = [
-  { value: 'read:events', label: 'Read Events' },
-  // Gates GET /api/events/{id}/artwork, the only route that emits the story and
-  // print-poster URLs. Listed here so a rotated key can be issued with it: a
-  // replacement key created without it leaves artwork import reporting
-  // "unavailable" while every other check stays green.
-  { value: 'read:events:artwork', label: 'Read Event Artwork' },
-  { value: 'write:events', label: 'Write Events' },
-  { value: 'write:performers', label: 'Write Performers' },
-  { value: 'read:menu', label: 'Read Menu' },
-  { value: 'write:menu', label: 'Write Menu' },
-  { value: 'read:business', label: 'Read Business Info' },
-  { value: 'read:table_bookings', label: 'Read Table Bookings' },
-  { value: 'write:table_bookings', label: 'Write Table Bookings' },
-  { value: 'payments:capture', label: 'Capture Payments' },
-  { value: 'create:bookings', label: 'Create Bookings' },
-  { value: 'read:customers', label: 'Read Customers' },
-  { value: 'write:customers', label: 'Write Customers' },
-  { value: 'write:bookings', label: 'Write Bookings' },
-  { value: '*', label: 'All Permissions' },
-];
+// One shared list, which the routes are typed against: see src/lib/api/scopes.ts.
+const PERMISSION_OPTIONS = API_KEY_SCOPE_OPTIONS;
 
 type KeyFormData = {
   name: string;
