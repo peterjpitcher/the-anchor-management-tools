@@ -80,7 +80,10 @@ describe('the channel a new table booking reports to the website', () => {
     expect((await send()).notificationChannel).toBe('email')
   })
 
-  it('keeps the first channel selected when nothing is known to have gone, as before', async () => {
+  it('reports no channel, and says nothing was sent, when the email and the text both failed', async () => {
+    // This used to answer 'email', the first channel selected, and the website
+    // then told the guest "We've sent confirmation details by email." when
+    // nothing had gone at all. Site review of 7 October 2026, finding MG-010.
     notifyCustomer.mockResolvedValueOnce({
       selectedChannels: ['email', 'sms'],
       attempts: [
@@ -92,6 +95,43 @@ describe('the channel a new table booking reports to the website', () => {
       fallbackUsed: false,
     })
 
-    expect((await send()).notificationChannel).toBe('email')
+    const result = await send()
+    expect(result.notificationChannel).toBeNull()
+    expect(result.notificationSent).toBe(false)
+  })
+
+  it('says a message was sent when the email went', async () => {
+    notifyCustomer.mockResolvedValueOnce({
+      selectedChannels: ['email'],
+      attempts: [{ channel: 'email', success: true }],
+      finalStatus: 'sent',
+      sentChannel: 'email',
+      fallbackUsed: false,
+    })
+
+    expect((await send()).notificationSent).toBe(true)
+  })
+
+  it('says a message was sent when only the text went', async () => {
+    notifyCustomer.mockResolvedValueOnce({
+      selectedChannels: ['email', 'sms'],
+      attempts: [
+        { channel: 'email', success: false, error: 'Resend refused' },
+        { channel: 'sms', success: true, scheduledFor: null },
+      ],
+      finalStatus: 'sent',
+      sentChannel: 'sms',
+      fallbackUsed: true,
+    })
+
+    expect((await send()).notificationSent).toBe(true)
+  })
+
+  it('says nothing was sent when the notifier throws', async () => {
+    notifyCustomer.mockRejectedValueOnce(new Error('provider is down'))
+
+    const result = await send()
+    expect(result.notificationSent ?? false).toBe(false)
+    expect(result.notificationChannel ?? null).toBeNull()
   })
 })

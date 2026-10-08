@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
       try {
         body = await req.json();
       } catch {
-        return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Invalid JSON body', code: 'VALIDATION_ERROR' }, { status: 400 });
       }
 
       const parsed = ExternalBookingSchema.safeParse(body);
       if (!parsed.success) {
         return NextResponse.json(
-          { success: false, error: parsed.error.issues[0]?.message || 'Invalid booking payload' },
+          { success: false, error: parsed.error.issues[0]?.message || 'Invalid booking payload', code: 'VALIDATION_ERROR' },
           { status: 400 }
         );
       }
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
           defaultCountryCode: payload.default_country_code
         });
       } catch {
-        return NextResponse.json({ success: false, error: 'Please enter a valid phone number' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Please enter a valid phone number', code: 'VALIDATION_ERROR' }, { status: 400 });
       }
 
       const normalizedEmail = payload.email?.trim().toLowerCase() || undefined;
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Idempotency key already used with a different request payload'
+            error: 'Idempotency key already used with a different request payload', code: 'IDEMPOTENCY_KEY_CONFLICT'
           },
           { status: 409 }
         );
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: 'This request is already being processed. Please retry shortly.'
+            error: 'This request is already being processed. Please retry shortly.', code: 'IDEMPOTENCY_KEY_IN_PROGRESS'
           },
           { status: 409 }
         );
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
         error: error instanceof Error ? error : new Error(String(error)),
       });
       return NextResponse.json(
-        { success: false, error: 'Failed to create booking' },
+        { success: false, error: 'Failed to create booking', code: 'INTERNAL_ERROR' },
         { status: 500 }
       );
     }

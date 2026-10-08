@@ -88,6 +88,27 @@ export function payPalDepositCaptureBlockMessage(reason: PayPalDepositCaptureBlo
   }
 }
 
+/**
+ * A stable code for each reason a deposit cannot be paid, to go beside the
+ * sentence. The website matches on the code; the sentence can then be reworded
+ * without breaking it.
+ */
+export function payPalDepositCaptureBlockCode(reason: PayPalDepositCaptureBlockReason): string {
+  switch (reason) {
+    case 'already_completed':
+      return 'DEPOSIT_ALREADY_PAID'
+    case 'booking_closed':
+      return 'BOOKING_NOT_PAYABLE'
+    case 'hold_expired':
+      return 'PAYMENT_HOLD_EXPIRED'
+    case 'hold_missing':
+      return 'PAYMENT_HOLD_MISSING'
+    case 'booking_not_pending_payment':
+    default:
+      return 'BOOKING_NOT_PENDING_PAYMENT'
+  }
+}
+
 export function buildPayPalDepositCompletedUpdate(
   input: {
     captureId: string

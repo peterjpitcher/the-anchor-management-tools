@@ -90,6 +90,7 @@ describe('table bookings route SMS safety meta', () => {
 
     ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockResolvedValue({
       notificationChannel: 'sms',
+      notificationSent: true,
       sms: {
         success: true,
         code: 'logging_failed',
@@ -140,6 +141,7 @@ describe('table bookings route SMS safety meta', () => {
       success: true,
       data: {
         notification_channel: 'sms',
+        notification_sent: true,
       },
       meta: {
         sms: {
@@ -203,6 +205,7 @@ describe('table bookings route SMS safety meta', () => {
       success: true,
       data: {
         notification_channel: null,
+        notification_sent: false,
       },
       meta: {
         sms: {
@@ -230,6 +233,7 @@ describe('table bookings route SMS safety meta', () => {
 
     ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockResolvedValue({
       notificationChannel: 'sms',
+      notificationSent: true,
       sms: {
         success: true,
         sid: 'SM1',
@@ -283,6 +287,7 @@ describe('table bookings route SMS safety meta', () => {
         state: 'confirmed',
         table_booking_id: 'table-booking-1',
         notification_channel: 'sms',
+        notification_sent: true,
       }),
     })
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()

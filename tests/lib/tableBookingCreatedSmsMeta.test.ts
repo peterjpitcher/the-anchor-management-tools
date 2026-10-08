@@ -81,6 +81,7 @@ describe('table booking created SMS safety meta', () => {
 
     expect(result).toEqual({
       notificationChannel: 'sms',
+      notificationSent: true,
       scheduledFor: '2026-03-01T10:00:00.000Z',
       sms: {
         success: true,
@@ -145,6 +146,7 @@ describe('table booking created SMS safety meta', () => {
 
     expect(result).toEqual({
       notificationChannel: 'sms',
+      notificationSent: true,
       scheduledFor: '2026-03-01T10:00:00.000Z',
       sms: {
         success: true,

@@ -41,6 +41,39 @@ export type CreateParkingBookingCommandResult = {
   booking: ParkingBooking
 }
 
+/**
+ * The name and email on a parking booking are the ones typed for THIS booking.
+ *
+ * They used to be copied from the customer record matched by mobile number. So
+ * a booking made with somebody else's number came back carrying that person's
+ * first name, and their surname and email whenever the form left those blank,
+ * and the booking read-out showed them to whoever held the booking id. Site
+ * review of 7 October 2026, finding PY-002.
+ *
+ * Nothing from the stored record is used as a fallback, on purpose: a blank
+ * typed surname or email stays blank on the booking. The mobile is the stored
+ * form of the number that was typed, which is the same number.
+ */
+export function bookingContactFromTypedDetails(
+  typed: ParkingBookingCustomerInput,
+  storedMobile: string
+): {
+  customer_first_name: string
+  customer_last_name: string | null
+  customer_mobile: string
+  customer_email: string | null
+} {
+  const lastName = typed.lastName?.trim()
+  const email = typed.email?.trim().toLowerCase()
+
+  return {
+    customer_first_name: typed.firstName.trim(),
+    customer_last_name: lastName ? lastName : null,
+    customer_mobile: storedMobile,
+    customer_email: email ? email : null,
+  }
+}
+
 export async function createPendingParkingBooking(
   input: CreateParkingBookingCommandInput,
   options: { client?: GenericClient } = {}
@@ -109,10 +142,7 @@ export async function createPendingParkingBooking(
   const booking = await insertParkingBooking(
     {
       customer_id: customer.id,
-      customer_first_name: customer.first_name,
-      customer_last_name: customer.last_name ?? null,
-      customer_mobile: customer.mobile_number,
-      customer_email: customer.email ?? null,
+      ...bookingContactFromTypedDetails(input.customer, customer.mobile_number),
       vehicle_registration: sanitizeRegistration(input.vehicle.registration),
       vehicle_make: input.vehicle.make ?? null,
       vehicle_model: input.vehicle.model ?? null,
