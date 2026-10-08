@@ -58,7 +58,13 @@ describe('GuestShell', () => {
       expect(link).toHaveAttribute('referrerpolicy', 'no-referrer')
     }
 
-    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
+    // Guests are shown one privacy notice, the website's. `/privacy` in this app
+    // is the staff notice and disagrees with it (site review finding PC-010).
+    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute(
+      'href',
+      'https://www.the-anchor.pub/privacy-policy'
+    )
+    expect(GUEST_CONTACT.privacyPolicy).toBe('https://www.the-anchor.pub/privacy-policy')
     expect(screen.getByRole('link', { name: 'The Anchor website' })).toHaveAttribute(
       'href',
       GUEST_CONTACT.website
