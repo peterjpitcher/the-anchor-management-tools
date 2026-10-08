@@ -18,9 +18,12 @@ import { describe, expect, it } from 'vitest'
  *    widget whose secret this app does not hold, so gating them rejects a real
  *    guest 100% of the time and calls our downtime a failed bot check.
  */
+//
+// The two private hire enquiry routes used to be listed here. They no longer
+// have a keyless branch at all: /api/private-booking-enquiry requires a key
+// holding create:bookings and /api/public/private-booking is retired. Both are
+// covered by calling the handlers in privateBookingEnquiryAuth.test.ts.
 const PUBLIC_ROUTES = [
-  'src/app/api/private-booking-enquiry/route.ts',
-  'src/app/api/public/private-booking/route.ts',
   'src/app/api/table-bookings/route.ts',
   'src/app/api/event-bookings/route.ts'
 ]
