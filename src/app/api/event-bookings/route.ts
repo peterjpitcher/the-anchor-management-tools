@@ -473,6 +473,7 @@ export async function POST(request: NextRequest) {
         nextStepUrl,
         manageUrl,
         smsMeta,
+        notificationChannel,
         eventSeatingType,
         rpcResult
       } = result
@@ -491,7 +492,13 @@ export async function POST(request: NextRequest) {
           event_seating_type: eventSeatingType,
           next_step_url: nextStepUrl,
           manage_booking_url: manageUrl,
-          requests_recorded: (resolvedState === 'confirmed' || resolvedState === 'pending_payment') && rpcResult.requests_recorded === true
+          requests_recorded: (resolvedState === 'confirmed' || resolvedState === 'pending_payment') && rpcResult.requests_recorded === true,
+          // Whether a confirmation is known to have gone, and by which channel.
+          // The website's confirmation screen says "we have sent you a message"
+          // only when this is true; a booking whose email and text both failed
+          // must not be told one is on its way. Site review finding MG-010.
+          notification_sent: notificationChannel !== null,
+          notification_channel: notificationChannel
         },
         meta: {
           status_code: responseStatus,

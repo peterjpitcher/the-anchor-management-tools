@@ -229,6 +229,9 @@ type TableBookingResponseData = {
   deposit_amount: number | null
   fallback_payment_url: string | null
   notification_channel: NotificationChannelMeta
+  // True only when a confirmation is known to have gone. False means the website
+  // must not tell the guest a message was sent.
+  notification_sent: boolean
   // Granted high-chair count (may be below the requested count when inventory
   // is short) and whether the booking holds an outside table instead of indoor.
   high_chairs_granted: number | null
@@ -740,6 +743,7 @@ export async function POST(request: NextRequest) {
       let holdExpiresAt = bookingResult.hold_expires_at || null
       let smsMeta: SmsSafetyMeta = null
       let notificationChannel: NotificationChannelMeta = null
+      let notificationSent = false
 
       if (
         bookingResult.state === 'pending_payment' &&
@@ -800,6 +804,7 @@ export async function POST(request: NextRequest) {
           smsSendResult = smsOutcome.value
           smsMeta = smsSendResult.sms
           notificationChannel = smsSendResult.notificationChannel ?? null
+          notificationSent = smsSendResult.notificationSent === true
         } else {
           logger.warn('Table booking created SMS task rejected unexpectedly', {
             metadata: {
@@ -967,7 +972,10 @@ export async function POST(request: NextRequest) {
           booking_id: responseState === 'pending_payment' ? (bookingResult.table_booking_id || null) : null,
           deposit_amount: canonicalDeposit,
           fallback_payment_url: fallbackPaymentUrl,
-          notification_channel: notificationChannel,
+          // Named only when a message went, so a channel is never reported for a
+          // confirmation that failed. `notification_sent` is the explicit answer.
+          notification_channel: notificationSent ? notificationChannel : null,
+          notification_sent: notificationSent,
           // Granted count comes straight from the RPC jsonb (the atomic grant),
           // not the requested figure. Null when the RPC did not return one
           // (e.g. blocked results) so the website can fall back gracefully.

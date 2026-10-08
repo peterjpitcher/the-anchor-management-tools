@@ -686,6 +686,13 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   }
 ): Promise<{
   notificationChannel?: TableBookingNotificationChannel
+  /**
+   * True only when a confirmation is known to have gone to the guest by some
+   * channel. The website reads it to decide whether its confirmation screen may
+   * say a message was sent. Absent on the early returns, which the route reads
+   * as false.
+   */
+  notificationSent?: boolean
   scheduledFor?: string
   sms: SmsSafetyMeta
   email?: { success: boolean; error?: string | null } | null
@@ -971,12 +978,18 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   return {
     // The channel that reached the guest, which the website names on its confirmation screen.
     // With email first, the first channel selected is email even when the email failed and the
-    // text went instead, so it is only the answer when nothing is known to have gone.
+    // text went instead, so the channel reported is the one that went.
+    //
+    // When nothing is known to have gone this is null. It used to fall back to the first channel
+    // selected, so a booking whose email and text had both failed was still reported as "email",
+    // and the website told the guest "We've sent confirmation details by email." Site review of
+    // 7 October 2026, findings MG-010 and WP-010.
     notificationChannel: emailDeliveredOrUnknown
       ? 'email'
       : smsDeliveredOrUnknown
         ? 'sms'
-        : notificationResult.sentChannel ?? notificationResult.selectedChannels[0] ?? null,
+        : null,
+    notificationSent: notificationDeliveredOrUnknown,
     scheduledFor: smsDeliveredOrUnknown ? smsAttempt?.scheduledFor : undefined,
     sms: smsAttempt
       ? {
