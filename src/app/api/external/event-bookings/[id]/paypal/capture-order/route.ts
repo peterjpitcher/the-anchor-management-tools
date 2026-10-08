@@ -14,6 +14,7 @@ import {
   sendEventPaymentManualReviewEmail,
 } from '@/lib/email/event-ticket-emails'
 import { logAuditEvent } from '@/app/actions/audit'
+import { eventPaymentRefusal } from '@/lib/events/event-payment-reasons'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,7 @@ export async function POST(
     async () => {
       const parsed = CaptureSchema.safeParse(await request.json().catch(() => null))
       if (!parsed.success) {
-        return NextResponse.json({ success: false, error: 'orderId is required' }, { status: 400 })
+        return NextResponse.json({ success: false, error: 'orderId is required', code: 'VALIDATION_ERROR' }, { status: 400 })
       }
 
       const supabase = createAdminClient()
@@ -113,7 +114,7 @@ export async function POST(
       }
 
       return NextResponse.json(
-        { success: false, error: result.reason },
+        eventPaymentRefusal(result.reason, 'capture'),
         { status: result.reason === 'hold_expired' ? 410 : 409 }
       )
     },

@@ -198,6 +198,11 @@ describe('event booking route SMS safety meta', () => {
     expect(response.status).toBe(201)
     expect(payload).toMatchObject({
       success: true,
+      // The text went and only our own log of it failed, so the guest was told.
+      data: {
+        notification_sent: true,
+        notification_channel: 'sms',
+      },
       meta: {
         sms: {
           success: true,
@@ -633,5 +638,114 @@ describe('event booking route SMS safety meta', () => {
         }),
       })
     )
+  })
+})
+
+/**
+ * The website's confirmation screen may say "we have sent you a message" only
+ * when one went. Site review of 7 October 2026, findings MG-010 and WP-010.
+ */
+describe('event booking answer says whether a confirmation went', () => {
+  const eventId = '11111111-1111-4111-8111-111111111111'
+  const customerId = '22222222-2222-4222-8222-222222222222'
+
+  function arrange(): void {
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
+      customerId,
+      resolutionError: undefined,
+    })
+
+    const eventMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: eventId,
+        booking_mode: 'general',
+        name: 'Test Event',
+        date: '2026-01-01',
+        start_datetime: '2026-01-01T19:00:00Z',
+      },
+      error: null,
+    })
+    const customerMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: customerId, first_name: 'Pat', mobile_number: '+447700900123', sms_status: 'active' },
+      error: null,
+    })
+
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'events') {
+          return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle }) }) }
+        }
+        if (table === 'customers') {
+          return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle }) }) }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+      rpc: vi.fn(async (name: string) => {
+        if (name === 'create_event_booking_v06') {
+          return {
+            data: {
+              state: 'confirmed',
+              booking_id: 'booking-1',
+              payment_mode: 'free',
+              event_id: eventId,
+              event_name: 'Test Event',
+              event_start_datetime: '2026-01-01T19:00:00Z',
+              seats_remaining: 10,
+            },
+            error: null,
+          }
+        }
+        throw new Error(`Unexpected RPC: ${name}`)
+      }),
+    })
+  }
+
+  async function book(): Promise<{ status: number; payload: any }> {
+    const response = await POST(new NextRequest('http://localhost/api/event-bookings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'idem-notice' },
+      body: JSON.stringify({ event_id: eventId, phone: '+447700900123', first_name: 'Pat', seats: 2 }),
+    }) as any)
+    return { status: response.status, payload: await response.json() }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    arrange()
+  })
+
+  it('says a text was sent when the text went', async () => {
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({ success: true, sid: 'SM1' })
+
+    const { status, payload } = await book()
+
+    expect(status).toBe(201)
+    expect(payload.data.notification_sent).toBe(true)
+    expect(payload.data.notification_channel).toBe('sms')
+  })
+
+  it('still takes the booking, and says nothing was sent, when the text is refused', async () => {
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
+      success: false,
+      error: 'Twilio refused',
+      code: 'twilio_error',
+    })
+
+    const { status, payload } = await book()
+
+    expect(status).toBe(201)
+    expect(payload.data.state).toBe('confirmed')
+    expect(payload.data.notification_sent).toBe(false)
+    expect(payload.data.notification_channel).toBeNull()
+  })
+
+  it('says nothing was sent when the text provider throws', async () => {
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce(new Error('provider is down'))
+
+    const { status, payload } = await book()
+
+    expect(status).toBe(201)
+    expect(payload.data.notification_sent).toBe(false)
+    expect(payload.data.notification_channel).toBeNull()
   })
 })

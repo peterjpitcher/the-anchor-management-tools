@@ -133,7 +133,14 @@ export async function resolveCustomerByPhone(
       }
     }
 
-    if (lastNameTrimmed && (!customer.last_name || customer.last_name !== lastNameTrimmed)) {
+    // A surname already on file is never changed from here. This runs for the
+    // public parking form, where the only thing tying the request to this
+    // customer is a mobile number somebody typed, so "Smith" could become
+    // anything for anyone whose number is known. The typed name goes on the
+    // booking (see createPendingParkingBooking); the customer record is
+    // corrected from the staff screens. A blank surname is still filled in.
+    // Site review of 7 October 2026, findings PY-002 and PY-022.
+    if (lastNameTrimmed && !sanitizeLastName(customer.last_name ?? undefined)) {
       const { data: updatedLastNameRow, error: lastNameUpdateError } = await supabase
         .from('customers')
         .update({ last_name: lastNameTrimmed })

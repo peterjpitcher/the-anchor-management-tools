@@ -4,6 +4,7 @@ import { withApiAuth } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createEventPayPalOrderByBookingId } from '@/lib/events/event-payments'
 import { logAuditEvent } from '@/app/actions/audit'
+import { eventPaymentRefusal } from '@/lib/events/event-payment-reasons'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export async function POST(
 
       if (result.state !== 'created') {
         return NextResponse.json(
-          { success: false, error: result.reason },
+          eventPaymentRefusal(result.reason, 'start'),
           { status: result.reason === 'hold_expired' ? 410 : 409 }
         )
       }

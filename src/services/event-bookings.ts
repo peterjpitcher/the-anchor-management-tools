@@ -154,6 +154,11 @@ export type CreateBookingResult = {
   nextStepUrl: string | null
   manageUrl: string | null
   smsMeta: SmsSafetyMeta
+  /**
+   * The channel a confirmation is known to have gone by, or null when none did.
+   * The website reads this to decide whether it may say a message was sent.
+   */
+  notificationChannel: 'email' | 'sms' | null
   tableBookingId: string | null
   tableName: string | null
   eventSeatingType: 'seated' | 'standing' | null
@@ -251,6 +256,22 @@ function buildEventBookingSms(
   }
 
   return `The Anchor: Hi ${payload.firstName}, you're in. ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
+}
+
+/**
+ * Which channel a booking confirmation is known to have gone by.
+ *
+ * Email wins when it went. A text counts when it was accepted for sending, or
+ * when it went and only our own log of it failed. Anything else is null: the
+ * guest may have had nothing, and the website must not say otherwise.
+ */
+export function resolveEventNotificationChannel(
+  confirmationEmailed: boolean,
+  smsMeta: SmsSafetyMeta
+): 'email' | 'sms' | null {
+  if (confirmationEmailed) return 'email'
+  if (smsMeta && (smsMeta.success === true || smsMeta.logFailure === true)) return 'sms'
+  return null
 }
 
 async function sendBookingSmsIfAllowed(
@@ -626,6 +647,7 @@ export class EventBookingService {
         nextStepUrl: null,
         manageUrl: null,
         smsMeta: null,
+        notificationChannel: null,
         tableBookingId: null,
         tableName: null,
         eventSeatingType: null,
@@ -691,6 +713,7 @@ export class EventBookingService {
             nextStepUrl: null,
             manageUrl: null,
             smsMeta: null,
+            notificationChannel: null,
             tableBookingId: null,
             tableName: null,
             eventSeatingType: rpcResult.event_seating_type ?? null,
@@ -751,6 +774,7 @@ export class EventBookingService {
           nextStepUrl: null,
           manageUrl: null,
           smsMeta: null,
+          notificationChannel: null,
           tableBookingId,
           tableName,
           eventSeatingType: rpcResult.event_seating_type ?? null,
@@ -787,6 +811,7 @@ export class EventBookingService {
 
     // ── 5. SMS + analytics (fire-and-forget with settled result) ──────────────
     let smsMeta: SmsSafetyMeta = null
+    let confirmationEmailed = false
 
     if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
       const tasks: Array<{ label: string; promise: Promise<unknown> }> = [
@@ -897,6 +922,7 @@ export class EventBookingService {
                 appBaseUrl
               })
               emailed = emailResult.success === true
+              confirmationEmailed = emailed
             } catch (emailError) {
               logger.warn(`${logTagCap} confirmation email rejected unexpectedly`, {
                 metadata: {
@@ -960,6 +986,7 @@ export class EventBookingService {
       nextStepUrl,
       manageUrl,
       smsMeta,
+      notificationChannel: resolveEventNotificationChannel(confirmationEmailed, smsMeta),
       tableBookingId,
       tableName,
       eventSeatingType: rpcResult.event_seating_type ?? null,
