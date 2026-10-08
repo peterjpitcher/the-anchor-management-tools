@@ -25,7 +25,7 @@ Root `src/app/layout.tsx` holds global providers, the PWA manifest, robots block
 
 ### API surface (`src/app/api/`)
 
-Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hours`, `cashup`, `client-errors`, `cron`, `customers`, `employees`, `event-bookings`, `event-categories`, `event-waitlist`, `events`, `external` (`create-booking`, `event-bookings`, `performer-interest`, `table-bookings`), `feedback`, `foh`, `invoices`, `jobs`, `marketing`, `menu`, `menu-management`, `messages`, `oj-projects`, `outstanding-counts`, `parking`, `portal`, `private-booking-enquiry`, `private-bookings`, `public` (`private-booking`), `quotes`, `receipts`, `recruitment`, `redirect`, `rota`, `search`, `settings`, `short-links`, `stripe` (`webhook`), `table-bookings`, `unsubscribe`, `vouchers`, `webhooks`, `website` (`ui-flags`).
+Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hours`, `cashup`, `client-errors`, `cron`, `customers`, `employees`, `event-bookings`, `event-categories`, `event-waitlist`, `events`, `external` (`create-booking`, `event-bookings`, `performer-interest`, `table-bookings`), `feedback`, `foh`, `invoices`, `jobs`, `marketing`, `menu`, `menu-management`, `messages`, `oj-projects`, `outstanding-counts`, `parking`, `portal`, `private-booking-enquiry`, `private-bookings`, `public` (`private-booking`), `quotes`, `receipts`, `recruitment`, `redirect`, `rota`, `search`, `settings`, `short-links`, `stripe` (`webhook`), `table-bookings`, `unsubscribe`, `vouchers`, `webhooks`, `website` (`ui-flags`, `payment-failure-alert`).
 
 Webhooks: `webhooks/paypal` (root plus `event-bookings`, `table-bookings`, `invoices`, `private-bookings`, `parking`), `webhooks/resend`, `webhooks/twilio`, `stripe/webhook`.
 
