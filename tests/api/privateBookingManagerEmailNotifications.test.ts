@@ -4,6 +4,14 @@ vi.mock('@/lib/rate-limit', () => ({
   createRateLimiter: vi.fn(() => vi.fn().mockResolvedValue(null)),
 }))
 
+// Authentication is proved in privateBookingEnquiryAuth.test.ts.
+vi.mock('@/lib/api/auth', () => ({
+  withApiAuth: vi.fn(
+    async (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) =>
+      handler(request)
+  ),
+}))
+
 vi.mock('@/lib/api/idempotency', () => ({
   claimIdempotencyKey: vi.fn(),
   computeIdempotencyRequestHash: vi.fn(),
@@ -57,7 +65,6 @@ import {
 import { PrivateBookingService } from '@/services/private-bookings'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 import { POST as privateBookingEnquiryPost } from '@/app/api/private-booking-enquiry/route'
-import { POST as publicPrivateBookingPost } from '@/app/api/public/private-booking/route'
 
 describe('private-booking manager email notifications', () => {
   beforeEach(() => {
@@ -111,46 +118,6 @@ describe('private-booking manager email notifications', () => {
     expect(sendManagerPrivateBookingCreatedEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         createdVia: 'api_private_booking_enquiry',
-      })
-    )
-  })
-
-  it('keeps public private-booking creation successful when manager email task throws', async () => {
-    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
-      id: 'public-booking-1',
-      booking_reference: 'PB-2',
-      customer_first_name: 'Sam',
-      status: 'draft',
-      source: 'website',
-    })
-    ;(sendManagerPrivateBookingCreatedEmail as unknown as Mock).mockRejectedValueOnce(
-      new Error('mailbox unavailable')
-    )
-
-    const request = new Request('http://localhost/api/public/private-booking', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'Idempotency-Key': 'idem-1',
-      },
-      body: JSON.stringify({
-        customer_first_name: 'Sam',
-        contact_phone: '+447700900124',
-      }),
-    })
-
-    const response = await publicPrivateBookingPost(request as any)
-    const payload = await response.json()
-
-    expect(response.status).toBe(201)
-    expect(payload).toMatchObject({
-      success: true,
-      booking_id: 'public-booking-1',
-    })
-    expect(sendManagerPrivateBookingCreatedEmail).toHaveBeenCalledTimes(1)
-    expect(sendManagerPrivateBookingCreatedEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        createdVia: 'api_public_private_booking',
       })
     )
   })

@@ -15,12 +15,11 @@ import { createRateLimiter } from '@/lib/rate-limit'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
-import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
-import { getApiKeyAuthState } from '@/lib/api/auth'
+import { withApiAuth } from '@/lib/api/auth'
 
 // Guest-facing wording. Everything this schema rejects is shown to the person
 // filling in the private-hire form on the brand site, so a raw Zod string like
@@ -130,33 +129,29 @@ async function recordPrivateBookingEnquiryAnalyticsSafe(
   }
 }
 
+/**
+ * Website callers only: a valid API key holding create:bookings is required.
+ *
+ * This route used to accept either a valid key or a passed Turnstile check. The
+ * key was never required and its permission was never tested, so any key at all
+ * could file an enquiry, and so could anybody who solved this app's own widget,
+ * which no page shows. The only real caller is the website's server, which
+ * checks its own Turnstile widget and then always sends its key, so the keyless
+ * branch protected nobody and is gone. withApiAuth answers 401 for a missing or
+ * unknown key, 403 for a key without the permission, and 503 when the key could
+ * not be checked, which is our outage and not the caller's fault.
+ */
 export async function POST(request: NextRequest) {
+  const rateLimitResponse = await privateBookingEnquiryLimiter(request)
+  if (rateLimitResponse) {
+    return rateLimitResponse
+  }
+
+  return withApiAuth(() => handleEnquiry(request), ['create:bookings'], request)
+}
+
+async function handleEnquiry(request: NextRequest): Promise<Response> {
   try {
-    const rateLimitResponse = await privateBookingEnquiryLimiter(request)
-    if (rateLimitResponse) {
-      return rateLimitResponse
-    }
-
-    // Turnstile CAPTCHA verification, skipped only for requests carrying an API
-    // key that actually validates. An unrecognised key is treated as anonymous
-    // and still has to pass the bot check.
-    //
-    // A key we could not check at all is a third case: that is our outage, not
-    // a bot, and the caller has no widget to solve. It falls through to
-    // withApiAuth, which reports 503 rather than blaming their bot check.
-    const authState = await getApiKeyAuthState(request.headers)
-    if (authState === 'anonymous') {
-      const turnstileToken = request.headers.get('x-turnstile-token')
-      const clientIp = getClientIp(request)
-      const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
-      if (!turnstile.success) {
-        return NextResponse.json(
-          { error: turnstile.error || 'Bot verification failed' },
-          { status: 403 }
-        )
-      }
-    }
-
     const supabase = createAdminClient()
     let rawPayload: unknown
     try {

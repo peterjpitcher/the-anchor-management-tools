@@ -29,7 +29,7 @@ Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hou
 
 Webhooks: `webhooks/paypal` (root plus `event-bookings`, `table-bookings`, `invoices`, `private-bookings`, `parking`), `webhooks/resend`, `webhooks/twilio`, `stripe/webhook`.
 
-Turnstile-checked endpoints: `event-bookings`, `table-bookings`, `feedback`, `private-booking-enquiry`, `public/private-booking`, `recruitment/applications`, `recruitment/booking/[token]` (plus `cancel` and `reschedule`).
+Turnstile-checked endpoints: `event-bookings`, `table-bookings`, `feedback`, `recruitment/applications`, `recruitment/booking/[token]` (plus `cancel` and `reschedule`).
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
 
