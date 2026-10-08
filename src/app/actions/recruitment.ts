@@ -1,5 +1,10 @@
 'use server'
 
+import {
+  isRecruitmentRetentionApplyEnabled,
+  runRecruitmentRetentionCleanup,
+  type RecruitmentRetentionResult,
+} from '@/services/recruitment-retention'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -36,7 +41,6 @@ import {
   rescheduleRecruitmentAppointmentByStaff,
   rescoreRecruitmentApplication,
   restoreRecruitmentAppointmentSlot,
-  runRecruitmentRetentionCleanup,
   saveRecruitmentEmailTemplate,
   scheduleRecruitmentAppointmentByStaff,
   setRecruitmentArchiveState,
@@ -1459,22 +1463,55 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
 export async function runRecruitmentRetentionAction(_prevState?: unknown): Promise<ActionResult> {
   try {
     const user = await requireRecruitmentPermission('manage')
-    const result = await runRecruitmentRetentionCleanup()
+    // Dry unless the owner has switched it on: the button then reports what
+    // would be removed and removes nothing.
+    const dryRun = !isRecruitmentRetentionApplyEnabled()
+    const result = await runRecruitmentRetentionCleanup({ dryRun })
     await auditRecruitmentMutation({
       user,
-      operation: 'retention_cleanup',
+      operation: dryRun ? 'retention_cleanup_dry_run' : 'retention_cleanup',
       resource: 'recruitment_candidate',
-      status: 'success',
+      status: result.failed.length > 0 ? 'failure' : 'success',
+      // Counts and ids only. Never a name or a contact detail.
       newValues: {
-        anonymised: result.anonymised,
-        cv_deleted: result.cvDeleted,
+        mode: result.mode,
+        due: result.due.candidates,
+        cleared: result.cleared,
+        cv_files_removed: result.cvFilesRemoved,
+        calendar_entries_removed: result.calendarEntriesRemoved,
+        failed: result.failed.length,
+        remaining: result.remaining,
       },
     })
     revalidatePath('/recruitment')
-    return { success: true, data: result, message: 'Recruitment retention cleanup completed.' }
+
+    if (result.failed.length > 0) {
+      return {
+        success: false,
+        error: `${result.cleared} cleared, but ${result.failed.length} could not be cleared and still hold their details. They will be tried again on the next run.`,
+      }
+    }
+
+    return { success: true, data: result, message: describeRetentionResult(result) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to run retention cleanup.' }
   }
+}
+
+function describeRetentionResult(result: RecruitmentRetentionResult): string {
+  const people = (count: number) => `${count} ${count === 1 ? 'applicant' : 'applicants'}`
+  const files = (count: number) => `${count} CV ${count === 1 ? 'file' : 'files'}`
+
+  if (result.mode === 'dry_run') {
+    return result.due.candidates === 0
+      ? 'Check only: nobody is due. Nothing was removed.'
+      : `Check only: ${people(result.due.candidates)} would have their CV and contact details removed (${files(result.due.cvFiles)}). Nothing was removed.`
+  }
+
+  if (result.cleared === 0) return 'Nobody was due. Nothing was removed.'
+
+  const more = result.remaining > 0 ? ` ${people(result.remaining)} still to do: run it again.` : ''
+  return `${people(result.cleared)} cleared and ${files(result.cvFilesRemoved)} deleted. Names and outcomes were kept.${more}`
 }
 
 export async function eraseRecruitmentCandidateAction(formData: FormData): Promise<ActionResult> {
