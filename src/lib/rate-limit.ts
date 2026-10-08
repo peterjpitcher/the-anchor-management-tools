@@ -73,7 +73,9 @@ export function createRateLimiter(config: RateLimitConfig) {
       const retryAfter = Math.ceil((data.resetTime - now) / 1000)
       
       return NextResponse.json(
-        { error: message },
+        // `code` is the stable part. The sentence may be reworded; callers such as
+        // the public website match on the code.
+        { error: message, code: 'RATE_LIMIT_EXCEEDED' },
         { 
           status: 429,
           headers: {

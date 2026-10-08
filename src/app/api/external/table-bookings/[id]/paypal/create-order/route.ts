@@ -10,6 +10,7 @@ import {
   extractPayPalOrderAmountGbp,
   getPayPalDepositCaptureBlockReason,
   payPalAmountsMatch,
+  payPalDepositCaptureBlockCode,
   payPalDepositCaptureBlockMessage,
 } from '@/lib/table-bookings/paypal-deposit';
 
@@ -41,13 +42,13 @@ export async function POST(
             metadata: { bookingId, code: fetchError.code, details: fetchError.details },
           });
         }
-        return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+        return NextResponse.json({ success: false, error: 'Booking not found', code: 'BOOKING_NOT_FOUND' }, { status: 404 });
       }
 
       // If already paid (payment completed), return 409
       if (booking.payment_status === 'completed') {
         return NextResponse.json(
-          { error: 'Deposit has already been paid for this booking' },
+          { success: false, error: 'Deposit has already been paid for this booking', code: 'DEPOSIT_ALREADY_PAID' },
           { status: 409 },
         );
       }
@@ -58,7 +59,7 @@ export async function POST(
 
       if (!awaitingDeposit) {
         return NextResponse.json(
-          { error: 'This booking does not require a deposit payment' },
+          { success: false, error: 'This booking does not require a deposit payment', code: 'DEPOSIT_NOT_REQUIRED' },
           { status: 400 },
         );
       }
@@ -66,7 +67,7 @@ export async function POST(
       const blockReason = getPayPalDepositCaptureBlockReason(booking);
       if (blockReason) {
         return NextResponse.json(
-          { error: payPalDepositCaptureBlockMessage(blockReason) },
+          { success: false, error: payPalDepositCaptureBlockMessage(blockReason), code: payPalDepositCaptureBlockCode(blockReason) },
           { status: blockReason === 'hold_expired' ? 410 : 409 },
         );
       }
@@ -92,7 +93,7 @@ export async function POST(
       );
       if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
         return NextResponse.json(
-          { error: 'No deposit required for this booking.' },
+          { success: false, error: 'No deposit required for this booking.', code: 'DEPOSIT_NOT_REQUIRED' },
           { status: 400 },
         );
       }
@@ -134,7 +135,7 @@ export async function POST(
             metadata: { bookingId, staleOrderId: booking.paypal_deposit_order_id },
           });
           return NextResponse.json(
-            { error: 'Failed to refresh PayPal order. Please try again.' },
+            { success: false, error: 'Failed to refresh PayPal order. Please try again.', code: 'PAYPAL_ORDER_FAILED' },
             { status: 502 },
           );
         }
@@ -166,7 +167,7 @@ export async function POST(
         });
       } catch (err) {
         return NextResponse.json(
-          { error: 'Failed to create PayPal order. Please try again.' },
+          { success: false, error: 'Failed to create PayPal order. Please try again.', code: 'PAYPAL_ORDER_FAILED' },
           { status: 502 },
         );
       }
@@ -195,7 +196,7 @@ export async function POST(
           },
         });
         return NextResponse.json(
-          { error: 'Order created but could not be saved. Please try again.' },
+          { success: false, error: 'Order created but could not be saved. Please try again.', code: 'PAYPAL_ORDER_NOT_SAVED' },
           { status: 502 },
         );
       }
