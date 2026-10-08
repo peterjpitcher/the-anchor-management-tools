@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 const bookingRoute = readFileSync(resolve(process.cwd(), 'src/app/api/recruitment/booking/[token]/route.ts'), 'utf8')
 const cancelRoute = readFileSync(resolve(process.cwd(), 'src/app/api/recruitment/booking/[token]/cancel/route.ts'), 'utf8')
 const rescheduleRoute = readFileSync(resolve(process.cwd(), 'src/app/api/recruitment/booking/[token]/reschedule/route.ts'), 'utf8')
-const recruitmentService = readFileSync(resolve(process.cwd(), 'src/services/recruitment.ts'), 'utf8')
 
 describe('A-089 recruitment public-route security wiring', () => {
   it('guards public booking preview, claim, cancel, and reschedule routes', () => {
@@ -19,7 +18,9 @@ describe('A-089 recruitment public-route security wiring', () => {
     expect(rescheduleRoute).toContain('requireTurnstile: true')
   })
 
-  it('retention cleanup skips candidates already anonymised', () => {
-    expect(recruitmentService).toContain('if (candidate.anonymised_at) continue')
-  })
+  // "Retention cleanup skips candidates already anonymised" used to be checked
+  // here by looking for a line of source. The job moved to
+  // src/services/recruitment-retention.ts and the rule is now proved by running
+  // it: see "running it again" and "people the old job already cleared" in
+  // tests/services/recruitmentRetention.test.ts.
 })
