@@ -777,14 +777,8 @@ describe('SMS reply-to-book', () => {
       assertCleanText(texts[0].body)
       expectNoBadLinks(texts[0].body)
 
-      // A guest who booked by text gets the email as well, not instead.
-      expect(shortLinkDestinations()).toEqual([MANAGE_LINK])
-      const email = onlyEmail()
-      expect(email.to).toBe('pat@example.com')
-      expect(email.text).toContain('View your booking here: https://l.the-anchor.pub/abc123')
-      expectNoBadLinks(email.text ?? '')
-      expectNoBadLinks(email.html ?? '')
-      assertCleanRender(email as { subject: string; html: string; text: string })
+      // A guest who booked by text gets the text alone: no email follows it.
+      expect(sentEmails()).toHaveLength(0)
     } finally {
       createBooking.mockRestore()
     }

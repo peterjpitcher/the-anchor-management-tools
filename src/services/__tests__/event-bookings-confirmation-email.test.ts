@@ -162,15 +162,29 @@ describe('event booking confirmation, email where we can reach them and a text o
     expect(sendSMS).toHaveBeenCalledTimes(1)
   })
 
-  it('still texts a guest who booked by replying to a text, and emails them too', async () => {
+  it('texts a guest who booked by replying to a text, and sends no email as well', async () => {
     const supabase = makeSupabaseMock({ data: CONFIRMED_RPC_RESULT, error: null })
     vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
     vi.mocked(sendEventBookingConfirmedEmail).mockResolvedValue({ success: true, messageId: 'email-1' })
 
-    await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'sms_reply' })
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'sms_reply' })
 
-    expect(sendEventBookingConfirmedEmail).toHaveBeenCalled()
     expect(sendSMS).toHaveBeenCalledTimes(1)
+    expect(sendEventBookingConfirmedEmail).not.toHaveBeenCalled()
+    expect(result.notificationChannel).toBe('sms')
+  })
+
+  it('falls back to the email when the text to a text-reply booker does not go', async () => {
+    const supabase = makeSupabaseMock({ data: CONFIRMED_RPC_RESULT, error: null })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    vi.mocked(sendSMS).mockResolvedValue({ success: false, error: 'provider down' } as Awaited<ReturnType<typeof sendSMS>>)
+    vi.mocked(sendEventBookingConfirmedEmail).mockResolvedValue({ success: true, messageId: 'email-1' })
+
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'sms_reply' })
+
+    expect(sendSMS).toHaveBeenCalledTimes(1)
+    expect(sendEventBookingConfirmedEmail).toHaveBeenCalledTimes(1)
+    expect(result.notificationChannel).toBe('email')
   })
 
   it('sends a walk-in nothing, because staff booked them in at the venue', async () => {
