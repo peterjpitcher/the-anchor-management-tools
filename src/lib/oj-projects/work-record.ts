@@ -297,7 +297,15 @@ export function buildWorkRecord(input: {
 
   const notYetCharged = entries
     .filter((e) => !e.invoice_id && e.status === 'unbilled')
-    .map((e) => toLine(e, input.settings, splitPartners))
+    .map((e) => {
+      const line = toLine(e, input.settings, splitPartners)
+      // The other part of a split is on an invoice; this part is on none, so
+      // "on this invoice" would be wrong here.
+      if (line.splitNote) {
+        line.splitNote = line.splitNote.replace(/ on this invoice$/, ' not yet invoiced')
+      }
+      return line
+    })
 
   // Settled work with no invoice reference recorded. Real for historic rows that
   // predate the billing engine, so it is stated rather than silently dropped.
