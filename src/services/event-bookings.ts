@@ -902,19 +902,26 @@ export class EventBookingService {
        * Two exceptions, both about where the guest is standing when the booking is made:
        *  - a walk-in is booked in at the venue by staff, and is already in the room, so there is
        *    nothing to confirm to them in writing;
-       *  - a guest who booked by replying to a text is mid-conversation, so the text still goes
-       *    and the email goes as well rather than instead.
+       *  - a guest who booked by replying to a text is mid-conversation, so the text is the
+       *    confirmation and no email follows it (owner decision, 9 October 2026: the pair read as
+       *    a duplicate). The email goes only if the text could not.
        *
-       * The text also covers an email that does not go out, so a booking is never confirmed to
-       * nobody.
+       * Whichever channel leads, the other covers it when it does not go out, so a booking is
+       * never confirmed to nobody.
        */
       const confirmedBookingId =
         resolvedState === 'confirmed' && source !== 'walk-in' ? rpcResult.booking_id : null
-      const emailReplacesText = source !== 'sms_reply'
+      const textLeads = source === 'sms_reply'
+      const canText = shouldSendSms && Boolean(normalizedPhone)
       if (confirmedBookingId) {
         tasks.push({
           label: 'email:event_booking_confirmed',
           promise: (async () => {
+            if (textLeads && canText) {
+              await runBookingSms()
+              if (resolveEventNotificationChannel(false, smsMeta) === 'sms') return
+            }
+
             let emailed = false
             try {
               const emailResult = await sendEventBookingConfirmedEmail(supabase, {
@@ -932,12 +939,12 @@ export class EventBookingService {
               })
             }
 
-            if (!(emailed && emailReplacesText) && shouldSendSms && normalizedPhone) {
+            if (!emailed && !textLeads && canText) {
               await runBookingSms()
             }
           })()
         })
-      } else if (shouldSendSms && normalizedPhone) {
+      } else if (canText) {
         tasks.push({
           label: 'sms:booking_created',
           promise: runBookingSms()
