@@ -3,12 +3,40 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { buildWorkRecord, type WorkRecord } from '@/lib/oj-projects/work-record'
+import { getTodayIsoDate } from '@/lib/dateUtils'
+import {
+  buildInvoiceForecast,
+  nextInvoiceDate,
+  type AccountPosition,
+  type InvoiceForecast,
+} from '@/lib/oj-projects/account-position'
+import { loadAccountPosition, type NotYetInvoicedCharge } from '@/lib/oj-projects/account-position-loader'
+
+/**
+ * Where the account stands today, for the summary, the not-yet-invoiced total
+ * and the forecast of invoices to come.
+ */
+export interface WorkRecordAccount {
+  /** London calendar date the figures are true for. */
+  asAt: string
+  position: AccountPosition
+  notYetInvoicedCharges: NotYetInvoicedCharge[]
+  /** Null for a client who is invoiced in full each month: there is no plan to show. */
+  forecast: InvoiceForecast | null
+  monthlyChargesIncVat: number
+}
 
 export interface WorkRecordData {
   vendor: { id: string; name: string }
   period: { from: string; to: string }
   record: WorkRecord
   monthlyCapIncVat: number | null
+  /**
+   * Only present when the record runs up to today. The position cannot be
+   * rebuilt for a past date, and today's figures beside an older period would
+   * not agree with the work listed.
+   */
+  account?: WorkRecordAccount
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -78,7 +106,7 @@ export async function getWorkRecord(
       // to point at. Deriving the list from entries hid INV-003VM, a paid GBP 500
       // invoice with no work linked to it, from this document for months while
       // the account statement showed it: the two disagreed by GBP 500.
-      .select('id, invoice_number, invoice_date, status, subtotal_amount, total_amount, is_fixed_price')
+      .select('id, invoice_number, invoice_date, status, subtotal_amount, total_amount, paid_amount, reference, is_fixed_price')
       .eq('vendor_id', vendorId)
       .is('deleted_at', null)
       // Void invoices are excluded, as on the account statement. Their work
@@ -124,15 +152,44 @@ export async function getWorkRecord(
     settings,
   })
 
+  const monthlyCapIncVat =
+    settings?.billing_mode === 'cap' && typeof settings?.monthly_cap_inc_vat === 'number'
+      ? settings.monthly_cap_inc_vat
+      : null
+
+  let account: WorkRecordAccount | undefined
+  const today = getTodayIsoDate()
+  if (dateTo >= today) {
+    const loaded = await loadAccountPosition(supabase, vendorId)
+    // Fails closed. Without the position the document would list unpaid
+    // invoices and unbilled work with no total, which is the gap it exists to close.
+    if (loaded.error || !loaded.data) {
+      return { error: loaded.error || 'Could not load the account position' }
+    }
+    account = {
+      asAt: today,
+      position: loaded.data.position,
+      notYetInvoicedCharges: loaded.data.notYetInvoicedCharges,
+      monthlyChargesIncVat: loaded.data.monthlyChargesIncVat,
+      forecast:
+        monthlyCapIncVat && monthlyCapIncVat > 0
+          ? buildInvoiceForecast({
+              startingBalance: loaded.data.position.notYetInvoicedNet,
+              monthlyCapIncVat,
+              monthlyChargesIncVat: loaded.data.monthlyChargesIncVat,
+              firstInvoiceDate: nextInvoiceDate(today),
+            })
+          : null,
+    }
+  }
+
   return {
     data: {
       vendor: { id: vendor.id, name: vendor.name },
       period: { from: dateFrom, to: dateTo },
       record,
-      monthlyCapIncVat:
-        settings?.billing_mode === 'cap' && typeof settings?.monthly_cap_inc_vat === 'number'
-          ? settings.monthly_cap_inc_vat
-          : null,
+      monthlyCapIncVat,
+      account,
     },
   }
 }

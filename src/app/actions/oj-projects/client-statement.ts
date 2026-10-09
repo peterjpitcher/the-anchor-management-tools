@@ -9,7 +9,9 @@ import { generateStatementPDF } from '@/lib/oj-statement'
 import { logAuditEvent } from '@/app/actions/audit'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { buildStatementAgeing, type StatementAgeing } from '@/lib/oj-projects/statement-ageing'
-import { toLocalIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { toStatementPosition, type StatementPosition } from '@/lib/oj-projects/account-position'
+import { loadAccountPosition } from '@/lib/oj-projects/account-position-loader'
 
 /**
  * The London calendar date a credit note was issued on.
@@ -41,6 +43,12 @@ export interface ClientStatementData {
   closingBalance: number
   /** `ageing.netTotal` must equal `closingBalance`; the PDF prints that check. */
   ageing: StatementAgeing
+  /**
+   * Work done and not yet invoiced, as at today. Only present when the
+   * statement runs up to today: the figure cannot be rebuilt for a past date,
+   * and printing today's beside an older closing balance would mislead.
+   */
+  position?: StatementPosition
 }
 
 export async function getClientStatement(
@@ -292,6 +300,22 @@ export async function getClientStatement(
     dateTo
   )
 
+  // The owner asked for the statement to show the whole position, not only
+  // what has been invoiced (9 October 2026). It is kept apart from the closing
+  // balance, which must still agree with the invoices the client holds.
+  let position: StatementPosition | undefined
+  const today = getTodayIsoDate()
+  if (dateTo >= today) {
+    const loaded = await loadAccountPosition(supabase, vendorId)
+    if (loaded.error || !loaded.data) {
+      // Fails closed, like the credit notes above. A statement that silently
+      // drops this line understates what the client owes.
+      console.error('[client-statement] account position failed:', loaded.error)
+      return { error: 'Could not load work not yet invoiced, so the statement would be incomplete. Please try again.' }
+    }
+    position = toStatementPosition(loaded.data.position, today, loaded.data.monthlyCapIncVat)
+  }
+
   return {
     statement: {
       vendor: { id: vendor.id, name: vendor.name, email: vendor.email || null },
@@ -300,6 +324,7 @@ export async function getClientStatement(
       transactions,
       closingBalance,
       ageing,
+      position,
     },
   }
 }
@@ -410,6 +435,7 @@ export async function sendStatementEmail(
     transactions: statement.transactions,
     closingBalance: statement.closingBalance,
     ageing: statement.ageing,
+    position: statement.position,
   })
 
   // Format date range for subject

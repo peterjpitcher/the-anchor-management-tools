@@ -60,7 +60,7 @@ function createMockSupabase(tableResponses: Record<string, { data: unknown; erro
         : responses || { data: [], error: null }
 
       const chain: Record<string, ReturnType<typeof vi.fn>> = {}
-      const methods = ['select', 'eq', 'is', 'ilike', 'not', 'in', 'lt', 'lte', 'gt', 'gte', 'order', 'limit', 'maybeSingle', 'single']
+      const methods = ['select', 'eq', 'is', 'ilike', 'not', 'in', 'lt', 'lte', 'gt', 'gte', 'order', 'limit', 'range', 'maybeSingle', 'single']
       for (const m of methods) {
         chain[m] = vi.fn().mockReturnValue(chain)
       }
@@ -399,5 +399,61 @@ describe('getClientBalance', () => {
 
     // 1 hour at GBP 62.50 plus 20% VAT, not GBP 75 plus VAT (which would be 90).
     expect(result.balance?.unbilledTimeTotal).toBe(75)
+  })
+  it('takes money already invoiced on account off the total, so it is not asked for twice', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    // A flat GBP 500 invoice with GBP 262.50 of work attached, while 16 hours
+    // (GBP 1,200 inc VAT) stay unbilled. The other GBP 237.50 was invoiced on
+    // account, which is how INV-003WC came to be charged twice over.
+    const unbilled = {
+      entry_type: 'time', duration_minutes_rounded: 960, miles: null,
+      hourly_rate_ex_vat_snapshot: 62.5, vat_rate_snapshot: 20,
+      mileage_rate_snapshot: null, amount_ex_vat_snapshot: null,
+      billable: true, status: 'unbilled', invoice_id: null,
+    }
+    const invoiceRow = {
+      id: 'inv-1', invoice_number: 'INV-001', invoice_date: '2026-07-01', due_date: '2026-07-08',
+      reference: 'OJ Projects 2026-06', status: 'overdue', total_amount: 500, paid_amount: 0,
+      is_fixed_price: false,
+    }
+    const mockSb = createMockSupabase({
+      invoices: { data: [invoiceRow] },
+      oj_entries: [
+        { data: [unbilled] },
+        { data: [unbilled, { ...unbilled, duration_minutes_rounded: 210, status: 'billed', invoice_id: 'inv-1' }] },
+      ],
+      oj_recurring_charge_instances: { data: [] },
+      oj_vendor_billing_settings: { data: { vat_rate: 20, hourly_rate_ex_vat: 62.5, mileage_rate: 0.55 } },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.error).toBeUndefined()
+    expect(result.balance?.unpaidInvoiceBalance).toBe(500)
+    expect(result.balance?.unbilledTotal).toBe(1200)
+    expect(result.balance?.invoicedOnAccountTotal).toBe(237.5)
+    // 500 unpaid + 1,200 unbilled - 237.50 on account.
+    expect(result.balance?.totalOutstanding).toBe(1462.5)
+  })
+
+  it('fails closed when the on-account figure cannot be loaded', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: { data: [] },
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: { data: [] },
+      oj_vendor_recurring_charges: { data: null, error: { message: 'boom' } },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance).toBeUndefined()
+    expect(result.error).toMatch(/balance would be wrong/)
   })
 })

@@ -295,6 +295,54 @@ describe('statement template', () => {
   })
 })
 
+describe('statement account position', () => {
+  const POSITION = {
+    asAt: '2026-10-09',
+    notYetInvoicedWork: 2100,
+    notYetInvoicedCharges: 192,
+    invoicedOnAccount: 257.02,
+    notYetInvoicedNet: 2034.98,
+    monthlyCapIncVat: 500,
+  }
+
+  it('adds work not yet invoiced beneath the closing balance, without changing it', () => {
+    // Owner request, 9 October 2026: the statement showed GBP 2,000 for a client
+    // whose position was over GBP 4,000. The closing balance still has to agree
+    // with the invoices the client holds, so this sits in its own table.
+    const html = generateStatementHTML({ ...STATEMENT, closingBalance: 2000, position: POSITION })
+
+    expect(html).toContain('Your account as at 09 Oct 2026')
+    expect(html).toContain('Invoiced and unpaid (the closing balance above)')
+    expect(html).toContain('Work done, not yet invoiced')
+    expect(html).toContain('Regular charges, not yet invoiced')
+    expect(html).toContain('-£257.02')
+    expect(html).toMatch(/Total for all work to date<\/td>\s*<td class="text-right">£4034\.98<\/td>/)
+    expect(html.match(/Closing Balance/g)).toHaveLength(1)
+  })
+
+  it('tells the client only the closing balance is due, and how the rest is invoiced', () => {
+    const html = generateStatementHTML({ ...STATEMENT, closingBalance: 2000, position: POSITION })
+
+    expect(html).toContain('Only the closing balance is due now')
+    expect(html).toContain('It will be invoiced at £500.00 a month.')
+
+    const inFull = generateStatementHTML({
+      ...STATEMENT,
+      position: { ...POSITION, monthlyCapIncVat: null },
+    })
+    expect(inFull).toContain('It will be on your next invoice.')
+  })
+
+  it('prints nothing extra when there is nothing waiting to be invoiced', () => {
+    const html = generateStatementHTML({
+      ...STATEMENT,
+      position: { ...POSITION, notYetInvoicedWork: 0, notYetInvoicedCharges: 0, invoicedOnAccount: 0, notYetInvoicedNet: 0 },
+    })
+
+    expect(html).not.toContain('Your account as at')
+  })
+})
+
 describe('statement ageing strip', () => {
   const ageing = buildStatementAgeing(
     [
