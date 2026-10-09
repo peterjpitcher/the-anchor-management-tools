@@ -91,6 +91,7 @@ export const SKIP_REASON_LABELS: Record<MarketingSkipReason, string> = {
   frequency_cap: 'Emailed too recently',
   not_eligible: 'Not marked eligible',
   campaign_cancelled: 'Campaign cancelled',
+  already_booked: 'Already booked for this event',
 }
 
 export function skipReasonLabel(reason: MarketingSkipReason | null): string {
