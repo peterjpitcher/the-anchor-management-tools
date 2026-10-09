@@ -14,6 +14,7 @@ import {
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
 import { collectDestinationUrls, renderCampaignText } from '@/lib/email/marketing/render'
+import { resolvePromotedEventId } from '@/lib/email/marketing/promoted-event'
 import { houseStyleErrors } from '@/lib/copy/house-style'
 import { findVenueClosureClaims } from '@/lib/email/marketing/venueClosureClaims'
 import { getBusinessHoursForDates } from '@/lib/business-hours/effective'
@@ -689,6 +690,9 @@ export async function scheduleCampaign(
 
   const now = new Date().toISOString()
   const linkMap = await provisionLinkMap(id, existing.utmCampaign ?? id, content)
+  // Read from the content, not the link map: the map is empty when shortening fails, and a
+  // redirector problem must not switch off the already-booked skip.
+  const promotedEventId = await resolvePromotedEventId(supabase, collectDestinationUrls(content))
 
   const { data, error } = await supabase
     .from('marketing_campaigns')
@@ -700,6 +704,7 @@ export async function scheduleCampaign(
       approved_recipient_count: preview.eligibleCount,
       content_hash: computeContentHash(content),
       link_map: linkMap,
+      event_id: promotedEventId,
     })
     .eq('id', id)
     .eq('status', 'draft')

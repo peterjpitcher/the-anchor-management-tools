@@ -64,6 +64,7 @@ export type MarketingSkipReason =
   | 'frequency_cap'
   | 'not_eligible'
   | 'campaign_cancelled'
+  | 'already_booked'
 
 export type MarketingFailureClass = 'retryable' | 'terminal' | 'unknown'
 
@@ -128,6 +129,7 @@ export const MARKETING_SKIP_REASONS: readonly MarketingSkipReason[] = [
   'frequency_cap',
   'not_eligible',
   'campaign_cancelled',
+  'already_booked',
 ]
 
 // ---------------------------------------------------------------------------
@@ -222,6 +224,12 @@ export interface MarketingCampaign {
    * Every other guard still applies to it.
    */
   ignoresFrequencyCap: boolean
+
+  /**
+   * The one event this campaign promotes, or null for a round-up or a non-event campaign.
+   * Set at scheduling. A guest already booked on it is skipped as `already_booked` in SQL.
+   */
+  eventId: string | null
 
   status: MarketingCampaignStatus
   scheduledFor: string | null
@@ -574,6 +582,7 @@ export function mapMarketingCampaign(row: DbRow): MarketingCampaign {
     // Coalesced rather than read straight through, so a row selected before the column
     // existed maps to the safe answer instead of undefined.
     ignoresFrequencyCap: row.ignores_frequency_cap === true,
+    eventId: row.event_id ?? null,
 
     status: row.status,
     scheduledFor: row.scheduled_for ?? null,
