@@ -111,10 +111,35 @@ describe('work record template', () => {
 
     const html = generateWorkRecordHTML({ ...INPUT, record: fixed, monthlyCapIncVat: null })
 
-    expect(html).toContain('Agreed fixed price for this stage')
-    expect(html).toContain('Time spent on this stage')
+    expect(html).toContain('Agreed fixed price for this work')
+    expect(html).toContain('Time spent on this work')
     expect(html).not.toContain('carried forward to a later invoice')
   })
+  it('calls a penny between a hand-raised invoice and its entries rounding', () => {
+    // INV-003V4: 31.5 hours invoiced as GBP 1,968.75; its 23 entries, each
+    // rounded on its own, come to GBP 1,968.76. Same effect here, a penny the
+    // other way: two entries of 52.08 and one of 20.83 against 125.00.
+    const entry = (id: string, minutes: number) => ({
+      id, entry_date: '2025-09-10', entry_type: 'time', description: 'Retainer work',
+      duration_minutes_rounded: minutes, miles: null, amount_ex_vat_snapshot: null,
+      hourly_rate_ex_vat_snapshot: 62.5, mileage_rate_snapshot: null, vat_rate_snapshot: 20,
+      billable: true, status: 'paid', invoice_id: 'inv-1',
+      project: { project_code: 'RET-BAR-2025-09', project_name: 'Monthly Retainer' },
+    })
+    const rounded = buildWorkRecord({
+      entries: [entry('e1', 50), entry('e2', 50), entry('e3', 20)],
+      recurring: [],
+      invoices: [{ id: 'inv-1', invoice_number: 'INV-003V4', invoice_date: '2025-10-02', status: 'paid', total_amount: 150, subtotal_amount: 125, paid_amount: 150, reference: 'September 2025' }],
+      settings: SETTINGS,
+    })
+
+    const html = generateWorkRecordHTML({ ...INPUT, record: rounded, monthlyCapIncVat: null })
+
+    expect(rounded.invoiceBlocks[0].carriedForwardExVat).toBe(0.01)
+    expect(html).toContain('<td>Rounding</td>')
+    expect(html).not.toContain('Invoiced above the work logged')
+  })
+
   describe('with today\'s account position', () => {
     const live = buildWorkRecord({
       entries: [
@@ -225,7 +250,7 @@ describe('work record template', () => {
     })
 
     it('says nothing about hours on a fixed-price stage with none logged', () => {
-      expect(html).toContain('Agreed fixed price for this stage')
+      expect(html).toContain('Agreed fixed price for this work')
       expect(html).not.toContain('0.00 hours')
     })
 
