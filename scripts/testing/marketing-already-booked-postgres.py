@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261009130000_marketing_skip_already_booked.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261009161208_marketing_skip_already_booked.sql'
 
 SCHEMA = """
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
