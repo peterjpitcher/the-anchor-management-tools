@@ -260,13 +260,20 @@ function differenceRow(block: WorkRecordInvoiceBlock): string {
   // agreed price would invent a balance that does not exist.
   if (block.fixedPrice) {
     return `      <tr>
-        <td>Agreed fixed price for this stage</td>
+        <td>Agreed fixed price for this work</td>
         <td class="num"></td>
       </tr>`
   }
   if (Math.abs(carried) < 0.005) return ''
 
-  const label = block.flatMonthly
+  // Each entry is rounded to the penny on its own, so an invoice for 31.5 hours
+  // can differ from its 23 entries by a penny (INV-003V4, INV-003VQ). That is
+  // rounding, and calling it anything else invents a discrepancy. A genuine
+  // balance on account is never this small: the least a flat monthly invoice
+  // leaves is a fraction of a 15 minute block.
+  const label = Math.abs(carried) < 0.05
+    ? 'Rounding'
+    : block.flatMonthly
     ? carried > 0
       ? 'Invoiced on account, set against work still to be invoiced'
       : 'Covered by amounts already invoiced on account'
@@ -461,14 +468,15 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
   const invoiceBlocks = record.invoiceBlocks
     .map((block) => {
       const carriedRow = differenceRow(block)
-      // A fixed-price stage with no time logged against it has nothing to say
-      // about hours. "Time spent on this stage, 0.00 hours" read as though the
-      // stage had taken no work.
+      // A fixed-price invoice with no time logged against it has nothing to say
+      // about hours. "Time spent, 0.00 hours" read as though it had taken no work.
+      // Worded as "this work" because not every fixed price is a stage: the
+      // vision workshop on INV-003VB was a single quoted job.
       const workRow =
         block.fixedPrice && block.hours <= 0
           ? ''
           : `      <tr>
-        <td>${block.fixedPrice ? `Time spent on this stage, ${block.hours.toFixed(2)} hours` : `Work on this invoice, ${block.hours.toFixed(2)} hours`}</td>
+        <td>${block.fixedPrice ? `Time spent on this work, ${block.hours.toFixed(2)} hours` : `Work on this invoice, ${block.hours.toFixed(2)} hours`}</td>
         <td class="num">${block.fixedPrice ? '' : money(block.workExVat)}</td>
       </tr>`
 

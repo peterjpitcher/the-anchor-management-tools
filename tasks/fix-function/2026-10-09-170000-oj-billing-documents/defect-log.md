@@ -15,7 +15,7 @@ Live figures for Golden Barrels Limited on 9 October 2026, after the day's ledge
 | Invoiced and unpaid (4 invoices) | 2,000.00 |
 | Work done, not yet invoiced | 2,100.00 |
 | Regular charges, not yet invoiced | 192.00 |
-| Already invoiced on account | 256.98 |
+| Already invoiced on account | 256.98 before the backfill, 69.48 after |
 | Total for all work to date | 4,035.02 |
 
 Gap between each capped invoice and the work attached to it (ex VAT): VL 1.84, VP 11.67, VS 11.67,
@@ -35,7 +35,11 @@ Golden Barrels is the only client on a flat monthly amount.
 | FF-007 | UX gap | Low | Date and project columns wrapped on some tables and not others | Automatic table layout, no column widths | Fixed, verified in a rendered PDF |
 | FF-008 | Data risk | Medium | Drawer, statement and Work Record each summed the position separately | Three implementations | Fixed: one pure function, one loader |
 | FF-009 | Data risk | Medium | The projection in the notes on each invoice ignores regular charges and the on-account balance | Separate arithmetic inside the cron | Out of scope here: part of the billing run change (FF-001) |
-| FF-010 | UX gap | Low | A refused Work Record download shows raw JSON in a new tab | Route returns JSON, button opens a tab | Not changed: needs a decision on where the message should appear |
+| FF-010 | UX gap | Low | A refused Work Record download shows raw JSON in a new tab | Route returns JSON, button opens a tab | Fixed: both downloads are fetched and a refusal shows as a message on the client screen |
+| FF-011 | Data risk | High | Barons Pubs: 55 logged time entries (105 hours) marked paid with no invoice, and four invoices with no work linked, so a Work Record from before January 2026 was refused | Time tracking was added in January 2026 and earlier work was entered afterwards without links | Fixed by backfill `20261009162347`, verified on live data |
+| FF-012 | Data risk | Medium | INV-003WC carried GBP 157.92 ex VAT on account after the 17 August reissue | Reissue detached older work and kept the total | Fixed by backfill: 2.5 hours of the unbilled 31 May entry split onto it. Gap now GBP 1.67, the same as its neighbours |
+| FF-013 | Bug | Low | A one penny difference between an invoice and its individually rounded entries printed as a discrepancy | No tolerance for per-entry rounding | Fixed: labelled Rounding |
+| FF-014 | Data risk | Low | Eight Barons Pubs mileage entries from September to December 2025 (GBP 94.08) are marked paid but are on no invoice | Entered after the event; the hand-raised invoices carried time only | Open: owner decision |
 
 ## Sibling checks
 
@@ -52,3 +56,15 @@ Golden Barrels is the only client on a flat monthly amount.
 - New tests under `TZ=UTC`: 78 passed.
 - `npm run build` with CI placeholders: passed.
 - Both documents rendered to PDF from live data with the new code and read back.
+
+## After the backfill (live data, 9 October 2026)
+
+All four OJ Projects clients build a Work Record that reconciles with no unexplained invoices: Golden
+Barrels, Barons Pubs, ASE Associates and Mitch McKee. Golden Barrels: work not yet invoiced 1,912.50,
+regular charges 192.00, on account 69.48, still to be invoiced 2,035.02, total for all work 4,035.02.
+The total is unchanged by the backfill, as it should be: work moved from "not yet invoiced" to an
+invoice that had already charged for it.
+
+Known and accepted: the billing run still tops each flat monthly invoice up to the monthly amount, so
+a few pounds go on account each month. The documents and the drawer deduct it. The run itself does not,
+by the owner's decision of 9 October 2026.

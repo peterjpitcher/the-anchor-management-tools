@@ -564,24 +564,49 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
     }
   }
 
-  function downloadWorkRecordPdf(): void {
+  /**
+   * Fetches a PDF and saves it, rather than opening the route in a new tab.
+   *
+   * When a document is refused (a Work Record whose invoices do not tie up, a
+   * statement that could not load its figures) the route answers with a JSON
+   * error. Opened in a tab, that showed the owner a page of raw text; fetched
+   * here, the reason appears on the screen they are already on.
+   */
+  async function downloadPdf(path: string, fallbackName: string): Promise<void> {
     if (!drawerVendor || !statementFrom || !statementTo) return
     const params = new URLSearchParams({
       vendorId: drawerVendor.id,
       dateFrom: statementFrom,
       dateTo: statementTo,
     })
-    window.open(`/api/oj-projects/work-record?${params.toString()}`, '_blank', 'noopener')
+    try {
+      const res = await fetch(`${path}?${params.toString()}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        toast.error(typeof body?.error === 'string' ? body.error : 'The document could not be produced')
+        return
+      }
+      const blob = await res.blob()
+      const named = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1]
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = named || fallbackName
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('The document could not be downloaded. Please try again.')
+    }
+  }
+
+  function downloadWorkRecordPdf(): void {
+    void downloadPdf('/api/oj-projects/work-record', 'work-record.pdf')
   }
 
   function downloadStatementPdf(): void {
-    if (!drawerVendor || !statementFrom || !statementTo) return
-    const params = new URLSearchParams({
-      vendorId: drawerVendor.id,
-      dateFrom: statementFrom,
-      dateTo: statementTo,
-    })
-    window.open(`/api/oj-projects/statement-pdf?${params.toString()}`, '_blank', 'noopener')
+    void downloadPdf('/api/oj-projects/statement-pdf', 'statement.pdf')
   }
 
   /**
