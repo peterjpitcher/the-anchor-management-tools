@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
+import { loadAccountPosition } from '@/lib/oj-projects/account-position-loader'
 
 function roundMoney(v: number) {
   return Math.round((v + Number.EPSILON) * 100) / 100
@@ -47,6 +48,12 @@ export type ClientBalance = {
   unbilledOneOffTotal: number
   unbilledRecurringTotal: number
   unbilledTotal: number
+  /**
+   * Already invoiced by the monthly run with no work attached, so it comes off
+   * the unbilled work rather than being asked for twice. Never more than
+   * `unbilledTotal`.
+   */
+  invoicedOnAccountTotal: number
   totalOutstanding: number
   invoices: ClientInvoiceSummary[]
 }
@@ -214,7 +221,17 @@ export async function getClientBalance(
   // A credit note can never take an invoice below zero, so clamp at zero rather
   // than letting an over-credit eat into other invoices' balances.
   const adjustedUnpaidInvoiceBalance = roundMoney(Math.max(unpaidInvoiceBalance - creditNoteTotal, 0))
-  const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal)
+
+  // The same figure the statement and the Work Record print, from the same
+  // loader, so the drawer cannot show a different debt from the documents.
+  const loaded = await loadAccountPosition(supabase, vendorId)
+  if (loaded.error || !loaded.data) {
+    console.error('[client-balance] account position failed:', loaded.error)
+    return { error: 'Could not work out what has already been invoiced on account, so the balance would be wrong. Please try again.' }
+  }
+  const invoicedOnAccountTotal = roundMoney(Math.min(loaded.data.position.invoicedOnAccount, unbilledTotal))
+
+  const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal - invoicedOnAccountTotal)
 
   const invoiceSummaries: ClientInvoiceSummary[] = (displayInvoices || []).map((inv) => ({
     id: inv.id,
@@ -238,6 +255,7 @@ export async function getClientBalance(
       unbilledOneOffTotal,
       unbilledRecurringTotal,
       unbilledTotal,
+      invoicedOnAccountTotal,
       totalOutstanding,
       invoices: invoiceSummaries,
     },
