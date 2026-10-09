@@ -7,7 +7,8 @@ import {
   renderDocumentHeader,
 } from '@/lib/pdf/document-chrome'
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
-import type { WorkRecord, WorkRecordLine } from '@/lib/oj-projects/work-record'
+import type { WorkRecord, WorkRecordInvoiceBlock, WorkRecordLine } from '@/lib/oj-projects/work-record'
+import type { WorkRecordAccount } from '@/app/actions/oj-projects/work-record'
 
 /**
  * The Work Record PDF: what work was done, what it was worth, and which invoice
@@ -16,6 +17,10 @@ import type { WorkRecord, WorkRecordLine } from '@/lib/oj-projects/work-record'
  * A sibling of the account statement, on the same shared chrome. It never asks
  * for money, so it carries no bank details and no ageing. Page one is designed
  * to be a complete answer on its own; the per-invoice evidence follows.
+ *
+ * It does say where the account stands, what is unpaid and what is still to be
+ * invoiced (owner request, 9 October 2026). A client reading "nothing to pay
+ * for this yet" beside 28 unbilled hours had no way to see what was coming.
  */
 export interface WorkRecordPDFInput {
   vendorName: string
@@ -24,6 +29,8 @@ export interface WorkRecordPDFInput {
   record: WorkRecord
   /** Shown under the carry-forward strip for clients on a flat monthly amount. */
   monthlyCapIncVat?: number | null
+  /** Today's position. Omitted for a record that stops before today. */
+  account?: WorkRecordAccount
   logoUrl?: string
 }
 
@@ -34,6 +41,15 @@ function money(amount: number): string {
 function formatDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00Z`)
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+function formatMonth(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
 const BODY_CSS = `
@@ -99,6 +115,42 @@ const BODY_CSS = `
       white-space: nowrap;
     }
 
+    /*
+     * Line tables share fixed column widths. Left to size themselves, a table
+     * with one long description squeezed the date and project onto two lines
+     * while its neighbour did not, so the same columns sat at different widths
+     * down the page.
+     */
+    table.lines {
+      table-layout: fixed;
+    }
+
+    table.lines col.c-date { width: 13%; }
+    table.lines col.c-project { width: 24%; }
+    table.lines col.c-time { width: 10%; }
+    table.lines col.c-value { width: 12%; }
+
+    table.grid td.nowrap {
+      white-space: nowrap;
+    }
+
+    table.grid tr.total td {
+      border-top: 2px solid ${STAFF.borderStrong};
+      border-bottom: none;
+      font-weight: 700;
+    }
+
+    .unpaid,
+    .invoice-block h3 span.unpaid {
+      color: ${STAFF.danger};
+      font-weight: 600;
+    }
+
+    /* Short tables that read as one thing are not split across a page. */
+    table.keep {
+      page-break-inside: avoid;
+    }
+
     .split-note {
       display: block;
       color: ${STAFF.textMuted};
@@ -159,27 +211,224 @@ function linesTable(lines: WorkRecordLine[], showValue: boolean): string {
   const rows = lines
     .map(
       (l) => `      <tr>
-        <td>${escapeHtml(formatDate(l.date))}</td>
+        <td class="nowrap">${escapeHtml(formatDate(l.date))}</td>
         <td>${escapeHtml(l.project)}</td>
         <td>${escapeHtml(l.description)}${l.splitNote ? `<span class="split-note">${escapeHtml(l.splitNote)}</span>` : ''}</td>
-        <td class="num">${escapeHtml(l.quantity)}</td>
+        <td class="num">${escapeHtml(l.quantity)}</td>${showValue ? `
+        <td class="num">${money(l.exVat)}</td>` : ''}
       </tr>`
     )
     .join('\n')
 
-  return `  <table class="grid">
+  return `  <table class="grid lines">
+    <colgroup>
+      <col class="c-date"><col class="c-project"><col><col class="c-time">${showValue ? '<col class="c-value">' : ''}
+    </colgroup>
     <thead>
       <tr>
         <th scope="col">Date</th>
         <th scope="col">Project</th>
         <th scope="col">Work carried out</th>
-        <th scope="col" class="num">Time</th>
+        <th scope="col" class="num">Time</th>${showValue ? `
+        <th scope="col" class="num">Value ex VAT</th>` : ''}
       </tr>
     </thead>
     <tbody>
 ${rows}
     </tbody>
   </table>`
+}
+
+/** "paid", or what is still owed, so an unpaid invoice cannot be read past. */
+function invoiceStatusHtml(block: WorkRecordInvoiceBlock): string {
+  if (block.settled) return 'paid'
+  const partPaid = block.outstandingIncVat > 0 && block.outstandingIncVat < block.invoiceIncVat - 0.005
+  return `<span class="unpaid">${partPaid ? 'part paid' : 'unpaid'}, ${money(block.outstandingIncVat)} outstanding</span>`
+}
+
+/**
+ * The row that closes the gap between an invoice and the work listed on it.
+ *
+ * A flat monthly invoice that charged more than the work on it took the rest on
+ * account, and one that charged less used some of that up. Both used to be
+ * described as work "carried forward", which told a client that INV-003VB paid
+ * for earlier work when it was the first invoice on the account.
+ */
+function differenceRow(block: WorkRecordInvoiceBlock): string {
+  const carried = block.carriedForwardExVat
+  // A fixed-price stage says so plainly. Printing a difference against an
+  // agreed price would invent a balance that does not exist.
+  if (block.fixedPrice) {
+    return `      <tr>
+        <td>Agreed fixed price for this work</td>
+        <td class="num"></td>
+      </tr>`
+  }
+  if (Math.abs(carried) < 0.005) return ''
+
+  // Each entry is rounded to the penny on its own, so an invoice for 31.5 hours
+  // can differ from its 23 entries by a penny (INV-003V4, INV-003VQ). That is
+  // rounding, and calling it anything else invents a discrepancy. A genuine
+  // balance on account is never this small: the least a flat monthly invoice
+  // leaves is a fraction of a 15 minute block.
+  const label = Math.abs(carried) < 0.05
+    ? 'Rounding'
+    : block.flatMonthly
+    ? carried > 0
+      ? 'Invoiced on account, set against work still to be invoiced'
+      : 'Covered by amounts already invoiced on account'
+    : carried > 0
+      ? 'Invoiced above the work logged on this invoice'
+      : 'Work logged above the amount invoiced'
+
+  return `      <tr>
+        <td>${label}</td>
+        <td class="num">${carried < 0 ? '-' : ''}${money(carried)}</td>
+      </tr>`
+}
+
+/** Page one: where the account stands today, inc VAT throughout. */
+function accountSummary(account: WorkRecordAccount | undefined): string {
+  if (!account) return ''
+  const p = account.position
+  const total = roundMoney(p.invoicedUnpaid + p.notYetInvoicedNet)
+  const row = (label: string, amount: string, cls = '') => `      <tr${cls ? ` class="${cls}"` : ''}>
+        <td>${label}</td>
+        <td class="num">${amount}</td>
+      </tr>`
+
+  const unpaidLabel = `Invoiced and unpaid${p.unpaidInvoiceCount ? `, ${p.unpaidInvoiceCount} invoice${p.unpaidInvoiceCount === 1 ? '' : 's'}` : ''}`
+
+  return `  <h2>Where your account stands</h2>
+  <table class="grid">
+    <tbody>
+${row('Invoiced to date', money(p.invoicedTotal))}
+${row('Paid to date', money(p.paidTotal))}
+${row(unpaidLabel, p.invoicedUnpaid > 0 ? `<span class="unpaid">${money(p.invoicedUnpaid)}</span>` : money(0))}
+${row('Work done, not yet invoiced', money(p.notYetInvoicedNet))}
+${row('Total for all work to date', money(total), 'total')}
+    </tbody>
+  </table>
+  <p class="note">As at ${escapeHtml(formatDate(account.asAt))}, including VAT. Only invoiced amounts are due for payment.</p>
+`
+}
+
+/**
+ * Everything not yet on an invoice, what it comes to, and when it will be
+ * invoiced. The lines are the work inside the record's dates; the total is the
+ * whole account, so anything older is stated as its own row rather than hidden
+ * inside the VAT.
+ */
+function notYetInvoicedSection(input: WorkRecordPDFInput): string {
+  const { record, account } = input
+  const charges = account?.notYetInvoicedCharges ?? []
+  if (!record.notYetCharged.length && !charges.length) return ''
+
+  const chargesTable = charges.length
+    ? `  <table class="grid keep">
+    <thead>
+      <tr>
+        <th scope="col">Regular charge</th>
+        <th scope="col">Month</th>
+        <th scope="col" class="num">Value ex VAT</th>
+      </tr>
+    </thead>
+    <tbody>
+${charges
+  .map(
+    (c) => `      <tr>
+        <td>${escapeHtml(c.description)}</td>
+        <td>${escapeHtml(/^\d{4}-\d{2}$/.test(c.period) ? formatMonth(`${c.period}-01`) : c.period)}</td>
+        <td class="num">${money(c.exVat)}</td>
+      </tr>`
+  )
+  .join('\n')}
+    </tbody>
+  </table>`
+    : ''
+
+  if (!account) {
+    return `    <h2>Work done, not yet invoiced</h2>
+    <p class="note">${record.notYetChargedHours.toFixed(2)} hours, ${money(record.notYetChargedExVat)} excluding VAT. This has not been invoiced, so nothing is due for it yet.</p>
+${linesTable(record.notYetCharged, true)}`
+  }
+
+  const p = account.position
+  const chargesExVat = roundMoney(charges.reduce((acc, c) => acc + c.exVat, 0))
+  const chargesIncVat = roundMoney(
+    charges.reduce((acc, c) => acc + c.exVat + roundMoney(c.exVat * (c.vatRate / 100)), 0)
+  )
+  const listedExVat = roundMoney(record.notYetChargedExVat + chargesExVat)
+  const listedIncVat = roundMoney(record.notYetChargedIncVat + chargesIncVat)
+  const vat = roundMoney(listedIncVat - listedExVat)
+  // Work not yet invoiced that falls outside the dates of this record.
+  const outsidePeriod = roundMoney(p.notYetInvoicedGross - listedIncVat)
+
+  const row = (label: string, amount: string, cls = '') => `      <tr${cls ? ` class="${cls}"` : ''}>
+        <td>${label}</td>
+        <td class="num">${amount}</td>
+      </tr>`
+
+  const totals = [
+    record.notYetCharged.length
+      ? row(`Work listed above, ${record.notYetChargedHours.toFixed(2)} hours`, money(record.notYetChargedExVat))
+      : '',
+    charges.length ? row('Regular charges listed above', money(chargesExVat)) : '',
+    row('VAT', money(vat)),
+    Math.abs(outsidePeriod) >= 0.01
+      ? row('Other work not yet invoiced, outside the dates of this record', money(outsidePeriod))
+      : '',
+    p.invoicedOnAccount > 0 ? row('Less already invoiced on account', `-${money(p.invoicedOnAccount)}`) : '',
+    row('Still to be invoiced, including VAT', money(p.notYetInvoicedNet), 'total'),
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const forecast = account.forecast
+  const forecastBlock =
+    forecast && forecast.rows.length
+      ? `    <h2>Invoices to come</h2>
+  <table class="grid keep">
+    <thead>
+      <tr>
+        <th scope="col">Invoice month</th>
+        <th scope="col" class="num">Invoice</th>
+        <th scope="col" class="num">Left to invoice after</th>
+      </tr>
+    </thead>
+    <tbody>
+${forecast.rows
+  .map(
+    (r) => `      <tr>
+        <td>${escapeHtml(formatMonth(r.invoiceDate))}</td>
+        <td class="num">${money(r.amount)}</td>
+        <td class="num">${money(r.remainingAfter)}</td>
+      </tr>`
+  )
+  .join('\n')}
+    </tbody>
+  </table>
+    <p class="note">A forecast, including VAT, assuming no new work is added${
+      account.monthlyChargesIncVat > 0
+        ? ` and counting your regular charges of ${money(account.monthlyChargesIncVat)} a month`
+        : ''
+    }.${
+      forecast.truncated
+        ? ' The balance is not cleared within the months shown.'
+        : account.monthlyChargesIncVat > 0
+          ? ' After that, each invoice is your regular charges only.'
+          : ''
+    } These are in addition to the invoices already unpaid.</p>`
+      : ''
+
+  return `    <h2>Work done, not yet invoiced</h2>
+    <p class="note">None of this has been invoiced, so nothing is due for it yet.</p>
+${record.notYetCharged.length ? linesTable(record.notYetCharged, true) : ''}
+${chargesTable}
+    <table class="closing">
+${totals}
+    </table>
+${forecastBlock}`
 }
 
 export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
@@ -202,7 +451,7 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
     .map((row) => {
       const invoices = row.invoiceNumbers.length ? escapeHtml(row.invoiceNumbers.join(', ')) : ''
       const pending = row.uninvoicedHours > 0
-        ? `${invoices ? ', plus ' : ''}${row.uninvoicedHours.toFixed(2)} h not yet charged`
+        ? `${invoices ? ', plus ' : ''}${row.uninvoicedHours.toFixed(2)} h not yet invoiced`
         : ''
       return `      <tr>
         <td>${escapeHtml(row.month)}</td>
@@ -218,19 +467,17 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
 
   const invoiceBlocks = record.invoiceBlocks
     .map((block) => {
-      const carried = block.carriedForwardExVat
-      // A fixed-price stage says so plainly. Printing a carry-forward against an
-      // agreed price would invent a balance that does not exist.
-      const carriedRow = block.fixedPrice
-        ? `      <tr>
-        <td>Agreed fixed price for this stage</td>
-        <td class="num"></td>
-      </tr>`
-        : Math.abs(carried) < 0.005
+      const carriedRow = differenceRow(block)
+      // A fixed-price invoice with no time logged against it has nothing to say
+      // about hours. "Time spent, 0.00 hours" read as though it had taken no work.
+      // Worded as "this work" because not every fixed price is a stage: the
+      // vision workshop on INV-003VB was a single quoted job.
+      const workRow =
+        block.fixedPrice && block.hours <= 0
           ? ''
           : `      <tr>
-        <td>${carried > 0 ? 'Payment towards earlier work carried forward' : 'Work carried forward to a later invoice'}</td>
-        <td class="num">${money(carried)}</td>
+        <td>${block.fixedPrice ? `Time spent on this work, ${block.hours.toFixed(2)} hours` : `Work on this invoice, ${block.hours.toFixed(2)} hours`}</td>
+        <td class="num">${block.fixedPrice ? '' : money(block.workExVat)}</td>
       </tr>`
 
       const recurringRow = block.recurringExVat
@@ -241,13 +488,10 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
         : ''
 
       return `  <div class="invoice-block">
-    <h3>${escapeHtml(block.invoiceNumber)} <span>${escapeHtml(formatDate(block.invoiceDate))}, ${escapeHtml(block.settled ? 'paid' : 'outstanding')}</span></h3>
-${block.lines.length ? linesTable(block.lines, true) : '    <p class="note">No time entries on this invoice.</p>'}
+    <h3>${escapeHtml(block.invoiceNumber)} <span>${escapeHtml(formatDate(block.invoiceDate))}, ${invoiceStatusHtml(block)}</span></h3>
+${block.lines.length ? linesTable(block.lines, false) : '    <p class="note">No time entries on this invoice.</p>'}
     <table class="closing">
-      <tr>
-        <td>${block.fixedPrice ? `Time spent on this stage, ${block.hours.toFixed(2)} hours` : `Work on this invoice, ${block.hours.toFixed(2)} hours`}</td>
-        <td class="num">${block.fixedPrice ? '' : money(block.workExVat)}</td>
-      </tr>
+${workRow}
 ${recurringRow}
 ${carriedRow}
       <tr class="total">
@@ -282,6 +526,7 @@ ${header}
 
   <p class="lede">This record covers the billable work carried out for ${vendorName} between ${periodFrom} and ${periodTo}: ${record.totalHours.toFixed(2)} hours across ${record.projectCount} project${record.projectCount === 1 ? '' : 's'}.</p>
 
+${accountSummary(input.account)}
   <h2>Where the time went</h2>
   <table class="grid">
     <thead>
@@ -314,18 +559,12 @@ ${capNote}
   <div class="page-two">
     <h2>What each invoice covered</h2>
 ${invoiceBlocks}
-${
-  record.notYetCharged.length
-    ? `    <h2>Work done, not yet charged</h2>
-    <p class="note">${record.notYetChargedHours.toFixed(2)} hours carried forward. There is nothing to pay for this yet.</p>
-${linesTable(record.notYetCharged, true)}`
-    : ''
-}
+${notYetInvoicedSection(input)}
 ${
   record.settledWithoutInvoice.length
     ? `    <h2>Work already settled, invoice reference not recorded</h2>
     <p class="note">${record.settledWithoutInvoiceHours.toFixed(2)} hours. This work has been paid for; our records simply do not show which invoice carried it.</p>
-${linesTable(record.settledWithoutInvoice, true)}`
+${linesTable(record.settledWithoutInvoice, false)}`
     : ''
 }
   </div>
