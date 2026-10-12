@@ -941,15 +941,30 @@ export async function listSigningDocumentsForSubject(
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('signing_documents')
-    .select('*, parties:signing_parties(*)')
+    .select('*')
     .eq('subject_type', subjectType)
     .eq('subject_id', subjectId)
     .order('created_at', { ascending: false })
   if (error) throw new Error(`Could not read signing documents: ${error.message}`)
-  return ((data ?? []) as Array<SigningDocumentRow & { parties: SigningPartyRow[] }>).map((row) => ({
-    ...row,
-    parties: (row.parties ?? []).map(stripToken),
-  }))
+  return attachParties(admin, (data ?? []) as SigningDocumentRow[])
+}
+
+/** Two plain reads rather than an embed, so a second foreign key can never break the list. */
+async function attachParties(admin: AdminClient, documents: SigningDocumentRow[]): Promise<SigningDocumentSummary[]> {
+  if (documents.length === 0) return []
+  const { data, error } = await admin
+    .from('signing_parties')
+    .select('*')
+    .in('document_id', documents.map((document) => document.id))
+    .order('created_at', { ascending: true })
+  if (error) throw new Error(`Could not read the signers: ${error.message}`)
+  const byDocument = new Map<string, Array<Omit<SigningPartyRow, 'hashed_token'>>>()
+  for (const party of (data ?? []) as SigningPartyRow[]) {
+    const list = byDocument.get(party.document_id) ?? []
+    list.push(stripToken(party))
+    byDocument.set(party.document_id, list)
+  }
+  return documents.map((document) => ({ ...document, parties: byDocument.get(document.id) ?? [] }))
 }
 
 export async function getSigningDocument(documentId: string): Promise<SigningDocumentSummary | null> {

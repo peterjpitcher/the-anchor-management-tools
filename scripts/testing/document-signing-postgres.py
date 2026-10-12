@@ -18,6 +18,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261012120000_document_signing_foundation.sql'
+DRAFTS = ROOT / 'supabase/migrations/20261012120100_document_signing_template_drafts.sql'
 
 DOC_A = '00000000-0000-0000-0000-0000000000a1'
 DOC_B = '00000000-0000-0000-0000-0000000000b1'
@@ -155,6 +156,19 @@ def main():
             fails(f"""INSERT INTO signing_documents (kind, mode, brand, title, subject_type, subject_id, series_key, version, source_pdf_path, source_sha256, expires_at)
                       VALUES ('employment_agreement', 'sign', 'staff', 'Bad fingerprint', 'employee', '{SUBJECT}', 'other', 1, 'p/x.pdf', 'not-a-hash', now());""", 'signing_documents_source_sha256_check')
             print('PASS a party cannot be marked signed without evidence; versions are unique; fingerprints are checked')
+
+            drafts = DRAFTS.read_text()
+            sql(drafts)
+            assert sql('SELECT count(*) FROM signing_templates') == '12'
+            assert sql('SELECT count(*) FROM signing_templates WHERE is_active') == '0'
+            assert sql("SELECT count(*) FROM signing_templates WHERE body NOT LIKE '%[[TO CONFIRM:%'") == '0'
+            assert sql("SELECT count(*) FROM signing_templates WHERE kind = 'policy_acknowledgement'") == '5'
+            # The owner edits a template and switches it on. Applying the drafts again must not undo that.
+            sql("UPDATE signing_templates SET body = 'Owner wording, long enough to count as real wording.', is_active = true, version = 2 WHERE slug = 'allergens'")
+            sql(drafts)
+            assert sql("SELECT body || '|' || is_active || '|' || version FROM signing_templates WHERE slug = 'allergens'") == 'Owner wording, long enough to count as real wording.|true|2'
+            assert sql('SELECT count(*) FROM signing_templates') == '12'
+            print('PASS twelve draft templates arrive switched off and marked as drafts; re-applying never overwrites edited wording')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(work / 'db'), '-m', 'immediate', '-w', 'stop'], check=True, capture_output=True)
 

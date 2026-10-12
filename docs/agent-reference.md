@@ -21,7 +21,7 @@ Root `src/app/layout.tsx` holds global providers, the PWA manifest, robots block
 
 ### Public path prefixes (`PUBLIC_PATH_PREFIXES` in `src/middleware.ts`)
 
-`/_next`, `/static`, `/api` (every handler does its own auth), `/auth`, `/error`, `/privacy`, `/booking-confirmation`, `/booking-portal`, `/booking-success`, `/invoice-portal` (HMAC token in the path, `src/lib/invoices/invoice-token.ts`), `/feedback`, `/table-booking`, `/parking/guest`, `/parking/payment-error`, `/onboarding`, `/recruitment/book` (token-gated slot picker), `/timeclock`, `/m`, `/g`, `/r`, `/legacy-link`. Matching is segment-bounded, so `/invoices` stays protected while `/invoice-portal` is open. The matcher excludes `_next/static`, `_next/image` and `favicon.ico`.
+`/_next`, `/static`, `/api` (every handler does its own auth), `/auth`, `/error`, `/privacy`, `/booking-confirmation`, `/booking-portal`, `/booking-success`, `/invoice-portal` (HMAC token in the path, `src/lib/invoices/invoice-token.ts`), `/feedback`, `/table-booking`, `/parking/guest`, `/parking/payment-error`, `/onboarding`, `/recruitment/book` (token-gated slot picker), `/sign` (document signing; one-time token stored only as a hash, `src/lib/signing/tokens.ts`), `/timeclock`, `/m`, `/g`, `/r`, `/legacy-link`. Matching is segment-bounded, so `/invoices` stays protected while `/invoice-portal` is open. The matcher excludes `_next/static`, `_next/image` and `favicon.ico`.
 
 ### API surface (`src/app/api/`)
 
