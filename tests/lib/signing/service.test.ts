@@ -255,6 +255,8 @@ describe('sending a document for signature', () => {
     // Whoever holds the link can sign, so it is never copied to anyone.
     expect(sent.cc).toBeUndefined()
     expect(sent.bcc).toBeUndefined()
+    // The email log keeps a copy of every email. It must not keep a working link.
+    expect((sent as unknown as { logRedactions: string[] }).logRedactions).toEqual([tokenFromEmail()])
     expect(sent.privateBookingId).toBe(SUBJECT)
   })
 
@@ -314,6 +316,16 @@ describe('sending a document for signature', () => {
     uploadFailure = 'storage offline'
     await expect(send()).rejects.toThrow('Could not store the document')
     expect(db.rows('signing_documents')).toHaveLength(0)
+    expect(state.sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('withdraws the document if the business signature cannot be recorded', async () => {
+    db.onRpc(() => ({ data: { ok: false, reason: 'not_found' }, error: null }))
+    await expect(
+      send({ kind: 'employment_agreement', parties: [{ role: 'worker', name: 'Sam Example', email: 'sam@example.com', employeeId: 'emp-1' }] })
+    ).rejects.toThrow('Could not sign for the business')
+    // Left open, the worker could complete it in the portal with no business signature on it.
+    expect(db.rows('signing_documents')[0]).toMatchObject({ status: 'voided' })
     expect(state.sendEmail).not.toHaveBeenCalled()
   })
 
@@ -415,6 +427,8 @@ describe('date of birth check', () => {
     expect(await checkSigningIdentity(await contextFor(partyId), '2000-03-14', EVIDENCE)).toEqual({ ok: true })
     expect(party(partyId).identity_checked_at).toBeTruthy()
     expect(db.rows('signing_events').some((row) => row.event === 'identity_check_passed')).toBe(true)
+    // Asking again once passed costs nothing and changes nothing.
+    expect(await checkSigningIdentity(await contextFor(partyId), '1999-01-01', EVIDENCE)).toEqual({ ok: true })
   })
 
   it('counts wrong answers and locks the link after five', async () => {
@@ -431,6 +445,17 @@ describe('date of birth check', () => {
     expect(await checkSigningIdentity(await contextFor(partyId), '2000-03-14', EVIDENCE)).toMatchObject({ ok: false, reason: 'locked' })
     expect(db.rows('signing_events').filter((row) => row.event === 'identity_check_failed')).toHaveLength(MAX_IDENTITY_CHECK_FAILURES)
     expect(party(partyId).identity_checked_at).toBeNull()
+  })
+
+  it('checks only one of two guesses sent at the same moment', async () => {
+    const partyId = await newStarter()
+    // Both requests read the row before either wrote to it.
+    const first = await contextFor(partyId)
+    const second = await contextFor(partyId)
+    expect(await checkSigningIdentity(first, '1999-01-01', EVIDENCE)).toMatchObject({ ok: false, reason: 'mismatch' })
+    // The second lost the race for the attempt, so its guess is not compared at all, even though it is right.
+    expect(await checkSigningIdentity(second, '2000-03-14', EVIDENCE)).toMatchObject({ ok: false, reason: 'busy' })
+    expect(party(partyId)).toMatchObject({ identity_check_failures: 1, identity_checked_at: null })
   })
 
   it('says so when we hold no date of birth to compare with', async () => {

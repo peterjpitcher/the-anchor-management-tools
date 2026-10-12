@@ -29,11 +29,15 @@ export function buildSigningViewModel(input: {
             ? 'declined'
             : 'blocked'
 
+  // Who else is signing, and what the document is about, are only for someone who has got as
+  // far as the document itself: not before the date of birth check, and not on a dead link.
+  const showDetail = input.state === 'ready' || input.state === 'signed'
+
   return {
     brand: document.brand,
     mode: document.mode,
     title: document.title,
-    summary: document.summary,
+    summary: showDetail ? document.summary : null,
     senderName: document.brand === 'guest' ? COMPANY_DETAILS.tradingName : COMPANY_DETAILS.legalName,
     recipientName: party.name,
     agreedText: buildAgreedText({ mode: document.mode, title: document.title }),
@@ -47,7 +51,7 @@ export function buildSigningViewModel(input: {
     }),
     inPerson: Boolean(party.witnessed_by) && party.status === 'pending',
     isPortal: input.endpoints.identity === undefined,
-    otherSigners: input.otherParties
+    otherSigners: (showDetail ? input.otherParties : [])
       .filter((other) => other.id !== party.id && other.role !== 'company')
       .map((other) => ({
         name: other.name,

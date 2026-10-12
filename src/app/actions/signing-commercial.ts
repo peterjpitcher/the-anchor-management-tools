@@ -117,7 +117,12 @@ export async function sendQuoteForAcceptance(input: {
       parties: [{ role: 'client', name: parsed.data.signerName, email: parsed.data.signerEmail }],
       createdBy: auth.user.id,
       createdByName: auth.user.name,
-      context: { quote_number: quote.quote_number, vendor_id: quote.vendor_id ?? null },
+      context: {
+        quote_number: quote.quote_number,
+        vendor_id: quote.vendor_id ?? null,
+        // What the client is shown. The completion hook will not accept a quote whose total has moved.
+        total_amount: typeof quote.total_amount === 'number' ? quote.total_amount : null,
+      },
     })
 
     // Asking for acceptance is sending it. A draft becomes Sent, as it does when emailed.

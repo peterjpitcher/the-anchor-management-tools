@@ -73,22 +73,32 @@ describe.each([
     expect(screen.queryByText(/open the document first/i)).not.toBeInTheDocument()
   })
 
+  it('does not unlock on a click beside the link', async () => {
+    const user = userEvent.setup()
+    render(<View model={model({ brand })} />)
+    // The wrapper is as wide as the card. A click on it, off the link, is not opening the document.
+    const wrapper = screen.getByRole('link', { name: /open the document/i }).parentElement as HTMLElement
+    await user.click(wrapper)
+    expect(screen.getByLabelText(/type your full name/i)).toBeDisabled()
+    expect(screen.getByRole('checkbox')).toBeDisabled()
+  })
+
   it('will not submit without a name and a tick, then sends exactly the words shown', async () => {
     const user = userEvent.setup()
     fetchMock.mockResolvedValue(respond(201, { success: true, signed: true, completed: true }))
     render(<View model={model({ brand, documentViewed: true })} />)
 
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/type your full name/i)
     expect(fetchMock).not.toHaveBeenCalled()
 
     await user.type(screen.getByLabelText(/type your full name/i), '  Sam Example ')
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/tick the box/i)
     expect(fetchMock).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('checkbox'))
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -105,7 +115,7 @@ describe.each([
 
     await user.type(screen.getByLabelText(/type your full name/i), 'Sam Example')
     await user.click(screen.getByRole('checkbox'))
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/was not saved/i)
     expect(screen.queryByText(/signed, thank you/i)).not.toBeInTheDocument()
@@ -119,7 +129,7 @@ describe.each([
 
     await user.type(screen.getByLabelText(/type your full name/i), 'Sam Example')
     await user.click(screen.getByRole('checkbox'))
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/did not go through/i)
     expect(screen.queryByText(/signed, thank you/i)).not.toBeInTheDocument()
@@ -164,7 +174,7 @@ describe.each([
     render(<View model={model({ brand, initialPhase: 'blocked', blockedMessage: 'This document has been withdrawn. There is nothing for you to sign.' })} />)
     expect(screen.getByText(/has been withdrawn/i)).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Sign document' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^sign document$/i })).not.toBeInTheDocument()
   })
 
   it('uses confirm wording for a policy, and names the other signers', () => {
@@ -192,13 +202,19 @@ describe('the signing screen in the staff portal', () => {
     expect(screen.queryByText(/this link is personal/i)).not.toBeInTheDocument()
   })
 
+  it('does not promise a month to someone signing in person', () => {
+    render(<SigningStaffView model={model({ inPerson: true })} />)
+    expect(screen.getByText(/works for 30 minutes/i)).toBeInTheDocument()
+    expect(screen.queryByText(/this link is personal/i)).not.toBeInTheDocument()
+  })
+
   it('tells someone signing on a handed-over device to hand it back', async () => {
     const user = userEvent.setup()
     fetchMock.mockResolvedValue(respond(201, { success: true, signed: true, completed: false }))
     render(<SigningStaffView model={model({ documentViewed: true, inPerson: true })} />)
     await user.type(screen.getByLabelText(/type your full name/i), 'Sam Example')
     await user.click(screen.getByRole('checkbox'))
-    await user.click(screen.getByRole('button', { name: 'Sign document' }))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
     expect(await screen.findByText(/hand the device back/i)).toBeInTheDocument()
   })
 })

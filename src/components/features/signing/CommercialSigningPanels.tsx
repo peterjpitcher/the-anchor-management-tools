@@ -121,14 +121,14 @@ export function QuoteSigningPanel(props: QuoteSigningPanelProps): React.JSX.Elem
   return (
     <>
       <SignaturePanel
-        title="Client acceptance"
+        title="Client Acceptance"
         documents={documents}
         canSend={props.canSend}
         emptyText="This quote has not been sent for the client to accept online."
         sendActions={
           props.canSend && props.canSendNow ? (
             <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
-              Send for acceptance
+              Send for Acceptance
             </Button>
           ) : undefined
         }
@@ -138,13 +138,13 @@ export function QuoteSigningPanel(props: QuoteSigningPanelProps): React.JSX.Elem
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title={`Send quote ${props.quoteNumber} for acceptance`}
+        title={`Send Quote ${props.quoteNumber} for Acceptance`}
         description="The client gets a link to read the quote and accept it. Accepting marks the quote Accepted."
         width="md"
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={pending}>Cancel</Button>
-            <Button variant="primary" loading={pending} onClick={send}>Send for acceptance</Button>
+            <Button type="button" variant="primary" loading={pending} onClick={send}>Send for Acceptance</Button>
           </>
         }
       >
@@ -214,7 +214,7 @@ export function ClientAgreementPanel(props: ClientAgreementPanelProps): React.JS
         sendActions={
           props.canSend ? (
             <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
-              {documents.length > 0 ? 'Send a new agreement' : 'Send agreement'}
+              {documents.length > 0 ? 'Send a New Agreement' : 'Send Agreement'}
             </Button>
           ) : undefined
         }
@@ -224,13 +224,13 @@ export function ClientAgreementPanel(props: ClientAgreementPanelProps): React.JS
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title={`Send an agreement to ${props.clientName}`}
+        title={`Send an Agreement to ${props.clientName}`}
         description="The client gets a link to read the agreement and sign it. You sign for Orange Jelly as you send it."
         width="lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={pending}>Cancel</Button>
-            <Button variant="primary" loading={pending} onClick={send}>Send agreement</Button>
+            <Button type="button" variant="primary" loading={pending} onClick={send}>Send Agreement</Button>
           </>
         }
       >
@@ -317,7 +317,7 @@ export function BookingSuppliersPanel({ bookingId }: { bookingId: string }): Rea
   return (
     <>
       <SignaturePanel
-        title="Supplier confirmations"
+        title="Supplier Confirmations"
         documents={state.documents}
         canSend={state.canSend}
         emptyText="No supplier has been asked to confirm this booking yet."
@@ -325,13 +325,13 @@ export function BookingSuppliersPanel({ bookingId }: { bookingId: string }): Rea
           state.canSend && state.suppliers.length > 0 ? (
             state.suppliers.length === 1 ? (
               <Button size="sm" variant="secondary" onClick={() => choose(state.suppliers[0])}>
-                Ask {state.suppliers[0].name} to confirm
+                Ask {state.suppliers[0].name} to Confirm
               </Button>
             ) : (
               <Dropdown
                 width="auto"
                 align="right"
-                trigger={<Button type="button" size="sm" variant="secondary">Ask a supplier to confirm</Button>}
+                trigger={<Button type="button" size="sm" variant="secondary">Ask a Supplier to Confirm</Button>}
               >
                 {state.suppliers.map((option) => (
                   <DropdownItem key={option.vendorId} onClick={() => choose(option)}>
@@ -348,13 +348,13 @@ export function BookingSuppliersPanel({ bookingId }: { bookingId: string }): Rea
         onClose={() => {
           if (!pending) setSupplier(null)
         }}
-        title={supplier ? `Ask ${supplier.name} to confirm` : undefined}
+        title={supplier ? `Ask ${supplier.name} to Confirm` : undefined}
         description="They get a link to read the booking details and confirm them."
         width="lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setSupplier(null)} disabled={pending}>Cancel</Button>
-            <Button variant="primary" loading={pending} onClick={send}>Send confirmation</Button>
+            <Button type="button" variant="primary" loading={pending} onClick={send}>Send Confirmation</Button>
           </>
         }
       >

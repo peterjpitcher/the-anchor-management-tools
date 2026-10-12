@@ -15,7 +15,7 @@ type PageProps = { searchParams: Promise<{ show?: string }> }
 const FILTERS: Array<{ value: SigningOverviewFilter; label: string; empty: string }> = [
   { value: 'outstanding', label: 'Waiting', empty: 'Nothing is waiting to be signed.' },
   { value: 'signed', label: 'Signed', empty: 'Nothing has been signed yet.' },
-  { value: 'closed', label: 'Declined, withdrawn or expired', empty: 'Nothing has been declined, withdrawn or expired.' },
+  { value: 'closed', label: 'Declined, Withdrawn or Expired', empty: 'Nothing has been declined, withdrawn or expired.' },
 ]
 
 function day(iso: string): string {
@@ -37,7 +37,12 @@ export default async function SignaturesPage({ searchParams }: PageProps): Promi
     <PageLayout
       title="Signatures"
       subtitle="Documents sent for signature"
-      navItems={FILTERS.map((option) => ({ label: option.label, href: `/signatures?show=${option.value}` }))}
+      navItems={FILTERS.map((option) => ({
+        label: option.label,
+        href: `/signatures?show=${option.value}`,
+        // The tab row matches on the path alone, and these differ only by query.
+        active: option.value === filter.value,
+      }))}
     >
       <div className="space-y-6">
         {result.error ? <Alert tone="danger" title="The documents could not be loaded">{result.error}</Alert> : null}
@@ -56,7 +61,7 @@ export default async function SignaturesPage({ searchParams }: PageProps): Promi
                   const waitingOn = document.parties.filter((party) => party.status === 'pending').map((party) => party.name)
                   return (
                     <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                      <div className="min-w-0">
+                      <div className="min-w-0 break-words">
                         <p className="font-medium text-text-strong">{document.title}</p>
                         <p className="text-xs text-text-muted">
                           {getSigningKind(document.kind).label} for {subjectLabel}. Sent {day(document.sent_at)}
@@ -71,10 +76,12 @@ export default async function SignaturesPage({ searchParams }: PageProps): Promi
                           {SIGNING_DOCUMENT_STATUS_LABEL[document.status]}
                         </Badge>
                         <LinkButton href={subjectPath} size="sm" variant="secondary">
-                          Open record
+                          Open Record
+                          <span className="sr-only">: {subjectLabel}</span>
                         </LinkButton>
                         <LinkButton href={`/api/signing/documents/${document.id}/pdf`} size="sm" variant="ghost" download>
                           Download
+                          <span className="sr-only">: {document.title} for {subjectLabel}</span>
                         </LinkButton>
                       </div>
                     </li>

@@ -12,6 +12,7 @@ import {
   type PrivateBookingPaymentStatement,
 } from '@/lib/private-bookings/payment-statement';
 import type { PaymentHistoryEntry } from '@/types/private-bookings';
+import { signingTokenFromUrl } from '@/lib/signing/tokens';
 
 const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
 const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
@@ -1184,6 +1185,10 @@ export async function sendContractEmailToCustomer(booking: {
       contentType: 'application/pdf',
     }],
     ...privateBookingEmailLog(booking, 'private_booking_contract'),
+    // The stored copy of this email must not hold a working signing link.
+    logRedactions: [contract.signingUrl ? signingTokenFromUrl(contract.signingUrl) : null].filter(
+      (token): token is string => Boolean(token)
+    ),
   });
   if (!result.success) {
     throw new Error(result.error || 'Failed to send contract email');

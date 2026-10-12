@@ -96,20 +96,22 @@ export function SigningGuestView({ model }: { model: SigningViewModel }): React.
           <GuestCardHeader title="1. Read the document" />
           {model.summary ? <p className={BODY_CLASS}>{model.summary}</p> : null}
           <p className={BODY_CLASS}>It opens in a new tab. Read all of it, then come back to this page.</p>
-          <div onClick={flow.markDocumentOpened}>
+          <div onClick={flow.onDocumentLinkClick} onAuxClick={flow.onDocumentLinkClick}>
             <GuestButton as="a" href={model.endpoints.document} external variant="outline" size="md" fullWidth="mobile">
               Open the document
             </GuestButton>
           </div>
-          {flow.documentOpened ? (
-            <p className={BODY_CLASS} role="status">Opened. You can come back to it at any time.</p>
-          ) : null}
+          {/* Always in the page, so a screen reader announces the words when they arrive. */}
+          <p className={BODY_CLASS} role="status">
+            {flow.documentOpened ? 'Opened. You can come back to it at any time.' : ''}
+          </p>
         </div>
       </GuestCard>
 
       <GuestCard variant="accent">
         <div className="flex flex-col gap-guest-lg">
           <GuestCardHeader title={model.mode === 'acknowledge' ? '2. Confirm' : '2. Sign'} />
+          {!flow.documentOpened ? <p className={BODY_CLASS}>Open the document first to unlock this step.</p> : null}
           <GuestField id="typedName" label="Type your full name" hint={words.tickHint}>
             <GuestInput
               {...guestFieldControlProps({ id: 'typedName', hint: words.tickHint })}
@@ -129,7 +131,6 @@ export function SigningGuestView({ model }: { model: SigningViewModel }): React.
             onChange={(event) => flow.setAgreed(event.target.checked)}
             label={model.agreedText}
           />
-          {!flow.documentOpened ? <p className={BODY_CLASS}>Open the document first to unlock this step.</p> : null}
         </div>
       </GuestCard>
 
@@ -186,7 +187,7 @@ export function SigningGuestView({ model }: { model: SigningViewModel }): React.
       )}
 
       <p className={GUEST_NOTE_CLASS}>
-        This link is personal to you and works until {model.expiresOn}. When you sign we record the date and time, your
+        {model.inPerson ? 'This signing screen works for 30 minutes.' : `This link is personal to you and works until ${model.expiresOn}.`} When you sign we record the date and time, your
         internet address, your browser and your approximate location, so there is a clear record of who signed.
       </p>
     </form>

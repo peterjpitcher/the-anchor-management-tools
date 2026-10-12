@@ -26,3 +26,9 @@ export function buildSigningUrl(rawToken: string): string {
 export function sha256Hex(data: Buffer | Uint8Array): string {
   return crypto.createHash('sha256').update(data).digest('hex')
 }
+
+/** The raw token inside a signing link, for keeping it out of stored copies of an email. */
+export function signingTokenFromUrl(signingUrl: string): string | null {
+  const token = signingUrl.split('/sign/')[1]?.split(/[/?#]/)[0] ?? null
+  return isWellFormedSigningToken(token) ? token : null
+}

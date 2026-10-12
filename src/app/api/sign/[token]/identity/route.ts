@@ -47,6 +47,9 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
         409
       )
     }
+    if (result.reason === 'busy') {
+      return signingError('IDENTITY_CHECK_FAILED', 'Please try that again.', 409, { attempts_left: result.attemptsLeft })
+    }
     if (result.reason === 'locked') {
       return signingError('IDENTITY_CHECK_FAILED', messageForState('locked') as string, 423, { attempts_left: 0 })
     }

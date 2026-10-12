@@ -77,14 +77,14 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
 
   return (
     <PageLayout
-      title="Signing templates"
+      title="Signing Templates"
       subtitle="Wording for documents sent for signature"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       <div className="space-y-6">
         {loadError ? <Alert tone="danger" title="The templates could not be loaded">{loadError}</Alert> : null}
 
-        <Alert tone="info" title="How templates work">
+        <Alert tone="info" title="How Templates Work">
           A template can only be sent once it is switched on. Starter wording is a draft: read it, change it to match
           what you actually do, and fill every gap marked [[TO CONFIRM: ...]] before switching it on. Changing a
           template never changes a document that has already been sent or signed.
@@ -94,7 +94,7 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
           <CardHeader title="Templates" />
           <CardBody>
             {templates.length === 0 && !loadError ? (
-              <Empty title="No templates yet" description="Templates appear here once the signing database update has been applied." />
+              <Empty title="No templates yet" description="There are no templates to show yet." />
             ) : (
               <ul className="divide-y divide-border">
                 {templates.map((template) => {
@@ -110,11 +110,18 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={template.is_active ? 'success' : 'neutral'}>{template.is_active ? 'On' : 'Off'}</Badge>
-                        <Button size="sm" variant="secondary" disabled={pending} onClick={() => open(template)}>
-                          Edit wording
+                        <Button type="button" size="sm" variant="secondary" disabled={pending} onClick={() => open(template)} aria-label={`Edit Wording: ${template.title}`}>
+                          Edit Wording
                         </Button>
-                        <Button size="sm" variant={template.is_active ? 'ghost' : 'primary'} disabled={pending} onClick={() => toggle(template)}>
-                          {template.is_active ? 'Switch off' : 'Switch on'}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={template.is_active ? 'ghost' : 'primary'}
+                          disabled={pending}
+                          onClick={() => toggle(template)}
+                          aria-label={`${template.is_active ? 'Switch Off' : 'Switch On'}: ${template.title}`}
+                        >
+                          {template.is_active ? 'Switch Off' : 'Switch On'}
                         </Button>
                       </div>
                     </li>
@@ -127,7 +134,7 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
 
         {selected ? (
           <Card>
-            <CardHeader title={`Edit: ${selected.title}`} subtitle={`Version ${selected.version}`} />
+            <CardHeader title={`Edit ${selected.title}`} subtitle={`Version ${selected.version}`} />
             <CardBody>
               <div className="space-y-4">
                 <Input label="Title" value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} />
@@ -144,21 +151,21 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
                   </p>
                 ) : null}
                 {gaps.length > 0 ? (
-                  <Alert tone="warning" title={`${gaps.length} ${gaps.length === 1 ? 'gap' : 'gaps'} still to fill`}>
+                  <Alert tone="warning" title={`${gaps.length} ${gaps.length === 1 ? 'Gap' : 'Gaps'} Still to Fill`}>
                     {gaps.slice(0, 8).join(' ')}
-                    {gaps.length > 8 ? ' ...' : ''}
+                    {gaps.length > 8 ? ' …' : ''}
                   </Alert>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="primary" loading={pending} disabled={!dirty} onClick={save}>
-                    Save wording
+                    Save Wording
                   </Button>
                   <Button
                     variant="ghost"
                     disabled={pending}
                     onClick={() => setSelectedId(null)}
                   >
-                    {dirty ? 'Discard changes' : 'Close'}
+                    {dirty ? 'Discard Changes' : 'Close'}
                   </Button>
                 </div>
               </div>

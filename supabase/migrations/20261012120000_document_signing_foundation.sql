@@ -300,7 +300,9 @@ BEGIN
   IF v_doc.expires_at <= v_now THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'document_expired', 'document_id', v_doc.id, 'document_status', v_doc.status);
   END IF;
-  IF p_method = 'link' AND (v_party.token_expires_at IS NULL OR v_party.token_expires_at <= v_now) THEN
+  -- An in-person session is a short-lived link on a device a manager handed over, so it expires
+  -- like any other link. Only portal signing (a signed-in worker) and the sender have no link.
+  IF p_method = ANY (ARRAY['link'::text, 'in_person'::text]) AND (v_party.token_expires_at IS NULL OR v_party.token_expires_at <= v_now) THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'link_expired', 'document_id', v_doc.id, 'document_status', v_doc.status);
   END IF;
   IF v_party.identity_check <> 'none' AND v_party.identity_checked_at IS NULL AND p_method = 'link' THEN

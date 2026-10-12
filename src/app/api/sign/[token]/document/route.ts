@@ -24,9 +24,12 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
     if ('response' in opened) return opened.response
     const { context: signing, state, evidence } = opened.request
 
-    // Someone who has signed keeps their link to the document as sent; the signed copy arrives
-    // by email. Every other dead state gets no document at all.
-    if (state !== 'ready' && state !== 'needs_identity_check' && state !== 'signed') {
+    // Only while there is something to sign. Once signed, the link is spent: the signed copy
+    // goes by email, and a link left in a browser history or a forwarded email shows nothing.
+    if (state === 'signed') {
+      return signingError('NOT_AVAILABLE', 'You have signed this document. Your copy is sent to you by email.', 410)
+    }
+    if (state !== 'ready' && state !== 'needs_identity_check') {
       return signingError('NOT_AVAILABLE', messageForState(state) ?? 'This document is not available.', 410)
     }
     if (state === 'needs_identity_check') {

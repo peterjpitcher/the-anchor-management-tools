@@ -66,7 +66,12 @@ export default async function SignPage({ params }: PageProps): Promise<React.JSX
       decline: `/api/sign/${token}/decline`,
     },
   })
-  const lead = `Hi ${model.recipientName.split(/\s+/)[0]}, ${model.senderName} has sent you this to ${model.mode === 'acknowledge' ? 'read and confirm' : 'read and sign'}.`
+  // "Has sent you this to sign" only while there is something to sign.
+  const firstName = model.recipientName.split(/\s+/)[0]
+  const lead =
+    model.initialPhase === 'form' || model.initialPhase === 'identity'
+      ? `Hi ${firstName}, ${model.senderName} has sent you this to ${model.mode === 'acknowledge' ? 'read and confirm' : 'read and sign'}.`
+      : `Hi ${firstName}, this is from ${model.senderName}.`
 
   if (model.brand === 'guest') {
     return (

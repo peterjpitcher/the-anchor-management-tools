@@ -40,17 +40,29 @@ export default async function MyDocumentsPage(): Promise<React.JSX.Element> {
   }
   const waiting = items.filter(isWaiting)
   const done = items.filter((item) => item.party.status === 'signed')
+  // Sent to this worker and never signed: expired, withdrawn, declined or replaced. Said plainly,
+  // so "nothing to sign" is never read as "there was never anything".
+  const lapsed = items.filter((item) => item.party.status !== 'signed' && !isWaiting(item))
 
   return (
     <>
       <StandalonePageHeader title="My Documents" subtitle="Documents to read and sign" />
       {loadError ? <Alert tone="danger">{loadError}</Alert> : null}
 
+      {loadError ? null : (
       <Card>
-        <CardHeader title="Waiting for you" />
+        <CardHeader title="Waiting for You" />
         <CardBody>
           {waiting.length === 0 ? (
-            <Empty title={loadError ? 'Not loaded' : 'Nothing to sign'} description={loadError ? undefined : 'You are up to date.'} size="sm" />
+            <Empty
+              title="Nothing to sign"
+              description={
+                lapsed.length > 0
+                  ? `${lapsed.length} earlier ${lapsed.length === 1 ? 'document is' : 'documents are'} no longer open. If you still need to sign one, ask your manager to send it again.`
+                  : 'You are up to date.'
+              }
+              size="sm"
+            />
           ) : (
             <ul className="divide-y divide-border">
               {waiting.map((item) => (
@@ -62,7 +74,8 @@ export default async function MyDocumentsPage(): Promise<React.JSX.Element> {
                     </p>
                   </div>
                   <LinkButton href={`/portal/documents/${item.party.id}`} variant="primary" size="sm">
-                    {item.document.mode === 'acknowledge' ? 'Read and confirm' : 'Read and sign'}
+                    {item.document.mode === 'acknowledge' ? 'Read and Confirm' : 'Read and Sign'}
+                    <span className="sr-only">: {item.document.title}</span>
                   </LinkButton>
                 </li>
               ))}
@@ -70,6 +83,7 @@ export default async function MyDocumentsPage(): Promise<React.JSX.Element> {
           )}
         </CardBody>
       </Card>
+      )}
 
       {done.length > 0 ? (
         <Card>
@@ -89,7 +103,8 @@ export default async function MyDocumentsPage(): Promise<React.JSX.Element> {
                     <Badge tone={SIGNING_PARTY_STATUS_TONE[item.party.status]}>{SIGNING_PARTY_STATUS_LABEL[item.party.status]}</Badge>
                     {item.document.status === 'completed' || item.document.status === 'superseded' ? (
                       <LinkButton href={`/api/portal/signing/${item.party.id}/signed`} variant="secondary" size="sm" download>
-                        Download my copy
+                        Download My Copy
+                        <span className="sr-only">: {item.document.title}</span>
                       </LinkButton>
                     ) : null}
                   </div>
