@@ -36,6 +36,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       periodTo: dateTo,
       record: result.data.record,
       monthlyCapIncVat: result.data.monthlyCapIncVat,
+      account: result.data.account,
     })
   } catch (error) {
     console.error('[work-record] PDF generation failed:', error)

@@ -88,7 +88,8 @@ describe('buildWorkRecord', () => {
     })
 
     expect(record.invoiceBlocks[0].lines[0].splitNote).toBe('1.00 h in total, of which 0.50 h on this invoice')
-    expect(record.notYetCharged[0].splitNote).toBe('1.00 h in total, of which 0.50 h on this invoice')
+    // The unbilled half is on no invoice, so it must not claim to be on one.
+    expect(record.notYetCharged[0].splitNote).toBe('1.00 h in total, of which 0.50 h not yet invoiced')
   })
 
   it('separates work not yet charged from settled work with no invoice reference', () => {

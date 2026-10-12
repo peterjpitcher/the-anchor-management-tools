@@ -21,6 +21,7 @@
 
 import { getEntryCharge, getRecurringCharge } from '@/lib/oj-projects/charges'
 import { roundMoney } from '@/lib/oj-projects/utils'
+import { isEngineInvoice } from '@/lib/oj-projects/account-position'
 
 export interface WorkRecordEntry {
   id: string
@@ -64,6 +65,9 @@ export interface WorkRecordInvoice {
   subtotal_amount?: number | null
   /** Agreed as a price, not derived from time. Reconciling it against hours would be a fiction. */
   is_fixed_price?: boolean
+  paid_amount?: number | null
+  /** Tells a billing-run invoice, whose total is a flat monthly amount, from one raised by hand. */
+  reference?: string | null
 }
 
 export interface WorkRecordLine {
@@ -74,6 +78,7 @@ export interface WorkRecordLine {
   hours: number
   /** Only populated when the caller asks for values. */
   exVat: number
+  incVat: number
   /** Set when this line is one half of a cap split, for the "of which" note. */
   splitNote?: string
 }
@@ -103,6 +108,14 @@ export interface WorkRecordInvoiceBlock {
   unexplained: boolean
   invoiceExVat: number
   invoiceIncVat: number
+  /** Still owed on this invoice, inc VAT. Zero once it is paid. */
+  outstandingIncVat: number
+  /**
+   * Raised by the monthly billing run at a flat amount. Any difference from the
+   * work on it was invoiced on account, which is worded differently from a
+   * difference on an invoice raised by hand.
+   */
+  flatMonthly: boolean
 }
 
 export interface WorkRecordProjectRow {
@@ -126,6 +139,8 @@ export interface WorkRecord {
   invoiceBlocks: WorkRecordInvoiceBlock[]
   notYetCharged: WorkRecordLine[]
   notYetChargedHours: number
+  notYetChargedExVat: number
+  notYetChargedIncVat: number
   /** Settled work whose invoice reference was never recorded. Hidden when empty. */
   settledWithoutInvoice: WorkRecordLine[]
   settledWithoutInvoiceHours: number
@@ -158,6 +173,7 @@ function monthLabel(isoDate: string): string {
 }
 
 function toLine(entry: WorkRecordEntry, settings: any, splitPartners: Map<string, WorkRecordEntry[]>): WorkRecordLine {
+  const charge = getEntryCharge(entry, settings)
   const line: WorkRecordLine = {
     date: entry.entry_date,
     project: projectLabel(entry),
@@ -166,7 +182,8 @@ function toLine(entry: WorkRecordEntry, settings: any, splitPartners: Map<string
     description: entry.description || entry.work_type_name_snapshot || 'Work carried out',
     quantity: quantityLabel(entry),
     hours: entryHours(entry),
-    exVat: getEntryCharge(entry, settings).exVat,
+    exVat: charge.exVat,
+    incVat: charge.incVat,
   }
 
   // A cap split leaves two identical-looking rows. Without saying so, the pair
@@ -270,12 +287,25 @@ export function buildWorkRecord(input: {
       unexplained,
       invoiceExVat,
       invoiceIncVat,
+      outstandingIncVat:
+        invoice.status === 'paid'
+          ? 0
+          : roundMoney(Math.max(invoiceIncVat - Number(invoice.paid_amount || 0), 0)),
+      flatMonthly: isEngineInvoice(invoice),
     })
   }
 
   const notYetCharged = entries
     .filter((e) => !e.invoice_id && e.status === 'unbilled')
-    .map((e) => toLine(e, input.settings, splitPartners))
+    .map((e) => {
+      const line = toLine(e, input.settings, splitPartners)
+      // The other part of a split is on an invoice; this part is on none, so
+      // "on this invoice" would be wrong here.
+      if (line.splitNote) {
+        line.splitNote = line.splitNote.replace(/ on this invoice$/, ' not yet invoiced')
+      }
+      return line
+    })
 
   // Settled work with no invoice reference recorded. Real for historic rows that
   // predate the billing engine, so it is stated rather than silently dropped.
@@ -300,6 +330,8 @@ export function buildWorkRecord(input: {
     invoiceBlocks,
     notYetCharged,
     notYetChargedHours: sumHours(notYetCharged),
+    notYetChargedExVat: roundMoney(notYetCharged.reduce((acc, l) => acc + l.exVat, 0)),
+    notYetChargedIncVat: roundMoney(notYetCharged.reduce((acc, l) => acc + l.incVat, 0)),
     settledWithoutInvoice,
     settledWithoutInvoiceHours: sumHours(settledWithoutInvoice),
     // Every block must account for its invoice to the penny. The account

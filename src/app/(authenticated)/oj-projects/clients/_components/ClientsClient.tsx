@@ -564,24 +564,49 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
     }
   }
 
-  function downloadWorkRecordPdf(): void {
+  /**
+   * Fetches a PDF and saves it, rather than opening the route in a new tab.
+   *
+   * When a document is refused (a Work Record whose invoices do not tie up, a
+   * statement that could not load its figures) the route answers with a JSON
+   * error. Opened in a tab, that showed the owner a page of raw text; fetched
+   * here, the reason appears on the screen they are already on.
+   */
+  async function downloadPdf(path: string, fallbackName: string): Promise<void> {
     if (!drawerVendor || !statementFrom || !statementTo) return
     const params = new URLSearchParams({
       vendorId: drawerVendor.id,
       dateFrom: statementFrom,
       dateTo: statementTo,
     })
-    window.open(`/api/oj-projects/work-record?${params.toString()}`, '_blank', 'noopener')
+    try {
+      const res = await fetch(`${path}?${params.toString()}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        toast.error(typeof body?.error === 'string' ? body.error : 'The document could not be produced')
+        return
+      }
+      const blob = await res.blob()
+      const named = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1]
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = named || fallbackName
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('The document could not be downloaded. Please try again.')
+    }
+  }
+
+  function downloadWorkRecordPdf(): void {
+    void downloadPdf('/api/oj-projects/work-record', 'work-record.pdf')
   }
 
   function downloadStatementPdf(): void {
-    if (!drawerVendor || !statementFrom || !statementTo) return
-    const params = new URLSearchParams({
-      vendorId: drawerVendor.id,
-      dateFrom: statementFrom,
-      dateTo: statementTo,
-    })
-    window.open(`/api/oj-projects/statement-pdf?${params.toString()}`, '_blank', 'noopener')
+    void downloadPdf('/api/oj-projects/statement-pdf', 'statement.pdf')
   }
 
   /**
@@ -836,6 +861,14 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                     <div className="flex justify-between text-text-muted">
                       <span>Recurring</span>
                       <span>{formatCurrency(balance.unbilledRecurringTotal)}</span>
+                    </div>
+                  )}
+                  {/* Taken off the total above. Without this row the three
+                      stats would not appear to add up. */}
+                  {balance.invoicedOnAccountTotal > 0 && (
+                    <div className="flex justify-between text-text-muted">
+                      <span>Less already invoiced on account</span>
+                      <span>-{formatCurrency(balance.invoicedOnAccountTotal)}</span>
                     </div>
                   )}
                 </div>
@@ -1157,9 +1190,18 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                     {workRecord.record.projectCount} project
                     {workRecord.record.projectCount === 1 ? '' : 's'}
                     {workRecord.record.notYetChargedHours > 0
-                      ? `, of which ${workRecord.record.notYetChargedHours.toFixed(2)} not yet charged`
+                      ? `, of which ${workRecord.record.notYetChargedHours.toFixed(2)} not yet invoiced`
                       : ''}
                   </p>
+                  {workRecord.account && (
+                    <p className="text-text-muted mb-2">
+                      {formatCurrency(workRecord.account.position.invoicedUnpaid)} invoiced and unpaid,{' '}
+                      {formatCurrency(workRecord.account.position.notYetInvoicedNet)} still to be invoiced
+                      {workRecord.account.forecast?.rows.length
+                        ? ` over ${workRecord.account.forecast.rows.length} invoice${workRecord.account.forecast.rows.length === 1 ? '' : 's'}`
+                        : ''}
+                    </p>
+                  )}
                   {!workRecord.record.reconciles && (
                     <Alert tone="danger" className="mb-2">
                       {workRecord.record.unexplainedInvoices?.length
@@ -1232,6 +1274,18 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                       {formatCurrency(statement.closingBalance)}
                     </span>
                   </div>
+                  {statement.position && statement.position.notYetInvoicedNet > 0 && (
+                    <>
+                      <div className="flex justify-between mt-1 text-text-muted">
+                        <span>Work done, not yet invoiced</span>
+                        <span>{formatCurrency(statement.position.notYetInvoicedNet)}</span>
+                      </div>
+                      <div className="flex justify-between mt-1 font-medium">
+                        <span>Total for all work to date</span>
+                        <span>{formatCurrency(statement.closingBalance + statement.position.notYetInvoicedNet)}</span>
+                      </div>
+                    </>
+                  )}
                 </Card>
               )}
             </Section>
