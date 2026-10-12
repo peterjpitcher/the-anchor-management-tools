@@ -78,6 +78,7 @@ const DOCUMENT_DEFAULTS: Row = {
   final_sha256: null,
   completed_at: null,
   completion_applied_at: null,
+  copies_sent_at: null,
   voided_at: null,
   void_reason: null,
 }
@@ -544,23 +545,44 @@ describe('signing', () => {
     expect(db.rows('signing_events').filter((row) => row.event === 'finalised')).toHaveLength(1)
   })
 
-  it('retries the record update when it fails, without sending the copies twice', async () => {
+  it('sends the signer their copy even when the record update fails, then retries the update without sending it twice', async () => {
     const result = await readyToSign()
+    state.sendEmail.mockClear()
     state.hook = vi.fn(async () => {
       throw new Error('booking update failed')
     })
     await signSigningParty({ context: await contextFor(result.deliveries[0].partyId), typedName: 'Sam Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
     expect(document(result.documentId)).toMatchObject({ completion_applied_at: null })
     expect(document(result.documentId).final_pdf_path).toBeTruthy()
+    expect(document(result.documentId).copies_sent_at).toBeTruthy()
     expect(state.alert).toHaveBeenCalled()
+    // The person who signed has their copy, whatever happened to the booking afterwards.
+    const copies = state.sendEmail.mock.calls.filter((call) => (call[0] as { to: string }).to === 'sam@example.com')
+    expect(copies).toHaveLength(1)
+    expect((copies[0][0] as { subject: string }).subject).toBe('Signed: Booking contract')
     const emailsSoFar = state.sendEmail.mock.calls.length
 
     state.hook = vi.fn(async () => undefined)
     await finaliseSigningDocument(result.documentId)
     expect(state.hook).toHaveBeenCalledTimes(1)
     expect(document(result.documentId).completion_applied_at).toBeTruthy()
-    // The signed copy was already written, so this caller does not send copies again.
+    // The copies were already sent, so this caller does not send them again.
     expect(state.sendEmail.mock.calls.length).toBe(emailsSoFar)
+  })
+
+  it('does not send the copies again when the first send failed, and raises an alert naming who', async () => {
+    const result = await readyToSign()
+    state.sendEmail = vi.fn(async () => ({ success: false, error: 'mailbox unavailable' }))
+    await signSigningParty({ context: await contextFor(result.deliveries[0].partyId), typedName: 'Sam Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
+    expect(document(result.documentId).copies_sent_at).toBeTruthy()
+    expect(state.alert).toHaveBeenCalledWith(
+      expect.stringContaining('signed copies were not all sent'),
+      expect.objectContaining({ message: expect.stringContaining('Sam Example') }),
+      expect.anything()
+    )
+    const attempts = state.sendEmail.mock.calls.length
+    await finaliseSigningDocument(result.documentId)
+    expect(state.sendEmail.mock.calls.length).toBe(attempts)
   })
 
   it('uses the signed copy another caller stored first', async () => {

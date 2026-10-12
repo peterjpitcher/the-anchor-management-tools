@@ -88,7 +88,7 @@ export function SignaturePanel({
       }
       // A new tab, so the manager's own session stays where it was when the device comes back.
       window.open(result.data.url, '_blank', 'noopener')
-      toast.success('Signing screen opened in a new tab. It works for 30 minutes.')
+      toast.success('Signing screen opened in a new tab. It works for 30 minutes, and their emailed link no longer does.')
       router.refresh()
     })
 

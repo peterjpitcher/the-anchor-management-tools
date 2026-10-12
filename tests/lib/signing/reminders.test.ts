@@ -97,13 +97,14 @@ describe('the daily signing run', () => {
 
   it('finishes a signed document whose finishing step did not complete', async () => {
     seed([
-      { id: 'no-pdf', status: 'completed', final_pdf_path: null, completion_applied_at: '2026-10-19T10:00:00.000Z' },
-      { id: 'no-hook', status: 'completed', final_pdf_path: 'p/signed.pdf', completion_applied_at: null },
-      { id: 'done', status: 'completed', final_pdf_path: 'p/signed.pdf', completion_applied_at: '2026-10-19T10:00:00.000Z' },
+      { id: 'no-pdf', status: 'completed', final_pdf_path: null, completion_applied_at: '2026-10-19T10:00:00.000Z', copies_sent_at: null },
+      { id: 'no-hook', status: 'completed', final_pdf_path: 'p/signed.pdf', completion_applied_at: null, copies_sent_at: '2026-10-19T10:00:00.000Z' },
+      { id: 'no-copies', status: 'completed', final_pdf_path: 'p/signed.pdf', completion_applied_at: '2026-10-19T10:00:00.000Z', copies_sent_at: null },
+      { id: 'done', status: 'completed', final_pdf_path: 'p/signed.pdf', completion_applied_at: '2026-10-19T10:00:00.000Z', copies_sent_at: '2026-10-19T10:00:00.000Z' },
     ])
     const run = await runSigningReminders(NOW)
-    expect(mocks.finalise.mock.calls.map((call) => call[0]).sort()).toEqual(['no-hook', 'no-pdf'])
-    expect(run.finalised).toBe(2)
+    expect(mocks.finalise.mock.calls.map((call) => call[0]).sort()).toEqual(['no-copies', 'no-hook', 'no-pdf'])
+    expect(run.finalised).toBe(3)
   })
 
   it('carries on past a failure, and reports it rather than coming back quiet', async () => {
