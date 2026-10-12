@@ -236,6 +236,9 @@ describe('date of birth check', () => {
     mocks.identity.mockResolvedValueOnce({ ok: false, reason: 'locked', attemptsLeft: 0 })
     expect((await identityPost(request('identity', { date_of_birth: '1999-01-01' }), params)).status).toBe(423)
 
+    mocks.identity.mockResolvedValueOnce({ ok: false, reason: 'busy', attemptsLeft: 3 })
+    expect((await identityPost(request('identity', { date_of_birth: '1999-01-01' }), params)).status).toBe(409)
+
     mocks.identity.mockResolvedValueOnce({ ok: false, reason: 'no_record', attemptsLeft: 5 })
     const noRecord = await identityPost(request('identity', { date_of_birth: '1999-01-01' }), params)
     expect(noRecord.status).toBe(409)
@@ -269,10 +272,13 @@ describe('the document', () => {
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe('%PDF-1.7 test')
   })
 
-  it('stays available to someone who has signed, and to nobody on a withdrawn document', async () => {
+  it('shows nothing once signed, so a link left in a browser history or a forwarded email is dead', async () => {
     mocks.view.mockResolvedValue(Buffer.from('%PDF'))
     mocks.getParty.mockResolvedValue(context({ status: 'signed' }))
-    expect((await documentGet(request('document'), params)).status).toBe(200)
+    const response = await documentGet(request('document'), params)
+    expect(response.status).toBe(410)
+    expect((await response.json()).error.message).toContain('sent to you by email')
+    expect(mocks.view).not.toHaveBeenCalled()
 
     mocks.getParty.mockResolvedValue(context({}, { status: 'voided' }))
     expect((await documentGet(request('document'), params)).status).toBe(410)

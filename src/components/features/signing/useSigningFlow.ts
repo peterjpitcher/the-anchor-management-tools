@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import type React from 'react'
 import type { SigningBrand, SigningMode } from '@/lib/signing/types'
 
 /**
@@ -25,7 +26,7 @@ export interface SigningViewModel {
   documentViewed: boolean
   /** "11 November 2026" */
   expiresOn: string
-  /** A manager has handed over this device. */
+  /** Signing in person, on a short-lived link a manager started. */
   inPerson: boolean
   /** Signed in to the staff portal, so there is no personal link to mention. */
   isPortal: boolean
@@ -82,7 +83,8 @@ export interface SigningFlow {
   setDeclining: (value: boolean) => void
   setDeclineReason: (value: string) => void
   setDateOfBirth: (value: string) => void
-  markDocumentOpened: () => void
+  /** For the wrapper around the document link: counts only a click on the link itself. */
+  onDocumentLinkClick: (event: React.MouseEvent<HTMLElement>) => void
   submitIdentity: () => Promise<void>
   submitSignature: () => Promise<void>
   submitDecline: () => Promise<void>
@@ -100,7 +102,11 @@ export function useSigningFlow(model: SigningViewModel): SigningFlow {
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [completed, setCompleted] = useState(false)
 
-  const markDocumentOpened = useCallback(() => {
+  // The link opens in a new tab, so the wrapper listens for the click. Only a click that
+  // landed on the link counts: the wrapper is as wide as the card, and a stray click beside the
+  // button must not unlock the form. A middle click (onAuxClick) opens the document too.
+  const onDocumentLinkClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element) || !event.target.closest('a')) return
     setDocumentOpened(true)
     setError(null)
   }, [])
@@ -179,7 +185,7 @@ export function useSigningFlow(model: SigningViewModel): SigningFlow {
     setDeclining,
     setDeclineReason,
     setDateOfBirth,
-    markDocumentOpened,
+    onDocumentLinkClick,
     submitIdentity,
     submitSignature,
     submitDecline,
@@ -190,8 +196,11 @@ export function useSigningFlow(model: SigningViewModel): SigningFlow {
 export function signingWords(mode: SigningMode): {
   action: string
   button: string
+  /** The same label in Title Case, which staff screens use for buttons and card titles. */
+  staffButton: string
   busy: string
   doneHeading: string
+  staffDoneHeading: string
   doneLead: string
   tickHint: string
 } {
@@ -199,8 +208,10 @@ export function signingWords(mode: SigningMode): {
     return {
       action: 'read and confirm',
       button: 'Confirm',
+      staffButton: 'Confirm',
       busy: 'Saving…',
       doneHeading: 'Confirmed, thank you',
+      staffDoneHeading: 'Confirmed, Thank You',
       doneLead: 'We have recorded that you have read and understood this document.',
       tickHint: 'Typing your name here is your confirmation.',
     }
@@ -208,8 +219,10 @@ export function signingWords(mode: SigningMode): {
   return {
     action: 'read and sign',
     button: 'Sign document',
+    staffButton: 'Sign Document',
     busy: 'Signing…',
     doneHeading: 'Signed, thank you',
+    staffDoneHeading: 'Signed, Thank You',
     doneLead: 'Your signature has been recorded.',
     tickHint: 'Typing your name here has the same effect as signing by hand.',
   }

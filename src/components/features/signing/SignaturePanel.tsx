@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Badge, Button, Card, CardBody, CardHeader, LinkButton, Modal, Textarea, toast } from '@/ds'
+import Image from 'next/image'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Input, LinkButton, Modal, Textarea, toast } from '@/ds'
 import { sendSigningReminder, startInPersonSigningAction, voidSigningRequest } from '@/app/actions/signing'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
 import { getSigningKind, signingRoleLabel } from '@/lib/signing/kinds'
@@ -48,7 +49,7 @@ export function SignaturePanel({
   documents,
   canSend,
   sendActions,
-  title = 'Documents for signature',
+  title = 'Documents for Signature',
   emptyText = 'Nothing has been sent for signature yet.',
 }: SignaturePanelProps): React.JSX.Element {
   const router = useRouter()
@@ -56,6 +57,7 @@ export function SignaturePanel({
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [voiding, setVoiding] = useState<SigningDocumentSummary | null>(null)
   const [voidReason, setVoidReason] = useState('')
+  const [inPerson, setInPerson] = useState<{ url: string; qr: string | null } | null>(null)
 
   const run = (key: string, work: () => Promise<void>): void => {
     setBusyKey(key)
@@ -86,9 +88,15 @@ export function SignaturePanel({
         toast.error(result.error ?? 'Could not start in-person signing.')
         return
       }
-      // A new tab, so the manager's own session stays where it was when the device comes back.
-      window.open(result.data.url, '_blank', 'noopener')
-      toast.success('Signing screen opened in a new tab. It works for 30 minutes, and their emailed link no longer does.')
+      // Never opened here: this browser is signed in as the manager, and a device handed over
+      // with it would give the signer everything the manager can see. The link is shown as a
+      // code to scan on the signer's own phone or a signed-out tablet.
+      try {
+        const QRCode = (await import('qrcode')).default
+        setInPerson({ url: result.data.url, qr: await QRCode.toDataURL(result.data.url, { margin: 1, width: 240 }) })
+      } catch {
+        setInPerson({ url: result.data.url, qr: null })
+      }
       router.refresh()
     })
 
@@ -136,7 +144,7 @@ export function SignaturePanel({
                   <ul className="space-y-2">
                     {document.parties.map((party) => (
                       <li key={party.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <div className="min-w-0">
+                        <div className="min-w-0 break-words">
                           <span className="text-text">{party.name}</span>{' '}
                           <span className="text-text-muted">
                             ({signingRoleLabel(party.role)}
@@ -154,7 +162,7 @@ export function SignaturePanel({
                                     : party.email
                                       ? 'Link sent, not yet opened'
                                       : 'No email address: sign in person'}
-                            {party.identity_check !== 'none' && party.identity_check_failures >= 5 && party.status === 'pending'
+                            {party.identity_check !== 'none' && !party.identity_checked_at && party.identity_check_failures >= 5 && party.status === 'pending'
                               ? '. Locked after wrong dates of birth: send a new link'
                               : ''}
                           </p>
@@ -172,8 +180,9 @@ export function SignaturePanel({
                                   loading={busyKey === `remind:${party.id}`}
                                   disabled={pending}
                                   onClick={() => remind(party.id, party.name)}
+                                  aria-label={`Send New Link to ${party.name}`}
                                 >
-                                  Send new link
+                                  Send New Link
                                 </Button>
                               ) : null}
                               <Button
@@ -182,8 +191,9 @@ export function SignaturePanel({
                                 loading={busyKey === `inperson:${party.id}`}
                                 disabled={pending}
                                 onClick={() => signInPerson(party.id)}
+                                aria-label={`Sign in Person: ${party.name}`}
                               >
-                                Sign in person
+                                Sign in Person
                               </Button>
                             </>
                           ) : null}
@@ -194,10 +204,11 @@ export function SignaturePanel({
 
                   <div className="flex flex-wrap items-center gap-2">
                     <LinkButton href={`/api/signing/documents/${document.id}/pdf`} size="sm" variant="secondary" download>
-                      {document.status === 'completed' || document.status === 'superseded' ? 'Download signed copy' : 'Download document'}
+                      {document.status === 'completed' || document.status === 'superseded' ? 'Download Signed Copy' : 'Download Document'}
+                      <span className="sr-only">: {document.title}, version {document.version}</span>
                     </LinkButton>
                     {canSend && open ? (
-                      <Button size="sm" variant="ghost" disabled={pending} onClick={() => setVoiding(document)}>
+                      <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setVoiding(document)} aria-label={`Withdraw ${document.title}, version ${document.version}`}>
                         Withdraw
                       </Button>
                     ) : null}
@@ -210,17 +221,52 @@ export function SignaturePanel({
       </CardBody>
 
       <Modal
+        open={inPerson !== null}
+        onClose={() => setInPerson(null)}
+        title="Sign In Person"
+        description="Scan this with the phone or tablet they will sign on. It works for 30 minutes, and their emailed link no longer works."
+        footer={
+          <Button type="button" variant="primary" onClick={() => setInPerson(null)}>
+            Done
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <Alert tone="warning">
+            Do not hand over a device that is signed in to this app. Use their own phone, or a tablet that is signed out.
+          </Alert>
+          {inPerson?.qr ? (
+            <Image src={inPerson.qr} alt="Code to scan to open the signing screen" width={240} height={240} unoptimized className="mx-auto" />
+          ) : null}
+          <Input
+            label="Or type this address into the other device"
+            readOnly
+            value={inPerson?.url ?? ''}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </div>
+      </Modal>
+
+      <Modal
         open={voiding !== null}
         onClose={() => {
           setVoiding(null)
           setVoidReason('')
         }}
-        title="Withdraw this request"
+        title="Withdraw This Request"
         description="The signing link stops working straight away. Anything already signed stays on record."
         footer={
           <>
-            <Button variant="ghost" onClick={() => setVoiding(null)}>
-              Keep it
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                setVoiding(null)
+                setVoidReason('')
+              }}
+            >
+              Keep It
             </Button>
             <Button
               variant="danger"

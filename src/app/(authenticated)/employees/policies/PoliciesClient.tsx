@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, LinkButton, PageLayout, Select, toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, Empty, LinkButton, PageLayout, Select, toast } from '@/ds'
 import {
   sendPolicyAcknowledgements,
   type PolicyOverview,
@@ -33,6 +33,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [progress, setProgress] = useState<string | null>(null)
+  const [confirmAll, setConfirmAll] = useState(false)
 
   const outstanding = overview ? overview.staff.filter(needsSending) : []
   const confirmed = overview ? overview.staff.filter((row) => row.state === 'confirmed').length : 0
@@ -58,7 +59,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
       }
       setProgress(null)
       if (failed.length > 0) {
-        toast.error(`Sent to ${sent}. Not sent to ${failed.length}: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ' ...' : ''}`)
+        toast.error(`Sent to ${sent}. Not sent to ${failed.length}: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ' …' : ''}`)
       } else {
         toast.success(`Sent to ${sent} ${sent === 1 ? 'person' : 'people'}.`)
       }
@@ -83,8 +84,8 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
                 subtitle={`Version ${overview.version}. ${confirmed} of ${overview.staff.length} active staff have confirmed it`}
                 action={
                   canSend && overview.isActive && outstanding.length > 0 ? (
-                    <Button size="sm" variant="primary" loading={pending} onClick={() => send(outstanding)}>
-                      {progress ?? `Send to the ${outstanding.length} who have not confirmed`}
+                    <Button type="button" size="sm" variant="primary" loading={pending} onClick={() => setConfirmAll(true)}>
+                      {progress ?? `Send to the ${outstanding.length} Who Have Not Confirmed`}
                     </Button>
                   ) : undefined
                 }
@@ -102,8 +103,8 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
                   {!overview.isActive ? (
                     <Alert
                       tone="warning"
-                      title="This policy is switched off"
-                      actions={<LinkButton href="/settings/signing-templates" size="sm" variant="secondary">Open signing templates</LinkButton>}
+                      title="This Policy Is Switched Off"
+                      actions={<LinkButton href="/settings/signing-templates" size="sm" variant="secondary">Open Signing Templates</LinkButton>}
                     >
                       It cannot be sent until its wording has been checked and it is switched on.
                     </Alert>
@@ -125,7 +126,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
                           <LinkButton href={`/employees/${row.employeeId}`} variant="ghost" size="sm">
                             {row.name}
                           </LinkButton>
-                          <p className="px-2 text-xs text-text-muted">
+                          <p className="break-words px-2 text-xs text-text-muted">
                             {row.state === 'confirmed' && row.at
                               ? `Confirmed ${formatDateInLondon(row.at, { day: 'numeric', month: 'short', year: 'numeric' })}`
                               : row.state === 'waiting' && row.at
@@ -140,8 +141,15 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge tone={POLICY_STATE_TONE[row.state]}>{POLICY_STATE_LABEL[row.state]}</Badge>
                           {canSend && overview.isActive && row.state !== 'confirmed' ? (
-                            <Button size="sm" variant="secondary" disabled={pending} onClick={() => send([row])}>
-                              {row.state === 'waiting' ? 'Send again' : 'Send'}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              disabled={pending}
+                              onClick={() => send([row])}
+                              aria-label={`${row.state === 'waiting' ? 'Send Again' : 'Send'} to ${row.name}`}
+                            >
+                              {row.state === 'waiting' ? 'Send Again' : 'Send'}
                             </Button>
                           ) : null}
                         </div>
@@ -154,6 +162,18 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
           </>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmAll}
+        onClose={() => setConfirmAll(false)}
+        onConfirm={() => {
+          setConfirmAll(false)
+          send(outstanding)
+        }}
+        title="Send This Policy?"
+        message={`${outstanding.length} ${outstanding.length === 1 ? 'person' : 'people'} will be emailed a link to read and confirm "${overview?.title ?? ''}".`}
+        confirmLabel="Send"
+      />
     </PageLayout>
   )
 }

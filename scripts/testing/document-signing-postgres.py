@@ -138,6 +138,8 @@ def main():
             needs_check = sql(f"""INSERT INTO signing_parties (document_id, role, name, hashed_token, token_expires_at, document_viewed_at, identity_check)
                                   VALUES ('{DOC_C}', 'worker', 'New Starter', md5(random()::text), now() + interval '1 day', now(), 'date_of_birth') RETURNING id;""").splitlines()[0]
             assert sign(late_link)['reason'] == 'link_expired'
+            # An in-person session is a short-lived link too, and expires like one.
+            assert sign(late_link, method='in_person')['reason'] == 'link_expired'
             # The same person signing in the staff portal is not bound by the link's expiry.
             assert sign(late_link, method='portal')['ok']
             assert sign(needs_check)['reason'] == 'identity_not_checked'

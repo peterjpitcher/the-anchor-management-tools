@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
     const opened = await openPortalSigningRequest(request, partyId)
     if ('response' in opened) return opened.response
     const { context: signing, state, evidence } = opened.request
+    // A signed-in worker may re-read their own document after signing it.
     if (state !== 'ready' && state !== 'signed') return portalStateRefusal(state)
 
     const pdf = await viewSigningDocument(signing, evidence)

@@ -206,6 +206,8 @@ async function sendSigningLinkEmail(input: {
     privateBookingId: input.document.subject_type === 'private_booking' ? input.document.subject_id : null,
     quoteId: input.document.subject_type === 'quote' ? input.document.subject_id : null,
     metadata: { signing_document_id: input.document.id, signing_party_id: input.party.id },
+    // The stored copy of this email must not hold a working link.
+    logRedactions: [input.rawToken],
     ...emailRoutingFor(input.document),
   })
   return result.success ? { success: true } : { success: false, error: result.error ?? 'Email failed' }
@@ -338,6 +340,14 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
   })
 
   if (definition.companySigns) {
+    // If the business side cannot be recorded the request is withdrawn: left open, the worker
+    // could complete it in the portal with no business signature on it.
+    const withdraw = async (reason: string): Promise<void> => {
+      await admin
+        .from('signing_documents')
+        .update({ status: 'voided', voided_at: new Date().toISOString(), void_reason: reason })
+        .eq('id', documentId)
+    }
     const { data: companyParty, error: companyError } = await admin
       .from('signing_parties')
       .insert({
@@ -349,6 +359,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
       .select('id')
       .single()
     if (companyError || !companyParty) {
+      await withdraw('Could not be set up')
       throw new Error(`Could not record the business signatory: ${companyError?.message ?? 'no row returned'}`)
     }
     const { data: signed, error: signError } = await admin.rpc('signing_record_signature', {
@@ -359,6 +370,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
       p_auth_user_id: input.createdBy,
     })
     if (signError || !(signed as { ok?: boolean } | null)?.ok) {
+      await withdraw('Could not be set up')
       throw new Error(`Could not sign for the business: ${signError?.message ?? JSON.stringify(signed)}`)
     }
   }
@@ -595,7 +607,7 @@ export async function viewSigningDocument(context: SigningPartyContext, evidence
 
 export type IdentityCheckResult =
   | { ok: true }
-  | { ok: false; reason: 'mismatch' | 'locked' | 'not_required' | 'no_record'; attemptsLeft: number }
+  | { ok: false; reason: 'mismatch' | 'locked' | 'not_required' | 'no_record' | 'busy'; attemptsLeft: number }
 
 /**
  * A new starter signing by link gives the date of birth we hold. It is something the right
@@ -631,6 +643,24 @@ export async function checkSigningIdentity(
     return { ok: false, reason: 'no_record', attemptsLeft: MAX_IDENTITY_CHECK_FAILURES - party.identity_check_failures }
   }
 
+  // Take an attempt BEFORE comparing, with an update that only succeeds if nobody else has
+  // taken one since we read the row. Guesses sent in parallel therefore cannot each be checked
+  // against the same count: all but one lose the update and are refused without a comparison.
+  const attempts = party.identity_check_failures + 1
+  const { data: taken, error: takeError } = await admin
+    .from('signing_parties')
+    .update({ identity_check_failures: attempts })
+    .eq('id', party.id)
+    .eq('identity_check_failures', party.identity_check_failures)
+    .lt('identity_check_failures', MAX_IDENTITY_CHECK_FAILURES)
+    .is('identity_checked_at', null)
+    .select('id')
+  if (takeError) throw new Error(`Could not record the identity check: ${takeError.message}`)
+  if (!taken || taken.length === 0) {
+    return { ok: false, reason: 'busy', attemptsLeft: Math.max(0, MAX_IDENTITY_CHECK_FAILURES - attempts) }
+  }
+  const attemptsLeft = Math.max(0, MAX_IDENTITY_CHECK_FAILURES - attempts)
+
   if (expected.slice(0, 10) === dateOfBirthIso) {
     const { error } = await admin
       .from('signing_parties')
@@ -641,20 +671,13 @@ export async function checkSigningIdentity(
     return { ok: true }
   }
 
-  const failures = party.identity_check_failures + 1
-  const { error } = await admin
-    .from('signing_parties')
-    .update({ identity_check_failures: failures })
-    .eq('id', party.id)
-  if (error) throw new Error(`Could not record the identity check: ${error.message}`)
   await insertEvent(admin, {
     documentId: document.id,
     partyId: party.id,
     event: 'identity_check_failed',
     evidence,
-    meta: { failures },
+    meta: { failures: attempts },
   })
-  const attemptsLeft = Math.max(0, MAX_IDENTITY_CHECK_FAILURES - failures)
   return { ok: false, reason: attemptsLeft === 0 ? 'locked' : 'mismatch', attemptsLeft }
 }
 
@@ -886,42 +909,37 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
   }
 
   if (!document.completion_applied_at) {
-    // Claim first, then run: if two callers race, one runs the hook. If the hook then fails,
-    // the claim is released so the next caller tries again.
-    const { data: claimed, error: claimError } = await admin
+    // Run, then record. Every hook is safe to run twice, so two callers at once is harmless,
+    // whereas recording first would leave the step marked done if this function were cut off
+    // before the hook ran, and nothing would ever retry it.
+    await runCompletionHook(document, await loadParties(admin, documentId))
+
+    // This version is now the one in force; earlier signed versions in the series are history.
+    const { data: older } = await admin
+      .from('signing_documents')
+      .update({ status: 'superseded', updated_at: new Date().toISOString() })
+      .eq('subject_type', document.subject_type)
+      .eq('subject_id', document.subject_id)
+      .eq('series_key', document.series_key)
+      .eq('status', 'completed')
+      .lt('version', document.version)
+      .select('id')
+    for (const row of older ?? []) {
+      await insertEvent(admin, {
+        documentId: row.id as string,
+        event: 'superseded',
+        meta: { superseded_by: documentId },
+      })
+    }
+
+    const { data: applied, error: appliedError } = await admin
       .from('signing_documents')
       .update({ completion_applied_at: new Date().toISOString() })
       .eq('id', documentId)
       .is('completion_applied_at', null)
       .select('*')
-    if (claimError) throw new Error(`Could not claim the completion step: ${claimError.message}`)
-    if (claimed && claimed.length > 0) {
-      document = claimed[0] as SigningDocumentRow
-      try {
-        await runCompletionHook(document, await loadParties(admin, documentId))
-      } catch (hookError) {
-        await admin.from('signing_documents').update({ completion_applied_at: null }).eq('id', documentId)
-        throw hookError
-      }
-
-      // This version is now the one in force; earlier signed versions in the series are history.
-      const { data: older } = await admin
-        .from('signing_documents')
-        .update({ status: 'superseded', updated_at: new Date().toISOString() })
-        .eq('subject_type', document.subject_type)
-        .eq('subject_id', document.subject_id)
-        .eq('series_key', document.series_key)
-        .eq('status', 'completed')
-        .lt('version', document.version)
-        .select('id')
-      for (const row of older ?? []) {
-        await insertEvent(admin, {
-          documentId: row.id as string,
-          event: 'superseded',
-          meta: { superseded_by: documentId },
-        })
-      }
-    }
+    if (appliedError) throw new Error(`Could not record the completion step: ${appliedError.message}`)
+    if (applied && applied.length > 0) document = applied[0] as SigningDocumentRow
   }
 
   return document

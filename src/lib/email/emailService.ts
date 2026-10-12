@@ -31,6 +31,12 @@ export interface EmailOptions {
   quoteId?: string | null;
   idempotencyKey?: string;
   /**
+   * Strings removed from the copy of this email kept in email_messages. The email itself is sent
+   * unchanged. For a one-time link whose token must not be stored: whoever can read the log could
+   * otherwise use the link (document signing, src/lib/signing/tokens.ts).
+   */
+  logRedactions?: string[];
+  /**
    * A working one-click unsubscribe URL for this recipient.
    *
    * OPT-IN PER CALL, never defaulted. `sendEmail` is the single chokepoint for every
@@ -140,6 +146,17 @@ function getResendClient(): Resend | null {
   return cachedResendClient;
 }
 
+const LOG_REDACTION_MARK = '[one-time link not stored]'
+
+export function redactForLog(value: string | null | undefined, redactions: string[] | undefined): string | null {
+  if (value === null || value === undefined) return null
+  let redacted = value
+  for (const secret of redactions ?? []) {
+    if (secret) redacted = redacted.split(secret).join(LOG_REDACTION_MARK)
+  }
+  return redacted
+}
+
 async function recordEmailOutcome(
   options: EmailOptions,
   input: {
@@ -162,8 +179,8 @@ async function recordEmailOutcome(
     commType: options.commType ?? null,
     subject: options.subject,
     // The derived text is what the guest received, so it is what the log should hold.
-    bodyText: resolveTextPart(options) ?? null,
-    bodyHtml: options.html ?? null,
+    bodyText: redactForLog(resolveTextPart(options), options.logRedactions),
+    bodyHtml: redactForLog(options.html, options.logRedactions),
     attachments,
     resendMessageId: input.messageId ?? null,
     status: input.status,

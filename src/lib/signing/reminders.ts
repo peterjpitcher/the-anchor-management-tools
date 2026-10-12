@@ -112,7 +112,7 @@ export async function runSigningReminders(now: Date = new Date()): Promise<Signi
         admin
           .from('signing_documents')
           .select('id')
-          .eq('status', 'completed')
+          .in('status', ['completed', 'superseded'])
           .or('final_pdf_path.is.null,completion_applied_at.is.null,copies_sent_at.is.null')
           .order('id', { ascending: true })
           .range(from, to),

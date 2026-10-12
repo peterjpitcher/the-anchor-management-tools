@@ -23,9 +23,9 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
   if (flow.phase === 'signed') {
     return (
       <Card>
-        <CardHeader title={words.doneHeading} />
+        <CardHeader title={words.staffDoneHeading} />
         <CardBody>
-          <div className="space-y-3 text-sm text-text-muted">
+          <div className="space-y-3 text-sm text-text-muted" role="status">
             <p>{words.doneLead}</p>
             {flow.completed ? (
               <p>
@@ -48,8 +48,8 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
       <Card>
         <CardHeader title="Declined" />
         <CardBody>
-          <p className="text-sm text-text-muted">
-            We have recorded that you declined this document and let {model.senderName} know. Nothing has been signed.
+          <p className="text-sm text-text-muted" role="status">
+            We have recorded that you declined this document and let the team know. Nothing has been signed.
           </p>
         </CardBody>
       </Card>
@@ -66,7 +66,7 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
         }}
       >
         <Card>
-          <CardHeader title="First, confirm it is you" subtitle="We ask this before showing you the document" />
+          <CardHeader title="First, Confirm It Is You" subtitle="We ask this before showing you the document" />
           <CardBody>
             <Input
               label="Your date of birth"
@@ -95,21 +95,22 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
       }}
     >
       <Card>
-        <CardHeader title="1. Read the document" />
+        <CardHeader title="1. Read the Document" />
         <CardBody>
           <div className="space-y-4">
             {model.summary ? <p className="text-sm text-text-muted">{model.summary}</p> : null}
             <p className="text-sm text-text-muted">
               It opens in a new tab. Read all of it, then come back to this page.
             </p>
-            <div onClick={flow.markDocumentOpened}>
+            <div onClick={flow.onDocumentLinkClick} onAuxClick={flow.onDocumentLinkClick}>
               <LinkButton href={model.endpoints.document} target="_blank" rel="noopener" variant="secondary">
-                Open the document
+                Open the Document
               </LinkButton>
             </div>
-            {flow.documentOpened ? (
-              <p className="text-sm text-text-muted" role="status">Opened. You can come back to it at any time.</p>
-            ) : null}
+            {/* Always in the page, so a screen reader announces the words when they arrive. */}
+            <p className="text-sm text-text-muted" role="status">
+              {flow.documentOpened ? 'Opened. You can come back to it at any time.' : ''}
+            </p>
           </div>
         </CardBody>
       </Card>
@@ -118,10 +119,16 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
         <CardHeader title={model.mode === 'acknowledge' ? '2. Confirm' : '2. Sign'} />
         <CardBody>
           <div className="space-y-4">
+            {!flow.documentOpened ? (
+              <p id="signing-locked-hint" className="text-sm text-text-muted">
+                Open the document first to unlock this step.
+              </p>
+            ) : null}
             <Input
               label="Type your full name"
               hint={words.tickHint}
               autoComplete="name"
+              aria-describedby={!flow.documentOpened ? 'signing-locked-hint' : undefined}
               disabled={!flow.documentOpened}
               value={flow.typedName}
               onChange={(event) => flow.setTypedName(event.target.value)}
@@ -131,11 +138,7 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
               checked={flow.agreed}
               disabled={!flow.documentOpened}
               onChange={flow.setAgreed}
-              touchTarget
             />
-            {!flow.documentOpened ? (
-              <p className="text-sm text-text-muted">Open the document first to unlock this step.</p>
-            ) : null}
           </div>
         </CardBody>
       </Card>
@@ -154,23 +157,23 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="primary" loading={flow.busy && !flow.declining} disabled={flow.declining}>
-          {words.button}
+          {words.staffButton}
         </Button>
         {!flow.declining ? (
           <Button type="button" variant="ghost" onClick={() => flow.setDeclining(true)}>
-            I do not want to {model.mode === 'acknowledge' ? 'confirm' : 'sign'} this
+            I Do Not Want to {model.mode === 'acknowledge' ? 'Confirm' : 'Sign'} This
           </Button>
         ) : null}
       </div>
 
       {flow.declining ? (
         <Card>
-          <CardHeader title="Decline this document" />
+          <CardHeader title="Decline This Document" />
           <CardBody>
             <div className="space-y-4">
               <Textarea
                 label="Reason (optional)"
-                hint={`We will pass this to ${model.senderName}.`}
+                hint="We will pass this to the team."
                 rows={3}
                 maxLength={1000}
                 value={flow.declineReason}
@@ -181,7 +184,7 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
                   Decline
                 </Button>
                 <Button type="button" variant="ghost" onClick={() => flow.setDeclining(false)}>
-                  Go back
+                  Go Back
                 </Button>
               </div>
             </div>
@@ -192,7 +195,9 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
       <p className="text-xs text-text-muted">
         {model.isPortal
           ? `Please respond by ${model.expiresOn}.`
-          : `This link is personal to you and works until ${model.expiresOn}.`}{' '}
+          : model.inPerson
+            ? 'This signing screen works for 30 minutes.'
+            : `This link is personal to you and works until ${model.expiresOn}.`}{' '}
         When you sign we record the date and time, your internet address, your browser and your approximate location,
         so there is a clear record of who signed.
       </p>

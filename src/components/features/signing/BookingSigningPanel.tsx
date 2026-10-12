@@ -80,7 +80,7 @@ export function BookingSigningPanel({ bookingId, refreshKey }: BookingSigningPan
       sendActions={
         offerWaiver ? (
           <Button size="sm" variant="secondary" loading={pending} onClick={sendWaiver}>
-            Send waiver to sign
+            Send Waiver to Sign
           </Button>
         ) : undefined
       }

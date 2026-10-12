@@ -54,7 +54,7 @@ const sent = { documentId: 'doc-1', version: 1, deliveries: [{ partyId: 'p1', na
 let db: FakeDb
 
 function quote(status: string) {
-  return { quote: { id: QUOTE, quote_number: 'Q-2026-014', status, valid_until: '2026-11-30', vendor_id: CLIENT } }
+  return { quote: { id: QUOTE, quote_number: 'Q-2026-014', status, valid_until: '2026-11-30', vendor_id: CLIENT, total_amount: 1200 } }
 }
 
 function document(overrides: Partial<SigningDocumentRow>): SigningDocumentRow {
@@ -106,6 +106,7 @@ describe('sending a quote for acceptance', () => {
     expect(request.pdf.toString()).toBe('%PDF quote')
     expect(request.parties).toEqual([{ role: 'client', name: 'Sam Client', email: 'sam@client.example' }])
     expect(request.summary).toContain('Monday, 30 November 2026')
+    expect(request.context).toMatchObject({ total_amount: 1200 })
     expect(db.rows('quotes')[0].status).toBe('sent')
   })
 
@@ -132,6 +133,14 @@ describe('sending a quote for acceptance', () => {
     db.rows('quotes')[0].status = 'rejected'
     await SIGNING_COMPLETION_HOOKS.quote_acceptance(document({ subject_id: QUOTE }), [])
     expect(db.rows('quotes')[0].status).toBe('rejected')
+  })
+
+  it('does not accept a quote whose total changed after the client was shown it', async () => {
+    Object.assign(db.rows('quotes')[0], { status: 'sent', total_amount: 1500 })
+    await SIGNING_COMPLETION_HOOKS.quote_acceptance(document({ subject_id: QUOTE, context: { total_amount: 1200 } }), [])
+    expect(db.rows('quotes')[0].status).toBe('sent')
+    await SIGNING_COMPLETION_HOOKS.quote_acceptance(document({ subject_id: QUOTE, context: { total_amount: 1500 } }), [])
+    expect(db.rows('quotes')[0].status).toBe('accepted')
   })
 })
 
@@ -222,18 +231,33 @@ describe('job offers', () => {
     expect(db.rows('recruitment_candidate_notes')[0]).toMatchObject({ candidate_id: 'cand-1', application_id: APPLICATION, kind: 'note' })
     expect(db.rows('recruitment_candidate_notes')[0].content).toContain('accepted by Robin Hopeful')
     expect(db.rows('recruitment_applications')[0].status).toBe('offered')
+
+    // Run again, as a retry would: still one note.
+    await SIGNING_COMPLETION_HOOKS.job_offer(
+      document({ subject_id: APPLICATION, context: { candidate_id: 'cand-1' } }),
+      [{ role: 'candidate', typed_name: 'Robin Hopeful' } as never]
+    )
+    expect(db.rows('recruitment_candidate_notes')).toHaveLength(1)
   })
 })
 
 describe('private booking hooks', () => {
   it('marks the contract accepted by e-signature, and the waiver signed when it was included', async () => {
     await SIGNING_COMPLETION_HOOKS.private_booking_contract(
-      document({ subject_id: BOOKING, context: { contract_version: 3, includes_waiver: true } }),
+      document({ subject_id: BOOKING, context: { includes_waiver: true } }),
       []
     )
     expect(db.rows('private_bookings')[0]).toMatchObject({ contract_acceptance_method: 'e_signature', waiver_status: 'signed' })
     expect(db.rows('private_bookings')[0].contract_accepted_at).toBeTruthy()
     expect(db.rows('private_booking_audit').map((row) => row.action)).toEqual(['contract_accepted', 'field_updated'])
+  })
+
+  it('accepts only the contract version that was signed', async () => {
+    db.rows('private_bookings')[0].contract_version = 4
+    await SIGNING_COMPLETION_HOOKS.private_booking_contract(document({ subject_id: BOOKING, context: { contract_version: 3 } }), [])
+    expect(db.rows('private_bookings')[0].contract_accepted_at).toBeNull()
+    await SIGNING_COMPLETION_HOOKS.private_booking_contract(document({ subject_id: BOOKING, context: { contract_version: 4 } }), [])
+    expect(db.rows('private_bookings')[0].contract_accepted_at).toBeTruthy()
   })
 
   it('never overwrites an acceptance already made by paying the deposit', async () => {

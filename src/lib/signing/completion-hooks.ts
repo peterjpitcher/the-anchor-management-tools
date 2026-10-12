@@ -43,9 +43,18 @@ const noteOfferAccepted: SigningCompletionHook = async (document, parties) => {
   const candidateId = typeof document.context.candidate_id === 'string' ? document.context.candidate_id : null
   if (!candidateId) return
   const signer = parties.find((party) => party.role === 'candidate')
-  const content = `Written offer accepted${signer?.typed_name ? ` by ${signer.typed_name}` : ''} (signed online). The signed copy is on the application.`
+  const content = `Written offer accepted${signer?.typed_name ? ` by ${signer.typed_name}` : ''} (signed online, reference ${document.id.slice(0, 8)}). The signed copy is on the application.`
 
-  // The insert is this hook's only write, so a retry after a failure cannot double it.
+  // Safe to run twice: the note names the document, and is only written if it is not there yet.
+  const { data: existing, error: readError } = await admin
+    .from('recruitment_candidate_notes')
+    .select('id')
+    .eq('application_id', document.subject_id)
+    .eq('content', content)
+    .limit(1)
+  if (readError) throw new Error(`Could not read the candidate's notes: ${readError.message}`)
+  if (existing && existing.length > 0) return
+
   const { error } = await admin.from('recruitment_candidate_notes').insert({
     candidate_id: candidateId,
     application_id: document.subject_id,
@@ -89,12 +98,18 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
   const now = new Date().toISOString()
-  const { data: accepted, error } = await admin
+  // Only the contract version that was signed is accepted. A newer version withdraws the older
+  // request when it is sent, so a mismatch should not happen; if it does, the booking is left
+  // alone rather than marked as accepting terms the customer never saw.
+  let update = admin
     .from('private_bookings')
     .update({ contract_accepted_at: now, contract_acceptance_method: 'e_signature', updated_at: now })
     .eq('id', document.subject_id)
     .is('contract_accepted_at', null)
-    .select('id')
+  if (typeof document.context.contract_version === 'number') {
+    update = update.eq('contract_version', document.context.contract_version)
+  }
+  const { data: accepted, error } = await update.select('id')
   if (error) throw new Error(`Could not mark the contract accepted: ${error.message}`)
 
   if (accepted && accepted.length > 0) {
@@ -122,15 +137,21 @@ const signBookingWaiver: SigningCompletionHook = async (document) => {
 
 /**
  * A signed quote is an accepted quote. Only a draft or sent quote moves: one that has since been
- * rejected, converted or otherwise changed by staff is left as staff set it.
+ * rejected, converted or edited by staff is left as staff set it.
  */
 const acceptQuote: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
-  const { error } = await admin
+  let update = admin
     .from('quotes')
     .update({ status: 'accepted', updated_at: new Date().toISOString() })
     .eq('id', document.subject_id)
     .in('status', ['draft', 'sent'])
+  // A quote edited after it was sent for acceptance is not the quote the client signed. Its
+  // total is the check: if it has moved, the quote is left as it is for staff to resend.
+  if (typeof document.context.total_amount === 'number') {
+    update = update.eq('total_amount', document.context.total_amount)
+  }
+  const { error } = await update
   if (error) throw new Error(`Could not mark the quote accepted: ${error.message}`)
 }
 

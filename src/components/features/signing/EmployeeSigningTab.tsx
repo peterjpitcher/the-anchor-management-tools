@@ -11,34 +11,34 @@ type StaffKind = 'employment_agreement' | 'terms_variation' | 'deduction_consent
 
 const KIND_COPY: Record<StaffKind, { menu: string; title: string; description: string; confirm: string }> = {
   employment_agreement: {
-    menu: 'Worker agreement',
-    title: 'Send the worker agreement',
+    menu: 'Worker Agreement',
+    title: 'Send the Worker Agreement',
     description: 'The zero-hours casual worker agreement, built from this record as it stands now.',
-    confirm: 'Send agreement',
+    confirm: 'Send Agreement',
   },
   terms_variation: {
-    menu: 'Change to terms',
-    title: 'Send a change to terms',
+    menu: 'Change to Terms',
+    title: 'Send a Change to Terms',
     description: 'A pay rise, a new role or a change of hours, for the worker to agree.',
-    confirm: 'Send change',
+    confirm: 'Send Change',
   },
   deduction_consent: {
-    menu: 'Wage deduction consent',
-    title: 'Ask for consent to a wage deduction',
+    menu: 'Wage Deduction Consent',
+    title: 'Ask for Consent to a Wage Deduction',
     description: 'The law needs this agreed in writing before anything is taken from wages.',
-    confirm: 'Send for consent',
+    confirm: 'Send for Consent',
   },
   working_time_opt_out: {
-    menu: '48-hour week opt-out',
-    title: 'Offer the 48-hour week opt-out',
+    menu: '48-Hour Week Opt-Out',
+    title: 'Offer the 48-Hour Week Opt-Out',
     description: 'The worker chooses whether to give up the 48-hour average weekly limit. They can say no.',
-    confirm: 'Send opt-out',
+    confirm: 'Send Opt-Out',
   },
   guardian_consent: {
-    menu: 'Parent or guardian consent',
-    title: 'Ask a parent or guardian for consent',
+    menu: 'Parent or Guardian Consent',
+    title: 'Ask a Parent or Guardian for Consent',
     description: 'For a worker under 18. The link goes to the parent or guardian, not the worker.',
-    confirm: 'Send for consent',
+    confirm: 'Send for Consent',
   },
 }
 
@@ -111,12 +111,16 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
       setChangeSummary('')
       setEffectiveDate('')
       setDeductionDetails('')
+      setGuardianName('')
+      setGuardianEmail('')
       router.refresh()
     })
   }
 
   const needsGuardian = kind === 'guardian_consent' || (kind === 'employment_agreement' && isUnder18 === true)
-  const copy = kind ? KIND_COPY[kind] : null
+  // Held after the dialog closes so its title does not blank during the exit fade.
+  const [lastKind, setLastKind] = useState<StaffKind>('employment_agreement')
+  const copy = KIND_COPY[kind ?? lastKind]
 
   const sendActions = canSend ? (
     <Dropdown
@@ -124,7 +128,7 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
       align="right"
       trigger={
         <Button type="button" size="sm" variant="primary">
-          Send for signature
+          Send for Signature
         </Button>
       }
     >
@@ -133,16 +137,27 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
         .filter((option) => !(option === 'working_time_opt_out' && isUnder18 === true))
         .filter((option) => !(option === 'guardian_consent' && isUnder18 === false))
         .map((option) => (
-          <DropdownItem key={option} onClick={() => setKind(option)}>
+          <DropdownItem
+            key={option}
+            onClick={() => {
+              setKind(option)
+              setLastKind(option)
+            }}
+          >
             {KIND_COPY[option].menu}
           </DropdownItem>
         ))}
     </Dropdown>
   ) : undefined
 
+  // A failed load is never shown as "nothing sent yet", and nothing can be sent on top of it:
+  // a document may already be out for signature that this screen cannot see.
+  if (loadError) {
+    return <Alert tone="danger" title="The signing records could not be loaded">{loadError}</Alert>
+  }
+
   return (
     <div className="space-y-4">
-      {loadError ? <Alert tone="danger" title="The signing records could not be loaded">{loadError}</Alert> : null}
       {!hasEmail ? (
         <Alert tone="info">
           There is no email address on this record, so nothing can be emailed. Send the document, then use &quot;Sign in person&quot;.
@@ -159,15 +174,15 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
       <Modal
         open={kind !== null}
         onClose={close}
-        title={copy?.title}
-        description={copy?.description}
+        title={copy.title}
+        description={copy.description}
         footer={
           <>
             <Button variant="ghost" onClick={close} disabled={pending}>
               Cancel
             </Button>
             <Button variant="primary" loading={pending} onClick={send}>
-              {copy?.confirm}
+              {copy.confirm}
             </Button>
           </>
         }

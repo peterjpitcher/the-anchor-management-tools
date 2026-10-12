@@ -77,14 +77,14 @@ export function RecruitmentOfferPanel({ applicationId, candidateName, canSendNow
   return (
     <>
       <SignaturePanel
-        title="Written offer"
+        title="Written Offer"
         documents={documents}
         canSend={canSend}
         emptyText="No written offer has been sent yet."
         sendActions={
           canSend && canSendNow ? (
             <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
-              {documents.length > 0 ? 'Send a new offer' : 'Send written offer'}
+              {documents.length > 0 ? 'Send a New Offer' : 'Send Written Offer'}
             </Button>
           ) : undefined
         }
@@ -95,7 +95,7 @@ export function RecruitmentOfferPanel({ applicationId, candidateName, canSendNow
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title="Send written offer"
+        title="Send Written Offer"
         description={`${candidateName} gets a link to read the offer and accept or decline it.`}
         width="md"
         footer={
@@ -104,7 +104,7 @@ export function RecruitmentOfferPanel({ applicationId, candidateName, canSendNow
               Cancel
             </Button>
             <Button variant="primary" loading={pending} onClick={send}>
-              Send offer
+              Send Offer
             </Button>
           </>
         }
