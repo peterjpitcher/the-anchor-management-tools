@@ -27,6 +27,8 @@ export interface SigningViewModel {
   expiresOn: string
   /** A manager has handed over this device. */
   inPerson: boolean
+  /** Signed in to the staff portal, so there is no personal link to mention. */
+  isPortal: boolean
   otherSigners: Array<{ name: string; roleLabel: string; signed: boolean }>
   endpoints: {
     document: string

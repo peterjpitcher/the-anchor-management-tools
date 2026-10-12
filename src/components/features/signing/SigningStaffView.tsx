@@ -190,8 +190,11 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
       ) : null}
 
       <p className="text-xs text-text-muted">
-        This link is personal to you and works until {model.expiresOn}. When you sign we record the date and time, your
-        internet address, your browser and your approximate location, so there is a clear record of who signed.
+        {model.isPortal
+          ? `Please respond by ${model.expiresOn}.`
+          : `This link is personal to you and works until ${model.expiresOn}.`}{' '}
+        When you sign we record the date and time, your internet address, your browser and your approximate location,
+        so there is a clear record of who signed.
       </p>
     </form>
   )

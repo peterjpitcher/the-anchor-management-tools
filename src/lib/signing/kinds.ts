@@ -70,7 +70,9 @@ export const SIGNING_KIND_DEFINITIONS: Record<SigningKind, SigningKindDefinition
     companySigns: false,
     source: 'template',
     sendPermission: { module: 'employees', action: 'edit' },
-    viewPermission: { module: 'employees', action: 'view_documents' },
+    // A policy is the same wording for everyone, so who has confirmed it is open to anyone who
+    // can see the staff list. The Policies tab sits in the employees tab row on that basis.
+    viewPermission: { module: 'employees', action: 'view' },
   },
   deduction_consent: {
     kind: 'deduction_consent',

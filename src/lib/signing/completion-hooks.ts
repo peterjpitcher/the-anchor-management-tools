@@ -1,3 +1,4 @@
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { SigningDocumentRow, SigningKind, SigningPartyRow } from './types'
 
 /**
@@ -15,8 +16,26 @@ export type SigningCompletionHook = (document: SigningDocumentRow, parties: Sign
 /** The signed copy on the record is the whole outcome; no other record changes. */
 const recordOnly: SigningCompletionHook = async () => {}
 
+/**
+ * The worker agreement is on the new-starter checklist. Tick "agreement accepted" with the date
+ * it was signed, so the checklist does not wait for somebody to tick it by hand.
+ */
+const tickAgreementAccepted: SigningCompletionHook = async (document) => {
+  const admin = createAdminClient()
+  const { error } = await admin.from('employee_onboarding_checklist').upsert(
+    {
+      employee_id: document.subject_id,
+      employee_agreement_accepted: true,
+      // A timestamp, as the hand-ticked path in EmployeeService writes it.
+      employee_agreement_accepted_date: new Date().toISOString(),
+    },
+    { onConflict: 'employee_id' }
+  )
+  if (error) throw new Error(`Could not tick the onboarding checklist: ${error.message}`)
+}
+
 export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook> = {
-  employment_agreement: recordOnly,
+  employment_agreement: tickAgreementAccepted,
   terms_variation: recordOnly,
   policy_acknowledgement: recordOnly,
   deduction_consent: recordOnly,

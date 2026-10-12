@@ -1,7 +1,8 @@
 import type { HeaderNavItem } from '@/ds'
 
 /**
- * The employees tab row: the roster, the birthdays list and the reliability leaderboard. Pure
+ * The employees tab row: the roster, the birthdays list, the reliability leaderboard and the
+ * policies staff have confirmed. Pure
  * module, safe to import from server and client components. Every page in the row passes it to
  * PageLayout as navItems; the active tab comes from the path.
  *
@@ -12,6 +13,7 @@ export const EMPLOYEES_NAV: HeaderNavItem[] = [
   { label: 'Employees', href: '/employees' },
   { label: 'Birthdays', href: '/employees/birthdays' },
   { label: 'Reliability', href: '/employees/reliability' },
+  { label: 'Policies', href: '/employees/policies' },
 ]
 
 /** The back button on every page below the roster: an employee and new. */
