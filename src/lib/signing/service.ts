@@ -986,6 +986,26 @@ export async function listSigningDocumentsForSubject(
   return attachParties(admin, (data ?? []) as SigningDocumentRow[])
 }
 
+/**
+ * Every document in one series across all its subjects. Supplier confirmations for a booking
+ * are the case: each belongs to its supplier, and the booking page wants them together.
+ */
+export async function listSigningDocumentsForSeries(
+  subjectType: SigningDocumentRow['subject_type'],
+  seriesKey: string
+): Promise<SigningDocumentSummary[]> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('signing_documents')
+    .select('*')
+    .eq('subject_type', subjectType)
+    .eq('series_key', seriesKey)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) throw new Error(`Could not read signing documents: ${error.message}`)
+  return attachParties(admin, (data ?? []) as SigningDocumentRow[])
+}
+
 /** Two plain reads rather than an embed, so a second foreign key can never break the list. */
 async function attachParties(admin: AdminClient, documents: SigningDocumentRow[]): Promise<SigningDocumentSummary[]> {
   if (documents.length === 0) return []

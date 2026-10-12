@@ -120,6 +120,20 @@ const signBookingWaiver: SigningCompletionHook = async (document) => {
   await markWaiverSigned(createAdminClient(), document)
 }
 
+/**
+ * A signed quote is an accepted quote. Only a draft or sent quote moves: one that has since been
+ * rejected, converted or otherwise changed by staff is left as staff set it.
+ */
+const acceptQuote: SigningCompletionHook = async (document) => {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('quotes')
+    .update({ status: 'accepted', updated_at: new Date().toISOString() })
+    .eq('id', document.subject_id)
+    .in('status', ['draft', 'sent'])
+  if (error) throw new Error(`Could not mark the quote accepted: ${error.message}`)
+}
+
 export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook> = {
   employment_agreement: tickAgreementAccepted,
   terms_variation: recordOnly,
@@ -130,7 +144,7 @@ export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook
   job_offer: noteOfferAccepted,
   private_booking_contract: acceptBookingContract,
   private_booking_waiver: signBookingWaiver,
-  quote_acceptance: recordOnly,
+  quote_acceptance: acceptQuote,
   client_agreement: recordOnly,
   supplier_confirmation: recordOnly,
 }
