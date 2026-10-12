@@ -5,7 +5,7 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Input, PageLay
 import { saveSigningTemplate, setSigningTemplateActive } from '@/app/actions/signing'
 import { SIGNING_KIND_DEFINITIONS } from '@/lib/signing/kinds'
 import { TEMPLATE_MERGE_FIELDS } from '@/lib/signing/template-fields'
-import { findDraftMarkers } from '@/lib/signing/template-render'
+import { findDraftMarkers } from '@/lib/signing/template-text'
 import type { SigningTemplateRow } from '@/lib/signing/types'
 
 interface SigningTemplatesManagerProps {

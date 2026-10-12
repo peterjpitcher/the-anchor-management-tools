@@ -50,7 +50,7 @@ function failure(error: unknown): { error: string } {
 async function revalidateSubject(document: Pick<SigningDocumentSummary, 'subject_type' | 'subject_id'>): Promise<void> {
   const subject = await describeSigningSubject(document)
   revalidatePath(subject.path.split('?')[0])
-  revalidatePath('/documents')
+  revalidatePath('/signatures')
 }
 
 export async function getSigningDocumentsForSubject(
@@ -169,6 +169,67 @@ export async function voidSigningRequest(input: { documentId: string; reason: st
     })
     await revalidateSubject(document)
     return { success: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export interface SigningOverviewRow {
+  document: SigningDocumentSummary
+  subjectLabel: string
+  subjectPath: string
+}
+
+const OVERVIEW_LIMIT = 100
+const OverviewFilterSchema = z.enum(['outstanding', 'signed', 'closed'])
+export type SigningOverviewFilter = z.infer<typeof OverviewFilterSchema>
+
+const OVERVIEW_STATUSES: Record<SigningOverviewFilter, string[]> = {
+  outstanding: ['sent', 'part_signed'],
+  signed: ['completed'],
+  closed: ['declined', 'voided', 'expired', 'superseded'],
+}
+
+/**
+ * Every document sent for signature, across all kinds, newest first: the page that answers
+ * "what are we still waiting on?". Shows only the kinds this person may see, and the most
+ * recent hundred in the chosen group.
+ */
+export async function getSigningOverview(filter: SigningOverviewFilter): Promise<ActionResult<{ rows: SigningOverviewRow[]; truncated: boolean }>> {
+  try {
+    const parsed = OverviewFilterSchema.safeParse(filter)
+    if (!parsed.success) return { error: 'Unknown filter.' }
+    const user = await getSigningStaffUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const visibleKinds: string[] = []
+    for (const subjectType of SIGNING_SUBJECT_TYPES) {
+      for (const kind of signingKindsForSubject(subjectType)) {
+        if (await canViewSigningKind(kind, user.id)) visibleKinds.push(kind)
+      }
+    }
+    if (visibleKinds.length === 0) return { error: 'Insufficient permissions' }
+
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('signing_documents')
+      .select('id')
+      .in('kind', visibleKinds)
+      .in('status', OVERVIEW_STATUSES[parsed.data])
+      .order('created_at', { ascending: false })
+      .limit(OVERVIEW_LIMIT + 1)
+    if (error) throw new Error(`Could not read signing documents: ${error.message}`)
+    const ids = ((data ?? []) as Array<{ id: string }>).map((row) => row.id)
+    const truncated = ids.length > OVERVIEW_LIMIT
+
+    const rows: SigningOverviewRow[] = []
+    for (const id of ids.slice(0, OVERVIEW_LIMIT)) {
+      const document = await getSigningDocument(id)
+      if (!document) continue
+      const subject = await describeSigningSubject(document)
+      rows.push({ document, subjectLabel: subject.label, subjectPath: subject.path })
+    }
+    return { success: true, data: { rows, truncated } }
   } catch (error) {
     return failure(error)
   }

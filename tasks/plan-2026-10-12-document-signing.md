@@ -4,7 +4,16 @@
 
 **Goal:** One built-in way to send any document to a person, have them read it and agree by typing their name, and keep a locked, evidenced copy on the record it belongs to. No third-party signing service and no running cost.
 
-**Status:** plan only, written 12 October 2026. No code, no migration, nothing deployed. Checked against `origin/main` at `a7ac0403`.
+**Status:** built on branch `feat/signing-foundation` (worktree `OJ-AMS-signing`), 12 October 2026. Not merged, not deployed. The two migrations (`20261012120000` and `20261012120100`) are NOT applied to production and need the owner's go-ahead. Planned against `origin/main` at `a7ac0403`.
+
+**Built differently from the plan (each for a stated reason):**
+
+- One branch with a commit per release, not seven pull requests: all the schema is in the first commit and the releases share files, so splitting them after the fact would only add merge risk.
+- Quote acceptance is its own button and email, not a link inside the existing quote email, whose idempotency and delivery logging a personal link would have complicated.
+- A contract sent with the self-catering agreement is one request and one signature covering both, with a title that says so. The waiver can still be sent on its own.
+- An accepted job offer is noted on the candidate's trail and does not move the application to Hired: hiring stays a staff step.
+- Staff notices and emails to workers use the app's default sender. Only Orange Jelly's own clients (quotes and client agreements) get the Orange Jelly invoicing identity.
+- The privacy page states what signing records, but no retention period yet: the owner chose 6 years, and the page already says 7 years for employee and booking records.
 
 ---
 
