@@ -4,7 +4,8 @@ import { useMemo, useState, useTransition } from 'react'
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Input, PageLayout, Textarea, toast } from '@/ds'
 import { saveSigningTemplate, setSigningTemplateActive } from '@/app/actions/signing'
 import { SIGNING_KIND_DEFINITIONS } from '@/lib/signing/kinds'
-import { findDraftMarkers, findMergeFields } from '@/lib/signing/template-render'
+import { TEMPLATE_MERGE_FIELDS } from '@/lib/signing/template-fields'
+import { findDraftMarkers } from '@/lib/signing/template-render'
 import type { SigningTemplateRow } from '@/lib/signing/types'
 
 interface SigningTemplatesManagerProps {
@@ -26,7 +27,7 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
 
   const selected = templates.find((template) => template.id === selectedId) ?? null
   const gaps = useMemo(() => [...findDraftMarkers(title), ...findDraftMarkers(body)], [title, body])
-  const mergeFields = useMemo(() => findMergeFields(`${title}\n${body}`), [title, body])
+  const mergeFields = selected ? TEMPLATE_MERGE_FIELDS[selected.kind] : []
   const dirty = selected !== null && (selected.title !== title || selected.body !== body)
 
   const open = (template: SigningTemplateRow): void => {
@@ -139,7 +140,7 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
                 />
                 {mergeFields.length > 0 ? (
                   <p className="text-sm text-text-muted">
-                    Filled in automatically when sent: {mergeFields.map((field) => `{{${field}}}`).join(', ')}. Keep these exactly as written.
+                    You can use these, and they are filled in when the document is sent: {mergeFields.map((field) => `{{${field}}}`).join(', ')}.
                   </p>
                 ) : null}
                 {gaps.length > 0 ? (

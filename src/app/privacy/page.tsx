@@ -38,7 +38,7 @@ const SUB_LABEL_CLASS = 'font-anchor-body text-guest-body text-guest-text-strong
 const UL_CLASS = 'flex list-disc flex-col gap-guest-2xs pl-5 font-anchor-body text-guest-lead text-guest-text'
 
 export default function PrivacyPolicy() {
-  const lastUpdated = new Date('2024-12-21').toLocaleDateString('en-GB', {
+  const lastUpdated = new Date('2026-10-12').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -82,6 +82,11 @@ export default function PrivacyPolicy() {
           <li>IP address and device information</li>
           <li>Usage data and preferences</li>
           <li>Audit logs of system activities</li>
+          <li>
+            When you sign or confirm a document online: the date and time, the name you typed, your IP address,
+            your device and browser, and your approximate location (usually the nearest town), worked out from
+            your IP address. We keep this with the signed document as a record of who signed it
+          </li>
         </ul>
       </GuestSection>
 

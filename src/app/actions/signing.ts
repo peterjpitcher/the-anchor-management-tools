@@ -23,6 +23,8 @@ import {
   signingKindsForSubject,
 } from '@/lib/signing/staff'
 import { describeSigningSubject } from '@/lib/signing/subjects'
+import { unknownMergeFields } from '@/lib/signing/template-fields'
+import { findMergeFields } from '@/lib/signing/template-render'
 import { listSigningTemplates, templateActivationBlocker } from '@/lib/signing/templates'
 import { SIGNING_SUBJECT_TYPES, type SigningSubjectType, type SigningTemplateRow } from '@/lib/signing/types'
 
@@ -215,6 +217,13 @@ export async function saveSigningTemplate(input: { id: string; title: string; bo
 
     if (current.title === parsed.data.title && current.body === parsed.data.body) {
       return { success: true, data: current }
+    }
+
+    const unknown = unknownMergeFields(current.kind, findMergeFields(`${parsed.data.title}\n${parsed.data.body}`))
+    if (unknown.length > 0) {
+      return {
+        error: `This template cannot fill in ${unknown.map((field) => `{{${field}}}`).join(', ')}. Remove ${unknown.length === 1 ? 'it' : 'them'} or check the spelling.`,
+      }
     }
 
     const staysActive = current.is_active && templateActivationBlocker(parsed.data) === null

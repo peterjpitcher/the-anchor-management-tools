@@ -57,7 +57,6 @@ export async function renderTemplateDocument(input: {
   slug: string
   mergeValues: Record<string, string | null | undefined>
   subtitle?: string | null
-  reference: string
 }): Promise<RenderedTemplateDocument> {
   const template = await getSigningTemplateBySlug(input.slug)
   if (!template || template.kind !== input.kind) {
@@ -81,7 +80,8 @@ export async function renderTemplateDocument(input: {
     title,
     subtitle: input.subtitle,
     mergedBody,
-    reference: input.reference,
+    // Printed in the footer, so a paper copy can be matched to the wording it was made from.
+    reference: `${template.slug}, version ${template.version}`,
   })
   const pdf = await generatePDFFromHTML(html)
   return { template, title, pdf }
