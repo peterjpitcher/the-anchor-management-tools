@@ -33,6 +33,10 @@ export default async function OnboardingSuccessPage({ searchParams }: Onboarding
               Open
             </LinkButton>
           </div>
+          <p className="text-sm text-text-muted">
+            When we send you something to read and sign, such as your worker agreement, we will email you a link. You
+            will also find it under My Documents in the staff portal.
+          </p>
         </CardBody>
       </Card>
     </StandaloneShell>

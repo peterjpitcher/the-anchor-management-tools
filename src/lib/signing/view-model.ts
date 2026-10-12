@@ -40,12 +40,13 @@ export function buildSigningViewModel(input: {
     initialPhase,
     blockedMessage: messageForState(input.state),
     documentViewed: Boolean(party.document_viewed_at),
-    expiresOn: formatDateInLondon(party.token_expires_at ?? document.expires_at, {
+    expiresOn: formatDateInLondon(input.endpoints.identity === undefined ? document.expires_at : party.token_expires_at ?? document.expires_at, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     }),
     inPerson: Boolean(party.witnessed_by) && party.status === 'pending',
+    isPortal: input.endpoints.identity === undefined,
     otherSigners: input.otherParties
       .filter((other) => other.id !== party.id && other.role !== 'company')
       .map((other) => ({
