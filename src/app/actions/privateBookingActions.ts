@@ -3319,7 +3319,43 @@ export async function sendBookingContract(
       metadata: { sent_to: booking.contact_email },
     })
 
-    await sendContractEmailToCustomer(booking, { version, pdf })
+    // One email carries both the PDF and the customer's personal link to sign it online
+    // (CLAUDE.md, Domain rules: signatures go through src/lib/signing). If the signing request
+    // cannot be created the contract is not sent, so nobody receives a contract they cannot sign.
+    const { bookingRequiresWaiverAnnex } = await import('@/lib/contract-template')
+    const { createBookingContractSigningRequest } = await import('@/lib/signing/documents/booking-contract')
+    const { recordSigningLinkSent, voidSigningDocument } = await import('@/lib/signing/service')
+    const { getSigningStaffUser } = await import('@/lib/signing/staff')
+    const sender = await getSigningStaffUser()
+    const signing = await createBookingContractSigningRequest({
+      booking,
+      contractVersion: version,
+      pdf,
+      includesWaiver: bookingRequiresWaiverAnnex(booking),
+      userId: user.id,
+      userName: sender?.name ?? user.email ?? 'A member of staff',
+    })
+
+    try {
+      await sendContractEmailToCustomer(booking, { version, pdf, signingUrl: signing.signingUrl })
+    } catch (emailError) {
+      // Nobody has the link, so the request must not sit there looking live.
+      try {
+        await voidSigningDocument({ documentId: signing.documentId, userId: user.id, reason: 'The contract email could not be sent' })
+      } catch (voidError) {
+        logger.error('Could not withdraw the signing request after a failed contract email', {
+          error: voidError instanceof Error ? voidError : new Error(String(voidError)),
+          metadata: { bookingId, documentId: signing.documentId },
+        })
+      }
+      throw emailError
+    }
+    await recordSigningLinkSent({
+      documentId: signing.documentId,
+      partyId: signing.partyId,
+      to: booking.contact_email,
+      userId: user.id,
+    })
 
     const nowIso = new Date().toISOString()
     const { error: updateError } = await admin
@@ -3344,6 +3380,7 @@ export async function sendBookingContract(
         contract_version: version,
         sent_to: booking.contact_email,
         customer_notified: true,
+        signing_document_id: signing.documentId,
       },
     })
 

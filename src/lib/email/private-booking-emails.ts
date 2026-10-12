@@ -1115,6 +1115,8 @@ export async function sendContractEmailToCustomer(booking: {
 }, contract: {
   version: number;
   pdf: Buffer;
+  /** The customer's personal link to read and sign the contract online. */
+  signingUrl?: string;
 }): Promise<void> {
   if (!booking.contact_email) {
     throw new Error('This booking has no contact email address');
@@ -1147,6 +1149,9 @@ export async function sendContractEmailToCustomer(booking: {
       : `Paying the ${formatCurrency(booking.deposit_amount!)} booking and damage deposit confirms that you accept these terms, so please do have a read first, and ask us anything that is not clear.`;
 
   const paragraphs = [`Attached is the contract and terms for ${forEvent}.`, depositLine];
+  // The link is personal to this customer, so it is spelled out in the text version too.
+  const signLine = 'You can also read and sign the contract online. It takes a couple of minutes on a phone or computer.';
+  const signNote = 'This link is personal to you, so please do not forward it.';
 
   const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
@@ -1154,6 +1159,9 @@ export async function sendContractEmailToCustomer(booking: {
   <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
+  ${contract.signingUrl ? `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(signLine)}</p>
+  <p style="margin: 20px 0;"><a href="${escapeHtml(contract.signingUrl)}" style="display: inline-block; padding: 13px 22px; border-radius: 8px; background: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; font-family: ${FONT_FAMILY}; font-size: 16px; font-weight: bold; text-decoration: none;">Read and sign online</a></p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(signNote)}</p>` : ''}
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
@@ -1163,7 +1171,13 @@ export async function sendContractEmailToCustomer(booking: {
     to: booking.contact_email,
     subject,
     html,
-    text: legacyEmailText({ heading, firstName, paragraphs }),
+    text: legacyEmailText({
+      heading,
+      firstName,
+      paragraphs: contract.signingUrl
+        ? [...paragraphs, `${signLine}\n${contract.signingUrl}`, signNote]
+        : paragraphs,
+    }),
     attachments: [{
       name: `The-Anchor-booking-contract-v${contract.version}.pdf`,
       content: contract.pdf,
