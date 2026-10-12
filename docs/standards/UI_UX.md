@@ -149,6 +149,7 @@ The same action has the same words and the same look on every page.
   | Seasonal pre-orders | `src/components/features/table-bookings/preorder/status-ui.ts` | `PREORDER_COMPLETENESS_TONE` |
   | Venue calendar | `src/components/schedule-calendar/status-ui.ts` | `CALENDAR_CLOSURE_CELL_CLASSES`, `CALENDAR_CLOSURE_BADGE` |
   | Vouchers | `vouchers/_shared/voucher-ui.tsx` | also `VoucherStatusBadge`, `VOUCHER_EVENT_ACTION_LABELS`, `REMINDER_KIND_LABELS`, `REMINDER_CHANNEL_LABELS`, `REMINDER_STATUS_TONES`, `REMINDER_STATUS_LABELS`, `voucherExpiringSoonTone` (the FOH kiosk reads the same maps through `statusTone` and `statusLabel` in `vouchers/foh/components/voucher-status.ts`) |
+  | Document signing | `src/components/features/signing/status-ui.ts` | `SIGNING_DOCUMENT_STATUS_TONE`, `SIGNING_DOCUMENT_STATUS_LABEL` (waiting and partly signed warning, signed success, declined danger; withdrawn, expired and replaced neutral), `SIGNING_PARTY_STATUS_TONE`, `SIGNING_PARTY_STATUS_LABEL`, `SIGNING_METHOD_LABEL` |
   | Staff portal | `src/app/(staff-portal)/portal/_shared/status-ui.ts` | `OPEN_SHIFT_REQUESTED_TONE`, `SHIFT_CONFIRM_PANEL_CLASSES`, `shiftPremiumTone` (holiday requests use the leave map above) |
   | Onboarding | `src/app/(employee-onboarding)/onboarding/_shared/status-ui.ts` | `ONBOARDING_SECTION_TONE`, `ONBOARDING_SECTION_LABEL`, `ONBOARDING_SECTION_ICON`, `TIME_OFF_ROW_BORDER_CLASSES` |
   | Timeclock kiosk | `src/app/(timeclock)/timeclock/_components/status-ui.ts` | `KIOSK_TILE_CLASSES`, `KIOSK_DOT_CLASSES` |

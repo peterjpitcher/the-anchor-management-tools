@@ -37,6 +37,10 @@ const PUBLIC_PATH_PREFIXES = [
   '/onboarding',
   '/recruitment/book', // Public candidate interview/trial slot picker (token-gated). Scoped to /book so staff /recruitment pages stay protected.
   '/timeclock',
+  // Document signing. Authorisation is the one-time token in the path, stored only as a hash
+  // (src/lib/signing/tokens.ts); an unknown token gets the same neutral page as a dead one.
+  // Staff signing pages live under /portal/documents and /settings, never under this prefix.
+  '/sign',
   '/m',
   '/g',
   '/r',

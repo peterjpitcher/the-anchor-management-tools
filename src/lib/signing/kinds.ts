@@ -153,8 +153,9 @@ export const SIGNING_KIND_DEFINITIONS: Record<SigningKind, SigningKindDefinition
     signerRoles: ['client'],
     companySigns: false,
     source: 'generator',
-    sendPermission: { module: 'quotes', action: 'send' },
-    viewPermission: { module: 'quotes', action: 'view' },
+    // Quotes are gated by the invoices permissions throughout the app; the quotes module is unused.
+    sendPermission: { module: 'invoices', action: 'edit' },
+    viewPermission: { module: 'invoices', action: 'view' },
   },
   client_agreement: {
     kind: 'client_agreement',
@@ -177,7 +178,7 @@ export const SIGNING_KIND_DEFINITIONS: Record<SigningKind, SigningKindDefinition
     signerRoles: ['supplier'],
     companySigns: false,
     source: 'template',
-    sendPermission: { module: 'private_bookings', action: 'manage_vendors' },
+    sendPermission: { module: 'private_bookings', action: 'manage' },
     viewPermission: { module: 'private_bookings', action: 'view' },
   },
 }
