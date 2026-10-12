@@ -9,7 +9,7 @@ Reference material moved out of `CLAUDE.md` on 2026-09-04 so the instruction fil
 | Group | Contents |
 |---|---|
 | `(authenticated)/` | Staff pages: cashing-up, checklists, customers, dashboard, employees, events, expenses, feedback-inbox, insights, invoices, maintenance, marketing, menu-management, messages, mgd, mileage, oj-projects, parking, private-bookings, profile, quotes, receipts, recruitment, roles, rota, settings, short-links, table-bookings, users, vouchers. `layout.tsx` calls `supabase.auth.getUser()` and loads permissions; `ROLE_PRIORITY` is `super_admin`, `manager`, `staff`. `not-found.tsx` is the staff 404 inside the app shell for a `notFound()` in any of these pages; a URL that matches no route still gets the root guest `src/app/not-found.tsx`. The singular `/private-booking/:id` and `/private-booking/:id/edit` URLs are permanent redirects to `/private-bookings/...` in `next.config.mjs`, not pages. Every page follows the page contract in `docs/standards/UI_UX.md`: `PageLayout` with a section nav constant, no `PageHeader`, no breadcrumbs. |
-| `(staff-portal)/portal/` | Employee self-service on the staff standalone shell: My Shifts (`/portal/shifts`, with the pay summary for the period) and Holiday (`/portal/leave`, leave requests) |
+| `(staff-portal)/portal/` | Employee self-service on the staff standalone shell: My Shifts (`/portal/shifts`, with the pay summary for the period), Holiday (`/portal/leave`, leave requests) and My Documents (`/portal/documents`, documents to read and sign; signing in is the identity check) |
 | `(timeclock)/timeclock/` | Kiosk, public prefix |
 | `(employee-onboarding)/onboarding/` | Onboarding flows, public prefix |
 | `(event-kiosk)/events/` | Event kiosk |
@@ -39,6 +39,7 @@ External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up
 - `src/app/api/cron/` has 53 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
 - `manager-weekly-report` (`0 * * * 5`, hourly on Fridays) sends the weekly insights report from 06:00 London: one report per Friday, held back until 09:00 while any section cannot be read, operator alert on failure. It first finishes any frozen old-format report. See `docs/manager-weekly-report.md`.
 - Retired by the insights report build of 18 September 2026 (routes and schedules removed): `leave-approval-reminders`, `rota-manager-alert`, `private-bookings-weekly-summary`, `checklists-weekly-summary`, `maintenance-weekly-snapshot`, and `checklists-closing-alert` (it only fed the report after 5 September 2026).
+- `signing-reminders` (`30 9 * * *`, added 12 October 2026) is the daily document signing run (`src/lib/signing/reminders.ts`): a reminder at 3 and at 7 days, expiry at 30 days with a note to the sender, and a sweep that finishes any signed document whose signed PDF or record update did not complete. Email only.
 - Every cron route authenticates with `Authorization: Bearer CRON_SECRET` through `src/lib/cron-auth.ts`. Failures email `CRON_ALERT_EMAIL` when set; run outcomes go through `src/lib/cron-run-results.ts`.
 - Regenerate the comparison:
 
