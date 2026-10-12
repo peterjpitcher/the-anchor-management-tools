@@ -10,6 +10,7 @@ import {
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { StatementTransaction } from '@/app/actions/oj-projects/client-statement'
 import type { StatementAgeing } from '@/lib/oj-projects/statement-ageing'
+import type { StatementPosition } from '@/lib/oj-projects/account-position'
 
 export interface StatementPDFInput {
   vendorName: string
@@ -19,6 +20,8 @@ export interface StatementPDFInput {
   transactions: StatementTransaction[]
   closingBalance: number
   ageing?: StatementAgeing
+  /** Work done and not yet invoiced. Omitted for a statement that stops before today. */
+  position?: StatementPosition
   /** Data URI. Omitted when the bundled asset cannot be read, exactly as invoices behave. */
   logoUrl?: string
 }
@@ -168,6 +171,48 @@ const STATEMENT_BODY_CSS = `
       margin: 0 0 10px 0;
     }
 
+    .position {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 4px 0;
+      page-break-inside: avoid;
+    }
+
+    .position caption {
+      caption-side: top;
+      text-align: left;
+      font-size: 8pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: ${STAFF.textStrong};
+      padding: 0 6px 4px 6px;
+    }
+
+    .position td {
+      padding: 3px 6px;
+      font-size: 8pt;
+      border-bottom: 1px solid ${STAFF.border};
+    }
+
+    .position td.text-right {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .position .total td {
+      border-top: 2px solid ${STAFF.borderStrong};
+      border-bottom: none;
+      font-size: 9pt;
+      font-weight: 700;
+    }
+
+    .position-note {
+      font-size: 7pt;
+      color: ${STAFF.textMuted};
+      margin: 0 0 10px 0;
+    }
+
     .statement-payment {
       margin-top: 12px;
       padding: 8px;
@@ -214,6 +259,55 @@ function buildReconciliationLine(ageing: StatementAgeing, closingBalance: number
     : escapeHtml(
         `${parts.join(', ')}. These figures do not agree, so please contact us before paying.`
       )
+}
+
+/**
+ * What sits beyond the closing balance: work done that no invoice has asked for
+ * yet. Kept in its own table so the closing balance above still agrees, to the
+ * penny, with the invoices the client holds.
+ *
+ * Nothing is printed when there is nothing to add, so a client who is invoiced
+ * in full each month sees the statement they always did.
+ */
+function buildPositionBlock(position: StatementPosition | undefined, closingBalance: number): string {
+  if (!position) return ''
+  const gross = roundMoney(position.notYetInvoicedWork + position.notYetInvoicedCharges)
+  if (gross <= 0) return ''
+
+  const row = (label: string, amount: string) => `      <tr>
+        <td>${escapeHtml(label)}</td>
+        <td class="text-right">${amount}</td>
+      </tr>`
+
+  const rows = [row('Invoiced and unpaid (the closing balance above)', formatBalance(closingBalance))]
+  if (position.notYetInvoicedWork > 0) {
+    rows.push(row('Work done, not yet invoiced', formatCurrency(position.notYetInvoicedWork)))
+  }
+  if (position.notYetInvoicedCharges > 0) {
+    rows.push(row('Regular charges, not yet invoiced', formatCurrency(position.notYetInvoicedCharges)))
+  }
+  if (position.invoicedOnAccount > 0) {
+    rows.push(row('Less already invoiced on account', `-${formatCurrency(position.invoicedOnAccount)}`))
+  }
+
+  const total = roundMoney(closingBalance + position.notYetInvoicedNet)
+  const how = position.monthlyCapIncVat
+    ? `It will be invoiced at ${formatCurrency(position.monthlyCapIncVat)} a month.`
+    : 'It will be on your next invoice.'
+
+  return `  <table class="position">
+    <caption>Your account as at ${escapeHtml(formatStatementDate(position.asAt))}</caption>
+    <tbody>
+${rows.join('\n')}
+      <tr class="total">
+        <td>Total for all work to date</td>
+        <td class="text-right">${formatBalance(total)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="position-note">Only the closing balance is due now. Work not yet invoiced is not due for payment. ${escapeHtml(how)} All figures include VAT.</p>
+
+`
 }
 
 export function generateStatementHTML(input: StatementPDFInput): string {
@@ -271,6 +365,8 @@ ${ageing.buckets
 `
     : ''
 
+  const positionBlock = buildPositionBlock(input.position, input.closingBalance)
+
   const head = renderDocumentHead({
     titleHtml: `Account Statement ${vendorName} ${periodFrom} to ${periodTo}`,
     metaClass: '.statement-header',
@@ -316,7 +412,7 @@ ${input.transactions.length > 0 ? transactionRows : emptyRow}
     </tbody>
   </table>
 
-  <div class="statement-payment">
+${positionBlock}  <div class="statement-payment">
     <h3>How to Pay</h3>
     <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>
     <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
