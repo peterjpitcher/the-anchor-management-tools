@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS public.signing_documents (
   -- Set once the completion hook has updated the record the document belongs to, so a retry
   -- after a failure runs the hook exactly once.
   completion_applied_at timestamptz,
+  -- Set when the signed copies were handed to the email provider, so they go out exactly once
+  -- however many times the finishing step is retried.
+  copies_sent_at timestamptz,
   voided_at timestamptz,
   voided_by uuid,
   void_reason text,

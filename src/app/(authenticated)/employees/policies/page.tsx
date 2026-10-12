@@ -4,6 +4,9 @@ import { getPolicyOverview, getPolicyTemplates } from '@/app/actions/signing-sta
 import PoliciesClient from './PoliciesClient'
 
 export const dynamic = 'force-dynamic'
+// Sending a document for signature renders its PDF in a headless browser, in a server action
+// that runs on this page's function. The default time limit is too tight for a cold start.
+export const maxDuration = 120
 
 type PageProps = { searchParams: Promise<{ policy?: string }> }
 

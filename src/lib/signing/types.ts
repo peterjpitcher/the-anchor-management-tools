@@ -134,6 +134,7 @@ export interface SigningDocumentRow {
   sent_at: string
   completed_at: string | null
   completion_applied_at: string | null
+  copies_sent_at: string | null
   voided_at: string | null
   voided_by: string | null
   void_reason: string | null

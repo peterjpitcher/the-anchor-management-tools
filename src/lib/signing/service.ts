@@ -802,9 +802,9 @@ function isAlreadyExistsError(error: { message?: string; statusCode?: string | n
  * Finish a fully signed document: write the signed PDF with its signing record, update the
  * record it belongs to, and send everyone their copy.
  *
- * Safe to call any number of times, from any path. Each step claims its own completion in the
- * database, so two callers at once do the work once, and a caller that fails part way leaves
- * the rest for the next one.
+ * Safe to call any number of times, from any path. Each of the three steps (signed PDF, copies
+ * by email, record update) claims its own completion in the database, so two callers at once do
+ * the work once, and a caller that fails part way leaves the rest for the next one.
  */
 export async function finaliseSigningDocument(documentId: string): Promise<SigningDocumentRow> {
   const admin = createAdminClient()
@@ -814,7 +814,6 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
     throw new SigningError('not_completed', 'This document is not fully signed.')
   }
 
-  let wroteFinalCopy = false
   if (!document.final_pdf_path) {
     const parties = await loadParties(admin, documentId)
     const path = finalPath(document)
@@ -853,7 +852,6 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
       .select('*')
     if (claimError) throw new Error(`Could not record the signed copy: ${claimError.message}`)
     if (claimed && claimed.length > 0) {
-      wroteFinalCopy = true
       document = claimed[0] as SigningDocumentRow
       await insertEvent(admin, {
         documentId,
@@ -862,6 +860,28 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
       })
     } else {
       document = (await loadDocument(admin, documentId)) ?? document
+    }
+  }
+
+  if (document.final_pdf_path && !document.copies_sent_at) {
+    // Copies go out once, and before the record update below: someone who has signed gets their
+    // copy even if updating the booking or quote then fails. The claim is not released on a
+    // failed send, because the outcome of a failed email is not always known and a second copy
+    // of a contract is worse than a missing one staff can send by hand. The alert says who.
+    const { data: claimed, error: claimError } = await admin
+      .from('signing_documents')
+      .update({ copies_sent_at: new Date().toISOString() })
+      .eq('id', documentId)
+      .is('copies_sent_at', null)
+      .select('*')
+    if (claimError) throw new Error(`Could not claim the copies step: ${claimError.message}`)
+    if (claimed && claimed.length > 0) {
+      document = claimed[0] as SigningDocumentRow
+      try {
+        await sendCompletedCopies(admin, document)
+      } catch (emailError) {
+        await alertSigningFault('signed copies were not all sent', emailError, { documentId })
+      }
     }
   }
 
@@ -901,17 +921,6 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
           meta: { superseded_by: documentId },
         })
       }
-    }
-  }
-
-  if (wroteFinalCopy) {
-    // Copies go out once, from the caller that wrote the signed PDF. A failed send is reported
-    // and not retried on its own: the outcome of a failed email is not always known, and staff
-    // can download the copy and send it by hand.
-    try {
-      await sendCompletedCopies(admin, document)
-    } catch (emailError) {
-      await alertSigningFault('signed copies were not all sent', emailError, { documentId })
     }
   }
 

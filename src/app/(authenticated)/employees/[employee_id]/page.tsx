@@ -33,6 +33,9 @@ import { EmployeeSigningTab } from '@/components/features/signing/EmployeeSignin
 import { getSigningDocumentsForSubject } from '@/app/actions/signing'
 
 export const dynamic = 'force-dynamic'
+// Sending a document for signature renders its PDF in a headless browser, in a server action
+// that runs on this page's function. The default time limit is too tight for a cold start.
+export const maxDuration = 60
 
 interface EmployeeDetailPageProps {
   params: Promise<{
