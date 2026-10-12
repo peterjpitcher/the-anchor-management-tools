@@ -135,15 +135,26 @@ export interface CreateSigningRequestInput {
   templateId?: string | null
   templateVersion?: number | null
   context?: Record<string, unknown>
+  /**
+   * False when the caller puts the link in an email of its own (the private booking contract
+   * email does). The links come back in `deliveries`, and the caller reports each one it sends
+   * with recordSigningLinkSent. Defaults to true.
+   */
+  sendLinkEmails?: boolean
 }
 
 export interface PartyDelivery {
   partyId: string
   name: string
   email: string | null
-  /** `sent`, `failed`, or `none` when there was no address to send to. */
-  email_status: 'sent' | 'failed' | 'none'
+  /**
+   * `sent`, `failed`, `none` when there was no address to send to, or `caller_sends` when the
+   * caller asked to send the link itself.
+   */
+  email_status: 'sent' | 'failed' | 'none' | 'caller_sends'
   error?: string
+  /** Only with `caller_sends`. Never stored, and never returned to a browser. */
+  signingUrl?: string
 }
 
 export interface CreateSigningRequestResult {
@@ -384,6 +395,16 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
       deliveries.push({ partyId: party.id, name: party.name, email: null, email_status: 'none' })
       continue
     }
+    if (input.sendLinkEmails === false) {
+      deliveries.push({
+        partyId: party.id,
+        name: party.name,
+        email: party.email,
+        email_status: 'caller_sends',
+        signingUrl: buildSigningUrl(rawToken),
+      })
+      continue
+    }
     const sent = await sendSigningLinkEmail({ document, party, rawToken, expiresAt, isReminder: false })
     deliveries.push({
       partyId: party.id,
@@ -404,6 +425,22 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
   }
 
   return { documentId, version, deliveries }
+}
+
+/** For a caller that sent the link in its own email: note it on the evidence trail. */
+export async function recordSigningLinkSent(input: {
+  documentId: string
+  partyId: string
+  to: string
+  userId: string | null
+}): Promise<void> {
+  await insertEvent(createAdminClient(), {
+    documentId: input.documentId,
+    partyId: input.partyId,
+    event: 'sent',
+    actorUserId: input.userId,
+    meta: { to: input.to },
+  })
 }
 
 // ---------------------------------------------------------------------------
