@@ -88,6 +88,7 @@ const SETTINGS_TILE_GROUPS: SettingsTileGroupEntry[] = [
       { href: '/settings/api-keys', title: 'API Keys', description: 'External API access and revocation', icon: 'link', requires: 'settingsView' },
       { href: '/settings/audit-logs', title: 'Audit Logs', description: 'View system audit logs for security and compliance', icon: 'clipboardList', requires: 'settingsManage' },
       { href: '/settings/background-jobs', title: 'Background Jobs', description: 'Monitor and manage background job processing', icon: 'refresh', requires: 'settingsManage' },
+      { href: '/settings/signing-templates', title: 'Signing Templates', description: 'Wording for documents sent for signature, and policies staff confirm', icon: 'fileText', requires: 'settingsManage' },
       { href: '/settings/gdpr', title: 'GDPR & Privacy', description: 'Data export and deletion tools', icon: 'eyeOff', requires: 'settingsManage' },
       // Super-admin only: the maintenance tracker has no RBAC module on purpose.
       { href: '/settings/maintenance', title: 'Maintenance Areas', description: 'Parts of the pub a maintenance item can belong to', icon: 'alertTriangle', requires: 'maintenanceAreas' },
