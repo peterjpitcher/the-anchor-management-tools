@@ -1048,7 +1048,8 @@ async function createFohTableBooking(
     normalizedPhone = selectedCustomer.mobile_e164 || selectedCustomer.mobile_number || providedPhone
 
     if (providedPhone && (!selectedCustomer.mobile_e164 || !selectedCustomer.mobile_number)) {
-      const phonePatch: Record<string, string> = { updated_at: new Date().toISOString() }
+      // customers has no updated_at column: naming one makes PostgREST refuse the whole update.
+      const phonePatch: Record<string, string> = {}
       if (!selectedCustomer.mobile_e164) phonePatch.mobile_e164 = providedPhone
       if (!selectedCustomer.mobile_number) phonePatch.mobile_number = providedPhone
 
@@ -1075,11 +1076,14 @@ async function createFohTableBooking(
     if (payload.email && !selectedCustomer.email?.trim()) {
       const { error: emailBackfillError } = await auth.supabase
         .from('customers')
-        .update({ email: payload.email.toLowerCase(), updated_at: new Date().toISOString() })
+        .update({ email: payload.email.toLowerCase() })
         .eq('id', selectedCustomer.id)
 
       if (emailBackfillError) {
-        logger.warn('Failed to backfill selected customer email for FOH booking', {
+        // Another customer owning the email (23505) is expected and stays a warning. Anything
+        // else is a fault on our side, and logger.warn does not print in production.
+        const emailTaken = emailBackfillError.code === '23505'
+        logger[emailTaken ? 'warn' : 'error']('Failed to backfill selected customer email for FOH booking', {
           metadata: {
             userId: auth.userId,
             customerId: selectedCustomer.id,

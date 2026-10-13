@@ -38,18 +38,6 @@ const SRC = join(ROOT, 'src')
  */
 const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect: string }> = [
   {
-    file: 'src/app/api/foh/bookings/route.ts',
-    table: 'customers',
-    column: 'updated_at',
-    effect: 'The updates that fill in a missing phone number or email on the chosen customer are refused, so neither is saved.',
-  },
-  {
-    file: 'src/app/api/foh/event-bookings/route.ts',
-    table: 'customers',
-    column: 'updated_at',
-    effect: 'The same refused updates, on the event booking route.',
-  },
-  {
     file: 'src/app/api/stripe/webhook/route.ts',
     table: 'payments',
     column: 'customer_id',
@@ -86,7 +74,7 @@ const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect:
     effect: 'The same lost log row, for a status update that changes nothing.',
   },
 ]
-const MOST_KNOWN_FAULTS = 8
+const MOST_KNOWN_FAULTS = 6
 
 /**
  * Query parts the reader cannot tie to a table and a column, each read by hand on 13 October
