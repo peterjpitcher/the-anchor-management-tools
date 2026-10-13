@@ -211,7 +211,7 @@ function buildCheckoutPayload(options: CheckoutOrderOptions) {
     currency = PAYPAL_DEFAULT_CURRENCY,
     returnUrl,
     cancelUrl,
-    brandName = 'The Anchor Pub',
+    brandName = 'The Anchor',
   } = options;
 
   return {
