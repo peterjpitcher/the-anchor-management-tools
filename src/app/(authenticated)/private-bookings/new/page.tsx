@@ -123,12 +123,14 @@ export default function NewPrivateBookingPage() {
   oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
   const maxDate = toLocalIsoDate(oneYearFromNow)
 
+  // Full width on purpose (no containerSize), like the invoice builder: this is a long form whose
+  // cards lay fields out up to three across. In the narrow form column it filled barely half a
+  // desktop screen and sat against the left edge.
   return (
     <PageLayout
       title="New Booking"
       subtitle="Create a new venue hire booking"
       backButton={PB_BACK_TO_LIST}
-      containerSize="md"
     >
       {/* One form around the page's cards, so every block submits together */}
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -195,21 +197,20 @@ export default function NewPrivateBookingPage() {
                     inputMode="tel"
                   />
                 </Field>
+                <Field
+                  label="Email Address"
+                >
+                  <Input
+                    type="email"
+                    id="contact_email"
+                    name="contact_email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="john@example.com"
+                    autoComplete="email"
+                  />
+                </Field>
               </div>
-
-              <Field
-                label="Email Address"
-              >
-                <Input
-                  type="email"
-                  id="contact_email"
-                  name="contact_email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="john@example.com"
-                  autoComplete="email"
-                />
-              </Field>
             </CardBody>
           </Card>
 
@@ -226,7 +227,7 @@ export default function NewPrivateBookingPage() {
                 description="We’ll keep this booking in draft until you add the event details."
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field
                 label="Event Date"
                 required={!dateTbd}
