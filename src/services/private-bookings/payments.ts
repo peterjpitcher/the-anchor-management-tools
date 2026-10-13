@@ -421,7 +421,7 @@ async function finalizeDepositPaymentWithClient(
 
   const { data: booking, error: fetchError } = await db
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount, date_tbd, internal_notes, contract_sent_at, layout, risk_status')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount, date_tbd, internal_notes, contract_sent_at, contract_accepted_at, layout, risk_status')
     .eq('id', bookingId)
     .single();
 
@@ -539,8 +539,13 @@ async function finalizeDepositPaymentWithClient(
   // SOP §11: payment of the deposit constitutes acceptance only if the
   // customer received the terms first. Stamp the acceptance when the contract
   // was sent beforehand; otherwise flag a compliance issue for review.
+  //
+  // The first acceptance stands. A contract the customer has already signed online
+  // (src/lib/signing) keeps that record: until 13 October 2026 a deposit paid afterwards
+  // overwrote it with 'deposit_payment' and the time of the payment.
   const contractSentBeforePayment = Boolean((booking as { contract_sent_at?: string | null }).contract_sent_at)
-  if (contractSentBeforePayment) {
+  const alreadyAccepted = Boolean((booking as { contract_accepted_at?: string | null }).contract_accepted_at)
+  if (contractSentBeforePayment && !alreadyAccepted) {
     updatePayload.contract_accepted_at = new Date().toISOString()
     updatePayload.contract_acceptance_method = 'deposit_payment'
   }
