@@ -38,12 +38,6 @@ const SRC = join(ROOT, 'src')
  */
 const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect: string }> = [
   {
-    file: 'src/app/api/stripe/webhook/route.ts',
-    table: 'payments',
-    column: 'customer_id',
-    effect: 'The lookup of the payment behind a Stripe refund fails and the handler throws. Stripe is historical only.',
-  },
-  {
     file: 'src/services/private-bookings/queries.ts',
     table: 'vendors',
     column: 'typical_rate_normalized',
@@ -74,7 +68,7 @@ const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect:
     effect: 'The same lost log row, for a status update that changes nothing.',
   },
 ]
-const MOST_KNOWN_FAULTS = 6
+const MOST_KNOWN_FAULTS = 5
 
 /**
  * Query parts the reader cannot tie to a table and a column, each read by hand on 13 October

@@ -54,7 +54,10 @@ import {
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
 import { verifyStripeWebhookSignature } from '@/lib/payments/stripe'
+import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { logger } from '@/lib/logger'
 import { POST } from '@/app/api/stripe/webhook/route'
+import { schemaCheckedTable } from '../helpers/schemaCheckedTable'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -490,48 +493,96 @@ describe('Stripe webhook route', () => {
   // -----------------------------------------------------------------------
 
   describe('charge.refunded', () => {
-    it('should update payment status to refunded for fully refunded charge', async () => {
-      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-ref')
-      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
-
-      const paymentLookupResult = vi.fn().mockResolvedValue({
-        data: [{ id: 'pay-1', table_booking_id: 'tb-1', customer_id: 'cust-1' }],
-        error: null,
-      })
-      const paymentUpdateResult = vi.fn().mockResolvedValue({ error: null })
+    /**
+     * `payments` has no customer_id: the customer is on the table booking. The handler selected it
+     * from payments, so PostgREST answered 400 (42703), the handler threw, and every
+     * charge.refunded was answered 500 with the payment left as it was. The test that stood here
+     * handed back a payments row with a customer_id on it, so it passed.
+     *
+     * These tables refuse a column the real ones lack, and refuse a seed row that has one.
+     */
+    function refundTables() {
+      const payments = schemaCheckedTable('payments', [
+        { id: 'pay-1', table_booking_id: 'tb-1', stripe_payment_intent_id: 'pi_refund_1', status: 'succeeded' },
+      ])
+      const tableBookings = schemaCheckedTable('table_bookings', [{ id: 'tb-1', customer_id: 'cust-1' }])
       const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
 
       ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'webhook_logs') return { insert: webhookLogInsert }
-          if (table === 'payments') {
-            return {
-              select: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({ not: paymentLookupResult }),
-              }),
-              update: vi.fn().mockReturnValue({
-                eq: paymentUpdateResult,
-              }),
-            }
-          }
-          return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          if (table === 'payments') return payments.query()
+          if (table === 'table_bookings') return tableBookings.query()
+          throw new Error(`Unexpected table: ${table}`)
         }),
         rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
       })
 
-      const chargeObject = {
-        payment_intent: 'pi_refund_1',
-        refunded: true,
-      }
-      const body = buildStripeEvent('charge.refunded', chargeObject, 'evt_ref_1')
-      const req = makeRequest(body, { 'stripe-signature': 'valid' })
-      const res = await POST(req as any)
+      return { payments, tableBookings, webhookLogInsert }
+    }
+
+    async function deliverRefund(charge: Record<string, unknown>): Promise<Response> {
+      const body = buildStripeEvent('charge.refunded', charge, 'evt_ref_1')
+      return POST(makeRequest(body, { 'stripe-signature': 'valid' }) as any)
+    }
+
+    beforeEach(() => {
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-ref')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    })
+
+    it("marks the payment refunded and records the refund against the booking's customer", async () => {
+      const { payments, tableBookings } = refundTables()
+
+      const res = await deliverRefund({ payment_intent: 'pi_refund_1', refunded: true })
+
+      expect([...payments.log, ...tableBookings.log].map((query) => query.error)).toEqual([null, null, null])
+      expect(res.status).toBe(200)
+      expect((await res.json()).received).toBe(true)
+      expect(payments.rows[0].status).toBe('refunded')
+      expect(recordAnalyticsEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ customerId: 'cust-1', tableBookingId: 'tb-1', eventType: 'payment_refunded' }),
+      )
+      expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+    })
+
+    it('marks a part refund partially_refunded', async () => {
+      const { payments } = refundTables()
+
+      const res = await deliverRefund({ payment_intent: 'pi_refund_1', refunded: false })
 
       expect(res.status).toBe(200)
-      const json = await res.json()
-      expect(json.received).toBe(true)
+      expect(payments.rows[0].status).toBe('partially_refunded')
+      expect(recordAnalyticsEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ customerId: 'cust-1', eventType: 'payment_partially_refunded' }),
+      )
+    })
+
+    // The analytics event is best effort. The payment status is the part that must be saved.
+    it('still saves the refund when the booking cannot be read for the analytics event', async () => {
+      const { payments } = refundTables()
+      const client = (createAdminClient as unknown as Mock)()
+      const from = client.from as Mock
+      const original = from.getMockImplementation() as (table: string) => unknown
+      from.mockImplementation((table: string) =>
+        table === 'table_bookings'
+          ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: 'connection reset' } }) }) }) }
+          : original(table),
+      )
+
+      const res = await deliverRefund({ payment_intent: 'pi_refund_1', refunded: true })
+
+      expect(res.status).toBe(200)
+      expect(payments.rows[0].status).toBe('refunded')
+      expect(recordAnalyticsEvent).not.toHaveBeenCalled()
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Refund webhook could not load table booking for analytics',
+        expect.objectContaining({ metadata: expect.objectContaining({ tableBookingId: 'tb-1' }) }),
+      )
     })
   })
 })
