@@ -2093,7 +2093,11 @@ export default function PrivateBookingDetailClient({
     try {
       const result = await sendBookingContract(bookingId);
       if (result.success) {
-        toast.success(`Contract v${result.version} sent to the customer to read and sign`);
+        toast.success(
+          result.foodAgreementIncluded
+            ? `Contract v${result.version} and the food agreement sent to the customer, each to sign separately`
+            : `Contract v${result.version} sent to the customer to read and sign`
+        );
         router.refresh();
       } else {
         toast.error(result.error || 'Failed to send contract');

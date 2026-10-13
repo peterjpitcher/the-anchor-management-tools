@@ -1118,6 +1118,11 @@ export async function sendContractEmailToCustomer(booking: {
   pdf: Buffer;
   /** The customer's personal link to read and sign the contract online. */
   signingUrl?: string;
+  /**
+   * The self-catering and outside food agreement, when the booking has outside food. A
+   * separate document with its own link, because it is signed separately from the contract.
+   */
+  waiver?: { pdf: Buffer; signingUrl: string };
 }): Promise<void> {
   if (!booking.contact_email) {
     throw new Error('This booking has no contact email address');
@@ -1149,24 +1154,59 @@ export async function sendContractEmailToCustomer(booking: {
       ? `We received your ${formatCurrency(booking.deposit_amount!)} booking and damage deposit on ${depositPaidOn}, so there is nothing to pay to hold your date. Paying it confirmed that you accept these terms, so please do have a read, and ask us anything that is not clear.`
       : `Paying the ${formatCurrency(booking.deposit_amount!)} booking and damage deposit confirms that you accept these terms, so please do have a read first, and ask us anything that is not clear.`;
 
-  const paragraphs = [`Attached is the contract and terms for ${forEvent}.`, depositLine];
-  // The link is personal to this customer, so it is spelled out in the text version too.
-  const signLine = 'You can also read and sign the contract online. It takes a couple of minutes on a phone or computer.';
-  const signNote = 'This link is personal to you, so please do not forward it.';
+  // A booking with outside food has a second document, the self-catering and outside food
+  // agreement. It is signed separately from the contract (owner decision, 13 October 2026), so
+  // it is its own attachment and has its own link.
+  const waiver = contract.waiver ?? null;
+  const paragraphs = [
+    waiver
+      ? `Attached are the contract and terms for ${forEvent}, and the self-catering and outside food agreement that goes with it.`
+      : `Attached is the contract and terms for ${forEvent}.`,
+    depositLine,
+  ];
+  // The links are personal to this customer, so they are spelled out in the text version too.
+  const signLine = waiver
+    ? 'You can read and sign both online. Each has its own button below and is signed separately. It takes a couple of minutes on a phone or computer.'
+    : 'You can also read and sign the contract online. It takes a couple of minutes on a phone or computer.';
+  const signNote = waiver
+    ? 'These links are personal to you, so please do not forward them.'
+    : 'This link is personal to you, so please do not forward it.';
+  const signButtons: Array<{ label: string; url: string }> = [];
+  if (contract.signingUrl) {
+    signButtons.push({ label: waiver ? '1. Read and sign the contract' : 'Read and sign online', url: contract.signingUrl });
+  }
+  if (waiver) {
+    signButtons.push({ label: '2. Read and sign the food agreement', url: waiver.signingUrl });
+  }
+  const buttonHtml = (button: { label: string; url: string }): string =>
+    `<p style="margin: 14px 0;"><a href="${escapeHtml(button.url)}" style="display: inline-block; padding: 13px 22px; border-radius: 8px; background: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; font-family: ${FONT_FAMILY}; font-size: 16px; font-weight: bold; text-decoration: none;">${escapeHtml(button.label)}</a></p>`;
 
   const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
-  ${preheader(`The contract and terms for ${forEvent} are attached.`)}
+  ${preheader(waiver ? `The contract and the food agreement for ${forEvent} are attached.` : `The contract and terms for ${forEvent} are attached.`)}
   <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
-  ${contract.signingUrl ? `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(signLine)}</p>
-  <p style="margin: 20px 0;"><a href="${escapeHtml(contract.signingUrl)}" style="display: inline-block; padding: 13px 22px; border-radius: 8px; background: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; font-family: ${FONT_FAMILY}; font-size: 16px; font-weight: bold; text-decoration: none;">Read and sign online</a></p>
+  ${signButtons.length > 0 ? `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(signLine)}</p>
+  ${signButtons.map(buttonHtml).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(signNote)}</p>` : ''}
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
+
+  const attachments = [{
+    name: `The-Anchor-booking-contract-v${contract.version}.pdf`,
+    content: contract.pdf,
+    contentType: 'application/pdf',
+  }];
+  if (waiver) {
+    attachments.push({
+      name: `The-Anchor-self-catering-agreement-v${contract.version}.pdf`,
+      content: waiver.pdf,
+      contentType: 'application/pdf',
+    });
+  }
 
   const result = await sendEmail({
     to: booking.contact_email,
@@ -1175,20 +1215,16 @@ export async function sendContractEmailToCustomer(booking: {
     text: legacyEmailText({
       heading,
       firstName,
-      paragraphs: contract.signingUrl
-        ? [...paragraphs, `${signLine}\n${contract.signingUrl}`, signNote]
+      paragraphs: signButtons.length > 0
+        ? [...paragraphs, signLine, ...signButtons.map((button) => `${button.label}:\n${button.url}`), signNote]
         : paragraphs,
     }),
-    attachments: [{
-      name: `The-Anchor-booking-contract-v${contract.version}.pdf`,
-      content: contract.pdf,
-      contentType: 'application/pdf',
-    }],
+    attachments,
     ...privateBookingEmailLog(booking, 'private_booking_contract'),
     // The stored copy of this email must not hold a working signing link.
-    logRedactions: [contract.signingUrl ? signingTokenFromUrl(contract.signingUrl) : null].filter(
-      (token): token is string => Boolean(token)
-    ),
+    logRedactions: signButtons
+      .map((button) => signingTokenFromUrl(button.url))
+      .filter((token): token is string => Boolean(token)),
   });
   if (!result.success) {
     throw new Error(result.error || 'Failed to send contract email');

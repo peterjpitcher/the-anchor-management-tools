@@ -39,16 +39,16 @@ export function BookingSigningPanel({ bookingId, refreshKey }: BookingSigningPan
     startTransition(async () => {
       const result = await sendBookingWaiver(bookingId)
       if (result.error || !result.data) {
-        toast.error(result.error ?? 'Could not send the waiver.')
+        toast.error(result.error ?? 'Could not send the food agreement.')
         return
       }
       const delivery = result.data.deliveries[0]
       if (delivery?.email_status === 'failed') {
-        toast.error('Waiver created, but the email failed. Use "Send new link" or "Sign in person".')
+        toast.error('Food agreement created, but the email failed. Use "Send New Link" or "Sign in Person".')
       } else if (delivery?.email_status === 'none') {
-        toast.success('Waiver created. There is no email address, so use "Sign in person".')
+        toast.success('Food agreement created. There is no email address, so use "Sign in Person".')
       } else {
-        toast.success('Waiver sent to the customer to sign.')
+        toast.success('Food agreement sent to the customer to sign.')
       }
       await load()
     })
@@ -65,22 +65,26 @@ export function BookingSigningPanel({ bookingId, refreshKey }: BookingSigningPan
     )
   }
 
-  const openContract = state.documents.some(
-    (document) => document.kind === 'private_booking_contract' && (document.status === 'sent' || document.status === 'part_signed')
+  // Offered while the food agreement is owed and there is no request for it already out.
+  const openWaiver = state.documents.some(
+    (document) => document.kind === 'private_booking_waiver' && (document.status === 'sent' || document.status === 'part_signed')
   )
-  // A contract out for signature carries the waiver with it, so a second request would only confuse.
-  const offerWaiver = state.canSend && state.waiverRequired && state.waiverStatus !== 'signed' && !openContract
+  const offerWaiver = state.canSend && state.waiverOutstanding && !openWaiver
 
   return (
     <SignaturePanel
       title="Signatures"
       documents={state.documents}
       canSend={state.canSend}
-      emptyText="Nothing has been sent for signature yet. Email Contract sends the contract with a link to sign it online."
+      emptyText={
+        state.waiverRequired
+          ? 'Nothing has been sent for signature yet. Email Contract sends the contract and the food agreement, each with its own link to sign.'
+          : 'Nothing has been sent for signature yet. Email Contract sends the contract with a link to sign it online.'
+      }
       sendActions={
         offerWaiver ? (
           <Button size="sm" variant="secondary" loading={pending} onClick={sendWaiver}>
-            Send Waiver to Sign
+            Send Food Agreement to Sign
           </Button>
         ) : undefined
       }

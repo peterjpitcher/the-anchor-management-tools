@@ -14,6 +14,7 @@
  * surfaces any server permission error via toast.
  */
 
+import { effectiveWaiverStatus } from '@/lib/private-bookings/waiver-status'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Alert,
@@ -99,7 +100,8 @@ export function WorkflowStatusPanel({
 }: {
   booking: PrivateBookingWithDetails
 }) {
-  const waiver = booking.waiver_status
+  // Outside food ticked with a stored "not required" still means a waiver is owed.
+  const waiver = effectiveWaiverStatus(booking)
   const supplier = booking.supplier_status
   const risk = booking.risk_status
   const finalDetails = booking.final_details_status
@@ -274,7 +276,8 @@ export function WaiverRiskPanel({
   canManage: boolean
   onChanged: () => void
 }) {
-  const waiver = booking.waiver_status ?? 'not_required'
+  // Outside food ticked with a stored "not required" still means a waiver is owed.
+  const waiver = effectiveWaiverStatus(booking)
   const risk = booking.risk_status ?? 'normal'
   const waiverApplies = waiver !== 'not_required'
 

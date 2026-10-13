@@ -4,7 +4,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { invoiceEmailRouting } from '@/lib/email/invoice-sender'
 import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
-import { generatePDFFromHTML } from '@/lib/pdf-generator'
+import { closePdfBrowser, createPdfBrowser, generatePDFFromHTML } from '@/lib/pdf-generator'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildAgreedText, buildCompanyAgreedText, isAcceptableTypedName } from './agreement-text'
 import { appendCertificate, renderCertificateHtml, type CertificateParty } from './certificate'
@@ -15,6 +15,10 @@ import {
   buildSigningStaffNoticeEmail,
 } from './emails'
 import { getSigningKind } from './kinds'
+import { readSigningRenderSpec, renderSigningPdf, type SigningRenderInput, type SigningRenderSpec } from './render'
+import { fillSignatureSlots } from './signature-slots'
+import { buildSignedFills, signingReference } from './slot-fills'
+import { findSubjectClosure } from './subject-state'
 import { describeSigningSubject } from './subjects'
 import { buildSigningUrl, generateSigningToken, hashSigningToken, isWellFormedSigningToken, sha256Hex } from './tokens'
 import {
@@ -56,6 +60,10 @@ export class SigningError extends Error {
 
 function sourcePath(document: Pick<SigningDocumentRow, 'id' | 'subject_type' | 'subject_id'>): string {
   return `${document.subject_type}/${document.subject_id}/${document.id}/document.pdf`
+}
+
+function sourceHtmlPath(document: Pick<SigningDocumentRow, 'id' | 'subject_type' | 'subject_id'>): string {
+  return `${document.subject_type}/${document.subject_id}/${document.id}/document.html`
 }
 
 function finalPath(document: Pick<SigningDocumentRow, 'id' | 'subject_type' | 'subject_id'>): string {
@@ -130,6 +138,14 @@ export interface CreateSigningRequestInput {
   /** The staff member sending it. They are also the business's signatory where the kind has one. */
   createdBy: string
   createdByName: string
+  /** Their job title, printed beside their name where the business signs. */
+  createdByPosition?: string | null
+  /**
+   * The HTML the PDF was rendered from, with its signature slots marked, so the signed copy
+   * can show each signature in place (src/lib/signing/signature-slots.ts). Without it the
+   * signed copy is the PDF as sent plus the signing record page.
+   */
+  render?: SigningRenderInput
   /** Defaults to the kind. See signing_documents.series_key. */
   seriesKey?: string
   templateId?: string | null
@@ -265,6 +281,26 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
     throw new Error(`Could not store the document: ${uploadError.message}`)
   }
 
+  const context: Record<string, unknown> = { ...(input.context ?? {}) }
+  if (input.createdByPosition) context.sender_position = input.createdByPosition
+  if (input.render) {
+    const htmlPath = sourceHtmlPath({ id: documentId, ...subject })
+    const { error: htmlError } = await admin.storage
+      .from(SIGNED_DOCUMENTS_BUCKET)
+      .upload(htmlPath, Buffer.from(input.render.html, 'utf-8'), { contentType: 'text/html; charset=utf-8', upsert: false })
+    if (htmlError) {
+      throw new Error(`Could not store the document source: ${htmlError.message}`)
+    }
+    const spec: SigningRenderSpec = {
+      htmlPath,
+      profile: input.render.profile,
+      pages: input.render.pages,
+      slots: input.render.slots,
+      hasInitials: input.render.hasInitials === true,
+    }
+    context.render = spec
+  }
+
   const { data: inserted, error: insertError } = await admin
     .from('signing_documents')
     .insert({
@@ -280,7 +316,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
       version,
       template_id: input.templateId ?? null,
       template_version: input.templateVersion ?? null,
-      context: input.context ?? {},
+      context,
       status: 'sent',
       source_pdf_path: storagePath,
       source_sha256: sourceSha,
@@ -506,6 +542,48 @@ export async function getSigningPartyById(partyId: string): Promise<SigningParty
   return document ? { party, document } : null
 }
 
+/**
+ * Other documents still waiting for this same person, on the same record: the food agreement
+ * that goes with a booking contract, or a second policy. The signing screen names them, so
+ * someone who has signed one document is not left thinking they have finished.
+ */
+export async function listOtherDocumentsToSign(context: SigningPartyContext): Promise<string[]> {
+  const { party, document } = context
+  const admin = createAdminClient()
+  const { data: documents, error } = await admin
+    .from('signing_documents')
+    .select('id, title, expires_at')
+    .eq('subject_type', document.subject_type)
+    .eq('subject_id', document.subject_id)
+    .in('status', [...SIGNING_OPEN_STATUSES])
+    .neq('id', document.id)
+    .limit(50)
+  if (error) throw new Error(`Could not read the other documents: ${error.message}`)
+  const open = ((documents ?? []) as Array<{ id: string; title: string; expires_at: string }>).filter(
+    (other) => new Date(other.expires_at).getTime() > Date.now()
+  )
+  if (open.length === 0) return []
+
+  const { data: parties, error: partiesError } = await admin
+    .from('signing_parties')
+    .select('document_id, email, employee_id, role, status')
+    .in('document_id', open.map((other) => other.id))
+    .eq('status', 'pending')
+  if (partiesError) throw new Error(`Could not read the other signers: ${partiesError.message}`)
+
+  const email = party.email?.trim().toLowerCase() ?? null
+  const mine = new Set(
+    ((parties ?? []) as Array<{ document_id: string; email: string | null; employee_id: string | null; role: string }>)
+      .filter((other) => {
+        if (other.role !== party.role) return false
+        if (party.employee_id && other.employee_id === party.employee_id) return true
+        return Boolean(email) && other.email?.trim().toLowerCase() === email
+      })
+      .map((other) => other.document_id)
+  )
+  return open.filter((other) => mine.has(other.id)).map((other) => other.title)
+}
+
 export type SigningPartyState =
   | 'ready'
   | 'needs_identity_check'
@@ -685,6 +763,39 @@ export async function checkSigningIdentity(
 // Signing and declining
 // ---------------------------------------------------------------------------
 
+/**
+ * Withdraw an open request whose record no longer needs signing (the booking was cancelled,
+ * staff marked the quote accepted, the worker left: see subject-state.ts). Called when the
+ * signer opens the link, before a signature is recorded and before a reminder goes out.
+ * Returns the context as it now stands.
+ */
+export async function withdrawIfSubjectClosed(context: SigningPartyContext): Promise<SigningPartyContext> {
+  if (!SIGNING_OPEN_STATUSES.includes(context.document.status)) return context
+  const reason = await findSubjectClosure(context.document)
+  if (!reason) return context
+
+  const admin = createAdminClient()
+  const now = new Date().toISOString()
+  const { data, error } = await admin
+    .from('signing_documents')
+    .update({ status: 'voided', voided_at: now, void_reason: reason, updated_at: now })
+    .eq('id', context.document.id)
+    .in('status', [...SIGNING_OPEN_STATUSES])
+    .select('*')
+  if (error) throw new Error(`Could not withdraw the document: ${error.message}`)
+  if (!data || data.length === 0) {
+    // Someone else changed it first. Show whatever it is now.
+    const current = await loadDocument(admin, context.document.id)
+    return current ? { ...context, document: current } : context
+  }
+  await insertEvent(admin, {
+    documentId: context.document.id,
+    event: 'voided',
+    meta: { reason, automatic: true },
+  })
+  return { ...context, document: data[0] as SigningDocumentRow }
+}
+
 export type SignResult =
   | { ok: true; completed: boolean; documentId: string }
   | { ok: false; reason: string }
@@ -706,6 +817,12 @@ export async function signSigningParty(input: {
   if (input.agreedText !== expectedText) {
     // The page they agreed on is not the page we would show. Refuse and let them reload.
     return { ok: false, reason: 'agreement_text_changed' }
+  }
+
+  // The record may have moved on since the page was opened.
+  const current = await withdrawIfSubjectClosed(input.context)
+  if (current.document.status === 'voided') {
+    return { ok: false, reason: 'document_voided' }
   }
 
   // An in-person session is a link the manager opened on a venue device a moment ago.
@@ -848,8 +965,37 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
       const witness = party.witnessed_by ? await lookupUser(admin, party.witnessed_by) : null
       certificateParties.push({ ...party, witnessName: witness?.name ?? null })
     }
-    const certificatePdf = await generatePDFFromHTML(renderCertificateHtml({ document, parties: certificateParties }))
-    finalBuffer = Buffer.from(await appendCertificate(source, certificatePdf))
+    // Where the document's HTML was kept, render it again with each signature shown in its
+    // place, so the copy people receive does not show blank signature lines. `source` (the file
+    // they were shown, already checked against its fingerprint above) is otherwise used as is.
+    const renderSpec = readSigningRenderSpec(document.context)
+    const browser = renderSpec ? await createPdfBrowser() : null
+    try {
+      let body: Buffer = source
+      if (renderSpec && browser) {
+        const { data: htmlFile, error: htmlError } = await admin.storage
+          .from(SIGNED_DOCUMENTS_BUCKET)
+          .download(renderSpec.htmlPath)
+        if (htmlError || !htmlFile) {
+          throw new Error(`Could not read the stored document source: ${htmlError?.message ?? 'no data'}`)
+        }
+        const filled = fillSignatureSlots({
+          html: Buffer.from(await htmlFile.arrayBuffer()).toString('utf-8'),
+          fills: buildSignedFills({ document, slots: renderSpec.slots, parties: certificateParties }),
+          mode: document.mode,
+          initialsText: renderSpec.hasInitials ? `Signed electronically, ref ${signingReference(document.id)}` : null,
+        })
+        body = await renderSigningPdf({ html: filled, profile: renderSpec.profile, pages: renderSpec.pages, browser })
+      }
+      const certificatePdf = await generatePDFFromHTML(
+        renderCertificateHtml({ document, parties: certificateParties, signedInPlace: Boolean(renderSpec) }),
+        undefined,
+        browser ? { browser } : {}
+      )
+      finalBuffer = Buffer.from(await appendCertificate(body, certificatePdf))
+    } finally {
+      if (browser) await closePdfBrowser(browser)
+    }
 
     const { error: uploadError } = await admin.storage
       .from(SIGNED_DOCUMENTS_BUCKET)

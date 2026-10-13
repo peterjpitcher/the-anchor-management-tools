@@ -1,4 +1,6 @@
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { getSigningKind } from './kinds'
+import { prepareSigningDocument } from './prepare'
 import { createSigningRequest, type CreateSigningRequestResult, type SigningPartyInput } from './service'
 import type { SigningStaffUser } from './staff'
 import { renderTemplateDocument } from './templates'
@@ -38,15 +40,26 @@ export async function sendTemplateSigningRequest(input: {
     subtitle: input.subtitle,
   })
 
+  // The document carries a signature slot for each person who signs, so the signed copy shows
+  // who signed, when and how, in the document itself.
+  const prepared = await prepareSigningDocument({
+    source: { html: rendered.html, profile: 'a4_margins', slots: rendered.slots },
+    mode: getSigningKind(input.kind).mode,
+    parties: input.parties.map((party) => ({ role: party.role, name: party.name })),
+    sender: getSigningKind(input.kind).companySigns ? { name: input.user.name, position: input.user.position } : null,
+  })
+
   return createSigningRequest({
     kind: input.kind,
     subjectId: input.subjectId,
     title: rendered.title,
     summary: input.summary ?? null,
-    pdf: rendered.pdf,
+    pdf: prepared.pdf,
+    render: prepared.render,
     parties: input.parties,
     createdBy: input.user.id,
     createdByName: input.user.name,
+    createdByPosition: input.user.position,
     seriesKey: input.seriesKey,
     templateId: rendered.template.id,
     templateVersion: rendered.template.version,

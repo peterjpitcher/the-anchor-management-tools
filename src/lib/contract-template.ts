@@ -16,12 +16,24 @@ import {
   toNum,
 } from '@/lib/private-bookings/item-labels'
 import { logger } from '@/lib/logger'
+import { initialsSlot, signatureSlot } from '@/lib/signing/signature-slots'
+
+/** Signature slot keys, used when the contract is rendered for signing online. */
+export const CONTRACT_SLOT_HOST = 'contract:host'
+export const CONTRACT_SLOT_ANCHOR = 'contract:anchor'
+export const WAIVER_SLOT_ORGANISER = 'waiver:organiser'
 
 export interface ContractData {
   booking: PrivateBookingWithDetails
   logoUrl?: string
   /** Version recorded against the booking for this generation — rendered in the page footer. */
   contractVersion?: number
+  /**
+   * Print signature slots where the signature lines are (src/lib/signing/signature-slots.ts),
+   * for a contract that will be signed online. Off for the printed contract, whose output is
+   * unchanged: blank lines to sign by hand, and initials boxes in each footer.
+   */
+  signingSlots?: boolean
   companyDetails?: {
     name: string
     registrationNumber?: string
@@ -78,8 +90,13 @@ export function matchesSelfCateringPackageName(name: string | null | undefined):
  */
 export function bookingRequiresWaiverAnnex(booking: {
   id?: string
+  outside_food?: boolean | null
   items?: PrivateBookingItem[] | null
 }): boolean {
+  // The "Outside food" tick on the booking is itself the statement that outside food is coming.
+  // It counted for nothing here until 13 October 2026, so a booking with the tick and no
+  // self-catering package printed a contract with no annex (src/lib/private-bookings/waiver-status.ts).
+  if (booking.outside_food === true) return true
   return (booking.items || []).some((item: PrivateBookingItem) => {
     if (item.item_type !== 'catering') return false
     if (item.package?.requires_waiver === true) return true
@@ -103,6 +120,7 @@ export function bookingRequiresWaiverAnnex(booking: {
 
 export function generateContractHTML(data: ContractData): string {
   const { booking, logoUrl, companyDetails, contractVersion } = data
+  const signingSlots = data.signingSlots === true
 
   // ---- helpers ----
   const formatDate = (date: string | null) => formatDateFull(date)
@@ -270,7 +288,11 @@ export function generateContractHTML(data: ContractData): string {
         <footer class="run-foot">
           <p class="foot-reg">${reg}</p>
           <div class="foot-right">
-            ${showInitials ? '<span class="foot-init">Initials <span class="init-box"></span> <span class="init-box"></span></span>' : ''}
+            ${showInitials
+              ? signingSlots
+                ? `<span class="foot-init">${initialsSlot()}</span>`
+                : '<span class="foot-init">Initials <span class="init-box"></span> <span class="init-box"></span></span>'
+              : ''}
             <span class="foot-page">${pageLabel} <b class="pageno">1</b> of <b class="pagetot">1</b></span>
           </div>
         </footer>`
@@ -772,20 +794,20 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             <div class="sign-card">
               <p class="sign-card-h">Signed by the Host</p>
               <p class="sign-card-sub">The person booking and accepting responsibility for the event</p>
-              <div class="sf"><div class="sf-rule"></div><span class="sf-cap">Host name</span></div>
+              ${signingSlots ? signatureSlot(CONTRACT_SLOT_HOST) : `<div class="sf"><div class="sf-rule"></div><span class="sf-cap">Host name</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
-              </div>
+              </div>`}
             </div>
             <div class="sign-card">
               <p class="sign-card-h">For The Anchor</p>
               <p class="sign-card-sub">For and on behalf of Orange Jelly Limited trading as The Anchor Pub</p>
-              <div class="sf"><div class="sf-rule"></div><span class="sf-cap">Name &amp; position</span></div>
+              ${signingSlots ? signatureSlot(CONTRACT_SLOT_ANCHOR) : `<div class="sf"><div class="sf-rule"></div><span class="sf-cap">Name &amp; position</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
-              </div>
+              </div>`}
             </div>
           </div>
         </div>
@@ -1015,11 +1037,11 @@ ${hasOwnFood ? `
             <div class="sign-card">
               <p class="sign-card-h">Signed by the Event Organiser</p>
               <p class="sign-card-sub">Self-catering and outside food responsibility agreement</p>
-              <div class="sf"><div class="sf-rule"><span class="sf-v">${safeCustomerName}</span></div><span class="sf-cap">Event organiser&rsquo;s name</span></div>
+              ${signingSlots ? signatureSlot(WAIVER_SLOT_ORGANISER) : `<div class="sf"><div class="sf-rule"><span class="sf-v">${safeCustomerName}</span></div><span class="sf-cap">Event organiser&rsquo;s name</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
-              </div>
+              </div>`}
             </div>
           </div>
         </div>

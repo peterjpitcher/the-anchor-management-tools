@@ -27,6 +27,18 @@ export interface WorkerAgreementEmployee {
   auth_user_id: string | null
 }
 
+/** The agreement as HTML, before it is printed, with what a caller needs to send it. */
+export interface WorkerAgreementSource {
+  /** The printed agreement: blank signature lines, initials boxes in each footer. */
+  html: string
+  /** True when Schedule 2 (Young Worker Schedule) is included, with its parent or guardian block. */
+  includesYoungWorkerSchedule: boolean
+  employee: WorkerAgreementEmployee
+  age: number | null
+  agreementDate: string
+  missing: string[]
+}
+
 export interface WorkerAgreementDocument {
   pdf: Buffer
   employee: WorkerAgreementEmployee
@@ -55,7 +67,11 @@ async function resolveNmwBandLabel(
   return match?.label ?? null
 }
 
-export async function buildWorkerAgreementDocument(employeeId: string): Promise<WorkerAgreementDocument | null> {
+/**
+ * Build the agreement's HTML from the employee record as it stands now. Shared by the download
+ * (printed as it is) and by signing (printed with signature slots), so both say the same thing.
+ */
+export async function loadWorkerAgreement(employeeId: string): Promise<WorkerAgreementSource | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
@@ -102,39 +118,54 @@ export async function buildWorkerAgreementDocument(employeeId: string): Promise<
   if (!employee.employment_start_date) missing.push('start date')
   if (rateResult?.rate === null || rateResult?.rate === undefined) missing.push('hourly rate (set it on the Pay tab)')
 
-  const html = generateWorkerAgreementHTML(
-    assembleWorkerAgreementData({
-      firstName: employee.first_name,
-      lastName: employee.last_name,
-      address: employee.address,
-      postCode: employee.post_code,
-      dateOfBirth: employee.date_of_birth,
-      jobTitle: employee.job_title,
-      employmentStartDate: employee.employment_start_date,
-      agreementDate,
-      hourlyRate: rateResult?.rate ?? null,
-      nmwBandLabel,
-      managerName: AGREEMENT_ISSUING_MANAGER.name,
-      managerEmail: AGREEMENT_ISSUING_MANAGER.email,
-      logoUrl: CONTRACT_LOGO_DATA_URI,
-    })
-  )
-
-  // The design owns the A4 page geometry (@page size:A4 margin:0 + mm-based .sheet padding), so
-  // render at CSS page size with zero puppeteer margins and no puppeteer header/footer (the
-  // template supplies its own running ones).
-  const pdf = await generatePDFFromHTML(html, {
-    format: 'A4',
-    printBackground: true,
-    preferCSSPageSize: true,
-    margin: { top: 0, right: 0, bottom: 0, left: 0 },
+  const agreement = assembleWorkerAgreementData({
+    firstName: employee.first_name,
+    lastName: employee.last_name,
+    address: employee.address,
+    postCode: employee.post_code,
+    dateOfBirth: employee.date_of_birth,
+    jobTitle: employee.job_title,
+    employmentStartDate: employee.employment_start_date,
+    agreementDate,
+    hourlyRate: rateResult?.rate ?? null,
+    nmwBandLabel,
+    managerName: AGREEMENT_ISSUING_MANAGER.name,
+    managerEmail: AGREEMENT_ISSUING_MANAGER.email,
+    logoUrl: CONTRACT_LOGO_DATA_URI,
   })
 
   return {
-    pdf,
+    html: generateWorkerAgreementHTML(agreement),
+    includesYoungWorkerSchedule: agreement.includeYoungWorkerSchedule,
     employee,
     age: computeAgeAt(employee.date_of_birth, agreementDate),
     agreementDate,
     missing,
+  }
+}
+
+/**
+ * The design owns the A4 page geometry (@page size:A4 margin:0 + mm-based .sheet padding), so
+ * it is printed at CSS page size with zero margins and no added header or footer (the template
+ * supplies its own running ones).
+ */
+export const WORKER_AGREEMENT_PDF_OPTIONS = {
+  format: 'A4',
+  printBackground: true,
+  preferCSSPageSize: true,
+  margin: { top: 0, right: 0, bottom: 0, left: 0 },
+} as const
+
+/** The printed agreement as a PDF, for download. */
+export async function buildWorkerAgreementDocument(employeeId: string): Promise<WorkerAgreementDocument | null> {
+  const source = await loadWorkerAgreement(employeeId)
+  if (!source) return null
+  const pdf = await generatePDFFromHTML(source.html, WORKER_AGREEMENT_PDF_OPTIONS)
+  return {
+    pdf,
+    employee: source.employee,
+    age: source.age,
+    agreementDate: source.agreementDate,
+    missing: source.missing,
   }
 }

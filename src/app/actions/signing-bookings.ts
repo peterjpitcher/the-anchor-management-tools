@@ -5,7 +5,9 @@ import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { bookingRequiresWaiverAnnex } from '@/lib/contract-template'
 import { getErrorMessage } from '@/lib/errors'
-import { WAIVER_TITLE, bookingSignerParty, buildWaiverOnlyPdf } from '@/lib/signing/documents/booking-contract'
+import { markWaiverSent } from '@/lib/private-bookings/contract-lifecycle'
+import { waiverIsOutstanding } from '@/lib/private-bookings/waiver-status'
+import { WAIVER_TITLE, bookingSignerParty, prepareBookingWaiver } from '@/lib/signing/documents/booking-contract'
 import {
   SigningError,
   createSigningRequest,
@@ -28,8 +30,10 @@ function failure(error: unknown): { error: string } {
 
 export interface BookingSigningState {
   documents: SigningDocumentSummary[]
-  /** True when the booking has self-catering or outside food, so a waiver applies. */
+  /** True when the booking has outside food, so the food agreement applies. */
   waiverRequired: boolean
+  /** True while the food agreement is owed and not yet signed. */
+  waiverOutstanding: boolean
   waiverStatus: string | null
   hasEmail: boolean
   canSend: boolean
@@ -46,7 +50,7 @@ export async function getBookingSigningState(bookingId: string): Promise<ActionR
     const admin = createAdminClient()
     const { data: booking, error } = await admin
       .from('private_bookings')
-      .select('id, contact_email, waiver_status, items:private_booking_items(item_type, package:catering_packages(id, name, requires_waiver))')
+      .select('id, contact_email, outside_food, waiver_status, items:private_booking_items(item_type, package:catering_packages(id, name, requires_waiver))')
       .eq('id', bookingId)
       .maybeSingle()
     if (error) throw new Error(`Could not read the booking: ${error.message}`)
@@ -58,6 +62,7 @@ export async function getBookingSigningState(bookingId: string): Promise<ActionR
         documents: await listSigningDocumentsForSubject('private_booking', bookingId),
         // Only the fields the check reads are selected, which is less than the full item type.
         waiverRequired: bookingRequiresWaiverAnnex(booking as unknown as Parameters<typeof bookingRequiresWaiverAnnex>[0]),
+        waiverOutstanding: waiverIsOutstanding(booking as { outside_food?: boolean | null; waiver_status?: string | null }),
         waiverStatus: (booking.waiver_status as string | null) ?? null,
         hasEmail: Boolean(booking.contact_email),
         canSend: await canSendSigningKind('private_booking_waiver', user.id),
@@ -69,9 +74,9 @@ export async function getBookingSigningState(bookingId: string): Promise<ActionR
 }
 
 /**
- * Send the self-catering waiver on its own, for a booking whose contract was already accepted
- * another way (by paying the deposit). A contract sent for signature carries the waiver with it,
- * so this is not needed alongside one.
+ * Send the self-catering and outside food agreement on its own: for a booking whose contract was
+ * already accepted another way (by paying the deposit), or that gained outside food after its
+ * contract went out. Email Contract sends it alongside the contract, as its own document.
  */
 export async function sendBookingWaiver(bookingId: string): Promise<ActionResult<{ documentId: string; deliveries: PartyDelivery[] }>> {
   try {
@@ -80,8 +85,8 @@ export async function sendBookingWaiver(bookingId: string): Promise<ActionResult
     if (!user) return { error: 'Unauthorized' }
     if (!(await canSendSigningKind('private_booking_waiver', user.id))) return { error: 'Insufficient permissions' }
 
-    const { pdf, booking } = await buildWaiverOnlyPdf(bookingId)
-    if (booking.waiver_status === 'signed') return { error: 'The waiver for this booking is already signed.' }
+    const { prepared, booking } = await prepareBookingWaiver(bookingId)
+    if (booking.waiver_status === 'signed') return { error: 'The food agreement for this booking is already signed.' }
     const party = bookingSignerParty(booking)
     if (!party.name) return { error: 'Add the customer\'s name to the booking first.' }
 
@@ -89,20 +94,19 @@ export async function sendBookingWaiver(bookingId: string): Promise<ActionResult
       kind: 'private_booking_waiver',
       subjectId: bookingId,
       title: WAIVER_TITLE,
-      summary: 'This covers food you bring or arrange yourself for your event. Please read it before you sign.',
-      pdf,
+      summary: 'This covers food you bring or arrange yourself for your event. It is signed separately from the contract.',
+      pdf: prepared.pdf,
+      render: prepared.render,
       parties: [party],
       createdBy: user.id,
       createdByName: user.name,
     })
 
-    // Sending it counts as issuing it, as generating the contract does.
-    const admin = createAdminClient()
-    await admin
-      .from('private_bookings')
-      .update({ waiver_status: 'sent', updated_at: new Date().toISOString() })
-      .eq('id', bookingId)
-      .eq('waiver_status', 'required')
+    // The booking says the agreement was sent only if the link was emailed. A customer with no
+    // email address signs in person, and a failed email is reported to whoever pressed send.
+    if (result.deliveries.some((delivery) => delivery.email_status === 'sent')) {
+      await markWaiverSent(createAdminClient(), { bookingId, via: 'food_agreement_sent', performedBy: user.id })
+    }
 
     await logAuditEvent({
       user_id: user.id,

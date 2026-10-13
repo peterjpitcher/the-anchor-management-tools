@@ -13,6 +13,8 @@ export interface SigningStaffUser {
   id: string
   email: string | null
   name: string
+  /** Their job title, printed beside their name where they sign for the business. */
+  position: string | null
 }
 
 export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
@@ -25,7 +27,7 @@ export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
   const admin = createAdminClient()
   const { data: employee } = await admin
     .from('employees')
-    .select('first_name, last_name')
+    .select('first_name, last_name, job_title')
     .eq('auth_user_id', user.id)
     .maybeSingle()
   const employeeName = [employee?.first_name, employee?.last_name]
@@ -38,6 +40,7 @@ export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
     id: user.id,
     email: user.email ?? null,
     name: employeeName || metadata?.full_name || metadata?.name || user.email || 'A member of staff',
+    position: (employee?.job_title as string | null | undefined)?.trim() || null,
   }
 }
 

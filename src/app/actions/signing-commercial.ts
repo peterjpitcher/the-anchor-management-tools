@@ -6,7 +6,8 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { getQuote } from '@/app/actions/quotes'
 import { formatDateInLondon, isValidIsoDate } from '@/lib/dateUtils'
 import { getErrorMessage } from '@/lib/errors'
-import { generateQuotePDF } from '@/lib/pdf-generator'
+import { buildQuoteSigningSource } from '@/lib/signing/documents/quote'
+import { prepareSigningDocument } from '@/lib/signing/prepare'
 import { sendTemplateSigningRequest } from '@/lib/signing/send-template'
 import {
   SigningError,
@@ -107,14 +108,21 @@ export async function sendQuoteForAcceptance(input: {
     if (quote.status === 'rejected') return { error: 'This quote was rejected. Create a new quote to send for acceptance.' }
     if (quote.status === 'expired') return { error: 'This quote has expired. Update its valid-until date before sending it for acceptance.' }
 
-    const pdf = await generateQuotePDF(quote)
+    // The quote as its PDF prints it, with a panel where the acceptance is shown once given.
+    const parties = [{ role: 'client' as const, name: parsed.data.signerName, email: parsed.data.signerEmail }]
+    const prepared = await prepareSigningDocument({
+      source: buildQuoteSigningSource(quote),
+      mode: 'sign',
+      parties: parties.map((party) => ({ role: party.role, name: party.name })),
+    })
     const result = await createSigningRequest({
       kind: 'quote_acceptance',
       subjectId: quote.id,
       title: `Quote ${quote.quote_number}`,
       summary: `Our quote ${quote.quote_number}, valid until ${longDate(quote.valid_until)}. Signing accepts the quote as it is set out.`,
-      pdf,
-      parties: [{ role: 'client', name: parsed.data.signerName, email: parsed.data.signerEmail }],
+      pdf: prepared.pdf,
+      render: prepared.render,
+      parties,
       createdBy: auth.user.id,
       createdByName: auth.user.name,
       context: {

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { StandalonePageHeader } from '@/components/shells/StandaloneShell'
 import { SigningStaffView } from '@/components/features/signing/SigningStaffView'
 import { getPortalPartyContext, getPortalWorker } from '@/lib/signing/portal'
-import { getSigningDocument, resolveSigningPartyState } from '@/lib/signing/service'
+import { getSigningDocument, listOtherDocumentsToSign, resolveSigningPartyState, withdrawIfSubjectClosed } from '@/lib/signing/service'
 import { buildSigningViewModel } from '@/lib/signing/view-model'
 
 export const dynamic = 'force-dynamic'
@@ -17,14 +17,19 @@ export default async function PortalSignPage({ params }: PageProps): Promise<Rea
   const { partyId } = await params
   const worker = await getPortalWorker()
   if (!worker) notFound()
-  const context = await getPortalPartyContext(worker, partyId)
-  if (!context) notFound()
+  const found = await getPortalPartyContext(worker, partyId)
+  if (!found) notFound()
+  const context = await withdrawIfSubjectClosed(found)
 
-  const document = await getSigningDocument(context.document.id)
+  const [document, alsoToSign] = await Promise.all([
+    getSigningDocument(context.document.id),
+    listOtherDocumentsToSign(context),
+  ])
   const model = buildSigningViewModel({
     context,
     state: resolveSigningPartyState(context, 'portal'),
     otherParties: document?.parties ?? [],
+    alsoToSign,
     endpoints: {
       document: `/api/portal/signing/${partyId}/document`,
       sign: `/api/portal/signing/${partyId}/sign`,

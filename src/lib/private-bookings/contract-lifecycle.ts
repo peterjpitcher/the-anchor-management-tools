@@ -1,6 +1,6 @@
 import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { generateContractHTML, bookingRequiresWaiverAnnex } from '@/lib/contract-template'
+import { generateContractHTML } from '@/lib/contract-template'
 import { CONTRACT_LOGO_DATA_URI } from '@/lib/private-bookings/contract-logo'
 import { logger } from '@/lib/logger'
 
@@ -41,6 +41,11 @@ const BOOKING_CONTRACT_SELECT = `
 
 export type GeneratedContract = {
   html: string
+  /**
+   * The same contract with signature slots where the signature lines are, for signing online
+   * (src/lib/signing/signature-slots.ts). The printed contract (`html`) is unchanged.
+   */
+  signingHtml: string
   version: number
   booking: any
 }
@@ -75,14 +80,19 @@ export async function renderContractPreview(bookingId: string): Promise<Generate
 
   const version = Number((booking as { contract_version?: number | null }).contract_version ?? 0)
 
-  const html = generateContractHTML({
+  const contract = {
     booking,
     logoUrl: CONTRACT_LOGO_DATA_URI,
     contractVersion: version,
     companyDetails: CONTRACT_COMPANY_DETAILS,
-  })
+  }
 
-  return { html, version, booking }
+  return {
+    html: generateContractHTML(contract),
+    signingHtml: generateContractHTML({ ...contract, signingSlots: true }),
+    version,
+    booking,
+  }
 }
 
 /**
@@ -138,12 +148,14 @@ export async function generateContractDocument(
     })
   }
 
-  const html = generateContractHTML({
+  const contract = {
     booking,
     logoUrl: CONTRACT_LOGO_DATA_URI,
     contractVersion: version,
     companyDetails: CONTRACT_COMPANY_DETAILS,
-  })
+  }
+  const html = generateContractHTML(contract)
+  const signingHtml = generateContractHTML({ ...contract, signingSlots: true })
 
   await storeContractSnapshot(admin, {
     bookingId,
@@ -154,41 +166,57 @@ export async function generateContractDocument(
     generatedBy: options.performedBy ?? null,
   })
 
-  // SOP §21: when the rendered contract carried the waiver annex and the
-  // waiver was outstanding, generating the document counts as sending it —
-  // stamp 'required' → 'sent' (non-blocking, audited).
-  if (bookingRequiresWaiverAnnex(booking) && booking.waiver_status === 'required') {
-    try {
-      const { data: stampedRow, error: waiverError } = await admin
-        .from('private_bookings')
-        .update({ waiver_status: 'sent', updated_at: new Date().toISOString() })
-        .eq('id', bookingId)
-        .eq('waiver_status', 'required')
-        .select('id')
-        .maybeSingle()
-      if (waiverError) throw new Error(waiverError.message)
+  return { html, signingHtml, version, booking }
+}
 
-      if (stampedRow) {
-        const { error: waiverAuditError } = await admin.from('private_booking_audit').insert({
-          booking_id: bookingId,
-          action: 'field_updated',
-          field_name: 'waiver_status',
-          old_value: 'required',
-          new_value: 'sent',
-          performed_by: options.performedBy ?? null,
-          metadata: { via: 'contract_generated', contract_version: version },
-        })
-        if (waiverAuditError) throw new Error(waiverAuditError.message)
-      }
-    } catch (waiverStampError) {
-      logger.error('Waiver sent stamp failed (non-blocking)', {
-        error: waiverStampError instanceof Error ? waiverStampError : new Error(String(waiverStampError)),
-        metadata: { bookingId, version },
-      })
-    }
+/**
+ * SOP §21: record that the self-catering and outside food agreement has gone to the customer.
+ * Called once the email carrying it has been accepted for delivery, never before: a booking must
+ * not say the agreement was sent when nothing went out (a failed contract email used to leave
+ * it saying exactly that). Moves 'required' to 'sent', and 'not_required' too, for a booking
+ * whose "Outside food" tick predates the tick counting (13 October 2026). Never touches 'sent',
+ * 'overdue' or 'signed'. Audited. A failure is logged and does not undo the send.
+ */
+export async function markWaiverSent(
+  admin: ReturnType<typeof createAdminClient>,
+  input: { bookingId: string; via: 'contract_sent' | 'food_agreement_sent'; contractVersion?: number | null; performedBy?: string | null }
+): Promise<void> {
+  try {
+    const { data: before, error: readError } = await admin
+      .from('private_bookings')
+      .select('waiver_status')
+      .eq('id', input.bookingId)
+      .maybeSingle()
+    if (readError) throw new Error(readError.message)
+    const statusBefore = (before?.waiver_status as string | null) ?? 'not_required'
+    if (!['required', 'not_required'].includes(statusBefore)) return
+
+    const { data: stampedRow, error: waiverError } = await admin
+      .from('private_bookings')
+      .update({ waiver_status: 'sent', updated_at: new Date().toISOString() })
+      .eq('id', input.bookingId)
+      .in('waiver_status', ['required', 'not_required'])
+      .select('id')
+      .maybeSingle()
+    if (waiverError) throw new Error(waiverError.message)
+    if (!stampedRow) return
+
+    const { error: waiverAuditError } = await admin.from('private_booking_audit').insert({
+      booking_id: input.bookingId,
+      action: 'field_updated',
+      field_name: 'waiver_status',
+      old_value: statusBefore,
+      new_value: 'sent',
+      performed_by: input.performedBy ?? null,
+      metadata: { via: input.via, contract_version: input.contractVersion ?? null },
+    })
+    if (waiverAuditError) throw new Error(waiverAuditError.message)
+  } catch (waiverStampError) {
+    logger.error('Waiver sent stamp failed (non-blocking)', {
+      error: waiverStampError instanceof Error ? waiverStampError : new Error(String(waiverStampError)),
+      metadata: { bookingId: input.bookingId, via: input.via },
+    })
   }
-
-  return { html, version, booking }
 }
 
 export async function storeContractSnapshot(

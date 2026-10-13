@@ -92,8 +92,9 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
 
 /**
  * A signed contract is an accepted contract. Paying the deposit also accepts it and may have
- * done so first, in which case that earlier acceptance is left as it stands. A contract sent
- * with the self-catering agreement on its last page signs that too.
+ * done so first, in which case that earlier acceptance is left as it stands. The self-catering
+ * and outside food agreement is a separate document with its own signature, and is marked
+ * signed by its own hook below, never by this one.
  */
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
@@ -124,10 +125,6 @@ const acceptBookingContract: SigningCompletionHook = async (document) => {
       },
     })
     if (auditError) throw new Error(`Could not record the accepted contract: ${auditError.message}`)
-  }
-
-  if (document.context.includes_waiver === true) {
-    await markWaiverSigned(admin, document)
   }
 }
 
