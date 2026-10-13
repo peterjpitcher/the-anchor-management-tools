@@ -111,6 +111,8 @@ describe('sending the worker agreement', () => {
     ])
     // The business signs as it sends: in the sender's own name and position, on the document too.
     expect(request.createdByPosition).toBe('General Manager')
+    // And the agreement names the sender as the manager issuing it, so the two agree.
+    expect(mocks.loadAgreement).toHaveBeenCalledWith(ADULT, { issuer: { name: 'Billy Summers', email: 'billy@example.test' } })
     expect(mocks.prepare).toHaveBeenCalledWith({
       source: { html: '<p>slotted</p>', profile: 'a4_css_page', slots: ADULT_SLOTS, hasInitials: true },
       mode: 'sign',

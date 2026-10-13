@@ -140,7 +140,10 @@ export async function sendEmploymentAgreement(input: {
     const employee = await loadEmployee(parsed.data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
 
-    const built = await loadWorkerAgreement(employee.employee_id)
+    // Whoever sends it signs for the business, so the agreement names them as issuing it.
+    const built = await loadWorkerAgreement(employee.employee_id, {
+      issuer: { name: auth.user.name, email: auth.user.email },
+    })
     if (!built) return { error: 'Employee not found.' }
     if (built.missing.length > 0) {
       return { error: `Add these to the employee record first, so the agreement has no blanks: ${built.missing.join('; ')}.` }

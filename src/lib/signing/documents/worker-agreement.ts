@@ -71,7 +71,18 @@ async function resolveNmwBandLabel(
  * Build the agreement's HTML from the employee record as it stands now. Shared by the download
  * (printed as it is) and by signing (printed with signature slots), so both say the same thing.
  */
-export async function loadWorkerAgreement(employeeId: string): Promise<WorkerAgreementSource | null> {
+export async function loadWorkerAgreement(
+  employeeId: string,
+  options: {
+    /**
+     * Who issues this agreement, printed as the issuing manager. When it is sent for signature
+     * this is whoever sends it, because they are the one who signs for the business: the printed
+     * name and the electronic signature then agree (owner decision, 13 October 2026). Left out,
+     * as the plain download does, it is the standing issuing manager.
+     */
+    issuer?: { name: string; email?: string | null }
+  } = {}
+): Promise<WorkerAgreementSource | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
@@ -129,8 +140,8 @@ export async function loadWorkerAgreement(employeeId: string): Promise<WorkerAgr
     agreementDate,
     hourlyRate: rateResult?.rate ?? null,
     nmwBandLabel,
-    managerName: AGREEMENT_ISSUING_MANAGER.name,
-    managerEmail: AGREEMENT_ISSUING_MANAGER.email,
+    managerName: options.issuer?.name?.trim() || AGREEMENT_ISSUING_MANAGER.name,
+    managerEmail: options.issuer ? options.issuer.email?.trim() || AGREEMENT_ISSUING_MANAGER.email : AGREEMENT_ISSUING_MANAGER.email,
     logoUrl: CONTRACT_LOGO_DATA_URI,
   })
 
