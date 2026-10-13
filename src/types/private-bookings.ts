@@ -213,7 +213,8 @@ export interface Vendor {
   contact_email?: string
   website?: string
   typical_rate?: string
-  typical_rate_normalized?: string | null // TODO(tech-debt): Verify this field exists in DB — tracked in technical debt report PB-1
+  /** Not a database column. The vendor actions work it out from typical_rate with sanitizeMoneyString. */
+  typical_rate_normalized?: string | null
   notes?: string
   preferred: boolean
   active: boolean
