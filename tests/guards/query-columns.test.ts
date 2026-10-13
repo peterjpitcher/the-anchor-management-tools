@@ -38,12 +38,6 @@ const SRC = join(ROOT, 'src')
  */
 const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect: string }> = [
   {
-    file: 'src/services/private-bookings/queries.ts',
-    table: 'vendors',
-    column: 'typical_rate_normalized',
-    effect: 'getVendorRate fails for every vendor.',
-  },
-  {
     file: 'src/app/api/webhooks/twilio/route.ts',
     table: 'webhook_logs',
     column: 'unmatched_communication_id',
@@ -68,7 +62,7 @@ const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect:
     effect: 'The same lost log row, for a status update that changes nothing.',
   },
 ]
-const MOST_KNOWN_FAULTS = 5
+const MOST_KNOWN_FAULTS = 4
 
 /**
  * Query parts the reader cannot tie to a table and a column, each read by hand on 13 October
