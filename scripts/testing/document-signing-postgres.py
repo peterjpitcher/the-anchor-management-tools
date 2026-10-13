@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test the document signing migration in a disposable local Postgres.
 
-Applies supabase/migrations/20261012120000_document_signing_foundation.sql to an empty cluster
+Applies supabase/migrations/20261013080854_document_signing_foundation.sql to an empty cluster
 that has only the Supabase roles and a stand-in storage.buckets table, then checks the rules
 that matter: a signature needs the document to have been opened, two people signing at the same
 moment complete the document exactly once, a refusal stops the document, the evidence trail
@@ -17,8 +17,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261012120000_document_signing_foundation.sql'
-DRAFTS = ROOT / 'supabase/migrations/20261012120100_document_signing_template_drafts.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261013080854_document_signing_foundation.sql'
+DRAFTS = ROOT / 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'
 
 DOC_A = '00000000-0000-0000-0000-0000000000a1'
 DOC_B = '00000000-0000-0000-0000-0000000000b1'

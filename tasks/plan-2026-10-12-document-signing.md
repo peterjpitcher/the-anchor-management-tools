@@ -4,7 +4,7 @@
 
 **Goal:** One built-in way to send any document to a person, have them read it and agree by typing their name, and keep a locked, evidenced copy on the record it belongs to. No third-party signing service and no running cost.
 
-**Status:** built on branch `feat/signing-foundation` (worktree `OJ-AMS-signing`), 12 October 2026. Not merged, not deployed. The two migrations (`20261012120000` and `20261012120100`) are NOT applied to production and need the owner's go-ahead. Planned against `origin/main` at `a7ac0403`.
+**Status:** built on branch `feat/signing-foundation` (worktree `OJ-AMS-signing`), 12 October 2026. Not merged, not deployed. The two migrations were applied to production (project `tfcasgxopxegwrabvwat`) on 13 October 2026 with the owner's approval of the exact files, and are recorded there as `20261013080854` and `20261013080952`; the files were renamed to match. Verified after applying: stored SQL matches the approved fingerprints (less the final line break), row security on with no policy, nothing granted to anon or authenticated, the append-only trigger live, twelve templates all switched off, and `assert-anon-surface` passing 9 of 9. Planned against `origin/main` at `a7ac0403`.
 
 **Built differently from the plan (each for a stated reason):**
 
