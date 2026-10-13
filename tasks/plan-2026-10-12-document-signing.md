@@ -13,7 +13,7 @@
 - A contract sent with the self-catering agreement is one request and one signature covering both, with a title that says so. The waiver can still be sent on its own.
 - An accepted job offer is noted on the candidate's trail and does not move the application to Hired: hiring stays a staff step.
 - Staff notices and emails to workers use the app's default sender. Only Orange Jelly's own clients (quotes and client agreements) get the Orange Jelly invoicing identity.
-- The privacy page states what signing records, but no retention period yet: the owner chose 6 years, and the page already says 7 years for employee and booking records.
+- Retention is 7 years, not the 6 first chosen: the privacy page already said 7 years for employee and booking records, and the owner chose to match it (13 October 2026). The page now says so.
 
 ---
 
@@ -216,7 +216,7 @@ A rule is only real when a test enforces it (lesson of 18 September 2026).
 
 ## Assumptions
 
-- Signed documents and their evidence are kept for 6 years after the relationship ends, then removed by hand. No automatic deletion is built.
+- Signed documents and their evidence are kept for 7 years after the relationship ends (owner decision, 13 October 2026, to match the privacy page's existing 7 years for employee and booking records), then removed by hand. No automatic deletion is built.
 - Reminders go at 3 and 7 days and a request expires at 30 days.
 - The company side is signed by the sender at the moment of sending, in the name already used on the worker agreement.
 - Orange Jelly clients are rows in `invoice_vendors` and suppliers are rows in `vendors` (confirmed in the generated types).
