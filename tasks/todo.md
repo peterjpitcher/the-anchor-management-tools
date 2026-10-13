@@ -996,3 +996,19 @@ Branch `claude/inspiring-austin-9651e8`, cut from `origin/main` at e6343e98 and 
 - [x] Gates on Node 20: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,279 files, 13,507 tests each) and the build. Re-run on 14 October after the rebase and the calendar change: all six green, `npm test` and `npm run test:utc` 1,303 files, 14,290 tests each. Re-rendered the printed contract and the online signing copy: no "The Anchor Pub".
 - [x] Owner's decision, 14 October: the staff calendar location for private bookings is "The Anchor" too (`src/lib/google-calendar.ts`, test in `tests/lib/googleCalendar.test.ts`). No cron re-syncs these entries, so an existing one changes when its booking is next edited or paid.
 - [ ] Push when the coordinator says it is this branch's turn (after the quotes fix, types and guard, and four-query fixes), then PR, merge when green and verify the production deployment.
+
+## Regenerate the database types and check every query column, 13 October 2026
+
+Branch `claude/blissful-torvalds-a636ff`, rebased on 14 October onto `origin/main` at 572c27bc (quotes fix merged as PR 211).
+
+- [x] Regenerated `src/types/database.generated.ts` from the live project with the Supabase CLI (read only): 23 tables, 3 views, 66 functions and 61 columns added, nothing removed. `npx tsc --noEmit` and `npm run typecheck:tests` clean with no code change. Committed on its own (`1b52c42f`). Regenerated again on 14 October after the rebase: identical, the two migrations applied that day change no types.
+- [x] Corrected three comments that said the types could not describe their table (`event-image-variants.ts`, `branding-service.ts`, `marketing.ts`).
+- [x] Widened the guard from `deleted_at` and `deleted_by` to every column: `tests/guards/query-columns.test.ts` (renamed from `soft-delete-columns.test.ts`), reader in `tests/helpers/queryColumns.ts`. It reads 19,836 column references to 2,967 columns of 266 tables.
+- [x] False positives handled in the reader, not by a list: embedded resources by table, alias, foreign key column and constraint name; `foreignTable` and `referencedTable`; counts, aggregates, casts and JSON paths; `.or()` text; a table chosen by a loop, a condition or a typed parameter; a helper handed its table and columns.
+- [x] Four query parts the reader cannot follow are listed in `READ_BY_HAND`, each checked by hand.
+- [x] Real faults listed in `KNOWN_FAULTS`, which may only shrink: `customers.updated_at` (two front of house routes), `payments.customer_id` (Stripe webhook), `vendors.typical_rate_normalized` (getVendorRate) and, new, four keys the Twilio webhook writes to `webhook_logs`. All confirmed missing from the live database.
+- [x] Proved the guard bites: it fails on the old types (53 columns, 20 tables) and on a new filter on a column that does not exist.
+- [x] `CLAUDE.md`, Database and migrations: the guard exists and types are regenerated with the migration.
+- [x] Gates on Node 20 after the rebase: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,315 files, 14,510 tests each) and the build, all exit 0.
+- [ ] The coordinator pushes and merges this branch.
+- [ ] Fix the Twilio webhook log fault (filed as a task chip): none of the 86 inbound texts saved since 22 June 2026 has a `webhook_logs` row.
