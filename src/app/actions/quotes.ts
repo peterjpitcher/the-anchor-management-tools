@@ -66,11 +66,9 @@ function normalizeQuoteLineItems(lineItems: InvoiceLineItemInput[]): InvoiceLine
   }))
 }
 
-function isSoftDeletedRecord(record: Record<string, unknown> | null | undefined): boolean {
-  if (!record) return false
-  if (!Object.prototype.hasOwnProperty.call(record, 'deleted_at')) return false
-  return Boolean(record.deleted_at)
-}
+// Quotes are hard deleted. The quotes table has no deleted_at or deleted_by column,
+// so no read here filters on one: PostgREST answers a filter on a missing column
+// with a 400, which took the whole Quotes list down (found 13 October 2026).
 
 // Get quote summary
 export async function getQuoteSummary() {
@@ -87,7 +85,6 @@ export async function getQuoteSummary() {
     const { data: quotes, error } = await supabase
       .from('quotes')
       .select('status, total_amount, valid_until')
-      .is('deleted_at', null)
 
     if (error) {
       console.error('Error fetching quote summary:', error)
@@ -144,7 +141,6 @@ export async function getQuotes(status?: QuoteStatus) {
         vendor:invoice_vendors(*),
         converted_invoice:invoices(id, invoice_number)
       `)
-      .is('deleted_at', null)
       .order('quote_date', { ascending: false })
 
     if (status) {
@@ -192,7 +188,6 @@ export async function getQuote(quoteId: string) {
         converted_invoice:invoices(id, invoice_number)
       `)
       .eq('id', quoteId)
-      .is('deleted_at', null)
       .single()
 
     if (error) {
@@ -623,11 +618,8 @@ export async function updateQuote(formData: FormData) {
 export async function deleteQuote(formData: FormData) {
   try {
     const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
-      checkUserPermission('invoices', 'delete'),
-    ])
 
+    const hasPermission = await checkUserPermission('invoices', 'delete')
     if (!hasPermission) {
       return { error: 'You do not have permission to delete quotes' }
     }
@@ -640,7 +632,7 @@ export async function deleteQuote(formData: FormData) {
     // Check if quote can be deleted (only draft quotes)
     const { data: quote, error: fetchError } = await supabase
       .from('quotes')
-      .select('id, status, deleted_at')
+      .select('id, status')
       .eq('id', quoteId)
       .single()
 
@@ -648,67 +640,27 @@ export async function deleteQuote(formData: FormData) {
       return { error: 'Quote not found' }
     }
 
-    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
-      return { error: 'Quote not found' }
-    }
-
     if (quote.status !== 'draft') {
       return { error: 'Only draft quotes can be deleted' }
     }
 
-    // Prefer soft delete where supported, but fall back to hard delete when
-    // legacy quote schemas do not have deleted_at/deleted_by columns.
-    const { data: softDeleted, error: softDeleteError } = await supabase
+    // One guarded delete. The line items go with the quote (quote_line_items.quote_id
+    // is ON DELETE CASCADE), so a quote that was sent a moment ago keeps its lines:
+    // the status guard fails and nothing is removed.
+    const { data: deletedQuote, error: deleteError } = await supabase
       .from('quotes')
-      .update({ 
-        deleted_at: new Date().toISOString(),
-        deleted_by: user?.id || null
-      })
+      .delete()
       .eq('id', quoteId)
       .eq('status', 'draft')
       .select('id')
       .maybeSingle()
 
-    const missingSoftDeleteColumns =
-      softDeleteError &&
-      (
-        softDeleteError.code === '42703' ||
-        /deleted_at|deleted_by/i.test(softDeleteError.message || '')
-      )
-
-    if (softDeleteError && !missingSoftDeleteColumns) {
-      console.error('Error deleting quote:', softDeleteError)
+    if (deleteError) {
+      console.error('Error deleting quote:', deleteError)
       return { error: 'Failed to delete quote' }
     }
 
-    if (missingSoftDeleteColumns) {
-      const { error: lineItemsDeleteError } = await supabase
-        .from('quote_line_items')
-        .delete()
-        .eq('quote_id', quoteId)
-
-      if (lineItemsDeleteError) {
-        console.error('Error deleting quote line items before hard delete:', lineItemsDeleteError)
-        return { error: 'Failed to delete quote line items' }
-      }
-
-      const { data: hardDeleted, error: hardDeleteError } = await supabase
-        .from('quotes')
-        .delete()
-        .eq('id', quoteId)
-        .eq('status', 'draft')
-        .select('id')
-        .maybeSingle()
-
-      if (hardDeleteError) {
-        console.error('Error hard deleting quote:', hardDeleteError)
-        return { error: 'Failed to delete quote' }
-      }
-
-      if (!hardDeleted) {
-        return { error: 'Quote is no longer deletable' }
-      }
-    } else if (!softDeleted) {
+    if (!deletedQuote) {
       return { error: 'Quote is no longer deletable' }
     }
 
