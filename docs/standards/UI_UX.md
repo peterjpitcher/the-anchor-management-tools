@@ -23,7 +23,7 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - Capitalisation on staff screens: Title Case for page, section, card and dialog titles, tab labels, back labels and button labels ("New Invoice", "Back to Roles", "Save Changes"). Sentence case for subtitles, descriptions, help text, messages and table cells. Field labels and table headers are uppercased by the components. Guest pages follow the website's voice rules instead.
 - `subtitle`: optional, one short line, sentence case, no full stop. On a tab page it names the tab or says what the page is for.
 - Never pass spacing classes to `PageLayout` (`className`, `headerClassName`, `contentClassName`) and never wrap it in padding, `max-w-*`, `mx-auto` or `min-h-screen`. **(guard)** The only `<main>` is the app shell's. **(guard)**
-- Width: leave `containerSize` at `full`, except a page whose content is one form with no table (a line-item editor such as the invoice and quote builders counts as a table, so those stay full) (change password, a role, a maintenance item, a campaign, a simple settings form), which uses `containerSize="md"`.
+- Width: leave `containerSize` at `full`, except a page whose content is one form with no table (a line-item editor such as the invoice and quote builders counts as a table, so those stay full) (change password, a role, a maintenance item, a campaign, a simple settings form), which uses `containerSize="md"`. The new and edit private booking forms also stay full: their cards lay fields out up to three across, and in the form column they filled barely half a desktop screen (owner report, 13 October 2026).
 
 ### Navigation
 
