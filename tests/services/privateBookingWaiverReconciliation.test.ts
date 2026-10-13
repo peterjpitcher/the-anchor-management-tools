@@ -286,6 +286,177 @@ describe('reconciling the food agreement status with the booking', () => {
   })
 })
 
+describe('reconciling while the food agreement is being signed', () => {
+  /**
+   * Another writer changes the booking after reconciling has read it and before it writes: the
+   * customer signs online, or staff record a paper copy.
+   */
+  function changedMeanwhile(change: Row): void {
+    db.beforeUpdate((table, matched) => {
+      if (table === 'private_bookings') for (const row of matched) Object.assign(row, change)
+    })
+  }
+
+  // The tick came off, so reconciling decided "not required". The signature that landed in the
+  // same moment is what stands.
+  it.each(['required', 'sent', 'overdue'])(
+    'does not overwrite a signature that lands while a status of %s is being returned to not required',
+    async (status) => {
+      seed(bookingRow({ outside_food: false, waiver_status: status }))
+      changedMeanwhile({ waiver_status: 'signed' })
+
+      await reconcileWaiverStatus(BOOKING, USER)
+
+      expect(saved()).toMatchObject({ waiver_status: 'signed', outside_food: false })
+      // No audit row claims a change that did not happen.
+      expect(waiverAudit()).toHaveLength(0)
+      expect(db.rows('private_booking_audit')).toHaveLength(0)
+    }
+  )
+
+  it('does not overwrite a signature that lands while the agreement is being made required', async () => {
+    seed(bookingRow({ outside_food: true, waiver_status: 'not_required' }))
+    changedMeanwhile({ waiver_status: 'signed' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('signed')
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('does not overwrite any other change made in that moment either', async () => {
+    // The contract was sent, which moves the agreement on to "sent", just as the tick was saved.
+    seed(bookingRow({ outside_food: true, waiver_status: 'not_required' }))
+    changedMeanwhile({ waiver_status: 'sent' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('sent')
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('matches a booking with no stored status as having none, and still makes it required', async () => {
+    seed(bookingRow({ outside_food: true, waiver_status: null }))
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('required')
+    expect(waiverAudit()).toEqual([expect.objectContaining({ old_value: 'not_required', new_value: 'required' })])
+  })
+
+  it('does not overwrite a signature that lands on a booking that had no stored status', async () => {
+    seed(bookingRow({ outside_food: true, waiver_status: null }))
+    changedMeanwhile({ waiver_status: 'signed' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('signed')
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('does not take a stored "not required" for a booking with no stored status', async () => {
+    // Read with no status; by the time of the write it has been given one. That is a change, so
+    // the stale decision is dropped even though both read as "not required".
+    seed(bookingRow({ outside_food: true, waiver_status: null }))
+    changedMeanwhile({ waiver_status: 'not_required' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('not_required')
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('reports no error when it stands aside, and reconciles properly the next time', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'sent' }))
+    let landed = false
+    db.beforeUpdate((table, matched) => {
+      if (table !== 'private_bookings' || landed) return
+      landed = true
+      for (const row of matched) row.waiver_status = 'overdue'
+    })
+
+    await expect(reconcileWaiverStatus(BOOKING, USER)).resolves.toBeUndefined()
+    expect(saved().waiver_status).toBe('overdue')
+    expect(waiverAudit()).toHaveLength(0)
+
+    // The next save sees what is there now and decides again.
+    await reconcileWaiverStatus(BOOKING, USER)
+    expect(saved().waiver_status).toBe('not_required')
+    expect(waiverAudit()).toEqual([expect.objectContaining({ old_value: 'overdue', new_value: 'not_required', performed_by: USER })])
+  })
+
+  // A waiver package always turns the tick on. That correction is its own write, so it lands
+  // whatever happens to the status.
+  it('still ticks "Outside food" for a waiver package when the status changed in that moment', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'not_required' }), [cateringItem({ name: 'Guests bring food', requires_waiver: true })])
+    changedMeanwhile({ waiver_status: 'sent' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    // A booking never has the package without the tick, and the status that got there first stands.
+    expect(saved()).toMatchObject({ outside_food: true, waiver_status: 'sent' })
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('still ticks "Outside food" for a waiver package when a signature lands in that moment', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'not_required' }), [cateringItem({ name: 'Guests bring food', requires_waiver: true })])
+    changedMeanwhile({ waiver_status: 'signed' })
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved()).toMatchObject({ outside_food: true, waiver_status: 'signed' })
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('writes the tick and the status as two separate changes', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'not_required' }), [cateringItem({ name: 'Guests bring food', requires_waiver: true })])
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved()).toMatchObject({ outside_food: true, waiver_status: 'required' })
+    const changes = db.writes
+      .filter((write) => write.table === 'private_bookings' && write.operation === 'update')
+      .map((write) => Object.keys(write.payload ?? {}).filter((key) => key !== 'updated_at'))
+    expect(changes).toEqual([['outside_food'], ['waiver_status']])
+    expect(waiverAudit()).toEqual([expect.objectContaining({ old_value: 'not_required', new_value: 'required' })])
+  })
+
+  it('keeps the tick when the status then cannot be saved, and reports the failure', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'not_required' }), [cateringItem({ name: 'Guests bring food', requires_waiver: true })])
+    // The first write, the tick, goes through. The write after it fails.
+    let tickWritten = false
+    db.beforeUpdate((table) => {
+      if (table !== 'private_bookings' || tickWritten) return
+      tickWritten = true
+      db.failNext({ table: 'private_bookings', operation: 'update', message: 'write refused', times: 1 })
+    })
+
+    await expect(reconcileWaiverStatus(BOOKING, USER)).rejects.toThrow('write refused')
+
+    expect(saved()).toMatchObject({ outside_food: true, waiver_status: 'not_required' })
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('fails, and changes no status, when the tick cannot be written', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'not_required' }), [cateringItem({ name: 'Guests bring food', requires_waiver: true })])
+    db.failNext({ table: 'private_bookings', operation: 'update', message: 'write refused', times: 1 })
+
+    await expect(reconcileWaiverStatus(BOOKING, USER)).rejects.toThrow('write refused')
+
+    expect(saved()).toMatchObject({ outside_food: false, waiver_status: 'not_required' })
+    expect(waiverAudit()).toHaveLength(0)
+  })
+
+  it('still writes the audit row for a change that was not interrupted', async () => {
+    seed(bookingRow({ outside_food: false, waiver_status: 'sent' }))
+
+    await reconcileWaiverStatus(BOOKING, USER)
+
+    expect(saved().waiver_status).toBe('not_required')
+    expect(waiverAudit()).toEqual([expect.objectContaining({ old_value: 'sent', new_value: 'not_required' })])
+  })
+})
+
 describe('creating a booking with "Outside food" ticked', () => {
   /** What create_private_booking_transaction does: it keeps the columns it knows and ignores the intake fields. */
   function fakeCreateTransaction(args: Row): { data: Row; error: null } {

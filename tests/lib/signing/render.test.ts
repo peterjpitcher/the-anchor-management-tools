@@ -16,8 +16,12 @@ vi.mock('@/lib/pdf-generator', () => ({
   closePdfBrowser: async () => undefined,
 }))
 
+import { PdfSheetOverflowError } from '@/lib/pdf/sheet-overflow'
 import {
+  SigningPageCountError,
+  SigningPageRangeError,
   countPdfPages,
+  isUntrustedRender,
   readSigningRenderSpec,
   renderSigningPdf,
   selectPdfPages,
@@ -124,6 +128,94 @@ describe('a page selection that contradicts itself', () => {
   })
 })
 
+describe('telling a render that cannot be trusted from one that simply failed', () => {
+  it('says which error it is when the page count is wrong, with both counts', async () => {
+    const pdf = await pdfWithPages([100, 200, 300, 400, 500, 600])
+
+    const failure = await selectPdfPages(pdf, { skipLast: 1, total: 5 }).then(
+      () => null,
+      (error: unknown) => error
+    )
+
+    expect(failure).toBeInstanceOf(SigningPageCountError)
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ name: 'SigningPageCountError', actual: 6, expected: 5 })
+    expect((failure as Error).message).toContain('6 pages where 5 were expected')
+  })
+
+  it('throws the same error for a wrong count whether pages are dropped, kept or all kept', async () => {
+    const pdf = await pdfWithPages([100, 200, 300])
+
+    for (const pages of [{ skipLast: 1, total: 4 }, { onlyLast: 1, total: 4 }, { total: 4 }, { total: 2 }]) {
+      await expect(selectPdfPages(pdf, pages), JSON.stringify(pages)).rejects.toBeInstanceOf(SigningPageCountError)
+    }
+  })
+
+  it('counts a wrong page count and a sheet that overflowed as renders that cannot be trusted', () => {
+    expect(isUntrustedRender(new SigningPageCountError(6, 5))).toBe(true)
+    expect(isUntrustedRender(new PdfSheetOverflowError([3]))).toBe(true)
+  })
+
+  it('says which error it is when the pages asked for are not in the render at all', async () => {
+    const impossible: Array<{ sizes: number[]; pages: { skipLast?: number; onlyLast?: number } }> = [
+      { sizes: [100], pages: { skipLast: 1 } },
+      { sizes: [100, 200], pages: { skipLast: 3 } },
+      { sizes: [100, 200], pages: { onlyLast: 3 } },
+    ]
+
+    for (const { sizes, pages } of impossible) {
+      const failure = await selectPdfPages(await pdfWithPages(sizes), pages).then(
+        () => null,
+        (error: unknown) => error
+      )
+
+      expect(failure, JSON.stringify(pages)).toBeInstanceOf(SigningPageRangeError)
+      expect(failure, JSON.stringify(pages)).toBeInstanceOf(Error)
+      expect((failure as Error).name).toBe('SigningPageRangeError')
+      expect((failure as Error).message).toMatch(new RegExp(`Cannot select pages .* of a ${sizes.length} page document`))
+      // A render the selection does not fit is one that cannot be trusted, like a wrong page count.
+      expect(isUntrustedRender(failure), JSON.stringify(pages)).toBe(true)
+    }
+  })
+
+  it('counts nothing else as one', async () => {
+    const askedForBoth = await selectPdfPages(await pdfWithPages([100, 200]), { skipLast: 1, onlyLast: 1 }).then(
+      () => null,
+      (error: unknown) => error
+    )
+    expect(askedForBoth).toBeInstanceOf(Error)
+
+    const others: unknown[] = [
+      // A selection that contradicts itself is a fault in what was stored, not in the render.
+      askedForBoth,
+      { name: 'SigningPageRangeError', message: 'Cannot select pages 1 to 0 of a 1 page document' },
+      new Error('Cannot select pages 1 to 0 of a 1 page document'),
+      new Error('Failed to generate PDF'),
+      new Error('The document printed as 6 pages where 5 were expected'),
+      Object.assign(new Error('The stored document source does not match its fingerprint.'), { code: 'fingerprint_mismatch' }),
+      { name: 'PdfSheetOverflowError', sheets: [1] },
+      { name: 'SigningPageCountError', actual: 6, expected: 5 },
+      'PdfSheetOverflowError',
+      null,
+      undefined,
+    ]
+    for (const other of others) expect(isUntrustedRender(other), String(other)).toBe(false)
+  })
+
+  it('refuses a selection that asks both to drop pages from the end and to keep them', async () => {
+    const pdf = await pdfWithPages([100, 200, 300])
+
+    for (const pages of [{ skipLast: 1, onlyLast: 1 }, { skipLast: 1, onlyLast: 1, total: 3 }, { skipLast: 2, onlyLast: 3 }]) {
+      const failure = await selectPdfPages(pdf, pages).then(
+        () => null,
+        (error: unknown) => error
+      )
+      expect(failure, JSON.stringify(pages)).toBeInstanceOf(Error)
+      expect((failure as Error).message, JSON.stringify(pages)).toContain('not both')
+    }
+  })
+})
+
 describe('holding a page selection to the page count it was worked out for', () => {
   it('divides the pages as usual when the render has the expected number of pages', async () => {
     const pdf = await pdfWithPages([100, 200, 300, 400, 500])
@@ -180,16 +272,60 @@ describe('holding a page selection to the page count it was worked out for', () 
 
 describe('reading the render details stored on a document', () => {
   const slots = { 'contract:host': 'customer', 'contract:anchor': 'company' }
-  const valid = { htmlPath: 'documents/doc-1/source.html', profile: 'a4_css_page', pages: { skipLast: 1 }, slots, hasInitials: true }
+  /** A fingerprint of the right shape: 64 lower case hex characters. */
+  const FINGERPRINT = '0123456789abcdef'.repeat(4)
+  const valid = {
+    htmlPath: 'documents/doc-1/source.html',
+    htmlSha256: FINGERPRINT,
+    profile: 'a4_css_page',
+    pages: { skipLast: 1 },
+    slots,
+    hasInitials: true,
+  }
 
   it('returns the details when they are complete', () => {
     expect(readSigningRenderSpec({ render: valid, sender_position: 'Director' })).toEqual({
       htmlPath: 'documents/doc-1/source.html',
+      htmlSha256: FINGERPRINT,
       profile: 'a4_css_page',
       pages: { skipLast: 1 },
       slots,
       hasInitials: true,
     })
+  })
+
+  it('returns nothing when the stored HTML has no fingerprint, so the signed copy is never printed from an unchecked file', () => {
+    const { htmlSha256: _dropped, ...withoutFingerprint } = valid
+
+    expect(readSigningRenderSpec({ render: withoutFingerprint })).toBeNull()
+    expect(readSigningRenderSpec({ render: { ...valid, htmlSha256: undefined } })).toBeNull()
+    expect(readSigningRenderSpec({ render: { ...valid, htmlSha256: null } })).toBeNull()
+    expect(readSigningRenderSpec({ render: { ...valid, htmlSha256: '' } })).toBeNull()
+  })
+
+  it('returns nothing when the fingerprint is not 64 lower case hex characters', () => {
+    const malformed: unknown[] = [
+      FINGERPRINT.slice(0, 63),
+      `${FINGERPRINT}0`,
+      FINGERPRINT.toUpperCase(),
+      `${FINGERPRINT.slice(0, 63)}g`,
+      ` ${FINGERPRINT.slice(1)}`,
+      `${FINGERPRINT}\n`,
+      `sha256:${FINGERPRINT.slice(7)}`,
+      12345,
+      true,
+      { hex: FINGERPRINT },
+    ]
+
+    for (const htmlSha256 of malformed) {
+      expect(readSigningRenderSpec({ render: { ...valid, htmlSha256 } }), JSON.stringify(htmlSha256)).toBeNull()
+    }
+  })
+
+  it('accepts any well formed fingerprint and passes it on unchanged', () => {
+    for (const htmlSha256 of ['0'.repeat(64), 'f'.repeat(64), 'a1b2c3d4'.repeat(8)]) {
+      expect(readSigningRenderSpec({ render: { ...valid, htmlSha256 } })?.htmlSha256).toBe(htmlSha256)
+    }
   })
 
   it('accepts each way a template can be printed', () => {
@@ -200,7 +336,9 @@ describe('reading the render details stored on a document', () => {
   })
 
   it('has no page selection when none was stored', () => {
-    const spec = readSigningRenderSpec({ render: { htmlPath: 'a.html', profile: 'a4_margins', slots: { 'doc:worker': 'worker' } } })
+    const spec = readSigningRenderSpec({
+      render: { htmlPath: 'a.html', htmlSha256: FINGERPRINT, profile: 'a4_margins', slots: { 'doc:worker': 'worker' } },
+    })
 
     expect(spec).not.toBeNull()
     expect(spec?.pages).toBeUndefined()
@@ -220,7 +358,7 @@ describe('reading the render details stored on a document', () => {
   it('keeps only the details it knows, dropping anything else stored beside them', () => {
     const spec = readSigningRenderSpec({ render: { ...valid, html: '<p>stale</p>', extra: 1 } })
 
-    expect(Object.keys(spec ?? {}).sort()).toEqual(['hasInitials', 'htmlPath', 'pages', 'profile', 'slots'])
+    expect(Object.keys(spec ?? {}).sort()).toEqual(['hasInitials', 'htmlPath', 'htmlSha256', 'pages', 'profile', 'slots'])
   })
 
   it('returns nothing for a document sent before signatures were shown in place', () => {
@@ -307,23 +445,68 @@ describe('rendering filled HTML to the pages of one document', () => {
     })
   })
 
-  it('uses the browser the caller already started', async () => {
+  it('uses the browser the caller already started, whatever the profile', async () => {
     state.generatePdf.mockResolvedValue(await pdfWithPages([100]))
     const browser = { fake: 'browser' } as unknown as NonNullable<RenderInput['browser']>
+    const profiles: SigningPdfProfile[] = ['a4_css_page', 'a4_margins', 'a4_compact']
 
-    await renderSigningPdf({ html, profile: 'a4_css_page', browser })
+    for (const profile of profiles) {
+      state.generatePdf.mockClear()
+      await renderSigningPdf({ html, profile, browser })
 
-    const browserOptions = state.generatePdf.mock.calls[0][2] as { browser?: unknown }
-    expect(Object.keys(browserOptions)).toEqual(['browser'])
-    expect(browserOptions.browser).toBe(browser)
+      const generatorOptions = state.generatePdf.mock.calls[0][2] as { browser?: unknown }
+      expect(generatorOptions.browser, profile).toBe(browser)
+    }
   })
 
   it('names no browser when the caller did not start one', async () => {
     state.generatePdf.mockResolvedValue(await pdfWithPages([100]))
+    const profiles: SigningPdfProfile[] = ['a4_css_page', 'a4_margins', 'a4_compact']
+
+    for (const profile of profiles) {
+      state.generatePdf.mockClear()
+      await renderSigningPdf({ html, profile })
+
+      expect(state.generatePdf.mock.calls[0][2], profile).not.toHaveProperty('browser')
+    }
+  })
+
+  it('refuses a render that runs off the bottom of a sheet, for a template made of fixed A4 sheets', async () => {
+    state.generatePdf.mockResolvedValue(await pdfWithPages([100]))
+    const browser = { fake: 'browser' } as unknown as NonNullable<RenderInput['browser']>
 
     await renderSigningPdf({ html, profile: 'a4_css_page' })
+    await renderSigningPdf({ html, profile: 'a4_css_page', browser })
 
-    expect(state.generatePdf.mock.calls[0][2]).toEqual({})
+    expect(state.generatePdf.mock.calls[0][2]).toEqual({ refuseClippedSheets: true })
+    expect(state.generatePdf.mock.calls[1][2]).toEqual({ browser, refuseClippedSheets: true })
+  })
+
+  it('does not ask for the sheet check on flowing text, which has no fixed sheets to run off', async () => {
+    state.generatePdf.mockResolvedValue(await pdfWithPages([100]))
+    const browser = { fake: 'browser' } as unknown as NonNullable<RenderInput['browser']>
+
+    for (const profile of ['a4_margins', 'a4_compact'] as const) {
+      state.generatePdf.mockClear()
+      await renderSigningPdf({ html, profile })
+      await renderSigningPdf({ html, profile, browser })
+
+      expect(state.generatePdf.mock.calls[0][2], profile).toEqual({})
+      expect(state.generatePdf.mock.calls[1][2], profile).toEqual({ browser })
+    }
+  })
+
+  it('passes on the refusal, naming the pages, when a sheet has more on it than fits', async () => {
+    const overflow = new PdfSheetOverflowError([2, 4])
+    state.generatePdf.mockRejectedValue(overflow)
+
+    const failure = await renderSigningPdf({ html, profile: 'a4_css_page' }).then(
+      () => null,
+      (error: unknown) => error
+    )
+
+    expect(failure).toBe(overflow)
+    expect(isUntrustedRender(failure)).toBe(true)
   })
 
   it('returns every page when no pages are chosen', async () => {

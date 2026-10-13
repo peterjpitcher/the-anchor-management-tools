@@ -15,7 +15,7 @@ import {
   buildSigningStaffNoticeEmail,
 } from './emails'
 import { getSigningKind } from './kinds'
-import { readSigningRenderSpec, renderSigningPdf, type SigningRenderInput, type SigningRenderSpec } from './render'
+import { isUntrustedRender, readSigningRenderSpec, renderSigningPdf, type SigningRenderInput, type SigningRenderSpec } from './render'
 import { fillSignatureSlots } from './signature-slots'
 import { buildSignedFills, signingReference } from './slot-fills'
 import { findSubjectClosure } from './subject-state'
@@ -198,7 +198,7 @@ async function sendSigningLinkEmail(input: {
   rawToken: string
   expiresAt: string
   isReminder: boolean
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; uncertain?: boolean }> {
   if (!input.party.email) {
     return { success: false, error: 'No email address' }
   }
@@ -226,7 +226,9 @@ async function sendSigningLinkEmail(input: {
     logRedactions: [input.rawToken],
     ...emailRoutingFor(input.document),
   })
-  return result.success ? { success: true } : { success: false, error: result.error ?? 'Email failed' }
+  return result.success
+    ? { success: true }
+    : { success: false, error: result.error ?? 'Email failed', uncertain: result.uncertain === true }
 }
 
 /**
@@ -285,14 +287,17 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
   if (input.createdByPosition) context.sender_position = input.createdByPosition
   if (input.render) {
     const htmlPath = sourceHtmlPath({ id: documentId, ...subject })
+    const htmlBuffer = Buffer.from(input.render.html, 'utf-8')
     const { error: htmlError } = await admin.storage
       .from(SIGNED_DOCUMENTS_BUCKET)
-      .upload(htmlPath, Buffer.from(input.render.html, 'utf-8'), { contentType: 'text/html; charset=utf-8', upsert: false })
+      .upload(htmlPath, htmlBuffer, { contentType: 'text/html; charset=utf-8', upsert: false })
     if (htmlError) {
       throw new Error(`Could not store the document source: ${htmlError.message}`)
     }
     const spec: SigningRenderSpec = {
       htmlPath,
+      // The signed copy is rendered from this file, so it is fingerprinted like the PDF.
+      htmlSha256: sha256Hex(htmlBuffer),
       profile: input.render.profile,
       pages: input.render.pages,
       slots: input.render.slots,
@@ -655,6 +660,23 @@ export async function readSourcePdf(document: SigningDocumentRow): Promise<Buffe
   return buffer
 }
 
+/**
+ * The signed copy, checked against the fingerprint recorded when it was made. A file that no
+ * longer matches is never downloaded or emailed: the fault is raised instead.
+ */
+async function readFinalPdf(admin: AdminClient, document: SigningDocumentRow): Promise<Buffer> {
+  if (!document.final_pdf_path) throw new SigningError('not_completed', 'This document has no signed copy yet.')
+  const { data, error } = await admin.storage.from(SIGNED_DOCUMENTS_BUCKET).download(document.final_pdf_path)
+  if (error || !data) throw new Error(`Could not read the signed copy: ${error?.message ?? 'no data'}`)
+  const buffer = Buffer.from(await data.arrayBuffer())
+  if (!document.final_sha256 || sha256Hex(buffer) !== document.final_sha256) {
+    const mismatch = new SigningError('fingerprint_mismatch', 'The signed copy does not match its fingerprint.')
+    await alertSigningFault('signed copy does not match its fingerprint', mismatch, { documentId: document.id })
+    throw mismatch
+  }
+  return buffer
+}
+
 /** Serve the document to a signer and note that they opened it. The agree button needs this. */
 export async function viewSigningDocument(context: SigningPartyContext, evidence: SigningEvidence): Promise<Buffer> {
   const pdf = await readSourcePdf(context.document)
@@ -788,11 +810,17 @@ export async function withdrawIfSubjectClosed(context: SigningPartyContext): Pro
     const current = await loadDocument(admin, context.document.id)
     return current ? { ...context, document: current } : context
   }
-  await insertEvent(admin, {
-    documentId: context.document.id,
-    event: 'voided',
-    meta: { reason, automatic: true },
-  })
+  try {
+    await insertEvent(admin, {
+      documentId: context.document.id,
+      event: 'voided',
+      meta: { reason, automatic: true },
+    })
+  } catch (eventError) {
+    // The request is withdrawn either way, and the reason is on the document. The daily job
+    // adds the missing line to the trail (src/lib/signing/reminders.ts).
+    await alertSigningFault('a withdrawn request was not written to the trail', eventError, { documentId: context.document.id })
+  }
   return { ...context, document: data[0] as SigningDocumentRow }
 }
 
@@ -825,10 +853,25 @@ export async function signSigningParty(input: {
     return { ok: false, reason: 'document_voided' }
   }
 
+  const admin = createAdminClient()
+  if (input.via === 'link') {
+    // A newer link may have replaced this one while the page was open: a reminder, a resend or
+    // an in-person session. The earlier link is dead from that moment, for a signature too.
+    const { data: fresh, error: freshError } = await admin
+      .from('signing_parties')
+      .select('hashed_token')
+      .eq('id', party.id)
+      .maybeSingle()
+    if (freshError) throw new Error(`Could not check the signing link: ${freshError.message}`)
+    const currentHash = (fresh as { hashed_token: string | null } | null)?.hashed_token ?? null
+    if (currentHash !== (party.hashed_token ?? null)) {
+      return { ok: false, reason: 'link_replaced' }
+    }
+  }
+
   // An in-person session is a link the manager opened on a venue device a moment ago.
   const method: SigningMethod = input.via === 'portal' ? 'portal' : party.witnessed_by ? 'in_person' : 'link'
 
-  const admin = createAdminClient()
   const { data, error } = await admin.rpc('signing_record_signature', {
     p_party_id: party.id,
     p_typed_name: input.typedName,
@@ -911,9 +954,23 @@ async function notifySender(
   admin: AdminClient,
   document: SigningDocumentRow,
   input: { outcome: 'completed' | 'declined' | 'expired'; partyName?: string | null; declineReason?: string | null }
-): Promise<void> {
-  const sender = await lookupUser(admin, document.created_by)
-  if (!sender.email) return
+): Promise<boolean> {
+  // Nobody sent it (a system document): nobody to tell.
+  if (!document.created_by) return false
+  // Read here, not through lookupUser, which hides a failed read. "Could not find out who to
+  // tell" must fail loudly; it is not the same as "there is nobody to tell".
+  let senderEmail: string | null
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(document.created_by)
+    if (error) throw new Error(error.message)
+    senderEmail = data?.user?.email ?? null
+  } catch (lookupError) {
+    throw new Error(
+      `The address of whoever sent it could not be read: ${lookupError instanceof Error ? lookupError.message : String(lookupError)}`
+    )
+  }
+  if (!senderEmail) return false
+  const sender = { email: senderEmail }
   const subject = await describeSigningSubject(document)
   const email = buildSigningStaffNoticeEmail({
     outcome: input.outcome,
@@ -923,7 +980,7 @@ async function notifySender(
     declineReason: input.declineReason,
     recordUrl: `${getAppUrl()}${subject.path}`,
   })
-  await sendEmail({
+  const result = await sendEmail({
     to: sender.email,
     subject: email.subject,
     html: email.html,
@@ -931,6 +988,10 @@ async function notifySender(
     commType: 'signing_staff_notice',
     metadata: { signing_document_id: document.id },
   })
+  if (!result.success) {
+    throw new Error(`The notice to the sender was not sent: ${result.error ?? 'unknown error'}`)
+  }
+  return true
 }
 
 function isAlreadyExistsError(error: { message?: string; statusCode?: string | number } | null): boolean {
@@ -972,6 +1033,7 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
     const browser = renderSpec ? await createPdfBrowser() : null
     try {
       let body: Buffer = source
+      let signedInPlace = false
       if (renderSpec && browser) {
         const { data: htmlFile, error: htmlError } = await admin.storage
           .from(SIGNED_DOCUMENTS_BUCKET)
@@ -979,16 +1041,38 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
         if (htmlError || !htmlFile) {
           throw new Error(`Could not read the stored document source: ${htmlError?.message ?? 'no data'}`)
         }
-        const filled = fillSignatureSlots({
-          html: Buffer.from(await htmlFile.arrayBuffer()).toString('utf-8'),
-          fills: buildSignedFills({ document, slots: renderSpec.slots, parties: certificateParties }),
-          mode: document.mode,
-          initialsText: renderSpec.hasInitials ? `Signed electronically, ref ${signingReference(document.id)}` : null,
-        })
-        body = await renderSigningPdf({ html: filled, profile: renderSpec.profile, pages: renderSpec.pages, browser })
+        const storedHtml = Buffer.from(await htmlFile.arrayBuffer())
+        // The second render is a convenience: it shows the signatures where they belong. It is
+        // used only when it can be trusted to be the document as sent. If the stored source does
+        // not match its fingerprint, or the render overflows a page or changes the page count
+        // (a font that loaded differently, a different browser build), the signed copy is the
+        // file each signer was shown instead, which is fingerprinted, and the fault is raised.
+        let untrusted: Error | null = null
+        if (sha256Hex(storedHtml) !== renderSpec.htmlSha256) {
+          untrusted = new SigningError('fingerprint_mismatch', 'The stored document source does not match its fingerprint.')
+        } else {
+          const filled = fillSignatureSlots({
+            html: storedHtml.toString('utf-8'),
+            fills: buildSignedFills({ document, slots: renderSpec.slots, parties: certificateParties }),
+            mode: document.mode,
+            initialsText: renderSpec.hasInitials ? `Signed electronically, ref ${signingReference(document.id)}` : null,
+          })
+          try {
+            body = await renderSigningPdf({ html: filled, profile: renderSpec.profile, pages: renderSpec.pages, browser })
+            signedInPlace = true
+          } catch (renderError) {
+            if (!isUntrustedRender(renderError)) throw renderError
+            untrusted = renderError as Error
+          }
+        }
+        if (untrusted) {
+          await alertSigningFault('the signed copy could not show the signatures in place, so the document as sent was used', untrusted, {
+            documentId,
+          })
+        }
       }
       const certificatePdf = await generatePDFFromHTML(
-        renderCertificateHtml({ document, parties: certificateParties, signedInPlace: Boolean(renderSpec) }),
+        renderCertificateHtml({ document, parties: certificateParties, signedInPlace }),
         undefined,
         browser ? { browser } : {}
       )
@@ -1033,10 +1117,10 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
   }
 
   if (document.final_pdf_path && !document.copies_sent_at) {
-    // Copies go out once, and before the record update below: someone who has signed gets their
-    // copy even if updating the booking or quote then fails. The claim is not released on a
-    // failed send, because the outcome of a failed email is not always known and a second copy
-    // of a contract is worse than a missing one staff can send by hand. The alert says who.
+    // Copies go out before the record update below: someone who has signed gets their copy even
+    // if updating the booking or quote then fails. The step is claimed so two callers at once
+    // send once. Each delivery is written to the trail as it happens, so a later pass sends only
+    // what is missing.
     const { data: claimed, error: claimError } = await admin
       .from('signing_documents')
       .update({ copies_sent_at: new Date().toISOString() })
@@ -1046,10 +1130,47 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
     if (claimError) throw new Error(`Could not claim the copies step: ${claimError.message}`)
     if (claimed && claimed.length > 0) {
       document = claimed[0] as SigningDocumentRow
+      let tryAgain = false
       try {
-        await sendCompletedCopies(admin, document)
+        const failures = await sendCompletedCopies(admin, document)
+        if (failures.length > 0) {
+          // Sent again by the daily job only where the provider definitely refused, so nothing
+          // can have gone. Where the outcome is not known the email may have arrived, and a
+          // second copy of a contract is worse than one staff send by hand after checking.
+          tryAgain = failures.some((failure) => failure.retry === 'always')
+            || (failures.some((failure) => failure.retry === 'soon') && withinCopyRetryWindow(document))
+          await alertSigningFault(
+            tryAgain ? 'signed copies were not all sent, and will be tried again' : 'signed copies were not all sent',
+            new Error(`Signed copy not sent to ${failures.map((failure) => `${failure.name}: ${failure.error}`).join('; ')}`),
+            { documentId }
+          )
+        }
       } catch (emailError) {
-        await alertSigningFault('signed copies were not all sent', emailError, { documentId })
+        // Something broke part way. What went is on the trail; the rest waits for a person, and
+        // the alert says who that is.
+        const reason = emailError instanceof Error ? emailError.message : String(emailError)
+        let waiting = 'could not be worked out'
+        try {
+          waiting = (await listCopyRecipientsWaiting(admin, document)).join(', ') || 'nobody'
+        } catch {
+          // The alert still goes, with the original error.
+        }
+        await alertSigningFault(
+          'signed copies were not all sent',
+          new Error(`Signed copy still to reach: ${waiting}. It stopped because: ${reason}`),
+          { documentId }
+        )
+      }
+      if (tryAgain) {
+        const { error: releaseError } = await admin
+          .from('signing_documents')
+          .update({ copies_sent_at: null })
+          .eq('id', documentId)
+        if (releaseError) {
+          await alertSigningFault('signed copies could not be queued to send again', new Error(releaseError.message), { documentId })
+        } else {
+          document = { ...document, copies_sent_at: null }
+        }
       }
     }
   }
@@ -1061,7 +1182,7 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
     await runCompletionHook(document, await loadParties(admin, documentId))
 
     // This version is now the one in force; earlier signed versions in the series are history.
-    const { data: older } = await admin
+    const { data: older, error: olderError } = await admin
       .from('signing_documents')
       .update({ status: 'superseded', updated_at: new Date().toISOString() })
       .eq('subject_type', document.subject_type)
@@ -1070,6 +1191,7 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
       .eq('status', 'completed')
       .lt('version', document.version)
       .select('id')
+    if (olderError) throw new Error(`Could not mark the earlier version as replaced: ${olderError.message}`)
     for (const row of older ?? []) {
       await insertEvent(admin, {
         documentId: row.id as string,
@@ -1091,17 +1213,70 @@ export async function finaliseSigningDocument(documentId: string): Promise<Signi
   return document
 }
 
-async function sendCompletedCopies(admin: AdminClient, document: SigningDocumentRow): Promise<void> {
-  if (!document.final_pdf_path) return
-  const { data: file, error } = await admin.storage.from(SIGNED_DOCUMENTS_BUCKET).download(document.final_pdf_path)
-  if (error || !file) throw new Error(`Could not read the signed copy to send it: ${error?.message ?? 'no data'}`)
-  const content = Buffer.from(await file.arrayBuffer())
+/** Marks on the trail: a signed copy that went to a signer, and the notice that went to the sender. */
+const SIGNED_COPY = 'signed_copy'
+const SENDER_NOTICE = 'sender_notice'
+/** A refused signed-copy email is tried again by the daily job for this many days after signing. */
+const COPY_RETRY_DAYS = 3
+
+interface CopyFailure {
+  name: string
+  error: string
+  /**
+   * 'soon': definitely refused, so safe to try again for a few days. 'always': held because
+   * email is switched off, so it waits however long that lasts. 'never': the outcome is not
+   * known, or the attempt is used up, and a person has to look.
+   */
+  retry: 'soon' | 'always' | 'never'
+}
+
+function withinCopyRetryWindow(document: Pick<SigningDocumentRow, 'completed_at'>): boolean {
+  if (!document.completed_at) return true
+  return Date.now() - new Date(document.completed_at).getTime() < COPY_RETRY_DAYS * DAY_MS
+}
+
+/** The signers who have no mark on the trail for their signed copy, delivered or uncertain. */
+async function listCopyRecipientsWaiting(admin: AdminClient, document: SigningDocumentRow): Promise<string[]> {
+  const { data, error } = await admin
+    .from('signing_events')
+    .select('party_id, meta')
+    .eq('document_id', document.id)
+    .eq('event', 'sent')
+  if (error) throw new Error(error.message)
+  const settled = new Set(
+    ((data ?? []) as Array<{ party_id: string | null; meta: { what?: string } | null }>)
+      .filter((row) => row.meta?.what === SIGNED_COPY)
+      .map((row) => row.party_id)
+  )
+  return (await loadParties(admin, document.id))
+    .filter((party) => party.role !== 'company' && party.email && !settled.has(party.id))
+    .map((party) => party.name)
+}
+
+/**
+ * Email the signed copy to each signer who does not have it yet, and tell the sender it is
+ * signed. Returns who did not get theirs. Each delivery is written to the trail as it happens,
+ * which is how a later pass knows who is left.
+ */
+async function sendCompletedCopies(admin: AdminClient, document: SigningDocumentRow): Promise<CopyFailure[]> {
+  const content = await readFinalPdf(admin, document)
   const fileName = `${document.title.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'signed-document'}.pdf`
 
+  const { data: sentRows, error: sentError } = await admin
+    .from('signing_events')
+    .select('party_id, meta')
+    .eq('document_id', document.id)
+    .eq('event', 'sent')
+  if (sentError) throw new Error(`Could not read which copies have gone: ${sentError.message}`)
+  const marks = ((sentRows ?? []) as Array<{ party_id: string | null; meta: { what?: string } | null }>)
+  // Delivered, or possibly delivered: either way not sent again automatically.
+  const settled = new Set(marks.filter((row) => row.meta?.what === SIGNED_COPY).map((row) => row.party_id))
+  const senderTold = marks.some((row) => row.meta?.what === SENDER_NOTICE)
+
   const parties = await loadParties(admin, document.id)
-  const failures: string[] = []
+  const failures: CopyFailure[] = []
   for (const party of parties) {
-    if (party.role === 'company' || !party.email) continue
+    if (party.role === 'company' || !party.email || settled.has(party.id)) continue
     const email = buildSigningCompletedEmail({
       brand: document.brand,
       mode: document.mode,
@@ -1121,13 +1296,47 @@ async function sendCompletedCopies(admin: AdminClient, document: SigningDocument
       metadata: { signing_document_id: document.id, signing_party_id: party.id },
       ...emailRoutingFor(document),
     })
-    if (!result.success) failures.push(`${party.name}: ${result.error ?? 'failed'}`)
+    if (result.success) {
+      await insertEvent(admin, {
+        documentId: document.id,
+        partyId: party.id,
+        event: 'sent',
+        meta: { what: SIGNED_COPY, to: party.email },
+      })
+      continue
+    }
+    if (result.uncertain) {
+      // It may have arrived. Recorded so that no later pass sends it a second time.
+      await insertEvent(admin, {
+        documentId: document.id,
+        partyId: party.id,
+        event: 'sent',
+        meta: { what: SIGNED_COPY, to: party.email, outcome: 'uncertain', error: result.error ?? null },
+      })
+    }
+    failures.push({
+      name: party.name,
+      error: result.uncertain ? `${result.error ?? 'failed'} (it may have been sent: check before sending again)` : result.error ?? 'failed',
+      retry: result.uncertain ? 'never' : result.code === 'email_suspended' ? 'always' : 'soon',
+    })
   }
 
-  await notifySender(admin, document, { outcome: 'completed' })
-  if (failures.length > 0) {
-    throw new Error(`Signed copy not sent to ${failures.join('; ')}`)
+  if (!senderTold) {
+    try {
+      const told = await notifySender(admin, document, { outcome: 'completed' })
+      if (told) {
+        await insertEvent(admin, { documentId: document.id, event: 'sent', meta: { what: SENDER_NOTICE } })
+      }
+    } catch (noticeError) {
+      // A notice to our own staff: missing it is not worth sending signers anything twice.
+      failures.push({
+        name: 'the member of staff who sent it',
+        error: noticeError instanceof Error ? noticeError.message : String(noticeError),
+        retry: 'never',
+      })
+    }
   }
+  return failures
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,32 +1466,113 @@ export async function resendSigningLink(input: {
   if (!party.email) throw new SigningError('no_email', 'There is no email address for this person.')
 
   const rawToken = generateSigningToken()
+  const newHash = hashSigningToken(rawToken)
   const now = new Date().toISOString()
-  const { error } = await admin
+  // The new link replaces the one this function read, and only that one. Two sends at the same
+  // moment would otherwise each replace the other's link, and one email would carry a dead one.
+  let rotate = admin
     .from('signing_parties')
     .update({
-      hashed_token: hashSigningToken(rawToken),
+      hashed_token: newHash,
       token_expires_at: document.expires_at,
-      // A fresh link gets a fresh set of attempts, and is not an in-person session.
+      // A fresh link gets a fresh set of attempts, and is not an in-person session. Whoever
+      // holds it proves who they are and opens the document themselves: nothing carries over
+      // from an earlier link.
       identity_check_failures: 0,
+      identity_checked_at: null,
+      document_viewed_at: null,
       witnessed_by: null,
-      last_reminded_at: input.isReminder ? now : party.last_reminded_at,
-      reminder_count: input.isReminder ? party.reminder_count + 1 : party.reminder_count,
       updated_at: now,
     })
     .eq('id', party.id)
     .eq('status', 'pending')
+  rotate = party.hashed_token ? rotate.eq('hashed_token', party.hashed_token) : rotate.is('hashed_token', null)
+  const { data: rotated, error } = await rotate.select('id')
   if (error) throw new Error(`Could not issue a new link: ${error.message}`)
+  if (!rotated || rotated.length === 0) {
+    throw new SigningError('busy', 'A new link was sent to this person a moment ago. Check before sending another.')
+  }
 
-  const sent = await sendSigningLinkEmail({
-    document,
-    party,
-    rawToken,
-    expiresAt: document.expires_at,
-    isReminder: input.isReminder,
-  })
+  let sent: { success: boolean; error?: string; uncertain?: boolean }
+  try {
+    sent = await sendSigningLinkEmail({
+      document,
+      party,
+      rawToken,
+      expiresAt: document.expires_at,
+      isReminder: input.isReminder,
+    })
+  } catch (sendError) {
+    // Cut off part way: it may or may not have gone.
+    sent = { success: false, error: sendError instanceof Error ? sendError.message : String(sendError), uncertain: true }
+  }
   if (!sent.success) {
-    throw new SigningError('email_failed', `The email could not be sent: ${sent.error ?? 'unknown error'}`)
+    if (!sent.uncertain) {
+      // Definitely not sent, so nobody has the new link. Put the earlier one back, with what was
+      // known about it, so the link they already hold goes on working.
+      const { error: restoreError } = await admin
+        .from('signing_parties')
+        .update({
+          hashed_token: party.hashed_token,
+          token_expires_at: party.token_expires_at,
+          identity_check_failures: party.identity_check_failures,
+          identity_checked_at: party.identity_checked_at,
+          document_viewed_at: party.document_viewed_at,
+          witnessed_by: party.witnessed_by,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', party.id)
+        .eq('hashed_token', newHash)
+      if (restoreError) {
+        await alertSigningFault('the earlier signing link could not be restored after a failed email', new Error(restoreError.message), {
+          documentId: document.id,
+          partyId: party.id,
+        })
+      }
+    }
+    if (sent.uncertain && input.isReminder) {
+      // It may have gone, and the new link is the live one. Count it, so the daily job does not
+      // send another tomorrow and kill a link the person may be holding. A person checks.
+      const { error: countError } = await admin
+        .from('signing_parties')
+        .update({ last_reminded_at: now, reminder_count: party.reminder_count + 1 })
+        .eq('id', party.id)
+      if (countError) {
+        await alertSigningFault('a reminder of unknown outcome could not be counted', new Error(countError.message), {
+          documentId: document.id,
+          partyId: party.id,
+        })
+      }
+      try {
+        await insertEvent(admin, {
+          documentId: document.id,
+          partyId: party.id,
+          event: 'reminded',
+          actorUserId: input.userId,
+          meta: { to: party.email, outcome: 'uncertain', error: sent.error ?? null },
+        })
+      } catch (eventError) {
+        await alertSigningFault('a reminder of unknown outcome was not written to the trail', eventError, {
+          documentId: document.id,
+          partyId: party.id,
+        })
+      }
+    }
+    throw new SigningError(
+      'email_failed',
+      sent.uncertain
+        ? `The email may not have been sent: ${sent.error ?? 'unknown error'}. Check with the person before sending another.`
+        : `The email could not be sent: ${sent.error ?? 'unknown error'}`
+    )
+  }
+
+  // Only a reminder that went counts as one, so a refused reminder is tried again tomorrow.
+  if (input.isReminder) {
+    const { error: countError } = await admin
+      .from('signing_parties')
+      .update({ last_reminded_at: now, reminder_count: party.reminder_count + 1 })
+      .eq('id', party.id)
+    if (countError) throw new Error(`The reminder went, but could not be counted: ${countError.message}`)
   }
   await insertEvent(admin, {
     documentId: document.id,
@@ -1308,6 +1598,8 @@ export async function startInPersonSigning(input: { partyId: string; userId: str
       hashed_token: hashSigningToken(rawToken),
       token_expires_at: new Date(now.getTime() + IN_PERSON_LINK_MINUTES * 60 * 1000).toISOString(),
       witnessed_by: input.userId,
+      // Opened on this device, in front of the manager: an earlier opening by link does not count.
+      document_viewed_at: null,
       updated_at: now.toISOString(),
     })
     .eq('id', party.id)
@@ -1325,18 +1617,35 @@ export async function downloadSigningPdf(input: {
   let document = await loadDocument(admin, input.documentId)
   if (!document) throw new SigningError('not_found', 'Document not found.')
 
-  if ((document.status === 'completed' || document.status === 'superseded') && !document.final_pdf_path) {
-    // The signature was recorded but the finishing step did not run. Run it now.
-    document = await finaliseSigningDocument(document.id)
+  if (document.status === 'completed' || document.status === 'superseded') {
+    if (!document.final_pdf_path) {
+      // The signature was recorded but the signed copy was never made. Make it now. If that
+      // fails there is nothing signed to hand over; if the copy was made and a later step is
+      // what failed, the copy is still handed over and the fault is raised.
+      try {
+        document = await finaliseSigningDocument(document.id)
+      } catch (finishError) {
+        const after = await loadDocument(admin, document.id)
+        if (!after?.final_pdf_path) throw finishError
+        document = after
+        await alertSigningFault('finishing on download failed', finishError, { documentId: document.id })
+      }
+    } else if (!document.copies_sent_at || !document.completion_applied_at) {
+      // The copy exists but a later step did not finish. Try it again, without letting that
+      // stand between a member of staff and the signed copy.
+      try {
+        document = await finaliseSigningDocument(document.id)
+      } catch (finishError) {
+        await alertSigningFault('finishing on download failed', finishError, { documentId: document.id })
+      }
+    }
   }
 
   const baseName = document.title.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'document'
   let buffer: Buffer
   let signed = false
   if (document.final_pdf_path) {
-    const { data, error } = await admin.storage.from(SIGNED_DOCUMENTS_BUCKET).download(document.final_pdf_path)
-    if (error || !data) throw new Error(`Could not read the signed copy: ${error?.message ?? 'no data'}`)
-    buffer = Buffer.from(await data.arrayBuffer())
+    buffer = await readFinalPdf(admin, document)
     signed = true
   } else {
     buffer = await readSourcePdf(document)

@@ -741,16 +741,32 @@ export async function reconcileWaiverStatus(bookingId: string, performedByUserId
     nextStatus = 'not_required'
   }
 
-  const updates: Record<string, unknown> = {}
-  if (nextStatus) updates.waiver_status = nextStatus
-  if (packageRequiresWaiver && (bookingRow as any).outside_food !== true) updates.outside_food = true
-  if (Object.keys(updates).length === 0) return
+  // A waiver package always turns the tick on. It is its own write, so it lands whatever
+  // happens to the status below.
+  if (packageRequiresWaiver && (bookingRow as any).outside_food !== true) {
+    const { error: tickError } = await admin
+      .from('private_bookings')
+      .update({ outside_food: true, updated_at: new Date().toISOString() })
+      .eq('id', bookingId)
+    if (tickError) throw new Error(tickError.message)
+  }
+  if (!nextStatus) return
 
-  const { error: updateError } = await admin
+  // The status is changed only if it is still the one read above. A customer can sign the
+  // agreement in the moment between that read and this write, and 'signed' must never be
+  // overwritten by a stale decision made here.
+  const storedStatus = ((bookingRow as any).waiver_status as string | null) ?? null
+  let update = admin
     .from('private_bookings')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ waiver_status: nextStatus, updated_at: new Date().toISOString() })
     .eq('id', bookingId)
+  update = storedStatus === null ? update.is('waiver_status', null) : update.eq('waiver_status', storedStatus)
+  const { data: updatedRows, error: updateError } = await update.select('id')
   if (updateError) throw new Error(updateError.message)
+  if (!updatedRows || updatedRows.length === 0) {
+    // It changed under us. Whatever it is now stands; the next save reconciles again.
+    return
+  }
 
   if (nextStatus) {
     const { error: auditError } = await admin.from('private_booking_audit').insert({
