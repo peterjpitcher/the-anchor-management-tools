@@ -75,6 +75,8 @@ function partyBlock(party: CertificateParty): string {
 export function renderCertificateHtml(input: {
   document: Pick<SigningDocumentRow, 'id' | 'title' | 'version' | 'source_sha256' | 'sent_at' | 'completed_at'>
   parties: CertificateParty[]
+  /** True when the pages before this one show each signature in its place. */
+  signedInPlace?: boolean
 }): string {
   const { document } = input
   const signed = input.parties.filter((party) => party.status === 'signed')
@@ -112,8 +114,11 @@ export function renderCertificateHtml(input: {
   </table>
   ${signed.map(partyBlock).join('\n')}
   <p class="note">
-    All times are UK time. The fingerprint is calculated from the exact file each person was shown,
-    without this page: any change to that file, however small, produces a different fingerprint.
+    All times are UK time. The fingerprint is calculated from the exact file each person was shown
+    before signing: any change to that file, however small, produces a different fingerprint.
+    ${input.signedInPlace
+      ? 'The pages before this one are that same document with each signature panel completed; nothing else in it was changed.'
+      : 'The pages before this one are that file.'}
     The location is approximate, worked out from the internet address, and is usually the nearest town.
   </p>
 </body>

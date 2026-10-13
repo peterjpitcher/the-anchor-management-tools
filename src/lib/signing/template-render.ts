@@ -4,6 +4,7 @@ import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { SigningBrand } from './types'
 
+import { signatureSlot } from './signature-slots'
 import { escapeHtml, templateBodyToHtml } from './template-text'
 
 // The text functions live in template-text.ts, which is safe to import in the browser. They are
@@ -27,6 +28,13 @@ export interface TemplateDocumentInput {
   mergedBody: string
   /** Printed small in the footer so a printed copy can be matched to its record. */
   reference: string
+  /**
+   * One signature slot per person who signs, in the order they are listed, printed as a
+   * "Signatures" section at the end (src/lib/signing/signature-slots.ts).
+   */
+  signatures?: Array<{ slotKey: string; heading: string }>
+  /** `acknowledge` heads the section "Confirmation", since nothing is being agreed to. */
+  mode?: 'sign' | 'acknowledge'
 }
 
 /**
@@ -43,6 +51,19 @@ export function renderTemplateDocumentHtml(input: TemplateDocumentInput): string
   const businessName = isGuest
     ? `${COMPANY_DETAILS.legalName} trading as ${COMPANY_DETAILS.tradingName}`
     : COMPANY_DETAILS.legalName
+
+  const signatures = input.signatures ?? []
+  const signaturesHtml =
+    signatures.length === 0
+      ? ''
+      : `<div class="signatures">
+    <h2>${input.mode === 'acknowledge' ? 'Confirmation' : 'Signatures'}</h2>
+    <div class="sig-grid">
+      ${signatures
+        .map((signature) => `<div class="sig-card"><p class="sig-h">${escapeHtml(signature.heading)}</p>${signatureSlot(signature.slotKey)}</div>`)
+        .join('\n      ')}
+    </div>
+  </div>`
 
   return `<!DOCTYPE html>
 <html lang="en-GB">
@@ -61,6 +82,10 @@ export function renderTemplateDocumentHtml(input: TemplateDocumentInput): string
   p { margin: 0 0 10px; }
   ul { margin: 0 0 10px; padding-left: 20px; }
   li { margin-bottom: 4px; }
+  .signatures { margin-top: 26px; break-inside: avoid; }
+  .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .sig-card { border: 1px solid ${palette.text}; padding: 4mm; break-inside: avoid; }
+  .sig-h { font-size: 8pt; font-weight: bold; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 3mm; }
   .foot { margin-top: 28px; padding-top: 10px; border-top: 1px solid ${palette.border}; font-size: 8pt; color: ${palette.muted}; break-inside: avoid; }
 </style>
 </head>
@@ -76,6 +101,7 @@ export function renderTemplateDocumentHtml(input: TemplateDocumentInput): string
   <h1>${escapeHtml(input.title)}</h1>
   ${input.subtitle ? `<p class="subtitle">${escapeHtml(input.subtitle)}</p>` : ''}
   ${templateBodyToHtml(input.mergedBody)}
+  ${signaturesHtml}
   <div class="foot">
     ${escapeHtml(businessName)} | Reference ${escapeHtml(input.reference)}<br>
     This document is signed electronically. The signing record is attached as its last page.

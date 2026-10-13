@@ -31,6 +31,8 @@ export interface SigningViewModel {
   /** Signed in to the staff portal, so there is no personal link to mention. */
   isPortal: boolean
   otherSigners: Array<{ name: string; roleLabel: string; signed: boolean }>
+  /** Titles of other documents still waiting for this same person. Each is signed separately. */
+  alsoToSign: string[]
   endpoints: {
     document: string
     /** Absent in the staff portal, where signing in is the identity check. */
@@ -190,6 +192,20 @@ export function useSigningFlow(model: SigningViewModel): SigningFlow {
     submitSignature,
     submitDecline,
   }
+}
+
+/**
+ * What to say about the other documents this person still has to sign, or null when there are
+ * none. Each document is signed on its own, so the screen says where the others are.
+ */
+export function alsoToSignLine(model: Pick<SigningViewModel, 'alsoToSign' | 'isPortal'>): string | null {
+  if (model.alsoToSign.length === 0) return null
+  const names = model.alsoToSign.map((title) => `"${title}"`).join(' and ')
+  const where = model.isPortal ? 'You will find it under My Documents.' : 'It has its own button in our email.'
+  const whereMany = model.isPortal ? 'You will find them under My Documents.' : 'Each has its own button in our email.'
+  return model.alsoToSign.length === 1
+    ? `You also have ${names} to sign. It is signed separately. ${where}`
+    : `You also have ${names} to sign. Each is signed separately. ${whereMany}`
 }
 
 /** Words that change between signing and acknowledging, in one place for both views. */

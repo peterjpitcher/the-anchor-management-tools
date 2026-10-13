@@ -666,6 +666,11 @@ async function applyIntakeFollowUp(bookingId: string, input: CreatePrivateBookin
     if (input.high_power_equipment === true) {
       await ensureElectricityChargeItem(admin, bookingId)
     }
+
+    // SOP §21: ticking "Outside food" at creation makes the waiver required.
+    if (input.outside_food === true) {
+      await reconcileWaiverStatus(bookingId, (input as { created_by?: string }).created_by)
+    }
   } catch (intakeError) {
     logger.error('Private booking intake follow-up failed (non-blocking)', {
       error: intakeError instanceof Error ? intakeError : new Error(String(intakeError)),
@@ -675,13 +680,21 @@ async function applyIntakeFollowUp(bookingId: string, input: CreatePrivateBookin
 }
 
 /**
- * SOP §21: keep waiver_status in step with the booking's catering items.
- * Flag-first (catering_packages.requires_waiver); the name pattern is only a
- * fallback when the flag column is unavailable. 'not_required' ⇄ 'required'
- * only — never downgrades 'sent' / 'signed' / 'overdue'. Also marks
- * outside_food when a waiver package is present.
+ * SOP §21: keep waiver_status in step with the booking. The waiver is needed
+ * when outside food is coming, which the app learns two ways: the "Outside
+ * food" tick on the booking, and a catering package flagged requires_waiver
+ * (the name pattern is only a fallback when that column is unavailable).
+ * Until 13 October 2026 only the package counted, so the tick did nothing.
+ * Sets 'required' when the waiver becomes needed. When it stops being needed
+ * (staff untick "Outside food" and no waiver package remains) an unsigned
+ * waiver returns to 'not_required', whether it was 'required', 'sent' or
+ * 'overdue': otherwise the event sheet goes on blocking for outside food that
+ * is no longer coming, and staff have no status they can honestly set. A
+ * 'signed' waiver is a fact and is never changed here. Also marks outside_food
+ * when a waiver package is present, so a booking never has the package without
+ * the tick.
  */
-async function reconcileWaiverStatus(bookingId: string, performedByUserId?: string): Promise<void> {
+export async function reconcileWaiverStatus(bookingId: string, performedByUserId?: string): Promise<void> {
   const admin = createAdminClient()
 
   const { data: bookingRow, error: bookingError } = await admin
@@ -715,17 +728,22 @@ async function reconcileWaiverStatus(bookingId: string, performedByUserId?: stri
     waiverRequired = (flaggedItems || []).some((item: any) => item.package?.requires_waiver === true)
   }
 
+  // A waiver package turns the tick on (below), so from here on the tick alone
+  // says whether outside food is coming.
+  const packageRequiresWaiver = waiverRequired
+  waiverRequired = packageRequiresWaiver || (bookingRow as any).outside_food === true
+
   const currentStatus = (bookingRow as any).waiver_status || 'not_required'
   let nextStatus: string | null = null
   if (waiverRequired && currentStatus === 'not_required') {
     nextStatus = 'required'
-  } else if (!waiverRequired && currentStatus === 'required') {
+  } else if (!waiverRequired && ['required', 'sent', 'overdue'].includes(currentStatus)) {
     nextStatus = 'not_required'
   }
 
   const updates: Record<string, unknown> = {}
   if (nextStatus) updates.waiver_status = nextStatus
-  if (waiverRequired && (bookingRow as any).outside_food !== true) updates.outside_food = true
+  if (packageRequiresWaiver && (bookingRow as any).outside_food !== true) updates.outside_food = true
   if (Object.keys(updates).length === 0) return
 
   const { error: updateError } = await admin
@@ -742,7 +760,7 @@ async function reconcileWaiverStatus(bookingId: string, performedByUserId?: stri
       old_value: currentStatus,
       new_value: nextStatus,
       performed_by: performedByUserId ?? null,
-      metadata: { via: 'booking_items_reconciliation' },
+      metadata: { via: 'waiver_reconciliation', outside_food: waiverRequired },
     })
     if (auditError) {
       logger.error('Failed to audit waiver status change (non-blocking)', {
@@ -1483,6 +1501,19 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     } catch (electricityError) {
       logger.error('Failed to add electricity charge item (non-blocking)', {
         error: electricityError instanceof Error ? electricityError : new Error(String(electricityError)),
+        metadata: { bookingId: id },
+      })
+    }
+  }
+
+  // SOP §21: ticking or unticking "Outside food" changes whether the waiver is
+  // required. Reconciled after the save so it reads the stored tick.
+  if (input.outside_food !== undefined && Boolean(input.outside_food) !== Boolean((currentBooking as any).outside_food)) {
+    try {
+      await reconcileWaiverStatus(id, performedByUserId)
+    } catch (waiverError) {
+      logger.error('Failed to reconcile waiver status after the outside food tick changed (non-blocking)', {
+        error: waiverError instanceof Error ? waiverError : new Error(String(waiverError)),
         metadata: { bookingId: id },
       })
     }

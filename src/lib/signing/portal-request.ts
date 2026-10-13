@@ -2,7 +2,7 @@ import type { NextResponse } from 'next/server'
 import { readSigningEvidence } from './evidence'
 import { getPortalPartyContext, getPortalWorker, type PortalWorker } from './portal'
 import { messageForState, signingError } from './public-request'
-import { resolveSigningPartyState, type SigningPartyContext, type SigningPartyState } from './service'
+import { resolveSigningPartyState, withdrawIfSubjectClosed, type SigningPartyContext, type SigningPartyState } from './service'
 import type { SigningEvidence } from './types'
 
 export interface PortalSigningRequest {
@@ -25,10 +25,11 @@ export async function openPortalSigningRequest(
   if (!worker) {
     return { response: signingError('NOT_AVAILABLE', 'Please sign in again.', 401) }
   }
-  const context = await getPortalPartyContext(worker, partyId)
-  if (!context) {
+  const found = await getPortalPartyContext(worker, partyId)
+  if (!found) {
     return { response: signingError('LINK_NOT_VALID', 'This document was not found.', 404) }
   }
+  const context = await withdrawIfSubjectClosed(found)
   return {
     request: {
       worker,

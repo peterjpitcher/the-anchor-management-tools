@@ -6,6 +6,7 @@ import { readSigningEvidence } from './evidence'
 import {
   getSigningPartyByToken,
   resolveSigningPartyState,
+  withdrawIfSubjectClosed,
   type SigningPartyContext,
   type SigningPartyState,
 } from './service'
@@ -99,10 +100,12 @@ export async function openPublicSigningRequest(
     }
   }
 
-  const context = await getSigningPartyByToken(rawToken)
-  if (!context) {
+  const found = await getSigningPartyByToken(rawToken)
+  if (!found) {
     return { response: linkNotValid() }
   }
+  // The booking may have been cancelled, or the quote settled by phone, since the link was sent.
+  const context = await withdrawIfSubjectClosed(found)
   return {
     request: {
       context,

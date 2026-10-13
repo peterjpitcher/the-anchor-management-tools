@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   finalise: vi.fn(),
   sendEmail: vi.fn(),
   alert: vi.fn(),
+  closure: vi.fn(),
 }))
 
 vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.example.test' }))
@@ -17,6 +18,8 @@ vi.mock('@/lib/email/emailService', () => ({ sendEmail: mocks.sendEmail }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: mocks.alert }))
 vi.mock('@/lib/signing/subjects', () => ({ describeSigningSubject: async () => ({ label: 'Sam Example', path: '/employees/emp-1' }) }))
 vi.mock('@/lib/signing/service', () => ({ resendSigningLink: mocks.resend, finaliseSigningDocument: mocks.finalise }))
+// Whether the record behind a document still needs signing. Tested on its own in subject-state.test.ts.
+vi.mock('@/lib/signing/subject-state', () => ({ findSubjectClosure: mocks.closure }))
 
 import { GET } from '@/app/api/cron/signing-reminders/route'
 import { remindersDue, runSigningReminders } from '@/lib/signing/reminders'
@@ -41,6 +44,7 @@ beforeEach(() => {
   mocks.finalise.mockResolvedValue(undefined)
   mocks.sendEmail.mockResolvedValue({ success: true })
   mocks.alert.mockResolvedValue(undefined)
+  mocks.closure.mockResolvedValue(null)
 })
 
 describe('reminder timing', () => {
@@ -93,6 +97,42 @@ describe('the daily signing run', () => {
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ to: 'sender@example.test', subject: 'Not signed: Worker agreement (Sam Example)' })
     // An expired request is not chased.
     expect(mocks.resend).not.toHaveBeenCalled()
+  })
+
+  it('withdraws a request whose record has moved on, and chases nobody about it', async () => {
+    seed(
+      [
+        { id: 'cancelled', status: 'sent', sent_at: daysAgo(3), expires_at: inDays(27), final_pdf_path: null, completion_applied_at: null },
+        { id: 'live', status: 'sent', sent_at: daysAgo(3), expires_at: inDays(27), final_pdf_path: null, completion_applied_at: null },
+      ],
+      [
+        { id: 'p-cancelled', document_id: 'cancelled', status: 'pending', email: 'a@example.com', reminder_count: 0, role: 'customer' },
+        { id: 'p-live', document_id: 'live', status: 'pending', email: 'b@example.com', reminder_count: 0, role: 'customer' },
+      ]
+    )
+    mocks.closure.mockImplementation(async (document: { id: string }) => (document.id === 'cancelled' ? 'This booking was cancelled.' : null))
+
+    const run = await runSigningReminders(NOW)
+    expect(run).toMatchObject({ withdrawn: 1, remindersSent: 1, expired: 0, errors: [] })
+    expect(db.rows('signing_documents').find((row) => row.id === 'cancelled')).toMatchObject({ status: 'voided', void_reason: 'This booking was cancelled.' })
+    expect(db.rows('signing_events')).toEqual([
+      expect.objectContaining({ document_id: 'cancelled', event: 'voided', meta: { reason: 'This booking was cancelled.', automatic: true } }),
+    ])
+    expect(mocks.resend.mock.calls.map((call) => call[0].partyId)).toEqual(['p-live'])
+  })
+
+  it('does not chase when it cannot tell whether the record still needs signing, and says so', async () => {
+    seed(
+      [{ id: 'unknown', status: 'sent', sent_at: daysAgo(3), expires_at: inDays(27), final_pdf_path: null, completion_applied_at: null }],
+      [{ id: 'p-unknown', document_id: 'unknown', status: 'pending', email: 'a@example.com', reminder_count: 0, role: 'customer' }]
+    )
+    mocks.closure.mockRejectedValue(new Error('database unavailable'))
+
+    const run = await runSigningReminders(NOW)
+    expect(mocks.resend).not.toHaveBeenCalled()
+    expect(db.rows('signing_documents')[0].status).toBe('sent')
+    expect(run.errors).toEqual([expect.stringContaining('database unavailable')])
+    expect(mocks.alert).toHaveBeenCalled()
   })
 
   it('finishes a signed document whose finishing step did not complete', async () => {

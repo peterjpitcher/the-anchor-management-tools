@@ -1,3 +1,4 @@
+import { effectiveWaiverStatus } from '@/lib/private-bookings/waiver-status'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -133,7 +134,9 @@ export async function GET(request: NextRequest) {
       accessibilityNotes: (booking.accessibility_needs as string | null) ?? null,
       dietaryNotes,
       outsideFood: Boolean(booking.outside_food),
-      waiverStatus: (booking.waiver_status as string) ?? 'not_required',
+      // The sheet tells staff whether outside food may be served, so it must never read
+      // "not required" while outside food is ticked.
+      waiverStatus: effectiveWaiverStatus(booking as { outside_food?: boolean | null; waiver_status?: string | null }),
       supplierStatus: (booking.supplier_status as string) ?? 'not_applicable',
       suppliers: suppliers.map((supplier: Record<string, any>) => ({
         name: (supplier.name as string) ?? '',

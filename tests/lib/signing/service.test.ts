@@ -14,13 +14,22 @@ const state = vi.hoisted(() => ({
   generatePdf: null as unknown as AnyMock,
   alert: null as unknown as AnyMock,
   hook: null as unknown as AnyMock,
+  closure: null as unknown as AnyMock,
+  closeBrowser: null as unknown as AnyMock,
+  browser: { fake: 'browser' },
 }))
 
 vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.example.test' }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => state.client }))
 vi.mock('@/lib/email/emailService', () => ({ sendEmail: (...args: unknown[]) => state.sendEmail(...args) }))
 vi.mock('@/lib/email/invoice-sender', () => ({ invoiceEmailRouting: () => ({ from: 'Orange Jelly <billing@example.test>' }) }))
-vi.mock('@/lib/pdf-generator', () => ({ generatePDFFromHTML: (...args: unknown[]) => state.generatePdf(...args) }))
+vi.mock('@/lib/pdf-generator', () => ({
+  generatePDFFromHTML: (...args: unknown[]) => state.generatePdf(...args),
+  createPdfBrowser: async () => state.browser,
+  closePdfBrowser: (...args: unknown[]) => state.closeBrowser(...args),
+}))
+// Whether the record behind a document still needs signing. Tested on its own in subject-state.test.ts.
+vi.mock('@/lib/signing/subject-state', () => ({ findSubjectClosure: (...args: unknown[]) => state.closure(...args) }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: (...args: unknown[]) => state.alert(...args) }))
 vi.mock('@/lib/signing/completion-hooks', () => ({ runCompletionHook: (...args: unknown[]) => state.hook(...args) }))
 
@@ -35,6 +44,7 @@ import {
   finaliseSigningDocument,
   getSigningPartyById,
   getSigningPartyByToken,
+  listOtherDocumentsToSign,
   listSigningDocumentsForSubject,
   readSourcePdf,
   recordSigningOpened,
@@ -44,8 +54,10 @@ import {
   startInPersonSigning,
   viewSigningDocument,
   voidSigningDocument,
+  withdrawIfSubjectClosed,
   type SigningPartyContext,
 } from '@/lib/signing/service'
+import { initialsSlot, signatureSlot } from '@/lib/signing/signature-slots'
 import { hashSigningToken, sha256Hex } from '@/lib/signing/tokens'
 import type { SigningDocumentRow, SigningPartyRow } from '@/lib/signing/types'
 
@@ -196,11 +208,15 @@ beforeEach(() => {
   state.generatePdf = vi.fn(async () => tinyPdf())
   state.alert = vi.fn(async () => undefined)
   state.hook = vi.fn(async () => undefined)
+  state.closure = vi.fn(async () => null)
+  state.closeBrowser = vi.fn(async () => undefined)
 })
 
 async function send(overrides: Partial<Parameters<typeof createSigningRequest>[0]> = {}) {
   return createSigningRequest({
-    kind: 'private_booking_contract',
+    // A kind with one signer and no business signatory, so each case has exactly one signature to
+    // follow. The booking contract, which the business signs too, has its own cases below.
+    kind: 'private_booking_waiver',
     subjectId: SUBJECT,
     title: 'Booking contract',
     summary: 'Your event on 5 December.',
@@ -285,6 +301,54 @@ describe('sending a document for signature', () => {
     expect(parties.find((row) => row.role === 'worker')).toMatchObject({ status: 'pending', identity_check: 'date_of_birth' })
   })
 
+  it('signs the booking contract for the venue as it is sent, in the name and position of whoever sent it', async () => {
+    const result = await send({ kind: 'private_booking_contract', createdByPosition: 'General Manager' })
+    const saved = document(result.documentId)
+    expect(saved.status).toBe('part_signed')
+    expect(saved.context.sender_position).toBe('General Manager')
+    const parties = db.rows('signing_parties').filter((row) => row.document_id === result.documentId)
+    const venue = parties.find((row) => row.role === 'company')
+    const customer = parties.find((row) => row.role === 'customer')
+    expect(parties).toHaveLength(2)
+    expect(venue).toMatchObject({ status: 'signed', method: 'sender', typed_name: 'Billy Summers' })
+    expect(customer).toMatchObject({ status: 'pending', method: null })
+    // Only the customer is sent a link.
+    expect(result.deliveries.map((delivery) => delivery.email)).toEqual(['sam@example.com'])
+  })
+
+  it('keeps the document source beside the PDF, with its signature places still marked', async () => {
+    const html = `<html><body><p>Terms</p>${signatureSlot('contract:host')}${initialsSlot()}</body></html>`
+    const result = await send({
+      render: { html, profile: 'a4_css_page', pages: { skipLast: 1 }, slots: { 'contract:host': 'customer' }, hasInitials: true },
+    })
+    const saved = document(result.documentId)
+    const htmlPath = `private_booking/${SUBJECT}/${result.documentId}/document.html`
+    expect(files.get(htmlPath)?.toString('utf-8')).toBe(html)
+    // The record says where the source is and how to print it. It never holds the source itself.
+    expect(saved.context.render).toEqual({
+      htmlPath,
+      profile: 'a4_css_page',
+      pages: { skipLast: 1 },
+      slots: { 'contract:host': 'customer' },
+      hasInitials: true,
+    })
+  })
+
+  it('records nothing when the document source cannot be stored', async () => {
+    const realClient = state.client as { storage: { from: () => { upload: (path: string, content: Buffer, options: { upsert?: boolean }) => Promise<{ error: unknown }> } } }
+    const bucket = realClient.storage.from()
+    realClient.storage.from = () => ({
+      ...bucket,
+      upload: async (path: string, content: Buffer, options: { upsert?: boolean }) =>
+        path.endsWith('document.html') ? { error: { message: 'disk full' } } : bucket.upload(path, content, options),
+    })
+    await expect(
+      send({ render: { html: `<p>${signatureSlot('doc:customer')}</p>`, profile: 'a4_margins', slots: { 'doc:customer': 'customer' } } })
+    ).rejects.toThrow('disk full')
+    expect(db.rows('signing_documents')).toHaveLength(0)
+    expect(db.rows('signing_parties')).toHaveLength(0)
+  })
+
   it('numbers versions per record and withdraws the earlier unsigned request', async () => {
     const first = await send()
     const second = await send()
@@ -292,8 +356,8 @@ describe('sending a document for signature', () => {
     expect(document(first.documentId)).toMatchObject({ status: 'voided', void_reason: 'Replaced by version 2' })
 
     // A different series on the same record is left alone.
-    const waiver = await send({ kind: 'private_booking_waiver', title: 'Waiver' })
-    expect(document(waiver.documentId).version).toBe(1)
+    const contract = await send({ kind: 'private_booking_contract', title: 'Contract' })
+    expect(document(contract.documentId).version).toBe(1)
     expect(document(second.documentId).status).toBe('sent')
   })
 
@@ -520,6 +584,101 @@ describe('signing', () => {
     expect(emails.find((email) => email.to === 'sender@example.test')?.subject).toContain('Signed: Booking contract')
   })
 
+  it('prints each signature where it belongs on the signed copy, from the source kept when it was sent', async () => {
+    const html = `<html><body><h1>Contract</h1><div>${signatureSlot('contract:host')}</div><div>${signatureSlot('contract:anchor')}</div><footer>${initialsSlot()}</footer></body></html>`
+    const result = await send({
+      kind: 'private_booking_contract',
+      createdByPosition: 'General Manager',
+      render: {
+        html,
+        profile: 'a4_css_page',
+        pages: { skipLast: 1 },
+        slots: { 'contract:host': 'customer', 'contract:anchor': 'company' },
+        hasInitials: true,
+      },
+    })
+    const partyId = result.deliveries[0].partyId
+    await viewSigningDocument(await contextFor(partyId), EVIDENCE)
+    // First the document (three pages, the last belonging to another document), then the record page.
+    state.generatePdf = vi.fn()
+      .mockImplementationOnce(async () => tinyPdf(3))
+      .mockImplementationOnce(async () => tinyPdf(1))
+
+    const outcome = await signSigningParty({ context: await contextFor(partyId), typedName: 'Samuel Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
+    expect(outcome).toEqual({ ok: true, completed: true, documentId: result.documentId })
+
+    const [printedHtml, options, browserOption] = state.generatePdf.mock.calls[0] as [string, { preferCSSPageSize: boolean }, { browser: unknown }]
+    const reference = result.documentId.replace(/-/g, '').slice(0, 8).toUpperCase()
+    // The customer's panel: the name they typed, when, where and how.
+    expect(printedHtml).toContain('Samuel Example')
+    expect(printedHtml).toContain('Signed electronically')
+    expect(printedHtml).toContain('Staines, ENG, GB (approximate location)')
+    expect(printedHtml).toContain('By a personal link sent by email')
+    expect(printedHtml).toContain(`ref ${reference}`)
+    // The venue's panel: whoever sent it, with their position.
+    expect(printedHtml).toContain('Billy Summers, General Manager')
+    expect(printedHtml).toContain('On sending, signed in to the management app')
+    // No marker is left behind, and nothing but the panels changed.
+    expect(printedHtml).not.toContain('<!--signing-')
+    expect(printedHtml).toContain('<h1>Contract</h1>')
+    expect(printedHtml).toContain(`Signed electronically, ref ${reference}`)
+    expect(options.preferCSSPageSize).toBe(true)
+    expect(browserOption).toEqual({ browser: state.browser })
+    expect(state.closeBrowser).toHaveBeenCalledWith(state.browser)
+
+    const certificateHtml = state.generatePdf.mock.calls[1][0] as string
+    expect(certificateHtml).toContain('each signature panel completed')
+
+    const saved = document(result.documentId)
+    const finalFile = files.get(saved.final_pdf_path as string) as Buffer
+    // Two pages of contract (the third page was the other document's) plus the signing record.
+    expect((await PDFDocument.load(finalFile)).getPageCount()).toBe(3)
+    // The file each signer was shown is untouched, and so is its fingerprint.
+    expect(sha256Hex(files.get(saved.source_pdf_path) as Buffer)).toBe(saved.source_sha256)
+  })
+
+  it('does not hand out a signed copy when the stored source has gone, and raises an alert', async () => {
+    const result = await send({
+      render: { html: `<p>${signatureSlot('doc:customer')}</p>`, profile: 'a4_margins', slots: { 'doc:customer': 'customer' } },
+    })
+    const partyId = result.deliveries[0].partyId
+    await viewSigningDocument(await contextFor(partyId), EVIDENCE)
+    files.delete(`private_booking/${SUBJECT}/${result.documentId}/document.html`)
+
+    const outcome = await signSigningParty({ context: await contextFor(partyId), typedName: 'Sam Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
+    // The signature stands. The finishing step is what failed, and it says so.
+    expect(outcome).toMatchObject({ ok: true, completed: true })
+    expect(document(result.documentId)).toMatchObject({ status: 'completed', final_pdf_path: null })
+    expect(state.alert).toHaveBeenCalledWith(expect.stringContaining('signed but not finalised'), expect.any(Error), expect.objectContaining({ documentId: result.documentId }))
+    expect(state.closeBrowser).toHaveBeenCalledTimes(1)
+  })
+
+  it('withdraws the request instead of taking a signature for a record that has moved on', async () => {
+    const result = await readyToSign()
+    const partyId = result.deliveries[0].partyId
+    state.closure = vi.fn(async () => 'This booking was cancelled.')
+
+    const outcome = await signSigningParty({ context: await contextFor(partyId), typedName: 'Sam Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
+    expect(outcome).toEqual({ ok: false, reason: 'document_voided' })
+    expect(party(partyId).status).toBe('pending')
+    expect(document(result.documentId)).toMatchObject({ status: 'voided', void_reason: 'This booking was cancelled.' })
+    expect(db.rows('signing_events').filter((row) => row.event === 'voided')).toEqual([
+      expect.objectContaining({ document_id: result.documentId, meta: { reason: 'This booking was cancelled.', automatic: true } }),
+    ])
+    expect(state.hook).not.toHaveBeenCalled()
+  })
+
+  it('leaves a signed document alone whatever has happened to the record since', async () => {
+    const result = await readyToSign()
+    const partyId = result.deliveries[0].partyId
+    await signSigningParty({ context: await contextFor(partyId), typedName: 'Sam Example', agreedText: agreed, via: 'link', evidence: EVIDENCE })
+    state.closure = vi.fn(async () => 'This booking was cancelled.')
+
+    const after = await withdrawIfSubjectClosed(await contextFor(partyId))
+    expect(after.document.status).toBe('completed')
+    expect(state.closure).not.toHaveBeenCalled()
+  })
+
   it('waits for everyone before completing', async () => {
     const result = await readyToSign([
       { role: 'customer', name: 'Sam Example', email: 'sam@example.com' },
@@ -656,6 +815,34 @@ describe('staff actions', () => {
     expect(list[0].parties).toHaveLength(1)
     expect(list[0].parties[0]).not.toHaveProperty('hashed_token')
     expect(await listSigningDocumentsForSubject('private_booking', '33333333-3333-4333-8333-333333333333')).toEqual([])
+  })
+
+  it('names the other documents the same person still has to sign on the same record', async () => {
+    const waiver = await send({ title: 'Self-catering agreement' })
+    const contract = await send({ kind: 'private_booking_contract', title: 'Booking contract' })
+    const waiverParty = waiver.deliveries[0].partyId
+    const contractParty = contract.deliveries[0].partyId
+
+    expect(await listOtherDocumentsToSign(await contextFor(waiverParty))).toEqual(['Booking contract'])
+    expect(await listOtherDocumentsToSign(await contextFor(contractParty))).toEqual(['Self-catering agreement'])
+
+    // Once the other one is signed there is nothing left to mention.
+    await viewSigningDocument(await contextFor(waiverParty), EVIDENCE)
+    await signSigningParty({
+      context: await contextFor(waiverParty),
+      typedName: 'Sam Example',
+      agreedText: buildAgreedText({ mode: 'sign', title: 'Self-catering agreement' }),
+      via: 'link',
+      evidence: EVIDENCE,
+    })
+    expect(await listOtherDocumentsToSign(await contextFor(contractParty))).toEqual([])
+  })
+
+  it('does not name a document that is for somebody else, or on another record', async () => {
+    const mine = await send({ title: 'Self-catering agreement' })
+    await send({ kind: 'private_booking_contract', title: 'Booking contract', parties: [{ role: 'customer', name: 'Pat Other', email: 'pat@example.com' }] })
+    await send({ kind: 'private_booking_contract', title: 'Another booking', subjectId: '33333333-3333-4333-8333-333333333333' })
+    expect(await listOtherDocumentsToSign(await contextFor(mine.deliveries[0].partyId))).toEqual([])
   })
 
   it('sends a fresh link on a reminder and kills the earlier one', async () => {
