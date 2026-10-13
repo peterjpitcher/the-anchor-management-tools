@@ -9,6 +9,7 @@ import {
 } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
+import { FIND_CLIPPED_SHEETS, PdfSheetOverflowError } from '@/lib/pdf/sheet-overflow'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 
 // Helper to load puppeteer deps dynamically
@@ -31,11 +32,20 @@ type PdfGeneratorPage = {
     options: { waitUntil: 'networkidle0'; timeout: number }
   ) => Promise<void>
   addStyleTag: (options: { content: string }) => Promise<void>
+  emulateMediaType: (type: 'print' | 'screen') => Promise<void>
+  evaluate: (script: string) => Promise<unknown>
   pdf: (options: any) => Promise<Uint8Array>
   close: () => Promise<void>
 }
 
-type ExistingBrowserOptions = { browser?: PdfGeneratorBrowser }
+type ExistingBrowserOptions = {
+  browser?: PdfGeneratorBrowser
+  /**
+   * For a document made of fixed-size sheets: stop with PdfSheetOverflowError if any sheet has
+   * more on it than fits, since the overflow would otherwise be silently left out of the PDF.
+   */
+  refuseClippedSheets?: boolean
+}
 type InvoicePdfOptions = ExistingBrowserOptions & {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
@@ -124,7 +134,8 @@ export async function createPdfBrowser(): Promise<PdfGeneratorBrowser> {
 async function renderPdfFromHtml(
   browser: PdfGeneratorBrowser,
   html: string,
-  pdfOptions: any
+  pdfOptions: any,
+  checks: { refuseClippedSheets?: boolean } = {}
 ): Promise<Buffer> {
   const page = (await browser.newPage()) as PdfGeneratorPage
 
@@ -142,6 +153,13 @@ async function renderPdfFromHtml(
         }
       `,
     })
+
+    if (checks.refuseClippedSheets) {
+      // Measured as it will print, after fonts and images have loaded.
+      await page.emulateMediaType('print')
+      const clipped = (await page.evaluate(FIND_CLIPPED_SHEETS)) as number[]
+      if (Array.isArray(clipped) && clipped.length > 0) throw new PdfSheetOverflowError(clipped)
+    }
 
     const pdf = await page.pdf(pdfOptions)
     return Buffer.from(pdf)
@@ -266,8 +284,10 @@ export async function generatePDFFromHTML(
         left: '15mm'
       },
       ...pdfOptions
-    })
+    }, { refuseClippedSheets: options.refuseClippedSheets })
   } catch (error) {
+    // Not a generator fault: the document itself does not fit. The caller needs to know which.
+    if (error instanceof PdfSheetOverflowError) throw error
     console.error('Error generating PDF from HTML:', error)
     throw new Error('Failed to generate PDF')
   } finally {

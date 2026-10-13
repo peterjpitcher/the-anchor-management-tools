@@ -42,6 +42,7 @@ import {
 } from '@/app/actions/signing-commercial'
 import { sendJobOffer } from '@/app/actions/signing-recruitment'
 import { SIGNING_COMPLETION_HOOKS } from '@/lib/signing/completion-hooks'
+import { quoteContentFingerprint } from '@/lib/signing/documents/quote-fingerprint'
 import type { SigningDocumentRow } from '@/lib/signing/types'
 
 const QUOTE = '11111111-1111-4111-8111-111111111111'
@@ -128,6 +129,43 @@ describe('sending a quote for acceptance', () => {
       expect((await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })).error).toContain(words)
     }
     expect(mocks.createRequest).not.toHaveBeenCalled()
+  })
+
+  it('records a fingerprint of the quote as the client is shown it, for the acceptance to be checked against', async () => {
+    const line = { description: 'DJ, 7pm to midnight', quantity: 1, unit_price: 1000, discount_percentage: 0, vat_rate: 20, total_amount: 1200 }
+    const asShown = {
+      ...quote('sent').quote,
+      quote_date: '2026-11-01',
+      reference: 'Enquiry 88',
+      notes: 'Set up from 6pm.',
+      internal_notes: 'Margin is thin on this one.',
+      quote_discount_percentage: 0,
+      subtotal_amount: 1000,
+      discount_amount: 0,
+      vat_amount: 200,
+      line_items: [line],
+    }
+    mocks.getQuote.mockResolvedValue({ quote: asShown })
+
+    expect((await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })).success).toBe(true)
+
+    const context = mocks.createRequest.mock.calls[0][0].context as { quote_fingerprint: string; total_amount: number }
+    expect(context.quote_fingerprint).toMatch(/^[0-9a-f]{64}$/)
+    expect(context.quote_fingerprint).toBe(quoteContentFingerprint(asShown))
+    // The total is still recorded beside it, as before.
+    expect(context.total_amount).toBe(1200)
+
+    // The same quote with one line reworded, and every figure the same, is not the same quote.
+    mocks.getQuote.mockResolvedValue({ quote: { ...asShown, line_items: [{ ...line, description: 'DJ, 8pm to midnight' }] } })
+    await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })
+    const reworded = mocks.createRequest.mock.calls[1][0].context as { quote_fingerprint: string; total_amount: number }
+    expect(reworded.total_amount).toBe(1200)
+    expect(reworded.quote_fingerprint).not.toBe(context.quote_fingerprint)
+
+    // What only staff see is not part of it.
+    mocks.getQuote.mockResolvedValue({ quote: { ...asShown, internal_notes: 'Changed our minds about the margin.' } })
+    await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })
+    expect((mocks.createRequest.mock.calls[2][0].context as { quote_fingerprint: string }).quote_fingerprint).toBe(context.quote_fingerprint)
   })
 
   it('needs permission and a real email address', async () => {

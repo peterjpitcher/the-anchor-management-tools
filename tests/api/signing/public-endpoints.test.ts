@@ -207,6 +207,33 @@ describe('signing', () => {
     }
   })
 
+  it('tells someone whose link has been replaced to use the latest email, and takes the page as gone', async () => {
+    mocks.sign.mockResolvedValue({ ok: false, reason: 'link_replaced' })
+
+    const response = await signPost(request('sign', goodSignature), params)
+
+    // Gone, not a conflict: this link will never work again, so there is nothing to retry.
+    expect(response.status).toBe(410)
+    const body = await response.json()
+    expect(body).toMatchObject({ success: false, error: { code: 'REFUSED', reason: 'link_replaced' } })
+    expect(body.error.message).toContain('newer link')
+    expect(body.error.message).toContain('latest email')
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    // An ordinary refusal, not a fault on our side: nobody is alerted.
+    expect(mocks.alert).not.toHaveBeenCalled()
+  })
+
+  it('says a withdrawn document is withdrawn when the signature is refused for that reason', async () => {
+    mocks.sign.mockResolvedValue({ ok: false, reason: 'document_voided' })
+
+    const response = await signPost(request('sign', goodSignature), params)
+
+    expect(response.status).toBe(410)
+    const body = await response.json()
+    expect(body.error).toMatchObject({ code: 'REFUSED', reason: 'document_voided' })
+    expect(body.error.message).toContain('withdrawn')
+  })
+
   it('will not take a signature before the date of birth check', async () => {
     mocks.getParty.mockResolvedValue(context({ identity_check: 'date_of_birth' }))
     const response = await signPost(request('sign', goodSignature), params)

@@ -7,6 +7,7 @@ import { getQuote } from '@/app/actions/quotes'
 import { formatDateInLondon, isValidIsoDate } from '@/lib/dateUtils'
 import { getErrorMessage } from '@/lib/errors'
 import { buildQuoteSigningSource } from '@/lib/signing/documents/quote'
+import { quoteContentFingerprint } from '@/lib/signing/documents/quote-fingerprint'
 import { prepareSigningDocument } from '@/lib/signing/prepare'
 import { sendTemplateSigningRequest } from '@/lib/signing/send-template'
 import {
@@ -128,8 +129,10 @@ export async function sendQuoteForAcceptance(input: {
       context: {
         quote_number: quote.quote_number,
         vendor_id: quote.vendor_id ?? null,
-        // What the client is shown. The completion hook will not accept a quote whose total has moved.
+        // What the client is shown. The completion hook will not accept a quote whose total has
+        // moved, or whose lines, notes or dates have changed while the total stayed the same.
         total_amount: typeof quote.total_amount === 'number' ? quote.total_amount : null,
+        quote_fingerprint: quoteContentFingerprint(quote),
       },
     })
 
