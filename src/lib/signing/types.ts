@@ -1,6 +1,6 @@
 /**
  * Shared types for document signing. The lists here mirror the CHECK constraints in
- * supabase/migrations/20261012120000_document_signing_foundation.sql; the guard test
+ * supabase/migrations/20261013080854_document_signing_foundation.sql; the guard test
  * tests/guards/signing.test.ts fails if the two drift apart.
  */
 

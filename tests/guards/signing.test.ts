@@ -34,8 +34,8 @@ import {
  */
 
 const ROOT = process.cwd()
-const FOUNDATION = readFileSync(join(ROOT, 'supabase/migrations/20261012120000_document_signing_foundation.sql'), 'utf8')
-const DRAFTS = readFileSync(join(ROOT, 'supabase/migrations/20261012120100_document_signing_template_drafts.sql'), 'utf8')
+const FOUNDATION = readFileSync(join(ROOT, 'supabase/migrations/20261013080854_document_signing_foundation.sql'), 'utf8')
+const DRAFTS = readFileSync(join(ROOT, 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'), 'utf8')
 
 /** The values of the CHECK on `column` in the CREATE TABLE of `table`. */
 function checkValues(table: string, column: string): string[] {
@@ -168,7 +168,7 @@ const EXISTING: Record<string, string> = {
 }
 
 /** Migrations written before the signing feature. Anything newer is checked. */
-const SIGNING_FOUNDATION_VERSION = '20261012120000'
+const SIGNING_FOUNDATION_VERSION = '20261013080854'
 
 function walk(directory: string, files: string[] = []): string[] {
   for (const entry of readdirSync(directory)) {
