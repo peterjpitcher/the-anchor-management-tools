@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateContractHTML, matchesSelfCateringPackageName, type ContractData } from '@/lib/contract-template'
+import { CONTRACT_COMPANY_DETAILS } from '@/lib/private-bookings/contract-lifecycle'
 import { logger } from '@/lib/logger'
 import type { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
 
@@ -214,6 +215,65 @@ describe('signature block', () => {
     // The name still appears elsewhere (cover, schedule); what must not happen
     // is it being printed as the signatory on the ruled line.
     expect(html).not.toContain('<span class="sf-v">Wilhelmina Testcase</span>')
+  })
+})
+
+describe('trading name', () => {
+  // The contract used to name the trader two ways: the footers read the company name passed in
+  // ("... trading as The Anchor") while the agreement text, the venue signature card and the
+  // definitions clause hard-coded "... trading as The Anchor Pub". The venue is "The Anchor"
+  // (website SSOT §1), and one document must name its trader one way.
+  const TRADER = 'Orange Jelly Limited trading as The Anchor'
+  const byoItem = makeItem({ package: { id: BYO_FOOD_PACKAGE_ID, name: 'Bring Your Own Food' } as PrivateBookingItem['package'] })
+  const withDeposit = makeBooking([byoItem], { deposit_amount: 100 })
+  const withoutDeposit = makeBooking([byoItem], { deposit_amount: null } as unknown as Partial<PrivateBookingWithDetails>)
+
+  it.each([
+    ['a deposit', withDeposit],
+    ['no deposit', withoutDeposit],
+  ])('never says "The Anchor Pub" anywhere in a contract with %s', (_label, booking) => {
+    const html = generateContractHTML(baseData(booking))
+    // The annex is in the render, so its wording is covered too.
+    expect(html).toContain('data-doc="waiver"')
+    expect(html).not.toContain('The Anchor Pub')
+  })
+
+  it.each([
+    ['a deposit', withDeposit],
+    ['no deposit', withoutDeposit],
+  ])('names the trader the same way in the agreement, the signature card and the definitions with %s', (_label, booking) => {
+    const html = generateContractHTML(baseData(booking))
+    expect(html).toContain(`agree to engage ${TRADER} to host my event`)
+    expect(html).toContain(`<p class="sign-card-sub">For and on behalf of ${TRADER}</p>`)
+    expect(html).toContain(`mean <b>${TRADER}</b>, company registration number`)
+    expect(html).toContain(`<b>${TRADER}</b> &middot; Registered in England &amp; Wales`)
+  })
+
+  it('takes every mention of the trader from the company name passed in', () => {
+    const html = generateContractHTML({
+      ...baseData(withDeposit),
+      companyDetails: {
+        name: 'Fixture Trading Co & Sons',
+        address: '1 Fixture Street',
+        phone: '01234 567890',
+        email: 'fixture@example.com',
+      },
+    })
+    const escaped = 'Fixture Trading Co &amp; Sons'
+    expect(html).toContain(`agree to engage ${escaped} to host my event`)
+    expect(html).toContain(`<p class="sign-card-sub">For and on behalf of ${escaped}</p>`)
+    expect(html).toContain(`mean <b>${escaped}</b>, company registration number`)
+    // Nothing falls back to a hard-coded trader once a name is supplied.
+    expect(html).not.toContain('Orange Jelly Limited')
+  })
+
+  it('renders the same trader with the details the live contract is sent with as with the defaults', () => {
+    expect(CONTRACT_COMPANY_DETAILS.name).toBe(TRADER)
+    const live = generateContractHTML({ ...baseData(withDeposit), companyDetails: { ...CONTRACT_COMPANY_DETAILS } })
+    expect(live).not.toContain('The Anchor Pub')
+    expect(live).toContain(`agree to engage ${TRADER} to host my event`)
+    expect(live).toContain(`<p class="sign-card-sub">For and on behalf of ${TRADER}</p>`)
+    expect(live).toContain(`mean <b>${TRADER}</b>, company registration number`)
   })
 })
 
