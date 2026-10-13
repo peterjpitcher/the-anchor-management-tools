@@ -106,6 +106,60 @@ describe('a booking contract', () => {
     }
   })
 
+  it.each(['signed_paper', 'written_confirmation'])(
+    'is withdrawn once staff have recorded it as accepted another way (%s)',
+    async (method) => {
+      useDb({
+        private_bookings: [{ id: BOOKING, status: 'confirmed', waiver_status: 'not_required', contract_acceptance_method: method }],
+      })
+
+      expect(await findSubjectClosure(contract())).toBe('The contract was accepted another way')
+    }
+  )
+
+  it('still stands after the deposit is paid: a customer who has paid may still sign', async () => {
+    useDb({
+      private_bookings: [
+        {
+          id: BOOKING,
+          status: 'confirmed',
+          waiver_status: 'not_required',
+          contract_accepted_at: '2026-10-02T08:00:00.000Z',
+          contract_acceptance_method: 'deposit_payment',
+        },
+      ],
+    })
+
+    expect(await findSubjectClosure(contract())).toBeNull()
+  })
+
+  it('still stands for any other recorded method, and for none', async () => {
+    for (const method of ['e_signature', 'something_else', null, undefined]) {
+      useDb({ private_bookings: [{ id: BOOKING, status: 'confirmed', waiver_status: 'not_required', contract_acceptance_method: method }] })
+      expect(await findSubjectClosure(contract()), String(method)).toBeNull()
+    }
+  })
+
+  it('gives the cancellation as the reason when the booking is cancelled as well', async () => {
+    useDb({
+      private_bookings: [{ id: BOOKING, status: 'cancelled', waiver_status: 'not_required', contract_acceptance_method: 'signed_paper' }],
+    })
+
+    expect(await findSubjectClosure(contract())).toBe('The booking was cancelled')
+  })
+
+  it('does not withdraw the food agreement or a supplier confirmation because the contract was accepted on paper', async () => {
+    for (const method of ['signed_paper', 'written_confirmation']) {
+      useDb({
+        private_bookings: [
+          { id: BOOKING, status: 'confirmed', outside_food: true, waiver_status: 'sent', contract_acceptance_method: method },
+        ],
+      })
+      expect(await findSubjectClosure(waiver()), method).toBeNull()
+      expect(await findSubjectClosure(supplierConfirmation()), method).toBeNull()
+    }
+  })
+
   it('looks at its own booking, not at another one', async () => {
     useDb({
       private_bookings: [
