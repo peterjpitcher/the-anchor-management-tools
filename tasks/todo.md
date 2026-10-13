@@ -984,3 +984,14 @@ Branch `fix/self-host-fonts`. The build failed three times on Vercel (25 and 27 
 - [x] Cold `npm run build` passed with the network available and again with all network access denied (`sandbox-exec`). The same blocked build of `main` fails in `next/font`, naming both `layout.tsx` and `guest.ts`.
 - [x] `/auth/login`, `/privacy` and a specimen of every weight: computed font-family identical to the live site and screenshots identical pixel for pixel.
 - [ ] Owner's yes to push, then merge and confirm the deployment.
+
+## Private booking contract names the trader one way, 13 October 2026
+
+Branch `claude/inspiring-austin-9651e8`, from `origin/main` at e6343e98. The contract footer said "Orange Jelly Limited trading as The Anchor" while the agreement text, the venue signature card and the definitions clause said "... trading as The Anchor Pub". The naming rule is website SSOT §1.
+
+- [x] `src/lib/contract-template.ts`: the default company name now reads "The Anchor", and the two "agree to engage" paragraphs, the signature card and the definitions clause read `company.name`, so the document can only name the trader one way. Nothing else in the contract changed.
+- [x] Swept `src/` for "The Anchor Pub". Fixed the PayPal pay screen default in `src/lib/paypal.ts` (parking is the one caller that relies on it). Left: the two Google Calendar locations (staff calendar; the second sits in a function nothing calls), the schema name in `src/lib/api/schema.ts` and a page title test fixture (both allowed by SSOT §1), the house style rule that flags the phrase, and a short link name test.
+- [x] Tests: a "trading name" block in `src/lib/__tests__/contract-template.test.ts` and `src/lib/__tests__/paypal-checkout-brand.test.ts`. Seven of them fail against the old wording.
+- [x] Rendered the contract PDF locally with the live inputs and print options, with and without a deposit: 6 pages each, no "The Anchor Pub", no undefined, NaN or Invalid Date.
+- [x] Gates on Node 20: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,279 files, 13,507 tests each) and the build.
+- [ ] Owner's yes to push and open the PR.
