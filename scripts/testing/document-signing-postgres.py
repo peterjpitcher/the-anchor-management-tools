@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Test the document signing migration in a disposable local Postgres.
+"""Test the document signing migrations in a disposable local Postgres.
 
 Applies supabase/migrations/20261013080854_document_signing_foundation.sql to an empty cluster
 that has only the Supabase roles and a stand-in storage.buckets table, then checks the rules
 that matter: a signature needs the document to have been opened, two people signing at the same
 moment complete the document exactly once, a refusal stops the document, the evidence trail
-cannot be changed, and nothing is granted to anon or authenticated.
+cannot be changed, and nothing is granted to anon or authenticated. It then applies the template
+drafts and the deposit deduction agreement kind (20261013170000) and checks those too.
 
 Synthetic data only, on a Unix socket with no network listener.
 """
@@ -19,10 +20,13 @@ ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261013080854_document_signing_foundation.sql'
 DRAFTS = ROOT / 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'
+DEDUCTION_KIND = ROOT / 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'
 
 DOC_A = '00000000-0000-0000-0000-0000000000a1'
 DOC_B = '00000000-0000-0000-0000-0000000000b1'
 DOC_C = '00000000-0000-0000-0000-0000000000c1'
+DOC_D = '00000000-0000-0000-0000-0000000000d1'
+BOOKING = '00000000-0000-0000-0000-00000000bbbb'
 SUBJECT = '00000000-0000-0000-0000-00000000aaaa'
 SHA = 'a' * 64
 
@@ -171,6 +175,65 @@ def main():
             assert sql("SELECT body || '|' || is_active || '|' || version FROM signing_templates WHERE slug = 'allergens'") == 'Owner wording, long enough to count as real wording.|true|2'
             assert sql('SELECT count(*) FROM signing_templates') == '12'
             print('PASS twelve draft templates arrive switched off and marked as drafts; re-applying never overwrites edited wording')
+
+            # The deposit deduction agreement kind (20261013170000).
+            def kind_document(kind, doc_id='gen_random_uuid()'):
+                identifier = doc_id if doc_id.endswith('()') else f"'{doc_id}'"
+                return f"""INSERT INTO signing_documents (id, kind, mode, brand, title, subject_type, subject_id, series_key, version, source_pdf_path, source_sha256, expires_at)
+                           VALUES ({identifier}, '{kind}', 'sign', 'guest', 'Deposit deduction agreement', 'private_booking', '{BOOKING}', 'deduction:{kind}', 1, 'p/{kind}.pdf', '{SHA}', now() + interval '30 days');"""
+
+            def kind_template(kind, slug):
+                return f"INSERT INTO signing_templates (kind, slug, title, body) VALUES ('{kind}', '{slug}', 'Test', 'Test wording.');"
+
+            def kind_checks(table):
+                return sql(f"""SELECT count(*) FROM pg_constraint
+                               WHERE conrelid = 'public.{table}'::regclass AND contype = 'c' AND conname = '{table}_kind_check' AND convalidated""")
+
+            # Before it is applied, the database refuses the new kind on both tables.
+            fails(kind_document('deposit_deduction_agreement'), 'signing_documents_kind_check')
+            fails(kind_template('deposit_deduction_agreement', 'too-early'), 'signing_templates_kind_check')
+            print('PASS before the migration the new kind is refused on documents and on templates')
+
+            deduction_kind = DEDUCTION_KIND.read_text()
+            active_before = sql('SELECT count(*) FROM signing_templates WHERE is_active')
+            sql(deduction_kind)
+            assert kind_checks('signing_documents') == '1' and kind_checks('signing_templates') == '1'
+            sql(kind_document('deposit_deduction_agreement', DOC_D))
+            assert sql(f"SELECT kind FROM signing_documents WHERE id = '{DOC_D}'") == 'deposit_deduction_agreement'
+            sql(kind_template('deposit_deduction_agreement', 'second-of-its-kind'))
+            sql("DELETE FROM signing_templates WHERE slug = 'second-of-its-kind'")
+            print('PASS after the migration the new kind is accepted on documents and on templates')
+
+            fails(kind_document('made_up_kind'), 'signing_documents_kind_check')
+            fails(kind_template('made_up_kind', 'made-up'), 'signing_templates_kind_check')
+            # A kind that has a generator and no template is still refused as a template.
+            fails(kind_template('private_booking_contract', 'no-such-template'), 'signing_templates_kind_check')
+            # Every kind that was allowed before still is.
+            for kind in ['employment_agreement', 'terms_variation', 'policy_acknowledgement', 'deduction_consent', 'working_time_opt_out', 'guardian_consent',
+                         'job_offer', 'private_booking_contract', 'private_booking_waiver', 'quote_acceptance', 'client_agreement', 'supplier_confirmation']:
+                sql('BEGIN; ' + kind_document(kind) + ' ROLLBACK;')
+            print('PASS an unknown kind is still refused on both tables, and the twelve earlier kinds are still accepted')
+
+            row = "kind || '|' || title || '|' || is_active || '|' || version || '|' || (activated_at IS NULL)"
+            assert sql(f"SELECT {row} FROM signing_templates WHERE slug = 'deposit-deduction-agreement'") == 'deposit_deduction_agreement|Deposit deduction agreement|false|1|true'
+            assert sql("SELECT (length(body) - length(replace(body, '[[TO CONFIRM:', ''))) / length('[[TO CONFIRM:') FROM signing_templates WHERE slug = 'deposit-deduction-agreement'") == '2'
+            assert sql('SELECT count(*) FROM signing_templates') == '13'
+            # It switched nothing on: the only active template is the one switched on by hand above.
+            assert sql('SELECT count(*) FROM signing_templates WHERE is_active') == active_before == '1'
+            print('PASS the deposit deduction template exists, switched off, with its two gaps still to confirm')
+
+            # Running it twice is harmless, and never overwrites wording the owner has since edited.
+            sql(deduction_kind)
+            assert sql('SELECT count(*) FROM signing_templates') == '13'
+            assert sql("SELECT count(*) FROM signing_templates WHERE slug = 'deposit-deduction-agreement' AND NOT is_active") == '1'
+            sql("UPDATE signing_templates SET body = 'Owner wording for a deduction, long enough to count.', is_active = true, version = 2 WHERE slug = 'deposit-deduction-agreement'")
+            sql(deduction_kind)
+            assert sql("SELECT body || '|' || is_active || '|' || version FROM signing_templates WHERE slug = 'deposit-deduction-agreement'") == 'Owner wording for a deduction, long enough to count.|true|2'
+            assert kind_checks('signing_documents') == '1' and kind_checks('signing_templates') == '1'
+            assert sql(f"SELECT count(*) FROM signing_documents WHERE id = '{DOC_D}'") == '1'
+            fails(kind_document('made_up_kind'), 'signing_documents_kind_check')
+            fails(kind_template('made_up_kind', 'made-up'), 'signing_templates_kind_check')
+            print('PASS running the migration again changes nothing: one template row, edited wording kept, both constraints still in force')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(work / 'db'), '-m', 'immediate', '-w', 'stop'], check=True, capture_output=True)
 

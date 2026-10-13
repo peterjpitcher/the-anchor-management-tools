@@ -1,6 +1,7 @@
 /**
  * Shared types for document signing. The lists here mirror the CHECK constraints in
- * supabase/migrations/20261013080854_document_signing_foundation.sql; the guard test
+ * supabase/migrations/20261013080854_document_signing_foundation.sql, with the kinds added since
+ * (20261013170000_signing_deposit_deduction_agreement.sql); the guard test
  * tests/guards/signing.test.ts fails if the two drift apart.
  */
 
@@ -17,6 +18,7 @@ export const SIGNING_KINDS = [
   'quote_acceptance',
   'client_agreement',
   'supplier_confirmation',
+  'deposit_deduction_agreement',
 ] as const
 export type SigningKind = (typeof SIGNING_KINDS)[number]
 
@@ -100,6 +102,7 @@ export const SIGNING_TEMPLATE_KINDS = [
   'job_offer',
   'client_agreement',
   'supplier_confirmation',
+  'deposit_deduction_agreement',
 ] as const satisfies readonly SigningKind[]
 export type SigningTemplateKind = (typeof SIGNING_TEMPLATE_KINDS)[number]
 
