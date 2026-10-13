@@ -36,6 +36,19 @@ import {
 const ROOT = process.cwd()
 const FOUNDATION = readFileSync(join(ROOT, 'supabase/migrations/20261013080854_document_signing_foundation.sql'), 'utf8')
 const DRAFTS = readFileSync(join(ROOT, 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'), 'utf8')
+/**
+ * Kinds added since the foundation. Each such migration replaces the two kind CHECKs with a
+ * longer list and seeds its own draft wording, so the guard reads it beside the first two.
+ */
+const KIND_ADDITIONS = [
+  readFileSync(join(ROOT, 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'), 'utf8'),
+]
+/** Every migration that seeds draft wording. */
+const DRAFT_SOURCES = [DRAFTS, ...KIND_ADDITIONS]
+
+function withoutComments(sql: string): string {
+  return sql.replace(/^\s*--.*$/gm, '')
+}
 
 /** The values of the CHECK on `column` in the CREATE TABLE of `table`. */
 function checkValues(table: string, column: string): string[] {
@@ -45,6 +58,33 @@ function checkValues(table: string, column: string): string[] {
   const match = (tableSql as string).match(pattern)
   expect(match, `CHECK on ${table}.${column} not found`).toBeTruthy()
   return Array.from((match as RegExpMatchArray)[1].matchAll(/'([a-z0-9_]+)'::text/g)).map((m) => m[1])
+}
+
+/**
+ * The kinds `table` allows today: the list in its CREATE TABLE, unless a later migration has
+ * replaced the constraint, in which case the last replacement. A replacement must drop and add
+ * the constraint in one statement (so there is never a moment without it) and may only add to
+ * the list it replaces.
+ */
+function kindCheckValues(table: string): string[] {
+  let values = checkValues(table, 'kind')
+  const pattern = new RegExp(
+    `ALTER TABLE public\\.${table}\\s+DROP CONSTRAINT IF EXISTS ${table}_kind_check,\\s+ADD CONSTRAINT ${table}_kind_check CHECK \\(kind = ANY \\(ARRAY\\[([^\\]]*)\\]\\)\\);`
+  )
+  for (const addition of KIND_ADDITIONS) {
+    const statements = withoutComments(addition)
+    // Every statement that touches the constraint is the one-statement replacement.
+    const mentions = statements.split(';').filter((statement) => statement.includes(`${table}_kind_check`))
+    const match = statements.match(pattern)
+    if (mentions.length === 0) continue
+    expect(mentions.length, `${table}_kind_check must be replaced in exactly one statement`).toBe(1)
+    expect(match, `${table}_kind_check is not replaced in one DROP and ADD statement`).toBeTruthy()
+    const replaced = Array.from((match as RegExpMatchArray)[1].matchAll(/'([a-z0-9_]+)'::text/g)).map((m) => m[1])
+    expect(replaced.slice(0, values.length), `${table}_kind_check dropped or reordered a kind`).toEqual(values)
+    expect(replaced.length, `${table}_kind_check added nothing`).toBeGreaterThan(values.length)
+    values = replaced
+  }
+  return values
 }
 
 function sorted(values: readonly string[]): string[] {
@@ -59,22 +99,22 @@ interface DraftTemplate {
 }
 
 function draftTemplates(): DraftTemplate[] {
-  return Array.from(DRAFTS.matchAll(/\('([a-z_]+)', '([a-z0-9-]+)', '([^']+)', \$body\$([\s\S]*?)\$body\$\)/g)).map((m) => ({
-    kind: m[1] as SigningTemplateKind,
-    slug: m[2],
-    title: m[3],
-    body: m[4],
-  }))
+  return DRAFT_SOURCES.flatMap((source) =>
+    Array.from(source.matchAll(/\('([a-z_]+)', '([a-z0-9-]+)', '([^']+)', \$body\$([\s\S]*?)\$body\$\)/g)).map((m) => ({
+      kind: m[1] as SigningTemplateKind,
+      slug: m[2],
+      title: m[3],
+      body: m[4],
+    }))
+  )
 }
 
 describe('signing: code and database agree', () => {
   it.each([
-    ['signing_documents', 'kind', SIGNING_KINDS],
     ['signing_documents', 'mode', SIGNING_MODES],
     ['signing_documents', 'brand', SIGNING_BRANDS],
     ['signing_documents', 'subject_type', SIGNING_SUBJECT_TYPES],
     ['signing_documents', 'status', SIGNING_DOCUMENT_STATUSES],
-    ['signing_templates', 'kind', SIGNING_TEMPLATE_KINDS],
     ['signing_parties', 'role', SIGNING_PARTY_ROLES],
     ['signing_parties', 'status', SIGNING_PARTY_STATUSES],
     ['signing_parties', 'method', SIGNING_METHODS],
@@ -82,6 +122,30 @@ describe('signing: code and database agree', () => {
     ['signing_events', 'event', SIGNING_EVENTS],
   ] as const)('%s.%s matches its list in types.ts', (table, column, values) => {
     expect(sorted(checkValues(table, column))).toEqual(sorted(values))
+  })
+
+  it.each([
+    ['signing_documents', SIGNING_KINDS],
+    ['signing_templates', SIGNING_TEMPLATE_KINDS],
+  ] as const)('%s.kind matches its list in types.ts, counting the kinds added since the foundation', (table, values) => {
+    expect(sorted(kindCheckValues(table))).toEqual(sorted(values))
+  })
+
+  it('holds thirteen kinds, nine of them with wording in a template', () => {
+    expect(SIGNING_KINDS).toHaveLength(13)
+    expect(SIGNING_TEMPLATE_KINDS).toHaveLength(9)
+    expect(kindCheckValues('signing_documents')).toHaveLength(13)
+    expect(kindCheckValues('signing_templates')).toHaveLength(9)
+  })
+
+  it('adds a kind without opening anything: no table, grant, function or policy in a later migration', () => {
+    for (const addition of KIND_ADDITIONS) {
+      const statements = withoutComments(addition)
+      expect(statements).not.toMatch(/\b(CREATE|DROP)\s+(TABLE|FUNCTION|POLICY|TRIGGER|VIEW|INDEX)\b/i)
+      expect(statements).not.toMatch(/\b(GRANT|REVOKE)\b/i)
+      expect(statements).not.toMatch(/SECURITY DEFINER/i)
+      expect(statements).not.toMatch(/\b(UPDATE|DELETE)\b/i)
+    }
   })
 
   it('keeps every signing table closed to anon and authenticated', () => {
@@ -125,9 +189,11 @@ describe('signing: every kind is complete', () => {
 
   it('ships every draft switched off, marked as a draft, and using only fields its kind is given', () => {
     // is_active defaults to false, and the seed must not name the column at all.
-    expect(DRAFTS).toContain('INSERT INTO public.signing_templates (kind, slug, title, body) VALUES')
-    expect(DRAFTS.replace(/^\s*--.*$/gm, '')).not.toMatch(/is_active/i)
-    expect(DRAFTS).toContain('ON CONFLICT (slug) DO NOTHING')
+    for (const source of DRAFT_SOURCES) {
+      expect(source).toContain('INSERT INTO public.signing_templates (kind, slug, title, body) VALUES')
+      expect(withoutComments(source)).not.toMatch(/is_active/i)
+      expect(source).toContain('ON CONFLICT (slug) DO NOTHING')
+    }
     for (const draft of draftTemplates()) {
       expect(findDraftMarkers(draft.body).length, `${draft.slug} has no [[TO CONFIRM]] marker, so it could be switched on unread`).toBeGreaterThan(0)
       expect(unknownMergeFields(draft.kind, findMergeFields(`${draft.title}\n${draft.body}`)), `${draft.slug} uses a field nobody fills in`).toEqual([])

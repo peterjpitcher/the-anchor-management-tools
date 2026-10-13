@@ -65,7 +65,7 @@ export function bookingSignerParty(booking: BookingForSigning): SigningPartyInpu
   }
 }
 
-function eventLabel(booking: BookingForSigning): string {
+export function eventLabel(booking: BookingForSigning): string {
   const what = booking.event_type?.trim() || 'your event'
   if (booking.date_tbd || !booking.event_date) return `${what} (date to be confirmed)`
   return `${what} on ${formatDateInLondon(booking.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`

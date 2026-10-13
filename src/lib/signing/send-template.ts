@@ -25,6 +25,11 @@ export async function sendTemplateSigningRequest(input: {
   parties: SigningPartyInput[]
   user: SigningStaffUser
   summary?: string | null
+  /**
+   * Added to the request's title after a comma, to tell apart two requests of one kind on the
+   * same record ("Deposit deduction agreement, £50.00"). The document's own heading is unchanged.
+   */
+  titleSuffix?: string | null
   subtitle?: string | null
   seriesKey?: string
   context?: Record<string, unknown>
@@ -52,7 +57,7 @@ export async function sendTemplateSigningRequest(input: {
   return createSigningRequest({
     kind: input.kind,
     subjectId: input.subjectId,
-    title: rendered.title,
+    title: input.titleSuffix?.trim() ? `${rendered.title}, ${input.titleSuffix.trim()}` : rendered.title,
     summary: input.summary ?? null,
     pdf: prepared.pdf,
     render: prepared.render,

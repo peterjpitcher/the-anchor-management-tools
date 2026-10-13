@@ -44,8 +44,38 @@ export async function findSubjectClosure(
     return null
   }
 
+  /**
+   * A deduction agreement stands while its deduction is still open. A cancelled booking does not
+   * close it: a deduction can follow a cancelled event (SOP section 25).
+   */
+  const deductionClosure = async (bookingId: string, deductionId: unknown): Promise<string | null> => {
+    const { data: booking, error: bookingError } = await admin
+      .from('private_bookings')
+      .select('id')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (bookingError) throw new Error(`Could not read the booking: ${bookingError.message}`)
+    if (!booking) return 'The booking no longer exists'
+    // A request with no deduction named has nothing left to agree to.
+    if (typeof deductionId !== 'string') return 'The deduction no longer exists'
+    const { data, error } = await admin
+      .from('private_booking_deductions')
+      .select('status')
+      .eq('id', deductionId)
+      .eq('booking_id', bookingId)
+      .maybeSingle()
+    if (error) throw new Error(`Could not read the deduction: ${error.message}`)
+    if (!data) return 'The deduction no longer exists'
+    if (data.status === 'rejected') return 'The deduction was rejected'
+    if (data.status === 'applied') return 'The deduction has been applied'
+    return null
+  }
+
   switch (document.subject_type) {
     case 'private_booking':
+      if (document.kind === 'deposit_deduction_agreement') {
+        return deductionClosure(document.subject_id, document.context.deduction_id)
+      }
       return bookingClosure(
         document.subject_id,
         document.kind === 'private_booking_waiver',

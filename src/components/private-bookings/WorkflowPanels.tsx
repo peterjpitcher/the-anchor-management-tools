@@ -55,6 +55,8 @@ import {
   WAIVER_STATUS_TONE,
   type PrivateBookingBadgeTone,
 } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
+import { getDeductionAgreements, sendDeductionForAgreement, type DeductionAgreementState } from '@/app/actions/signing-deductions'
+import { SIGNING_DOCUMENT_STATUS_LABEL, SIGNING_DOCUMENT_STATUS_TONE } from '@/components/features/signing/status-ui'
 import {
   listDeductions,
   proposeDeduction,
@@ -809,6 +811,25 @@ export function SuppliersPanel({
 // 5. Deductions panel (post-event, SOP §25)
 // ---------------------------------------------------------------------------
 
+/** What staff are told beside the status of a deduction's latest request for agreement. */
+function describeDeductionAgreement(agreement: DeductionAgreementState): string {
+  switch (agreement.status) {
+    case 'sent':
+    case 'part_signed':
+      return `Sent to the customer ${formatDateTime12Hour(agreement.sentAt)}`
+    case 'completed':
+      return agreement.completedAt ? `The customer agreed ${formatDateTime12Hour(agreement.completedAt)}` : 'The customer agreed'
+    case 'declined':
+      return agreement.declineReason ? `Their reason: ${agreement.declineReason}` : 'The customer gave no reason'
+    case 'voided':
+      return agreement.withdrawnReason ? `Reason: ${agreement.withdrawnReason}` : 'The request was withdrawn'
+    case 'expired':
+      return `Not answered by ${formatDateTime12Hour(agreement.expiresAt)}`
+    case 'superseded':
+      return 'A newer request replaced this one'
+  }
+}
+
 export function DeductionsPanel({
   bookingId,
   canManage,
@@ -829,16 +850,31 @@ export function DeductionsPanel({
   const [busyId, setBusyId] = useState<string | null>(null)
   // Rejecting is a final GM decision, so the red button confirms first.
   const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null)
+  // The latest request for the customer's agreement on each deduction, by deduction id.
+  const [agreements, setAgreements] = useState<Record<string, DeductionAgreementState>>({})
+  const [canSendForAgreement, setCanSendForAgreement] = useState(false)
+  const [agreementsError, setAgreementsError] = useState<string | null>(null)
+  const [sendingId, setSendingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const result = await listDeductions(bookingId)
+    const [result, agreementResult] = await Promise.all([listDeductions(bookingId), getDeductionAgreements(bookingId)])
     if (result.error) {
       toast.error(result.error)
       setLoadError(result.error)
     } else {
       setLoadError(null)
       setDeductions(result.data ?? [])
+    }
+    // A failed read says so: it must not look as though nothing was ever sent.
+    if (agreementResult.error || !agreementResult.data) {
+      setAgreementsError(agreementResult.error ?? 'Something went wrong.')
+      setAgreements({})
+      setCanSendForAgreement(false)
+    } else {
+      setAgreementsError(null)
+      setAgreements(Object.fromEntries(agreementResult.data.agreements.map((agreement) => [agreement.deductionId, agreement])))
+      setCanSendForAgreement(agreementResult.data.canSend)
     }
     setLoading(false)
   }, [bookingId])
@@ -900,6 +936,22 @@ export function DeductionsPanel({
     await load()
   }
 
+  const handleSendForAgreement = async (deductionId: string) => {
+    setSendingId(deductionId)
+    const result = await sendDeductionForAgreement({ deductionId })
+    setSendingId(null)
+    if (result.error || !result.data) {
+      toast.error(result.error ?? 'Could not send the deduction to the customer.')
+      return
+    }
+    if (result.data.deliveries.some((delivery) => delivery.email_status === 'sent')) {
+      toast.success('Sent to the customer to agree')
+    } else {
+      toast.error('The request was created, but the email did not send. Use "Send New Link" or "Sign in Person" under Signatures.')
+    }
+    await load()
+  }
+
   if (!canManage && deductions.length === 0 && !loading) {
     return null
   }
@@ -911,6 +963,10 @@ export function DeductionsPanel({
         <p className="text-xs text-text-muted">
           Records the deduction decision only (SOP §25). Money is moved via the existing refund flow, never here.
         </p>
+
+        {!loading && !loadError && deductions.length > 0 && agreementsError && (
+          <Alert tone="warning">{`The customer agreement records could not be loaded: ${agreementsError}`}</Alert>
+        )}
 
         {loading ? (
           <PageLoading inline label="Loading deductions…" />
@@ -930,6 +986,9 @@ export function DeductionsPanel({
                 deduction.status === 'approved' ||
                 deduction.status === 'rejected' ||
                 deduction.status === 'applied'
+              const agreement = agreements[deduction.id]
+              // Offered while the deduction is open, until the customer has signed it.
+              const offerAgreement = !decided && canSendForAgreement && agreement?.status !== 'completed'
               return (
                 <li key={deduction.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
@@ -944,6 +1003,31 @@ export function DeductionsPanel({
                     </div>
                     <Badge tone={DEDUCTION_STATUS_TONE[deduction.status]}>{humanise(deduction.status)}</Badge>
                   </div>
+
+                  {agreement && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                      <span>Customer agreement:</span>
+                      <Badge tone={SIGNING_DOCUMENT_STATUS_TONE[agreement.status]}>
+                        {SIGNING_DOCUMENT_STATUS_LABEL[agreement.status]}
+                      </Badge>
+                      <span className="whitespace-pre-wrap">{describeDeductionAgreement(agreement)}</span>
+                    </div>
+                  )}
+
+                  {offerAgreement && (
+                    <div className="mt-3">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleSendForAgreement(deduction.id)}
+                        loading={sendingId === deduction.id}
+                        disabled={sendingId !== null}
+                      >
+                        Send to Customer for Agreement
+                      </Button>
+                    </div>
+                  )}
 
                   {!decided && canManage && (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">

@@ -185,6 +185,21 @@ export const SIGNING_KIND_DEFINITIONS: Record<SigningKind, SigningKindDefinition
     sendPermission: { module: 'private_bookings', action: 'manage' },
     viewPermission: { module: 'private_bookings', action: 'view' },
   },
+  deposit_deduction_agreement: {
+    kind: 'deposit_deduction_agreement',
+    label: 'Deposit deduction agreement',
+    mode: 'sign',
+    brand: 'guest',
+    subjectType: 'private_booking',
+    signerRoles: ['customer'],
+    // The customer agrees to a proposed deduction (SOP section 25). The General Manager still
+    // decides it: signing approves nothing and moves no money.
+    companySigns: false,
+    source: 'template',
+    // The same permissions as proposing a deduction and listing them (privateBookingWorkflow.ts).
+    sendPermission: { module: 'private_bookings', action: 'manage_deposits' },
+    viewPermission: { module: 'private_bookings', action: 'view' },
+  },
 }
 
 export function getSigningKind(kind: SigningKind): SigningKindDefinition {
