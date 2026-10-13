@@ -38,7 +38,7 @@ const SUB_LABEL_CLASS = 'font-anchor-body text-guest-body text-guest-text-strong
 const UL_CLASS = 'flex list-disc flex-col gap-guest-2xs pl-5 font-anchor-body text-guest-lead text-guest-text'
 
 export default function PrivacyPolicy() {
-  const lastUpdated = new Date('2026-10-12').toLocaleDateString('en-GB', {
+  const lastUpdated = new Date('2026-10-13').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -131,6 +131,10 @@ export default function PrivacyPolicy() {
           <li><strong>Customer data:</strong> 2 years after last interaction</li>
           <li><strong>Booking records:</strong> 7 years for tax purposes</li>
           <li><strong>Employee records:</strong> 7 years after employment ends</li>
+          <li>
+            <strong>Signed documents and their signing records:</strong> 7 years after the employment, booking or
+            agreement they belong to ends
+          </li>
           <li><strong>Marketing consent:</strong> Until withdrawn</li>
           <li><strong>Audit logs:</strong> 7 years for compliance</li>
           <li><strong>Messages:</strong> 2 years</li>
