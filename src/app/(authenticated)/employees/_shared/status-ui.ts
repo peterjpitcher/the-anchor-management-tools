@@ -120,3 +120,20 @@ export function auditEntryIconClasses(entry: { kind: 'note' } | { kind: 'audit';
   if (operation.includes('update')) return 'bg-info-soft text-info-fg'
   return 'bg-surface-hover text-text'
 }
+
+/** Where a member of staff is with the current version of a policy, on the Policies page. */
+export const POLICY_STATE_LABEL: Readonly<Record<'confirmed' | 'waiting' | 'declined' | 'outdated' | 'not_sent', string>> = {
+  confirmed: 'Confirmed',
+  waiting: 'Waiting',
+  declined: 'Declined',
+  outdated: 'Older version',
+  not_sent: 'Not sent',
+}
+
+export const POLICY_STATE_TONE: Readonly<Record<'confirmed' | 'waiting' | 'declined' | 'outdated' | 'not_sent', EmployeeBadgeTone>> = {
+  confirmed: 'success',
+  waiting: 'warning',
+  declined: 'danger',
+  outdated: 'warning',
+  not_sent: 'neutral',
+}

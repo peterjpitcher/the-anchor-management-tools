@@ -27,6 +27,7 @@ import {
 
 import { usePermissions } from '@/contexts/PermissionContext'
 import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
+import { QuoteSigningPanel } from '@/components/features/signing/CommercialSigningPanels'
 
 function formatCurrency(value: number | null | undefined): string {
   const amount = Number(value ?? 0)
@@ -440,6 +441,16 @@ export default function QuoteDetailClient({ initialQuote, emailConfigured }: Quo
         </div>
 
         <div className="space-y-6">
+          {/* Online acceptance, through the shared signing feature. Accepting marks the quote Accepted. */}
+          <QuoteSigningPanel
+            quoteId={quote.id}
+            quoteNumber={quote.quote_number}
+            canSendNow={quote.status === 'draft' || quote.status === 'sent'}
+            canSend={canEdit}
+            defaultSignerName={quote.vendor?.contact_name ?? null}
+            defaultSignerEmail={quote.vendor?.email ?? null}
+            onChanged={() => router.refresh()}
+          />
           <Card>
             <CardHeader title="Quote Status" />
             <CardBody className="space-y-4">

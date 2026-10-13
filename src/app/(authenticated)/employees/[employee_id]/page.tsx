@@ -29,8 +29,13 @@ import { getEmployeeLeaveDays, getLeaveRequests } from '@/app/actions/leave'
 import { getRotaSettings } from '@/app/actions/rota-settings'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getEmployeeReliabilityData } from '@/services/employee-reliability'
+import { EmployeeSigningTab } from '@/components/features/signing/EmployeeSigningTab'
+import { getSigningDocumentsForSubject } from '@/app/actions/signing'
 
 export const dynamic = 'force-dynamic'
+// Sending a document for signature renders its PDF in a headless browser, in a server action
+// that runs on this page's function. The default time limit is too tight for a cold start.
+export const maxDuration = 60
 
 interface EmployeeDetailPageProps {
   params: Promise<{
@@ -106,7 +111,10 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   // Resolve current rate for display (today's date in London timezone)
   const today = getTodayIsoDate()
-  const currentRate = await getHourlyRate(employeeId, today)
+  const [currentRate, signingResult] = await Promise.all([
+    getHourlyRate(employeeId, today),
+    getSigningDocumentsForSubject('employee', employeeId),
+  ])
 
   const attachmentCategoryMap = attachmentCategories.reduce<Record<string, string>>((acc, category) => {
     acc[category.category_id] = category.category_name
@@ -238,6 +246,20 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         <OnboardingChecklistTab
           employeeId={employee.employee_id}
           canEdit={permissions.canEdit}
+        />
+      )
+    },
+    {
+      key: 'signing',
+      label: 'Signing',
+      content: (
+        <EmployeeSigningTab
+          employeeId={employee.employee_id}
+          isUnder18={typeof age === 'number' ? age < 18 : null}
+          hasEmail={Boolean(employee.email_address)}
+          documents={signingResult.data ?? []}
+          canSend={permissions.canEdit}
+          loadError={signingResult.error ?? null}
         />
       )
     },

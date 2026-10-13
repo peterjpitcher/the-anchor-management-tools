@@ -94,6 +94,28 @@ describe('contract email deposit wording', () => {
     expect(html).not.toContain('We received your')
   })
 
+  it('carries the link to sign online, and keeps that link out of the stored copy', async () => {
+    const token = 'A'.repeat(43)
+    const signingUrl = `https://management.example.test/sign/${token}`
+    await sendContractEmailToCustomer(booking({ deposit_paid_date: null }), { ...contract, signingUrl })
+
+    const sent = mockedSendEmail.mock.calls[0][0]
+    expect(String(sent.html)).toContain(signingUrl)
+    expect(String(sent.html)).toContain('Read and sign online')
+    expect(String(sent.text)).toContain(signingUrl)
+    // The email log keeps the body of every email. Whoever can read it must not get a working link.
+    expect(sent.logRedactions).toEqual([token])
+    // Paying the deposit still accepts the terms, and the email still says so.
+    expect(String(sent.html)).toContain('Paying the £250.00 booking and damage deposit confirms')
+  })
+
+  it('has no signing button and nothing to redact when there is no link', async () => {
+    await sendContractEmailToCustomer(booking({ deposit_paid_date: null }), contract)
+    const sent = mockedSendEmail.mock.calls[0][0]
+    expect(String(sent.html)).not.toContain('Read and sign online')
+    expect(sent.logRedactions).toEqual([])
+  })
+
   it('mentions no deposit at all when none is due', async () => {
     await sendContractEmailToCustomer(booking({ deposit_amount: 0, deposit_paid_date: null }), contract)
 

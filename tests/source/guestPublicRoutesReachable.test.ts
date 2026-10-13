@@ -23,6 +23,7 @@ const GUEST_REACHABLE_PREFIXES = [
   '/g',
   '/m',
   '/r',
+  '/sign',
 ]
 
 function readMiddleware(): string {

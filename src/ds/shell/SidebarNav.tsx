@@ -82,6 +82,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'employees', label: 'Employees', icon: 'user', href: '/employees', permission: { module: 'employees', action: 'view' } },
       { id: 'recruitment', label: 'Recruitment', icon: 'briefcase', href: '/recruitment', permission: { module: 'recruitment', action: 'view' } },
+      // Everything sent for signature, across staff, bookings, clients and suppliers. The page
+      // shows only the kinds each person may see; the link is offered to anyone who sees staff.
+      { id: 'signatures', label: 'Signatures', icon: 'fileText', href: '/signatures', permission: { module: 'employees', action: 'view' } },
       { id: 'rota', label: 'Rota', icon: 'clock', href: '/rota', permission: { module: 'rota', action: 'view' } },
       { id: 'checklists', label: 'Checklists', icon: 'check', href: '/checklists/manage', permission: { module: 'checklists', action: 'manage' } },
     ],

@@ -5,6 +5,9 @@ import { getEmailConfigStatus } from '@/app/actions/email'
 import QuoteDetailClient from './QuoteDetailClient'
 
 export const dynamic = 'force-dynamic'
+// Sending a document for signature renders its PDF in a headless browser, in a server action
+// that runs on this page's function. The default time limit is too tight for a cold start.
+export const maxDuration = 60
 
 interface Props {
   params: Promise<{ id: string }>

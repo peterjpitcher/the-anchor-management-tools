@@ -124,6 +124,8 @@ import {
   type PrivateBookingPaymentState,
 } from '../_shared/status-ui'
 import { PB_BACK_TO_LIST, PB_DETAIL_NAV, privateBookingContractHref } from '../_shared/nav'
+import { BookingSigningPanel } from '@/components/features/signing/BookingSigningPanel';
+import { BookingSuppliersPanel } from '@/components/features/signing/CommercialSigningPanels';
 
 // Status labels. Colours come from the shared private booking status map.
 const statusConfig: Record<BookingStatus, { label: string }> = {
@@ -2091,7 +2093,7 @@ export default function PrivateBookingDetailClient({
     try {
       const result = await sendBookingContract(bookingId);
       if (result.success) {
-        toast.success(`Contract v${result.version} sent to the customer`);
+        toast.success(`Contract v${result.version} sent to the customer to read and sign`);
         router.refresh();
       } else {
         toast.error(result.error || 'Failed to send contract');
@@ -3260,6 +3262,10 @@ export default function PrivateBookingDetailClient({
               sourceId={booking.id}
             />
           )}
+
+          {/* Signatures: where the contract and waiver have got to. Sent with Email Contract below. */}
+          <BookingSigningPanel bookingId={bookingId} refreshKey={booking.contract_sent_at ?? null} />
+          <BookingSuppliersPanel bookingId={bookingId} />
 
           {/* Quick Actions Card. Sending a message is the Messages tab, so it has no button here. */}
           <Card>

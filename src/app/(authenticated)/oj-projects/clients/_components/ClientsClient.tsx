@@ -66,6 +66,7 @@ import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { ojProjectsLayout } from '../../_shared/nav'
 import { OJ_MONEY_TEXT, ojActive, ojBalanceText, ojBalanceTone } from '../../_shared/status-ui'
+import { ClientAgreementPanel } from '@/components/features/signing/CommercialSigningPanels'
 
 /** This tab's page chrome: the same title, subtitle and tabs in every state. */
 const LAYOUT = ojProjectsLayout('clients')
@@ -1026,6 +1027,18 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                 )}
               </form>
             </Section>
+
+            {/* Agreements, sent and signed through the shared signing feature. */}
+            {drawerVendor ? (
+              <ClientAgreementPanel
+                key={drawerVendor.id}
+                vendorId={drawerVendor.id}
+                clientName={drawerVendor.name}
+                canSend={canEditClients}
+                defaultSignerName={drawerVendor.contact_name}
+                defaultSignerEmail={drawerVendor.email}
+              />
+            ) : null}
 
             {/* Recurring charges */}
             <Section

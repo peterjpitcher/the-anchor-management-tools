@@ -63,6 +63,7 @@ describe('the settings tiles', () => {
       '/settings/sms-failures',
       '/settings/audit-logs',
       '/settings/background-jobs',
+      '/settings/signing-templates',
       '/settings/gdpr',
     ]) {
       expect(shown).not.toContain(href)
@@ -91,6 +92,7 @@ describe('the settings tiles', () => {
         '/settings/api-keys',
         '/settings/audit-logs',
         '/settings/background-jobs',
+        '/settings/signing-templates',
         '/settings/gdpr',
         '/settings/maintenance',
         '/settings/design-system',
