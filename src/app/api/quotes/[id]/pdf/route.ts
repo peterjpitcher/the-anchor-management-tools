@@ -47,11 +47,6 @@ export async function GET(
     return new NextResponse('Quote not found', { status: 404 })
   }
 
-  const quoteRecord = quote as Record<string, unknown>
-  if ('deleted_at' in quoteRecord && quoteRecord.deleted_at) {
-    return new NextResponse('Quote not found', { status: 404 })
-  }
-
   try {
     // Generate PDF
     const pdfBuffer = await generateQuotePDF(quote)
