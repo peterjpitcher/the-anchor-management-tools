@@ -212,13 +212,14 @@ export default function EditPrivateBookingPage({
     : 'Private Booking'
 
   // One header for every state: the title stays put while the booking loads.
+  // Full width on purpose (no containerSize), the same as the New Booking form: the cards lay
+  // fields out up to three across, and the narrow form column squeezed them against the left edge.
   const layoutProps = {
     title: 'Edit Booking',
     subtitle: booking
       ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
       : undefined,
     backButton: { label: `Back to ${parentTitle}`, href: `/private-bookings/${id}` },
-    containerSize: 'md' as const,
   }
 
   if (loading) {
