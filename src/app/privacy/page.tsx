@@ -38,7 +38,7 @@ const SUB_LABEL_CLASS = 'font-anchor-body text-guest-body text-guest-text-strong
 const UL_CLASS = 'flex list-disc flex-col gap-guest-2xs pl-5 font-anchor-body text-guest-lead text-guest-text'
 
 export default function PrivacyPolicy() {
-  const lastUpdated = new Date('2024-12-21').toLocaleDateString('en-GB', {
+  const lastUpdated = new Date('2026-10-13').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -82,6 +82,11 @@ export default function PrivacyPolicy() {
           <li>IP address and device information</li>
           <li>Usage data and preferences</li>
           <li>Audit logs of system activities</li>
+          <li>
+            When you sign or confirm a document online: the date and time, the name you typed, your IP address,
+            your device and browser, and your approximate location (usually the nearest town), worked out from
+            your IP address. We keep this with the signed document as a record of who signed it
+          </li>
         </ul>
       </GuestSection>
 
@@ -126,6 +131,10 @@ export default function PrivacyPolicy() {
           <li><strong>Customer data:</strong> 2 years after last interaction</li>
           <li><strong>Booking records:</strong> 7 years for tax purposes</li>
           <li><strong>Employee records:</strong> 7 years after employment ends</li>
+          <li>
+            <strong>Signed documents and their signing records:</strong> 7 years after the employment, booking or
+            agreement they belong to ends
+          </li>
           <li><strong>Marketing consent:</strong> Until withdrawn</li>
           <li><strong>Audit logs:</strong> 7 years for compliance</li>
           <li><strong>Messages:</strong> 2 years</li>

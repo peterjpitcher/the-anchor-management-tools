@@ -99,6 +99,7 @@ import {
 } from '../_shared/status-ui'
 import { RECRUITMENT_LAYOUT } from '../_shared/layout'
 import { formatDateTimeInLondon, getTodayIsoDate } from '@/lib/dateUtils'
+import { RecruitmentOfferPanel } from '@/components/features/signing/RecruitmentOfferPanel'
 
 type Props = {
   initialData: any
@@ -2420,6 +2421,16 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       </details>
                       </Card>
                     </div>
+                  )}
+                  {/* The written offer, sent and signed through the shared signing feature. It
+                      appears once an offer has been decided, and stays for the record after. */}
+                  {selectedApplication && ['offered', 'hired'].includes(selectedApplicationStatus) && (
+                    <RecruitmentOfferPanel
+                      applicationId={selectedApplication.id}
+                      candidateName={candidateName(selectedApplication.candidate)}
+                      canSendNow={selectedApplicationStatus === 'offered'}
+                      canSend={permissions.canEdit}
+                    />
                   )}
                   {/* DS Modals rendered inside the drawer, so Headless UI stacks them as nested
                       dialogs (like the ConfirmDialog below). Their buttons sit in the footer and

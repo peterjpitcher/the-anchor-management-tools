@@ -8,4 +8,5 @@ import type { StandaloneNavItem } from '@/components/shells/StandaloneShellNav'
 export const PORTAL_NAV: StandaloneNavItem[] = [
   { label: 'My Shifts', href: '/portal/shifts' },
   { label: 'My Holiday', href: '/portal/leave' },
+  { label: 'My Documents', href: '/portal/documents' },
 ]

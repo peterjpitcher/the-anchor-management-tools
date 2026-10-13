@@ -10,7 +10,7 @@ describe('privacy policy page', () => {
     expect(container.querySelectorAll('main')).toHaveLength(1)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Privacy Policy')
     expect(screen.getByText('The Anchor')).toBeInTheDocument()
-    expect(screen.getByText('Last updated: 21 December 2024')).toBeInTheDocument()
+    expect(screen.getByText('Last updated: 13 October 2026')).toBeInTheDocument()
     expect(container.querySelector('[class*="public__"]')).toBeNull()
   })
 
