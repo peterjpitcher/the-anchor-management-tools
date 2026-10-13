@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatDateFull, formatTime12Hour, formatDateTime12Hour, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
+import { formatDateFull, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
+import { paperworkWarning } from "@/lib/private-bookings/paperwork";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
   DndContext,
@@ -2286,6 +2287,9 @@ export default function PrivateBookingDetailClient({
   }
 
   const isDateTbd = isBookingDateTbd(booking);
+  // Contract or food agreement still unsigned with the event 14 days away or less. A warning
+  // only: the signing panel lower down has the actions.
+  const paperwork = paperworkWarning({ ...booking, date_tbd: isDateTbd }, getTodayIsoDate());
   const internalNotesForDisplay = booking.internal_notes
     ? booking.internal_notes
         .split('\n')
@@ -2536,6 +2540,17 @@ export default function PrivateBookingDetailClient({
           title="Event date and time still to be confirmed"
         >
           Keep this booking in draft until the customer confirms the event details.
+        </Alert>
+      )}
+
+      {paperwork && (
+        <Alert tone="warning" title="Paperwork outstanding">
+          <p>{paperwork.timing}</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {paperwork.sentences.map((sentence) => (
+              <li key={sentence}>{sentence}</li>
+            ))}
+          </ul>
         </Alert>
       )}
 
