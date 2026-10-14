@@ -158,6 +158,9 @@ import {
   getPrivateBooking,
   extendBookingHold,
   applyBookingDiscount,
+  addBookingItem,
+  updateBookingItem,
+  deleteBookingItem,
   getBookingPortalLink,
   editPrivateBookingPayment,
   deletePrivateBookingPayment,
@@ -183,6 +186,9 @@ const mockedGetBookings = PrivateBookingService.getBookings as unknown as Mock
 const mockedGetBookingById = PrivateBookingService.getBookingById as unknown as Mock
 const mockedExtendHold = PrivateBookingService.extendHold as unknown as Mock
 const mockedApplyDiscount = PrivateBookingService.applyBookingDiscount as unknown as Mock
+const mockedAddItem = PrivateBookingService.addBookingItem as unknown as Mock
+const mockedUpdateItem = PrivateBookingService.updateBookingItem as unknown as Mock
+const mockedDeleteItem = PrivateBookingService.deleteBookingItem as unknown as Mock
 const mockedUpdateBalancePayment = updateBalancePayment as unknown as Mock
 const mockedDeleteBalancePayment = deleteBalancePayment as unknown as Mock
 const mockedUpdateDeposit = updateDeposit as unknown as Mock
@@ -952,7 +958,7 @@ describe('privateBookingActions', () => {
   // -------------------------------------------------------------------------
   describe('applyBookingDiscount', () => {
     it('should apply discount and audit-log on success', async () => {
-      mockedApplyDiscount.mockResolvedValue(undefined)
+      mockedApplyDiscount.mockResolvedValue({ success: true })
 
       const discountData = {
         discount_type: 'percent' as const,
@@ -1403,6 +1409,58 @@ describe('privateBookingActions', () => {
 
       expect(result).toHaveProperty('error')
       expect(mockedDeleteBalancePayment).not.toHaveBeenCalled()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Balance status warning: the change saved, but apply_balance_payment_status
+  // failed, so the action passes the service's warning through as a success.
+  // -------------------------------------------------------------------------
+  describe('balance status warning after a total change', () => {
+    const WARNING =
+      "The item was saved, but the booking's balance status did not update, so it may show the wrong amount still owed or the wrong paid-in-full status. Do not make the change again: tell the developer."
+
+    it('applyBookingDiscount passes the warning through with success', async () => {
+      mockedApplyDiscount.mockResolvedValue({ success: true, warning: WARNING })
+
+      const result = await applyBookingDiscount('booking-1', {
+        discount_type: 'percent',
+        discount_amount: 10,
+        discount_reason: 'Loyalty',
+      })
+
+      expect(result).toEqual({ success: true, warning: WARNING })
+    })
+
+    it('addBookingItem passes the warning through with success, and plain success without one', async () => {
+      const item = {
+        booking_id: 'booking-1',
+        item_type: 'other' as const,
+        description: 'Cake table',
+        quantity: 1,
+        unit_price: 40,
+      }
+      mockedAddItem.mockResolvedValue({ success: true, warning: WARNING })
+      await expect(addBookingItem(item)).resolves.toEqual({ success: true, warning: WARNING })
+
+      mockedAddItem.mockResolvedValue({ success: true })
+      await expect(addBookingItem(item)).resolves.toEqual({ success: true })
+    })
+
+    it('updateBookingItem passes the warning through with success, and plain success without one', async () => {
+      mockedUpdateItem.mockResolvedValue({ success: true, bookingId: 'booking-1', warning: WARNING })
+      await expect(updateBookingItem('item-1', { quantity: 3 })).resolves.toEqual({ success: true, warning: WARNING })
+
+      mockedUpdateItem.mockResolvedValue({ success: true, bookingId: 'booking-1' })
+      await expect(updateBookingItem('item-1', { quantity: 3 })).resolves.toEqual({ success: true })
+    })
+
+    it('deleteBookingItem passes the warning through with success, and plain success without one', async () => {
+      mockedDeleteItem.mockResolvedValue({ success: true, bookingId: 'booking-1', warning: WARNING })
+      await expect(deleteBookingItem('item-1')).resolves.toEqual({ success: true, warning: WARNING })
+
+      mockedDeleteItem.mockResolvedValue({ success: true, bookingId: 'booking-1' })
+      await expect(deleteBookingItem('item-1')).resolves.toEqual({ success: true })
     })
   })
 })
