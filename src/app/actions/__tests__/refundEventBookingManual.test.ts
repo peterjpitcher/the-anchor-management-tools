@@ -230,6 +230,7 @@ describe('refundEventBookingManual', () => {
         refund_status: 'succeeded',
         refund_amount: 15,
         max_refundable: 15,
+        warning: null,
       },
     })
     expect(logAuditEvent).toHaveBeenCalledWith(
@@ -269,6 +270,7 @@ describe('refundEventBookingManual', () => {
         refund_status: 'pending',
         refund_amount: 10,
         max_refundable: 15,
+        warning: null,
       },
     })
   })
@@ -291,5 +293,31 @@ describe('refundEventBookingManual', () => {
 
     expect(result).toEqual({ error: 'There is nothing left to refund on this booking.' })
     expect(processEventRefund).not.toHaveBeenCalled()
+  })
+  it('passes on the warning when PayPal refunded but the payment record did not update', async () => {
+    mockAuthUser({ id: 'user-1', email: 'boss@the-anchor.pub' })
+    vi.mocked(createAdminClient).mockReturnValue(createAdminMock({
+      tables: {
+        bookings: [{ data: CONFIRMED_BOOKING, error: null }],
+        payments: paymentsQueues(),
+      },
+      rpc: { get_user_roles: MANAGER_ROLES },
+    }) as never)
+    const staffWarning =
+      'The refund went through, but the original payment was not updated to show it. Do not refund again: tell the developer so the payment record can be corrected.'
+    vi.mocked(processEventRefund).mockResolvedValue({
+      status: 'succeeded',
+      amount: 15,
+      currency: 'GBP',
+      staffWarning,
+    })
+
+    const { refundEventBookingManual } = await import('../events')
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { refund_status: 'succeeded', refund_amount: 15, warning: staffWarning },
+    })
   })
 })

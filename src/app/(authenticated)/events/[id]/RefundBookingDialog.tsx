@@ -102,7 +102,10 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
     }
 
     const refundAmount = result.data.refund_amount || 0
-    if (result.data.refund_status === 'succeeded') {
+    if (result.data.warning) {
+      // The refund went through but the payment record did not update: say so, never "issued".
+      toast.warning(result.data.warning, { duration: 12000 })
+    } else if (result.data.refund_status === 'succeeded') {
       toast.success(`Refund issued: ${formatCurrency(refundAmount)}`)
     } else if (result.data.refund_status === 'pending') {
       toast.success(`Refund pending: ${formatCurrency(refundAmount)}`)

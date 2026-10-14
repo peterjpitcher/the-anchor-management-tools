@@ -1987,6 +1987,8 @@ export async function cancelEventManualBooking(input: {
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
     let refundStatus: EventRefundResult['status'] = 'none'
     let refundAmount = 0
+    // Set when PayPal refunded the money but the payment record did not update.
+    let refundStaffWarning: string | null = null
 
     if (resolvedRefundAmount > 0 && bookingRow.customer_id && bookingRow.event_id) {
       try {
@@ -2006,6 +2008,7 @@ export async function cancelEventManualBooking(input: {
         })
         refundStatus = refundResult.status
         refundAmount = refundResult.amount
+        refundStaffWarning = refundResult.staffWarning ?? null
       } catch (refundError) {
         refundStatus = 'manual_required'
         refundAmount = resolvedRefundAmount
@@ -2147,7 +2150,7 @@ export async function cancelEventManualBooking(input: {
         sms_sent: smsSent,
         refund_status: refundStatus,
         refund_amount: refundAmount,
-        warning: followupWarning
+        warning: [followupWarning, refundStaffWarning].filter(Boolean).join(' ') || null
       },
       meta: {
         sms: smsMeta,
@@ -2249,6 +2252,8 @@ type RefundEventBookingManualResult =
         refund_status: EventRefundResult['status']
         refund_amount: number
         max_refundable: number
+        /** Set when the refund went through but the payment record did not update. */
+        warning?: string | null
       }
     }
 
@@ -2377,7 +2382,8 @@ export async function refundEventBookingManual(input: {
         booking_id: bookingRow.id,
         refund_status: refundResult.status,
         refund_amount: refundResult.amount,
-        max_refundable: maxRefundable
+        max_refundable: maxRefundable,
+        warning: refundResult.staffWarning ?? null
       }
     }
   } catch (error) {
