@@ -200,7 +200,7 @@ describe('sending a deduction to the customer to agree', () => {
   it('supplies every field the seeded wording uses, so the document can be filled once the gaps are', async () => {
     await send()
 
-    const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'), 'utf8')
+    const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20261014084753_signing_deposit_deduction_agreement.sql'), 'utf8')
     const body = migration.split('$body$')[1]
     const supplied = { manager_name: STAFF.name, date_today: '13 October 2026', ...mocks.sendTemplate.mock.calls[0][0].mergeValues }
     expect(Object.keys(supplied).sort()).toEqual([...TEMPLATE_MERGE_FIELDS.deposit_deduction_agreement].sort())

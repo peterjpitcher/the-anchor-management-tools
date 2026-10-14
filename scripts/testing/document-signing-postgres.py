@@ -6,7 +6,7 @@ that has only the Supabase roles and a stand-in storage.buckets table, then chec
 that matter: a signature needs the document to have been opened, two people signing at the same
 moment complete the document exactly once, a refusal stops the document, the evidence trail
 cannot be changed, and nothing is granted to anon or authenticated. It then applies the template
-drafts and the deposit deduction agreement kind (20261013170000) and checks those too.
+drafts and the deposit deduction agreement kind (20261014084753) and checks those too.
 
 Synthetic data only, on a Unix socket with no network listener.
 """
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261013080854_document_signing_foundation.sql'
 DRAFTS = ROOT / 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'
-DEDUCTION_KIND = ROOT / 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'
+DEDUCTION_KIND = ROOT / 'supabase/migrations/20261014084753_signing_deposit_deduction_agreement.sql'
 
 DOC_A = '00000000-0000-0000-0000-0000000000a1'
 DOC_B = '00000000-0000-0000-0000-0000000000b1'
@@ -176,7 +176,7 @@ def main():
             assert sql('SELECT count(*) FROM signing_templates') == '12'
             print('PASS twelve draft templates arrive switched off and marked as drafts; re-applying never overwrites edited wording')
 
-            # The deposit deduction agreement kind (20261013170000).
+            # The deposit deduction agreement kind (20261014084753).
             def kind_document(kind, doc_id='gen_random_uuid()'):
                 identifier = doc_id if doc_id.endswith('()') else f"'{doc_id}'"
                 return f"""INSERT INTO signing_documents (id, kind, mode, brand, title, subject_type, subject_id, series_key, version, source_pdf_path, source_sha256, expires_at)

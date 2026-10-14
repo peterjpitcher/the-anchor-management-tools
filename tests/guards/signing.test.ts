@@ -41,7 +41,7 @@ const DRAFTS = readFileSync(join(ROOT, 'supabase/migrations/20261013080952_docum
  * longer list and seeds its own draft wording, so the guard reads it beside the first two.
  */
 const KIND_ADDITIONS = [
-  readFileSync(join(ROOT, 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'), 'utf8'),
+  readFileSync(join(ROOT, 'supabase/migrations/20261014084753_signing_deposit_deduction_agreement.sql'), 'utf8'),
 ]
 /** Every migration that seeds draft wording. */
 const DRAFT_SOURCES = [DRAFTS, ...KIND_ADDITIONS]
