@@ -138,10 +138,14 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
  * A signed contract is an accepted contract. Paying the deposit also accepts it and may have
  * done so first, in which case that earlier acceptance is left as it stands. The self-catering
  * and outside food agreement is a separate document with its own signature, and is marked
- * signed by its own hook below, never by this one.
+ * signed by its own hook below. The one exception is a contract sent in the older form, with the
+ * agreement on its last page (`context.includes_waiver`): the customer's one signature covers
+ * both, so that signs the agreement too. A staff tab left open across a release can still send
+ * one (Vercel keeps a page on the deployment it loaded from); one was signed on 14 October 2026.
  */
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
+  if (document.context.includes_waiver === true) await markWaiverSigned(admin, document)
   const now = new Date().toISOString()
   // Accepted when it was signed, not when this ran: a retry days later must not move the time.
   const acceptedAt = document.completed_at ?? now
