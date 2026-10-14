@@ -14,6 +14,13 @@ import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events
 import { buildEventBookingStats } from '@/lib/events/stats';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
 
+// Waitlist rows still open when an event is cancelled. These must be values the tables' status
+// checks allow (supabase/migrations/20260420000003_bookings_v05_foundations.sql): the cascade
+// used to filter on 'pending' and 'active', which neither table can hold, so it matched nothing
+// and queued entries and sent offers outlived a cancelled event.
+export const OPEN_WAITLIST_ENTRY_STATUSES = ['queued', 'offered'] as const;
+export const OPEN_WAITLIST_OFFER_STATUSES = ['sent'] as const;
+
 function sanitizeEventSearchTerm(value: string): string {
   return value
     .replace(/[,%_()"'\\]/g, '')
@@ -1148,11 +1155,11 @@ export class EventService {
       await db.from('waitlist_entries')
         .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
         .eq('event_id', eventId)
-        .in('status', ['pending', 'offered'])
+        .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES])
       await db.from('waitlist_offers')
         .update({ status: 'cancelled', expired_at: new Date().toISOString() })
         .eq('event_id', eventId)
-        .in('status', ['pending', 'active'])
+        .in('status', [...OPEN_WAITLIST_OFFER_STATUSES])
       return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
     }
 
@@ -1304,13 +1311,13 @@ export class EventService {
       .from('waitlist_entries')
       .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
       .eq('event_id', eventId)
-      .in('status', ['pending', 'offered'])
+      .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES])
 
     await db
       .from('waitlist_offers')
       .update({ status: 'cancelled', expired_at: new Date().toISOString() })
       .eq('event_id', eventId)
-      .in('status', ['pending', 'active'])
+      .in('status', [...OPEN_WAITLIST_OFFER_STATUSES])
 
     // 6. Set booking_open = false
     await db
