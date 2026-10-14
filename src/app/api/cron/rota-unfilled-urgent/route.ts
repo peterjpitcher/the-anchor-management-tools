@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { resolveRotaManagerEmail } from '@/lib/rota/manager-email';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import {
   getUnfilledShifts,
   daysUntil,
@@ -124,15 +125,18 @@ export async function GET(request: Request): Promise<NextResponse> {
     html: buildUrgentUnfilledEmailHtml(todayIso, shifts),
   });
 
-  await supabase.from('rota_email_log').insert({
-    email_type: 'unfilled_urgent',
-    entity_type: 'rota_shift',
-    entity_id: shifts[0]!.id,
-    to_addresses: [managerEmail.email],
-    subject,
-    status: emailResult.success ? 'sent' : 'failed',
-    error_message: emailResult.success ? null : (emailResult.error ?? null),
-  });
+  await settleRotaEmailLogWrite(
+    supabase.from('rota_email_log').insert({
+      email_type: 'unfilled_urgent',
+      entity_type: 'rota_shift',
+      entity_id: shifts[0]!.id,
+      to_addresses: [managerEmail.email],
+      subject,
+      status: emailResult.success ? 'sent' : 'failed',
+      error_message: emailResult.success ? null : (emailResult.error ?? null),
+    }),
+    { type: 'unfilled_urgent', entityId: shifts[0]!.id },
+  );
 
   if (!emailResult.success) {
     return NextResponse.json(

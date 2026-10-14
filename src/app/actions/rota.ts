@@ -38,6 +38,7 @@ import {
   type RotaSummaryShift,
 } from '@/lib/rota/summary';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import { displayName } from '@/lib/employees/display-name';
 
 // ---------------------------------------------------------------------------
@@ -629,16 +630,19 @@ async function sendRotaManagerAlert(
 
   if ('error' in resolved) {
     console.error('[rota] Manager alert not sent:', alert.subject, resolved.error);
-    await admin.from('rota_email_log').insert({
-      email_type: alert.emailType,
-      entity_type: alert.entityType,
-      entity_id: alert.entityId,
-      to_addresses: [],
-      subject: alert.subject,
-      status: 'failed',
-      error_message: resolved.error,
-      sent_by: alert.sentBy,
-    });
+    await settleRotaEmailLogWrite(
+      admin.from('rota_email_log').insert({
+        email_type: alert.emailType,
+        entity_type: alert.entityType,
+        entity_id: alert.entityId,
+        to_addresses: [],
+        subject: alert.subject,
+        status: 'failed',
+        error_message: resolved.error,
+        sent_by: alert.sentBy,
+      }),
+      { type: alert.emailType, entityId: alert.entityId },
+    );
     return;
   }
 
@@ -653,16 +657,19 @@ async function sendRotaManagerAlert(
     errorMessage = sendError instanceof Error ? sendError.message : String(sendError);
   }
 
-  await admin.from('rota_email_log').insert({
-    email_type: alert.emailType,
-    entity_type: alert.entityType,
-    entity_id: alert.entityId,
-    to_addresses: [resolved.email],
-    subject: alert.subject,
-    status,
-    error_message: errorMessage,
-    sent_by: alert.sentBy,
-  });
+  await settleRotaEmailLogWrite(
+    admin.from('rota_email_log').insert({
+      email_type: alert.emailType,
+      entity_type: alert.entityType,
+      entity_id: alert.entityId,
+      to_addresses: [resolved.email],
+      subject: alert.subject,
+      status,
+      error_message: errorMessage,
+      sent_by: alert.sentBy,
+    }),
+    { type: alert.emailType, entityId: alert.entityId },
+  );
 }
 
 type OpenShiftRequestContextRow = {
