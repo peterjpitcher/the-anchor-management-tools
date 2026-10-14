@@ -423,12 +423,11 @@ export interface EventImageVariantState {
 /**
  * The `event_images` columns this action reads, hand written.
  *
- * Migration `20260906095746_event_image_branding.sql` adds the ten branding
- * columns and has not been applied to any database, so
- * `src/types/database.generated.ts` does not carry them and the generated row
- * type cannot describe this select. `snake_case` to `camelCase` is mapped by
- * hand below, as everywhere else in this repo. Do not regenerate the types to
- * make this go away: that would claim the migration is applied when it is not.
+ * Written when migration `20260906095746_event_image_branding.sql`, which adds
+ * the ten branding columns, had not been applied anywhere. It has been since:
+ * `src/types/database.generated.ts` carries all ten as of 13 October 2026.
+ * `snake_case` to `camelCase` is mapped by hand below, as everywhere else in
+ * this repo.
  */
 interface EventImageMetadataRow {
   image_type: string | null
