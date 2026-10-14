@@ -114,6 +114,19 @@ function buildTwilioCostUpdate(params: Record<string, string>): Record<string, u
   return update
 }
 
+/**
+ * The only webhook_logs columns a caller fills directly. Any other context goes in
+ * `errorDetails`, which is stored in the error_details jsonb column.
+ *
+ * PostgREST refuses an insert that names a column the table does not have (PGRST204), so
+ * spreading extra keys into the row lost the whole log row. That is how every handled inbound
+ * text from 22 June 2026 went unlogged: the row carried a `channel` key.
+ */
+type WebhookLogLinks = {
+  customer_id?: string | null
+  message_id?: string | null
+}
+
 async function logWebhookAttempt(
   client: ReturnType<typeof createAdminClient>,
   status: string,
@@ -122,7 +135,7 @@ async function logWebhookAttempt(
   params: Record<string, string>,
   error?: string,
   errorDetails?: unknown,
-  additionalData?: Record<string, unknown>
+  links?: WebhookLogLinks
 ) {
   try {
     const sanitizedHeaders = sanitizeHeadersForLog(headers)
@@ -139,7 +152,8 @@ async function logWebhookAttempt(
       from_number: params.From,
       to_number: params.To,
       message_body: truncate(params.Body, 300),
-      ...additionalData
+      customer_id: links?.customer_id,
+      message_id: links?.message_id
     };
     
     // justified: Supabase generated types resolve webhook_logs Insert to never due to version mismatch
@@ -600,7 +614,6 @@ async function handleInboundSMS(
           body,
           params,
           undefined,
-          undefined,
           { unmatched_communication_id: existingUnmatched.id }
         )
       }
@@ -645,7 +658,6 @@ async function handleInboundSMS(
           headers,
           body,
           params,
-          undefined,
           undefined,
           { unmatched_communication_id: unmatchedId, candidate_customer_ids: candidates }
         )
@@ -880,8 +892,8 @@ async function handleInboundSMS(
         body,
         params,
         undefined,
-        undefined,
-        { customer_id: customer.id, message_id: savedMessage.id, channel }
+        { channel },
+        { customer_id: customer.id, message_id: savedMessage.id }
       );
     }
     
@@ -1098,8 +1110,10 @@ async function handleStatusUpdate(
           body,
           params,
           undefined,
-          undefined,
-          { messageSid, status: messageStatus, message_id: existingMessage.id }
+          // The Twilio status goes in the details, as status_update_failed does it, so the
+          // row keeps its own status of 'status_update_noop'.
+          { messageSid, status: messageStatus },
+          { message_id: existingMessage.id }
         )
       }
 
