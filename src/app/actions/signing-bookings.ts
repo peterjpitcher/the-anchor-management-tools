@@ -265,7 +265,8 @@ export async function recordContractAcceptedAnotherWay(
       .is('contract_accepted_at', null)
       // Written this way because a plain "not cancelled" test also drops a booking with no status.
       .or('status.is.null,status.neq.cancelled')
-      .select('id')
+      // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+      .select('id, status')
     if (updateError) throw new Error(`Could not record the acceptance: ${updateError.message}`)
     if (!changed || changed.length === 0) {
       // Something else got there first. Read again and say what.

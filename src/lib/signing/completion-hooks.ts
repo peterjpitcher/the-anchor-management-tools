@@ -103,7 +103,8 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
       .eq('waiver_status', read)
       // Written this way because a plain "not cancelled" test also drops a booking with no status.
       .or('status.is.null,status.neq.cancelled')
-      .select('id')
+      // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+      .select('id, status')
     if (error) throw new Error(`Could not mark the waiver signed: ${error.message}`)
     if (changed && changed.length > 0) before = read
   }
@@ -159,7 +160,8 @@ const acceptBookingContract: SigningCompletionHook = async (document) => {
   if (typeof document.context.contract_version === 'number') {
     update = update.eq('contract_version', document.context.contract_version)
   }
-  const { data: accepted, error } = await update.select('id')
+  // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+  const { data: accepted, error } = await update.select('id, status')
   if (error) throw new Error(`Could not mark the contract accepted: ${error.message}`)
   if (!accepted || accepted.length === 0) return
 
