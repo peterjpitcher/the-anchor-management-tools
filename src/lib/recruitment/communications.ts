@@ -11,7 +11,7 @@ import {
 } from '@/lib/recruitment/contact'
 import { formatRecruitmentAppointmentTime } from '@/services/recruitment'
 import type { RecruitmentTemplateType } from '@/types/recruitment'
-import { settleWrite } from '@/lib/supabase/settle-write'
+import { reportWriteError, settleWrite } from '@/lib/supabase/settle-write'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
@@ -632,6 +632,22 @@ export async function previewRecruitmentDecisionEmail(
   return { subject, body }
 }
 
+/**
+ * Thrown by sendRecruitmentTemplateEmail when the provider did not confirm the send.
+ * `uncertain` carries sendEmail's own flag: true means the request went out and no answer came
+ * back, so the email may have been sent and an automatic job must not retry it. False means it
+ * was definitely not sent (refused, or stopped by the email kill switch).
+ */
+export class RecruitmentEmailSendError extends Error {
+  readonly uncertain: boolean
+
+  constructor(message: string, uncertain: boolean) {
+    super(message)
+    this.name = 'RecruitmentEmailSendError'
+    this.uncertain = uncertain
+  }
+}
+
 export async function sendRecruitmentTemplateEmail(
   applicationId: string,
   type: RecruitmentTemplateType,
@@ -765,7 +781,7 @@ export async function sendRecruitmentTemplateEmail(
   )
 
   if (!result.success) {
-    throw new Error(result.error || 'Recruitment email send failed.')
+    throw new RecruitmentEmailSendError(result.error || 'Recruitment email send failed.', result.uncertain === true)
   }
 
   return { success: true, communicationId: communication.id, messageId: result.messageId ?? null }
@@ -1001,45 +1017,95 @@ export async function sendDueRecruitmentAppointmentReminders(
   let smsSent = 0
   let failed = 0
 
+  // Claim, then send. The "sent" stamp used to be written after the send, so a failed write
+  // left it empty and the next hourly run (the window is two hours wide) sent the reminder
+  // again. Now each stamp is set first, only while it is still empty, and only the run whose
+  // claim came back sends. A send that definitely did not happen releases the claim so a later
+  // run can retry; a send whose outcome is unknown keeps it, because a retry could duplicate.
+  type ReminderMarker = 'reminder_email_sent_at' | 'reminder_sms_sent_at'
+
+  const claimReminder = async (appointmentId: string, marker: ReminderMarker, claimedAt: string) => {
+    const { data, error: claimError } = await supabase
+      .from('recruitment_candidate_appointments')
+      .update({ [marker]: claimedAt })
+      .eq('id', appointmentId)
+      .is(marker, null)
+      .select('id')
+    if (claimError) {
+      reportWriteError(claimError, {
+        table: 'recruitment_candidate_appointments',
+        what: `Claiming ${marker} before sending the reminder`,
+        ids: { appointmentId },
+        note: 'the reminder was not sent and the next run will try again',
+      })
+      return 'error' as const
+    }
+    return (data ?? []).length > 0 ? ('claimed' as const) : ('taken' as const)
+  }
+
+  const releaseReminder = (appointmentId: string, marker: ReminderMarker, claimedAt: string) =>
+    settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({ [marker]: null })
+        .eq('id', appointmentId)
+        .eq(marker, claimedAt),
+      {
+        table: 'recruitment_candidate_appointments',
+        what: `Releasing ${marker} after the reminder was not sent`,
+        ids: { appointmentId },
+        note: 'the reminder stays marked as sent and will not be retried',
+      },
+    )
+
   for (const appointment of appointments ?? []) {
     if (!appointment.reminder_email_sent_at) {
-      try {
-        await sendRecruitmentTemplateEmail(appointment.application_id, 'reminder', {
-          appointmentId: appointment.id,
-        }, supabase)
-
-        await settleWrite(
-          supabase
-            .from('recruitment_candidate_appointments')
-            .update({ reminder_email_sent_at: new Date().toISOString() })
-            .eq('id', appointment.id),
-          { table: 'recruitment_candidate_appointments', what: 'Marking the reminder email sent', ids: { appointmentId: appointment.id } },
-        )
-        emailSent += 1
-      } catch (reminderError) {
+      const claimedAt = new Date().toISOString()
+      const claim = await claimReminder(appointment.id, 'reminder_email_sent_at', claimedAt)
+      if (claim === 'error') {
         failed += 1
-        console.error('Recruitment reminder email failed', reminderError)
+      } else if (claim === 'claimed') {
+        try {
+          await sendRecruitmentTemplateEmail(appointment.application_id, 'reminder', {
+            appointmentId: appointment.id,
+          }, supabase)
+          emailSent += 1
+        } catch (reminderError) {
+          failed += 1
+          if (reminderError instanceof RecruitmentEmailSendError && reminderError.uncertain) {
+            // The provider may have taken it: keep the claim, never send it again automatically.
+            console.error('Recruitment reminder email outcome unknown: it may have been sent, so it stays marked and will not be retried', {
+              appointmentId: appointment.id,
+              message: reminderError.message,
+            })
+          } else {
+            console.error('Recruitment reminder email failed', reminderError)
+            await releaseReminder(appointment.id, 'reminder_email_sent_at', claimedAt)
+          }
+        }
       }
     }
 
     if (!appointment.reminder_sms_sent_at && appointment.candidate?.sms_consent) {
-      try {
-        const body = `Reminder: your ${appointment.type === 'trial_shift' ? 'trial shift' : 'interview'} at The Anchor is ${formatRecruitmentAppointmentTime(appointment)}.`
-        await sendRecruitmentSms(appointment.candidate_id, 'reminder', body, {
-          applicationId: appointment.application_id,
-        }, supabase)
-
-        await settleWrite(
-          supabase
-            .from('recruitment_candidate_appointments')
-            .update({ reminder_sms_sent_at: new Date().toISOString() })
-            .eq('id', appointment.id),
-          { table: 'recruitment_candidate_appointments', what: 'Marking the reminder SMS sent', ids: { appointmentId: appointment.id } },
-        )
-        smsSent += 1
-      } catch (smsError) {
+      const claimedAt = new Date().toISOString()
+      const claim = await claimReminder(appointment.id, 'reminder_sms_sent_at', claimedAt)
+      if (claim === 'error') {
         failed += 1
-        console.error('Recruitment reminder SMS failed', smsError)
+      } else if (claim === 'claimed') {
+        try {
+          const body = `Reminder: your ${appointment.type === 'trial_shift' ? 'trial shift' : 'interview'} at The Anchor is ${formatRecruitmentAppointmentTime(appointment)}.`
+          await sendRecruitmentSms(appointment.candidate_id, 'reminder', body, {
+            applicationId: appointment.application_id,
+          }, supabase)
+          smsSent += 1
+        } catch (smsError) {
+          // sendSMS reports no unknown outcome: a failure (a refusal, a kill switch, quiet hours
+          // it could not defer, a rate limit, or Twilio failing after its retries) means it was
+          // not sent, and sendSMS releases its own idempotency claim on the same terms.
+          failed += 1
+          console.error('Recruitment reminder SMS failed', smsError)
+          await releaseReminder(appointment.id, 'reminder_sms_sent_at', claimedAt)
+        }
       }
     }
   }

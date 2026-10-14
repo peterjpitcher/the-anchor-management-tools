@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { settleWrite } from '@/lib/supabase/settle-write';
+import { reportWriteError, settleWrite } from '@/lib/supabase/settle-write';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { sendEmail } from '@/lib/email/emailService';
 import {
@@ -181,12 +181,42 @@ export async function GET(request: Request): Promise<NextResponse> {
       continue;
     }
 
+    // Claim before sending. The stamp used to be written after the email went, so a failed
+    // write left the shifts unmarked and the same warning went out again every morning. Now
+    // the stamp is set first, only on shifts that still have none, and only the shifts this
+    // run claimed are warned about. A claim that comes back empty means another run has them.
+    const warnedAt = now.toISOString();
+    const { data: claimedRows, error: claimError } = await supabase
+      .from('rota_published_shifts')
+      .update({ auto_accept_warning_sent_at: warnedAt })
+      .in('id', employeeShifts.map(shift => shift.id))
+      .is('auto_accept_warning_sent_at', null)
+      .select('id');
+
+    if (claimError) {
+      reportWriteError(claimError, {
+        table: 'rota_published_shifts',
+        what: 'Claiming the auto-accept warning before sending it',
+        ids: { employeeId, shiftCount: employeeShifts.length },
+        note: 'the warning was not sent and the next run will try again',
+      });
+      warningFailed += 1;
+      continue;
+    }
+
+    const claimedIds = new Set(((claimedRows ?? []) as Array<{ id: string }>).map(row => row.id));
+    const claimedShifts = employeeShifts.filter(shift => claimedIds.has(shift.id));
+    if (claimedShifts.length === 0) {
+      continue;
+    }
+    const shiftIds = claimedShifts.map(shift => shift.id);
+
     // Staff warnings go to the member of staff only. Managers no longer get a copy:
     // shifts awaiting acceptance are counted in the weekly insights report instead.
     const subject = 'Please accept or reject your upcoming shifts';
     const html = buildShiftAutoAcceptWarningEmailHtml(
       employeeName(employee),
-      employeeShifts.map(toEmailSummary),
+      claimedShifts.map(toEmailSummary),
     );
     const emailResult = await sendEmail({
       to: employee.email_address,
@@ -195,7 +225,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     });
 
     await logWarningEmail(supabase, {
-      shiftId: employeeShifts[0]!.id,
+      shiftId: claimedShifts[0]!.id,
       to: employee.email_address,
       cc: [],
       subject,
@@ -206,27 +236,45 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     if (emailResult.success) {
       warningSent += 1;
-      const warnedAt = now.toISOString();
-      const shiftIds = employeeShifts.map(shift => shift.id);
-      await Promise.all([
-        settleWrite(
-          supabase
-            .from('rota_published_shifts')
-            .update({ auto_accept_warning_sent_at: warnedAt })
-            .in('id', shiftIds),
-          { table: 'rota_published_shifts', what: 'Recording the auto-accept warning', ids: { employeeId, shiftCount: shiftIds.length } },
-        ),
-        settleWrite(
-          supabase
-            .from('rota_shifts')
-            .update({ auto_accept_warning_sent_at: warnedAt })
-            .in('id', shiftIds),
-          { table: 'rota_shifts', what: 'Recording the auto-accept warning', ids: { employeeId, shiftCount: shiftIds.length } },
-        ),
-      ]);
-    } else {
-      warningFailed += 1;
+      // The published claim already holds the stamp; copy it to the live rota.
+      await settleWrite(
+        supabase
+          .from('rota_shifts')
+          .update({ auto_accept_warning_sent_at: warnedAt })
+          .in('id', shiftIds),
+        { table: 'rota_shifts', what: 'Recording the auto-accept warning', ids: { employeeId, shiftCount: shiftIds.length } },
+      );
+      continue;
     }
+
+    warningFailed += 1;
+
+    if (emailResult.uncertain === true) {
+      // The provider may have taken the email before the answer was lost. Keep the claim so
+      // no later run sends it again; a person has to check before it is re-sent.
+      console.error('[rota] Auto-accept warning outcome unknown: the email may have been sent, so the shifts stay marked as warned and it will not be retried', {
+        employeeId,
+        shiftCount: shiftIds.length,
+        error: emailResult.error ?? null,
+      });
+      continue;
+    }
+
+    // Definitely not sent (refused, or stopped by the email kill switch): release the claim,
+    // only where it still holds this run's stamp, so the next run tries again.
+    await settleWrite(
+      supabase
+        .from('rota_published_shifts')
+        .update({ auto_accept_warning_sent_at: null })
+        .in('id', shiftIds)
+        .eq('auto_accept_warning_sent_at', warnedAt),
+      {
+        table: 'rota_published_shifts',
+        what: 'Releasing the auto-accept warning claim after the email was not sent',
+        ids: { employeeId, shiftCount: shiftIds.length },
+        note: 'the shifts stay marked as warned and will not be warned again',
+      },
+    );
   }
 
   const acceptedAt = now.toISOString();
