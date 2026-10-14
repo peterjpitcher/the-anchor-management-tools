@@ -17,6 +17,7 @@ import {
   buildHolidaySubmittedEmailHtml,
   buildHolidayDecisionEmailHtml,
 } from '@/lib/rota/email-templates';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import { logAuditEvent } from '@/app/actions/audit';
 import { displayName } from '@/lib/employees/display-name';
 import { getRotaSettings } from '@/app/actions/rota-settings';
@@ -267,16 +268,19 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
       ),
     });
 
-    await supabase.from('rota_email_log').insert({
-      email_type: 'holiday_submitted',
-      entity_type: 'leave_request',
-      entity_id: request.id,
-      to_addresses: [employee.email_address],
-      subject: emailSubject,
-      status: emailResult.success ? 'sent' : 'failed',
-      error_message: emailResult.success ? null : emailResult.error ?? null,
-      sent_by: user?.id ?? null,
-    });
+    await settleRotaEmailLogWrite(
+      supabase.from('rota_email_log').insert({
+        email_type: 'holiday_submitted',
+        entity_type: 'leave_request',
+        entity_id: request.id,
+        to_addresses: [employee.email_address],
+        subject: emailSubject,
+        status: emailResult.success ? 'sent' : 'failed',
+        error_message: emailResult.success ? null : emailResult.error ?? null,
+        sent_by: user?.id ?? null,
+      }),
+      { type: 'holiday_submitted', entityId: request.id },
+    );
   }
 
   void logAuditEvent({
@@ -395,16 +399,19 @@ export async function reviewLeaveRequest(
       ),
     });
 
-    await supabase.from('rota_email_log').insert({
-      email_type: 'holiday_decision',
-      entity_type: 'leave_request',
-      entity_id: requestId,
-      to_addresses: [employee.email_address],
-      subject: decisionSubject,
-      status: decisionResult.success ? 'sent' : 'failed',
-      error_message: decisionResult.success ? null : decisionResult.error ?? null,
-      sent_by: user?.id ?? null,
-    });
+    await settleRotaEmailLogWrite(
+      supabase.from('rota_email_log').insert({
+        email_type: 'holiday_decision',
+        entity_type: 'leave_request',
+        entity_id: requestId,
+        to_addresses: [employee.email_address],
+        subject: decisionSubject,
+        status: decisionResult.success ? 'sent' : 'failed',
+        error_message: decisionResult.success ? null : decisionResult.error ?? null,
+        sent_by: user?.id ?? null,
+      }),
+      { type: 'holiday_decision', entityId: requestId },
+    );
   }
 
   void logAuditEvent({
