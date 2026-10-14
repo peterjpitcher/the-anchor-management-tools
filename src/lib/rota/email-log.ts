@@ -17,14 +17,10 @@
  *   );
  *
  * tests/guards/rota-email-log-writes.test.ts fails on any write to the table that skips this.
+ * The reporting itself is the shared settleWrite in src/lib/supabase/settle-write.ts.
  */
 
-interface RotaEmailLogWriteError {
-  message: string;
-  code?: string | null;
-  details?: string | null;
-  hint?: string | null;
-}
+import { settleWrite, type SupabaseWriteError } from '@/lib/supabase/settle-write';
 
 export interface RotaEmailLogWriteContext {
   /** The row's email_type. Named `type` so the email_type guard on writers does not read it as one. */
@@ -33,28 +29,13 @@ export interface RotaEmailLogWriteContext {
 }
 
 export async function settleRotaEmailLogWrite(
-  write: PromiseLike<{ error: RotaEmailLogWriteError | null }>,
+  write: PromiseLike<{ error: SupabaseWriteError | null }>,
   context: RotaEmailLogWriteContext,
 ): Promise<boolean> {
-  try {
-    const { error } = await write;
-    if (!error) return true;
-    // Field by field: a PostgrestError serialises to {} when passed whole to some loggers.
-    console.error('[rota_email_log] Log write failed; the email itself was not affected', {
-      emailType: context.type,
-      entityId: context.entityId,
-      code: error.code ?? null,
-      message: error.message,
-      details: error.details ?? null,
-      hint: error.hint ?? null,
-    });
-    return false;
-  } catch (thrown) {
-    console.error('[rota_email_log] Log write threw; the email itself was not affected', {
-      emailType: context.type,
-      entityId: context.entityId,
-      message: thrown instanceof Error ? thrown.message : String(thrown),
-    });
-    return false;
-  }
+  return settleWrite(write, {
+    table: 'rota_email_log',
+    what: 'Log write',
+    note: 'the email itself was not affected',
+    ids: { emailType: context.type, entityId: context.entityId },
+  });
 }
