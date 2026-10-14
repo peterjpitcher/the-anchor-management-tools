@@ -23,6 +23,7 @@ import { SINGLE_TEMPLATE_SLUGS } from '@/lib/signing/template-fields'
 import { TemplateMergeError } from '@/lib/signing/template-render'
 import type { SigningKind } from '@/lib/signing/types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 /**
  * Sending commercial documents for signature: quote acceptance and client agreements for
@@ -139,11 +140,19 @@ export async function sendQuoteForAcceptance(input: {
     // Asking for acceptance is sending it. A draft becomes Sent, as it does when emailed.
     if (quote.status === 'draft') {
       const admin = createAdminClient()
-      await admin
-        .from('quotes')
-        .update({ status: 'sent', updated_at: new Date().toISOString() })
-        .eq('id', quote.id)
-        .eq('status', 'draft')
+      await settleWrite(
+        admin
+          .from('quotes')
+          .update({ status: 'sent', updated_at: new Date().toISOString() })
+          .eq('id', quote.id)
+          .eq('status', 'draft'),
+        {
+          table: 'quotes',
+          what: 'Moving the draft quote to sent',
+          ids: { quoteId: quote.id },
+          note: 'the acceptance request itself was sent',
+        }
+      )
     }
 
     return {

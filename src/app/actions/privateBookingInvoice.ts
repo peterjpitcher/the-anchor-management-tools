@@ -43,6 +43,7 @@ import { formatDateFull } from '@/lib/dateUtils'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export type DepositTreatment = 'held_separately' | 'deducted'
 
@@ -296,10 +297,17 @@ async function resolveInvoiceVendor(
   if (existing.vendorId) {
     // Refresh contact details but never the name: renaming a shared vendor
     // would silently restate historical invoices that point at it.
-    await db
-      .from('invoice_vendors')
-      .update({ email, phone, updated_at: new Date().toISOString() })
-      .eq('id', existing.vendorId)
+    await settleWrite(
+      db
+        .from('invoice_vendors')
+        .update({ email, phone, updated_at: new Date().toISOString() })
+        .eq('id', existing.vendorId),
+      {
+        table: 'invoice_vendors',
+        what: 'Refreshing the invoice vendor contact details',
+        ids: { vendorId: existing.vendorId, bookingId: booking.id },
+      }
+    )
 
     return { vendorId: existing.vendorId, created: false }
   }
@@ -527,16 +535,24 @@ async function deliverInvoice(
         : undefined,
   })
 
-  await db.from('invoice_email_logs').insert({
-    invoice_id: invoice.id,
-    sent_to: recipient,
-    sent_by: actorId,
-    subject,
-    body,
-    status: result.success ? 'sent' : 'failed',
-    error_message: result.success ? null : result.error ?? 'Unknown error',
-    message_id: result.messageId ?? null,
-  })
+  await settleWrite(
+    db.from('invoice_email_logs').insert({
+      invoice_id: invoice.id,
+      sent_to: recipient,
+      sent_by: actorId,
+      subject,
+      body,
+      status: result.success ? 'sent' : 'failed',
+      error_message: result.success ? null : result.error ?? 'Unknown error',
+      message_id: result.messageId ?? null,
+    }),
+    {
+      table: 'invoice_email_logs',
+      what: 'Logging the private booking invoice email',
+      ids: { invoiceId: invoice.id, bookingId: booking.id, sendSucceeded: result.success },
+      note: 'the send outcome is unaffected',
+    }
+  )
 
   if (!result.success) {
     // A timeout after the request left: the customer may already have the invoice. Say so,
@@ -578,21 +594,45 @@ async function deliverInvoice(
   // Delivery is recorded on sent_at, never by overwriting status: this invoice
   // may legitimately already be 'partially_paid' or 'paid', and those values
   // are mutually exclusive with 'sent' in the same column.
-  await db.from('invoices').update({ sent_at: sentAt, sent_to: recipient }).eq('id', invoice.id)
+  await settleWrite(
+    db.from('invoices').update({ sent_at: sentAt, sent_to: recipient }).eq('id', invoice.id),
+    {
+      table: 'invoices',
+      what: 'Recording when the invoice was sent',
+      ids: { invoiceId: invoice.id, bookingId: booking.id },
+      note: 'the email itself was sent',
+    }
+  )
 
   // Keep the legacy status mirror honest for the no-payments case, where
   // 'draft' would otherwise persist after the customer already had the
   // invoice. The conditional eq() means an invoice born 'partially_paid' or
   // 'paid' is left exactly as it is.
-  await db
-    .from('invoices')
-    .update({ status: 'sent' })
-    .eq('id', invoice.id)
-    .eq('status', 'draft')
-  await db
-    .from('private_bookings')
-    .update({ invoice_sent_at: sentAt })
-    .eq('id', booking.id)
+  await settleWrite(
+    db
+      .from('invoices')
+      .update({ status: 'sent' })
+      .eq('id', invoice.id)
+      .eq('status', 'draft'),
+    {
+      table: 'invoices',
+      what: 'Moving the draft invoice to sent',
+      ids: { invoiceId: invoice.id, bookingId: booking.id },
+      note: 'the email itself was sent',
+    }
+  )
+  await settleWrite(
+    db
+      .from('private_bookings')
+      .update({ invoice_sent_at: sentAt })
+      .eq('id', booking.id),
+    {
+      table: 'private_bookings',
+      what: 'Recording when the booking invoice was sent',
+      ids: { bookingId: booking.id, invoiceId: invoice.id },
+      note: 'the email itself was sent',
+    }
+  )
 
   return { sent: true }
 }

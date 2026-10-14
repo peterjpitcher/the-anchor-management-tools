@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
@@ -118,11 +119,14 @@ async function invalidatePayrollApprovalsForDate(
   // Parallelise deletes across periods instead of awaiting them serially
   await Promise.all(
     periods.map(period =>
-      supabase
-        .from('payroll_month_approvals')
-        .delete()
-        .eq('year', period.year)
-        .eq('month', period.month),
+      settleWrite(
+        supabase
+          .from('payroll_month_approvals')
+          .delete()
+          .eq('year', period.year)
+          .eq('month', period.month),
+        { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year: period.year, month: period.month } },
+      ),
     ),
   );
 }
@@ -401,10 +405,13 @@ async function linkSessionToShift(
 
   if (!shifts.length) {
     // Mark as unscheduled
-    await supabase
-      .from('timeclock_sessions')
-      .update({ is_unscheduled: true })
-      .eq('id', sessionId);
+    await settleWrite(
+      supabase
+        .from('timeclock_sessions')
+        .update({ is_unscheduled: true })
+        .eq('id', sessionId),
+      { table: 'timeclock_sessions', what: 'Marking the session as unscheduled', ids: { sessionId } },
+    );
     return;
   }
 
@@ -434,15 +441,21 @@ async function linkSessionToShift(
     // linked shift (payroll/portal both do this via resolveSessionPremium).
     // Copying at clock-in caused stale premiums (shift edited later) and
     // inherited-promotion bugs (a shift premium looked like a manual override).
-    await supabase
-      .from('timeclock_sessions')
-      .update({ linked_shift_id: bestShift.id })
-      .eq('id', sessionId);
+    await settleWrite(
+      supabase
+        .from('timeclock_sessions')
+        .update({ linked_shift_id: bestShift.id })
+        .eq('id', sessionId),
+      { table: 'timeclock_sessions', what: 'Linking the session to its shift', ids: { sessionId, shiftId: bestShift.id } },
+    );
   } else {
-    await supabase
-      .from('timeclock_sessions')
-      .update({ is_unscheduled: true })
-      .eq('id', sessionId);
+    await settleWrite(
+      supabase
+        .from('timeclock_sessions')
+        .update({ is_unscheduled: true })
+        .eq('id', sessionId),
+      { table: 'timeclock_sessions', what: 'Marking the session as unscheduled', ids: { sessionId } },
+    );
   }
 }
 

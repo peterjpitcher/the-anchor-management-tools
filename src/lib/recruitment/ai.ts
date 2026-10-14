@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { stableSerialize } from '@/lib/api/idempotency'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
@@ -116,14 +117,17 @@ function usageFromPayload(payload: any, model: string): AiUsage | undefined {
 
 async function recordUsage(supabase: GenericClient, usage: AiUsage | undefined, context: string) {
   if (!usage) return
-  await supabase.from('ai_usage_events').insert({
-    context,
-    model: usage.model,
-    prompt_tokens: usage.promptTokens,
-    completion_tokens: usage.completionTokens,
-    total_tokens: usage.totalTokens,
-    cost: usage.cost,
-  })
+  await settleWrite(
+    supabase.from('ai_usage_events').insert({
+      context,
+      model: usage.model,
+      prompt_tokens: usage.promptTokens,
+      completion_tokens: usage.completionTokens,
+      total_tokens: usage.totalTokens,
+      cost: usage.cost,
+    }),
+    { table: 'ai_usage_events', what: 'Recording AI usage', ids: { context, model: usage.model } },
+  )
 }
 
 async function insertAiRun(

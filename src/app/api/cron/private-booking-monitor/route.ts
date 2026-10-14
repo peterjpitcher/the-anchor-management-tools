@@ -44,6 +44,7 @@ import {
   classifyDepositReminderWindow,
   reminderDedupDateFilter,
 } from '@/services/private-bookings/scheduled-sms'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
@@ -1391,11 +1392,19 @@ export async function GET(request: Request) {
 
           if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'private', bookingId: booking.id }))) {
             const nowIso = new Date().toISOString()
-            await supabase
-              .from('private_bookings')
-              .update({ review_processed_at: nowIso, updated_at: nowIso })
-              .eq('id', booking.id)
-              .is('review_sms_sent_at', null)
+            await settleWrite(
+              supabase
+                .from('private_bookings')
+                .update({ review_processed_at: nowIso, updated_at: nowIso })
+                .eq('id', booking.id)
+                .is('review_sms_sent_at', null),
+              {
+                table: 'private_bookings',
+                what: 'Marking the suppressed review SMS as processed',
+                ids: { bookingId: booking.id },
+                note: 'the booking may be picked up again on the next run'
+              }
+            )
             logger.info('Private booking review SMS suppressed: not customer first visit', {
               metadata: { bookingId: booking.id, customerId: booking.customer_id }
             })

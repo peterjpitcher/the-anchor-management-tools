@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { toZonedTime, format, fromZonedTime } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 
 // Vercel Cron: runs at 05:00 UTC daily (cron: "0 5 * * *")
@@ -116,11 +117,14 @@ export async function GET(request: Request) {
     if (periods?.length) {
       await Promise.all(
         periods.map(period =>
-          supabase
-            .from('payroll_month_approvals')
-            .delete()
-            .eq('year', period.year)
-            .eq('month', period.month),
+          settleWrite(
+            supabase
+              .from('payroll_month_approvals')
+              .delete()
+              .eq('year', period.year)
+              .eq('month', period.month),
+            { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year: period.year, month: period.month, sessionId: session.id } },
+          ),
         ),
       );
     }
