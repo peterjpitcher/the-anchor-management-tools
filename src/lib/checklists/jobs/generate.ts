@@ -29,6 +29,7 @@ import {
   type FloatingPrior,
 } from '@/lib/checklists/generation'
 import type { InstanceState, ShiftRow } from '@/lib/checklists/types'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 const TZ = 'Europe/London'
 
@@ -71,23 +72,37 @@ async function failRun(
   settings: ChecklistSettings,
   reason: string,
 ): Promise<void> {
-  await db
-    .from('checklist_generation_runs')
-    .update({ status: 'failed', error_message: reason, finished_at: nowIso() })
-    .eq('id', runId)
-
-  await db.from('checklist_email_outbox').upsert(
+  await settleWrite(
+    db
+      .from('checklist_generation_runs')
+      .update({ status: 'failed', error_message: reason, finished_at: nowIso() })
+      .eq('id', runId),
     {
-      email_type: 'system_alert',
-      source_type: 'generation_run',
-      source_id: runId,
-      idempotency_key: `checklist_gen_fail:${businessDate}:${attempt}`,
-      to_addresses: [systemEmail()],
-      subject: `Checklist generation failed for ${businessDate}: ${reason}`,
-      status: settings.emailsEnabled ? 'pending' : 'held',
-      next_attempt_at: nowIso(),
+      table: 'checklist_generation_runs',
+      what: 'Recording the checklist generation run as failed',
+      ids: { runId, businessDate, attempt },
     },
-    { onConflict: 'idempotency_key', ignoreDuplicates: true },
+  )
+
+  await settleWrite(
+    db.from('checklist_email_outbox').upsert(
+      {
+        email_type: 'system_alert',
+        source_type: 'generation_run',
+        source_id: runId,
+        idempotency_key: `checklist_gen_fail:${businessDate}:${attempt}`,
+        to_addresses: [systemEmail()],
+        subject: `Checklist generation failed for ${businessDate}: ${reason}`,
+        status: settings.emailsEnabled ? 'pending' : 'held',
+        next_attempt_at: nowIso(),
+      },
+      { onConflict: 'idempotency_key', ignoreDuplicates: true },
+    ),
+    {
+      table: 'checklist_email_outbox',
+      what: 'Queueing the checklist generation failure alert',
+      ids: { runId, businessDate, attempt },
+    },
   )
 }
 
@@ -178,10 +193,17 @@ export async function runGenerateDay(
     return { status: 'failed', reason: tw.reason, runId }
   }
   if (tw.isClosed) {
-    await db
-      .from('checklist_generation_runs')
-      .update({ status: 'skipped_closed', finished_at: nowIso() })
-      .eq('id', runId)
+    await settleWrite(
+      db
+        .from('checklist_generation_runs')
+        .update({ status: 'skipped_closed', finished_at: nowIso() })
+        .eq('id', runId),
+      {
+        table: 'checklist_generation_runs',
+        what: 'Recording the checklist generation run as skipped for a closed day',
+        ids: { runId, businessDate },
+      },
+    )
     return { status: 'skipped_closed', runId }
   }
 
@@ -422,16 +444,24 @@ export async function runGenerateDay(
   }
 
   // --- Complete the run ---
-  await db
-    .from('checklist_generation_runs')
-    .update({
-      status: 'complete',
-      instances_created: created,
-      instances_updated: updated,
-      instances_retracted: retracted,
-      finished_at: nowIso(),
-    })
-    .eq('id', runId)
+  await settleWrite(
+    db
+      .from('checklist_generation_runs')
+      .update({
+        status: 'complete',
+        instances_created: created,
+        instances_updated: updated,
+        instances_retracted: retracted,
+        finished_at: nowIso(),
+      })
+      .eq('id', runId),
+    {
+      table: 'checklist_generation_runs',
+      what: 'Recording the checklist generation run as complete',
+      ids: { runId, businessDate },
+      note: 'the checklist instances themselves were saved',
+    },
+  )
 
   return {
     status: 'complete',

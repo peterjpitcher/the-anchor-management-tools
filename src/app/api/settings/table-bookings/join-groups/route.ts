@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireSettingsManagePermission } from '@/lib/settings/api-auth'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 const SaveGroupSchema = z.object({
   id: z.string().uuid().optional(),
@@ -189,7 +190,11 @@ export async function PUT(request: NextRequest) {
   }
 
   // Replace members
-  await auth.supabase.from('table_join_group_members').delete().eq('group_id', id)
+  await settleWrite(auth.supabase.from('table_join_group_members').delete().eq('group_id', id), {
+    table: 'table_join_group_members',
+    what: 'Removing the old join group members',
+    ids: { groupId: id },
+  })
 
   if (table_ids.length > 0) {
     const { error: membersError } = await auth.supabase

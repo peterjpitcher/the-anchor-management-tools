@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import type { CategoryFormData } from '@/types/event-categories';
 
 export class EventCategoryService {
@@ -80,10 +81,13 @@ export class EventCategoryService {
 
     // Propagate slug changes to events.event_type (derived field)
     if (category && oldCategory.slug !== category.slug) {
-      await admin
-        .from('events')
-        .update({ event_type: category.slug })
-        .eq('category_id', id)
+      await settleWrite(
+        admin
+          .from('events')
+          .update({ event_type: category.slug })
+          .eq('category_id', id),
+        { table: 'events', what: 'Propagating the category slug to its events', ids: { categoryId: id } }
+      );
     }
 
     return { category, oldCategory };

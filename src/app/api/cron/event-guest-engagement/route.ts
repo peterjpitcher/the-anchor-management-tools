@@ -3,6 +3,7 @@ import { getAppUrl } from '@/lib/env'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
@@ -300,15 +301,18 @@ async function acquireCronRun(runKey: string): Promise<CronRunAcquireResult> {
   }
 
   if (existingRunning && isRunStale(existingRunning.started_at)) {
-    await supabase
-      .from('cron_job_runs')
-      .update({
-        status: 'failed',
-        finished_at: nowIso,
-        error_message: 'Marked stale by newer invocation'
-      })
-      .eq('id', existingRunning.id)
-      .eq('status', 'running')
+    await settleWrite(
+      supabase
+        .from('cron_job_runs')
+        .update({
+          status: 'failed',
+          finished_at: nowIso,
+          error_message: 'Marked stale by newer invocation'
+        })
+        .eq('id', existingRunning.id)
+        .eq('status', 'running'),
+      { table: 'cron_job_runs', what: 'Marking the stale cron run failed', ids: { runId: existingRunning.id } }
+    )
   }
 
   const { data, error } = await supabase
@@ -1121,11 +1125,14 @@ async function processReviewFollowups(
     if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'event', bookingId: booking.id }))) {
       result.suppressed += 1
       const nowIso = new Date().toISOString()
-      await supabase
-        .from('bookings')
-        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
-        .eq('id', booking.id)
-        .is('review_suppressed_at', null)
+      await settleWrite(
+        supabase
+          .from('bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'bookings', what: 'Suppressing the event review (not first visit)', ids: { bookingId: booking.id } }
+      )
       logger.info('Event review SMS suppressed: not customer first visit', {
         metadata: { bookingId: booking.id, customerId: booking.customer_id }
       })
@@ -1136,11 +1143,14 @@ async function processReviewFollowups(
     if (alreadyReviewedSet.has(booking.customer_id)) {
       result.suppressed += 1
       const nowIso = new Date().toISOString()
-      await supabase
-        .from('bookings')
-        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
-        .eq('id', booking.id)
-        .is('review_suppressed_at', null)
+      await settleWrite(
+        supabase
+          .from('bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'bookings', what: 'Suppressing the event review (already reviewed)', ids: { bookingId: booking.id } }
+      )
       logger.info('Event review SMS suppressed: customer already reviewed', {
         metadata: { bookingId: booking.id, customerId: booking.customer_id }
       })
@@ -1473,11 +1483,14 @@ async function processTableReviewFollowups(
       // customer has neither a usable email nor an active mobile, so there was
       // never a way to ask them.
       const nowIso = new Date().toISOString()
-      await supabase
-        .from('table_bookings')
-        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
-        .eq('id', booking.id)
-        .is('review_suppressed_at', null)
+      await settleWrite(
+        supabase
+          .from('table_bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'table_bookings', what: 'Suppressing the table review (no contactable channel)', ids: { tableBookingId: booking.id } }
+      )
       logger.info('Table review suppressed: customer has no contactable channel', {
         metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
       })
@@ -1493,11 +1506,14 @@ async function processTableReviewFollowups(
     if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'table', bookingId: booking.id }))) {
       result.suppressed += 1
       const nowIso = new Date().toISOString()
-      await supabase
-        .from('table_bookings')
-        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
-        .eq('id', booking.id)
-        .is('review_suppressed_at', null)
+      await settleWrite(
+        supabase
+          .from('table_bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'table_bookings', what: 'Suppressing the table review (not first visit)', ids: { tableBookingId: booking.id } }
+      )
       logger.info('Table review SMS suppressed: not customer first visit', {
         metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
       })
@@ -1508,11 +1524,14 @@ async function processTableReviewFollowups(
     if (tableAlreadyReviewedSet.has(booking.customer_id)) {
       result.suppressed += 1
       const nowIso = new Date().toISOString()
-      await supabase
-        .from('table_bookings')
-        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
-        .eq('id', booking.id)
-        .is('review_suppressed_at', null)
+      await settleWrite(
+        supabase
+          .from('table_bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'table_bookings', what: 'Suppressing the table review (already reviewed)', ids: { tableBookingId: booking.id } }
+      )
       logger.info('Table review SMS suppressed: customer already reviewed', {
         metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
       })
@@ -2435,14 +2454,20 @@ export async function GET(request: NextRequest) {
     const promoContextRetentionDays = promoFlags.state === 'known' && !promoFlags.lastPush
       ? EVENT_PROMO_CONTEXT_RETENTION_DAYS
       : EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH
-    await supabase.from('sms_promo_context' as never)
-      .delete()
-      .lt('created_at', new Date(Date.now() - promoContextRetentionDays * 24 * 60 * 60 * 1000).toISOString())
+    await settleWrite(
+      supabase.from('sms_promo_context' as never)
+        .delete()
+        .lt('created_at', new Date(Date.now() - promoContextRetentionDays * 24 * 60 * 60 * 1000).toISOString()),
+      { table: 'sms_promo_context', what: 'Clearing old promo context rows', ids: { retentionDays: promoContextRetentionDays } }
+    )
 
     // Cleanup: remove promo_sequence rows older than 14 days
-    await supabase.from('promo_sequence' as never)
-      .delete()
-      .lt('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+    await settleWrite(
+      supabase.from('promo_sequence' as never)
+        .delete()
+        .lt('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()),
+      { table: 'promo_sequence', what: 'Clearing old promo sequence rows', ids: { retentionDays: 14 } }
+    )
 
     resolvedStatus = 'completed'
     return NextResponse.json({

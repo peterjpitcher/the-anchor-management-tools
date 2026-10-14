@@ -34,6 +34,7 @@ import { invoicePaymentCustomId } from '@/lib/invoices/paypal-custom-id'
 import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
 import { invoiceBalanceDue, type InvoiceBalanceInput } from '@/lib/invoices/balance'
 import { invoiceCanOfferPayPal } from '@/lib/invoices/payment-link-footer'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 /** Statuses where asking the customer for money is legitimate. */
 const PAYABLE_STATUSES = new Set(['sent', 'overdue', 'partially_paid'])
@@ -310,20 +311,28 @@ export async function createInvoicePaymentOrderByToken(
     const order = await ensurePayPalOrder(invoice!, `${url}?payment_pending=1`, url)
     if ('error' in order) return { error: order.error }
 
-    await createAdminClient()
-      .from('audit_logs')
-      .insert({
-        operation_type: 'paypal_order_created',
-        resource_type: 'invoice',
-        resource_id: invoiceId,
-        operation_status: 'success',
-        additional_info: {
-          action: 'invoice_paypal_order_created_via_portal',
-          invoice_number: invoice!.invoice_number,
-          amount_due: outstanding(invoice!),
-          order_id: order.orderId,
-        },
-      })
+    await settleWrite(
+      createAdminClient()
+        .from('audit_logs')
+        .insert({
+          operation_type: 'paypal_order_created',
+          resource_type: 'invoice',
+          resource_id: invoiceId,
+          operation_status: 'success',
+          additional_info: {
+            action: 'invoice_paypal_order_created_via_portal',
+            invoice_number: invoice!.invoice_number,
+            amount_due: outstanding(invoice!),
+            order_id: order.orderId,
+          },
+        }),
+      {
+        table: 'audit_logs',
+        what: 'Recording the portal PayPal order in the audit log',
+        ids: { invoiceId, orderId: order.orderId },
+        note: 'the PayPal order itself was created',
+      }
+    )
 
     return { approveUrl: order.approveUrl }
   } catch (error) {

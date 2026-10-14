@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { sendEmail } from '@/lib/email/emailService';
 import {
@@ -208,14 +209,20 @@ export async function GET(request: Request): Promise<NextResponse> {
       const warnedAt = now.toISOString();
       const shiftIds = employeeShifts.map(shift => shift.id);
       await Promise.all([
-        supabase
-          .from('rota_published_shifts')
-          .update({ auto_accept_warning_sent_at: warnedAt })
-          .in('id', shiftIds),
-        supabase
-          .from('rota_shifts')
-          .update({ auto_accept_warning_sent_at: warnedAt })
-          .in('id', shiftIds),
+        settleWrite(
+          supabase
+            .from('rota_published_shifts')
+            .update({ auto_accept_warning_sent_at: warnedAt })
+            .in('id', shiftIds),
+          { table: 'rota_published_shifts', what: 'Recording the auto-accept warning', ids: { employeeId, shiftCount: shiftIds.length } },
+        ),
+        settleWrite(
+          supabase
+            .from('rota_shifts')
+            .update({ auto_accept_warning_sent_at: warnedAt })
+            .in('id', shiftIds),
+          { table: 'rota_shifts', what: 'Recording the auto-accept warning', ids: { employeeId, shiftCount: shiftIds.length } },
+        ),
       ]);
     } else {
       warningFailed += 1;
@@ -304,21 +311,24 @@ export async function GET(request: Request): Promise<NextResponse> {
       autoAcceptMissingLiveShift += 1;
     }
 
-    await supabase.from('audit_logs').insert({
-      user_id: null,
-      user_email: null,
-      operation_type: 'auto_accept',
-      resource_type: 'rota_shift',
-      resource_id: shift.id,
-      operation_status: 'success',
-      old_values: { acceptance_status: 'pending' },
-      new_values: acceptance,
-      additional_info: {
-        reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
-        source: 'rota-shift-acceptance-cron',
-        live_shift_updated: Boolean(mirroredShift),
-      },
-    });
+    await settleWrite(
+      supabase.from('audit_logs').insert({
+        user_id: null,
+        user_email: null,
+        operation_type: 'auto_accept',
+        resource_type: 'rota_shift',
+        resource_id: shift.id,
+        operation_status: 'success',
+        old_values: { acceptance_status: 'pending' },
+        new_values: acceptance,
+        additional_info: {
+          reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+          source: 'rota-shift-acceptance-cron',
+          live_shift_updated: Boolean(mirroredShift),
+        },
+      }),
+      { table: 'audit_logs', what: 'Recording the auto-accept audit entry', ids: { shiftId: shift.id } },
+    );
 
     await recordShiftReliabilityEvent({
       eventType: 'shift_auto_accepted',

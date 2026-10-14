@@ -4,6 +4,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 // Vercel Cron: 0 4,5 * * * (UTC). Re-gates on a 04:00-06:00 Europe/London window to absorb
 // DST, then enqueues the day's checklist jobs into the existing every-minute job queue.
@@ -88,18 +89,25 @@ export async function GET(request: Request) {
     const mmdd = businessDate.slice(5)
     if (mmdd === settings.autumnWinterStart || mmdd === settings.autumnWinterEnd) {
       const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
-      await db.from('checklist_email_outbox').upsert(
+      await settleWrite(
+        db.from('checklist_email_outbox').upsert(
+          {
+            email_type: 'system_alert',
+            source_type: 'season',
+            source_id: businessDate,
+            idempotency_key: `season_boundary:${businessDate}`,
+            to_addresses: [to],
+            subject: 'The Anchor checklists: season has changed, review seasonal tasks',
+            status: settings.emailsEnabled ? 'pending' : 'held',
+            next_attempt_at: nowUtc.toISOString(),
+          },
+          { onConflict: 'idempotency_key', ignoreDuplicates: true },
+        ),
         {
-          email_type: 'system_alert',
-          source_type: 'season',
-          source_id: businessDate,
-          idempotency_key: `season_boundary:${businessDate}`,
-          to_addresses: [to],
-          subject: 'The Anchor checklists: season has changed, review seasonal tasks',
-          status: settings.emailsEnabled ? 'pending' : 'held',
-          next_attempt_at: nowUtc.toISOString(),
+          table: 'checklist_email_outbox',
+          what: 'Queueing the season boundary reminder',
+          ids: { businessDate },
         },
-        { onConflict: 'idempotency_key', ignoreDuplicates: true },
       )
       seasonReminder = businessDate
     }

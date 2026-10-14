@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail, type EmailOptions } from '@/lib/email/emailService'
 import { isEmailSuppressed } from '@/lib/email/logging'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { isCustomerSmsSendAllowed, isCustomerWhatsAppSendAllowed, sendSMS, sendWhatsApp, type SendSMSOptions, type SendWhatsAppOptions } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { reportCronFailure } from '@/lib/cron/alerting'
@@ -165,23 +166,26 @@ async function recordAttempt(input: {
   if (!input.deliveryId) return
   try {
     const client = createAdminClient()
-    await (client.from('notification_attempts') as any).insert({
-      delivery_id: input.deliveryId,
-      channel: input.attempt.channel,
-      attempt_order: input.attemptOrder,
-      status: input.attempt.success ? 'sent' : 'failed',
-      provider_message_id: input.attempt.messageId ?? null,
-      twilio_message_sid: input.attempt.channel === 'sms' || input.attempt.channel === 'whatsapp' ? input.attempt.messageId ?? null : null,
-      resend_message_id: input.attempt.channel === 'email' ? input.attempt.messageId ?? null : null,
-      error: input.attempt.error ?? null,
-      raw_payload: {
-        code: input.attempt.code ?? null,
-        scheduled_for: input.attempt.scheduledFor ?? null,
-        log_failure: input.attempt.logFailure === true
-      }
-    })
+    await settleWrite(
+      (client.from('notification_attempts') as any).insert({
+        delivery_id: input.deliveryId,
+        channel: input.attempt.channel,
+        attempt_order: input.attemptOrder,
+        status: input.attempt.success ? 'sent' : 'failed',
+        provider_message_id: input.attempt.messageId ?? null,
+        twilio_message_sid: input.attempt.channel === 'sms' || input.attempt.channel === 'whatsapp' ? input.attempt.messageId ?? null : null,
+        resend_message_id: input.attempt.channel === 'email' ? input.attempt.messageId ?? null : null,
+        error: input.attempt.error ?? null,
+        raw_payload: {
+          code: input.attempt.code ?? null,
+          scheduled_for: input.attempt.scheduledFor ?? null,
+          log_failure: input.attempt.logFailure === true
+        }
+      }),
+      { table: 'notification_attempts', what: 'Recording the notification attempt', ids: { deliveryId: input.deliveryId, channel: input.attempt.channel, attemptOrder: input.attemptOrder } }
+    )
   } catch (error) {
-    logger.warn('Notification attempt audit failed', {
+    logger.error('Notification attempt audit failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { deliveryId: input.deliveryId, channel: input.attempt.channel }
     })
@@ -349,9 +353,12 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
     })
     if (deliveryId) {
       const client = input.supabase ?? createAdminClient()
-      await (client.from('notification_deliveries') as any)
-        .update({ final_status: 'no_channel', updated_at: new Date().toISOString() })
-        .eq('id', deliveryId)
+      await settleWrite(
+        (client.from('notification_deliveries') as any)
+          .update({ final_status: 'no_channel', updated_at: new Date().toISOString() })
+          .eq('id', deliveryId),
+        { table: 'notification_deliveries', what: 'Marking the notification delivery as no channel', ids: { deliveryId } }
+      )
     }
     return {
       selectedChannels: [],
@@ -472,15 +479,18 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
   if (deliveryId) {
     try {
       const client = input.supabase ?? createAdminClient()
-      await (client.from('notification_deliveries') as any)
-        .update({
-          selected_channel: successful?.channel ?? null,
-          final_status: finalStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', deliveryId)
+      await settleWrite(
+        (client.from('notification_deliveries') as any)
+          .update({
+            selected_channel: successful?.channel ?? null,
+            final_status: finalStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', deliveryId),
+        { table: 'notification_deliveries', what: 'Finalising the notification delivery', ids: { deliveryId, finalStatus } }
+      )
     } catch (error) {
-      logger.warn('Failed to finalise notification delivery audit', {
+      logger.error('Failed to finalise notification delivery audit', {
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { deliveryId }
       })

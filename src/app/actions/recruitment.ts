@@ -7,6 +7,7 @@ import {
 } from '@/services/recruitment-retention'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { createClient } from '@/lib/supabase/server'
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -1431,14 +1432,17 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       throw new Error(invite.message || 'Employee invite failed.')
     }
 
-    await admin
-      .from('employees')
-      .update({
-        first_name: application.candidate.first_name || undefined,
-        last_name: application.candidate.last_name || undefined,
-        phone_number: application.candidate.phone_e164 || application.candidate.phone || undefined,
-      })
-      .eq('employee_id', invite.employeeId)
+    await settleWrite(
+      admin
+        .from('employees')
+        .update({
+          first_name: application.candidate.first_name || undefined,
+          last_name: application.candidate.last_name || undefined,
+          phone_number: application.candidate.phone_e164 || application.candidate.phone || undefined,
+        })
+        .eq('employee_id', invite.employeeId),
+      { table: 'employees', what: 'Copying the candidate details onto the new employee', ids: { employeeId: invite.employeeId, applicationId } },
+    )
 
     await completeRecruitmentHireHandoff(applicationId, invite.employeeId, user.id, admin)
     await auditRecruitmentMutation({

@@ -11,6 +11,7 @@ import {
 } from '@/lib/recruitment/contact'
 import { formatRecruitmentAppointmentTime } from '@/services/recruitment'
 import type { RecruitmentTemplateType } from '@/types/recruitment'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
@@ -574,19 +575,22 @@ export async function sendRecruitmentApplicationReceivedEmail(
     },
   })
 
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      delivery_status: result.success ? 'sent' : 'failed',
-      provider_message_id: result.messageId ?? null,
-      sent_at: result.success ? new Date().toISOString() : null,
-      metadata: {
-        role_title: roleTitle(application),
-        application_closing_date: application.job_posting?.application_closing_date ?? null,
-        error: result.error ?? null,
-      },
-    })
-    .eq('id', communication.id)
+  await settleWrite(
+    supabase
+      .from('recruitment_communications')
+      .update({
+        delivery_status: result.success ? 'sent' : 'failed',
+        provider_message_id: result.messageId ?? null,
+        sent_at: result.success ? new Date().toISOString() : null,
+        metadata: {
+          role_title: roleTitle(application),
+          application_closing_date: application.job_posting?.application_closing_date ?? null,
+          error: result.error ?? null,
+        },
+      })
+      .eq('id', communication.id),
+    { table: 'recruitment_communications', what: 'Recording the application received email outcome', ids: { applicationId, communicationId: communication.id, sent: result.success } },
+  )
 
   if (!result.success) {
     throw new Error(result.error || 'Recruitment application received email failed.')
@@ -743,19 +747,22 @@ export async function sendRecruitmentTemplateEmail(
     attachments: options.attachments,
   })
 
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      delivery_status: result.success ? 'sent' : 'failed',
-      provider_message_id: result.messageId ?? null,
-      sent_at: result.success ? new Date().toISOString() : null,
-      metadata: {
-        appointment_id: options.appointmentId ?? null,
-        booking_link_injected: Boolean(options.bookingLink),
-        error: result.error ?? null,
-      },
-    })
-    .eq('id', communication.id)
+  await settleWrite(
+    supabase
+      .from('recruitment_communications')
+      .update({
+        delivery_status: result.success ? 'sent' : 'failed',
+        provider_message_id: result.messageId ?? null,
+        sent_at: result.success ? new Date().toISOString() : null,
+        metadata: {
+          appointment_id: options.appointmentId ?? null,
+          booking_link_injected: Boolean(options.bookingLink),
+          error: result.error ?? null,
+        },
+      })
+      .eq('id', communication.id),
+    { table: 'recruitment_communications', what: 'Recording the template email outcome', ids: { applicationId, communicationId: communication.id, sent: result.success } },
+  )
 
   if (!result.success) {
     throw new Error(result.error || 'Recruitment email send failed.')
@@ -823,18 +830,21 @@ export async function sendRecruitmentSms(
     },
   })
 
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      delivery_status: result.success ? 'sent' : 'failed',
-      provider_message_id: (result as any).messageSid ?? (result as any).sid ?? null,
-      sent_at: result.success ? new Date().toISOString() : null,
-      metadata: {
-        error: result.error ?? null,
-        code: (result as any).code ?? null,
-      },
-    })
-    .eq('id', communication.id)
+  await settleWrite(
+    supabase
+      .from('recruitment_communications')
+      .update({
+        delivery_status: result.success ? 'sent' : 'failed',
+        provider_message_id: (result as any).messageSid ?? (result as any).sid ?? null,
+        sent_at: result.success ? new Date().toISOString() : null,
+        metadata: {
+          error: result.error ?? null,
+          code: (result as any).code ?? null,
+        },
+      })
+      .eq('id', communication.id),
+    { table: 'recruitment_communications', what: 'Recording the SMS outcome', ids: { candidateId, communicationId: communication.id, sent: result.success } },
+  )
 
   if (!result.success) {
     throw new Error(result.error || 'Recruitment SMS send failed.')
@@ -949,15 +959,18 @@ export async function retryRecruitmentCommunication(
     throw new Error('Unsupported communication channel.')
   }
 
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      delivery_status: success ? 'sent' : 'failed',
-      provider_message_id: providerMessageId,
-      sent_at: success ? new Date().toISOString() : null,
-      metadata: { ...metadata, error: failure },
-    })
-    .eq('id', retryRow.id)
+  await settleWrite(
+    supabase
+      .from('recruitment_communications')
+      .update({
+        delivery_status: success ? 'sent' : 'failed',
+        provider_message_id: providerMessageId,
+        sent_at: success ? new Date().toISOString() : null,
+        metadata: { ...metadata, error: failure },
+      })
+      .eq('id', retryRow.id),
+    { table: 'recruitment_communications', what: 'Recording the retried communication outcome', ids: { communicationId: retryRow.id, retryOfCommunicationId: communicationId, sent: success } },
+  )
 
   if (!success) {
     throw new Error(failure || 'Communication retry failed.')
@@ -995,10 +1008,13 @@ export async function sendDueRecruitmentAppointmentReminders(
           appointmentId: appointment.id,
         }, supabase)
 
-        await supabase
-          .from('recruitment_candidate_appointments')
-          .update({ reminder_email_sent_at: new Date().toISOString() })
-          .eq('id', appointment.id)
+        await settleWrite(
+          supabase
+            .from('recruitment_candidate_appointments')
+            .update({ reminder_email_sent_at: new Date().toISOString() })
+            .eq('id', appointment.id),
+          { table: 'recruitment_candidate_appointments', what: 'Marking the reminder email sent', ids: { appointmentId: appointment.id } },
+        )
         emailSent += 1
       } catch (reminderError) {
         failed += 1
@@ -1013,10 +1029,13 @@ export async function sendDueRecruitmentAppointmentReminders(
           applicationId: appointment.application_id,
         }, supabase)
 
-        await supabase
-          .from('recruitment_candidate_appointments')
-          .update({ reminder_sms_sent_at: new Date().toISOString() })
-          .eq('id', appointment.id)
+        await settleWrite(
+          supabase
+            .from('recruitment_candidate_appointments')
+            .update({ reminder_sms_sent_at: new Date().toISOString() })
+            .eq('id', appointment.id),
+          { table: 'recruitment_candidate_appointments', what: 'Marking the reminder SMS sent', ids: { appointmentId: appointment.id } },
+        )
         smsSent += 1
       } catch (smsError) {
         failed += 1
