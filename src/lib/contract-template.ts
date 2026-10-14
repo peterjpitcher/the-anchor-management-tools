@@ -47,8 +47,11 @@ export interface ContractData {
 
 // Canonical company details (SOP rewording pack §30). Used when the caller does not
 // supply companyDetails; callers may override individual values.
+// The trading name is "The Anchor", never "The Anchor Pub" (website SSOT §1), and it matches
+// CONTRACT_COMPANY_DETAILS in private-bookings/contract-lifecycle.ts. Every mention of the trader
+// in the document below reads company.name, so the contract can only name it one way.
 const DEFAULT_COMPANY_DETAILS = {
-  name: 'Orange Jelly Limited trading as The Anchor Pub',
+  name: 'Orange Jelly Limited trading as The Anchor',
   registrationNumber: '10537179',
   vatNumber: 'GB 315 2036 47',
   address: 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ',
@@ -777,13 +780,13 @@ ${depositRequired ? `            <p>A booking and damage deposit is required to 
 
           <p class="section-label gap">Agreement</p>
           <div class="tc">
-${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
+${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to engage ${company.name} to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
             ${depositApplied
               ? `<p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT). The deposit of <b>${formatCurrency(appliedDepositAmount)}</b> has been applied towards the invoice under the recorded arrangement for this booking.</p>`
               : `<p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT) and the separate booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>. I understand that the deposit is separate from and additional to the event price and cannot be used towards the event balance or any other charge.</p>`}
             <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, unless The Anchor has agreed a different written deadline.</p>
             <p>If I provide final details late, I understand The Anchor will try to help where reasonably possible, but preferred menus, suppliers, layouts, timings, equipment or other options may no longer be available. If essential details or payment remain outstanding after reminder and General Manager review, The Anchor may treat the booking as cancelled by me.</p>
-            <p>By signing below, paying the deposit, or otherwise confirming the booking in writing after receiving this Agreement, I confirm that I have read, understood and agree to be bound by this Agreement and its terms and conditions.</p>` : `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
+            <p>By signing below, paying the deposit, or otherwise confirming the booking in writing after receiving this Agreement, I confirm that I have read, understood and agree to be bound by this Agreement and its terms and conditions.</p>` : `            <p>I, <b>${safeCustomerName}</b>, agree to engage ${company.name} to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
             <p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT). No booking and damage deposit is required for this event.</p>
             <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, unless The Anchor has agreed a different written deadline.</p>
             <p>If I provide final details late, I understand The Anchor will try to help where reasonably possible, but preferred menus, suppliers, layouts, timings, equipment or other options may no longer be available. If essential details or payment remain outstanding after reminder and General Manager review, The Anchor may treat the booking as cancelled by me.</p>
@@ -802,7 +805,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             </div>
             <div class="sign-card">
               <p class="sign-card-h">For The Anchor</p>
-              <p class="sign-card-sub">For and on behalf of Orange Jelly Limited trading as The Anchor Pub</p>
+              <p class="sign-card-sub">For and on behalf of ${company.name}</p>
               ${signingSlots ? signatureSlot(CONTRACT_SLOT_ANCHOR) : `<div class="sf"><div class="sf-rule"></div><span class="sf-cap">Name &amp; position</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
@@ -824,7 +827,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
           <div class="tc-cols">
             <div class="tc-sec">
               <p class="tc-h">The parties and definitions</p>
-              <p>In this Agreement, &ldquo;The Anchor&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo; and &ldquo;our&rdquo; mean <b>Orange Jelly Limited trading as The Anchor Pub</b>, company registration number ${company.registrationNumber}, VAT number ${company.vatNumber}, of ${company.address}. &ldquo;Host&rdquo; means the person booking and accepting responsibility for the event. &ldquo;Agreement&rdquo; means the booking agreement, these terms, and any signed annex or approved booking schedule. &ldquo;Event&rdquo; means the private booking described in the booking schedule.</p>
+              <p>In this Agreement, &ldquo;The Anchor&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo; and &ldquo;our&rdquo; mean <b>${company.name}</b>, company registration number ${company.registrationNumber}, VAT number ${company.vatNumber}, of ${company.address}. &ldquo;Host&rdquo; means the person booking and accepting responsibility for the event. &ldquo;Agreement&rdquo; means the booking agreement, these terms, and any signed annex or approved booking schedule. &ldquo;Event&rdquo; means the private booking described in the booking schedule.</p>
             </div>
             <div class="tc-sec">
               <p class="tc-h">Reservation and deposit</p>
