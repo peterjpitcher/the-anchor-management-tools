@@ -123,6 +123,62 @@ describe('processEventRefund', () => {
     }))
   })
 
+  it.each([
+    ['lands', null, undefined],
+    [
+      'fails',
+      { message: 'permission denied for table payments', code: '42501' },
+      'The refund went through, but the original payment was not updated to show it. Do not refund again: tell the developer so the payment record can be corrected.',
+    ],
+  ] as const)(
+    'still reports a refund PayPal made as succeeded when marking the original payment refunded %s',
+    async (_label, updateError, staffWarning) => {
+      ;(refundPayPalPayment as unknown as Mock).mockResolvedValue({
+        refundId: 'RFD-123',
+        status: 'COMPLETED',
+        amount: '10.00',
+      })
+      ;(recordAnalyticsEvent as unknown as Mock).mockResolvedValue(undefined)
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const paymentLookup = chain(
+        { data: [{ id: 'payment-1', amount: 20, currency: 'GBP', paypal_capture_id: 'CAPTURE-123' }], error: null },
+        ['select', 'eq', 'in', 'not', 'order']
+      )
+      const existingRefundLookup = chain({ data: [], error: null }, ['select', 'eq', 'contains', 'in', 'order'])
+      const allRefundsLookup = chain({ data: [], error: null }, ['select', 'eq', 'contains', 'in'])
+      const webhookRowLookup = chain({ data: null, error: null }, ['select', 'eq', 'contains', 'limit'])
+      const updatePayment = chain({ data: null, error: updateError }, ['update', 'eq'])
+      const insert = vi.fn().mockResolvedValue({ error: null })
+      const supabase = {
+        from: vi
+          .fn()
+          .mockReturnValueOnce(paymentLookup)
+          .mockReturnValueOnce(existingRefundLookup)
+          .mockReturnValueOnce(allRefundsLookup)
+          .mockReturnValueOnce(webhookRowLookup)
+          .mockReturnValueOnce({ insert })
+          .mockReturnValueOnce(updatePayment),
+      }
+
+      const result = await processEventRefund(supabase as any, {
+        bookingId: 'booking-1',
+        customerId: 'customer-1',
+        eventId: 'event-1',
+        amount: 10,
+        reason: 'event_cancel_full',
+      })
+      consoleError.mockRestore()
+
+      // Never a failure: PayPal has the money back with the guest, and "failed" invites a second refund.
+      expect(result).toMatchObject({ status: 'succeeded', amount: 10, paypalRefundId: 'RFD-123' })
+      expect(result.staffWarning).toBe(staffWarning)
+      expect(updatePayment.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'partially_refunded' }))
+      // The failed write did not fall into the catch, which would record a second refund row.
+      expect(insert).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it('adopts the row the webhook recorded when it lands before the staff write, rather than recording twice', async () => {
     const db = createFakeSupabase({
       payments: [{
