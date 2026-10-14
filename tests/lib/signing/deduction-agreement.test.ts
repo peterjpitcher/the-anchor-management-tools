@@ -497,7 +497,7 @@ describe('whether a request for agreement still stands', () => {
 })
 
 describe('the wording it is seeded with', () => {
-  const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20261013170000_signing_deposit_deduction_agreement.sql'), 'utf8')
+  const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20261014084753_signing_deposit_deduction_agreement.sql'), 'utf8')
   const seeded = migration.match(/\('([a-z_]+)', '([a-z0-9-]+)', '([^']+)', \$body\$([\s\S]*?)\$body\$\)/) as RegExpMatchArray
   const [, kind, slug, title, body] = seeded
 
