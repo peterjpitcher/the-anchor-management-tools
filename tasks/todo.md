@@ -984,3 +984,15 @@ Branch `fix/self-host-fonts`. The build failed three times on Vercel (25 and 27 
 - [x] Cold `npm run build` passed with the network available and again with all network access denied (`sandbox-exec`). The same blocked build of `main` fails in `next/font`, naming both `layout.tsx` and `guest.ts`.
 - [x] `/auth/login`, `/privacy` and a specimen of every weight: computed font-family identical to the live site and screenshots identical pixel for pixel.
 - [ ] Owner's yes to push, then merge and confirm the deployment.
+
+## Private booking contract names the trader one way, 13 October 2026
+
+Branch `claude/inspiring-austin-9651e8`, cut from `origin/main` at e6343e98 and rebased on 14 October onto 896d7289 (PR 206), keeping PR 206's signature slot on the venue signature card. The contract footer said "Orange Jelly Limited trading as The Anchor" while the agreement text, the venue signature card and the definitions clause said "... trading as The Anchor Pub". The naming rule is website SSOT §1.
+
+- [x] `src/lib/contract-template.ts`: the default company name now reads "The Anchor", and the two "agree to engage" paragraphs, the signature card and the definitions clause read `company.name`, so the document can only name the trader one way. Nothing else in the contract changed.
+- [x] Swept `src/` for "The Anchor Pub". Fixed the PayPal pay screen default in `src/lib/paypal.ts` (parking is the one caller that relies on it). Left: the interview calendar default in `src/lib/google-calendar.ts` (a function nothing calls), the schema name in `src/lib/api/schema.ts` and a page title test fixture (both allowed by SSOT §1), the house style rule that flags the phrase, and a short link name test.
+- [x] Tests: a "trading name" block in `src/lib/__tests__/contract-template.test.ts` and `src/lib/__tests__/paypal-checkout-brand.test.ts`. Seven of them fail against the old wording.
+- [x] Rendered the contract PDF locally with the live inputs and print options, with and without a deposit: 6 pages each, no "The Anchor Pub", no undefined, NaN or Invalid Date.
+- [x] Gates on Node 20: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,279 files, 13,507 tests each) and the build. Re-run on 14 October after the rebase and the calendar change: all six green, `npm test` and `npm run test:utc` 1,303 files, 14,290 tests each. Re-rendered the printed contract and the online signing copy: no "The Anchor Pub".
+- [x] Owner's decision, 14 October: the staff calendar location for private bookings is "The Anchor" too (`src/lib/google-calendar.ts`, test in `tests/lib/googleCalendar.test.ts`). No cron re-syncs these entries, so an existing one changes when its booking is next edited or paid.
+- [ ] Push when the coordinator says it is this branch's turn (after the quotes fix, types and guard, and four-query fixes), then PR, merge when green and verify the production deployment.
