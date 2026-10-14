@@ -301,3 +301,87 @@ describe('ShortLinkService', () => {
     ).toThrow(/too large/i)
   })
 })
+
+describe('ShortLinkService.getOrCreateShortLinkVariantInternal repointing an existing variant', () => {
+  const PARENT = {
+    id: 'parent-1',
+    short_code: 'maabc1',
+    destination_url: 'https://www.the-anchor.pub/events/music-bingo',
+    link_type: 'custom',
+    expires_at: null,
+    metadata: {},
+  }
+  const EXISTING_VARIANT = {
+    id: 'variant-1',
+    short_code: 'mv123',
+    destination_url: 'https://www.the-anchor.pub/events/old-page?utm_content=ad_one',
+    metadata: { channel: 'meta_ads', utm_content: 'ad_one' },
+  }
+
+  /**
+   * An admin client whose query chains record their methods and resolve on await: the parent
+   * lookup (maybeSingle), the existing-variant lookup (contains) and the repoint (update).
+   */
+  function variantClient(repointResult: { error: { message: string; code: string } | null }) {
+    const updates: unknown[] = []
+    function query() {
+      const methods: string[] = []
+      const chain: object = new Proxy({}, {
+        get(_target, property) {
+          if (property === 'then') {
+            const result = methods.includes('maybeSingle')
+              ? { data: PARENT, error: null }
+              : methods.includes('contains')
+                ? { data: [EXISTING_VARIANT], error: null }
+                : methods.includes('update')
+                  ? { data: null, ...repointResult }
+                  : { data: null, error: null }
+            return (resolve: (value: unknown) => unknown) => resolve(result)
+          }
+          return (...args: unknown[]) => {
+            methods.push(String(property))
+            if (property === 'update') updates.push(args[0])
+            return chain
+          }
+        },
+      })
+      return chain
+    }
+    return { client: { from: vi.fn(() => query()), rpc: vi.fn() }, updates }
+  }
+
+  const request = {
+    parent_short_code: 'maabc1',
+    utm_content: 'ad_one',
+    name: 'Ad one',
+  }
+
+  it('throws when the repoint is refused, instead of returning the new destination', async () => {
+    const { client, updates } = variantClient({ error: { message: 'permission denied', code: '42501' } })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal(request)).rejects.toThrow(
+      'Failed to update the existing short link variant'
+    )
+    expect(updates).toHaveLength(1)
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('returns the new destination when the repoint succeeds', async () => {
+    const { client, updates } = variantClient({ error: null })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await ShortLinkService.getOrCreateShortLinkVariantInternal(request)
+
+    expect(updates).toHaveLength(1)
+    expect(result).toMatchObject({
+      id: 'variant-1',
+      short_code: 'mv123',
+      already_exists: true,
+      destination_url: expect.stringContaining('https://www.the-anchor.pub/events/music-bingo'),
+    })
+    expect(result.destination_url).toContain('utm_content=ad_one')
+  })
+})
