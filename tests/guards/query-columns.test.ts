@@ -36,33 +36,8 @@ const SRC = join(ROOT, 'src')
  * rather than hidden. This list may only shrink. When one is fixed the guard fails until its
  * line is deleted; a new fault is fixed, never added.
  */
-const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect: string }> = [
-  {
-    file: 'src/app/api/webhooks/twilio/route.ts',
-    table: 'webhook_logs',
-    column: 'unmatched_communication_id',
-    effect: 'logWebhookAttempt spreads extra keys into the row, so the log row for an inbound text matched to no customer is refused and lost.',
-  },
-  {
-    file: 'src/app/api/webhooks/twilio/route.ts',
-    table: 'webhook_logs',
-    column: 'candidate_customer_ids',
-    effect: 'The same lost log row, for the same inbound text.',
-  },
-  {
-    file: 'src/app/api/webhooks/twilio/route.ts',
-    table: 'webhook_logs',
-    column: 'channel',
-    effect: 'The same lost log row, for every inbound text that is handled: none of the 86 saved since 22 June 2026 has one.',
-  },
-  {
-    file: 'src/app/api/webhooks/twilio/route.ts',
-    table: 'webhook_logs',
-    column: 'messageSid',
-    effect: 'The same lost log row, for a status update that changes nothing.',
-  },
-]
-const MOST_KNOWN_FAULTS = 4
+const KNOWN_FAULTS: Array<{ file: string; table: string; column: string; effect: string }> = []
+const MOST_KNOWN_FAULTS = 0
 
 /**
  * Query parts the reader cannot tie to a table and a column, each read by hand on 13 October
