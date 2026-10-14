@@ -138,6 +138,35 @@ describe('google calendar sync', () => {
     expect(end).toBeGreaterThan(start)
   })
 
+  it('gives private booking events the venue name "The Anchor" as their location', async () => {
+    let requestBody: any | undefined
+
+    calendar.events.insert.mockImplementationOnce(async (options: any) => {
+      requestBody = options.requestBody
+      return {
+        data: { id: 'created-event', htmlLink: 'https://calendar.google.com/event?eid=created' },
+      }
+    })
+
+    const booking = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      customer_name: 'Jane Doe',
+      event_date: '2026-01-10',
+      start_time: '18:00',
+      end_time: '20:00',
+      end_time_next_day: false,
+      status: 'confirmed',
+      deposit_amount: 250,
+      total_amount: 0,
+      contract_version: 1,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    } as any
+
+    await syncCalendarEvent(booking)
+    expect(requestBody?.location).toBe('The Anchor')
+  })
+
   it('deletes private booking events from the shared Pub Ops calendar', async () => {
     calendar.events.delete.mockResolvedValueOnce({ data: {} })
 
