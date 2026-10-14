@@ -1131,14 +1131,11 @@ export class EventService {
     eventTime: string
     cancelledBy: string
     supabase: ReturnType<typeof createAdminClient>
-  }): Promise<{
-    bookingsCancelled: number
-    refundsProcessed: number
-    refundsFailed: number
-    customersNotified: number
-  }> {
+  }): Promise<EventCancellationResult> {
     const { eventId, eventName, eventDate, eventTime, cancelledBy, supabase: db } = params
     let bookingsCancelled = 0
+    let bookingsFailed = 0
+    const failedBookingIds: string[] = []
     let refundsProcessed = 0
     let refundsFailed = 0
     let customersNotified = 0
@@ -1170,13 +1167,13 @@ export class EventService {
           .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
         { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
       )
-      return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
     }
 
     // 2. Cancel each booking, release holds, cancel table bookings
     for (const booking of bookings) {
       try {
-        await settleWrite(
+        const cancelled = await settleWrite(
           db
             .from('bookings')
             .update({
@@ -1187,6 +1184,15 @@ export class EventService {
             .eq('id', booking.id),
           { table: 'bookings', what: 'Cancelling the booking for the cancelled event', ids: { eventId, bookingId: booking.id } }
         )
+
+        // The booking is still live, so the guest must not be refunded or told it is cancelled,
+        // and its holds and table bookings stay as they are. It is counted, the other bookings
+        // carry on, and the job result and audit row tell staff to cancel it individually.
+        if (!cancelled) {
+          bookingsFailed++
+          failedBookingIds.push(booking.id)
+          continue
+        }
 
         // Release active holds
         await settleWrite(
@@ -1217,7 +1223,9 @@ export class EventService {
       }
     }
 
-    // 3. Process refunds for prepaid bookings
+    // 3. Process refunds for prepaid bookings. A booking whose cancel write failed is still
+    // live, so it is neither refunded nor told it is cancelled (steps 3 and 4).
+    const uncancelledBookingIds = new Set(failedBookingIds)
     const bookingIds = bookings.map(b => b.id)
     const { data: payments } = await db
       .from('payments')
@@ -1232,6 +1240,7 @@ export class EventService {
     if (payments && payments.length > 0) {
       for (const payment of payments) {
         if (!payment.event_booking_id) continue
+        if (uncancelledBookingIds.has(payment.event_booking_id)) continue
         // Find the customer_id for this booking
         const booking = bookings.find(b => b.id === payment.event_booking_id)
         const customer = booking?.customers as unknown as { id: string } | undefined
@@ -1273,6 +1282,7 @@ export class EventService {
     const formattedDate = formatEventDateForSms(eventDate, eventTime)
 
     for (const booking of bookings) {
+      if (uncancelledBookingIds.has(booking.id)) continue
       const customer = booking.customers as unknown as {
         id: string
         first_name: string | null
@@ -1353,8 +1363,36 @@ export class EventService {
       { table: 'events', what: 'Closing bookings on the cancelled event', ids: { eventId } }
     )
 
-    return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+    if (bookingsFailed > 0) {
+      logger.error('Event cancellation left bookings uncancelled; their guests were not told or refunded', {
+        metadata: { eventId, bookingsFailed, failedBookingIds }
+      })
+    }
+
+    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
   }
+}
+
+export interface EventCancellationResult {
+  bookingsCancelled: number
+  /** Bookings whose cancel write failed: still live, guest not refunded or told. */
+  bookingsFailed: number
+  failedBookingIds: string[]
+  refundsProcessed: number
+  refundsFailed: number
+  customersNotified: number
+}
+
+/**
+ * The staff warning for bookings an event cancellation could not cancel, or null when there
+ * are none. Shown in the cancellation job's result and recorded on its audit row.
+ */
+export function describeUncancelledBookings(bookingsFailed: number): string | null {
+  if (bookingsFailed <= 0) return null
+  if (bookingsFailed === 1) {
+    return '1 booking could not be cancelled and its guest was not told. Cancel it individually from the event page.'
+  }
+  return `${bookingsFailed} bookings could not be cancelled and their guests were not told. Cancel them individually from the event page.`
 }
 
 /**
