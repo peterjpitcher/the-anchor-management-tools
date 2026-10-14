@@ -8,6 +8,7 @@ import {
 } from '@/lib/rota/email-templates';
 import { recordShiftReliabilityEvent } from '@/services/employee-reliability';
 import { displayName } from '@/lib/employees/display-name';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import {
   SHIFT_ACCEPTANCE_CUTOFF_DAYS,
   SHIFT_ACCEPTANCE_WARNING_DAYS_BEFORE_CUTOFF,
@@ -86,17 +87,20 @@ async function logWarningEmail(
     messageId?: string | null;
   },
 ) {
-  await supabase.from('rota_email_log').insert({
-    email_type: 'shift_auto_accept_warning',
-    entity_type: 'rota_shift',
-    entity_id: input.shiftId,
-    to_addresses: [input.to],
-    cc_addresses: input.cc,
-    subject: input.subject,
-    status: input.status,
-    error_message: input.error,
-    message_id: input.messageId ?? null,
-  });
+  await settleRotaEmailLogWrite(
+    supabase.from('rota_email_log').insert({
+      email_type: 'shift_auto_accept_warning',
+      entity_type: 'rota_shift',
+      entity_id: input.shiftId,
+      to_addresses: [input.to],
+      cc_addresses: input.cc,
+      subject: input.subject,
+      status: input.status,
+      error_message: input.error,
+      message_id: input.messageId ?? null,
+    }),
+    { type: 'shift_auto_accept_warning', entityId: input.shiftId },
+  );
 }
 
 export async function GET(request: Request): Promise<NextResponse> {

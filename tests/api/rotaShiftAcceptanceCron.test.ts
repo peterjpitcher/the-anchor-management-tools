@@ -448,4 +448,38 @@ describe('/api/cron/rota-shift-acceptance', () => {
     expect(tablesRead).not.toContain('system_settings')
   })
 
+  it('reports a refused warning log row at error level and still marks the shift as warned', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const shift = {
+      id: 'shift-warning', week_id: 'week-1', employee_id: 'employee-1', shift_date: '2026-06-16',
+      start_time: '09:00', end_time: '17:00', department: 'bar', name: 'Bar', auto_accept_warning_sent_at: null,
+    }
+    const update = vi.fn(() => ({ in: vi.fn().mockResolvedValue({ error: null }) }))
+    const insert = vi.fn().mockResolvedValue({ error: { code: '23514', message: 'violates check constraint', details: null, hint: null } })
+    const shiftQuery: Record<string, unknown> = {}
+    for (const method of ['select', 'eq', 'not', 'lte']) shiftQuery[method] = vi.fn(() => shiftQuery)
+    shiftQuery.order = vi.fn().mockReturnValueOnce(shiftQuery).mockResolvedValueOnce({ data: [shift], error: null })
+    createAdminClientMock.mockReturnValue({ from: (table: string) => {
+      if (table === 'rota_published_shifts') return { ...shiftQuery, update }
+      if (table === 'employees') return { select: () => ({ in: async () => ({ data: [{
+        employee_id: 'employee-1', first_name: 'Alex', last_name: 'Rowe', email_address: 'alex@example.com',
+      }], error: null }) }) }
+      if (table === 'rota_shifts') return { update }
+      if (table === 'rota_email_log') return makeWarningLog(insert)
+      throw new Error(`Unexpected table ${table}`)
+    } })
+
+    const response = await GET(new Request('https://example.test/api/cron/rota-shift-acceptance'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.warningEmailsSent).toBe(1)
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ auto_accept_warning_sent_at: expect.any(String) }))
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('[rota_email_log] Log write failed'),
+      expect.objectContaining({ emailType: 'shift_auto_accept_warning', entityId: 'shift-warning', code: '23514' }),
+    )
+    consoleError.mockRestore()
+  })
+
 })

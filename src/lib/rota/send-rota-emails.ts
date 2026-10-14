@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { buildStaffRotaEmailHtml, buildRotaChangeEmailHtml, type ShiftSummary, type ShiftChange } from '@/lib/rota/email-templates';
 import { displayName } from '@/lib/employees/display-name';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 
 function addDays(isoDate: string, n: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
@@ -110,15 +111,18 @@ export async function sendRotaWeekEmails(
         html: buildStaffRotaEmailHtml(empName, weekStart, weekEnd, shiftSummaries, openShiftSummaries),
       });
 
-      await supabase.from('rota_email_log').insert({
-        email_type: 'staff_rota',
-        entity_type: 'rota_week',
-        entity_id: weekId,
-        to_addresses: [emp.email_address!],
-        subject: emailSubject,
-        status: emailResult.success ? 'sent' : 'failed',
-        error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
-      });
+      await settleRotaEmailLogWrite(
+        supabase.from('rota_email_log').insert({
+          email_type: 'staff_rota',
+          entity_type: 'rota_week',
+          entity_id: weekId,
+          to_addresses: [emp.email_address!],
+          subject: emailSubject,
+          status: emailResult.success ? 'sent' : 'failed',
+          error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
+        }),
+        { type: 'staff_rota', entityId: weekId },
+      );
 
       return emailResult.success;
     }),
@@ -291,15 +295,18 @@ export async function sendRotaWeekChangeEmails(
         html: buildRotaChangeEmailHtml(empName, weekStart, weekEnd, changes, allShifts, openShiftSummaries),
       });
 
-      await supabase.from('rota_email_log').insert({
-        email_type: 'staff_rota_change',
-        entity_type: 'rota_week',
-        entity_id: weekId,
-        to_addresses: [emp.email_address!],
-        subject: emailSubject,
-        status: emailResult.success ? 'sent' : 'failed',
-        error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
-      });
+      await settleRotaEmailLogWrite(
+        supabase.from('rota_email_log').insert({
+          email_type: 'staff_rota_change',
+          entity_type: 'rota_week',
+          entity_id: weekId,
+          to_addresses: [emp.email_address!],
+          subject: emailSubject,
+          status: emailResult.success ? 'sent' : 'failed',
+          error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
+        }),
+        { type: 'staff_rota_change', entityId: weekId },
+      );
 
       return emailResult.success;
     }),
