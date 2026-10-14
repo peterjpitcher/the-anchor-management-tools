@@ -6,6 +6,7 @@ import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { closePdfBrowser, createPdfBrowser, generatePDFFromHTML } from '@/lib/pdf-generator'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { reportWriteError, settleWrite } from '@/lib/supabase/settle-write'
 import { buildAgreedText, buildCompanyAgreedText, isAcceptableTypedName } from './agreement-text'
 import { appendCertificate, renderCertificateHtml, type CertificateParty } from './certificate'
 import { runCompletionHook } from './completion-hooks'
@@ -365,10 +366,18 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
     .select('*')
   if (partiesError || !insertedParties || insertedParties.length !== partyRows.length) {
     // A document with nobody to sign it must not sit there looking live.
-    await admin
-      .from('signing_documents')
-      .update({ status: 'voided', voided_at: new Date().toISOString(), void_reason: 'Could not be set up' })
-      .eq('id', documentId)
+    await settleWrite(
+      admin
+        .from('signing_documents')
+        .update({ status: 'voided', voided_at: new Date().toISOString(), void_reason: 'Could not be set up' })
+        .eq('id', documentId),
+      {
+        table: 'signing_documents',
+        what: 'Voiding the document after its signers could not be recorded',
+        ids: { documentId },
+        note: 'the document may still look live with nobody to sign it',
+      },
+    )
     throw new Error(`Could not record the signers: ${partiesError?.message ?? 'row count mismatch'}`)
   }
   const parties = insertedParties as SigningPartyRow[]
@@ -384,10 +393,18 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
     // If the business side cannot be recorded the request is withdrawn: left open, the worker
     // could complete it in the portal with no business signature on it.
     const withdraw = async (reason: string): Promise<void> => {
-      await admin
-        .from('signing_documents')
-        .update({ status: 'voided', voided_at: new Date().toISOString(), void_reason: reason })
-        .eq('id', documentId)
+      await settleWrite(
+        admin
+          .from('signing_documents')
+          .update({ status: 'voided', voided_at: new Date().toISOString(), void_reason: reason })
+          .eq('id', documentId),
+        {
+          table: 'signing_documents',
+          what: 'Withdrawing the document after the business side could not be recorded',
+          ids: { documentId },
+          note: 'the document may still be open with no business signature on it',
+        },
+      )
     }
     const { data: companyParty, error: companyError } = await admin
       .from('signing_parties')
@@ -418,7 +435,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
 
   // Earlier unsigned requests in the same series are dead the moment a newer version goes out.
   // A completed earlier version stays the one in force until this one is signed.
-  const { data: replaced } = await admin
+  const { data: replaced, error: replaceError } = await admin
     .from('signing_documents')
     .update({
       status: 'voided',
@@ -432,6 +449,14 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
     .in('status', [...SIGNING_OPEN_STATUSES])
     .neq('id', documentId)
     .select('id')
+  if (replaceError) {
+    reportWriteError(replaceError, {
+      table: 'signing_documents',
+      what: 'Voiding earlier unsigned versions in the series',
+      ids: { documentId, version },
+      note: 'earlier versions may still be open alongside this one',
+    })
+  }
   for (const row of replaced ?? []) {
     await insertEvent(admin, {
       documentId: row.id as string,
@@ -628,12 +653,19 @@ export function resolveSigningPartyState(
 export async function recordSigningOpened(context: SigningPartyContext, evidence: SigningEvidence): Promise<void> {
   if (context.party.first_opened_at) return
   const admin = createAdminClient()
-  const { data } = await admin
+  const { data, error: openedError } = await admin
     .from('signing_parties')
     .update({ first_opened_at: new Date().toISOString() })
     .eq('id', context.party.id)
     .is('first_opened_at', null)
     .select('id')
+  if (openedError) {
+    reportWriteError(openedError, {
+      table: 'signing_parties',
+      what: 'Recording that the signing link was opened',
+      ids: { documentId: context.document.id, partyId: context.party.id },
+    })
+  }
   if (data && data.length > 0) {
     await insertEvent(admin, {
       documentId: context.document.id,

@@ -42,6 +42,7 @@ import {
   finalPaymentMessage,
 } from '@/lib/private-bookings/messages';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
+import { settleWrite } from '@/lib/supabase/settle-write';
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient> | any
 
@@ -398,10 +399,18 @@ export async function sendBookingConfirmedSideEffects(input: {
     try {
       const eventId = await syncCalendarEvent(booking as PrivateBookingWithDetails)
       if (eventId && eventId !== booking.calendar_event_id) {
-        await db
-          .from('private_bookings')
-          .update({ calendar_event_id: eventId })
-          .eq('id', bookingId)
+        await settleWrite(
+          db
+            .from('private_bookings')
+            .update({ calendar_event_id: eventId })
+            .eq('id', bookingId),
+          {
+            table: 'private_bookings',
+            what: 'Saving the synced calendar event id',
+            ids: { bookingId, calendarEventId: eventId },
+            note: 'the calendar event itself was synced'
+          }
+        )
       }
     } catch (error) {
       logger.error('Calendar sync failed during booking confirmation:', {

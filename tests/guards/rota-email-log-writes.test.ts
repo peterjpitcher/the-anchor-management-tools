@@ -22,6 +22,7 @@ const ROOT = process.cwd()
 const SRC = join(ROOT, 'src')
 const TABLE = 'rota_email_log'
 const HELPER = 'settleRotaEmailLogWrite'
+const HELPER_FILE = 'src/lib/rota/email-log.ts'
 const WRITE_METHODS = new Set(['insert', 'upsert', 'update', 'delete'])
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
@@ -82,7 +83,13 @@ function scan(): Scan {
       `${relative(ROOT, file)}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`
 
     const visit = (node: ts.Node): void => {
-      if (ts.isStringLiteralLike(node) && node.text === TABLE && !(node.parent && isFromTable(node.parent))) {
+      // The helper names the table once, to label its reports; it writes nothing itself.
+      if (
+        ts.isStringLiteralLike(node) &&
+        node.text === TABLE &&
+        !(node.parent && isFromTable(node.parent)) &&
+        relative(ROOT, file) !== HELPER_FILE
+      ) {
         problems.push(`${at(node)} names ${TABLE} outside a .from(...) call, so this guard cannot follow it`)
       }
 

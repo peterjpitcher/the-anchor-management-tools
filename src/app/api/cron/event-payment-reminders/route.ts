@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { createEventPaymentToken, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
@@ -106,17 +107,20 @@ export async function GET(request: NextRequest) {
       })
 
       if (reminderId) {
-        await (supabase.from('event_payment_reminders') as any)
-          .update({
-            metadata: {
-              claimed: true,
-              source: row.source || null,
-              sms_success: smsResult.success,
-              sms_code: smsResult.code,
-              sms_log_failure: smsResult.logFailure,
-            },
-          })
-          .eq('id', reminderId)
+        await settleWrite(
+          (supabase.from('event_payment_reminders') as any)
+            .update({
+              metadata: {
+                claimed: true,
+                source: row.source || null,
+                sms_success: smsResult.success,
+                sms_code: smsResult.code,
+                sms_log_failure: smsResult.logFailure,
+              },
+            })
+            .eq('id', reminderId),
+          { table: 'event_payment_reminders', what: 'Recording the payment reminder SMS result', ids: { reminderId, bookingId: row.id } }
+        )
       }
 
       if (smsResult.success || smsResult.logFailure) {
@@ -175,18 +179,21 @@ export async function GET(request: NextRequest) {
         holdExpiresAt: row.hold_expires_at as string,
         reminder: true,
       })
-      await (supabase.from('event_payment_reminders') as any)
-        .update({
-          message_id: emailResult.messageId || null,
-          metadata: {
-            claimed: true,
-            source: row.source || null,
-            email_success: emailResult.success,
-            email_error: emailResult.error || null,
-            email_skipped: emailResult.skipped === true,
-          },
-        })
-        .eq('id', emailReminderRow?.id)
+      await settleWrite(
+        (supabase.from('event_payment_reminders') as any)
+          .update({
+            message_id: emailResult.messageId || null,
+            metadata: {
+              claimed: true,
+              source: row.source || null,
+              email_success: emailResult.success,
+              email_error: emailResult.error || null,
+              email_skipped: emailResult.skipped === true,
+            },
+          })
+          .eq('id', emailReminderRow?.id),
+        { table: 'event_payment_reminders', what: 'Recording the payment reminder email result', ids: { reminderId: emailReminderRow?.id, bookingId: row.id } }
+      )
     } catch (err) {
       logger.error('Failed to send event payment email reminder', {
         error: err instanceof Error ? err : new Error(String(err)),

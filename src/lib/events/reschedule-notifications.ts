@@ -9,6 +9,7 @@ import {
 import { buildEventRescheduledSms } from '@/lib/sms/templates'
 import { sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when'
 
 export async function dispatchEventRescheduleNotifications(params: {
@@ -50,17 +51,23 @@ export async function dispatchEventRescheduleNotifications(params: {
 
   if (pendingBookingIds.length > 0) {
     if (newStartIso) {
-      await db
-        .from('bookings')
-        .update({ hold_expires_at: newStartIso })
-        .in('id', pendingBookingIds)
-        .lt('hold_expires_at', newStartIso)
+      await settleWrite(
+        db
+          .from('bookings')
+          .update({ hold_expires_at: newStartIso })
+          .in('id', pendingBookingIds)
+          .lt('hold_expires_at', newStartIso),
+        { table: 'bookings', what: 'Extending unpaid booking holds to the new start', ids: { eventId, pendingBookings: pendingBookingIds.length } }
+      )
 
-      await db
-        .from('booking_holds')
-        .update({ expires_at: newStartIso })
-        .in('event_booking_id', pendingBookingIds)
-        .eq('status', 'active')
+      await settleWrite(
+        db
+          .from('booking_holds')
+          .update({ expires_at: newStartIso })
+          .in('event_booking_id', pendingBookingIds)
+          .eq('status', 'active'),
+        { table: 'booking_holds', what: 'Extending active booking holds to the new start', ids: { eventId, pendingBookings: pendingBookingIds.length } }
+      )
     } else {
       // Leaving a hold on its old expiry is recoverable; writing an Invalid Date is not.
       logger.error('Event reschedule could not resolve the new start, so unpaid holds were left alone', {

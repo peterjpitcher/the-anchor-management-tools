@@ -32,6 +32,7 @@ import { NO_CATEGORY_LABEL } from '@/lib/receipts/no-category'
 import type { ReceiptTransaction } from '@/types/database'
 import { loadRulesForEvaluation } from './receiptAutomation'
 import type { AdminClient } from './types'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export type RuleRunScope = 'pending' | 'all'
 
@@ -243,7 +244,12 @@ export async function performPreviewReceiptRuleRun(
     if (changeError) {
       console.error('Failed to store rule run changes', changeError)
       // A half-written preview is never applied: it stays in drafting, and is removed here.
-      await (supabase as any).from('receipt_rule_runs').delete().eq('id', run.id)
+      await settleWrite((supabase as any).from('receipt_rule_runs').delete().eq('id', run.id), {
+        table: 'receipt_rule_runs',
+        what: 'Removing the half-written rule run preview',
+        ids: { runId: run.id },
+        note: 'a rollback after its changes failed to save; the run stays in drafting and is never applied',
+      })
       return { success: false, error: 'The preview could not be saved. Nothing was changed.' }
     }
   }
@@ -337,7 +343,12 @@ export async function performRecordedRun(
     const { error } = await client.from('receipt_rule_run_changes').insert(rows)
     if (error) {
       console.error('Failed to store the changes of a run', error)
-      await client.from('receipt_rule_runs').delete().eq('id', runId)
+      await settleWrite(client.from('receipt_rule_runs').delete().eq('id', runId), {
+        table: 'receipt_rule_runs',
+        what: 'Removing the half-written rule run',
+        ids: { runId },
+        note: 'a rollback after its changes failed to save; the run stays in drafting and is never applied',
+      })
       return { ...nothing, failure: 'not_recorded' }
     }
   }
@@ -349,7 +360,12 @@ export async function performRecordedRun(
     .eq('status', 'drafting')
   if (readyError) {
     console.error('Failed to start a run', readyError)
-    await client.from('receipt_rule_runs').delete().eq('id', runId)
+    await settleWrite(client.from('receipt_rule_runs').delete().eq('id', runId), {
+      table: 'receipt_rule_runs',
+      what: 'Removing the rule run that could not be started',
+      ids: { runId },
+      note: 'a rollback after the run failed to move to previewed',
+    })
     return { ...nothing, failure: 'not_recorded' }
   }
 

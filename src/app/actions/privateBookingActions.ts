@@ -54,6 +54,7 @@ import {
   DepositConfirmationError,
   type ConfirmDepositOutcome,
 } from '@/services/private-bookings/deposit-confirmation'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -2259,10 +2260,17 @@ export async function createDepositPaymentOrder(
         existingOrderAmount !== null &&
         (!amountsMatch(existingOrderAmount, depositAmount) || existingOrderCurrency !== PAYPAL_DEFAULT_CURRENCY)
       ) {
-        await admin
-          .from('private_bookings')
-          .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
-          .eq('id', bookingId)
+        await settleWrite(
+          admin
+            .from('private_bookings')
+            .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+            .eq('id', bookingId),
+          {
+            table: 'private_bookings',
+            what: 'Clearing the stale PayPal deposit order',
+            ids: { bookingId, staleOrderId: booking.paypal_deposit_order_id },
+          }
+        )
       }
       // Order is no longer usable — fall through to create a new one
     } catch (lookupError) {
@@ -2840,10 +2848,18 @@ export async function sendDepositPaymentLink(
     })
 
     // Persist the latest order ID
-    await admin
-      .from('private_bookings')
-      .update({ paypal_deposit_order_id: result.orderId })
-      .eq('id', bookingId)
+    await settleWrite(
+      admin
+        .from('private_bookings')
+        .update({ paypal_deposit_order_id: result.orderId })
+        .eq('id', bookingId),
+      {
+        table: 'private_bookings',
+        what: 'Saving the new PayPal deposit order',
+        ids: { bookingId, orderId: result.orderId },
+        note: 'the PayPal order itself was created',
+      }
+    )
 
     // The portal page must never create an order just because an email scanner
     // opened its link. The customer creates/reuses the order with an explicit

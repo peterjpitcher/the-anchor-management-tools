@@ -5,6 +5,7 @@ import { getErrorCode } from '@/lib/errors'
 import { getOAuth2Client } from '@/lib/google-calendar'
 import { getSharedOperationsCalendarId } from '@/lib/google-calendar-targets'
 import { RECRUITMENT_RIGHT_TO_WORK_WORDING, recruitmentSenderEmail } from '@/lib/recruitment/contact'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
@@ -175,13 +176,16 @@ export async function syncRecruitmentAppointmentCalendar(
   const appointment = await loadRecruitmentAppointment(appointmentId, supabase)
 
   if (!isRecruitmentCalendarConfigured()) {
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({
-        calendar_sync_status: 'ics_fallback',
-        calendar_last_error: 'Google Calendar is not configured',
-      })
-      .eq('id', appointmentId)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({
+          calendar_sync_status: 'ics_fallback',
+          calendar_last_error: 'Google Calendar is not configured',
+        })
+        .eq('id', appointmentId),
+      { table: 'recruitment_candidate_appointments', what: 'Marking the calendar sync as ICS fallback', ids: { appointmentId } },
+    )
     return { status: 'ics_fallback' as const, error: 'Google Calendar is not configured' }
   }
 
@@ -206,25 +210,31 @@ export async function syncRecruitmentAppointmentCalendar(
     }
 
     const eventId = response.data.id ?? existingEventId ?? null
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({
-        calendar_event_id: eventId,
-        calendar_sync_status: 'synced',
-        calendar_last_error: null,
-      })
-      .eq('id', appointmentId)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({
+          calendar_event_id: eventId,
+          calendar_sync_status: 'synced',
+          calendar_last_error: null,
+        })
+        .eq('id', appointmentId),
+      { table: 'recruitment_candidate_appointments', what: 'Recording the synced calendar event', ids: { appointmentId } },
+    )
 
     return { status: 'synced' as const, eventId }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({
-        calendar_sync_status: 'failed',
-        calendar_last_error: message,
-      })
-      .eq('id', appointmentId)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({
+          calendar_sync_status: 'failed',
+          calendar_last_error: message,
+        })
+        .eq('id', appointmentId),
+      { table: 'recruitment_candidate_appointments', what: 'Recording the failed calendar sync', ids: { appointmentId } },
+    )
 
     return { status: 'failed' as const, error: message }
   }
@@ -253,25 +263,31 @@ export async function deleteRecruitmentAppointmentCalendarEvent(
       if (code !== 404 && code !== 410) throw error
     }
 
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({
-        calendar_event_id: null,
-        calendar_sync_status: 'pending',
-        calendar_last_error: null,
-      })
-      .eq('id', appointmentId)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({
+          calendar_event_id: null,
+          calendar_sync_status: 'pending',
+          calendar_last_error: null,
+        })
+        .eq('id', appointmentId),
+      { table: 'recruitment_candidate_appointments', what: 'Clearing the deleted calendar event', ids: { appointmentId } },
+    )
 
     return { deleted: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({
-        calendar_sync_status: 'failed',
-        calendar_last_error: message,
-      })
-      .eq('id', appointmentId)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({
+          calendar_sync_status: 'failed',
+          calendar_last_error: message,
+        })
+        .eq('id', appointmentId),
+      { table: 'recruitment_candidate_appointments', what: 'Recording the failed calendar event delete', ids: { appointmentId } },
+    )
     return { deleted: false, reason: message }
   }
 }

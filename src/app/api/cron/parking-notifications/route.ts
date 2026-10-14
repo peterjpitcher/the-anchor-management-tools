@@ -15,6 +15,7 @@ import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -143,15 +144,22 @@ async function acquireCronRun(runKey: string): Promise<CronRunAcquireResult> {
   }
 
   if (existingRunning && isRunStale(existingRunning.started_at)) {
-    await supabase
-      .from('cron_job_runs')
-      .update({
-        status: 'failed',
-        finished_at: nowIso,
-        error_message: 'Marked stale by newer invocation'
-      })
-      .eq('id', existingRunning.id)
-      .eq('status', 'running')
+    await settleWrite(
+      supabase
+        .from('cron_job_runs')
+        .update({
+          status: 'failed',
+          finished_at: nowIso,
+          error_message: 'Marked stale by newer invocation'
+        })
+        .eq('id', existingRunning.id)
+        .eq('status', 'running'),
+      {
+        table: 'cron_job_runs',
+        what: 'Marking the stale cron run as failed',
+        ids: { runId: existingRunning.id, runKey }
+      }
+    )
   }
 
   const { data, error } = await supabase

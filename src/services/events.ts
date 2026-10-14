@@ -1,6 +1,7 @@
 import { attachEventCapacity } from '@/lib/events/capacity'
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links';
 import { z } from 'zod';
@@ -1151,43 +1152,61 @@ export class EventService {
 
     if (!bookings || bookings.length === 0) {
       // Still close booking_open and clean waitlist even if no active bookings
-      await db.from('events').update({ booking_open: false }).eq('id', eventId)
-      await db.from('waitlist_entries')
-        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-        .eq('event_id', eventId)
-        .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES])
-      await db.from('waitlist_offers')
-        .update({ status: 'cancelled', expired_at: new Date().toISOString() })
-        .eq('event_id', eventId)
-        .in('status', [...OPEN_WAITLIST_OFFER_STATUSES])
+      await settleWrite(
+        db.from('events').update({ booking_open: false }).eq('id', eventId),
+        { table: 'events', what: 'Closing bookings on the cancelled event', ids: { eventId } }
+      )
+      await settleWrite(
+        db.from('waitlist_entries')
+          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+          .eq('event_id', eventId)
+          .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES]),
+        { table: 'waitlist_entries', what: 'Cancelling waitlist entries for the cancelled event', ids: { eventId } }
+      )
+      await settleWrite(
+        db.from('waitlist_offers')
+          .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+          .eq('event_id', eventId)
+          .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
+        { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
+      )
       return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
     }
 
     // 2. Cancel each booking, release holds, cancel table bookings
     for (const booking of bookings) {
       try {
-        await db
-          .from('bookings')
-          .update({
-            status: 'cancelled',
-            cancelled_at: new Date().toISOString(),
-            cancelled_by: cancelledBy
-          })
-          .eq('id', booking.id)
+        await settleWrite(
+          db
+            .from('bookings')
+            .update({
+              status: 'cancelled',
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: cancelledBy
+            })
+            .eq('id', booking.id),
+          { table: 'bookings', what: 'Cancelling the booking for the cancelled event', ids: { eventId, bookingId: booking.id } }
+        )
 
         // Release active holds
-        await db
-          .from('booking_holds')
-          .update({ status: 'released', released_at: new Date().toISOString() })
-          .eq('event_booking_id', booking.id)
-          .eq('status', 'active')
+        await settleWrite(
+          db
+            .from('booking_holds')
+            .update({ status: 'released', released_at: new Date().toISOString() })
+            .eq('event_booking_id', booking.id)
+            .eq('status', 'active'),
+          { table: 'booking_holds', what: 'Releasing holds for the cancelled booking', ids: { eventId, bookingId: booking.id } }
+        )
 
         // Cancel associated table bookings
-        await db
-          .from('table_bookings')
-          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-          .eq('event_booking_id', booking.id)
-          .in('status', ['confirmed', 'pending_payment'])
+        await settleWrite(
+          db
+            .from('table_bookings')
+            .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+            .eq('event_booking_id', booking.id)
+            .in('status', ['confirmed', 'pending_payment']),
+          { table: 'table_bookings', what: 'Cancelling table bookings linked to the cancelled booking', ids: { eventId, bookingId: booking.id } }
+        )
 
         bookingsCancelled++
       } catch (err) {
@@ -1307,23 +1326,32 @@ export class EventService {
     }
 
     // 5. Release waitlist entries and offers
-    await db
-      .from('waitlist_entries')
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-      .eq('event_id', eventId)
-      .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES])
+    await settleWrite(
+      db
+        .from('waitlist_entries')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES]),
+      { table: 'waitlist_entries', what: 'Cancelling waitlist entries for the cancelled event', ids: { eventId } }
+    )
 
-    await db
-      .from('waitlist_offers')
-      .update({ status: 'cancelled', expired_at: new Date().toISOString() })
-      .eq('event_id', eventId)
-      .in('status', [...OPEN_WAITLIST_OFFER_STATUSES])
+    await settleWrite(
+      db
+        .from('waitlist_offers')
+        .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
+      { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
+    )
 
     // 6. Set booking_open = false
-    await db
-      .from('events')
-      .update({ booking_open: false })
-      .eq('id', eventId)
+    await settleWrite(
+      db
+        .from('events')
+        .update({ booking_open: false })
+        .eq('id', eventId),
+      { table: 'events', what: 'Closing bookings on the cancelled event', ids: { eventId } }
+    )
 
     return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
   }

@@ -43,6 +43,7 @@ import {
 import { vendorMatchingKey } from './vendor-matching'
 import { loadReceiptSettings } from '@/services/receipts/receiptSettings'
 import { resolveReceiptVendor, type ResolvedReceiptVendor } from '@/services/receipts/receiptVendors'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -498,7 +499,11 @@ export async function classifyReceiptTransactionsWithAI(
       )
       if (vendor && vendor.kind !== 'person') {
         // A vendor made before people were told apart from businesses.
-        await client.from('receipt_vendors').update({ kind: 'person' }).eq('id', vendor.id)
+        await settleWrite(client.from('receipt_vendors').update({ kind: 'person' }).eq('id', vendor.id), {
+          table: 'receipt_vendors',
+          what: 'Marking the wage payment vendor as a person',
+          ids: { vendorId: vendor.id, transactionId: payment.id },
+        })
       }
     } catch (vendorError) {
       console.error('Failed to resolve the vendor for a wage payment', vendorError)

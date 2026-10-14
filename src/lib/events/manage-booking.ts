@@ -9,6 +9,7 @@ import {
   getDefaultTicketTypeId,
   loadBookingItems
 } from '@/lib/events/ticket-type-queries'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export type EventManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -568,13 +569,21 @@ export async function processEventRefund(
 
       if (mappedStatus === 'refunded') {
         const totalRefundedForPayment = roundCurrencyAmount(alreadyRefunded + amountForPayment)
-        await supabase
-          .from('payments')
-          .update({
-            status: totalRefundedForPayment + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', payment.id)
+        await settleWrite(
+          supabase
+            .from('payments')
+            .update({
+              status: totalRefundedForPayment + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', payment.id),
+          {
+            table: 'payments',
+            what: 'Recording the payment refund status',
+            ids: { paymentId: payment.id, paypalRefundId: paypalRefund.refundId },
+            note: 'the refund itself went through'
+          }
+        )
       }
 
       // An adopted webhook row already raised its analytics event.

@@ -17,6 +17,7 @@ import {
   HISTORIC_BALANCE_REMINDER_REFUSAL,
   isHistoricBalanceReminderRow,
 } from '@/lib/private-bookings/balance-reminders';
+import { settleWrite } from '@/lib/supabase/settle-write';
 
 export type QueueSmsInput = {
   booking_id: string;
@@ -464,10 +465,18 @@ export class SmsQueueService {
       if (Array.isArray(duplicateRows) && duplicateRows.length > 1) {
         const oldestId = duplicateRows[0].id;
         const idsToCancel = duplicateRows.slice(1).map((r: { id: string }) => r.id);
-        await supabase
-          .from('private_booking_sms_queue')
-          .update({ status: 'cancelled', error_message: 'duplicate_race_condition' })
-          .in('id', idsToCancel);
+        await settleWrite(
+          supabase
+            .from('private_booking_sms_queue')
+            .update({ status: 'cancelled', error_message: 'duplicate_race_condition' })
+            .in('id', idsToCancel),
+          {
+            table: 'private_booking_sms_queue',
+            what: 'Cancelling duplicate queued SMS rows',
+            ids: { bookingId: data.booking_id, keptId: oldestId, cancelledCount: idsToCancel.length },
+            note: 'the duplicate rows stay queued',
+          }
+        );
 
         if (idsToCancel.includes(smsRecord.id)) {
           if (lockClaimed) {
