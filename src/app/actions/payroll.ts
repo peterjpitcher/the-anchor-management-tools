@@ -23,6 +23,7 @@ import { getRotaSettings } from '@/app/actions/rota-settings';
 import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { hasPayrollVariance, validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import {
   PAYROLL_PERIOD_FUTURE_MONTHS,
 } from '@/lib/rota/payroll-periods';
@@ -771,18 +772,21 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 
   const logStatus = result.success ? 'sent' : 'failed';
 
-  await supabase.from('rota_email_log').insert({
-    email_type: 'payroll_export',
-    entity_type: 'payroll_month',
-    entity_id: approval.id,
-    to_addresses: [ACCOUNTANT_EMAIL],
-    cc_addresses: ccEmails,
-    subject: `Payroll: ${monthLabel}`,
-    status: logStatus,
-    error_message: result.success ? null : result.error ?? null,
-    message_id: result.success ? result.messageId ?? null : null,
-    sent_by: user.id,
-  });
+  await settleRotaEmailLogWrite(
+    supabase.from('rota_email_log').insert({
+      email_type: 'payroll_export',
+      entity_type: 'payroll_month',
+      entity_id: approval.id,
+      to_addresses: [ACCOUNTANT_EMAIL],
+      cc_addresses: ccEmails,
+      subject: `Payroll: ${monthLabel}`,
+      status: logStatus,
+      error_message: result.success ? null : result.error ?? null,
+      message_id: result.success ? result.messageId ?? null : null,
+      sent_by: user.id,
+    }),
+    { type: 'payroll_export', entityId: approval.id },
+  );
 
   if (!result.success) return { success: false, error: 'Email send failed' };
 
