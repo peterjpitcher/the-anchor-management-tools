@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { quoteContentFingerprint, type QuoteContentForFingerprint } from './documents/quote-fingerprint'
 import type { SigningDocumentRow, SigningKind, SigningPartyRow } from './types'
 
 /**
@@ -26,8 +27,9 @@ const tickAgreementAccepted: SigningCompletionHook = async (document) => {
     {
       employee_id: document.subject_id,
       employee_agreement_accepted: true,
-      // A timestamp, as the hand-ticked path in EmployeeService writes it.
-      employee_agreement_accepted_date: new Date().toISOString(),
+      // A timestamp, as the hand-ticked path in EmployeeService writes it. It is when the
+      // agreement was signed, not when this ran: a retry days later must not move the date.
+      employee_agreement_accepted_date: document.completed_at ?? new Date().toISOString(),
     },
     { onConflict: 'employee_id' }
   )
@@ -68,66 +70,121 @@ const noteOfferAccepted: SigningCompletionHook = async (document, parties) => {
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
-/** Mark a booking's waiver signed, with an audit row, unless it already is. */
+/**
+ * Mark a booking's waiver signed, with an audit row, unless it already is.
+ *
+ * A cancelled booking is left alone: a signature can arrive in the moment a booking is being
+ * cancelled, or this can run late, and neither should write to a booking that is over.
+ *
+ * The change and its audit row belong together, and there is no transaction to put them in. So
+ * if the audit row cannot be written the change is put back and this throws: the retry then does
+ * both, where otherwise it would find the waiver already signed and never record how.
+ */
 async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow): Promise<void> {
-  const { data: changed, error } = await admin
-    .from('private_bookings')
-    .update({ waiver_status: 'signed', updated_at: new Date().toISOString() })
-    .eq('id', document.subject_id)
-    .neq('waiver_status', 'signed')
-    .select('id')
-  if (error) throw new Error(`Could not mark the waiver signed: ${error.message}`)
-  if (!changed || changed.length === 0) return
+  // Read the status, then change exactly that status to signed. If a contract send or a booking
+  // save moved it in between, read again: the audit row and the undo below must name the status
+  // that was really overwritten, and the signature must not be lost to a missed write.
+  let before: string | null = null
+  for (let attempt = 0; attempt < 3 && before === null; attempt += 1) {
+    const { data: booking, error: readError } = await admin
+      .from('private_bookings')
+      .select('status, waiver_status')
+      .eq('id', document.subject_id)
+      .maybeSingle()
+    if (readError) throw new Error(`Could not read the booking: ${readError.message}`)
+    if (!booking || booking.status === 'cancelled' || booking.waiver_status === 'signed') return
+    const read = (booking.waiver_status as string | null) ?? 'not_required'
+
+    const { data: changed, error } = await admin
+      .from('private_bookings')
+      .update({ waiver_status: 'signed', updated_at: new Date().toISOString() })
+      .eq('id', document.subject_id)
+      .eq('waiver_status', read)
+      // Written this way because a plain "not cancelled" test also drops a booking with no status.
+      .or('status.is.null,status.neq.cancelled')
+      .select('id')
+    if (error) throw new Error(`Could not mark the waiver signed: ${error.message}`)
+    if (changed && changed.length > 0) before = read
+  }
+  if (before === null) {
+    // It moved three times in a row. Fail, so the finishing step runs this again.
+    throw new Error('Could not mark the waiver signed: its status kept changing')
+  }
 
   const { error: auditError } = await admin.from('private_booking_audit').insert({
     booking_id: document.subject_id,
     action: 'field_updated',
     field_name: 'waiver_status',
+    old_value: before,
     new_value: 'signed',
     performed_by: null,
     metadata: { via: 'e_signature', signing_document_id: document.id },
   })
-  if (auditError) throw new Error(`Could not record the signed waiver: ${auditError.message}`)
+  if (auditError) {
+    const { error: undoError } = await admin
+      .from('private_bookings')
+      .update({ waiver_status: before, updated_at: new Date().toISOString() })
+      .eq('id', document.subject_id)
+      .eq('waiver_status', 'signed')
+    throw new Error(
+      `Could not record the signed waiver: ${auditError.message}${undoError ? ` (and the change could not be put back: ${undoError.message})` : ''}`
+    )
+  }
 }
 
 /**
  * A signed contract is an accepted contract. Paying the deposit also accepts it and may have
- * done so first, in which case that earlier acceptance is left as it stands. A contract sent
- * with the self-catering agreement on its last page signs that too.
+ * done so first, in which case that earlier acceptance is left as it stands. The self-catering
+ * and outside food agreement is a separate document with its own signature, and is marked
+ * signed by its own hook below, never by this one.
  */
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
   const now = new Date().toISOString()
+  // Accepted when it was signed, not when this ran: a retry days later must not move the time.
+  const acceptedAt = document.completed_at ?? now
   // Only the contract version that was signed is accepted. A newer version withdraws the older
   // request when it is sent, so a mismatch should not happen; if it does, the booking is left
   // alone rather than marked as accepting terms the customer never saw.
+  // A cancelled booking is left alone too: a signature can arrive in the moment a booking is
+  // being cancelled, or this can run late, and a cancelled booking must not gain an acceptance.
   let update = admin
     .from('private_bookings')
-    .update({ contract_accepted_at: now, contract_acceptance_method: 'e_signature', updated_at: now })
+    .update({ contract_accepted_at: acceptedAt, contract_acceptance_method: 'e_signature', updated_at: now })
     .eq('id', document.subject_id)
     .is('contract_accepted_at', null)
+    // Written this way because a plain "not cancelled" test also drops a booking with no status.
+    .or('status.is.null,status.neq.cancelled')
   if (typeof document.context.contract_version === 'number') {
     update = update.eq('contract_version', document.context.contract_version)
   }
   const { data: accepted, error } = await update.select('id')
   if (error) throw new Error(`Could not mark the contract accepted: ${error.message}`)
+  if (!accepted || accepted.length === 0) return
 
-  if (accepted && accepted.length > 0) {
-    const { error: auditError } = await admin.from('private_booking_audit').insert({
-      booking_id: document.subject_id,
-      action: 'contract_accepted',
-      performed_by: null,
-      metadata: {
-        via: 'e_signature',
-        signing_document_id: document.id,
-        contract_version: document.context.contract_version ?? null,
-      },
-    })
-    if (auditError) throw new Error(`Could not record the accepted contract: ${auditError.message}`)
-  }
-
-  if (document.context.includes_waiver === true) {
-    await markWaiverSigned(admin, document)
+  const { error: auditError } = await admin.from('private_booking_audit').insert({
+    booking_id: document.subject_id,
+    action: 'contract_accepted',
+    performed_by: null,
+    metadata: {
+      via: 'e_signature',
+      signing_document_id: document.id,
+      contract_version: document.context.contract_version ?? null,
+    },
+  })
+  if (auditError) {
+    // The acceptance and its audit row belong together, and there is no transaction to put them
+    // in. Put the acceptance back and fail, so the retry does both: otherwise it would find the
+    // contract already accepted and never record how.
+    const { error: undoError } = await admin
+      .from('private_bookings')
+      .update({ contract_accepted_at: null, contract_acceptance_method: null, updated_at: new Date().toISOString() })
+      .eq('id', document.subject_id)
+      .eq('contract_acceptance_method', 'e_signature')
+      .eq('contract_accepted_at', acceptedAt)
+    throw new Error(
+      `Could not record the accepted contract: ${auditError.message}${undoError ? ` (and the acceptance could not be put back: ${undoError.message})` : ''}`
+    )
   }
 }
 
@@ -141,6 +198,20 @@ const signBookingWaiver: SigningCompletionHook = async (document) => {
  */
 const acceptQuote: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
+  // The client accepted the quote they were shown. If its lines, notes, dates or figures have
+  // changed since, this is no longer that quote, and it is left for staff to send again.
+  if (typeof document.context.quote_fingerprint === 'string') {
+    const { data: current, error: readError } = await admin
+      .from('quotes')
+      .select(
+        'quote_number, quote_date, valid_until, reference, notes, vendor_id, quote_discount_percentage, subtotal_amount, discount_amount, vat_amount, total_amount, line_items:quote_line_items(description, quantity, unit_price, discount_percentage, vat_rate, total_amount)'
+      )
+      .eq('id', document.subject_id)
+      .maybeSingle()
+    if (readError) throw new Error(`Could not read the quote: ${readError.message}`)
+    if (!current) return
+    if (quoteContentFingerprint(current as QuoteContentForFingerprint) !== document.context.quote_fingerprint) return
+  }
   let update = admin
     .from('quotes')
     .update({ status: 'accepted', updated_at: new Date().toISOString() })

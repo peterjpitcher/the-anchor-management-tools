@@ -8,8 +8,10 @@ import { readSigningEvidence } from '@/lib/signing/evidence'
 import {
   getSigningDocument,
   getSigningPartyByToken,
+  listOtherDocumentsToSign,
   recordSigningOpened,
   resolveSigningPartyState,
+  withdrawIfSubjectClosed,
 } from '@/lib/signing/service'
 import { buildSigningViewModel } from '@/lib/signing/view-model'
 import { isKnownBotUserAgent } from '@/lib/user-agent-parser'
@@ -29,9 +31,9 @@ type PageProps = { params: Promise<{ token: string }> }
  */
 export default async function SignPage({ params }: PageProps): Promise<React.JSX.Element> {
   const { token } = await params
-  const context = await getSigningPartyByToken(token)
+  const found = await getSigningPartyByToken(token)
 
-  if (!context) {
+  if (!found) {
     // We cannot tell whose brand to show, so this uses the plain staff frame.
     return (
       <StandaloneShell label="Document signing">
@@ -44,6 +46,9 @@ export default async function SignPage({ params }: PageProps): Promise<React.JSX
     )
   }
 
+  // The booking may have been cancelled, or the quote settled by phone, since the link was sent.
+  const context = await withdrawIfSubjectClosed(found)
+
   const requestHeaders = await headers()
   // Mail scanners and link previews follow links too. They are not the signer opening it.
   if (!isKnownBotUserAgent(requestHeaders.get('user-agent'))) {
@@ -54,11 +59,15 @@ export default async function SignPage({ params }: PageProps): Promise<React.JSX
     }
   }
 
-  const document = await getSigningDocument(context.document.id)
+  const [document, alsoToSign] = await Promise.all([
+    getSigningDocument(context.document.id),
+    listOtherDocumentsToSign(context),
+  ])
   const model = buildSigningViewModel({
     context,
     state: resolveSigningPartyState(context, 'link'),
     otherParties: document?.parties ?? [],
+    alsoToSign,
     endpoints: {
       document: `/api/sign/${token}/document`,
       identity: `/api/sign/${token}/identity`,

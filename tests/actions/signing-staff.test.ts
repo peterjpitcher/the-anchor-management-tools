@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   user: vi.fn(),
   canSend: vi.fn(),
   canView: vi.fn(),
-  buildAgreement: vi.fn(),
+  loadAgreement: vi.fn(),
+  applySlots: vi.fn(),
+  prepare: vi.fn(),
   createRequest: vi.fn(),
   sendTemplate: vi.fn(),
   template: vi.fn(),
@@ -22,7 +24,10 @@ vi.mock('@/lib/signing/staff', () => ({
   canSendSigningKind: mocks.canSend,
   canViewSigningKind: mocks.canView,
 }))
-vi.mock('@/lib/signing/documents/worker-agreement', () => ({ buildWorkerAgreementDocument: mocks.buildAgreement }))
+vi.mock('@/lib/signing/documents/worker-agreement', () => ({ loadWorkerAgreement: mocks.loadAgreement }))
+// Where the signature panels go in the real agreement is pinned in tests/lib/signing/documents.test.ts.
+vi.mock('@/lib/signing/documents/worker-agreement-slots', () => ({ applyWorkerAgreementSigningSlots: mocks.applySlots }))
+vi.mock('@/lib/signing/prepare', () => ({ prepareSigningDocument: mocks.prepare }))
 vi.mock('@/lib/signing/send-template', () => ({ sendTemplateSigningRequest: mocks.sendTemplate }))
 vi.mock('@/lib/signing/templates', () => ({ getSigningTemplateBySlug: mocks.template }))
 vi.mock('@/lib/signing/service', async (importOriginal) => {
@@ -41,7 +46,10 @@ import { SigningError } from '@/lib/signing/service'
 const ADULT = '11111111-1111-4111-8111-111111111111'
 const MINOR = '22222222-2222-4222-8222-222222222222'
 const NO_DOB = '33333333-3333-4333-8333-333333333333'
-const STAFF = { id: '99999999-9999-4999-8999-999999999999', email: 'billy@example.test', name: 'Billy Summers' }
+const STAFF = { id: '99999999-9999-4999-8999-999999999999', email: 'billy@example.test', name: 'Billy Summers', position: 'General Manager' }
+const AGREEMENT = { html: '<p>agreement</p>', includesYoungWorkerSchedule: false, age: 36, agreementDate: '2026-10-12', missing: [] as string[] }
+const ADULT_SLOTS = { 'agreement:company': 'company', 'agreement:worker': 'worker' }
+const RENDER = { html: '<p>slotted</p>', profile: 'a4_css_page', slots: ADULT_SLOTS, hasInitials: true }
 
 let db: FakeDb
 
@@ -70,7 +78,9 @@ beforeEach(() => {
   mocks.audit.mockResolvedValue(undefined)
   mocks.createRequest.mockResolvedValue(delivered('Sam Example'))
   mocks.sendTemplate.mockResolvedValue(delivered('Sam Example'))
-  mocks.buildAgreement.mockResolvedValue({ pdf: Buffer.from('%PDF'), age: 36, agreementDate: '2026-10-12', missing: [] })
+  mocks.loadAgreement.mockResolvedValue(AGREEMENT)
+  mocks.applySlots.mockReturnValue({ html: '<p>slotted</p>', slots: ADULT_SLOTS })
+  mocks.prepare.mockResolvedValue({ pdf: Buffer.from('%PDF'), render: RENDER })
 })
 
 describe('sending the worker agreement', () => {
@@ -83,10 +93,11 @@ describe('sending the worker agreement', () => {
   })
 
   it('refuses while the agreement would print a blank, and says what to fill in', async () => {
-    mocks.buildAgreement.mockResolvedValue({ pdf: Buffer.from('%PDF'), age: 36, agreementDate: '2026-10-12', missing: ['job title', 'hourly rate (set it on the Pay tab)'] })
+    mocks.loadAgreement.mockResolvedValue({ ...AGREEMENT, missing: ['job title', 'hourly rate (set it on the Pay tab)'] })
     const result = await sendEmploymentAgreement({ employeeId: ADULT })
     expect(result.error).toContain('job title')
     expect(result.error).toContain('hourly rate')
+    expect(mocks.prepare).not.toHaveBeenCalled()
     expect(mocks.createRequest).not.toHaveBeenCalled()
   })
 
@@ -98,12 +109,25 @@ describe('sending the worker agreement', () => {
     expect(request.parties).toEqual([
       { role: 'worker', name: 'Sam Example', email: 'sam@example.com', employeeId: ADULT, identityCheck: 'date_of_birth' },
     ])
+    // The business signs as it sends: in the sender's own name and position, on the document too.
+    expect(request.createdByPosition).toBe('General Manager')
+    // And the agreement names the sender as the manager issuing it, so the two agree.
+    expect(mocks.loadAgreement).toHaveBeenCalledWith(ADULT, { issuer: { name: 'Billy Summers', email: 'billy@example.test' } })
+    expect(mocks.prepare).toHaveBeenCalledWith({
+      source: { html: '<p>slotted</p>', profile: 'a4_css_page', slots: ADULT_SLOTS, hasInitials: true },
+      mode: 'sign',
+      parties: [{ role: 'worker', name: 'Sam Example' }],
+      sender: { name: 'Billy Summers', position: 'General Manager' },
+    })
+    // The source goes with the request, so the signed copy can show each signature in its place.
+    expect(request.render).toBe(RENDER)
+    expect(request.pdf.toString()).toBe('%PDF')
     expect(db.rows('employee_onboarding_checklist')[0]).toMatchObject({ employee_id: ADULT, employment_agreement_drafted: true })
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'send', resource_type: 'signing_document', resource_id: 'doc-1' }))
   })
 
   it('makes a parent or guardian sign too when the worker is under 18', async () => {
-    mocks.buildAgreement.mockResolvedValue({ pdf: Buffer.from('%PDF'), age: 16, agreementDate: '2026-10-12', missing: [] })
+    mocks.loadAgreement.mockResolvedValue({ ...AGREEMENT, age: 16, includesYoungWorkerSchedule: true })
     const refused = await sendEmploymentAgreement({ employeeId: MINOR })
     expect(refused.error).toContain('under 18')
     expect(mocks.createRequest).not.toHaveBeenCalled()
@@ -114,12 +138,20 @@ describe('sending the worker agreement', () => {
       expect.objectContaining({ role: 'worker', name: 'Robin Young' }),
       { role: 'guardian', name: 'Pat Young', email: 'pat@example.com' },
     ])
+    expect(mocks.applySlots).toHaveBeenCalledWith('<p>agreement</p>', { includesYoungWorkerSchedule: true })
+  })
+
+  it('will not send an under-18 agreement that came out without the page the parent or guardian signs', async () => {
+    mocks.loadAgreement.mockResolvedValue({ ...AGREEMENT, age: 16, includesYoungWorkerSchedule: false })
+    const result = await sendEmploymentAgreement({ employeeId: MINOR, guardianName: 'Pat Young', guardianEmail: 'pat@example.com' })
+    expect(result.error).toContain('Young Worker Schedule')
+    expect(mocks.createRequest).not.toHaveBeenCalled()
   })
 
   it('rejects a malformed id or guardian email before doing anything', async () => {
     expect((await sendEmploymentAgreement({ employeeId: 'nope' })).error).toBeTruthy()
     expect((await sendEmploymentAgreement({ employeeId: MINOR, guardianName: 'Pat Young', guardianEmail: 'not-an-email' })).error).toContain('email')
-    expect(mocks.buildAgreement).not.toHaveBeenCalled()
+    expect(mocks.loadAgreement).not.toHaveBeenCalled()
   })
 })
 

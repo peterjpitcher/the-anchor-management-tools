@@ -129,14 +129,16 @@ export const SIGNING_KIND_DEFINITIONS: Record<SigningKind, SigningKindDefinition
     brand: 'guest',
     subjectType: 'private_booking',
     signerRoles: ['customer'],
-    companySigns: false,
+    // The contract has a "For The Anchor" signature block. Whoever sends it signs there as
+    // they send, so a signed copy never shows one side signed and the other blank.
+    companySigns: true,
     source: 'generator',
     sendPermission: { module: 'private_bookings', action: 'generate_contracts' },
     viewPermission: { module: 'private_bookings', action: 'view' },
   },
   private_booking_waiver: {
     kind: 'private_booking_waiver',
-    label: 'Self-catering waiver',
+    label: 'Food agreement',
     mode: 'sign',
     brand: 'guest',
     subjectType: 'private_booking',

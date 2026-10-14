@@ -112,7 +112,8 @@ function checklist(items: string[]): string {
 
 function buildBlockers(data: EventSheetData): string[] {
   const blockers: string[] = []
-  if (data.waiverStatus === 'required' || data.waiverStatus === 'sent') {
+  // Every state short of signed blocks: 'overdue' is an unsigned waiver too, and was let through.
+  if (data.waiverStatus === 'required' || data.waiverStatus === 'sent' || data.waiverStatus === 'overdue') {
     blockers.push('Self-catering waiver is NOT signed — outside food must not be served until it is')
   }
   if (data.supplierStatus === 'incomplete') {

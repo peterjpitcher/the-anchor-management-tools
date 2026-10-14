@@ -3281,7 +3281,7 @@ export async function sendPrivateBookingEmail(
 // and stamps contract_sent_at / contract_sent_to.
 export async function sendBookingContract(
   bookingId: string
-): Promise<{ success?: boolean; version?: number; error?: string }> {
+): Promise<{ success?: boolean; version?: number; foodAgreementIncluded?: boolean; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
@@ -3291,21 +3291,30 @@ export async function sendBookingContract(
   if (!canSend) return { error: 'You do not have permission to send contracts' }
 
   try {
-    const { generateContractDocument, storeContractSnapshot } = await import('@/lib/private-bookings/contract-lifecycle')
-    const { generatePDFFromHTML } = await import('@/lib/pdf-generator')
+    const { generateContractDocument, markWaiverSent, storeContractSnapshot } = await import('@/lib/private-bookings/contract-lifecycle')
     const { sendContractEmailToCustomer } = await import('@/lib/email/private-booking-emails')
+    const { createBookingContractSigningRequests, prepareBookingContract } = await import('@/lib/signing/documents/booking-contract')
+    const { recordSigningLinkSent, voidSigningDocument } = await import('@/lib/signing/service')
+    const { getSigningStaffUser } = await import('@/lib/signing/staff')
 
-    const { html, version, booking } = await generateContractDocument(bookingId, { performedBy: user.id })
+    const { signingHtml, version, booking } = await generateContractDocument(bookingId, { performedBy: user.id })
 
-    if (!booking.contact_email) {
-      return { error: 'This booking has no contact email address — add one before sending the contract' }
+    if (!booking.contact_email?.trim()) {
+      return { error: 'This booking has no contact email address. Add one before sending the contract.' }
     }
 
-    const pdf = await generatePDFFromHTML(html, {
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    // Signatures go through src/lib/signing (CLAUDE.md, Domain rules). The contract is rendered
+    // once, with a signature slot where each signature goes, and divided into the documents to
+    // sign: the contract, and separately the self-catering and outside food agreement where the
+    // booking has outside food. Whoever sends it signs for The Anchor as they send.
+    const staff = await getSigningStaffUser()
+    const sender = { name: staff?.name ?? user.email ?? 'A member of staff', position: staff?.position ?? null }
+    // A food agreement that is already signed is not sent for signature again.
+    const prepared = await prepareBookingContract({
+      signingHtml,
+      booking,
+      sender,
+      waiverAlreadySigned: booking.waiver_status === 'signed',
     })
 
     const admin = createAdminClient()
@@ -3313,49 +3322,59 @@ export async function sendBookingContract(
       bookingId,
       version,
       fileName: `contract-v${version}.pdf`,
-      content: pdf,
+      content: prepared.fullPdf,
       mimeType: 'application/pdf',
       generatedBy: user.id,
-      metadata: { sent_to: booking.contact_email },
+      metadata: { sent_to: booking.contact_email, includes_food_agreement: Boolean(prepared.waiver) },
     })
 
-    // One email carries both the PDF and the customer's personal link to sign it online
-    // (CLAUDE.md, Domain rules: signatures go through src/lib/signing). If the signing request
-    // cannot be created the contract is not sent, so nobody receives a contract they cannot sign.
-    const { bookingRequiresWaiverAnnex } = await import('@/lib/contract-template')
-    const { createBookingContractSigningRequest } = await import('@/lib/signing/documents/booking-contract')
-    const { recordSigningLinkSent, voidSigningDocument } = await import('@/lib/signing/service')
-    const { getSigningStaffUser } = await import('@/lib/signing/staff')
-    const sender = await getSigningStaffUser()
-    const signing = await createBookingContractSigningRequest({
+    // If a signing request cannot be created the contract is not sent, so nobody receives a
+    // contract they cannot sign.
+    const signing = await createBookingContractSigningRequests({
       booking,
       contractVersion: version,
-      pdf,
-      includesWaiver: bookingRequiresWaiverAnnex(booking),
+      prepared,
       userId: user.id,
-      userName: sender?.name ?? user.email ?? 'A member of staff',
+      sender,
     })
+    const requests = [signing.contract, ...(signing.waiver ? [signing.waiver] : [])]
 
     try {
-      await sendContractEmailToCustomer(booking, { version, pdf, signingUrl: signing.signingUrl })
+      await sendContractEmailToCustomer(booking, {
+        version,
+        pdf: prepared.contract.pdf,
+        signingUrl: signing.contract.signingUrl,
+        waiver: prepared.waiver && signing.waiver
+          ? { pdf: prepared.waiver.pdf, signingUrl: signing.waiver.signingUrl }
+          : undefined,
+      })
     } catch (emailError) {
-      // Nobody has the link, so the request must not sit there looking live.
-      try {
-        await voidSigningDocument({ documentId: signing.documentId, userId: user.id, reason: 'The contract email could not be sent' })
-      } catch (voidError) {
-        logger.error('Could not withdraw the signing request after a failed contract email', {
-          error: voidError instanceof Error ? voidError : new Error(String(voidError)),
-          metadata: { bookingId, documentId: signing.documentId },
-        })
+      // Nobody has the links, so the requests must not sit there looking live.
+      for (const request of requests) {
+        try {
+          await voidSigningDocument({ documentId: request.documentId, userId: user.id, reason: 'The contract email could not be sent' })
+        } catch (voidError) {
+          logger.error('Could not withdraw a signing request after a failed contract email', {
+            error: voidError instanceof Error ? voidError : new Error(String(voidError)),
+            metadata: { bookingId, documentId: request.documentId },
+          })
+        }
       }
       throw emailError
     }
-    await recordSigningLinkSent({
-      documentId: signing.documentId,
-      partyId: signing.partyId,
-      to: booking.contact_email,
-      userId: user.id,
-    })
+    for (const request of requests) {
+      await recordSigningLinkSent({
+        documentId: request.documentId,
+        partyId: request.partyId,
+        to: booking.contact_email,
+        userId: user.id,
+      })
+    }
+
+    // Only now has the food agreement gone to the customer, so only now does the booking say so.
+    if (signing.waiver) {
+      await markWaiverSent(admin, { bookingId, via: 'contract_sent', contractVersion: version, performedBy: user.id })
+    }
 
     const nowIso = new Date().toISOString()
     const { error: updateError } = await admin
@@ -3380,13 +3399,14 @@ export async function sendBookingContract(
         contract_version: version,
         sent_to: booking.contact_email,
         customer_notified: true,
-        signing_document_id: signing.documentId,
+        signing_document_id: signing.contract.documentId,
+        food_agreement_signing_document_id: signing.waiver?.documentId ?? null,
       },
     })
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
-    return { success: true, version }
+    return { success: true, version, foodAgreementIncluded: Boolean(signing.waiver) }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error sending booking contract:', error, { bookingId })
     return { error: getErrorMessage(error) }

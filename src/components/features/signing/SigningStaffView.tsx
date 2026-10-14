@@ -1,7 +1,7 @@
 'use client'
 
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Input, LinkButton, Textarea } from '@/ds'
-import { signingWords, useSigningFlow, type SigningViewModel } from './useSigningFlow'
+import { alsoToSignLine, signingWords, useSigningFlow, type SigningViewModel } from './useSigningFlow'
 
 /**
  * The signing screen in the staff look: worker agreements, policies, client agreements and
@@ -11,6 +11,7 @@ import { signingWords, useSigningFlow, type SigningViewModel } from './useSignin
 export function SigningStaffView({ model }: { model: SigningViewModel }): React.JSX.Element {
   const flow = useSigningFlow(model)
   const words = signingWords(model.mode)
+  const alsoToSign = alsoToSignLine(model)
 
   if (flow.phase === 'blocked') {
     return (
@@ -36,6 +37,7 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
             ) : (
               <p>You do not need to do anything else.</p>
             )}
+            {alsoToSign ? <p className="font-medium text-text">{alsoToSign}</p> : null}
             {model.inPerson ? <p>Please hand the device back.</p> : null}
           </div>
         </CardBody>
@@ -152,6 +154,8 @@ export function SigningStaffView({ model }: { model: SigningViewModel }): React.
           .
         </p>
       ) : null}
+
+      {alsoToSign ? <Alert tone="info">{alsoToSign}</Alert> : null}
 
       {flow.error ? <Alert tone="danger" role="alert">{flow.error}</Alert> : null}
 
