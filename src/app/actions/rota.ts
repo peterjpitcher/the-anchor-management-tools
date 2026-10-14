@@ -14,6 +14,7 @@ import { getRotaSettings } from '@/app/actions/rota-settings';
 import { sendEmail } from '@/lib/email/emailService';
 import { formatDateInLondon, parseLondonDateTimeLocal } from '@/lib/dateUtils';
 import { hasPremium } from '@/lib/rota/pay-calculator';
+import { clearPayrollApprovalsForDate, payrollApprovalNotClearedWarning } from '@/lib/rota/payroll-approval-invalidation';
 import { isInsideAcceptanceCutoff, isInsideLatePublishGrace } from '@/lib/rota/acceptance-cutoff';
 import { resolveRotaManagerEmail } from '@/lib/rota/manager-email';
 import {
@@ -1582,7 +1583,7 @@ export async function updateShift(
     | 'name' | 'start_time' | 'end_time' | 'unpaid_break_minutes' | 'notes' | 'status' | 'is_overnight' | 'department'
     | 'rate_multiplier' | 'rate_override' | 'premium_reason' | 'premium_start_time' | 'premium_end_time'
   >>,
-): Promise<{ success: true; data: RotaShift } | { success: false; error: string }> {
+): Promise<{ success: true; data: RotaShift; warning?: string } | { success: false; error: string }> {
   const canEdit = await checkUserPermission('rota', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
@@ -1689,10 +1690,17 @@ export async function updateShift(
   // When the premium genuinely changed, any frozen payroll approval covering the
   // shift date is now stale — payroll resolves premium live from the shift, so we
   // drop the snapshot and let it recompute. We do NOT touch timeclock_sessions.
+  // The shift is saved either way. If the approval could not be cleared (the period lookup or a
+  // delete failed, already logged at error level) the manager is warned, not refused: the
+  // approved payroll figures for that month are now out of date until payroll is re-approved.
+  let warning: string | undefined;
   if (premiumChanged) {
     const shiftDate = (data.shift_date ?? current.shift_date) as string | null;
     if (shiftDate) {
-      await invalidatePayrollApprovalsForDate(admin, shiftDate);
+      const approvalsCleared = await clearPayrollApprovalsForDate(admin, shiftDate, { shiftId });
+      if (!approvalsCleared) {
+        warning = payrollApprovalNotClearedWarning('The shift was saved', shiftDate);
+      }
       // Audit the snapshot deletion so the invalidation is traceable to the
       // shift-premium change that caused it.
       void logAuditEvent({
@@ -1700,7 +1708,7 @@ export async function updateShift(
         operation_type: 'update',
         resource_type: 'payroll_approval',
         resource_id: shiftDate,
-        operation_status: 'success',
+        operation_status: approvalsCleared ? 'success' : 'failure',
         additional_info: {
           reason: 'invalidated by shift-premium change',
           shift_id: shiftId,
@@ -1724,39 +1732,7 @@ export async function updateShift(
   revalidatePath('/rota');
   revalidatePath('/rota/reassign');
   revalidatePath('/rota/timeclock');
-  return { success: true, data: data as RotaShift };
-}
-
-/**
- * Delete any frozen payroll month-approval snapshot covering `workDate` so the
- * next payroll read recomputes with the new premium. Mirrors the private helper
- * in timeclock.ts (which owns the session write path); duplicated here so the
- * rota write path can invalidate without importing across ownership boundaries.
- */
-async function invalidatePayrollApprovalsForDate(
-  admin: ReturnType<typeof createAdminClient>,
-  workDate: string,
-): Promise<void> {
-  const { data: periods } = await admin
-    .from('payroll_periods')
-    .select('year, month')
-    .lte('period_start', workDate)
-    .gte('period_end', workDate);
-
-  if (!periods?.length) return;
-
-  await Promise.all(
-    periods.map(period =>
-      settleWrite(
-        admin
-          .from('payroll_month_approvals')
-          .delete()
-          .eq('year', period.year)
-          .eq('month', period.month),
-        { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year: period.year, month: period.month } },
-      ),
-    ),
-  );
+  return { success: true, data: data as RotaShift, ...(warning ? { warning } : {}) };
 }
 
 // ---------------------------------------------------------------------------

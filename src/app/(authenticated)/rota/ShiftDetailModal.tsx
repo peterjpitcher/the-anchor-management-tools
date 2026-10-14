@@ -221,6 +221,9 @@ export default function ShiftDetailModal({
       });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Shift updated');
+      // The shift saved but the payroll approval for its month could not be cleared: a warning on
+      // top of the success, kept up longer because it asks the manager to re-approve payroll.
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       setShift(result.data);
       onUpdated(result.data);
       setEditing(false);

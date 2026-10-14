@@ -126,7 +126,7 @@ export function RefundDialog({
     setError(null)
 
     try {
-      let result: { success?: boolean; pending?: boolean; message?: string; error?: string }
+      let result: { success?: boolean; pending?: boolean; message?: string; warning?: string; error?: string }
 
       // Only sent once a manager has been shown the refusal and ticked the override.
       const policyOptions =
@@ -160,7 +160,11 @@ export function RefundDialog({
         return
       }
 
-      if (result.pending) {
+      // A warning means the money moved but our records did not fully catch up. It replaces the
+      // success toast, stays up long enough to read, and tells staff not to refund again.
+      if (result.warning) {
+        toast.warning(result.warning, { duration: 12000 })
+      } else if (result.pending) {
         toast.info(result.message || 'Refund is pending at PayPal.')
       } else {
         toast.success(`Refund of ${formatCurrency(parsedAmount)} processed successfully.`)
