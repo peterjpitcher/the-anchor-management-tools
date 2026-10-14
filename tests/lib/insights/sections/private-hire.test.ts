@@ -46,6 +46,10 @@ function booking(overrides: Row = {}): Row {
     deposit_amount: 250,
     deposit_paid_date: '2026-09-01T10:00:00.000Z',
     contract_version: 1,
+    contract_sent_at: '2026-09-02T10:00:00.000Z',
+    contract_accepted_at: '2026-09-03T10:00:00.000Z',
+    outside_food: false,
+    waiver_status: 'not_required',
     deposit_waived: false,
     deposit_confirmed_at: '2026-08-30T10:00:00.000Z',
     invoice_id: null,
@@ -95,6 +99,21 @@ function expectCleanText(result: SectionBuildResult): void {
   expect(text).not.toContain('!')
 }
 
+/** The paperwork list when nothing is outstanding: it says so, on the page and in the email. */
+const NO_PAPERWORK_LIST = {
+  title: 'Private bookings: paperwork outstanding',
+  titleAsWritten: true,
+  items: [],
+  emptyText: 'No private booking has paperwork outstanding with the event 14 days away or less.',
+  inEmail: true,
+}
+
+function paperworkList(result: SectionBuildResult): SectionBuildResult['lists'][number] {
+  const found = result.lists.find((list) => list.title === 'Private bookings: paperwork outstanding')
+  if (!found) throw new Error('No paperwork list')
+  return found
+}
+
 describe('private hire section', () => {
   it('is registered under the private_hire key with the private bookings page', () => {
     expect(privateHireSection).toMatchObject({ key: 'private_hire', title: 'Private hire', path: '/private-bookings' })
@@ -110,7 +129,7 @@ describe('private hire section', () => {
       { label: 'Later bookings needing action', value: '0 bookings' },
       { label: 'Outcomes not recorded', value: '0 past bookings' },
     ])
-    expect(result.lists).toEqual([{ title: 'Next 14 days', items: [], emptyText: 'No private bookings in the next 14 days.' }])
+    expect(result.lists).toEqual([{ title: 'Next 14 days', items: [], emptyText: 'No private bookings in the next 14 days.' }, NO_PAPERWORK_LIST])
     expect(result.notes).toEqual(['Not tracked in the app: menu confirmed, dietary requirements, room set-up.'])
     expect(result.upcoming).toEqual([])
     expectCleanText(result)
@@ -559,6 +578,7 @@ describe('private hire section', () => {
       ['Next 14 days', 2],
       ['Further ahead: needs action', 1],
       ['Past: outcome not recorded', 1],
+      ['Private bookings: paperwork outstanding', 0],
     ])
   })
 
@@ -657,6 +677,140 @@ describe('private hire section', () => {
     expect(section.signals.filter((item) => item.action).map((item) => item.key)).toEqual(['private_hire.deposit.pb1'])
     expect(report.summary.comingUp).toEqual({ date: '2026-09-26', text: 'Smith party, Sat 26 Sep: £250 deposit not paid', hasIssue: true, href: LINK('/private-bookings/pb1') })
     expect(report.actions[0]).toMatchObject({ text: 'Chase the £250 deposit for the Smith party (Sat 26 Sep)', rag: 'red', target: 'record' })
+  })
+})
+
+describe('private hire section: paperwork outstanding', () => {
+  // Today is Friday 25 Sep 2026. The rule runs from today to day 14, Friday 9 Oct, inclusive.
+  const unsigned = { contract_accepted_at: null }
+  const nothingSent = { contract_version: 0, contract_sent_at: null, contract_accepted_at: null }
+
+  it('says so in one line when nothing is outstanding', async () => {
+    const result = await build(db([booking()]))
+    expect(paperworkList(result)).toEqual(NO_PAPERWORK_LIST)
+    expect(keys(result)).toEqual([])
+  })
+
+  it('lists a booking with the client, the weekday and date, and what is outstanding', async () => {
+    const result = await build(db([booking({ id: 'pb1', event_date: '2026-09-30', ...unsigned, outside_food: true })]))
+    expect(paperworkList(result)).toEqual({
+      ...NO_PAPERWORK_LIST,
+      items: [{
+        text: 'Smith party, Wed 30 Sep: The contract has been sent but not signed. The food agreement has not been sent. The event is in 5 days.',
+        href: LINK('/private-bookings/pb1'),
+        rag: 'amber',
+      }],
+    })
+    expect(keys(result)).toEqual(['private_hire.paperwork'])
+    expect(signal(result, 'private_hire.paperwork')).toEqual({
+      key: 'private_hire.paperwork',
+      rag: 'amber',
+      kind: 'issue',
+      text: '1 private booking has paperwork outstanding with the event 14 days away or less.',
+      action: { text: 'Get the paperwork signed for the Smith party (Wed 30 Sep)', href: LINK('/private-bookings/pb1'), target: 'record', dueDate: '2026-09-30', impact: 'customer' },
+      emailSafe: true,
+    })
+    // The booking is no longer shown as ready.
+    expect(result.headline).toBe('1 private booking in the next 14 days, 1 needs action.')
+    expect(result.lists[0].items[0]).toEqual({
+      text: 'Wed 30 Sep, 19:00 to 23:00, Smith party, 40 guests, confirmed: paperwork outstanding',
+      href: LINK('/private-bookings/pb1'),
+      rag: 'amber',
+    })
+    expect(result.upcoming).toEqual([{ date: '2026-09-30', text: 'Smith party, Wed 30 Sep: paperwork outstanding', hasIssue: true, href: LINK('/private-bookings/pb1') }])
+    expectCleanText(result)
+  })
+
+  it('raises one line for several bookings, soonest first, naming each as a member', async () => {
+    const result = await build(db([
+      booking({ id: 'pb-late', customer_last_name: 'Jones', event_date: '2026-10-05', ...nothingSent }),
+      booking({ id: 'pb-today', customer_last_name: 'Patel', event_date: '2026-09-25', ...unsigned }),
+      booking({ id: 'pb-food', customer_last_name: 'Green', event_date: '2026-09-26', waiver_status: 'sent' }),
+      booking({ id: 'pb-fine', customer_last_name: 'Brown', event_date: '2026-09-27' }),
+    ]))
+    expect(paperworkList(result).items.map((item) => item.text)).toEqual([
+      'Patel party, Fri 25 Sep: The contract has been sent but not signed. The event is today.',
+      'Green party, Sat 26 Sep: The food agreement has been sent but not signed. The event is tomorrow.',
+      'Jones party, Mon 5 Oct: The contract has not been sent. The event is in 10 days.',
+    ])
+    const paperwork = signal(result, 'private_hire.paperwork')
+    expect(paperwork.text).toBe('3 private bookings have paperwork outstanding with the event 14 days away or less.')
+    expect(paperwork.action).toEqual({
+      text: 'Get the paperwork signed for 3 private bookings',
+      href: LINK('/private-bookings'),
+      target: 'list',
+      members: ['Patel party (Fri 25 Sep)', 'Green party (Sat 26 Sep)', 'Jones party (Mon 5 Oct)'],
+      dueDate: '2026-09-25',
+      impact: 'customer',
+    })
+    // The older "no contract generated" line still stands for the booking with nothing issued.
+    expect(keys(result)).toEqual(['private_hire.contract.pb-late', 'private_hire.paperwork'])
+    expectCleanText(result)
+  })
+
+  it('covers day 14, one day past the upcoming scope, and stops at day 15', async () => {
+    const result = await build(db([
+      booking({ id: 'pb-13', customer_last_name: 'Thirteen', event_date: '2026-10-08', ...unsigned }),
+      booking({ id: 'pb-14', customer_last_name: 'Fourteen', event_date: '2026-10-09', ...unsigned }),
+      booking({ id: 'pb-15', customer_last_name: 'Fifteen', event_date: '2026-10-10', ...unsigned }),
+    ]))
+    expect(paperworkList(result).items.map((item) => item.text)).toEqual([
+      'Thirteen party, Thu 8 Oct: The contract has been sent but not signed. The event is in 13 days.',
+      'Fourteen party, Fri 9 Oct: The contract has been sent but not signed. The event is in 14 days.',
+    ])
+    // Day 14 sits in the further-ahead scope, where it is listed as needing action.
+    expect(result.lists.find((list) => list.title === 'Further ahead: needs action')?.items).toEqual([
+      { text: 'Fri 9 Oct, Fourteen party, confirmed: paperwork outstanding', href: LINK('/private-bookings/pb-14'), rag: 'amber' },
+    ])
+  })
+
+  it('covers drafts and confirmed bookings, and leaves out finished ones and unknown dates', async () => {
+    const result = await build(db([
+      booking({ id: 'pb-draft', customer_last_name: 'Draft', status: 'draft', ...unsigned }),
+      booking({ id: 'pb-done', customer_last_name: 'Done', status: 'completed', ...unsigned }),
+      booking({ id: 'pb-gone', customer_last_name: 'Gone', status: 'cancelled', ...unsigned }),
+      booking({ id: 'pb-tbd', customer_last_name: 'Tbd', date_tbd: true, ...unsigned }),
+      booking({ id: 'pb-note', customer_last_name: 'Note', internal_notes: 'Event date/time to be confirmed', ...unsigned }),
+    ]))
+    expect(paperworkList(result).items.map((item) => item.text)).toEqual([
+      'Draft party, Sat 26 Sep: The contract has been sent but not signed. The event is tomorrow.',
+    ])
+  })
+
+  it('treats the outside food tick with a stored "not required" as a food agreement still to send', async () => {
+    const result = await build(db([booking({ id: 'pb1', outside_food: true, waiver_status: 'not_required' })]))
+    expect(paperworkList(result).items.map((item) => item.text)).toEqual([
+      'Smith party, Sat 26 Sep: The food agreement has not been sent. The event is tomorrow.',
+    ])
+  })
+
+  it('counts the days as calendar dates across the October clock change', async () => {
+    // Saturday 24 Oct 2026, 06:00 London (05:00 UTC). Clocks go back on Sunday 25 Oct.
+    const result = await build(db([
+      booking({ id: 'pb-a', customer_last_name: 'Able', event_date: '2026-10-25', ...unsigned }),
+      booking({ id: 'pb-b', customer_last_name: 'Baker', event_date: '2026-10-26', ...unsigned }),
+      booking({ id: 'pb-c', customer_last_name: 'Clark', event_date: '2026-11-07', ...unsigned }),
+      booking({ id: 'pb-d', customer_last_name: 'Dunn', event_date: '2026-11-08', ...unsigned }),
+    ]), new Date('2026-10-24T05:00:00Z'))
+    expect(paperworkList(result).items.map((item) => item.text)).toEqual([
+      'Able party, Sun 25 Oct: The contract has been sent but not signed. The event is tomorrow.',
+      'Baker party, Mon 26 Oct: The contract has been sent but not signed. The event is in 2 days.',
+      'Clark party, Sat 7 Nov: The contract has been sent but not signed. The event is in 14 days.',
+    ])
+  })
+
+  it('makes the section amber through the engine, and does not take the booking\'s own action', async () => {
+    const fake = db([booking({ id: 'pb1', guest_count: null, ...unsigned })])
+    const report = await buildInsightsReport({
+      createDb: () => fake.asDb(),
+      now: new Date('2026-09-25T05:00:00Z'),
+      appUrl: TEST_APP_URL,
+      sections: [privateHireSection],
+      logFailure: () => undefined,
+    })
+    const section = report.sections[0]
+    expect(section.status).toBe('amber')
+    expect(section.signals.filter((item) => item.action).map((item) => item.key)).toEqual(['private_hire.headcount.pb1', 'private_hire.paperwork'])
   })
 })
 
