@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
  * (a value that is not a plain string) fails it too, so a new one cannot slip past unseen.
  *
  * To add a type: add it to the check in a new migration, as
- * 20261013155149_rota_email_log_unfilled_urgent.sql does, then write it.
+ * 20261014084738_rota_email_log_unfilled_urgent.sql does, then write it.
  */
 
 const ROOT = process.cwd()
