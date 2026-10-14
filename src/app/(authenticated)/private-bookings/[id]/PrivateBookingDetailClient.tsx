@@ -1119,6 +1119,8 @@ function AddItemModal({
     const result = await addBookingItem(data);
 
     if (result.success) {
+      // Saved, but the balance status did not update: say so, plainly.
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onItemAdded();
       onClose();
       // Reset form
@@ -1364,6 +1366,7 @@ function DiscountModal({
     });
 
     if (result.success) {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     } else {
@@ -1542,6 +1545,7 @@ function EditItemModal({
     if (result.error) {
       toast.error(`Error: ${result.error}`);
     } else {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     }
@@ -2218,6 +2222,7 @@ export default function PrivateBookingDetailClient({
     }
     const result = await deleteBookingItem(itemId);
     if (result.success) {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       refreshBooking();
     } else {
       toast.error(result.error ?? "Failed to delete the item.");
