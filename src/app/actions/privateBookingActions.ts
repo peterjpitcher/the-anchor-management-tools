@@ -1422,7 +1422,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
   }
 
   try {
-    await PrivateBookingService.applyBookingDiscount(bookingId, data)
+    const result = await PrivateBookingService.applyBookingDiscount(bookingId, data)
 
     try {
       await logAuditEvent({
@@ -1448,7 +1448,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error applying discount: ', error)
     return { error: getErrorMessage(error) }
@@ -1905,7 +1905,7 @@ export async function addBookingItem(data: {
   const { data: { user } } = await supabase.auth.getUser()
 
   try {
-    await PrivateBookingService.addBookingItem({
+    const result = await PrivateBookingService.addBookingItem({
       booking_id: data.booking_id,
       item_type: data.item_type,
       space_id: data.space_id,
@@ -1951,7 +1951,7 @@ export async function addBookingItem(data: {
     revalidatePath(`/private-bookings/${data.booking_id}`)
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error adding booking item:', error)
     return { error: getErrorMessage(error) }
@@ -2006,7 +2006,7 @@ export async function updateBookingItem(itemId: string, data: {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking item:', error)
     return { error: getErrorMessage(error) }
@@ -2049,7 +2049,7 @@ export async function deleteBookingItem(itemId: string) {
     revalidatePath(`/private-bookings/${result.bookingId}`)
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting booking item:', error)
     return { error: getErrorMessage(error) }

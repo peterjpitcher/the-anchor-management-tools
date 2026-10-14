@@ -290,7 +290,9 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     const result = await addBookingItem(data)
     
     if (result.success) {
-      toast.success('Item added successfully')
+      // Saved, but the balance status did not update: say so, plainly.
+      if (result.warning) toast.warning(result.warning, { duration: 12000 })
+      else toast.success('Item added successfully')
       onItemAdded()
       onClose()
       // Reset form
@@ -589,7 +591,8 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
     })
 
     if (result.success) {
-      toast.success('Item updated successfully')
+      if (result.warning) toast.warning(result.warning, { duration: 12000 })
+      else toast.success('Item updated successfully')
       onItemUpdated()
       onClose()
     } else {
@@ -740,7 +743,8 @@ export default function ItemsPage() {
   const handleDeleteItem = async (itemId: string) => {
     const result = await deleteBookingItem(itemId)
     if (result.success) {
-      toast.success('Item deleted successfully')
+      if (result.warning) toast.warning(result.warning, { duration: 12000 })
+      else toast.success('Item deleted successfully')
       refreshData()
     } else {
       toast.error(result.error || 'Failed to delete item')
