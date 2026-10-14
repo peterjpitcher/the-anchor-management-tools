@@ -370,7 +370,10 @@ export default function EventDetailClient({
         toast.error(result.error)
       } else {
         const refundAmount = result.data.refund_amount || 0
-        if (result.data.refund_status === 'succeeded' && refundAmount > 0) {
+        if (result.data.warning) {
+          // A follow-up write failed after the cancellation (or the refund) went through.
+          toast.warning(result.data.warning, { duration: 12000 })
+        } else if (result.data.refund_status === 'succeeded' && refundAmount > 0) {
           toast.success(`Booking cancelled. Refund issued: ${formatCurrency(refundAmount)}`)
         } else if (result.data.refund_status === 'pending' && refundAmount > 0) {
           toast.success(`Booking cancelled. Refund pending: ${formatCurrency(refundAmount)}`)
