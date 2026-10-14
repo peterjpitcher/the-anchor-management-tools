@@ -383,7 +383,18 @@ function makeUpdateSupabase(current: CurrentShift) {
 // written by the rota write path (they resolve premium live), so we track any
 // timeclock_sessions.update to prove none happens, and track payroll approval
 // deletes to prove a genuine premium change invalidates the frozen snapshot.
-function makeAdmin(options: { periods?: Array<{ year: number; month: number }>; current?: CurrentShift; captured?: GuardCapture } = {}) {
+// A refused write or read, as supabase-js returns it (it never throws).
+const DB_REFUSAL = { message: 'permission denied for table', code: '42501' }
+
+function makeAdmin(options: {
+  periods?: Array<{ year: number; month: number }>
+  current?: CurrentShift
+  captured?: GuardCapture
+  /** The payroll_periods lookup fails, so nobody knows which approvals to clear. */
+  periodsError?: boolean
+  /** Every payroll_month_approvals delete is refused. */
+  approvalDeleteError?: boolean
+} = {}) {
   const periods = options.periods ?? [{ year: 2026, month: 3 }]
   const current = options.current ?? CURRENT
   const captured = options.captured ?? newCapture()
@@ -413,7 +424,8 @@ function makeAdmin(options: { periods?: Array<{ year: number; month: number }>; 
       }
     }
     if (table === 'payroll_periods') {
-      return { select: vi.fn().mockReturnValue({ lte: vi.fn().mockReturnValue({ gte: vi.fn().mockResolvedValue({ data: periods, error: null }) }) }) }
+      const lookup = options.periodsError ? { data: null, error: DB_REFUSAL } : { data: periods, error: null }
+      return { select: vi.fn().mockReturnValue({ lte: vi.fn().mockReturnValue({ gte: vi.fn().mockResolvedValue(lookup) }) }) }
     }
     if (table === 'payroll_month_approvals') {
       return {
@@ -421,7 +433,7 @@ function makeAdmin(options: { periods?: Array<{ year: number; month: number }>; 
           eq: vi.fn().mockImplementation((_yearCol: string, year: number) => ({
             eq: vi.fn().mockImplementation((_monthCol: string, month: number) => {
               approvalDeletes.push({ year, month })
-              return Promise.resolve({ error: null })
+              return Promise.resolve({ error: options.approvalDeleteError ? DB_REFUSAL : null })
             }),
           })),
         }),
@@ -563,6 +575,66 @@ describe('updateShift premium handling', () => {
     expect(result.success).toBe(false)
     if (!result.success) expect(result.error).toMatch(/within the shift/i)
     expect(captured.row).toBeUndefined()
+  })
+})
+
+describe('updateShift premium change: payroll approval not cleared', () => {
+  const PREMIUM_EDIT = {
+    rate_multiplier: 1.5,
+    rate_override: null,
+    premium_reason: 'Bank holiday',
+    premium_start_time: null,
+    premium_end_time: null,
+  }
+  // CURRENT.shift_date is 2026-03-16.
+  const EXPECTED_WARNING =
+    'The shift was saved, but the payroll approval covering 16 March 2026 could not be cleared, so the approved payroll figures are now out of date. Please re-approve payroll for that month, or tell the developer if this keeps happening.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerm.mockResolvedValue(true)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  it('saves the shift and warns when the approval delete is refused', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    const admin = makeAdmin({ captured, approvalDeleteError: true })
+    mockCreateAdminClient.mockReturnValue(admin.client as never)
+
+    const result = await updateShift('shift-1', PREMIUM_EDIT)
+
+    expect(result.success).toBe(true)
+    expect(captured.row?.rate_multiplier).toBe(1.5)
+    expect(admin.approvalDeletes).toEqual([{ year: 2026, month: 3 }])
+    expect(result.success && result.warning).toBe(EXPECTED_WARNING)
+  })
+
+  it('saves the shift and warns when the pay period lookup fails', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    const admin = makeAdmin({ captured, periodsError: true })
+    mockCreateAdminClient.mockReturnValue(admin.client as never)
+
+    const result = await updateShift('shift-1', PREMIUM_EDIT)
+
+    expect(result.success).toBe(true)
+    // Nothing could be cleared: the lookup that names the approvals failed.
+    expect(admin.approvalDeletes).toHaveLength(0)
+    expect(result.success && result.warning).toBe(EXPECTED_WARNING)
+  })
+
+  it('carries no warning when the approval is cleared', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    const admin = makeAdmin({ captured })
+    mockCreateAdminClient.mockReturnValue(admin.client as never)
+
+    const result = await updateShift('shift-1', PREMIUM_EDIT)
+
+    expect(result.success).toBe(true)
+    expect(admin.approvalDeletes).toEqual([{ year: 2026, month: 3 }])
+    expect(result).not.toHaveProperty('warning')
   })
 })
 

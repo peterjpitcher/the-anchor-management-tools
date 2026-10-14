@@ -172,6 +172,12 @@ export default function TimeclockManager({
   const [editPremiumTo, setEditPremiumTo] = useState('');     // HH:MM local, blank = whole session
   const [savePending, startSaveTransition] = useTransition();
 
+  // The change saved but the payroll approval for its month could not be cleared: a warning on
+  // top of the success, kept up longer because it asks the manager to re-approve payroll.
+  const showPayrollWarning = (warning: string | undefined) => {
+    if (warning) toast.warning(warning, { duration: 12000 });
+  };
+
   // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const deletingSession = sessions.find(s => s.id === deletingId) ?? null;
@@ -183,6 +189,7 @@ export default function TimeclockManager({
     if (!result.success) throw new Error(result.error);
 
     toast.success('Session deleted');
+    showPayrollWarning(result.warning);
     setSessions(prev => prev.filter(s => s.id !== deletingId));
   };
 
@@ -276,6 +283,7 @@ export default function TimeclockManager({
       const result = await updateTimeclockSession(s.id, s.work_date, editIn, editOut || null, editNotes || null, { premium, allowPayrollApprove });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Session updated');
+      showPayrollWarning(result.warning);
       setEditingId(null);
       setSessions(prev => prev.map(x => x.id === s.id
         ? {
@@ -309,6 +317,7 @@ export default function TimeclockManager({
       const result = await createTimeclockSession(addEmployeeId, addDate, addIn, addOut || null, addNotes || null, { allowPayrollApprove });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Entry added');
+      showPayrollWarning(result.warning);
       setSessions(prev => [...prev, result.data].sort((a, b) =>
         a.work_date.localeCompare(b.work_date) || a.clock_in_at.localeCompare(b.clock_in_at),
       ));
