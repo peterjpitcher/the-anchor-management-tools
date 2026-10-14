@@ -2030,7 +2030,11 @@ export default function PrivateBookingDetailClient({
         }
 
         setInvoiceModalOpen(false);
-        if (result.sent) {
+        if (result.sent && result.warning) {
+          // Emailed, but the record of it did not save: the page may still
+          // offer Email Invoice, so say plainly not to send it again.
+          toast.warning(result.warning, { duration: 12000 });
+        } else if (result.sent) {
           toast.success(`Invoice ${result.invoiceNumber} sent`);
         } else {
           toast.error(
@@ -2052,6 +2056,9 @@ export default function PrivateBookingDetailClient({
       const result = await retryPrivateBookingInvoiceEmail(bookingId);
       if (result.error) {
         toast.error(result.error);
+      } else if (result.warning) {
+        toast.warning(result.warning, { duration: 12000 });
+        router.refresh();
       } else {
         toast.success('Invoice sent');
         router.refresh();
