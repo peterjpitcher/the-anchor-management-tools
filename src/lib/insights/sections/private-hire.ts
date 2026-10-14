@@ -1,6 +1,7 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import type { MessagingFlagKey } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
+import { paperworkWarning, PAPERWORK_WARNING_DAYS, type PaperworkWarning } from '@/lib/private-bookings/paperwork'
 import { readStalePendingOutcomes, type StalePendingOutcome } from '@/lib/private-bookings/stale-outcomes'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { hasOutstandingBalance, type WeeklyDigestBookingRow } from '@/lib/private-bookings/weekly-digest-classifier'
@@ -33,6 +34,11 @@ import type {
  * approval are queued 14 to 21 days before the event, before it enters the upcoming scope.
  * Pending texts for past or cancelled bookings are counted once, as a queue line.
  *
+ * Paperwork (owner, 13 October 2026): a contract or food agreement still unsigned with the event
+ * 14 days away or less. The rule is src/lib/private-bookings/paperwork.ts, shared with the
+ * booking page. Every flagged booking is listed, in the email as well as on the page, under one
+ * amber line; it is a warning and blocks nothing.
+ *
  * Client names are printed in the email because the reader acts on that client
  * (decision 13). Contact details are never read into the report.
  */
@@ -42,8 +48,11 @@ const HOUR_MS = 60 * 60 * 1000
 /** The booking read goes through the view because balance_remaining is only computed there. */
 const VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name, status, event_date, start_time, end_time, date_tbd, hold_expiry, updated_at, guest_count, event_type, balance_due_date, balance_remaining, final_payment_date, internal_notes, deposit_amount, deposit_paid_date, contract_version'
 
-/** The view ignores deposit waivers and carries no invoice link or deposit confirmation, so they come from the table. */
-const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
+/**
+ * The view ignores deposit waivers and carries no invoice link, deposit confirmation, contract
+ * dates or food agreement state, so they come from the table.
+ */
+const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, contract_sent_at, contract_accepted_at, outside_food, waiver_status, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
 
 /**
  * The switch the rest of the app reads through isMessagingFlagOn (src/lib/messaging/flags.ts):
@@ -92,6 +101,10 @@ interface TableRow {
   id: string
   deposit_waived: boolean | null
   deposit_confirmed_at?: string | null
+  contract_sent_at?: string | null
+  contract_accepted_at?: string | null
+  outside_food?: boolean | null
+  waiver_status?: string | null
   invoice_id: string | null
   invoice: InvoiceRow | InvoiceRow[] | null
 }
@@ -128,6 +141,8 @@ interface Booking {
   /** The deposit is still to be confirmed by staff, so the guest has not been asked and the hold is not running. */
   depositAwaitingConfirmation: boolean
   contractGenerated: boolean
+  /** Contract or food agreement still unsigned with the event 14 days away or less. */
+  paperwork: PaperworkWarning | null
   balanceDueDate: string | null
   /** The classifier's rule: balance above zero and no final payment recorded. */
   balanceOutstanding: number | null
@@ -144,6 +159,11 @@ interface Check {
   short: string
   text: string
   action?: InsightAction
+  /**
+   * Counts towards the booking's state in the lists but raises no line of its own: the section
+   * reports it once for every booking together (paperwork).
+   */
+  listOnly?: boolean
 }
 
 function toAmount(value: unknown): number | null {
@@ -199,7 +219,7 @@ function isFlagOn(value: unknown, flag: MessagingFlagKey): boolean {
   return (value as Record<string, unknown>)[flag] === true
 }
 
-function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, depositConfirmationOn: boolean): Booking {
+function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, depositConfirmationOn: boolean, today: string): Booking {
   const holdMs = view.hold_expiry ? Date.parse(view.hold_expiry) : Number.NaN
   const balance = toAmount(view.balance_remaining)
   // Normalised for the shared classifier rule, which expects a number.
@@ -246,6 +266,17 @@ function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, deposit
       deposit_confirmed_at: table.deposit_confirmed_at,
     }),
     contractGenerated: (view.contract_version ?? 0) > 0,
+    // The shared rule, with the date treated as unknown under the older notes convention too.
+    paperwork: paperworkWarning({
+      status: view.status,
+      event_date: view.event_date,
+      date_tbd: isBookingDateTbd(view),
+      contract_version: view.contract_version,
+      contract_sent_at: table.contract_sent_at,
+      contract_accepted_at: table.contract_accepted_at,
+      outside_food: table.outside_food,
+      waiver_status: table.waiver_status,
+    }, today),
     balanceDueDate: view.balance_due_date ? view.balance_due_date.slice(0, 10) : null,
     balanceOutstanding: hasOutstandingBalance(classifierRow) && balance !== null ? roundPence(balance) : null,
     invoiced: Boolean(table.invoice_id),
@@ -399,6 +430,27 @@ function textsCheck(booking: Booking, ctx: SectionContext, who: string): Check |
   }
 }
 
+/**
+ * Paperwork still unsigned close to the event. It marks the booking in the lists; the line and
+ * the action are raised once for all such bookings, with the detail in the paperwork list.
+ */
+function paperworkCheck(booking: Booking, who: string): Check | null {
+  if (!booking.paperwork) return null
+  return {
+    rule: 'paperwork',
+    rag: 'amber',
+    kind: 'issue',
+    short: 'paperwork outstanding',
+    text: `${who}: ${booking.paperwork.sentences.join(' ')}`,
+    listOnly: true,
+  }
+}
+
+/** "Smith party, Sat 24 Oct: The contract has not been sent. The event is in 5 days." */
+function paperworkLine(booking: Booking, paperwork: PaperworkWarning): string {
+  return `${booking.label}, ${formatDayDate(booking.eventDate)}: ${[...paperwork.sentences, paperwork.timing].join(' ')}`
+}
+
 /** Every check for a booking in the next 14 days, in the spec's precedence order. */
 function upcomingChecks(booking: Booking, ctx: SectionContext): Check[] {
   const who = `${booking.label} (${formatDayDate(booking.eventDate)})`
@@ -463,6 +515,9 @@ function upcomingChecks(booking: Booking, ctx: SectionContext): Check[] {
     })
   }
 
+  const paperwork = paperworkCheck(booking, who)
+  if (paperwork) checks.push(paperwork)
+
   const texts = textsCheck(booking, ctx, who)
   if (texts) checks.push(texts)
 
@@ -486,6 +541,9 @@ function furtherAheadChecks(booking: Booking, ctx: SectionContext): Check[] {
   }
   const balance = balanceCheck(booking, ctx, who, recordHref, true)
   if (balance && balance.rag === 'red') checks.push(balance)
+  // The paperwork rule runs to day 14 inclusive, one day past the upcoming scope.
+  const paperwork = paperworkCheck(booking, who)
+  if (paperwork) checks.push(paperwork)
   const texts = textsCheck(booking, ctx, who)
   if (texts) checks.push(texts)
   return checks
@@ -506,7 +564,7 @@ function outcomeCheck(outcome: StalePendingOutcome, ctx: SectionContext): Check 
 }
 
 function toSignals(bookingId: string, checks: Check[]): InsightSignal[] {
-  return checks.map((check) => ({
+  return checks.filter((check) => !check.listOnly).map((check) => ({
     key: `private_hire.${check.rule}.${bookingId}`,
     entity: `private_booking:${bookingId}`,
     rag: check.rag,
@@ -612,7 +670,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   const tableById = new Map(tableRows.map((row) => [row.id, row]))
   const bookings = viewRows
     .filter((row) => row.event_date && tableById.has(row.id))
-    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, depositConfirmationOn))
+    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, depositConfirmationOn, today))
     .sort(compareBookings)
 
   const withdrawnInvoices = bookings.filter((booking) => booking.invoiced && !booking.invoice).length
@@ -650,6 +708,33 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
       text: `${otherTextsFor} ${otherTexts === 1 ? 'is' : 'are'} waiting for approval.`,
       action: { text: `Approve or cancel ${otherTextsFor}`, href: ctx.link('/private-bookings/sms-queue'), target: 'list', impact: 'customer' },
       // Names nobody.
+      emailSafe: true,
+    })
+  }
+
+  // Paperwork: one line for every flagged booking together; the list below names each one.
+  const paperworkEntries = bookings.flatMap((booking) => (booking.paperwork ? [{ booking, paperwork: booking.paperwork }] : []))
+  if (paperworkEntries.length > 0) {
+    const count = paperworkEntries.length
+    const first = paperworkEntries[0].booking
+    const firstWho = `${first.label} (${formatDayDate(first.eventDate)})`
+    signals.push({
+      key: 'private_hire.paperwork',
+      rag: 'amber',
+      kind: 'issue',
+      text: `${plural(count, 'private booking')} ${count === 1 ? 'has' : 'have'} paperwork outstanding with the event ${PAPERWORK_WARNING_DAYS} days away or less.`,
+      action: count === 1
+        ? { text: `Get the paperwork signed for the ${firstWho}`, href: ctx.link(`/private-bookings/${first.id}`), target: 'record', dueDate: first.eventDate, impact: 'customer' }
+        : {
+            text: `Get the paperwork signed for ${plural(count, 'private booking')}`,
+            href: ctx.link('/private-bookings'),
+            target: 'list',
+            members: paperworkEntries.map(({ booking }) => `${booking.label} (${formatDayDate(booking.eventDate)})`),
+            // Bookings are in date order, so the first is the soonest.
+            dueDate: first.eventDate,
+            impact: 'customer',
+          },
+      // Names only clients, whom the reader acts on (decision 13).
       emailSafe: true,
     })
   }
@@ -708,6 +793,18 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
       }),
     })
   }
+
+  lists.push({
+    title: 'Private bookings: paperwork outstanding',
+    titleAsWritten: true,
+    items: paperworkEntries.map(({ booking, paperwork }) => ({
+      text: paperworkLine(booking, paperwork),
+      href: ctx.link(`/private-bookings/${booking.id}`),
+      rag: 'amber' as const,
+    })),
+    emptyText: `No private booking has paperwork outstanding with the event ${PAPERWORK_WARNING_DAYS} days away or less.`,
+    inEmail: true,
+  })
 
   const notes: string[] = []
   if (withdrawnInvoices > 0) {

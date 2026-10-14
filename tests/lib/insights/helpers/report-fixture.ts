@@ -88,8 +88,18 @@ function content(heavy: boolean): Record<SectionKey, SectionBuildResult> {
     private_hire: {
       headline: '3 private events in the next 14 days; 1 needs action.',
       metrics: [{ label: 'Next 14 days', value: '3 events' }],
-      lists: [{ title: 'Next 14 days', items: [{ text: 'Sat 26 Sep, Smith party, 40 guests: deposit outstanding, no contract', href: `${ORIGIN}/private-bookings/p1`, rag: 'red' }] }],
+      lists: [
+        { title: 'Next 14 days', items: [{ text: 'Sat 26 Sep, Smith party, 40 guests: deposit outstanding, no contract', href: `${ORIGIN}/private-bookings/p1`, rag: 'red' }] },
+        {
+          title: 'Private bookings: paperwork outstanding',
+          titleAsWritten: true,
+          items: many((i) => ({ text: `Smith party, Sat 26 Sep: The contract has not been sent. The event is tomorrow.${i > 0 ? ` (${i})` : ''}`, href: `${ORIGIN}/private-bookings/p1`, rag: 'amber' as const })),
+          emptyText: 'No private booking has paperwork outstanding with the event 14 days away or less.',
+          inEmail: true,
+        },
+      ],
       signals: [
+        issue('private_hire.paperwork', 'amber', '1 private booking has paperwork outstanding with the event 14 days away or less.', { action: action('Get the paperwork signed for the Smith party (Sat 26 Sep)', '/private-bookings/p1', { dueDate: '2026-09-26' }) }),
         issue('private_hire.deposit.p1', 'red', 'Smith party (Sat 26 Sep): £250 deposit not paid.', { entity: 'private_booking:p1', action: action('Chase deposit for the Smith party (Sat 26 Sep), £250', '/private-bookings/p1', { dueDate: '2026-09-26', impact: 'money' }) }),
         issue('private_hire.contract.p1', 'amber', 'Smith party (Sat 26 Sep): no contract generated.', { entity: 'private_booking:p1', action: action('Generate the contract for the Smith party', '/private-bookings/p1', { dueDate: '2026-09-26', impact: 'money' }) }),
       ],

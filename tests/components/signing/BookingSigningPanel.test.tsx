@@ -49,6 +49,12 @@ function signingState(overrides: Partial<BookingSigningState> = {}): BookingSign
     waiverStatus: 'required',
     hasEmail: true,
     canSend: true,
+    contractIssued: true,
+    contractAcceptedAt: null,
+    contractAcceptanceMethod: null,
+    // Off here so the tests in this file see the food agreement on its own; the tests for
+    // recording an acceptance are in BookingSigningPanel.acceptance.test.tsx.
+    canRecordAcceptance: false,
     ...overrides,
   }
 }

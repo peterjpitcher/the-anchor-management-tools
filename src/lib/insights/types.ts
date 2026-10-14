@@ -103,7 +103,7 @@ export interface InsightMetric {
   comparison?: string
 }
 
-/** Lists are shown on the Insights page only. The email carries signals, not lists. */
+/** Lists are shown on the Insights page. The email carries signals, plus any list marked `inEmail`. */
 export interface InsightListItem {
   text: string
   href?: string
@@ -121,6 +121,12 @@ export interface InsightList {
   items: InsightListItem[]
   /** Shown instead of an empty list. Omit to hide the list when empty. */
   emptyText?: string
+  /**
+   * Also printed in the Friday email, in full, under the section's exceptions. For a list the
+   * meeting needs every line of (private booking paperwork still unsigned). The title, every
+   * item and the empty text must be email safe.
+   */
+  inEmail?: boolean
   /**
    * A long reference list that repeats the exception lists above it (for example every
    * open maintenance job). It sits closed behind "Show all" on the page and does not print.
