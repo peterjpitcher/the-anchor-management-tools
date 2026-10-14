@@ -31,6 +31,7 @@ const REFUSALS: Record<string, { message: string; status: number }> = {
   already_signed: { message: 'You have already signed this document.', status: 409 },
   already_declined: { message: 'You have already declined this document.', status: 409 },
   link_expired: { message: 'This link has expired. Please ask us to send a new one.', status: 410 },
+  link_replaced: { message: 'We have sent you a newer link for this document. Please use the latest email from us.', status: 410 },
   document_expired: { message: 'This request has expired. Please ask us to send the document again.', status: 410 },
   document_voided: { message: 'This document has been withdrawn. There is nothing for you to sign.', status: 410 },
   document_declined: { message: 'This document was declined by another signer and is no longer open.', status: 410 },

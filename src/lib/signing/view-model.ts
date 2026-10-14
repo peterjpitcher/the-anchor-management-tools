@@ -15,6 +15,8 @@ export function buildSigningViewModel(input: {
   context: SigningPartyContext
   state: SigningPartyState
   otherParties: Array<Pick<SigningPartyRow, 'id' | 'name' | 'role' | 'status'>>
+  /** Titles of other documents still waiting for this same person. */
+  alsoToSign?: string[]
   endpoints: SigningViewModel['endpoints']
 }): SigningViewModel {
   const { party, document } = input.context
@@ -58,6 +60,8 @@ export function buildSigningViewModel(input: {
         roleLabel: signingRoleLabel(other.role),
         signed: other.status === 'signed',
       })),
+    // Named while there is something to sign and once it is signed, never on a dead link.
+    alsoToSign: showDetail ? input.alsoToSign ?? [] : [],
     endpoints: input.endpoints,
   }
 }

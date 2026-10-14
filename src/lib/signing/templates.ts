@@ -1,9 +1,8 @@
-import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSigningKind } from './kinds'
+import { getSigningKind, signingRoleLabel } from './kinds'
 import { SigningError } from './service'
 import { findDraftMarkers, mergeTemplateText, renderTemplateDocumentHtml } from './template-render'
-import type { SigningTemplateKind, SigningTemplateRow } from './types'
+import type { SigningPartyRole, SigningTemplateKind, SigningTemplateRow } from './types'
 
 /**
  * Wording for the document kinds that have no generator of their own. One row per template in
@@ -45,12 +44,21 @@ export function templateActivationBlocker(template: Pick<SigningTemplateRow, 'ti
 export interface RenderedTemplateDocument {
   template: SigningTemplateRow
   title: string
-  pdf: Buffer
+  /** The document's HTML, with a signature slot for each person who signs. */
+  html: string
+  /** Which party fills which slot. */
+  slots: Record<string, SigningPartyRole>
+}
+
+/** The slot key a template document uses for a role. */
+export function templateSlotKey(role: SigningPartyRole): string {
+  return `doc:${role}`
 }
 
 /**
- * Build the PDF for a template kind. Refuses a template that is switched off, a template that
- * still has gaps, and any merge field with no value: a document goes out complete or not at all.
+ * Build the document for a template kind, as HTML ready to be prepared for signing. Refuses a
+ * template that is switched off, a template that still has gaps, and any merge field with no
+ * value: a document goes out complete or not at all.
  */
 export async function renderTemplateDocument(input: {
   kind: SigningTemplateKind
@@ -73,16 +81,24 @@ export async function renderTemplateDocument(input: {
     throw new SigningError('template_incomplete', `The "${template.title}" template is not finished. ${blocker}`)
   }
 
+  const definition = getSigningKind(input.kind)
+  // Everyone who signs gets a slot at the end of the document: the signers, then the business
+  // where it signs too.
+  const roles: SigningPartyRole[] = [...definition.signerRoles, ...(definition.companySigns ? ['company' as const] : [])]
+  const slots: Record<string, SigningPartyRole> = {}
+  for (const role of roles) slots[templateSlotKey(role)] = role
+
   const title = mergeTemplateText(template.title, input.mergeValues)
   const mergedBody = mergeTemplateText(template.body, input.mergeValues)
   const html = renderTemplateDocumentHtml({
-    brand: getSigningKind(input.kind).brand,
+    brand: definition.brand,
     title,
     subtitle: input.subtitle,
     mergedBody,
     // Printed in the footer, so a paper copy can be matched to the wording it was made from.
     reference: `${template.slug}, version ${template.version}`,
+    signatures: roles.map((role) => ({ slotKey: templateSlotKey(role), heading: signingRoleLabel(role) })),
+    mode: definition.mode,
   })
-  const pdf = await generatePDFFromHTML(html)
-  return { template, title, pdf }
+  return { template, title, html, slots }
 }

@@ -23,6 +23,7 @@ function model(overrides: Partial<SigningViewModel> = {}): SigningViewModel {
     inPerson: false,
     isPortal: false,
     otherSigners: [],
+    alsoToSign: [],
     endpoints: {
       document: '/api/sign/tok/document',
       identity: '/api/sign/tok/identity',
@@ -175,6 +176,25 @@ describe.each([
     expect(screen.getByText(/has been withdrawn/i)).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^sign document$/i })).not.toBeInTheDocument()
+  })
+
+  it('says there is a second document to sign, before signing and once this one is signed', async () => {
+    const user = userEvent.setup()
+    fetchMock.mockResolvedValue(respond(201, { success: true, signed: true, completed: true }))
+    render(<View model={model({ brand, documentViewed: true, alsoToSign: ['Self-catering agreement'] })} />)
+    // Each document is signed on its own, so the screen never lets one signature pass for both.
+    expect(screen.getByText(/you also have "Self-catering agreement" to sign\. It is signed separately/i)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(/type your full name/i), 'Sam Example')
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /^sign document$/i }))
+    expect(await screen.findByText(/you also have "Self-catering agreement" to sign/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^sign document$/i })).not.toBeInTheDocument()
+  })
+
+  it('says nothing about other documents when there are none', () => {
+    render(<View model={model({ brand, documentViewed: true })} />)
+    expect(screen.queryByText(/you also have/i)).not.toBeInTheDocument()
   })
 
   it('uses confirm wording for a policy, and names the other signers', () => {

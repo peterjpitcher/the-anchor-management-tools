@@ -5,7 +5,9 @@ import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { formatDateInLondon, getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils'
 import { getErrorMessage } from '@/lib/errors'
-import { buildWorkerAgreementDocument } from '@/lib/signing/documents/worker-agreement'
+import { loadWorkerAgreement } from '@/lib/signing/documents/worker-agreement'
+import { applyWorkerAgreementSigningSlots } from '@/lib/signing/documents/worker-agreement-slots'
+import { prepareSigningDocument } from '@/lib/signing/prepare'
 import { POLICY_BATCH_SIZE } from '@/lib/signing/policy'
 import { sendTemplateSigningRequest } from '@/lib/signing/send-template'
 import {
@@ -138,7 +140,10 @@ export async function sendEmploymentAgreement(input: {
     const employee = await loadEmployee(parsed.data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
 
-    const built = await buildWorkerAgreementDocument(employee.employee_id)
+    // Whoever sends it signs for the business, so the agreement names them as issuing it.
+    const built = await loadWorkerAgreement(employee.employee_id, {
+      issuer: { name: auth.user.name, email: auth.user.email },
+    })
     if (!built) return { error: 'Employee not found.' }
     if (built.missing.length > 0) {
       return { error: `Add these to the employee record first, so the agreement has no blanks: ${built.missing.join('; ')}.` }
@@ -152,16 +157,34 @@ export async function sendEmploymentAgreement(input: {
       }
       parties.push({ role: 'guardian', name: parsed.data.guardianName, email: parsed.data.guardianEmail })
     }
+    // The parent or guardian block is on Schedule 2, which the agreement includes for under 18s.
+    if (under18 && !built.includesYoungWorkerSchedule) {
+      return { error: 'The agreement did not include the Young Worker Schedule. Check the date of birth on the record.' }
+    }
+
+    // Signature slots go where the agreement's blank signature lines are, so the signed copy
+    // shows each signature in its place.
+    const slotted = applyWorkerAgreementSigningSlots(built.html, {
+      includesYoungWorkerSchedule: built.includesYoungWorkerSchedule,
+    })
+    const prepared = await prepareSigningDocument({
+      source: { html: slotted.html, profile: 'a4_css_page', slots: slotted.slots, hasInitials: true },
+      mode: 'sign',
+      parties: parties.map((party) => ({ role: party.role, name: party.name })),
+      sender: { name: auth.user.name, position: auth.user.position },
+    })
 
     const result = await createSigningRequest({
       kind: 'employment_agreement',
       subjectId: employee.employee_id,
       title: 'Zero-hours casual worker agreement',
       summary: `Your agreement with The Anchor, dated ${formatDateInLondon(built.agreementDate, { day: 'numeric', month: 'long', year: 'numeric' })}. It sets out your role, pay and the terms you work under.`,
-      pdf: built.pdf,
+      pdf: prepared.pdf,
+      render: prepared.render,
       parties,
       createdBy: auth.user.id,
       createdByName: auth.user.name,
+      createdByPosition: auth.user.position,
       context: { agreement_date: built.agreementDate, under_18: under18 },
     })
 

@@ -65,7 +65,7 @@ export default function SigningTemplatesManager({ initialTemplates, loadError }:
 
   const toggle = (template: SigningTemplateRow): void => {
     startTransition(async () => {
-      const result = await setSigningTemplateActive({ id: template.id, active: !template.is_active })
+      const result = await setSigningTemplateActive({ id: template.id, active: !template.is_active, version: template.version })
       if (result.error || !result.data) {
         toast.error(result.error ?? 'Could not change the template.')
         return

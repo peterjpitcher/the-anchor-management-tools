@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   canSend: vi.fn(),
   canView: vi.fn(),
   getQuote: vi.fn(),
-  quotePdf: vi.fn(),
+  quoteSource: vi.fn(),
+  prepare: vi.fn(),
   createRequest: vi.fn(),
   sendTemplate: vi.fn(),
   listSeries: vi.fn(),
@@ -18,7 +19,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: mocks.audit }))
 vi.mock('@/app/actions/quotes', () => ({ getQuote: mocks.getQuote }))
-vi.mock('@/lib/pdf-generator', () => ({ generateQuotePDF: mocks.quotePdf }))
+// Where the acceptance panel goes in the real quote is pinned in tests/lib/signing/documents.test.ts.
+vi.mock('@/lib/signing/documents/quote', () => ({ buildQuoteSigningSource: mocks.quoteSource }))
+vi.mock('@/lib/signing/prepare', () => ({ prepareSigningDocument: mocks.prepare }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => mocks.client }))
 vi.mock('@/lib/signing/staff', () => ({
   getSigningStaffUser: mocks.user,
@@ -39,6 +42,7 @@ import {
 } from '@/app/actions/signing-commercial'
 import { sendJobOffer } from '@/app/actions/signing-recruitment'
 import { SIGNING_COMPLETION_HOOKS } from '@/lib/signing/completion-hooks'
+import { quoteContentFingerprint } from '@/lib/signing/documents/quote-fingerprint'
 import type { SigningDocumentRow } from '@/lib/signing/types'
 
 const QUOTE = '11111111-1111-4111-8111-111111111111'
@@ -47,7 +51,9 @@ const BOOKING = '33333333-3333-4333-8333-333333333333'
 const SUPPLIER = '44444444-4444-4444-8444-444444444444'
 const OTHER_SUPPLIER = '55555555-5555-4555-8555-555555555555'
 const APPLICATION = '66666666-6666-4666-8666-666666666666'
-const STAFF = { id: '99999999-9999-4999-8999-999999999999', email: 'peter@example.test', name: 'Peter Pitcher' }
+const STAFF = { id: '99999999-9999-4999-8999-999999999999', email: 'peter@example.test', name: 'Peter Pitcher', position: 'Director' }
+const QUOTE_SOURCE = { html: '<p>quote</p>', profile: 'a4_compact', slots: { 'quote:client': 'client' } }
+const QUOTE_RENDER = { ...QUOTE_SOURCE, hasInitials: false }
 const signer = { signerName: 'Sam Client', signerEmail: 'sam@client.example' }
 const sent = { documentId: 'doc-1', version: 1, deliveries: [{ partyId: 'p1', name: 'Sam Client', email: 'sam@client.example', email_status: 'sent' }] }
 
@@ -90,7 +96,8 @@ beforeEach(() => {
   mocks.canSend.mockResolvedValue(true)
   mocks.canView.mockResolvedValue(true)
   mocks.audit.mockResolvedValue(undefined)
-  mocks.quotePdf.mockResolvedValue(Buffer.from('%PDF quote'))
+  mocks.quoteSource.mockReturnValue(QUOTE_SOURCE)
+  mocks.prepare.mockResolvedValue({ pdf: Buffer.from('%PDF quote'), render: QUOTE_RENDER })
   mocks.createRequest.mockResolvedValue(sent)
   mocks.sendTemplate.mockResolvedValue(sent)
   mocks.listSeries.mockResolvedValue([])
@@ -98,12 +105,18 @@ beforeEach(() => {
 })
 
 describe('sending a quote for acceptance', () => {
-  it('sends the quote PDF itself and moves a draft to Sent', async () => {
+  it('sends the quote itself, with a place for the acceptance, and moves a draft to Sent', async () => {
     const result = await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })
     expect(result.success).toBe(true)
     const request = mocks.createRequest.mock.calls[0][0]
     expect(request).toMatchObject({ kind: 'quote_acceptance', subjectId: QUOTE, title: 'Quote Q-2026-014' })
     expect(request.pdf.toString()).toBe('%PDF quote')
+    // The quote's source goes with the request, so the accepted copy shows who accepted it and when.
+    expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      source: QUOTE_SOURCE,
+      parties: [{ role: 'client', name: 'Sam Client' }],
+    }))
+    expect(request.render).toBe(QUOTE_RENDER)
     expect(request.parties).toEqual([{ role: 'client', name: 'Sam Client', email: 'sam@client.example' }])
     expect(request.summary).toContain('Monday, 30 November 2026')
     expect(request.context).toMatchObject({ total_amount: 1200 })
@@ -116,6 +129,43 @@ describe('sending a quote for acceptance', () => {
       expect((await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })).error).toContain(words)
     }
     expect(mocks.createRequest).not.toHaveBeenCalled()
+  })
+
+  it('records a fingerprint of the quote as the client is shown it, for the acceptance to be checked against', async () => {
+    const line = { description: 'DJ, 7pm to midnight', quantity: 1, unit_price: 1000, discount_percentage: 0, vat_rate: 20, total_amount: 1200 }
+    const asShown = {
+      ...quote('sent').quote,
+      quote_date: '2026-11-01',
+      reference: 'Enquiry 88',
+      notes: 'Set up from 6pm.',
+      internal_notes: 'Margin is thin on this one.',
+      quote_discount_percentage: 0,
+      subtotal_amount: 1000,
+      discount_amount: 0,
+      vat_amount: 200,
+      line_items: [line],
+    }
+    mocks.getQuote.mockResolvedValue({ quote: asShown })
+
+    expect((await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })).success).toBe(true)
+
+    const context = mocks.createRequest.mock.calls[0][0].context as { quote_fingerprint: string; total_amount: number }
+    expect(context.quote_fingerprint).toMatch(/^[0-9a-f]{64}$/)
+    expect(context.quote_fingerprint).toBe(quoteContentFingerprint(asShown))
+    // The total is still recorded beside it, as before.
+    expect(context.total_amount).toBe(1200)
+
+    // The same quote with one line reworded, and every figure the same, is not the same quote.
+    mocks.getQuote.mockResolvedValue({ quote: { ...asShown, line_items: [{ ...line, description: 'DJ, 8pm to midnight' }] } })
+    await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })
+    const reworded = mocks.createRequest.mock.calls[1][0].context as { quote_fingerprint: string; total_amount: number }
+    expect(reworded.total_amount).toBe(1200)
+    expect(reworded.quote_fingerprint).not.toBe(context.quote_fingerprint)
+
+    // What only staff see is not part of it.
+    mocks.getQuote.mockResolvedValue({ quote: { ...asShown, internal_notes: 'Changed our minds about the margin.' } })
+    await sendQuoteForAcceptance({ quoteId: QUOTE, ...signer })
+    expect((mocks.createRequest.mock.calls[2][0].context as { quote_fingerprint: string }).quote_fingerprint).toBe(context.quote_fingerprint)
   })
 
   it('needs permission and a real email address', async () => {
@@ -242,14 +292,26 @@ describe('job offers', () => {
 })
 
 describe('private booking hooks', () => {
-  it('marks the contract accepted by e-signature, and the waiver signed when it was included', async () => {
-    await SIGNING_COMPLETION_HOOKS.private_booking_contract(
-      document({ subject_id: BOOKING, context: { includes_waiver: true } }),
-      []
-    )
-    expect(db.rows('private_bookings')[0]).toMatchObject({ contract_acceptance_method: 'e_signature', waiver_status: 'signed' })
+  it('marks the contract accepted by e-signature, and leaves the food agreement for its own signature', async () => {
+    await SIGNING_COMPLETION_HOOKS.private_booking_contract(document({ subject_id: BOOKING, context: {} }), [])
+    // Signing the contract is not signing the food agreement: that is a second document.
+    expect(db.rows('private_bookings')[0]).toMatchObject({ contract_acceptance_method: 'e_signature', waiver_status: 'sent' })
     expect(db.rows('private_bookings')[0].contract_accepted_at).toBeTruthy()
-    expect(db.rows('private_booking_audit').map((row) => row.action)).toEqual(['contract_accepted', 'field_updated'])
+    expect(db.rows('private_booking_audit').map((row) => row.action)).toEqual(['contract_accepted'])
+  })
+
+  it('marks the food agreement signed when it is signed, and does not touch the contract', async () => {
+    await SIGNING_COMPLETION_HOOKS.private_booking_waiver(document({ id: 'doc-waiver', subject_id: BOOKING, context: {} }), [])
+    expect(db.rows('private_bookings')[0]).toMatchObject({ waiver_status: 'signed', contract_accepted_at: null })
+    expect(db.rows('private_booking_audit')).toEqual([
+      expect.objectContaining({
+        booking_id: BOOKING,
+        action: 'field_updated',
+        field_name: 'waiver_status',
+        new_value: 'signed',
+        metadata: { via: 'e_signature', signing_document_id: 'doc-waiver' },
+      }),
+    ])
   })
 
   it('accepts only the contract version that was signed', async () => {
@@ -262,7 +324,7 @@ describe('private booking hooks', () => {
 
   it('never overwrites an acceptance already made by paying the deposit', async () => {
     Object.assign(db.rows('private_bookings')[0], { contract_accepted_at: '2026-10-01T10:00:00.000Z', contract_acceptance_method: 'deposit_payment' })
-    await SIGNING_COMPLETION_HOOKS.private_booking_contract(document({ subject_id: BOOKING, context: { includes_waiver: false } }), [])
+    await SIGNING_COMPLETION_HOOKS.private_booking_contract(document({ subject_id: BOOKING, context: {} }), [])
     expect(db.rows('private_bookings')[0]).toMatchObject({
       contract_accepted_at: '2026-10-01T10:00:00.000Z',
       contract_acceptance_method: 'deposit_payment',
@@ -272,10 +334,11 @@ describe('private booking hooks', () => {
   })
 
   it('is safe to run twice', async () => {
-    const doc = document({ subject_id: BOOKING, context: { includes_waiver: true } })
+    const doc = document({ subject_id: BOOKING, context: {} })
     await SIGNING_COMPLETION_HOOKS.private_booking_contract(doc, [])
     const acceptedAt = db.rows('private_bookings')[0].contract_accepted_at
     await SIGNING_COMPLETION_HOOKS.private_booking_contract(doc, [])
+    await SIGNING_COMPLETION_HOOKS.private_booking_waiver(doc, [])
     await SIGNING_COMPLETION_HOOKS.private_booking_waiver(doc, [])
     expect(db.rows('private_bookings')[0].contract_accepted_at).toBe(acceptedAt)
     expect(db.rows('private_booking_audit')).toHaveLength(2)

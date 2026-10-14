@@ -84,6 +84,8 @@ function parseOrTerm(term: string): (row: Row) => boolean {
   const value = rest.join('.')
   if (operator === 'is' && value === 'null') return (row) => (row[column] ?? null) === null
   if (operator === 'eq') return (row) => String(row[column]) === value
+  // As Postgres does it: a null never satisfies "not equal".
+  if (operator === 'neq') return (row) => (row[column] ?? null) !== null && String(row[column]) !== value
   if (operator === 'in') {
     const values = value
       .replace(/^\(|\)$/g, '')
@@ -139,6 +141,17 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this
   }
 
+  /** As Postgres does it: a null is never greater than, less than or equal to anything. */
+  gte(column: string, value: string | number) {
+    this.filters.push((row) => (row[column] ?? null) !== null && (row[column] as string | number) >= value)
+    return this
+  }
+
+  lte(column: string, value: string | number) {
+    this.filters.push((row) => (row[column] ?? null) !== null && (row[column] as string | number) <= value)
+    return this
+  }
+
   ilike(column: string, pattern: string) {
     const matches = likeMatcher(pattern)
     this.filters.push((row) => matches(row[column]))
@@ -158,7 +171,7 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this
   }
 
-  /** Supports `col.is.null`, `col.eq.value` and `col.in.(a,b)` terms joined by commas. */
+  /** Supports `col.is.null`, `col.eq.value`, `col.neq.value` and `col.in.(a,b)` terms joined by commas. */
   or(expression: string) {
     const terms = splitOrTerms(expression).map(parseOrTerm)
     this.filters.push((row) => terms.some((term) => term(row)))

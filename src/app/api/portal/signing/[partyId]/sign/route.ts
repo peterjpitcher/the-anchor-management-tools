@@ -22,6 +22,7 @@ const REFUSALS: Record<string, string> = {
   agreement_text_changed: 'This page is out of date. Please reload it and try again.',
   document_not_viewed: 'Please open the document before you sign it.',
   already_signed: 'You have already signed this document.',
+  document_voided: 'This document has been withdrawn. There is nothing for you to sign.',
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {

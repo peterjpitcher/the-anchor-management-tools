@@ -325,7 +325,12 @@ export async function saveSigningTemplate(input: { id: string; title: string; bo
 }
 
 /** Switch a template on or off. It can only be switched on once its wording has no gaps. */
-export async function setSigningTemplateActive(input: { id: string; active: boolean }): Promise<ActionResult<SigningTemplateRow>> {
+export async function setSigningTemplateActive(input: {
+  id: string
+  active: boolean
+  /** The version on screen when the button was pressed. Switching on is refused if it has moved. */
+  version?: number
+}): Promise<ActionResult<SigningTemplateRow>> {
   try {
     if (!UuidSchema.safeParse(input.id).success || typeof input.active !== 'boolean') {
       return { error: 'Unknown template.' }
@@ -345,6 +350,10 @@ export async function setSigningTemplateActive(input: { id: string; active: bool
     const current = existing as SigningTemplateRow
 
     if (input.active) {
+      // Switching on says "this wording may be sent". It has to be the wording that was read.
+      if (typeof input.version === 'number' && input.version !== current.version) {
+        return { error: 'This template was changed after you opened it. Reload, read it again, then switch it on.' }
+      }
       const blocker = templateActivationBlocker(current)
       if (blocker) return { error: blocker }
     }
@@ -360,9 +369,13 @@ export async function setSigningTemplateActive(input: { id: string; active: bool
         updated_by: user.id,
       })
       .eq('id', current.id)
+      // The wording checked above is this version's. If someone saved a new one in between, the
+      // switch is refused, so wording nobody has checked is never switched on.
+      .eq('version', current.version)
       .select('*')
-      .single()
+      .maybeSingle()
     if (updateError) throw new Error(updateError.message)
+    if (!updated) return { error: 'Someone else changed this template a moment ago. Reload and try again.' }
 
     await logAuditEvent({
       user_id: user.id,

@@ -11,7 +11,7 @@ import {
   GuestTextarea,
   guestFieldControlProps,
 } from '@/components/features/guest'
-import { signingWords, useSigningFlow, type SigningViewModel } from '@/components/features/signing/useSigningFlow'
+import { alsoToSignLine, signingWords, useSigningFlow, type SigningViewModel } from '@/components/features/signing/useSigningFlow'
 import { GUEST_MUTED_CLASS, GUEST_NOTE_CLASS } from '../styles'
 
 const BODY_CLASS = GUEST_MUTED_CLASS
@@ -24,6 +24,7 @@ const BODY_CLASS = GUEST_MUTED_CLASS
 export function SigningGuestView({ model }: { model: SigningViewModel }): React.JSX.Element {
   const flow = useSigningFlow(model)
   const words = signingWords(model.mode)
+  const alsoToSign = alsoToSignLine(model)
 
   if (flow.phase === 'blocked') {
     return (
@@ -42,6 +43,7 @@ export function SigningGuestView({ model }: { model: SigningViewModel }): React.
             ? 'We will email your copy once everyone else has signed.'
             : 'Your copy, with its signing record, is on its way to you by email.'
           : 'You do not need to do anything else.'}
+        {alsoToSign ? ` ${alsoToSign}` : ''}
         {model.inPerson ? ' Please hand the device back.' : ''}
       </GuestAlert>
     )
@@ -143,6 +145,8 @@ export function SigningGuestView({ model }: { model: SigningViewModel }): React.
           .
         </p>
       ) : null}
+
+      {alsoToSign ? <GuestAlert tone="notice">{alsoToSign}</GuestAlert> : null}
 
       {flow.error ? <GuestAlert tone="problem" role="alert">{flow.error}</GuestAlert> : null}
 
