@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261013155149_rota_email_log_unfilled_urgent.sql
+-- Rollback for supabase/migrations/20261014084738_rota_email_log_unfilled_urgent.sql
 --
 -- Puts the email_type list back to the ten values it had before, so 'unfilled_urgent' is refused
 -- again. That is the state production was in until the migration: the daily unfilled shift alert

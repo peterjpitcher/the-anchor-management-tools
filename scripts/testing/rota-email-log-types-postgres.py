@@ -17,7 +17,7 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
 ROTA_SYSTEM = MIGRATIONS / '20260228100000_rota_system.sql'
 SHIFT_ACCEPTANCE = MIGRATIONS / '20260704000000_portal_shift_acceptance.sql'
-MIGRATION = MIGRATIONS / '20261013155149_rota_email_log_unfilled_urgent.sql'
+MIGRATION = MIGRATIONS / '20261014084738_rota_email_log_unfilled_urgent.sql'
 ROLLBACK = ROOT / 'tasks/rota-email-log-unfilled-urgent/rollback.sql'
 
 SETUP = r"""
