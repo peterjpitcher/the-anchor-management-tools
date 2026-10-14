@@ -409,3 +409,43 @@ The first test of the invoice mailbox route went to the owner's address with a c
 The owner's first live test of document signing ticked "Outside food" on a booking and got a contract with no food agreement. Two faults. First, the food agreement was triggered only by a catering package marked as needing one; the "Outside food" tick on the booking form, which says the same thing in the same words, was read by nothing (three live bookings had the tick and no agreement). Second, I had folded the food agreement into the contract's one signature, although the printed annex says in bold that its signature is separate from the contract's. The owner also had to point out that the signed copy still showed blank signature lines.
 
 When a paper process goes online: list every input that can make a document necessary and route them all through one rule (here `src/lib/private-bookings/waiver-status.ts`); keep each separate signature block on the paper as a separate signature online; and open the finished signed copy and read it as the customer will, because a signed document with empty signature lines looks unsigned whatever the record page says. Before saying a feature covers "every aspect", walk each record's whole life (changed, cancelled, settled another way, signed on paper) and not only the send and sign path.
+
+
+## 15 September 2026: mileage report purpose and unpaid history
+
+The owner wants drivers included in the first mileage report delivery and confirms no mileage reimbursements for 2024 onwards have been paid as of this decision. The PDF supports clearing that history and future quarterly reimbursements. Preserve these owner-confirmed requirements; do not assume prior payments or defer drivers. Keep any percentage-based historical allocation distinct from verified journey-level driver attribution until its basis is clarified.
+
+## 20 September 2026: verify served CSS after a branch switch
+
+A new shell rendered against stale green CSS in the real Next dev server while the Vite fixture passed. Before reporting a visual fix complete, check the actual served stylesheet and signed-in browser. Stop duplicate development servers before moving the generated .next cache aside and restarting. Do not run a production build against the same .next directory as an active development server.
+
+## 20 September 2026: preserve the owner's navigation conventions
+
+Use hover expansion with mouse-out dismissal, no navigation search, and the production group order. Compact must still give icons breathing room. Orange is the dominant application colour, not merely an active accent on a dark rail.
+
+## 20 September 2026: application brand is Orange Jelly
+
+The application belongs to Orange Jelly. Use the supplied complete logo and Orange Jelly application titles; do not pair its icon with The Anchor name. Venue names within operational records and guest content remain venue names.
+
+## 20 September 2026: white navigation foreground on orange
+
+The owner wants all navigation text and icons white when their background is orange. Keep dark foregrounds only on the pale selected rows and badges.
+
+## 20 September 2026: prominent brand with optional pinning
+
+The owner wants the Orange Jelly logo to occupy the expanded navigation width and a simple pin control to hold the menu open. Preserve hover and mouse-out behaviour when unpinned.
+
+## 2026-09-20 Navigation simplicity
+- Do not retain optional shortcut customisation when the owner wants only the standard menu.
+
+## 2026-09-20 Compact detail pages
+- Avoid stacking padded Sections around padded Cards on dense booking screens. Keep the section headings close to their cards.
+
+## 2026-09-20 Hover navigation only
+- Keep the navigation transient on hover when the owner does not want a pin. Previously saved pin settings must not keep it open.
+
+## 2026-09-20 Badge centring
+- Restoring hidden sidebar labels with display: revert overrides badge flex layout too. Give numeric badges an explicit expanded display rule.
+
+## 2026-10-04 Customer recurring charges
+- Distinguish OJ Projects client recurring charges from recurring invoice templates. For customer charges such as baronshub, check OJ Projects > Clients > View > Recurring Charges before giving instructions.
