@@ -108,6 +108,7 @@ Never bypass these to get a message out. Treat every local run as production-cap
 - `supabase/migrations/` holds 661 files: the squashed baseline `20251123120000_squashed.sql`, `*_remote_placeholder.sql` files mirroring production's `schema_migrations` history (keep them), and real migrations after that. A new migration needs a timestamp newer than the latest applied one (`supabase/migrations/README.md`). Pre-squash SQL is in `supabase/migrations-archive/`.
 - Anything destined for production goes through the `prod-migrate` skill; drafting and reviewing are separate from applying, and applying needs the owner's explicit go-ahead every time.
 - Query the live schema and check dependent views before touching a table (workspace rule); views freeze their column lists.
+- Regenerate `src/types/database.generated.ts` in the same change as a migration (`npx supabase gen types typescript --project-id tfcasgxopxegwrabvwat --schema public`). The guard `tests/guards/query-columns.test.ts` checks every column a `.from('<table>')` query filters on, selects or writes against that file, so a column the table lacks fails the suite instead of returning a 400 in production, and so do stale types.
 
 ## Known gotchas (each has bitten us)
 
