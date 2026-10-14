@@ -1,7 +1,12 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { settleWrite } from '@/lib/supabase/settle-write';
+import { reportWriteError, settleWrite } from '@/lib/supabase/settle-write';
+import { reportCronFailure } from '@/lib/cron/alerting';
+import {
+  clearPayrollApprovalsForDate,
+  payrollApprovalNotClearedWarning,
+} from '@/lib/rota/payroll-approval-invalidation';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
@@ -104,31 +109,18 @@ async function verifyClockIdentity(
   return { ok: false, error: 'Enter your timeclock PIN.' };
 }
 
-async function invalidatePayrollApprovalsForDate(
-  supabase: ReturnType<typeof createAdminClient>,
-  workDate: string,
-): Promise<void> {
-  const { data: periods } = await supabase
-    .from('payroll_periods')
-    .select('year, month')
-    .lte('period_start', workDate)
-    .gte('period_end', workDate);
-
-  if (!periods?.length) return;
-
-  // Parallelise deletes across periods instead of awaiting them serially
-  await Promise.all(
-    periods.map(period =>
-      settleWrite(
-        supabase
-          .from('payroll_month_approvals')
-          .delete()
-          .eq('year', period.year)
-          .eq('month', period.month),
-        { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year: period.year, month: period.month } },
-      ),
-    ),
-  );
+/**
+ * Tells the owner, through the cron alert inbox, about a kiosk clock event whose payroll side did
+ * not save. The employee at the kiosk is never shown it: the clock in or out itself worked, and
+ * they can do nothing about payroll. The error-level log written when the write failed is the
+ * record; this is the nudge. Never throws.
+ */
+async function alertKioskPayrollProblem(what: string, context: Record<string, unknown>): Promise<void> {
+  try {
+    await reportCronFailure(`timeclock: ${what}`, new Error(what), context);
+  } catch {
+    // The error-level log of the failed write is the record.
+  }
 }
 
 export type TimeclockSession = {
@@ -263,7 +255,7 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
   }
 
   // Attempt to link to a scheduled shift (same work_date, department not required, within 2hr window)
-  await linkSessionToShift(data.id, employeeId, workDate, nowUtc);
+  const linked = await linkSessionToShift(data.id, employeeId, workDate, nowUtc);
 
   void logAuditEvent({
     operation_type: 'clock_in',
@@ -273,7 +265,24 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
     additional_info: { employee_id: employeeId, work_date: workDate },
   });
 
-  await invalidatePayrollApprovalsForDate(supabase, workDate);
+  const approvalsCleared = await clearPayrollApprovalsForDate(supabase, workDate, { sessionId: data.id });
+
+  // The clock-in stands either way and the employee is not told: the owner is.
+  if (!linked) {
+    await alertKioskPayrollProblem('a clock-in could not be linked to its shift', {
+      sessionId: data.id,
+      employeeId,
+      workDate,
+      effect: 'Without the link this session pays no shift premium in payroll. Check the session on the timeclock review screen.',
+    });
+  }
+  if (!approvalsCleared) {
+    await alertKioskPayrollProblem('a clock-in could not clear the payroll approval', {
+      sessionId: data.id,
+      workDate,
+      effect: 'The approved payroll figures for that month are out of date. Re-approve payroll for that month.',
+    });
+  }
 
   revalidatePath('/timeclock');
   revalidatePath('/rota/timeclock');
@@ -337,7 +346,16 @@ export async function clockOut(employeeId: string, pin?: string): Promise<
     additional_info: { employee_id: employeeId, clock_out_at: nowUtc.toISOString() },
   });
 
-  await invalidatePayrollApprovalsForDate(supabase, openSession.work_date as string);
+  const clockOutWorkDate = openSession.work_date as string;
+  const approvalsCleared = await clearPayrollApprovalsForDate(supabase, clockOutWorkDate, { sessionId: data.id });
+  // The clock-out stands either way and the employee is not told: the owner is.
+  if (!approvalsCleared) {
+    await alertKioskPayrollProblem('a clock-out could not clear the payroll approval', {
+      sessionId: data.id,
+      workDate: clockOutWorkDate,
+      effect: 'The approved payroll figures for that month are out of date. Re-approve payroll for that month.',
+    });
+  }
 
   revalidatePath('/timeclock');
   revalidatePath('/rota/timeclock');
@@ -391,15 +409,30 @@ async function linkSessionToShift(
   employeeId: string,
   workDate: string,
   clockInAt: Date,
-): Promise<void> {
+): Promise<boolean> {
+  // Returns false when a shift may exist but the session was not linked to it (the shift lookup
+  // or the link write failed, both logged at error level). With no link the session pays no shift
+  // premium in payroll. True when it was linked, or there was genuinely no shift to link.
   const supabase = await createClient();
 
-  const { data: shiftsRaw } = await supabase
+  const { data: shiftsRaw, error: shiftsError } = await supabase
     .from('rota_shifts')
     .select('id, start_time, end_time, shift_date, is_overnight')
     .eq('employee_id', employeeId)
     .eq('shift_date', workDate)
     .eq('status', 'scheduled');
+
+  if (shiftsError) {
+    // Not knowing the shifts is not the same as having none, so the session is not marked
+    // unscheduled either.
+    reportWriteError(shiftsError, {
+      table: 'rota_shifts',
+      what: 'Finding the shift to link the session to',
+      ids: { sessionId },
+      note: 'the session was not linked to any shift',
+    });
+    return false;
+  }
 
   const shifts = (shiftsRaw ?? []) as unknown as LinkableShift[];
 
@@ -412,7 +445,7 @@ async function linkSessionToShift(
         .eq('id', sessionId),
       { table: 'timeclock_sessions', what: 'Marking the session as unscheduled', ids: { sessionId } },
     );
-    return;
+    return true;
   }
 
   // Find the shift whose start time is closest to clock-in, within ±2 hours
@@ -441,22 +474,23 @@ async function linkSessionToShift(
     // linked shift (payroll/portal both do this via resolveSessionPremium).
     // Copying at clock-in caused stale premiums (shift edited later) and
     // inherited-promotion bugs (a shift premium looked like a manual override).
-    await settleWrite(
+    return settleWrite(
       supabase
         .from('timeclock_sessions')
         .update({ linked_shift_id: bestShift.id })
         .eq('id', sessionId),
       { table: 'timeclock_sessions', what: 'Linking the session to its shift', ids: { sessionId, shiftId: bestShift.id } },
     );
-  } else {
-    await settleWrite(
-      supabase
-        .from('timeclock_sessions')
-        .update({ is_unscheduled: true })
-        .eq('id', sessionId),
-      { table: 'timeclock_sessions', what: 'Marking the session as unscheduled', ids: { sessionId } },
-    );
   }
+
+  await settleWrite(
+    supabase
+      .from('timeclock_sessions')
+      .update({ is_unscheduled: true })
+      .eq('id', sessionId),
+    { table: 'timeclock_sessions', what: 'Marking the session as unscheduled', ids: { sessionId } },
+  );
+  return true;
 }
 
 /** A scheduled shift row shape used when linking a session to it. */
@@ -602,7 +636,7 @@ export async function createTimeclockSession(
   clockOutTime: string | null, // HH:MM local or null
   notes?: string | null,
   options?: { allowPayrollApprove?: boolean; premium?: SessionPremiumInput | null },
-): Promise<{ success: true; data: TimeclockSessionWithEmployee } | { success: false; error: string }> {
+): Promise<{ success: true; data: TimeclockSessionWithEmployee; warning?: string } | { success: false; error: string }> {
   const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
 
@@ -692,9 +726,13 @@ export async function createTimeclockSession(
     },
   });
 
-  await invalidatePayrollApprovalsForDate(supabase, workDate);
+  // Saved either way; a manager is warned when the payroll approval could not be cleared.
+  const approvalsCleared = await clearPayrollApprovalsForDate(supabase, workDate, { sessionId: data.id });
 
   revalidatePath('/rota/timeclock');
+  if (!approvalsCleared) {
+    return { success: true, data: session, warning: payrollApprovalNotClearedWarning('The clock times were saved', workDate) };
+  }
   return { success: true, data: session };
 }
 
@@ -711,7 +749,7 @@ export async function updateTimeclockSession(
   clockOutTime: string | null, // HH:MM local or null
   notes?: string | null,
   options?: { allowPayrollApprove?: boolean; premium?: SessionPremiumInput | null },
-): Promise<{ success: true; data: TimeclockSession } | { success: false; error: string }> {
+): Promise<{ success: true; data: TimeclockSession; warning?: string } | { success: false; error: string }> {
   const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
 
@@ -804,9 +842,17 @@ export async function updateTimeclockSession(
     },
   });
 
-  await invalidatePayrollApprovalsForDate(supabase, workDate);
+  // Saved either way; a manager is warned when the payroll approval could not be cleared.
+  const approvalsCleared = await clearPayrollApprovalsForDate(supabase, workDate, { sessionId });
 
   revalidatePath('/rota/timeclock');
+  if (!approvalsCleared) {
+    return {
+      success: true,
+      data: data as unknown as TimeclockSession,
+      warning: payrollApprovalNotClearedWarning('The clock times were saved', workDate),
+    };
+  }
   return { success: true, data: data as unknown as TimeclockSession };
 }
 
@@ -965,7 +1011,7 @@ export async function approveTimeclockSession(
 export async function deleteTimeclockSession(
   sessionId: string,
   options?: { allowPayrollApprove?: boolean },
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true; warning?: string } | { success: false; error: string }> {
   const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
 
@@ -991,10 +1037,16 @@ export async function deleteTimeclockSession(
     operation_status: 'success',
   });
 
+  // Deleted either way; a manager is warned when the payroll approval could not be cleared.
+  let warning: string | undefined;
   if (existing?.work_date) {
-    await invalidatePayrollApprovalsForDate(supabase, existing.work_date as string);
+    const deletedWorkDate = existing.work_date as string;
+    const approvalsCleared = await clearPayrollApprovalsForDate(supabase, deletedWorkDate, { sessionId });
+    if (!approvalsCleared) {
+      warning = payrollApprovalNotClearedWarning('The session was deleted', deletedWorkDate);
+    }
   }
 
   revalidatePath('/rota/timeclock');
-  return { success: true };
+  return warning ? { success: true, warning } : { success: true };
 }
