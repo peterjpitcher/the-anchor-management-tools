@@ -424,7 +424,15 @@ export async function readStaffByDate(
     return failed('Who is working could not be loaded.')
   }
 
-  const employeeIds = [...new Set(shiftRows.map((s) => String(s.employee_id)))]
+  // Open shifts have no employee. String(null) put the text "null" in the list, Postgres
+  // refused the whole read as an invalid uuid, and the calendar lost every name.
+  const employeeIds = [
+    ...new Set(
+      shiftRows
+        .map((s) => s.employee_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
   if (employeeIds.length === 0) return ok([])
 
   const { data: employees, error: employeeError } = await client
