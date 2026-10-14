@@ -749,7 +749,7 @@ export class ShortLinkService {
 
     if (existing) {
       if (existing.destination_url !== destinationUrl) {
-        await settleWrite(
+        const repointed = await settleWrite(
           supabase
             .from('short_links')
             .update({
@@ -761,6 +761,9 @@ export class ShortLinkService {
             .eq('id', existing.id),
           { table: 'short_links', what: 'Repointing the existing short link variant', ids: { shortLinkId: existing.id } }
         );
+        // The caller is handed the new destination, so a failed repoint must not look like success:
+        // the link would still redirect to the old one.
+        if (!repointed) throw new Error('Failed to update the existing short link variant');
       }
 
       return {
