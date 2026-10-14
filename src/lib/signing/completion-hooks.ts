@@ -103,7 +103,8 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
       .eq('waiver_status', read)
       // Written this way because a plain "not cancelled" test also drops a booking with no status.
       .or('status.is.null,status.neq.cancelled')
-      .select('id')
+      // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+      .select('id, status')
     if (error) throw new Error(`Could not mark the waiver signed: ${error.message}`)
     if (changed && changed.length > 0) before = read
   }
@@ -137,10 +138,14 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
  * A signed contract is an accepted contract. Paying the deposit also accepts it and may have
  * done so first, in which case that earlier acceptance is left as it stands. The self-catering
  * and outside food agreement is a separate document with its own signature, and is marked
- * signed by its own hook below, never by this one.
+ * signed by its own hook below. The one exception is a contract sent in the older form, with the
+ * agreement on its last page (`context.includes_waiver`): the customer's one signature covers
+ * both, so that signs the agreement too. A staff tab left open across a release can still send
+ * one (Vercel keeps a page on the deployment it loaded from); one was signed on 14 October 2026.
  */
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
+  if (document.context.includes_waiver === true) await markWaiverSigned(admin, document)
   const now = new Date().toISOString()
   // Accepted when it was signed, not when this ran: a retry days later must not move the time.
   const acceptedAt = document.completed_at ?? now
@@ -159,7 +164,8 @@ const acceptBookingContract: SigningCompletionHook = async (document) => {
   if (typeof document.context.contract_version === 'number') {
     update = update.eq('contract_version', document.context.contract_version)
   }
-  const { data: accepted, error } = await update.select('id')
+  // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+  const { data: accepted, error } = await update.select('id, status')
   if (error) throw new Error(`Could not mark the contract accepted: ${error.message}`)
   if (!accepted || accepted.length === 0) return
 
