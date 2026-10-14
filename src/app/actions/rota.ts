@@ -2537,7 +2537,7 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
 
   if (publishedUpdateError) return { success: false, error: publishedUpdateError.message };
 
-  await settleWrite(
+  const draftReopened = await settleWrite(
     admin
       .from('rota_shifts')
       .update({
@@ -2557,6 +2557,47 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
       .eq('id', parsed.data.shiftId),
     { table: 'rota_shifts', what: 'Reopening the rejected shift on the live rota', ids: { shiftId: parsed.data.shiftId } },
   );
+
+  if (!draftReopened) {
+    // The published copy now says the shift is open while the draft still has this
+    // employee on it, so the next publish would put them back on a shift they turned
+    // down. Put the published copy back as it was, the same compensation the
+    // acceptance cron uses, and tell them the rejection did not happen. The filters
+    // match only the row this action just opened, so a later change is never undone.
+    // The calendar cancellation recorded above is left alone: the feed ignores it
+    // while the shift is still theirs, and deleting it could remove an older one.
+    const restored = await settleWrite(
+      admin
+        .from('rota_published_shifts')
+        .update({
+          employee_id: shift.employee_id,
+          is_open_shift: shift.is_open_shift,
+          acceptance_status: shift.acceptance_status,
+          acceptance_decided_at: shift.acceptance_decided_at,
+          acceptance_decided_by: shift.acceptance_decided_by,
+          acceptance_note: shift.acceptance_note,
+          auto_accept_reason: shift.auto_accept_reason,
+          auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at,
+          published_at: shift.published_at,
+        })
+        .eq('id', parsed.data.shiftId)
+        .is('employee_id', null)
+        .eq('published_at', rejectedAt),
+      {
+        table: 'rota_published_shifts',
+        what: 'Restoring the published shift after the live rota refused the rejection',
+        ids: { shiftId: parsed.data.shiftId },
+        note: 'the published copy shows the shift as open while the live rota still has the employee on it',
+      },
+    );
+
+    return {
+      success: false,
+      error: restored
+        ? 'Your rejection did not go through, so the shift is still yours. Please try again.'
+        : 'Your rejection did not go through. Please let Billy know so he can check the shift.',
+    };
+  }
 
   await recordShiftRejection(
     admin,

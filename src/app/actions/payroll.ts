@@ -64,12 +64,18 @@ function toLocalHHMM(isoUtc: string | null | undefined): string | null {
   return local.getHours().toString().padStart(2, '0') + ':' + local.getMinutes().toString().padStart(2, '0');
 }
 
+/**
+ * Clears the month's payroll approval after an edit, so the approved snapshot cannot
+ * outlive the figures it was taken from. Returns false when the delete failed (already
+ * reported by settleWrite): the edit itself has saved by then, so the caller must say
+ * so and tell the user the approval is now out of date.
+ */
 async function invalidatePayrollApproval(
   supabase: ReturnType<typeof createAdminClient>,
   year: number,
   month: number,
-): Promise<void> {
-  await settleWrite(
+): Promise<boolean> {
+  return settleWrite(
     supabase
       .from('payroll_month_approvals')
       .delete()
@@ -77,6 +83,14 @@ async function invalidatePayrollApproval(
       .eq('month', month),
     { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year, month } },
   );
+}
+
+/**
+ * The error for an edit that saved while the month's approval could not be cleared.
+ * It says the change stands, so nobody repeats it believing it was lost.
+ */
+function approvalNotClearedError(year: number, month: number, saved: string): string {
+  return `${saved}, but the payroll approval for ${payrollMonthLabel(year, month)} could not be cleared, so the approved figures are now out of date. Please try again to clear it, or tell the developer if this keeps happening.`;
 }
 
 function payrollMonthLabel(year: number, month: number): string {
@@ -129,9 +143,12 @@ export async function updatePayrollPeriod(
 
   if (error) return { success: false, error: error.message };
 
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The pay period dates were saved') };
+  }
   return { success: true, data: data as PayrollPeriod };
 }
 
@@ -868,7 +885,11 @@ export async function upsertShiftNote(
   }
 
   if (typeof year === 'number' && typeof month === 'number') {
-    await invalidatePayrollApproval(createAdminClient(), year, month);
+    const approvalCleared = await invalidatePayrollApproval(createAdminClient(), year, month);
+    if (!approvalCleared) {
+      revalidatePath('/rota/payroll');
+      return { success: false, error: approvalNotClearedError(year, month, 'The note change was saved') };
+    }
   }
 
   revalidatePath('/rota/payroll');
@@ -909,9 +930,12 @@ export async function updatePayrollRowTimes(
   if (!result.success) return result;
 
   const supabase = createAdminClient();
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The new times were saved') };
+  }
   return { success: true };
 }
 
@@ -946,8 +970,9 @@ export async function deletePayrollRow(
   }
 
   const supabase = createAdminClient();
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
+  // The delete has happened whatever became of the approval, so it is audited either way.
   await logAuditEvent({
     user_id: user.id,
     ...(user.email && { user_email: user.email }),
@@ -963,5 +988,8 @@ export async function deletePayrollRow(
   }).catch(() => {});
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The row was deleted') };
+  }
   return { success: true };
 }
