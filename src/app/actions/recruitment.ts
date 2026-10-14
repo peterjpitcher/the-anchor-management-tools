@@ -1444,7 +1444,7 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       { table: 'employees', what: 'Copying the candidate details onto the new employee', ids: { employeeId: invite.employeeId, applicationId } },
     )
 
-    await completeRecruitmentHireHandoff(applicationId, invite.employeeId, user.id, admin)
+    const handoff = await completeRecruitmentHireHandoff(applicationId, invite.employeeId, user.id, admin)
     await auditRecruitmentMutation({
       user,
       operation: 'hire_handoff',
@@ -1454,10 +1454,14 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       newValues: {
         employee_id: invite.employeeId,
         job_title: jobTitle,
+        right_to_work_saved: handoff.rightToWorkSaved,
       },
     })
     revalidatePath('/recruitment')
     revalidatePath('/employees')
+    // The hire stands, but the screen only shows a problem through `error`, and staff must
+    // not read this as fully done: the warning says the employee was created.
+    if (handoff.warning) return { success: false, error: handoff.warning }
     return { success: true, data: { employeeId: invite.employeeId }, message: 'Candidate invite sent and hire handoff completed.' }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to hire candidate.' }
