@@ -664,7 +664,15 @@ export class UnifiedJobQueue {
           .maybeSingle()
 
         if (updateError) {
-          logger.warn('Failed to reset stale job', { error: updateError, metadata: { jobId: job.id } })
+          logger.error('Failed to reset stale job', {
+            metadata: {
+              jobId: job.id,
+              code: updateError.code ?? null,
+              message: updateError.message,
+              details: updateError.details ?? null,
+              hint: updateError.hint ?? null,
+            },
+          })
           return
         }
 

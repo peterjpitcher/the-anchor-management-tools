@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { getAppUrl } from '@/lib/env'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EventBookingService } from '@/services/event-bookings'
@@ -310,12 +311,15 @@ async function markInboundNeedsAttention(
         ? ((row as { metadata: Record<string, unknown> }).metadata)
         : {}
 
-    await db
-      .from('messages')
-      .update({ metadata: { ...existing, reply_to_book_unbooked: true } })
-      .eq('id', inboundMessageId)
+    await settleWrite(
+      db
+        .from('messages')
+        .update({ metadata: { ...existing, reply_to_book_unbooked: true } })
+        .eq('id', inboundMessageId),
+      { table: 'messages', what: 'Flagging the inbound message as unbooked', ids: { inboundMessageId } }
+    )
   } catch (err) {
-    logger.warn('reply-to-book fallback: failed to flag inbound message', {
+    logger.error('reply-to-book fallback: failed to flag inbound message', {
       metadata: { inboundMessageId, error: err instanceof Error ? err.message : String(err) },
     })
   }

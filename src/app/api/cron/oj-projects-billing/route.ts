@@ -43,6 +43,7 @@ import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -2951,14 +2952,22 @@ export async function GET(request: Request) {
               }
             }
 
-            await supabase.from('invoice_email_logs').insert({
-              invoice_id: invoice.id,
-              sent_to: recipients.to,
-              sent_by: 'system',
-              subject,
-              body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
-              status: 'sent',
-            })
+            await settleWrite(
+              supabase.from('invoice_email_logs').insert({
+                invoice_id: invoice.id,
+                sent_to: recipients.to,
+                sent_by: 'system',
+                subject,
+                body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
+                status: 'sent',
+              }),
+              {
+                table: 'invoice_email_logs',
+                what: 'Logging the sent invoice email after its status update failed',
+                ids: { invoiceId: invoice.id, billingRunId: billingRun.id },
+                note: 'the email itself was sent',
+              }
+            )
 
             await updateBillingRunById(supabase, billingRun.id, {
               status: 'failed',
@@ -3831,14 +3840,22 @@ export async function GET(request: Request) {
             }
           }
 
-          await supabase.from('invoice_email_logs').insert({
-            invoice_id: invoiceId,
-            sent_to: recipients.to,
-            sent_by: 'system',
-            subject,
-            body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
-            status: 'sent',
-          })
+          await settleWrite(
+            supabase.from('invoice_email_logs').insert({
+              invoice_id: invoiceId,
+              sent_to: recipients.to,
+              sent_by: 'system',
+              subject,
+              body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
+              status: 'sent',
+            }),
+            {
+              table: 'invoice_email_logs',
+              what: 'Logging the sent invoice email after its status update failed',
+              ids: { invoiceId, billingRunId: billingRun.id },
+              note: 'the email itself was sent',
+            }
+          )
 
           await updateBillingRunById(supabase, billingRun.id, {
             status: 'failed',

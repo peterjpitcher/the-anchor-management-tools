@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { formatDateInLondon, startOfLondonDayUtc, parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
@@ -977,12 +978,15 @@ export async function sendFollowUpForEvent(
     const firstName = getSmartFirstName(recipient.first_name)
 
     // Close prior active sms_promo_context rows for this customer + event
-    await db.from('sms_promo_context')
-      .update({ reply_window_expires_at: new Date().toISOString() })
-      .eq('customer_id', recipient.customer_id)
-      .eq('event_id', event.id)
-      .is('booking_created', false)
-      .gt('reply_window_expires_at', new Date().toISOString())
+    await settleWrite(
+      db.from('sms_promo_context')
+        .update({ reply_window_expires_at: new Date().toISOString() })
+        .eq('customer_id', recipient.customer_id)
+        .eq('event_id', event.id)
+        .is('booking_created', false)
+        .gt('reply_window_expires_at', new Date().toISOString()),
+      { table: 'sms_promo_context', what: 'Closing prior promo reply windows', ids: { customerId: recipient.customer_id, eventId: event.id } }
+    )
 
     const messageBody = isPaid
       ? fitEventName(eventNames, (name) => buildReminder24hPaidMessage(firstName, name, eventDate, eventLink!, eventTime))

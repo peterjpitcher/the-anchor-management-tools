@@ -14,6 +14,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export const runtime = 'nodejs'
 
@@ -63,19 +64,26 @@ async function logStripeWebhook(
   }
 ): Promise<void> {
   try {
-    await supabase.from('webhook_logs').insert({
-      webhook_type: 'stripe',
-      status: input.status,
-      headers: sanitizeStripeHeadersForLog(input.headers),
-      body: truncate(input.body, 10000),
-      params: {
-        event_id: input.eventId ?? null,
-        event_type: input.eventType ?? null
-      },
-      error_message: truncate(input.errorMessage, 500)
-    })
+    await settleWrite(
+      supabase.from('webhook_logs').insert({
+        webhook_type: 'stripe',
+        status: input.status,
+        headers: sanitizeStripeHeadersForLog(input.headers),
+        body: truncate(input.body, 10000),
+        params: {
+          event_id: input.eventId ?? null,
+          event_type: input.eventType ?? null
+        },
+        error_message: truncate(input.errorMessage, 500)
+      }),
+      {
+        table: 'webhook_logs',
+        what: 'Storing the Stripe webhook log',
+        ids: { status: input.status, eventId: input.eventId }
+      }
+    )
   } catch (error) {
-    logger.warn('Failed to store Stripe webhook log', {
+    logger.error('Failed to store Stripe webhook log', {
       metadata: {
         status: input.status,
         eventId: input.eventId,

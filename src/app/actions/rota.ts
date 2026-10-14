@@ -3,6 +3,7 @@
 import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { getAppUrl } from '@/lib/env';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath, revalidateTag } from 'next/cache';
@@ -770,23 +771,26 @@ async function recordCalendarCancellation(
   reason: string,
 ): Promise<void> {
   if (!shift.employee_id) return;
-  await admin
-    .from('rota_shift_calendar_cancellations')
-    .upsert({
-      shift_id: shift.id,
-      employee_id: shift.employee_id,
-      week_id: shift.week_id,
-      shift_date: shift.shift_date,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
-      unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
-      department: shift.department,
-      notes: shift.notes ?? null,
-      is_overnight: Boolean(shift.is_overnight),
-      name: shift.name ?? null,
-      cancelled_at: new Date().toISOString(),
-      reason,
-    }, { onConflict: 'shift_id,employee_id' });
+  await settleWrite(
+    admin
+      .from('rota_shift_calendar_cancellations')
+      .upsert({
+        shift_id: shift.id,
+        employee_id: shift.employee_id,
+        week_id: shift.week_id,
+        shift_date: shift.shift_date,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
+        department: shift.department,
+        notes: shift.notes ?? null,
+        is_overnight: Boolean(shift.is_overnight),
+        name: shift.name ?? null,
+        cancelled_at: new Date().toISOString(),
+        reason,
+      }, { onConflict: 'shift_id,employee_id' }),
+    { table: 'rota_shift_calendar_cancellations', what: 'Recording the shift calendar cancellation', ids: { shiftId: shift.id, employeeId: shift.employee_id } },
+  );
 }
 
 async function recordShiftRejection(
@@ -811,24 +815,27 @@ async function recordShiftRejection(
     note: string | null;
   },
 ): Promise<void> {
-  await admin
-    .from('rota_shift_rejections')
-    .insert({
-      shift_id: shift.id,
-      employee_id: rejection.employeeId,
-      week_id: shift.week_id ?? null,
-      shift_date: shift.shift_date,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
-      unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
-      department: shift.department,
-      notes: shift.notes ?? null,
-      is_overnight: Boolean(shift.is_overnight),
-      name: shift.name ?? null,
-      rejection_note: rejection.note,
-      rejected_at: rejection.rejectedAt,
-      rejected_by: rejection.rejectedBy,
-    });
+  await settleWrite(
+    admin
+      .from('rota_shift_rejections')
+      .insert({
+        shift_id: shift.id,
+        employee_id: rejection.employeeId,
+        week_id: shift.week_id ?? null,
+        shift_date: shift.shift_date,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
+        department: shift.department,
+        notes: shift.notes ?? null,
+        is_overnight: Boolean(shift.is_overnight),
+        name: shift.name ?? null,
+        rejection_note: rejection.note,
+        rejected_at: rejection.rejectedAt,
+        rejected_by: rejection.rejectedBy,
+      }),
+    { table: 'rota_shift_rejections', what: 'Recording the shift rejection', ids: { shiftId: shift.id, employeeId: rejection.employeeId } },
+  );
 }
 
 function pickChangedValues(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -1087,42 +1094,45 @@ export async function getWeekShifts(weekStart: string, userId?: string): Promise
   const canEdit = await checkUserPermission('rota', 'edit', userId);
   if (canEdit && restoredShifts.length > 0) {
     const admin = createAdminClient();
-    await admin
-      .from('rota_shifts')
-      .upsert(restoredShifts.map(shift => ({
-        id: shift.id,
-        week_id: shift.week_id,
-        employee_id: shift.employee_id,
-        template_id: shift.template_id,
-        shift_date: shift.shift_date,
-        start_time: shift.start_time,
-        end_time: shift.end_time,
-        unpaid_break_minutes: shift.unpaid_break_minutes,
-        department: shift.department,
-        status: shift.status,
-        sick_reason: shift.sick_reason,
-        notes: shift.notes,
-        is_overnight: shift.is_overnight,
-        is_open_shift: shift.is_open_shift,
-        name: shift.name,
-        reassigned_from_id: shift.reassigned_from_id,
-        reassigned_at: shift.reassigned_at,
-        reassigned_by: shift.reassigned_by,
-        reassignment_reason: shift.reassignment_reason,
-        acceptance_status: shift.acceptance_status,
-        acceptance_decided_at: shift.acceptance_decided_at,
-        acceptance_decided_by: shift.acceptance_decided_by,
-        acceptance_note: shift.acceptance_note,
-        auto_accept_reason: shift.auto_accept_reason,
-        auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at,
-        rate_multiplier: shift.rate_multiplier,
-        rate_override: shift.rate_override,
-        premium_reason: shift.premium_reason,
-        premium_start_time: shift.premium_start_time,
-        premium_end_time: shift.premium_end_time,
-        created_at: shift.created_at,
-        updated_at: shift.updated_at,
-      })), { onConflict: 'id' });
+    await settleWrite(
+      admin
+        .from('rota_shifts')
+        .upsert(restoredShifts.map(shift => ({
+          id: shift.id,
+          week_id: shift.week_id,
+          employee_id: shift.employee_id,
+          template_id: shift.template_id,
+          shift_date: shift.shift_date,
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+          unpaid_break_minutes: shift.unpaid_break_minutes,
+          department: shift.department,
+          status: shift.status,
+          sick_reason: shift.sick_reason,
+          notes: shift.notes,
+          is_overnight: shift.is_overnight,
+          is_open_shift: shift.is_open_shift,
+          name: shift.name,
+          reassigned_from_id: shift.reassigned_from_id,
+          reassigned_at: shift.reassigned_at,
+          reassigned_by: shift.reassigned_by,
+          reassignment_reason: shift.reassignment_reason,
+          acceptance_status: shift.acceptance_status,
+          acceptance_decided_at: shift.acceptance_decided_at,
+          acceptance_decided_by: shift.acceptance_decided_by,
+          acceptance_note: shift.acceptance_note,
+          auto_accept_reason: shift.auto_accept_reason,
+          auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at,
+          rate_multiplier: shift.rate_multiplier,
+          rate_override: shift.rate_override,
+          premium_reason: shift.premium_reason,
+          premium_start_time: shift.premium_start_time,
+          premium_end_time: shift.premium_end_time,
+          created_at: shift.created_at,
+          updated_at: shift.updated_at,
+        })), { onConflict: 'id' }),
+      { table: 'rota_shifts', what: 'Restoring live shifts from the published snapshot', ids: { weekStart, count: restoredShifts.length } },
+    );
   }
 
   const restoredIds = new Set(restoredShifts.map(shift => shift.id));
@@ -1737,11 +1747,14 @@ async function invalidatePayrollApprovalsForDate(
 
   await Promise.all(
     periods.map(period =>
-      admin
-        .from('payroll_month_approvals')
-        .delete()
-        .eq('year', period.year)
-        .eq('month', period.month),
+      settleWrite(
+        admin
+          .from('payroll_month_approvals')
+          .delete()
+          .eq('year', period.year)
+          .eq('month', period.month),
+        { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year: period.year, month: period.month } },
+      ),
     ),
   );
 }
@@ -1774,11 +1787,14 @@ export async function deleteShift(shiftId: string): Promise<
   if (error) return { success: false, error: error.message };
 
   if (shift?.week_id) {
-    await supabase
-      .from('rota_weeks')
-      .update({ has_unpublished_changes: true })
-      .eq('id', shift.week_id)
-      .eq('status', 'published');
+    await settleWrite(
+      supabase
+        .from('rota_weeks')
+        .update({ has_unpublished_changes: true })
+        .eq('id', shift.week_id)
+        .eq('status', 'published'),
+      { table: 'rota_weeks', what: 'Flagging the week as having unpublished changes', ids: { weekId: shift.week_id } },
+    );
   }
 
   // Fire-and-forget: audit logging failure should not block the operation
@@ -2143,11 +2159,14 @@ async function reassignShift(
 
   if (error) return { success: false, error: error.message };
 
-  await supabase
-    .from('rota_weeks')
-    .update({ has_unpublished_changes: true })
-    .eq('id', current.week_id)
-    .eq('status', 'published');
+  await settleWrite(
+    supabase
+      .from('rota_weeks')
+      .update({ has_unpublished_changes: true })
+      .eq('id', current.week_id)
+      .eq('status', 'published'),
+    { table: 'rota_weeks', what: 'Flagging the week as having unpublished changes', ids: { weekId: current.week_id } },
+  );
 
   // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
@@ -2518,23 +2537,26 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
 
   if (publishedUpdateError) return { success: false, error: publishedUpdateError.message };
 
-  await admin
-    .from('rota_shifts')
-    .update({
-      employee_id: null,
-      is_open_shift: true,
-      acceptance_status: 'rejected',
-      acceptance_decided_at: rejectedAt,
-      acceptance_decided_by: employee.employee_id,
-      acceptance_note: rejectionNote,
-      auto_accept_reason: null,
-      auto_accept_warning_sent_at: null,
-      reassigned_from_id: employee.employee_id,
-      reassigned_at: rejectedAt,
-      reassigned_by: user.id,
-      reassignment_reason: `Rejected by staff: ${rejectionNote}`,
-    })
-    .eq('id', parsed.data.shiftId);
+  await settleWrite(
+    admin
+      .from('rota_shifts')
+      .update({
+        employee_id: null,
+        is_open_shift: true,
+        acceptance_status: 'rejected',
+        acceptance_decided_at: rejectedAt,
+        acceptance_decided_by: employee.employee_id,
+        acceptance_note: rejectionNote,
+        auto_accept_reason: null,
+        auto_accept_warning_sent_at: null,
+        reassigned_from_id: employee.employee_id,
+        reassigned_at: rejectedAt,
+        reassigned_by: user.id,
+        reassignment_reason: `Rejected by staff: ${rejectionNote}`,
+      })
+      .eq('id', parsed.data.shiftId),
+    { table: 'rota_shifts', what: 'Reopening the rejected shift on the live rota', ids: { shiftId: parsed.data.shiftId } },
+  );
 
   await recordShiftRejection(
     admin,

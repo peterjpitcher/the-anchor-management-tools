@@ -24,6 +24,7 @@ import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { hasPayrollVariance, validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
 import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import {
   PAYROLL_PERIOD_FUTURE_MONTHS,
 } from '@/lib/rota/payroll-periods';
@@ -68,11 +69,14 @@ async function invalidatePayrollApproval(
   year: number,
   month: number,
 ): Promise<void> {
-  await supabase
-    .from('payroll_month_approvals')
-    .delete()
-    .eq('year', year)
-    .eq('month', month);
+  await settleWrite(
+    supabase
+      .from('payroll_month_approvals')
+      .delete()
+      .eq('year', year)
+      .eq('month', month),
+    { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year, month } },
+  );
 }
 
 function payrollMonthLabel(year: number, month: number): string {

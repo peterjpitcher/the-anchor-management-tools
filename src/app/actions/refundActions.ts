@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification, type RefundSubject } from '@/lib/refund-notifications'
 import {
@@ -282,23 +283,47 @@ async function updateRefundStatus(
   const status = totalRefunded >= originalAmount ? 'refunded' : 'partially_refunded'
 
   if (sourceType === 'private_booking') {
-    await db.from('private_bookings').update({ deposit_refund_status: status }).eq('id', sourceId)
+    await settleWrite(
+      db.from('private_bookings').update({ deposit_refund_status: status }).eq('id', sourceId),
+      {
+        table: 'private_bookings',
+        what: 'Recording the deposit refund status',
+        ids: { bookingId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
   } else if (sourceType === 'table_booking') {
     // Both columns, not just the refund one. `payment_status` left at 'completed' means a
     // fully refunded booking still reads as paid to hasUnpaidRequiredDeposit and to the
     // deposit-timeout cron's hasCapturedDeposit, so the venue believes it holds money it
     // has already returned. The parking branch below already reconciles its parent; table
     // bookings were left out of that same fix.
-    await db
-      .from('table_bookings')
-      .update({
-        deposit_refund_status: status,
-        payment_status: status === 'refunded' ? 'refunded' : 'partial_refund',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', sourceId)
+    await settleWrite(
+      db
+        .from('table_bookings')
+        .update({
+          deposit_refund_status: status,
+          payment_status: status === 'refunded' ? 'refunded' : 'partial_refund',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sourceId),
+      {
+        table: 'table_bookings',
+        what: 'Recording the deposit refund status',
+        ids: { bookingId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
   } else if (sourceType === 'parking') {
-    await db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId)
+    await settleWrite(
+      db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId),
+      {
+        table: 'parking_booking_payments',
+        what: 'Recording the parking payment refund status',
+        ids: { paymentId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
 
     // Also update the parent parking_bookings.payment_status when fully refunded
     if (status === 'refunded') {
@@ -510,11 +535,19 @@ export async function processPayPalRefund(
     // PayPal API actually rejected the refund — safe to mark as failed
     const errorMessage = err instanceof Error ? err.message : 'Unknown error'
 
-    await db.from('payment_refunds').update({
-      status: 'failed',
-      failed_at: new Date().toISOString(),
-      failure_message: errorMessage,
-    }).eq('id', refundRow.id)
+    await settleWrite(
+      db.from('payment_refunds').update({
+        status: 'failed',
+        failed_at: new Date().toISOString(),
+        failure_message: errorMessage,
+      }).eq('id', refundRow.id),
+      {
+        table: 'payment_refunds',
+        what: 'Recording the refund as failed',
+        ids: { refundId: refundRow.id, sourceType, sourceId },
+        note: 'PayPal rejected the refund, so no money moved',
+      }
+    )
 
     await logAuditEvent({
       user_id: userId,
@@ -590,7 +623,15 @@ export async function processPayPalRefund(
       } else {
         notificationStatus = 'skipped'
       }
-      await db.from('payment_refunds').update({ notification_status: notificationStatus }).eq('id', refundRow.id)
+      await settleWrite(
+        db.from('payment_refunds').update({ notification_status: notificationStatus }).eq('id', refundRow.id),
+        {
+          table: 'payment_refunds',
+          what: 'Recording the refund notification status',
+          ids: { refundId: refundRow.id, notificationStatus },
+          note: 'the refund itself went through',
+        }
+      )
 
       await logAuditEvent({
         user_id: userId,
@@ -648,13 +689,20 @@ export async function processPayPalRefund(
     }
 
     // FAILED or CANCELLED status from PayPal
-    await db.from('payment_refunds').update({
-      status: 'failed',
-      paypal_refund_id: result.refundId,
-      paypal_status: result.status,
-      failed_at: new Date().toISOString(),
-      failure_message: `PayPal returned status: ${result.status}`,
-    }).eq('id', refundRow.id)
+    await settleWrite(
+      db.from('payment_refunds').update({
+        status: 'failed',
+        paypal_refund_id: result.refundId,
+        paypal_status: result.status,
+        failed_at: new Date().toISOString(),
+        failure_message: `PayPal returned status: ${result.status}`,
+      }).eq('id', refundRow.id),
+      {
+        table: 'payment_refunds',
+        what: 'Recording the refund as failed',
+        ids: { refundId: refundRow.id, paypalStatus: result.status },
+      }
+    )
 
     return { error: `PayPal refund returned status: ${result.status}. You can try again or use manual refund.` }
   } catch (postProcessErr) {
@@ -685,7 +733,12 @@ export async function processPayPalRefund(
               failure_message: `PayPal returned ${result.status}; post-processing error: ${errorMessage}`,
             }
 
-    await db.from('payment_refunds').update(fallbackUpdate).eq('id', refundRow.id)
+    await settleWrite(db.from('payment_refunds').update(fallbackUpdate).eq('id', refundRow.id), {
+      table: 'payment_refunds',
+      what: 'Recording the refund outcome after post-processing failed',
+      ids: { refundId: refundRow.id, status: fallbackUpdate.status },
+      note: 'PayPal accepted the refund request',
+    })
 
     await logAuditEvent({
       user_id: userId,
