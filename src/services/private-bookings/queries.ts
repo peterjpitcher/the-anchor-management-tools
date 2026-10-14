@@ -686,9 +686,10 @@ export async function getVendorsForManagement(): Promise<any[]> {
 export async function getVendorRate(vendorId: string): Promise<any> {
   const supabase = await createClient();
 
+  // vendors has no typical_rate_normalized column: the action works it out from typical_rate.
   const { data, error } = await supabase
     .from('vendors')
-    .select('id, name, service_type, typical_rate, typical_rate_normalized')
+    .select('id, name, service_type, typical_rate')
     .eq('id', vendorId)
     .maybeSingle();
 
