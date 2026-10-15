@@ -664,7 +664,15 @@ export class UnifiedJobQueue {
           .maybeSingle()
 
         if (updateError) {
-          logger.warn('Failed to reset stale job', { error: updateError, metadata: { jobId: job.id } })
+          logger.error('Failed to reset stale job', {
+            metadata: {
+              jobId: job.id,
+              code: updateError.code ?? null,
+              message: updateError.message,
+              details: updateError.details ?? null,
+              hint: updateError.hint ?? null,
+            },
+          })
           return
         }
 
@@ -1393,7 +1401,7 @@ export class UnifiedJobQueue {
           throw new Error('cancel_event_bookings job blocked: missing required payload')
         }
 
-        const [{ EventService }, { logAuditEvent }] = await Promise.all([
+        const [{ EventService, describeUncancelledBookings }, { logAuditEvent }] = await Promise.all([
           import('@/services/events'),
           import('@/app/actions/audit'),
         ])
@@ -1407,16 +1415,35 @@ export class UnifiedJobQueue {
           supabase,
         })
 
+        // Bookings whose cancel write failed are still live and their guests were not told.
+        // The job does not throw for them: it completes, and the warning sits in its result
+        // (Settings, Background jobs) and on a failure audit row. The service logs them at
+        // error level. Nobody watches those pages after cancelling an event, so the owner is
+        // also emailed through the cron alert inbox.
+        const warning = describeUncancelledBookings(result.bookingsFailed)
+        if (warning) {
+          try {
+            const { reportCronFailure } = await import('@/lib/cron/alerting')
+            await reportCronFailure('cancel_event_bookings', new Error(warning), {
+              eventId,
+              failedBookingIds: result.failedBookingIds,
+            })
+          } catch {
+            // The error-level log and the failure audit row are the record.
+          }
+        }
+
         await logAuditEvent({
           user_id: cancelledBy,
           operation_type: 'cancel_event',
           resource_type: 'event',
           resource_id: eventId,
-          operation_status: 'success',
+          operation_status: warning ? 'failure' : 'success',
+          ...(warning ? { error_message: warning } : {}),
           additional_info: result,
         })
 
-        return result
+        return warning ? { ...result, warning } : result
       }
 
       case 'export_employees':

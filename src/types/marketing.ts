@@ -11,10 +11,10 @@
  */
 
 /**
- * Supabase rows arrive untyped here. `database.generated.ts` is stale for the marketing
- * tables and regenerating it is out of scope for this changeset, so claiming a precise row
- * type would be a lie the compiler could not check. Confining the loose type to the mappers
- * keeps every raw column read in one auditable place.
+ * Supabase rows arrive untyped here. These mappers were written while
+ * `database.generated.ts` lagged the marketing tables; it was regenerated on 13 October 2026
+ * and typing the rows against it is a change of its own. Until then, confining the loose
+ * type to the mappers keeps every raw column read in one auditable place.
  */
 type DbRow = any
 

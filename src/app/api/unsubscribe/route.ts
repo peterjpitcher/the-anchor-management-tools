@@ -36,6 +36,7 @@ import {
   recordUnsubscribeUse,
 } from '@/lib/email/unsubscribe'
 import { ConsentService } from '@/services/consent'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -179,12 +180,20 @@ async function recordCustomerUnsubscribeCampaign(
     )
     if (!campaignId) return
 
-    await (supabase.from('customers') as any)
-      .update({ marketing_unsubscribe_campaign_id: campaignId })
-      .eq('id', customerId)
-      .is('marketing_unsubscribe_campaign_id', null)
+    await settleWrite(
+      (supabase.from('customers') as any)
+        .update({ marketing_unsubscribe_campaign_id: campaignId })
+        .eq('id', customerId)
+        .is('marketing_unsubscribe_campaign_id', null),
+      {
+        table: 'customers',
+        what: 'Attributing the guest unsubscribe to its campaign',
+        ids: { customerId, campaignId },
+        note: 'the unsubscribe itself was recorded'
+      }
+    )
   } catch (error) {
-    logger.warn('Could not attribute a guest unsubscribe to its campaign', {
+    logger.error('Could not attribute a guest unsubscribe to its campaign', {
       metadata: {
         customerId,
         error: error instanceof Error ? error.message : String(error),

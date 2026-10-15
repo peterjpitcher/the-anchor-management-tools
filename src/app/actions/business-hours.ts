@@ -10,6 +10,7 @@ import { BusinessHoursService } from '@/services/business-hours'
 import { getErrorMessage } from '@/lib/errors';
 import { getActiveVersion, getVersionRows, listVersions } from '@/lib/business-hours/effective'
 import { getTodayIsoDate, isValidIsoDate, shiftIsoDate } from '@/lib/dateUtils'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type SettingsManagePermissionResult =
   | { error: string }
@@ -489,7 +490,12 @@ export async function createScheduledHoursVersion(
     )
     if (rowsError) {
       // Leave no half-built draft behind for someone to publish by accident.
-      await admin.from('business_hours_versions').delete().eq('id', created.id)
+      await settleWrite(admin.from('business_hours_versions').delete().eq('id', created.id), {
+        table: 'business_hours_versions',
+        what: 'Removing the half-built draft version',
+        ids: { versionId: created.id },
+        note: 'a rollback after its rows failed to save, so the draft may be left behind',
+      })
       throw rowsError
     }
 

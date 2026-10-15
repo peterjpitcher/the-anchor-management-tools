@@ -93,7 +93,8 @@ export async function GET(request: NextRequest) {
         .lte('hold_expires_at', nowIso)
         .is('paypal_deposit_capture_id', null)
         .or('payment_status.is.null,payment_status.eq.pending,payment_status.eq.failed')
-        .select('id')
+        // The returned rows must carry payment_status: PostgREST applies an .or() filter to them as well.
+        .select('id, payment_status')
 
       if (updateErr) {
         console.error('[deposit-timeout] update error for booking', booking.id, updateErr)

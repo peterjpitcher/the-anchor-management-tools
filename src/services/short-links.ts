@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import { assertAllowedShortLinkDestination } from '@/lib/short-links/destination-allowlist';
@@ -439,10 +440,13 @@ export class ShortLinkService {
       }
 
       if (Object.keys(patch).length > 0) {
-        await createAdminClient()
-          .from('short_links')
-          .update(patch)
-          .eq('id', existing.id);
+        await settleWrite(
+          createAdminClient()
+            .from('short_links')
+            .update(patch)
+            .eq('id', existing.id),
+          { table: 'short_links', what: 'Backfilling the name and owner on an existing short link', ids: { shortLinkId: existing.id } }
+        );
       }
 
       return {
@@ -475,10 +479,13 @@ export class ShortLinkService {
 
     const rpcResult = result as Record<string, unknown> | null;
     if (rpcResult?.short_code) {
-      await createAdminClient()
-        .from('short_links')
-        .update({ name: linkName, ...(createdBy ? { created_by: createdBy } : {}) })
-        .eq('short_code', rpcResult.short_code as string);
+      await settleWrite(
+        createAdminClient()
+          .from('short_links')
+          .update({ name: linkName, ...(createdBy ? { created_by: createdBy } : {}) })
+          .eq('short_code', rpcResult.short_code as string),
+        { table: 'short_links', what: 'Setting the name and owner on the new short link', ids: { shortCode: rpcResult.short_code as string } }
+      );
     }
 
     const shortCode = rpcResult?.short_code as string;
@@ -642,10 +649,13 @@ export class ShortLinkService {
     const existing = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
     if (existing) {
       if (!existing.name?.trim()) {
-        await supabase
-          .from('short_links')
-          .update({ name: linkName })
-          .eq('id', existing.id);
+        await settleWrite(
+          supabase
+            .from('short_links')
+            .update({ name: linkName })
+            .eq('id', existing.id),
+          { table: 'short_links', what: 'Backfilling the name on an existing short link', ids: { shortLinkId: existing.id } }
+        );
       }
 
       return {
@@ -673,10 +683,13 @@ export class ShortLinkService {
     }
 
     const shortCode = (result as Record<string, unknown>)?.short_code as string;
-    await supabase
-      .from('short_links')
-      .update({ name: linkName })
-      .eq('short_code', shortCode);
+    await settleWrite(
+      supabase
+        .from('short_links')
+        .update({ name: linkName })
+        .eq('short_code', shortCode),
+      { table: 'short_links', what: 'Setting the name on the new short link', ids: { shortCode } }
+    );
 
     return {
       short_code: shortCode,
@@ -736,15 +749,21 @@ export class ShortLinkService {
 
     if (existing) {
       if (existing.destination_url !== destinationUrl) {
-        await supabase
-          .from('short_links')
-          .update({
-            destination_url: destinationUrl,
-            metadata: { ...(existing.metadata || {}), ...metadata },
-            name: data.name || `Meta ad ${utmContent}`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
+        const repointed = await settleWrite(
+          supabase
+            .from('short_links')
+            .update({
+              destination_url: destinationUrl,
+              metadata: { ...(existing.metadata || {}), ...metadata },
+              name: data.name || `Meta ad ${utmContent}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id),
+          { table: 'short_links', what: 'Repointing the existing short link variant', ids: { shortLinkId: existing.id } }
+        );
+        // The caller is handed the new destination, so a failed repoint must not look like success:
+        // the link would still redirect to the old one.
+        if (!repointed) throw new Error('Failed to update the existing short link variant');
       }
 
       return {
@@ -769,14 +788,17 @@ export class ShortLinkService {
     if (createError) throw new Error(createError.message || 'Failed to create short link variant');
 
     const shortCode = (result as Record<string, unknown>)?.short_code as string;
-    await supabase
-      .from('short_links')
-      .update({
-        parent_link_id: parent.id,
-        name: data.name || `Meta ad ${utmContent}`,
-        metadata,
-      })
-      .eq('short_code', shortCode);
+    await settleWrite(
+      supabase
+        .from('short_links')
+        .update({
+          parent_link_id: parent.id,
+          name: data.name || `Meta ad ${utmContent}`,
+          metadata,
+        })
+        .eq('short_code', shortCode),
+      { table: 'short_links', what: 'Linking the new variant to its parent', ids: { shortCode, parentId: parent.id } }
+    );
 
     const { data: created } = await supabase
       .from('short_links')
@@ -860,10 +882,13 @@ export class ShortLinkService {
     // UPDATE granted to `authenticated`, letting any signed-in user repoint
     // almost any link straight through PostgREST, bypassing the
     // checkUserPermission('short_links', 'manage') check in the server action.
-    await createAdminClient()
-      .from('short_links')
-      .update({ parent_link_id: parentId, name: variantName, ...(createdBy ? { created_by: createdBy } : {}) })
-      .eq('short_code', shortCode);
+    await settleWrite(
+      createAdminClient()
+        .from('short_links')
+        .update({ parent_link_id: parentId, name: variantName, ...(createdBy ? { created_by: createdBy } : {}) })
+        .eq('short_code', shortCode),
+      { table: 'short_links', what: 'Linking the new variant to its parent', ids: { shortCode, parentId } }
+    );
 
     // Fetch the created link's ID
     const { data: created } = await supabase

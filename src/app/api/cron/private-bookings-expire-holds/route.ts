@@ -5,6 +5,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logAuditEvent } from '@/app/actions/audit';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
+import { settleWrite } from '@/lib/supabase/settle-write';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
@@ -110,10 +111,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           if (isCalendarConfigured()) {
             const deleted = await deleteCalendarEvent(bookingRow.calendar_event_id);
             if (deleted) {
-              await supabase
-                .from('private_bookings')
-                .update({ calendar_event_id: null })
-                .eq('id', id);
+              await settleWrite(
+                supabase
+                  .from('private_bookings')
+                  .update({ calendar_event_id: null })
+                  .eq('id', id),
+                {
+                  table: 'private_bookings',
+                  what: 'Clearing the deleted calendar event id',
+                  ids: { bookingId: id },
+                  note: 'the calendar event itself was deleted',
+                },
+              );
             }
           }
         }

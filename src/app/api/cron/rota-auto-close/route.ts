@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { toZonedTime, format, fromZonedTime } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { authorizeCronRequest } from '@/lib/cron-auth';
+import { reportCronFailure } from '@/lib/cron/alerting';
+import { clearPayrollApprovalsForDate } from '@/lib/rota/payroll-approval-invalidation';
 
 // Vercel Cron: runs at 05:00 UTC daily (cron: "0 5 * * *")
 const TIMEZONE = 'Europe/London';
@@ -57,6 +59,9 @@ export async function GET(request: Request) {
 
   let closed = 0;
   const errors: string[] = [];
+  // Work dates whose payroll approval could not be cleared after a session on them was closed.
+  // The close itself stands; the approved payroll figures for that month are out of date.
+  const approvalsNotCleared = new Set<string>();
 
   for (const session of sessions) {
     const shift = Array.isArray(session.rota_shifts)
@@ -107,22 +112,25 @@ export async function GET(request: Request) {
 
     // DEF-003: Invalidate any payroll approval that covers this work_date so the
     // auto-close is reflected if the manager re-approves payroll.
-    const { data: periods } = await supabase
-      .from('payroll_periods')
-      .select('year, month')
-      .lte('period_start', session.work_date)
-      .gte('period_end', session.work_date);
+    const approvalsCleared = await clearPayrollApprovalsForDate(supabase, session.work_date, { sessionId: session.id });
+    if (!approvalsCleared) approvalsNotCleared.add(session.work_date);
+  }
 
-    if (periods?.length) {
-      await Promise.all(
-        periods.map(period =>
-          supabase
-            .from('payroll_month_approvals')
-            .delete()
-            .eq('year', period.year)
-            .eq('month', period.month),
-        ),
+  // The run still succeeds: every session that closed is closed. The owner hears about the
+  // approvals by the cron alert email, and the summary names the dates.
+  const payrollApprovalsNotCleared = [...approvalsNotCleared].sort();
+  if (payrollApprovalsNotCleared.length > 0) {
+    try {
+      await reportCronFailure(
+        'rota-auto-close',
+        new Error(`The payroll approval could not be cleared for ${payrollApprovalsNotCleared.length} work date(s) after auto-closing sessions`),
+        {
+          work_dates: payrollApprovalsNotCleared,
+          effect: 'The approved payroll figures for those months are out of date. Re-approve payroll for those months.',
+        },
       );
+    } catch {
+      // The error-level log of each failed clear, and the summary below, are the record.
     }
   }
 
@@ -130,6 +138,7 @@ export async function GET(request: Request) {
     ok: true,
     closed,
     errors: errors.length ? errors : undefined,
+    payrollApprovalsNotCleared: payrollApprovalsNotCleared.length ? payrollApprovalsNotCleared : undefined,
     localTime: format(nowLocal, 'HH:mm zzz', { timeZone: TIMEZONE }),
   });
 }

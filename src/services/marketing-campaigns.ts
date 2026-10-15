@@ -495,10 +495,16 @@ async function provisionLinkMap(
  * send has been marked complete and the moment has passed.
  *
  * Only same-audience campaigns collide, because the two lists keep their own timestamps.
+ *
+ * A neighbour flagged `ignoresFrequencyCap` (the monthly round-up) never collides either.
+ * `finalise_marketing_send` does not advance the recipient's last-email timestamp for an
+ * exempt campaign, so the round-up cannot empty an ordinary send beside it, and refusing the
+ * slot here would make the guard stricter than the send it is meant to describe.
  */
 export interface NeighbouringCampaign {
   name: string
   scheduledFor: string
+  ignoresFrequencyCap?: boolean
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -518,6 +524,7 @@ export function describeFrequencyCapCollision(
 
   const capMs = capDays * DAY_MS
   const inWindow = neighbours
+    .filter((n) => !n.ignoresFrequencyCap)
     .map((n) => ({ ...n, at: new Date(n.scheduledFor) }))
     .filter((n) => !Number.isNaN(n.at.getTime()))
     .filter((n) => Math.abs(when.getTime() - n.at.getTime()) < capMs)
@@ -567,7 +574,7 @@ async function assertNoFrequencyCapCollision(
 
   const { data: neighbours, error } = await supabase
     .from('marketing_campaigns')
-    .select('id, name, scheduled_for')
+    .select('id, name, scheduled_for, ignores_frequency_cap')
     .eq('audience_type', campaign.audienceType)
     .neq('id', campaign.id)
     .in('status', ['scheduled', 'sending', 'completed'])
@@ -584,6 +591,7 @@ async function assertNoFrequencyCapCollision(
     (neighbours ?? []).map((row) => ({
       name: String((row as { name: string }).name),
       scheduledFor: String((row as { scheduled_for: string }).scheduled_for),
+      ignoresFrequencyCap: row.ignores_frequency_cap === true,
     })),
   )
 

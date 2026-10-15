@@ -2,6 +2,7 @@ import 'server-only';
 
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 
@@ -143,11 +144,23 @@ export async function finalizeEmployeeSeparation(
   }
 
   // Clear future template pre-assignments before status changes so old templates
-  // cannot put a former employee back on generated rotas.
-  await adminClient
-    .from('rota_shift_templates')
-    .update({ employee_id: null })
-    .eq('employee_id', employeeId);
+  // cannot put a former employee back on generated rotas. If this fails, stop here and
+  // leave the employee in their current status so the action can be retried.
+  const templatesCleared = await settleWrite(
+    adminClient
+      .from('rota_shift_templates')
+      .update({ employee_id: null })
+      .eq('employee_id', employeeId),
+    { table: 'rota_shift_templates', what: 'Clearing template assignments for the leaving employee', ids: { employeeId } },
+  );
+
+  if (!templatesCleared) {
+    return {
+      success: false,
+      error: 'Could not remove this employee from the rota templates, so they have not been marked as Former. Please try again.',
+      code: 'template_unassign_failed',
+    };
+  }
 
   // Removing roles is a hard security prerequisite. If this fails, leave the
   // employee in their current status so the action can be retried.
@@ -167,11 +180,24 @@ export async function finalizeEmployeeSeparation(
     }
   }
 
-  await adminClient
-    .from('employee_invite_tokens')
-    .update({ expires_at: now })
-    .eq('employee_id', employeeId)
-    .is('completed_at', null);
+  // An open invite link would still let a former employee into onboarding. If expiring it
+  // fails, stop here and leave the employee in their current status so the action can be retried.
+  const invitesExpired = await settleWrite(
+    adminClient
+      .from('employee_invite_tokens')
+      .update({ expires_at: now })
+      .eq('employee_id', employeeId)
+      .is('completed_at', null),
+    { table: 'employee_invite_tokens', what: 'Expiring open invite tokens', ids: { employeeId } },
+  );
+
+  if (!invitesExpired) {
+    return {
+      success: false,
+      error: 'Could not cancel this employee\'s open onboarding link, so they have not been marked as Former. Please try again.',
+      code: 'invite_expiry_failed',
+    };
+  }
 
   const employmentEndDate = employee.employment_end_date ?? today;
   const { data: updatedRows, error: updateError } = await adminClient
@@ -205,20 +231,26 @@ export async function finalizeEmployeeSeparation(
       authUserDeleted = true;
     }
 
-    await adminClient
-      .from('employees')
-      .update({ auth_user_id: null })
-      .eq('employee_id', employeeId);
+    await settleWrite(
+      adminClient
+        .from('employees')
+        .update({ auth_user_id: null })
+        .eq('employee_id', employeeId),
+      { table: 'employees', what: 'Clearing the auth user link', ids: { employeeId } },
+    );
   }
 
   if (source === 'automatic') {
-    await adminClient
-      .from('employee_notes')
-      .insert({
-        employee_id: employeeId,
-        note_text: `Automatically marked as Former on ${today} after last working day ${employmentEndDate}.`,
-        created_by_user_id: null,
-      });
+    await settleWrite(
+      adminClient
+        .from('employee_notes')
+        .insert({
+          employee_id: employeeId,
+          note_text: `Automatically marked as Former on ${today} after last working day ${employmentEndDate}.`,
+          created_by_user_id: null,
+        }),
+      { table: 'employee_notes', what: 'Adding the automatic separation note', ids: { employeeId } },
+    );
   }
 
   try {

@@ -4,6 +4,7 @@ import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { CONTRACT_LOGO_DATA_URI } from '@/lib/private-bookings/contract-logo'
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { AGREEMENT_ISSUING_MANAGER, assembleWorkerAgreementData, computeAgeAt } from '@/lib/worker-agreement'
 import { generateWorkerAgreementHTML } from '@/lib/worker-agreement-template'
 
@@ -101,13 +102,16 @@ export async function loadWorkerAgreement(
   const lastChanged = Boolean(normalizedLast) && normalizedLast !== employee.last_name
   if (firstChanged || lastChanged) {
     try {
-      await admin
-        .from('employees')
-        .update({
-          first_name: firstChanged ? normalizedFirst : employee.first_name,
-          last_name: lastChanged ? normalizedLast : employee.last_name,
-        })
-        .eq('employee_id', employee.employee_id)
+      await settleWrite(
+        admin
+          .from('employees')
+          .update({
+            first_name: firstChanged ? normalizedFirst : employee.first_name,
+            last_name: lastChanged ? normalizedLast : employee.last_name,
+          })
+          .eq('employee_id', employee.employee_id),
+        { table: 'employees', what: 'Saving the normalised employee name', ids: { employeeId: employee.employee_id } },
+      )
       if (firstChanged) employee.first_name = normalizedFirst
       if (lastChanged) employee.last_name = normalizedLast
     } catch (persistError) {

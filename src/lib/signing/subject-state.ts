@@ -1,6 +1,7 @@
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { effectiveWaiverStatus } from '@/lib/private-bookings/waiver-status'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isStaffRecordedAcceptance } from './contract-acceptance'
 import type { SigningDocumentRow } from './types'
 
 /**
@@ -22,24 +23,64 @@ export async function findSubjectClosure(
 ): Promise<string | null> {
   const admin = createAdminClient()
 
-  const bookingClosure = async (bookingId: string, forWaiver: boolean): Promise<string | null> => {
+  const bookingClosure = async (bookingId: string, forWaiver: boolean, forContract = false): Promise<string | null> => {
     const { data, error } = await admin
       .from('private_bookings')
-      .select('status, waiver_status, outside_food')
+      .select('status, waiver_status, outside_food, contract_acceptance_method')
       .eq('id', bookingId)
       .maybeSingle()
     if (error) throw new Error(`Could not read the booking: ${error.message}`)
     if (!data) return 'The booking no longer exists'
     if (data.status === 'cancelled') return 'The booking was cancelled'
+    // Staff recorded a paper signature or a written confirmation, so there is nothing left to
+    // sign. Paying the deposit also accepts the contract, but does not close the request: a
+    // customer who has paid may still sign.
+    if (forContract && isStaffRecordedAcceptance(data.contract_acceptance_method)) {
+      return 'The contract was accepted another way'
+    }
     if (forWaiver && data.waiver_status === 'signed') return 'The waiver was recorded as signed by staff'
     // Staff unticked "Outside food" after the agreement went out: there is nothing left to sign.
     if (forWaiver && effectiveWaiverStatus(data) === 'not_required') return 'The booking no longer has outside food'
     return null
   }
 
+  /**
+   * A deduction agreement stands while its deduction is still open. A cancelled booking does not
+   * close it: a deduction can follow a cancelled event (SOP section 25).
+   */
+  const deductionClosure = async (bookingId: string, deductionId: unknown): Promise<string | null> => {
+    const { data: booking, error: bookingError } = await admin
+      .from('private_bookings')
+      .select('id')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (bookingError) throw new Error(`Could not read the booking: ${bookingError.message}`)
+    if (!booking) return 'The booking no longer exists'
+    // A request with no deduction named has nothing left to agree to.
+    if (typeof deductionId !== 'string') return 'The deduction no longer exists'
+    const { data, error } = await admin
+      .from('private_booking_deductions')
+      .select('status')
+      .eq('id', deductionId)
+      .eq('booking_id', bookingId)
+      .maybeSingle()
+    if (error) throw new Error(`Could not read the deduction: ${error.message}`)
+    if (!data) return 'The deduction no longer exists'
+    if (data.status === 'rejected') return 'The deduction was rejected'
+    if (data.status === 'applied') return 'The deduction has been applied'
+    return null
+  }
+
   switch (document.subject_type) {
     case 'private_booking':
-      return bookingClosure(document.subject_id, document.kind === 'private_booking_waiver')
+      if (document.kind === 'deposit_deduction_agreement') {
+        return deductionClosure(document.subject_id, document.context.deduction_id)
+      }
+      return bookingClosure(
+        document.subject_id,
+        document.kind === 'private_booking_waiver',
+        document.kind === 'private_booking_contract'
+      )
 
     case 'vendor': {
       // A supplier confirmation is for one booking, and is moot once that booking is.

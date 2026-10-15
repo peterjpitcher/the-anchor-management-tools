@@ -2,12 +2,13 @@ import { STAFF } from '@/lib/brand/palette'
 import { EMAIL_BUDGET } from '../thresholds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '../format'
 import { scoreSignal } from '../signals'
-import type { InsightSection, InsightSignal, InsightsReport, RankedAction, SectionStatus } from '../types'
+import type { InsightList, InsightSection, InsightSignal, InsightsReport, RankedAction, SectionStatus } from '../types'
 
 /**
  * The Friday manager email (spec 7). Exception-first: the summary, every section's status
  * and headline, the highest-priority exceptions across the whole report, and the manager
- * actions. The full detail stays on the Insights page.
+ * actions. The full detail stays on the Insights page, except a list marked `inEmail`, which
+ * is printed in full under its section and is never cut back to fit.
  *
  * Built to print: white everywhere (no background colour on any element), dark text, real
  * <ul>/<ol> lists that Outlook keeps, and a word beside every status emoji so the status
@@ -93,6 +94,12 @@ function selectRows(report: InsightsReport, budget: number): Map<number, Row[]> 
 
 function sectionCandidates(section: InsightSection): InsightSignal[] {
   return section.signals.filter((signal) => printableText(signal) !== null)
+}
+
+/** Lists printed in the email: marked `inEmail`, and either holding items or saying they are empty. */
+function emailLists(section: InsightSection): InsightList[] {
+  if (section.status === 'not_checked') return []
+  return section.lists.filter((item) => item.inEmail === true && (item.items.length > 0 || Boolean(item.emptyText)))
 }
 
 function makeLinker(appOrigin: string): (href: string | undefined) => string | null {
@@ -184,6 +191,12 @@ function renderHtml(report: InsightsReport, appOrigin: string, budget: number): 
         : `${hidden} more on the Insights page.`
       out.push(para(`${escapeHtml(label)}${anchor(`${insightsUrl}#${section.key}`, 'Open')}`, true))
     }
+    for (const emailList of emailLists(section)) {
+      out.push(para(`<strong>${escapeHtml(clean(emailList.title))}</strong>`))
+      out.push(emailList.items.length > 0
+        ? list(emailList.items.map((item) => `${escapeHtml(clean(item.text))}${anchor(item.href, 'Open')}`))
+        : para(escapeHtml(clean(emailList.emptyText ?? ''))))
+    }
     for (const note of section.notes) out.push(para(escapeHtml(clean(note)), true))
     out.push(para(anchor(section.href, `Open ${section.title.toLowerCase()}`).trim(), true))
   })
@@ -255,6 +268,11 @@ function renderText(report: InsightsReport, appOrigin: string, budget: number): 
     }
     const hidden = sectionCandidates(section).length - rows.length
     if (hidden > 0) lines.push(`${hidden} more on the Insights page.`)
+    for (const emailList of emailLists(section)) {
+      lines.push(clean(emailList.title))
+      if (emailList.items.length === 0) lines.push(`  ${clean(emailList.emptyText ?? '')}`)
+      for (const item of emailList.items) lines.push(`- ${withLink(clean(item.text), item.href)}`)
+    }
     for (const note of section.notes) lines.push(clean(note))
   })
 

@@ -7,6 +7,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { logger } from '@/lib/logger';
+import { reportWriteError } from '@/lib/supabase/settle-write';
 import {
   sendBookingConfirmationEmail,
   sendBookingCalendarInvite,
@@ -2080,6 +2081,43 @@ export async function updateBookingStatus(id: string, status: BookingStatus, per
 // Apply discount
 // ---------------------------------------------------------------------------
 
+/**
+ * Re-derives the booking's paid-in-full stamp (final_payment_date and
+ * final_payment_method) after a change to its total. The total has already
+ * changed by the time this runs, so a failure here is not turned into an
+ * error: it is reported at error level and returned as a staff-visible
+ * warning, because the booking may now show as paid in full when it is not
+ * (or the other way round) until the status is re-derived.
+ *
+ * Returns undefined when the status updated.
+ */
+async function reconcileBalancePaymentStatus(
+  bookingId: string,
+  changeSaved: string,
+  context: string,
+): Promise<string | undefined> {
+  const warning = `${changeSaved}, but the booking's balance status did not update, so it may show the wrong amount still owed or the wrong paid-in-full status. Do not make the change again: tell the developer.`;
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.rpc('apply_balance_payment_status', { p_booking_id: bookingId });
+    if (error) {
+      reportWriteError(error, {
+        table: 'private_bookings',
+        what: `Updating the balance paid status ${context}`,
+        ids: { bookingId },
+      });
+      return warning;
+    }
+    return undefined;
+  } catch (reconcileError) {
+    logger.error(`Failed to reconcile payment status ${context}:`, {
+      error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)),
+      metadata: { bookingId },
+    });
+    return warning;
+  }
+}
+
 export async function applyBookingDiscount(
   bookingId: string,
   data: {
@@ -2087,7 +2125,7 @@ export async function applyBookingDiscount(
     discount_amount: number;
     discount_reason: string;
   }
-): Promise<{ success: true }> {
+): Promise<{ success: true; warning?: string }> {
   // Server-side discount validation
   if (data.discount_type !== 'percent' && data.discount_type !== 'fixed') {
     throw new Error('Invalid discount type -- must be "percent" or "fixed"');
@@ -2151,15 +2189,14 @@ export async function applyBookingDiscount(
     throw new Error('Booking not found');
   }
 
-  // Reconcile payment status — discount changes can affect whether booking is still fully paid
-  try {
-    const admin = createAdminClient();
-    await admin.rpc('apply_balance_payment_status', { p_booking_id: bookingId });
-  } catch (reconcileError) {
-    logger.error('Failed to reconcile payment status after discount change:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
-  }
+  // Reconcile payment status: discount changes can affect whether booking is still fully paid
+  const warning = await reconcileBalancePaymentStatus(
+    bookingId,
+    'The discount was saved',
+    'after discount change',
+  );
 
-  return { success: true };
+  return warning ? { success: true, warning } : { success: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -2867,7 +2904,7 @@ export async function addBookingItem(data: {
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
   vat_rate?: number;
-}): Promise<{ success: true }> {
+}): Promise<{ success: true; warning?: string }> {
   // D9: Server-side discount bounds validation
   if (data.discount_value !== undefined && data.discount_value !== null) {
     if (data.discount_value < 0) {
@@ -2973,13 +3010,12 @@ export async function addBookingItem(data: {
     throw new Error(error.message || 'Failed to add booking item');
   }
 
-  // Reconcile payment status — item changes can affect whether booking is still fully paid
-  try {
-    const admin = createAdminClient();
-    await admin.rpc('apply_balance_payment_status', { p_booking_id: data.booking_id });
-  } catch (reconcileError) {
-    logger.error('Failed to reconcile payment status after item add:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
-  }
+  // Reconcile payment status: item changes can affect whether booking is still fully paid
+  const warning = await reconcileBalancePaymentStatus(
+    data.booking_id,
+    'The item was saved',
+    'after item add',
+  );
 
   // SOP §21: catering changes can flip the waiver requirement.
   if (data.item_type === 'catering') {
@@ -2993,7 +3029,7 @@ export async function addBookingItem(data: {
     }
   }
 
-  return { success: true };
+  return warning ? { success: true, warning } : { success: true };
 }
 
 export async function updateBookingItem(itemId: string, data: {
@@ -3002,7 +3038,7 @@ export async function updateBookingItem(itemId: string, data: {
   discount_value?: number;
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
-}): Promise<{ success: true; bookingId: string }> {
+}): Promise<{ success: true; bookingId: string; warning?: string }> {
   const supabase = await createClient();
 
   const { data: currentItem, error: fetchError } = await supabase
@@ -3057,18 +3093,19 @@ export async function updateBookingItem(itemId: string, data: {
     throw new Error('Item not found');
   }
 
-  // Reconcile payment status — item changes can affect whether booking is still fully paid
-  try {
-    const admin = createAdminClient();
-    await admin.rpc('apply_balance_payment_status', { p_booking_id: currentItem.booking_id });
-  } catch (reconcileError) {
-    logger.error('Failed to reconcile payment status after item update:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
-  }
+  // Reconcile payment status: item changes can affect whether booking is still fully paid
+  const warning = await reconcileBalancePaymentStatus(
+    currentItem.booking_id,
+    'The item was saved',
+    'after item update',
+  );
 
-  return { success: true, bookingId: currentItem.booking_id };
+  return warning
+    ? { success: true, bookingId: currentItem.booking_id, warning }
+    : { success: true, bookingId: currentItem.booking_id };
 }
 
-export async function deleteBookingItem(itemId: string): Promise<{ success: true; bookingId: string }> {
+export async function deleteBookingItem(itemId: string): Promise<{ success: true; bookingId: string; warning?: string }> {
   const supabase = await createClient();
 
   const { data: item, error: fetchError } = await supabase
@@ -3097,13 +3134,12 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
     throw new Error('Item not found');
   }
 
-  // Reconcile payment status — item changes can affect whether booking is still fully paid
-  try {
-    const admin = createAdminClient();
-    await admin.rpc('apply_balance_payment_status', { p_booking_id: item.booking_id });
-  } catch (reconcileError) {
-    logger.error('Failed to reconcile payment status after item delete:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
-  }
+  // Reconcile payment status: item changes can affect whether booking is still fully paid
+  const warning = await reconcileBalancePaymentStatus(
+    item.booking_id,
+    'The item was removed',
+    'after item delete',
+  );
 
   // SOP §21: removing the last waiver package drops 'required' back to
   // 'not_required' (never downgrades 'sent'/'signed').
@@ -3118,7 +3154,9 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
     }
   }
 
-  return { success: true, bookingId: item.booking_id };
+  return warning
+    ? { success: true, bookingId: item.booking_id, warning }
+    : { success: true, bookingId: item.booking_id };
 }
 
 export async function reorderBookingItems(bookingId: string, orderedIds: string[]): Promise<{ success: true }> {
