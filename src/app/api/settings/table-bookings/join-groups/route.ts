@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireSettingsManagePermission } from '@/lib/settings/api-auth'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 const SaveGroupSchema = z.object({
   id: z.string().uuid().optional(),
@@ -188,8 +189,20 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to update group' }, { status: 500 })
   }
 
-  // Replace members
-  await auth.supabase.from('table_join_group_members').delete().eq('group_id', id)
+  // Replace members. If the old set cannot be removed (RLS can refuse it on the session
+  // client), stop before inserting so staff are not told it saved while the old tables stay.
+  const oldMembersRemoved = await settleWrite(
+    auth.supabase.from('table_join_group_members').delete().eq('group_id', id),
+    {
+      table: 'table_join_group_members',
+      what: 'Removing the old join group members',
+      ids: { groupId: id },
+    }
+  )
+
+  if (!oldMembersRemoved) {
+    return NextResponse.json({ error: 'Failed to update group members' }, { status: 500 })
+  }
 
   if (table_ids.length > 0) {
     const { error: membersError } = await auth.supabase

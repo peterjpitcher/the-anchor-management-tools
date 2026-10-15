@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TimeclockManager from '@/app/(authenticated)/rota/timeclock/TimeclockManager'
 import type { TimeclockSessionWithEmployee } from '@/app/actions/timeclock'
 import type { RotaEmployee } from '@/app/actions/rota'
+import { toast } from '@/ds/primitives/Toast'
 
 const actionMocks = vi.hoisted(() => ({
   createTimeclockSession: vi.fn(),
@@ -150,6 +151,59 @@ describe('TimeclockManager', () => {
       expect(actionMocks.deleteTimeclockSession).toHaveBeenCalledWith('session-1', {
         allowPayrollApprove: false,
       })
+    })
+  })
+
+  const PAYROLL_WARNING =
+    'The clock times were saved, but the payroll approval covering 27 July 2026 could not be cleared, so the approved payroll figures are now out of date. Please re-approve payroll for that month, or tell the developer if this keeps happening.'
+
+  it('shows the payroll warning after a saved edit whose approval was not cleared', async () => {
+    actionMocks.updateTimeclockSession.mockResolvedValue({
+      success: true,
+      data: { rate_multiplier: null, rate_override: null, premium_reason: null, premium_start_at: null, premium_end_at: null },
+      warning: PAYROLL_WARNING,
+    })
+    renderManager()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Entry' })
+    fireEvent.change(within(dialog).getByLabelText('Clock out'), { target: { value: '22:00' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Session updated')
+      expect(toast.warning).toHaveBeenCalledWith(PAYROLL_WARNING, { duration: 12000 })
+    })
+  })
+
+  it('shows no payroll warning after a saved edit whose approval was cleared', async () => {
+    actionMocks.updateTimeclockSession.mockResolvedValue({
+      success: true,
+      data: { rate_multiplier: null, rate_override: null, premium_reason: null, premium_start_at: null, premium_end_at: null },
+    })
+    renderManager()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Entry' })
+    fireEvent.change(within(dialog).getByLabelText('Clock out'), { target: { value: '22:00' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Session updated'))
+    expect(toast.warning).not.toHaveBeenCalled()
+  })
+
+  it('shows the payroll warning after a delete whose approval was not cleared', async () => {
+    const deletedWarning = PAYROLL_WARNING.replace('The clock times were saved', 'The session was deleted')
+    actionMocks.deleteTimeclockSession.mockResolvedValue({ success: true, warning: deletedWarning })
+    renderManager()
+
+    fireEvent.click(screen.getByTitle('Delete'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Session deleted')
+      expect(toast.warning).toHaveBeenCalledWith(deletedWarning, { duration: 12000 })
     })
   })
 })

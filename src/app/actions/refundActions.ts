@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification, type RefundSubject } from '@/lib/refund-notifications'
 import {
@@ -38,6 +39,31 @@ const REFUND_SUBJECTS: Record<SourceType, RefundSubject> = {
 }
 
 const PAYPAL_REFUND_WINDOW_DAYS = 180
+
+/**
+ * Shown when the money has moved but the booking still reads as not refunded. Never an error: an
+ * error tells staff the refund failed, and the obvious next step would be to refund again.
+ */
+const BOOKING_NOT_UPDATED_WARNING =
+  'The refund went through, but the booking was not updated to show it. Do not refund again: ' +
+  'tell the developer so the booking record can be corrected.'
+
+/** Shown when PayPal moved the money but the refund row itself could not be recorded. */
+const REFUND_NOT_RECORDED_WARNING =
+  'The refund went through, but it was not recorded here. Do not refund again: ' +
+  'tell the developer so the refund can be recorded.'
+
+/** Same, for a refund PayPal accepted but has not finished. */
+const PENDING_REFUND_NOT_RECORDED_WARNING =
+  'The refund is pending at PayPal, but it was not recorded here. Do not refund again: ' +
+  'tell the developer so the refund can be recorded.'
+
+/**
+ * Appended to a refund error when the refund row could not be marked failed. The row stays
+ * pending and the next attempt reuses it, so staff should look at it before retrying.
+ */
+const STUCK_PENDING_SUFFIX =
+  ' The refund record could not be marked as failed and still shows as pending: check it before trying again.'
 
 interface SourceBookingData {
   id: string
@@ -263,42 +289,85 @@ function isCaptureExpired(captureDate: string | null): boolean {
  * Returns whether the booking itself was cancelled, so the guest can be told. A full parking
  * refund cancels the booking (below) and the guest used to be told only that money was coming
  * back; somebody could have driven to Heathrow expecting a space.
+ *
+ * Also returns whether the booking's refund status was recorded. False means the money moved but
+ * the booking still reads as not refunded (a table booking still reads as paid to the deposit
+ * checks), and the caller must tell staff so nobody refunds it a second time.
  */
 async function updateRefundStatus(
   db: ReturnType<typeof createAdminClient>,
   sourceType: SourceType,
   sourceId: string,
   originalAmount: number
-): Promise<{ bookingCancelled: boolean }> {
+): Promise<{ bookingCancelled: boolean; recorded: boolean }> {
   // Sum all completed refunds
-  const { data: refunds } = await db
+  const { data: refunds, error: refundsError } = await db
     .from('payment_refunds')
     .select('amount')
     .eq('source_type', sourceType)
     .eq('source_id', sourceId)
     .eq('status', 'completed')
 
+  // Without the earlier refunds a full refund would be summed as partial and written as
+  // 'partially_refunded'. Write nothing rather than a wrong status.
+  if (refundsError) {
+    console.error('[payment_refunds] Reading completed refunds to set the booking refund status failed; the refund itself went through', {
+      sourceType,
+      sourceId,
+      code: refundsError.code ?? null,
+      message: refundsError.message,
+      details: refundsError.details ?? null,
+      hint: refundsError.hint ?? null,
+    })
+    return { bookingCancelled: false, recorded: false }
+  }
+
   const totalRefunded = (refunds || []).reduce((sum: number, r: any) => sum + Number(r.amount), 0)
   const status = totalRefunded >= originalAmount ? 'refunded' : 'partially_refunded'
+  let recorded = true
 
   if (sourceType === 'private_booking') {
-    await db.from('private_bookings').update({ deposit_refund_status: status }).eq('id', sourceId)
+    recorded = await settleWrite(
+      db.from('private_bookings').update({ deposit_refund_status: status }).eq('id', sourceId),
+      {
+        table: 'private_bookings',
+        what: 'Recording the deposit refund status',
+        ids: { bookingId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
   } else if (sourceType === 'table_booking') {
     // Both columns, not just the refund one. `payment_status` left at 'completed' means a
     // fully refunded booking still reads as paid to hasUnpaidRequiredDeposit and to the
     // deposit-timeout cron's hasCapturedDeposit, so the venue believes it holds money it
     // has already returned. The parking branch below already reconciles its parent; table
     // bookings were left out of that same fix.
-    await db
-      .from('table_bookings')
-      .update({
-        deposit_refund_status: status,
-        payment_status: status === 'refunded' ? 'refunded' : 'partial_refund',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', sourceId)
+    recorded = await settleWrite(
+      db
+        .from('table_bookings')
+        .update({
+          deposit_refund_status: status,
+          payment_status: status === 'refunded' ? 'refunded' : 'partial_refund',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sourceId),
+      {
+        table: 'table_bookings',
+        what: 'Recording the deposit refund status',
+        ids: { bookingId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
   } else if (sourceType === 'parking') {
-    await db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId)
+    recorded = await settleWrite(
+      db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId),
+      {
+        table: 'parking_booking_payments',
+        what: 'Recording the parking payment refund status',
+        ids: { paymentId: sourceId, status },
+        note: 'the refund itself went through',
+      }
+    )
 
     // Also update the parent parking_bookings.payment_status when fully refunded
     if (status === 'refunded') {
@@ -322,12 +391,12 @@ async function updateRefundStatus(
           })
           .eq('id', paymentRow.booking_id)
 
-        return { bookingCancelled: !cancelError }
+        return { bookingCancelled: !cancelError, recorded }
       }
     }
   }
 
-  return { bookingCancelled: false }
+  return { bookingCancelled: false, recorded }
 }
 
 /**
@@ -510,11 +579,19 @@ export async function processPayPalRefund(
     // PayPal API actually rejected the refund — safe to mark as failed
     const errorMessage = err instanceof Error ? err.message : 'Unknown error'
 
-    await db.from('payment_refunds').update({
-      status: 'failed',
-      failed_at: new Date().toISOString(),
-      failure_message: errorMessage,
-    }).eq('id', refundRow.id)
+    const markedFailed = await settleWrite(
+      db.from('payment_refunds').update({
+        status: 'failed',
+        failed_at: new Date().toISOString(),
+        failure_message: errorMessage,
+      }).eq('id', refundRow.id),
+      {
+        table: 'payment_refunds',
+        what: 'Recording the refund as failed',
+        ids: { refundId: refundRow.id, sourceType, sourceId },
+        note: 'PayPal rejected the refund, so no money moved',
+      }
+    )
 
     await logAuditEvent({
       user_id: userId,
@@ -526,7 +603,11 @@ export async function processPayPalRefund(
       additional_info: { refund_id: refundRow.id, amount, method: 'paypal' },
     })
 
-    return { error: `PayPal refund failed: ${errorMessage}. You can try again or use manual refund.` }
+    return {
+      error:
+        `PayPal refund failed: ${errorMessage}. You can try again or use manual refund.` +
+        (markedFailed ? '' : STUCK_PENDING_SUFFIX),
+    }
   }
 
   // PayPal returned a response (2xx) — money may have moved. From here,
@@ -590,7 +671,15 @@ export async function processPayPalRefund(
       } else {
         notificationStatus = 'skipped'
       }
-      await db.from('payment_refunds').update({ notification_status: notificationStatus }).eq('id', refundRow.id)
+      await settleWrite(
+        db.from('payment_refunds').update({ notification_status: notificationStatus }).eq('id', refundRow.id),
+        {
+          table: 'payment_refunds',
+          what: 'Recording the refund notification status',
+          ids: { refundId: refundRow.id, notificationStatus },
+          note: 'the refund itself went through',
+        }
+      )
 
       await logAuditEvent({
         user_id: userId,
@@ -608,6 +697,9 @@ export async function processPayPalRefund(
       })
 
       revalidatePath(REVALIDATE_PATHS[sourceType])
+      if (!reconciled.recorded) {
+        return { success: true, refundId: refundRow.id, warning: BOOKING_NOT_UPDATED_WARNING }
+      }
       return { success: true, refundId: refundRow.id }
     }
 
@@ -648,15 +740,26 @@ export async function processPayPalRefund(
     }
 
     // FAILED or CANCELLED status from PayPal
-    await db.from('payment_refunds').update({
-      status: 'failed',
-      paypal_refund_id: result.refundId,
-      paypal_status: result.status,
-      failed_at: new Date().toISOString(),
-      failure_message: `PayPal returned status: ${result.status}`,
-    }).eq('id', refundRow.id)
+    const markedFailed = await settleWrite(
+      db.from('payment_refunds').update({
+        status: 'failed',
+        paypal_refund_id: result.refundId,
+        paypal_status: result.status,
+        failed_at: new Date().toISOString(),
+        failure_message: `PayPal returned status: ${result.status}`,
+      }).eq('id', refundRow.id),
+      {
+        table: 'payment_refunds',
+        what: 'Recording the refund as failed',
+        ids: { refundId: refundRow.id, paypalStatus: result.status },
+      }
+    )
 
-    return { error: `PayPal refund returned status: ${result.status}. You can try again or use manual refund.` }
+    return {
+      error:
+        `PayPal refund returned status: ${result.status}. You can try again or use manual refund.` +
+        (markedFailed ? '' : STUCK_PENDING_SUFFIX),
+    }
   } catch (postProcessErr) {
     // PayPal succeeded but local bookkeeping failed — DO NOT mark as failed
     const errorMessage = postProcessErr instanceof Error ? postProcessErr.message : 'Unknown error'
@@ -685,7 +788,12 @@ export async function processPayPalRefund(
               failure_message: `PayPal returned ${result.status}; post-processing error: ${errorMessage}`,
             }
 
-    await db.from('payment_refunds').update(fallbackUpdate).eq('id', refundRow.id)
+    const fallbackRecorded = await settleWrite(db.from('payment_refunds').update(fallbackUpdate).eq('id', refundRow.id), {
+      table: 'payment_refunds',
+      what: 'Recording the refund outcome after post-processing failed',
+      ids: { refundId: refundRow.id, status: fallbackUpdate.status },
+      note: 'PayPal accepted the refund request',
+    })
 
     await logAuditEvent({
       user_id: userId,
@@ -707,15 +815,27 @@ export async function processPayPalRefund(
         success: true,
         refundId: refundRow.id,
         pending: true,
-        warning: 'Refund is pending at PayPal but some local updates may have failed. Please refresh.',
+        warning: fallbackRecorded
+          ? 'Refund is pending at PayPal but some local updates may have failed. Please refresh.'
+          : PENDING_REFUND_NOT_RECORDED_WARNING,
       }
     }
 
     if (normalizedStatus !== 'COMPLETED') {
-      return { error: `PayPal refund returned status: ${result.status}. Some local updates may have failed.` }
+      return {
+        error:
+          `PayPal refund returned status: ${result.status}. Some local updates may have failed.` +
+          (fallbackRecorded ? '' : STUCK_PENDING_SUFFIX),
+      }
     }
 
-    return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but some local updates may have failed. Please refresh.' }
+    return {
+      success: true,
+      refundId: refundRow.id,
+      warning: fallbackRecorded
+        ? 'Refund processed at PayPal but some local updates may have failed. Please refresh.'
+        : REFUND_NOT_RECORDED_WARNING,
+    }
   }
 }
 
@@ -726,7 +846,7 @@ export async function processManualRefund(
   reason: string,
   refundMethod: 'cash' | 'bank_transfer' | 'other',
   options?: RefundPolicyOverride
-): Promise<{ success?: boolean; refundId?: string; error?: string }> {
+): Promise<{ success?: boolean; refundId?: string; warning?: string; error?: string }> {
   // 0. Validate method — PayPal refunds must use processPayPalRefund (runtime guard against API misuse)
   if ((refundMethod as string) === 'paypal') return { error: 'Use PayPal refund for PayPal payments' }
 
@@ -788,7 +908,7 @@ export async function processManualRefund(
   const refundRow = { id: row.refund_id }
 
   // 6. Update booking refund status
-  await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+  const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
   await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, refundMethod)
 
   // 7. Audit
@@ -806,6 +926,9 @@ export async function processManualRefund(
   })
 
   revalidatePath(REVALIDATE_PATHS[sourceType])
+  if (!reconciled.recorded) {
+    return { success: true, refundId: refundRow.id, warning: BOOKING_NOT_UPDATED_WARNING }
+  }
   return { success: true, refundId: refundRow.id }
 }
 

@@ -137,6 +137,11 @@ function makeAdminClient(config: {
   invoice?: Record<string, unknown> | null
   rpcResult?: unknown
   rpcError?: { message: string } | null
+  /**
+   * A write the database refuses, matched by table, operation and the columns
+   * written. It resolves to `{ error }`, as supabase-js does, rather than throwing.
+   */
+  failWrite?: { table: string; op: 'insert' | 'update'; column: string }
 }) {
   const updates: Array<{ table: string; values: Record<string, unknown> }> = []
   const inserts: Array<{ table: string; values: unknown }> = []
@@ -157,11 +162,22 @@ function makeAdminClient(config: {
     })
     chain.insert = vi.fn((values: unknown) => {
       state.op = 'insert'
+      state.values = values as Record<string, unknown>
       inserts.push({ table, values })
       return chain
     })
 
     const resolve = () => {
+      const failing = config.failWrite
+      if (
+        failing &&
+        failing.table === table &&
+        failing.op === state.op &&
+        state.values &&
+        failing.column in state.values
+      ) {
+        return { data: null, error: { message: 'write refused', code: '42501' } }
+      }
       if (state.op === 'update') return { data: null, error: null }
       if (state.op === 'insert') {
         if (table === 'invoice_vendors') {
@@ -894,5 +910,105 @@ describe('retryPrivateBookingInvoiceEmail', () => {
 
     await retryPrivateBookingInvoiceEmail(BOOKING_ID)
     expect(mockedSendInvoiceEmail.mock.calls[0][6].deposit.treatment).toBe('deducted')
+  })
+})
+
+describe('an invoice that was emailed but whose record did not save', () => {
+  const SENT_BUT_NOT_RECORDED =
+    'The invoice was emailed, but the app could not record that it was sent, so it may still show as draft or unsent. Do not send it again: the customer already has it.'
+
+  // Each write made after a successful send. Any one of them failing must not
+  // turn into an error, or staff would send the invoice a second time.
+  const sites = [
+    { name: 'the email log', failWrite: { table: 'invoice_email_logs', op: 'insert', column: 'sent_to' } },
+    { name: "the invoice's sent stamp", failWrite: { table: 'invoices', op: 'update', column: 'sent_at' } },
+    { name: 'the draft to sent move', failWrite: { table: 'invoices', op: 'update', column: 'status' } },
+    { name: "the booking's sent stamp", failWrite: { table: 'private_bookings', op: 'update', column: 'invoice_sent_at' } },
+  ] as const
+
+  it.each(sites)('generate reports success with a warning when $name fails', async ({ failWrite }) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockedCreateAdminClient.mockReturnValue(
+      makeAdminClient({ booking: buildBooking(), invoice: buildInvoice(), failWrite }),
+    )
+
+    const result = await generatePrivateBookingInvoice({
+      bookingId: BOOKING_ID,
+      depositTreatment: 'held_separately',
+    })
+
+    expect(result.error).toBeUndefined()
+    expect(result.sent).toBe(true)
+    expect(result.warning).toBe(SENT_BUT_NOT_RECORDED)
+    expect(mockedSendInvoiceEmail).toHaveBeenCalledTimes(1)
+    // settleWrite reported it at error level.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`[${failWrite.table}]`),
+      expect.objectContaining({ code: '42501' }),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it.each(sites)('retry reports success with a warning when $name fails', async ({ failWrite }) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockedCreateAdminClient.mockReturnValue(
+      makeAdminClient({
+        booking: buildBooking({ invoice_id: INVOICE_ID, invoice_deposit_treatment: 'held_separately' }),
+        invoice: buildInvoice(),
+        failWrite,
+      }),
+    )
+
+    const result = await retryPrivateBookingInvoiceEmail(BOOKING_ID)
+
+    expect(result.error).toBeUndefined()
+    expect(result.sent).toBe(true)
+    expect(result.warning).toBe(SENT_BUT_NOT_RECORDED)
+    errorSpy.mockRestore()
+  })
+
+  it('carries no warning when every record saves', async () => {
+    mockedCreateAdminClient.mockReturnValue(
+      makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+    )
+    const generated = await generatePrivateBookingInvoice({
+      bookingId: BOOKING_ID,
+      depositTreatment: 'held_separately',
+    })
+    expect(generated).toEqual({
+      invoiceId: INVOICE_ID,
+      invoiceNumber: 'INV-003WD',
+      sent: true,
+      warning: undefined,
+    })
+
+    mockedCreateAdminClient.mockReturnValue(
+      makeAdminClient({
+        booking: buildBooking({ invoice_id: INVOICE_ID, invoice_deposit_treatment: 'held_separately' }),
+        invoice: buildInvoice(),
+      }),
+    )
+    expect(await retryPrivateBookingInvoiceEmail(BOOKING_ID)).toEqual({ sent: true })
+  })
+
+  it('keeps the send error, not the record warning, when the email itself failed', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockedSendInvoiceEmail.mockResolvedValue({ success: false, error: 'Mailbox refused the message' })
+    mockedCreateAdminClient.mockReturnValue(
+      makeAdminClient({
+        booking: buildBooking(),
+        invoice: buildInvoice(),
+        failWrite: { table: 'invoice_email_logs', op: 'insert', column: 'sent_to' },
+      }),
+    )
+
+    const result = await generatePrivateBookingInvoice({
+      bookingId: BOOKING_ID,
+      depositTreatment: 'held_separately',
+    })
+
+    expect(result.sent).toBe(false)
+    expect(result.warning).toBe('Mailbox refused the message')
+    errorSpy.mockRestore()
   })
 })

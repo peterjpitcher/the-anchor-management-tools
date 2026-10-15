@@ -141,4 +141,73 @@ describe('renderInsightsEmail', () => {
     expect(html).toContain('Shred after the meeting.')
     expect(text).toContain('- Biggest win: ')
   })
+  describe('private bookings: paperwork outstanding', () => {
+    const TITLE = 'Private bookings: paperwork outstanding'
+    const LINE = 'Smith party, Sat 26 Sep: The contract has not been sent. The event is tomorrow.'
+    const EMPTY = 'No private booking has paperwork outstanding with the event 14 days away or less.'
+
+    function between(output: string, from: string, to: string): string {
+      const start = output.indexOf(from)
+      expect(start).toBeGreaterThan(-1)
+      return output.slice(start, output.indexOf(to, start))
+    }
+
+    it('prints every flagged booking under the private hire section, with a link to the booking', () => {
+      const { html, text } = render()
+      const section = between(html, ': Private hire</h2>', ': Parking</h2>')
+      expect(section).toContain(`<strong>${TITLE}</strong>`)
+      expect(section).toContain(`<li style="margin:0 0 5px">${LINE} <a href="https://management.example.test/private-bookings/p1"`)
+      expect(section).not.toContain(EMPTY)
+      const textSection = between(text, 'PRIVATE HIRE', 'PARKING')
+      expect(textSection).toContain(`\n${TITLE}\n- ${LINE} (https://management.example.test/private-bookings/p1)`)
+    })
+
+    it('prints the whole list, however many bookings and however tight the row budget', () => {
+      const { html, text, rowsShown } = render({ heavy: true })
+      // The heavy fixture has more exceptions than the email shows as rows.
+      expect(rowsShown).toBeLessThanOrEqual(EMAIL_BUDGET.exceptionRows)
+      for (const output of [html, text]) {
+        expect(output.split('The contract has not been sent. The event is tomorrow.').length - 1).toBe(6)
+      }
+    })
+
+    it('says so in one line when nothing is outstanding', () => {
+      const report = buildFixtureReport()
+      const privateHire = report.sections.find((section) => section.key === 'private_hire')
+      if (!privateHire) throw new Error('No private hire section')
+      privateHire.lists = privateHire.lists.map((list) => (list.inEmail ? { ...list, items: [] } : list))
+      const { html, text } = renderInsightsEmail(report, { appUrl: FIXTURE_APP_URL })
+      const section = between(html, ': Private hire</h2>', ': Parking</h2>')
+      expect(section).toContain(`<strong>${TITLE}</strong>`)
+      expect(section).toContain(`>${EMPTY}</p>`)
+      expect(section).not.toContain('The contract has not been sent.')
+      expect(between(text, 'PRIVATE HIRE', 'PARKING')).toContain(`\n${TITLE}\n  ${EMPTY}`)
+    })
+
+    it('keeps lists that are not marked for the email on the Insights page only', () => {
+      const { html, text } = render()
+      for (const output of [html, text]) {
+        expect(output).not.toContain('deposit outstanding, no contract')
+        expect(output).not.toContain('Next 14 days</strong>')
+      }
+    })
+
+    it('leaves the list out when the section could not be checked', () => {
+      const { html, text } = render({ notChecked: ['private_hire'] })
+      expect(html).not.toContain(TITLE)
+      expect(text).not.toContain(TITLE)
+    })
+
+    it('never prints undefined, NaN or Invalid Date in the subject, html or text, with bookings or without', () => {
+      const empty = buildFixtureReport()
+      for (const section of empty.sections) section.lists = section.lists.map((list) => (list.inEmail ? { ...list, items: [] } : list))
+      const emails = [render(), render({ heavy: true }), renderInsightsEmail(empty, { appUrl: FIXTURE_APP_URL })]
+      for (const email of emails) {
+        for (const part of [email.subject, email.html, email.text]) {
+          expect(part).not.toMatch(/undefined|NaN|Invalid Date/)
+          expect(part).not.toContain(String.fromCharCode(0x2014))
+        }
+      }
+    })
+  })
 })

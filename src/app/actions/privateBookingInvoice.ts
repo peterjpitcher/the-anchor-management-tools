@@ -43,6 +43,7 @@ import { formatDateFull } from '@/lib/dateUtils'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export type DepositTreatment = 'held_separately' | 'deducted'
 
@@ -296,10 +297,17 @@ async function resolveInvoiceVendor(
   if (existing.vendorId) {
     // Refresh contact details but never the name: renaming a shared vendor
     // would silently restate historical invoices that point at it.
-    await db
-      .from('invoice_vendors')
-      .update({ email, phone, updated_at: new Date().toISOString() })
-      .eq('id', existing.vendorId)
+    await settleWrite(
+      db
+        .from('invoice_vendors')
+        .update({ email, phone, updated_at: new Date().toISOString() })
+        .eq('id', existing.vendorId),
+      {
+        table: 'invoice_vendors',
+        what: 'Refreshing the invoice vendor contact details',
+        ids: { vendorId: existing.vendorId, bookingId: booking.id },
+      }
+    )
 
     return { vendorId: existing.vendorId, created: false }
   }
@@ -464,7 +472,21 @@ export async function previewPrivateBookingInvoice(
 interface SendOutcome {
   sent: boolean
   error?: string
+  /**
+   * Set only when the email went but a record of it did not save. Never an
+   * error: the customer already has the invoice, so an error would invite a
+   * second send.
+   */
+  warning?: string
 }
+
+/**
+ * Shown when the invoice was emailed but the log, the sent stamp, the draft to
+ * sent move or the booking's sent stamp did not save. The booking page can then
+ * still offer Email Invoice, so staff are told not to press it.
+ */
+const SENT_BUT_NOT_RECORDED_WARNING =
+  'The invoice was emailed, but the app could not record that it was sent, so it may still show as draft or unsent. Do not send it again: the customer already has it.'
 
 async function deliverInvoice(
   invoice: InvoiceWithDetails,
@@ -527,16 +549,24 @@ async function deliverInvoice(
         : undefined,
   })
 
-  await db.from('invoice_email_logs').insert({
-    invoice_id: invoice.id,
-    sent_to: recipient,
-    sent_by: actorId,
-    subject,
-    body,
-    status: result.success ? 'sent' : 'failed',
-    error_message: result.success ? null : result.error ?? 'Unknown error',
-    message_id: result.messageId ?? null,
-  })
+  const logged = await settleWrite(
+    db.from('invoice_email_logs').insert({
+      invoice_id: invoice.id,
+      sent_to: recipient,
+      sent_by: actorId,
+      subject,
+      body,
+      status: result.success ? 'sent' : 'failed',
+      error_message: result.success ? null : result.error ?? 'Unknown error',
+      message_id: result.messageId ?? null,
+    }),
+    {
+      table: 'invoice_email_logs',
+      what: 'Logging the private booking invoice email',
+      ids: { invoiceId: invoice.id, bookingId: booking.id, sendSucceeded: result.success },
+      note: 'the send outcome is unaffected',
+    }
+  )
 
   if (!result.success) {
     // A timeout after the request left: the customer may already have the invoice. Say so,
@@ -578,21 +608,51 @@ async function deliverInvoice(
   // Delivery is recorded on sent_at, never by overwriting status: this invoice
   // may legitimately already be 'partially_paid' or 'paid', and those values
   // are mutually exclusive with 'sent' in the same column.
-  await db.from('invoices').update({ sent_at: sentAt, sent_to: recipient }).eq('id', invoice.id)
+  const stamped = await settleWrite(
+    db.from('invoices').update({ sent_at: sentAt, sent_to: recipient }).eq('id', invoice.id),
+    {
+      table: 'invoices',
+      what: 'Recording when the invoice was sent',
+      ids: { invoiceId: invoice.id, bookingId: booking.id },
+      note: 'the email itself was sent',
+    }
+  )
 
   // Keep the legacy status mirror honest for the no-payments case, where
   // 'draft' would otherwise persist after the customer already had the
   // invoice. The conditional eq() means an invoice born 'partially_paid' or
   // 'paid' is left exactly as it is.
-  await db
-    .from('invoices')
-    .update({ status: 'sent' })
-    .eq('id', invoice.id)
-    .eq('status', 'draft')
-  await db
-    .from('private_bookings')
-    .update({ invoice_sent_at: sentAt })
-    .eq('id', booking.id)
+  const statusMoved = await settleWrite(
+    db
+      .from('invoices')
+      .update({ status: 'sent' })
+      .eq('id', invoice.id)
+      .eq('status', 'draft'),
+    {
+      table: 'invoices',
+      what: 'Moving the draft invoice to sent',
+      ids: { invoiceId: invoice.id, bookingId: booking.id },
+      note: 'the email itself was sent',
+    }
+  )
+  const bookingStamped = await settleWrite(
+    db
+      .from('private_bookings')
+      .update({ invoice_sent_at: sentAt })
+      .eq('id', booking.id),
+    {
+      table: 'private_bookings',
+      what: 'Recording when the booking invoice was sent',
+      ids: { bookingId: booking.id, invoiceId: invoice.id },
+      note: 'the email itself was sent',
+    }
+  )
+
+  // The email has gone. A record that did not save becomes a warning, never an
+  // error, so staff are not led into sending it a second time.
+  if (!logged || !stamped || !statusMoved || !bookingStamped) {
+    return { sent: true, warning: SENT_BUT_NOT_RECORDED_WARNING }
+  }
 
   return { sent: true }
 }
@@ -718,7 +778,9 @@ export async function generatePrivateBookingInvoice(
       invoiceId,
       invoiceNumber,
       sent: delivery.sent,
-      warning: delivery.error,
+      // A failed send carries its reason; a send whose record did not save
+      // carries the warning not to send it again.
+      warning: delivery.sent ? delivery.warning : delivery.error,
     }
   } catch (error) {
     if (error instanceof InvoiceMappingError) {
@@ -735,7 +797,7 @@ export async function generatePrivateBookingInvoice(
  */
 export async function retryPrivateBookingInvoiceEmail(
   bookingId: string,
-): Promise<ActionResult<{ sent: true }>> {
+): Promise<ActionResult<{ sent: true; warning?: string }>> {
   try {
     const gate = await requireSuperAdmin()
     if ('error' in gate) return { error: gate.error }
@@ -767,6 +829,7 @@ export async function retryPrivateBookingInvoiceEmail(
     revalidatePath(`/private-bookings/${bookingId}`)
 
     if (!delivery.sent) return { error: delivery.error ?? 'The email could not be sent.' }
+    if (delivery.warning) return { sent: true, warning: delivery.warning }
     return { sent: true }
   } catch (error) {
     console.error('[PrivateBookingInvoice] Retry failed', error)

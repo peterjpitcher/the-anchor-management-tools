@@ -9,6 +9,7 @@ import {
   getDefaultTicketTypeId,
   loadBookingItems
 } from '@/lib/events/ticket-type-queries'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export type EventManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -69,7 +70,18 @@ export type EventRefundResult = {
   paypalRefundId?: string
   paypalRefundIds?: string[]
   reason?: string
+  /**
+   * Set when PayPal refunded the money but the original ticket payment could not be marked
+   * refunded, so it still reads as paid. The refund itself counts as done (status is unchanged);
+   * a staff-facing caller should show this so nobody refunds the booking a second time. Never
+   * show it to a guest.
+   */
+  staffWarning?: string
 }
+
+const EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING =
+  'The refund went through, but the original payment was not updated to show it. Do not refund ' +
+  'again: tell the developer so the payment record can be corrected.'
 
 export type EventSeatIncreaseCheckoutResult =
   | {
@@ -397,6 +409,7 @@ export async function processEventRefund(
   let sawPending = false
   let sawFailure = false
   let sawManualRequired = false
+  let paymentRecordNotUpdated = false
   const paypalRefundIds: string[] = []
   const currency = (paymentRows[0]?.currency || 'GBP').toUpperCase()
 
@@ -568,13 +581,26 @@ export async function processEventRefund(
 
       if (mappedStatus === 'refunded') {
         const totalRefundedForPayment = roundCurrencyAmount(alreadyRefunded + amountForPayment)
-        await supabase
-          .from('payments')
-          .update({
-            status: totalRefundedForPayment + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', payment.id)
+        // Never thrown: the catch below would count a refund PayPal has already made as a
+        // failure. The refund stands; staff are told the payment row is out of date instead.
+        const paymentMarked = await settleWrite(
+          supabase
+            .from('payments')
+            .update({
+              status: totalRefundedForPayment + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', payment.id),
+          {
+            table: 'payments',
+            what: 'Recording the payment refund status',
+            ids: { paymentId: payment.id, paypalRefundId: paypalRefund.refundId },
+            note: 'the refund itself went through'
+          }
+        )
+        if (!paymentMarked) {
+          paymentRecordNotUpdated = true
+        }
       }
 
       // An adopted webhook row already raised its analytics event.
@@ -681,7 +707,8 @@ export async function processEventRefund(
     currency,
     paypalRefundId: paypalRefundIds[0],
     paypalRefundIds,
-    reason: fullAmountProcessed ? undefined : 'partial_refund_only'
+    reason: fullAmountProcessed ? undefined : 'partial_refund_only',
+    ...(paymentRecordNotUpdated ? { staffWarning: EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING } : {})
   }
 }
 

@@ -23,6 +23,8 @@ import { getRotaSettings } from '@/app/actions/rota-settings';
 import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { hasPayrollVariance, validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
+import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import {
   PAYROLL_PERIOD_FUTURE_MONTHS,
 } from '@/lib/rota/payroll-periods';
@@ -62,16 +64,33 @@ function toLocalHHMM(isoUtc: string | null | undefined): string | null {
   return local.getHours().toString().padStart(2, '0') + ':' + local.getMinutes().toString().padStart(2, '0');
 }
 
+/**
+ * Clears the month's payroll approval after an edit, so the approved snapshot cannot
+ * outlive the figures it was taken from. Returns false when the delete failed (already
+ * reported by settleWrite): the edit itself has saved by then, so the caller must say
+ * so and tell the user the approval is now out of date.
+ */
 async function invalidatePayrollApproval(
   supabase: ReturnType<typeof createAdminClient>,
   year: number,
   month: number,
-): Promise<void> {
-  await supabase
-    .from('payroll_month_approvals')
-    .delete()
-    .eq('year', year)
-    .eq('month', month);
+): Promise<boolean> {
+  return settleWrite(
+    supabase
+      .from('payroll_month_approvals')
+      .delete()
+      .eq('year', year)
+      .eq('month', month),
+    { table: 'payroll_month_approvals', what: 'Clearing the payroll approval', ids: { year, month } },
+  );
+}
+
+/**
+ * The error for an edit that saved while the month's approval could not be cleared.
+ * It says the change stands, so nobody repeats it believing it was lost.
+ */
+function approvalNotClearedError(year: number, month: number, saved: string): string {
+  return `${saved}, but the payroll approval for ${payrollMonthLabel(year, month)} could not be cleared, so the approved figures are now out of date. Please try again to clear it, or tell the developer if this keeps happening.`;
 }
 
 function payrollMonthLabel(year: number, month: number): string {
@@ -124,9 +143,12 @@ export async function updatePayrollPeriod(
 
   if (error) return { success: false, error: error.message };
 
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The pay period dates were saved') };
+  }
   return { success: true, data: data as PayrollPeriod };
 }
 
@@ -771,18 +793,21 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 
   const logStatus = result.success ? 'sent' : 'failed';
 
-  await supabase.from('rota_email_log').insert({
-    email_type: 'payroll_export',
-    entity_type: 'payroll_month',
-    entity_id: approval.id,
-    to_addresses: [ACCOUNTANT_EMAIL],
-    cc_addresses: ccEmails,
-    subject: `Payroll: ${monthLabel}`,
-    status: logStatus,
-    error_message: result.success ? null : result.error ?? null,
-    message_id: result.success ? result.messageId ?? null : null,
-    sent_by: user.id,
-  });
+  await settleRotaEmailLogWrite(
+    supabase.from('rota_email_log').insert({
+      email_type: 'payroll_export',
+      entity_type: 'payroll_month',
+      entity_id: approval.id,
+      to_addresses: [ACCOUNTANT_EMAIL],
+      cc_addresses: ccEmails,
+      subject: `Payroll: ${monthLabel}`,
+      status: logStatus,
+      error_message: result.success ? null : result.error ?? null,
+      message_id: result.success ? result.messageId ?? null : null,
+      sent_by: user.id,
+    }),
+    { type: 'payroll_export', entityId: approval.id },
+  );
 
   if (!result.success) return { success: false, error: 'Email send failed' };
 
@@ -860,7 +885,11 @@ export async function upsertShiftNote(
   }
 
   if (typeof year === 'number' && typeof month === 'number') {
-    await invalidatePayrollApproval(createAdminClient(), year, month);
+    const approvalCleared = await invalidatePayrollApproval(createAdminClient(), year, month);
+    if (!approvalCleared) {
+      revalidatePath('/rota/payroll');
+      return { success: false, error: approvalNotClearedError(year, month, 'The note change was saved') };
+    }
   }
 
   revalidatePath('/rota/payroll');
@@ -901,9 +930,12 @@ export async function updatePayrollRowTimes(
   if (!result.success) return result;
 
   const supabase = createAdminClient();
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The new times were saved') };
+  }
   return { success: true };
 }
 
@@ -938,8 +970,9 @@ export async function deletePayrollRow(
   }
 
   const supabase = createAdminClient();
-  await invalidatePayrollApproval(supabase, year, month);
+  const approvalCleared = await invalidatePayrollApproval(supabase, year, month);
 
+  // The delete has happened whatever became of the approval, so it is audited either way.
   await logAuditEvent({
     user_id: user.id,
     ...(user.email && { user_email: user.email }),
@@ -955,5 +988,8 @@ export async function deletePayrollRow(
   }).catch(() => {});
 
   revalidatePath('/rota/payroll');
+  if (!approvalCleared) {
+    return { success: false, error: approvalNotClearedError(year, month, 'The row was deleted') };
+  }
   return { success: true };
 }

@@ -20,6 +20,15 @@ const CAP = 7
 const WHEN = new Date('2026-08-22T09:00:00Z')
 
 describe('the frequency cap collision guard', () => {
+  it('allows the November invitation after an exempt round-up but still blocks ordinary neighbours', () => {
+    const when = new Date('2026-11-02T09:00:00Z')
+    const roundup = { name: 'November round-up', scheduledFor: '2026-11-01T09:00:00Z', ignoresFrequencyCap: true }
+    expect(describeFrequencyCapCollision(4, when, [roundup])).toBeNull()
+    expect(describeFrequencyCapCollision(4, when, [roundup,
+      { name: 'Ordinary event', scheduledFor: '2026-11-03T09:00:00Z' },
+    ])).toContain('Ordinary event')
+  })
+
   it('refuses a slot inside the window, because the second send would reach nobody', () => {
     const message = describeFrequencyCapCollision(CAP, WHEN, [
       { name: 'Lunch from September', scheduledFor: '2026-08-16T09:00:00Z' },

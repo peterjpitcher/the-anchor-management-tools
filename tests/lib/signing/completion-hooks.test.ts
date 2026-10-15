@@ -271,6 +271,36 @@ describe('a signed booking contract', () => {
   })
 })
 
+describe('a signed booking contract sent in the older form, with the food agreement on its last page', () => {
+  const combined = () => contractDocument({ context: { contract_version: 3, includes_waiver: true } })
+
+  it('accepts the contract and signs the food agreement, with an audit row for each', async () => {
+    await runCompletionHook(combined(), [])
+
+    expect(booking()).toMatchObject({ contract_accepted_at: SIGNED_AT, waiver_status: 'signed' })
+    expect(audit()).toEqual([
+      expect.objectContaining({ booking_id: BOOKING, field_name: 'waiver_status', new_value: 'signed' }),
+      expect.objectContaining({ booking_id: BOOKING, action: 'contract_accepted' }),
+    ])
+  })
+
+  it('still signs the food agreement when the deposit accepted the contract first', async () => {
+    seed({ private_bookings: [bookingRow({ contract_accepted_at: '2026-10-11T09:00:00.000Z', contract_acceptance_method: 'deposit' })] })
+
+    await runCompletionHook(combined(), [])
+
+    expect(booking()).toMatchObject({ contract_acceptance_method: 'deposit', waiver_status: 'signed' })
+    expect(audit()).toHaveLength(1)
+  })
+
+  it('changes nothing when run a second time', async () => {
+    await runCompletionHook(combined(), [])
+    await runCompletionHook(combined(), [])
+
+    expect(audit()).toHaveLength(2)
+  })
+})
+
 describe('a signed self-catering and outside food agreement', () => {
   it.each(['required', 'sent', 'overdue', 'not_required'])(
     'marks the agreement signed and records that it was %s before',

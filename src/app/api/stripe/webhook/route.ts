@@ -14,6 +14,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 export const runtime = 'nodejs'
 
@@ -63,19 +64,26 @@ async function logStripeWebhook(
   }
 ): Promise<void> {
   try {
-    await supabase.from('webhook_logs').insert({
-      webhook_type: 'stripe',
-      status: input.status,
-      headers: sanitizeStripeHeadersForLog(input.headers),
-      body: truncate(input.body, 10000),
-      params: {
-        event_id: input.eventId ?? null,
-        event_type: input.eventType ?? null
-      },
-      error_message: truncate(input.errorMessage, 500)
-    })
+    await settleWrite(
+      supabase.from('webhook_logs').insert({
+        webhook_type: 'stripe',
+        status: input.status,
+        headers: sanitizeStripeHeadersForLog(input.headers),
+        body: truncate(input.body, 10000),
+        params: {
+          event_id: input.eventId ?? null,
+          event_type: input.eventType ?? null
+        },
+        error_message: truncate(input.errorMessage, 500)
+      }),
+      {
+        table: 'webhook_logs',
+        what: 'Storing the Stripe webhook log',
+        ids: { status: input.status, eventId: input.eventId }
+      }
+    )
   } catch (error) {
-    logger.warn('Failed to store Stripe webhook log', {
+    logger.error('Failed to store Stripe webhook log', {
       metadata: {
         status: input.status,
         eventId: input.eventId,
@@ -338,7 +346,7 @@ async function handleChargeRefunded(
   const newStatus = fullyRefunded ? 'refunded' : 'partially_refunded'
 
   const { data: payments, error: lookupError } = await supabase.from('payments')
-    .select('id, table_booking_id, customer_id')
+    .select('id, table_booking_id')
     .eq('stripe_payment_intent_id', paymentIntentId)
     .not('table_booking_id', 'is', null)
 
@@ -358,13 +366,33 @@ async function handleChargeRefunded(
     throw updateError
   }
 
-  const payment = payments[0] as { table_booking_id?: string; customer_id?: string }
-  const customerId = payment.customer_id
+  const tableBookingId = (payments[0] as { table_booking_id?: string | null }).table_booking_id
+  if (!tableBookingId) {
+    return
+  }
 
-  if (customerId) {
+  // payments has no customer_id: the customer is on the booking. The refund is already saved,
+  // so a failed read here only costs the analytics event.
+  const { data: booking, error: bookingLookupError } = await supabase.from('table_bookings')
+    .select('id, customer_id')
+    .eq('id', tableBookingId)
+    .maybeSingle()
+
+  if (bookingLookupError) {
+    logger.warn('Refund webhook could not load table booking for analytics', {
+      metadata: {
+        tableBookingId,
+        paymentIntentId,
+        error: bookingLookupError.message,
+      }
+    })
+    return
+  }
+
+  if (booking?.customer_id) {
     await recordAnalyticsEventSafe(supabase, {
-      customerId,
-      tableBookingId: payment.table_booking_id,
+      customerId: booking.customer_id,
+      tableBookingId,
       eventType: fullyRefunded ? 'payment_refunded' : 'payment_partially_refunded',
       metadata: {
         stripe_payment_intent_id: paymentIntentId,

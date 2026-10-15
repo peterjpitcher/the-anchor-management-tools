@@ -1,3 +1,4 @@
+import { formatDateInLondon } from '@/lib/dateUtils'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { quoteContentFingerprint, type QuoteContentForFingerprint } from './documents/quote-fingerprint'
 import type { SigningDocumentRow, SigningKind, SigningPartyRow } from './types'
@@ -102,7 +103,8 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
       .eq('waiver_status', read)
       // Written this way because a plain "not cancelled" test also drops a booking with no status.
       .or('status.is.null,status.neq.cancelled')
-      .select('id')
+      // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+      .select('id, status')
     if (error) throw new Error(`Could not mark the waiver signed: ${error.message}`)
     if (changed && changed.length > 0) before = read
   }
@@ -136,10 +138,14 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
  * A signed contract is an accepted contract. Paying the deposit also accepts it and may have
  * done so first, in which case that earlier acceptance is left as it stands. The self-catering
  * and outside food agreement is a separate document with its own signature, and is marked
- * signed by its own hook below, never by this one.
+ * signed by its own hook below. The one exception is a contract sent in the older form, with the
+ * agreement on its last page (`context.includes_waiver`): the customer's one signature covers
+ * both, so that signs the agreement too. A staff tab left open across a release can still send
+ * one (Vercel keeps a page on the deployment it loaded from); one was signed on 14 October 2026.
  */
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
+  if (document.context.includes_waiver === true) await markWaiverSigned(admin, document)
   const now = new Date().toISOString()
   // Accepted when it was signed, not when this ran: a retry days later must not move the time.
   const acceptedAt = document.completed_at ?? now
@@ -158,7 +164,8 @@ const acceptBookingContract: SigningCompletionHook = async (document) => {
   if (typeof document.context.contract_version === 'number') {
     update = update.eq('contract_version', document.context.contract_version)
   }
-  const { data: accepted, error } = await update.select('id')
+  // The returned rows must carry status: PostgREST applies an .or() filter to them as well.
+  const { data: accepted, error } = await update.select('id, status')
   if (error) throw new Error(`Could not mark the contract accepted: ${error.message}`)
   if (!accepted || accepted.length === 0) return
 
@@ -226,6 +233,99 @@ const acceptQuote: SigningCompletionHook = async (document) => {
   if (error) throw new Error(`Could not mark the quote accepted: ${error.message}`)
 }
 
+/** The statuses a deduction can be in while the customer's agreement still means something. */
+const OPEN_DEDUCTION_STATUSES = ['proposed', 'discussed']
+
+/**
+ * The line a signed deduction agreement leaves on the deduction, dated on the London calendar by
+ * when it was signed. It names the document, which is what makes the hook safe to run twice.
+ */
+export function deductionAgreedNote(document: Pick<SigningDocumentRow, 'id' | 'completed_at'>, now: Date = new Date()): string {
+  const signedOn = formatDateInLondon(document.completed_at ?? now, { day: 'numeric', month: 'long', year: 'numeric' })
+  return `Agreed by the customer online on ${signedOn} (signing reference ${document.id.slice(0, 8).toUpperCase()})`
+}
+
+/**
+ * A signed deposit deduction agreement is the customer's side of the conversation, recorded: the
+ * deduction moves to Discussed with a line saying they agreed online. It is never approved or
+ * applied here, and no money moves: the General Manager still decides (SOP section 25).
+ *
+ * Only a deduction that is still Proposed or Discussed is touched, and the write names the status
+ * it read, so a decision made in the same moment is never overwritten. The change and its audit
+ * row belong together, as for a contract: if the audit row cannot be written the change is put
+ * back and this throws, so the retry does both.
+ */
+const noteDeductionAgreed: SigningCompletionHook = async (document) => {
+  const deductionId = typeof document.context.deduction_id === 'string' ? document.context.deduction_id : null
+  if (!deductionId) return
+  const admin = createAdminClient()
+  const line = deductionAgreedNote(document)
+
+  let before: { status: string; note: string | null; bookingId: string } | null = null
+  let written = ''
+  for (let attempt = 0; attempt < 3 && before === null; attempt += 1) {
+    const { data: deduction, error: readError } = await admin
+      .from('private_booking_deductions')
+      .select('booking_id, status, customer_discussion_note')
+      .eq('id', deductionId)
+      .maybeSingle()
+    if (readError) throw new Error(`Could not read the deduction: ${readError.message}`)
+    // Gone, or already approved, rejected or applied: the decision stands as staff made it.
+    if (!deduction || !OPEN_DEDUCTION_STATUSES.includes(deduction.status as string)) return
+    const note = ((deduction.customer_discussion_note as string | null) ?? '').trim() || null
+    // Already recorded by an earlier run of this hook.
+    if (note?.includes(line)) return
+
+    // Any note staff typed stays, with the agreement on its own line beneath it.
+    written = note ? `${note}\n${line}` : line
+    let update = admin
+      .from('private_booking_deductions')
+      .update({ status: 'discussed', customer_discussion_note: written, updated_at: new Date().toISOString() })
+      .eq('id', deductionId)
+      .eq('status', deduction.status as string)
+    // The note as it was read, too, so a note staff save in the same moment is not lost.
+    update =
+      deduction.customer_discussion_note === null || deduction.customer_discussion_note === undefined
+        ? update.is('customer_discussion_note', null)
+        : update.eq('customer_discussion_note', deduction.customer_discussion_note as string)
+    const { data: changed, error } = await update.select('id')
+    if (error) throw new Error(`Could not record the customer's agreement on the deduction: ${error.message}`)
+    if (changed && changed.length > 0) {
+      before = {
+        status: deduction.status as string,
+        note: (deduction.customer_discussion_note as string | null) ?? null,
+        bookingId: deduction.booking_id as string,
+      }
+    }
+  }
+  if (before === null) {
+    // It moved three times in a row. Fail, so the finishing step runs this again.
+    throw new Error("Could not record the customer's agreement on the deduction: it kept changing")
+  }
+
+  const { error: auditError } = await admin.from('private_booking_audit').insert({
+    booking_id: before.bookingId,
+    action: 'field_updated',
+    field_name: 'deduction_status',
+    old_value: before.status,
+    new_value: 'discussed',
+    performed_by: null,
+    metadata: { via: 'e_signature', signing_document_id: document.id, deduction_id: deductionId },
+  })
+  if (auditError) {
+    // Put back exactly what this wrote, and only if it is still there.
+    const { error: undoError } = await admin
+      .from('private_booking_deductions')
+      .update({ status: before.status, customer_discussion_note: before.note, updated_at: new Date().toISOString() })
+      .eq('id', deductionId)
+      .eq('status', 'discussed')
+      .eq('customer_discussion_note', written)
+    throw new Error(
+      `Could not record the customer's agreement on the deduction: ${auditError.message}${undoError ? ` (and the change could not be put back: ${undoError.message})` : ''}`
+    )
+  }
+}
+
 export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook> = {
   employment_agreement: tickAgreementAccepted,
   terms_variation: recordOnly,
@@ -239,6 +339,7 @@ export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook
   quote_acceptance: acceptQuote,
   client_agreement: recordOnly,
   supplier_confirmation: recordOnly,
+  deposit_deduction_agreement: noteDeductionAgreed,
 }
 
 export async function runCompletionHook(document: SigningDocumentRow, parties: SigningPartyRow[]): Promise<void> {

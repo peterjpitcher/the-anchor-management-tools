@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatDateFull, formatTime12Hour, formatDateTime12Hour, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
+import { formatDateFull, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
+import { paperworkWarning } from "@/lib/private-bookings/paperwork";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
   DndContext,
@@ -1118,6 +1119,8 @@ function AddItemModal({
     const result = await addBookingItem(data);
 
     if (result.success) {
+      // Saved, but the balance status did not update: say so, plainly.
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onItemAdded();
       onClose();
       // Reset form
@@ -1363,6 +1366,7 @@ function DiscountModal({
     });
 
     if (result.success) {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     } else {
@@ -1541,6 +1545,7 @@ function EditItemModal({
     if (result.error) {
       toast.error(`Error: ${result.error}`);
     } else {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     }
@@ -2029,7 +2034,11 @@ export default function PrivateBookingDetailClient({
         }
 
         setInvoiceModalOpen(false);
-        if (result.sent) {
+        if (result.sent && result.warning) {
+          // Emailed, but the record of it did not save: the page may still
+          // offer Email Invoice, so say plainly not to send it again.
+          toast.warning(result.warning, { duration: 12000 });
+        } else if (result.sent) {
           toast.success(`Invoice ${result.invoiceNumber} sent`);
         } else {
           toast.error(
@@ -2051,6 +2060,9 @@ export default function PrivateBookingDetailClient({
       const result = await retryPrivateBookingInvoiceEmail(bookingId);
       if (result.error) {
         toast.error(result.error);
+      } else if (result.warning) {
+        toast.warning(result.warning, { duration: 12000 });
+        router.refresh();
       } else {
         toast.success('Invoice sent');
         router.refresh();
@@ -2210,6 +2222,7 @@ export default function PrivateBookingDetailClient({
     }
     const result = await deleteBookingItem(itemId);
     if (result.success) {
+      if (result.warning) toast.warning(result.warning, { duration: 12000 });
       refreshBooking();
     } else {
       toast.error(result.error ?? "Failed to delete the item.");
@@ -2286,6 +2299,9 @@ export default function PrivateBookingDetailClient({
   }
 
   const isDateTbd = isBookingDateTbd(booking);
+  // Contract or food agreement still unsigned with the event 14 days away or less. A warning
+  // only: the signing panel lower down has the actions.
+  const paperwork = paperworkWarning({ ...booking, date_tbd: isDateTbd }, getTodayIsoDate());
   const internalNotesForDisplay = booking.internal_notes
     ? booking.internal_notes
         .split('\n')
@@ -2536,6 +2552,17 @@ export default function PrivateBookingDetailClient({
           title="Event date and time still to be confirmed"
         >
           Keep this booking in draft until the customer confirms the event details.
+        </Alert>
+      )}
+
+      {paperwork && (
+        <Alert tone="warning" title="Paperwork outstanding">
+          <p>{paperwork.timing}</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {paperwork.sentences.map((sentence) => (
+              <li key={sentence}>{sentence}</li>
+            ))}
+          </ul>
         </Alert>
       )}
 

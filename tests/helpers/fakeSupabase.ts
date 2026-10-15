@@ -5,6 +5,11 @@
  * a `alias:table(columns)` join on `<alias>_id`.
  *
  * `failures` lets a test make one table and operation return an error.
+ *
+ * `uuidColumns` makes the fake as strict as Postgres about uuid filters. By default any value
+ * matches, so a list holding a null (or the string "null") passes here and fails in production
+ * with a 400. Name a table's uuid columns and an eq, neq or in filter on one of them with a
+ * value that is not a uuid returns Postgres's 22P02 error instead of rows.
  */
 type Row = Record<string, any>
 type Op = 'select' | 'insert' | 'update' | 'delete'
@@ -19,6 +24,8 @@ export type FakeSupabase = {
 
 let idCounter = 0
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function matches(row: Row, filters: Array<(row: Row) => boolean>): boolean {
   return filters.every((filter) => filter(row))
 }
@@ -28,6 +35,8 @@ export function createFakeSupabase(
   options: {
     /** Per table, the value that must be unique; an insert repeating it fails with 23505. */
     unique?: Record<string, (row: Row) => unknown>
+    /** Per table, the columns Postgres types as uuid. */
+    uuidColumns?: Record<string, string[]>
   } = {}
 ): FakeSupabase {
   const tables: Record<string, Row[]> = {}
@@ -51,6 +60,15 @@ export function createFakeSupabase(
     let range: { from: number; to: number } | null = null
     let order: { column: string; ascending: boolean } | null = null
     const filters: Array<(row: Row) => boolean> = []
+    let filterError: { code: string; message: string } | null = null
+
+    /** PostgREST sends a JS null in a filter as the text "null", which a uuid column rejects. */
+    function checkUuid(column: string, values: unknown[]): void {
+      if (filterError || !options.uuidColumns?.[name]?.includes(column)) return
+      const badIndex = values.findIndex((value) => typeof value !== 'string' || !UUID_PATTERN.test(value))
+      if (badIndex === -1) return
+      filterError = { code: '22P02', message: `invalid input syntax for type uuid: "${String(values[badIndex])}"` }
+    }
 
     function applyJoins(row: Row): Row {
       if (!selectColumns) return row
@@ -67,6 +85,7 @@ export function createFakeSupabase(
     function execute(): { data: any; error: any; count?: number } {
       const failure = failures.find((f) => f.table === name && f.op === op)
       if (failure) return { data: null, error: failure.error }
+      if (filterError) return { data: null, error: filterError }
 
       if (op === 'insert') {
         const rows = (Array.isArray(payload) ? payload : [payload]).map((row) => {
@@ -174,10 +193,12 @@ export function createFakeSupabase(
         return api
       },
       eq(column: string, value: unknown) {
+        checkUuid(column, [value])
         filters.push((row) => row[column] === value)
         return api
       },
       neq(column: string, value: unknown) {
+        checkUuid(column, [value])
         filters.push((row) => row[column] !== value)
         return api
       },
@@ -186,6 +207,7 @@ export function createFakeSupabase(
         return api
       },
       in(column: string, values: unknown[]) {
+        checkUuid(column, values)
         filters.push((row) => values.includes(row[column]))
         return api
       },

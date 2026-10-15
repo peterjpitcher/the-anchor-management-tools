@@ -54,6 +54,7 @@ import {
   DepositConfirmationError,
   type ConfirmDepositOutcome,
 } from '@/services/private-bookings/deposit-confirmation'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -1421,7 +1422,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
   }
 
   try {
-    await PrivateBookingService.applyBookingDiscount(bookingId, data)
+    const result = await PrivateBookingService.applyBookingDiscount(bookingId, data)
 
     try {
       await logAuditEvent({
@@ -1447,7 +1448,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error applying discount: ', error)
     return { error: getErrorMessage(error) }
@@ -1904,7 +1905,7 @@ export async function addBookingItem(data: {
   const { data: { user } } = await supabase.auth.getUser()
 
   try {
-    await PrivateBookingService.addBookingItem({
+    const result = await PrivateBookingService.addBookingItem({
       booking_id: data.booking_id,
       item_type: data.item_type,
       space_id: data.space_id,
@@ -1950,7 +1951,7 @@ export async function addBookingItem(data: {
     revalidatePath(`/private-bookings/${data.booking_id}`)
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error adding booking item:', error)
     return { error: getErrorMessage(error) }
@@ -2005,7 +2006,7 @@ export async function updateBookingItem(itemId: string, data: {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking item:', error)
     return { error: getErrorMessage(error) }
@@ -2048,7 +2049,7 @@ export async function deleteBookingItem(itemId: string) {
     revalidatePath(`/private-bookings/${result.bookingId}`)
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
     revalidateTag('dashboard')
-    return { success: true }
+    return result.warning ? { success: true, warning: result.warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting booking item:', error)
     return { error: getErrorMessage(error) }
@@ -2259,10 +2260,17 @@ export async function createDepositPaymentOrder(
         existingOrderAmount !== null &&
         (!amountsMatch(existingOrderAmount, depositAmount) || existingOrderCurrency !== PAYPAL_DEFAULT_CURRENCY)
       ) {
-        await admin
-          .from('private_bookings')
-          .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
-          .eq('id', bookingId)
+        await settleWrite(
+          admin
+            .from('private_bookings')
+            .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+            .eq('id', bookingId),
+          {
+            table: 'private_bookings',
+            what: 'Clearing the stale PayPal deposit order',
+            ids: { bookingId, staleOrderId: booking.paypal_deposit_order_id },
+          }
+        )
       }
       // Order is no longer usable — fall through to create a new one
     } catch (lookupError) {
@@ -2840,10 +2848,18 @@ export async function sendDepositPaymentLink(
     })
 
     // Persist the latest order ID
-    await admin
-      .from('private_bookings')
-      .update({ paypal_deposit_order_id: result.orderId })
-      .eq('id', bookingId)
+    await settleWrite(
+      admin
+        .from('private_bookings')
+        .update({ paypal_deposit_order_id: result.orderId })
+        .eq('id', bookingId),
+      {
+        table: 'private_bookings',
+        what: 'Saving the new PayPal deposit order',
+        ids: { bookingId, orderId: result.orderId },
+        note: 'the PayPal order itself was created',
+      }
+    )
 
     // The portal page must never create an order just because an email scanner
     // opened its link. The customer creates/reuses the order with an explicit

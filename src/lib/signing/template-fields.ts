@@ -16,6 +16,16 @@ export const TEMPLATE_MERGE_FIELDS: Record<SigningTemplateKind, readonly string[
   job_offer: ['candidate_name', 'job_title', 'start_date', 'pay_details', 'manager_name', 'date_today'],
   client_agreement: ['client_name', 'services_summary', 'fees_summary', 'start_date', 'manager_name', 'date_today'],
   supplier_confirmation: ['supplier_name', 'service_summary', 'event_date', 'fee_summary', 'manager_name', 'date_today'],
+  deposit_deduction_agreement: [
+    'customer_name',
+    'event_label',
+    'deduction_amount',
+    'deposit_amount',
+    'deduction_reason',
+    'amount_to_return',
+    'manager_name',
+    'date_today',
+  ],
 }
 
 /** The single template each non-policy kind uses. Policies have one template per policy. */
@@ -27,6 +37,7 @@ export const SINGLE_TEMPLATE_SLUGS: Record<Exclude<SigningTemplateKind, 'policy_
   job_offer: 'job-offer',
   client_agreement: 'client-agreement',
   supplier_confirmation: 'supplier-confirmation',
+  deposit_deduction_agreement: 'deposit-deduction-agreement',
 }
 
 /** Merge fields used that this kind is never given, in the order they appear. */

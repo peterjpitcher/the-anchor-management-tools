@@ -36,6 +36,7 @@ import {
   type RecruitmentJobPosting,
   type RecruitmentTemplateType,
 } from '@/types/recruitment'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 type ParsedRecruitmentCv = Awaited<ReturnType<typeof parseRecruitmentCv>>
@@ -910,12 +911,15 @@ export async function saveRecruitmentEmailTemplate(
   if (!subject || !body) throw new Error('Template subject and body are required.')
 
   if (input.isActive) {
-    await supabase
-      .from('recruitment_email_templates')
-      .update({ is_active: false, updated_by: currentUserId ?? null })
-      .eq('type', input.type)
-      .eq('is_active', true)
-      .neq('id', input.id ?? '00000000-0000-0000-0000-000000000000')
+    await settleWrite(
+      supabase
+        .from('recruitment_email_templates')
+        .update({ is_active: false, updated_by: currentUserId ?? null })
+        .eq('type', input.type)
+        .eq('is_active', true)
+        .neq('id', input.id ?? '00000000-0000-0000-0000-000000000000'),
+      { table: 'recruitment_email_templates', what: 'Deactivating the previously active email template', ids: { templateType: input.type, templateId: input.id ?? null } },
+    )
   }
 
   if (input.id) {
@@ -1216,12 +1220,15 @@ export async function processRecruitmentApplicationAi(
       }
     } else if (extraction.error) {
       cvExtractionError = extraction.error
-      await supabase
-        .from('recruitment_candidates')
-        .update({
-          extracted_data: { extraction_error: extraction.error },
-        })
-        .eq('id', candidate.id)
+      await settleWrite(
+        supabase
+          .from('recruitment_candidates')
+          .update({
+            extracted_data: { extraction_error: extraction.error },
+          })
+          .eq('id', candidate.id),
+        { table: 'recruitment_candidates', what: 'Recording the CV extraction error', ids: { candidateId: candidate.id } },
+      )
     }
   }
 
@@ -1276,15 +1283,18 @@ export async function reprocessRecruitmentCandidateCv(
   const parsedCv = await parseRecruitmentCv(upload, { ocr: true })
 
   if (parsedCv.status !== 'done') {
-    await supabase
-      .from('recruitment_candidates')
-      .update({
-        cv_sha256: cvSha256,
-        cv_text: null,
-        cv_extraction_status: parsedCv.status,
-        extracted_data: { extraction_error: parsedCv.error },
-      })
-      .eq('id', candidate.id)
+    await settleWrite(
+      supabase
+        .from('recruitment_candidates')
+        .update({
+          cv_sha256: cvSha256,
+          cv_text: null,
+          cv_extraction_status: parsedCv.status,
+          extracted_data: { extraction_error: parsedCv.error },
+        })
+        .eq('id', candidate.id),
+      { table: 'recruitment_candidates', what: 'Recording the failed CV parse', ids: { candidateId: candidate.id, cvStatus: parsedCv.status } },
+    )
 
     return {
       candidateId: candidate.id,
@@ -1601,10 +1611,13 @@ export async function createRecruitmentApplication(
   }
 
   if (preExtraction?.runId) {
-    await supabase
-      .from('recruitment_ai_runs')
-      .update({ candidate_id: candidate.id })
-      .eq('id', preExtraction.runId)
+    await settleWrite(
+      supabase
+        .from('recruitment_ai_runs')
+        .update({ candidate_id: candidate.id })
+        .eq('id', preExtraction.runId),
+      { table: 'recruitment_ai_runs', what: 'Linking the AI extraction run to the candidate', ids: { runId: preExtraction.runId, candidateId: candidate.id } },
+    )
   }
 
   if (options.cvUpload) {
@@ -1736,14 +1749,17 @@ export async function createRecruitmentApplication(
       }
     } else if (extraction.error) {
       cvExtractionError = extraction.error
-      await supabase
-        .from('recruitment_candidates')
-        .update({
-          extracted_data: {
-            extraction_error: extraction.error,
-          },
-        })
-        .eq('id', candidate.id)
+      await settleWrite(
+        supabase
+          .from('recruitment_candidates')
+          .update({
+            extracted_data: {
+              extraction_error: extraction.error,
+            },
+          })
+          .eq('id', candidate.id),
+        { table: 'recruitment_candidates', what: 'Recording the CV extraction error', ids: { candidateId: candidate.id } },
+      )
     }
   }
 
@@ -1837,6 +1853,9 @@ export async function transitionRecruitmentApplicationStatus(
   return data as RecruitmentApplication
 }
 
+export const BULK_REJECTION_REASON_NOT_SAVED =
+  'The application was rejected, but the rejection reason could not be saved.'
+
 export async function bulkUpdateRecruitmentApplications(
   applicationIds: string[],
   input: {
@@ -1877,10 +1896,18 @@ export async function bulkUpdateRecruitmentApplications(
       }, supabase)
 
       if (input.action === 'reject' && input.note) {
-        await supabase
-          .from('recruitment_applications')
-          .update({ rejection_reason: input.note })
-          .eq('id', id)
+        const reasonSaved = await settleWrite(
+          supabase
+            .from('recruitment_applications')
+            .update({ rejection_reason: input.note })
+            .eq('id', id),
+          { table: 'recruitment_applications', what: 'Saving the rejection reason', ids: { applicationId: id } },
+        )
+        // The status moved but the reason was lost: count it as a failure so staff see it.
+        if (!reasonSaved) {
+          results.push({ id, success: false, error: BULK_REJECTION_REASON_NOT_SAVED })
+          continue
+        }
       }
 
       results.push({ id, success: true })
@@ -2102,10 +2129,13 @@ export async function recordRecruitmentAppointmentOutcome(
       actorUserId: currentUserId ?? null,
     }, supabase)
   } else if (parsed.status === 'cancelled' && appointment.slot_id) {
-    await supabase
-      .from('recruitment_appointment_slots')
-      .update({ status: 'open' })
-      .eq('id', appointment.slot_id)
+    await settleWrite(
+      supabase
+        .from('recruitment_appointment_slots')
+        .update({ status: 'open' })
+        .eq('id', appointment.slot_id),
+      { table: 'recruitment_appointment_slots', what: 'Reopening the slot of a cancelled appointment', ids: { appointmentId, slotId: appointment.slot_id } },
+    )
   }
 
   if (parsed.status !== 'scheduled') {
@@ -2153,10 +2183,13 @@ export async function cancelRecruitmentAppointmentByStaff(
   if (updateError) throw updateError
 
   if (appointment.slot_id) {
-    await supabase
-      .from('recruitment_appointment_slots')
-      .update({ status: 'open' })
-      .eq('id', appointment.slot_id)
+    await settleWrite(
+      supabase
+        .from('recruitment_appointment_slots')
+        .update({ status: 'open' })
+        .eq('id', appointment.slot_id),
+      { table: 'recruitment_appointment_slots', what: 'Reopening the slot of a cancelled appointment', ids: { appointmentId, slotId: appointment.slot_id } },
+    )
   }
 
   await transitionRecruitmentApplicationStatus(appointment.application_id, 'on_hold', {
@@ -2560,6 +2593,9 @@ async function copyRecruitmentCvToEmployee(
   return { copied: true, storagePath: upload?.path ?? destinationPath }
 }
 
+export const HIRE_RIGHT_TO_WORK_NOT_COPIED =
+  "The employee was created and the hire was completed, but their right to work check could not be copied across. Record it on the employee's Right to Work tab before they start."
+
 export async function completeRecruitmentHireHandoff(
   applicationId: string,
   employeeId: string,
@@ -2578,19 +2614,25 @@ export async function completeRecruitmentHireHandoff(
   await copyRecruitmentCvToEmployee(application.candidate_id, employeeId, supabase)
 
   const candidate = application.candidate as any
+  // The employee already exists by now, so a failed copy does not undo the hire: it comes
+  // back as a warning so staff record the check by hand before the person starts.
+  let rightToWorkSaved = true
   if (
     candidate.right_to_work_status === 'verified' &&
     candidate.right_to_work_document_type &&
     candidate.right_to_work_checked_at
   ) {
-    await supabase.from('employee_right_to_work').upsert({
-      employee_id: employeeId,
-      document_type: candidate.right_to_work_document_type,
-      verification_date: String(candidate.right_to_work_checked_at).slice(0, 10),
-      verified_by_user_id: candidate.right_to_work_checked_by ?? null,
-      check_method: 'recruitment_handoff',
-      document_details: 'Seeded from verified recruitment candidate record',
-    })
+    rightToWorkSaved = await settleWrite(
+      supabase.from('employee_right_to_work').upsert({
+        employee_id: employeeId,
+        document_type: candidate.right_to_work_document_type,
+        verification_date: String(candidate.right_to_work_checked_at).slice(0, 10),
+        verified_by_user_id: candidate.right_to_work_checked_by ?? null,
+        check_method: 'recruitment_handoff',
+        document_details: 'Seeded from verified recruitment candidate record',
+      }),
+      { table: 'employee_right_to_work', what: 'Seeding right to work from the recruitment candidate', ids: { applicationId, employeeId } },
+    )
   }
 
   const { error: candidateError } = await supabase
@@ -2607,7 +2649,11 @@ export async function completeRecruitmentHireHandoff(
     force: true,
   }, supabase)
 
-  return { success: true }
+  return {
+    success: true,
+    rightToWorkSaved,
+    warning: rightToWorkSaved ? undefined : HIRE_RIGHT_TO_WORK_NOT_COPIED,
+  }
 }
 
 // runRecruitmentRetentionCleanup lives in src/services/recruitment-retention.ts.
@@ -2639,22 +2685,83 @@ export async function eraseRecruitmentCandidate(
 
   if (appointmentError) throw appointmentError
 
+  // Erasure fails closed. Every step below runs even when an earlier one fails, and each is
+  // safe to repeat: a retry re-selects appointments still scheduled, removes the CV again
+  // from the path still on the record, and re-scrubs the messages. The candidate row is
+  // cleared last and only when everything else worked, because setting anonymised_at is
+  // what marks the erasure done (and hides the Erase button that a retry needs).
+  const incomplete: string[] = []
+
+  let appointmentsNotCancelled = 0
   for (const appointment of futureAppointments ?? []) {
-    await supabase
-      .from('recruitment_candidate_appointments')
-      .update({ status: 'cancelled', calendar_sync_status: 'pending', calendar_last_error: 'Cancelled by GDPR erasure' })
-      .eq('id', appointment.id)
+    const cancelled = await settleWrite(
+      supabase
+        .from('recruitment_candidate_appointments')
+        .update({ status: 'cancelled', calendar_sync_status: 'pending', calendar_last_error: 'Cancelled by GDPR erasure' })
+        .eq('id', appointment.id),
+      { table: 'recruitment_candidate_appointments', what: 'Cancelling a future appointment for erasure', ids: { candidateId, appointmentId: appointment.id } },
+    )
+
+    if (!cancelled) {
+      // Reopening the slot of an appointment that is still booked would double-book it.
+      appointmentsNotCancelled += 1
+      continue
+    }
 
     if (appointment.slot_id) {
-      await supabase
-        .from('recruitment_appointment_slots')
-        .update({ status: 'open' })
-        .eq('id', appointment.slot_id)
+      await settleWrite(
+        supabase
+          .from('recruitment_appointment_slots')
+          .update({ status: 'open' })
+          .eq('id', appointment.slot_id),
+        { table: 'recruitment_appointment_slots', what: 'Reopening the slot of an appointment cancelled for erasure', ids: { candidateId, appointmentId: appointment.id, slotId: appointment.slot_id } },
+      )
     }
   }
 
+  if (appointmentsNotCancelled > 0) {
+    incomplete.push(
+      `${appointmentsNotCancelled} future ${appointmentsNotCancelled === 1 ? 'appointment' : 'appointments'} could not be cancelled`
+    )
+  }
+
   if (candidate.cv_file_path) {
-    await supabase.storage.from(RECRUITMENT_CV_BUCKET).remove([candidate.cv_file_path])
+    let removeError: { message: string } | null
+    try {
+      const removal = await supabase.storage.from(RECRUITMENT_CV_BUCKET).remove([candidate.cv_file_path])
+      removeError = removal.error
+    } catch (removalFailure) {
+      removeError = { message: removalFailure instanceof Error ? removalFailure.message : String(removalFailure) }
+    }
+    if (removeError) {
+      // The path can hold personal data, so only the candidate id and the storage message.
+      // cv_file_path stays on the record (the candidate row is not cleared) so a retry can
+      // remove the file; clearing it now would orphan the file with nothing pointing at it.
+      console.error('[recruitment_candidates] Removing the CV file for erasure failed', {
+        candidateId,
+        message: removeError.message,
+      })
+      incomplete.push('the CV file could not be deleted')
+    }
+  }
+
+  const messagesScrubbed = await settleWrite(
+    supabase
+      .from('recruitment_communications')
+      .update({
+        final_body: '[erased under GDPR request]',
+        subject: null,
+        metadata: { erasure_reason: reason, erased_at: nowIso },
+      })
+      .eq('candidate_id', candidateId),
+    { table: 'recruitment_communications', what: 'Scrubbing message bodies for erasure', ids: { candidateId } },
+  )
+  if (!messagesScrubbed) incomplete.push('their message history could not be scrubbed')
+
+  if (incomplete.length > 0) {
+    throw new Error(
+      `Erasure is incomplete: ${incomplete.join('; ')}. The candidate's details have not been erased yet. Try the erasure again.`
+    )
   }
 
   const { error: updateError } = await supabase
@@ -2684,15 +2791,6 @@ export async function eraseRecruitmentCandidate(
     .eq('id', candidateId)
 
   if (updateError) throw updateError
-
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      final_body: '[erased under GDPR request]',
-      subject: null,
-      metadata: { erasure_reason: reason, erased_at: nowIso },
-    })
-    .eq('candidate_id', candidateId)
 
   return { success: true, cancelledAppointments: futureAppointments?.length ?? 0 }
 }

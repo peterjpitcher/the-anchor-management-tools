@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -71,9 +72,12 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
   }
 
   // Acquire lock
-  await admin.from('system_settings').upsert(
-    { key: SYNC_LOCK_KEY, value: { in_progress: true, started_at: new Date().toISOString() } },
-    { onConflict: 'key' }
+  await settleWrite(
+    admin.from('system_settings').upsert(
+      { key: SYNC_LOCK_KEY, value: { in_progress: true, started_at: new Date().toISOString() } },
+      { onConflict: 'key' }
+    ),
+    { table: 'system_settings', what: 'Taking the calendar sync lock', ids: { key: SYNC_LOCK_KEY } }
   )
 
   try {
@@ -206,9 +210,12 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     })
   } finally {
     // -- Release lock -------------------------------------------------------
-    await admin.from('system_settings').upsert(
-      { key: SYNC_LOCK_KEY, value: { in_progress: false, started_at: null } },
-      { onConflict: 'key' }
+    await settleWrite(
+      admin.from('system_settings').upsert(
+        { key: SYNC_LOCK_KEY, value: { in_progress: false, started_at: null } },
+        { onConflict: 'key' }
+      ),
+      { table: 'system_settings', what: 'Releasing the calendar sync lock', ids: { key: SYNC_LOCK_KEY }, note: 'the lock stays set until it goes stale after 10 minutes' }
     )
   }
 }

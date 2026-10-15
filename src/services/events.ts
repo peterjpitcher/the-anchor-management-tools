@@ -1,6 +1,7 @@
 import { attachEventCapacity } from '@/lib/events/capacity'
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { settleWrite } from '@/lib/supabase/settle-write';
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links';
 import { z } from 'zod';
@@ -13,6 +14,13 @@ import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/even
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
+
+// Waitlist rows still open when an event is cancelled. These must be values the tables' status
+// checks allow (supabase/migrations/20260420000003_bookings_v05_foundations.sql): the cascade
+// used to filter on 'pending' and 'active', which neither table can hold, so it matched nothing
+// and queued entries and sent offers outlived a cancelled event.
+export const OPEN_WAITLIST_ENTRY_STATUSES = ['queued', 'offered'] as const;
+export const OPEN_WAITLIST_OFFER_STATUSES = ['sent'] as const;
 
 function sanitizeEventSearchTerm(value: string): string {
   return value
@@ -1123,14 +1131,11 @@ export class EventService {
     eventTime: string
     cancelledBy: string
     supabase: ReturnType<typeof createAdminClient>
-  }): Promise<{
-    bookingsCancelled: number
-    refundsProcessed: number
-    refundsFailed: number
-    customersNotified: number
-  }> {
+  }): Promise<EventCancellationResult> {
     const { eventId, eventName, eventDate, eventTime, cancelledBy, supabase: db } = params
     let bookingsCancelled = 0
+    let bookingsFailed = 0
+    const failedBookingIds: string[] = []
     let refundsProcessed = 0
     let refundsFailed = 0
     let customersNotified = 0
@@ -1144,43 +1149,70 @@ export class EventService {
 
     if (!bookings || bookings.length === 0) {
       // Still close booking_open and clean waitlist even if no active bookings
-      await db.from('events').update({ booking_open: false }).eq('id', eventId)
-      await db.from('waitlist_entries')
-        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-        .eq('event_id', eventId)
-        .in('status', ['pending', 'offered'])
-      await db.from('waitlist_offers')
-        .update({ status: 'cancelled', expired_at: new Date().toISOString() })
-        .eq('event_id', eventId)
-        .in('status', ['pending', 'active'])
-      return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+      await settleWrite(
+        db.from('events').update({ booking_open: false }).eq('id', eventId),
+        { table: 'events', what: 'Closing bookings on the cancelled event', ids: { eventId } }
+      )
+      await settleWrite(
+        db.from('waitlist_entries')
+          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+          .eq('event_id', eventId)
+          .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES]),
+        { table: 'waitlist_entries', what: 'Cancelling waitlist entries for the cancelled event', ids: { eventId } }
+      )
+      await settleWrite(
+        db.from('waitlist_offers')
+          .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+          .eq('event_id', eventId)
+          .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
+        { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
+      )
+      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
     }
 
     // 2. Cancel each booking, release holds, cancel table bookings
     for (const booking of bookings) {
       try {
-        await db
-          .from('bookings')
-          .update({
-            status: 'cancelled',
-            cancelled_at: new Date().toISOString(),
-            cancelled_by: cancelledBy
-          })
-          .eq('id', booking.id)
+        const cancelled = await settleWrite(
+          db
+            .from('bookings')
+            .update({
+              status: 'cancelled',
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: cancelledBy
+            })
+            .eq('id', booking.id),
+          { table: 'bookings', what: 'Cancelling the booking for the cancelled event', ids: { eventId, bookingId: booking.id } }
+        )
+
+        // The booking is still live, so the guest must not be refunded or told it is cancelled,
+        // and its holds and table bookings stay as they are. It is counted, the other bookings
+        // carry on, and the job result and audit row tell staff to cancel it individually.
+        if (!cancelled) {
+          bookingsFailed++
+          failedBookingIds.push(booking.id)
+          continue
+        }
 
         // Release active holds
-        await db
-          .from('booking_holds')
-          .update({ status: 'released', released_at: new Date().toISOString() })
-          .eq('event_booking_id', booking.id)
-          .eq('status', 'active')
+        await settleWrite(
+          db
+            .from('booking_holds')
+            .update({ status: 'released', released_at: new Date().toISOString() })
+            .eq('event_booking_id', booking.id)
+            .eq('status', 'active'),
+          { table: 'booking_holds', what: 'Releasing holds for the cancelled booking', ids: { eventId, bookingId: booking.id } }
+        )
 
         // Cancel associated table bookings
-        await db
-          .from('table_bookings')
-          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-          .eq('event_booking_id', booking.id)
-          .in('status', ['confirmed', 'pending_payment'])
+        await settleWrite(
+          db
+            .from('table_bookings')
+            .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+            .eq('event_booking_id', booking.id)
+            .in('status', ['confirmed', 'pending_payment']),
+          { table: 'table_bookings', what: 'Cancelling table bookings linked to the cancelled booking', ids: { eventId, bookingId: booking.id } }
+        )
 
         bookingsCancelled++
       } catch (err) {
@@ -1191,7 +1223,9 @@ export class EventService {
       }
     }
 
-    // 3. Process refunds for prepaid bookings
+    // 3. Process refunds for prepaid bookings. A booking whose cancel write failed is still
+    // live, so it is neither refunded nor told it is cancelled (steps 3 and 4).
+    const uncancelledBookingIds = new Set(failedBookingIds)
     const bookingIds = bookings.map(b => b.id)
     const { data: payments } = await db
       .from('payments')
@@ -1206,6 +1240,7 @@ export class EventService {
     if (payments && payments.length > 0) {
       for (const payment of payments) {
         if (!payment.event_booking_id) continue
+        if (uncancelledBookingIds.has(payment.event_booking_id)) continue
         // Find the customer_id for this booking
         const booking = bookings.find(b => b.id === payment.event_booking_id)
         const customer = booking?.customers as unknown as { id: string } | undefined
@@ -1247,6 +1282,7 @@ export class EventService {
     const formattedDate = formatEventDateForSms(eventDate, eventTime)
 
     for (const booking of bookings) {
+      if (uncancelledBookingIds.has(booking.id)) continue
       const customer = booking.customers as unknown as {
         id: string
         first_name: string | null
@@ -1300,26 +1336,63 @@ export class EventService {
     }
 
     // 5. Release waitlist entries and offers
-    await db
-      .from('waitlist_entries')
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-      .eq('event_id', eventId)
-      .in('status', ['pending', 'offered'])
+    await settleWrite(
+      db
+        .from('waitlist_entries')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', [...OPEN_WAITLIST_ENTRY_STATUSES]),
+      { table: 'waitlist_entries', what: 'Cancelling waitlist entries for the cancelled event', ids: { eventId } }
+    )
 
-    await db
-      .from('waitlist_offers')
-      .update({ status: 'cancelled', expired_at: new Date().toISOString() })
-      .eq('event_id', eventId)
-      .in('status', ['pending', 'active'])
+    await settleWrite(
+      db
+        .from('waitlist_offers')
+        .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
+      { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
+    )
 
     // 6. Set booking_open = false
-    await db
-      .from('events')
-      .update({ booking_open: false })
-      .eq('id', eventId)
+    await settleWrite(
+      db
+        .from('events')
+        .update({ booking_open: false })
+        .eq('id', eventId),
+      { table: 'events', what: 'Closing bookings on the cancelled event', ids: { eventId } }
+    )
 
-    return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+    if (bookingsFailed > 0) {
+      logger.error('Event cancellation left bookings uncancelled; their guests were not told or refunded', {
+        metadata: { eventId, bookingsFailed, failedBookingIds }
+      })
+    }
+
+    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
   }
+}
+
+export interface EventCancellationResult {
+  bookingsCancelled: number
+  /** Bookings whose cancel write failed: still live, guest not refunded or told. */
+  bookingsFailed: number
+  failedBookingIds: string[]
+  refundsProcessed: number
+  refundsFailed: number
+  customersNotified: number
+}
+
+/**
+ * The staff warning for bookings an event cancellation could not cancel, or null when there
+ * are none. Shown in the cancellation job's result and recorded on its audit row.
+ */
+export function describeUncancelledBookings(bookingsFailed: number): string | null {
+  if (bookingsFailed <= 0) return null
+  if (bookingsFailed === 1) {
+    return '1 booking could not be cancelled and its guest was not told. Cancel it individually from the event page.'
+  }
+  return `${bookingsFailed} bookings could not be cancelled and their guests were not told. Cancel them individually from the event page.`
 }
 
 /**

@@ -319,7 +319,9 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
         dateTime: endDateTime,
         timeZone: CALENDAR_TIME_ZONE,
       },
-      location: 'The Anchor Pub',
+      // The venue is "The Anchor" (website SSOT §1; owner's decision, 14 October 2026). An
+      // existing entry picks this up the next time its booking is synced.
+      location: 'The Anchor',
       colorId: getEventColor(booking.status),
       reminders: {
         useDefault: false,

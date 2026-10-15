@@ -14,6 +14,7 @@ import { loadReceiptSettings } from './receiptSettings'
 import { checkSuggestionsAgainstPayments, type SuggestionCheck } from './receiptRuleProposals'
 import { getTransactionDirection, guessAmountValue } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
+import { settleWrite } from '@/lib/supabase/settle-write'
 
 type SignalInsert = Omit<ReceiptClassificationSignal, 'id'> & {
   payload?: Record<string, unknown>
@@ -207,10 +208,16 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
   }
 
   const now = new Date().toISOString()
-  await supabase
-    .from('receipt_rule_conflicts')
-    .update({ resolved_at: now })
-    .is('resolved_at', null)
+  await settleWrite(
+    supabase
+      .from('receipt_rule_conflicts')
+      .update({ resolved_at: now })
+      .is('resolved_at', null),
+    {
+      table: 'receipt_rule_conflicts',
+      what: 'Resolving the previous rule conflicts',
+    }
+  )
 
   const conflicts = Array.from(pairMap.values())
     .filter((entry) => entry.overlapCount > 0)

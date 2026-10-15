@@ -1061,6 +1061,118 @@ describe('Event manual booking cancellation guards', () => {
       }),
     )
   })
+
+  it('warns, not just reports issued, when the refund went through but the payment record did not update', async () => {
+    const bookingId = '550e8400-e29b-41d4-a716-446655440270'
+    const eventId = '550e8400-e29b-41d4-a716-446655440271'
+    const customerId = '550e8400-e29b-41d4-a716-446655440272'
+
+    const staffWarning =
+      'The refund went through, but the original payment was not updated to show it. Do not refund again: tell the developer so the payment record can be corrected.'
+    mockedProcessEventRefund.mockResolvedValueOnce({
+      status: 'succeeded',
+      amount: 40,
+      currency: 'GBP',
+      staffWarning,
+    })
+
+    const loadMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: bookingId,
+        event_id: eventId,
+        customer_id: customerId,
+        seats: 2,
+        status: 'confirmed',
+        is_reminder_only: false,
+        event: {
+          id: eventId,
+          name: 'Test Event',
+          start_datetime: '2026-08-01T18:00:00.000Z',
+          date: '2026-08-01',
+          time: '18:00:00',
+          payment_mode: 'prepaid',
+          price: 999,
+          price_per_seat: 999,
+        },
+        customer: null,
+      },
+      error: null,
+    })
+    const loadEq = vi.fn().mockReturnValue({ maybeSingle: loadMaybeSingle })
+    const loadSelect = vi.fn().mockReturnValue({ eq: loadEq })
+
+    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: bookingId }, error: null })
+    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
+    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
+    const cancelUpdate = vi.fn().mockReturnValue({ eq: cancelEq })
+
+    const holdSelect = vi.fn().mockResolvedValue({ data: [{ id: 'hold-1' }], error: null })
+    const holdEq2 = vi.fn().mockReturnValue({ select: holdSelect })
+    const holdEq1 = vi.fn().mockReturnValue({ eq: holdEq2 })
+    const holdUpdate = vi.fn().mockReturnValue({ eq: holdEq1 })
+
+    const tableSelect = vi.fn().mockResolvedValue({ data: [{ id: 'tb-1' }], error: null })
+    const tableNot = vi.fn().mockReturnValue({ select: tableSelect })
+    const tableEq = vi.fn().mockReturnValue({ not: tableNot })
+    const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
+
+    // Paid query: select('amount').eq(event_booking_id).in(charge_type).in(status)
+    const paidPaymentsStatusIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'pay-1', amount: 80, status: 'succeeded', charge_type: 'prepaid_event' }],
+      error: null,
+    })
+    const paidPaymentsChargeTypeIn = vi.fn().mockReturnValue({ in: paidPaymentsStatusIn })
+    // Refund query: select('amount').eq(event_booking_id).eq(charge_type).in(status)
+    const refundPaymentsStatusIn = vi.fn().mockResolvedValue({ data: [], error: null })
+    const refundPaymentsChargeTypeEq = vi.fn().mockReturnValue({ in: refundPaymentsStatusIn })
+    const paymentsEq = vi.fn().mockReturnValue({
+      in: paidPaymentsChargeTypeIn,
+      eq: refundPaymentsChargeTypeEq,
+    })
+    const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
+
+    mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [{ role_name: 'manager' }], error: null }),
+      from: vi.fn((table: string) => {
+        if (table === 'bookings') {
+          return {
+            select: loadSelect,
+            update: cancelUpdate,
+          }
+        }
+
+        if (table === 'booking_holds') {
+          return { update: holdUpdate }
+        }
+
+        if (table === 'table_bookings') {
+          return { update: tableUpdate }
+        }
+
+        if (table === 'payments') {
+          return { select: paymentsSelect }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await cancelEventManualBooking({
+      bookingId,
+      sendSms: false,
+      refundDecision: 'partial',
+      refundAmount: 40,
+    })
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        refund_status: 'succeeded',
+        refund_amount: 40,
+        warning: staffWarning,
+      },
+    })
+  })
 })
 
 describe('Event manual booking creation SMS safety guards', () => {

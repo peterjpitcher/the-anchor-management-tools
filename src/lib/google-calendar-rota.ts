@@ -5,6 +5,7 @@ import { getAppUrl } from '@/lib/env'
 import type { OAuth2Client } from 'google-auth-library'
 import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { settleWrite } from '@/lib/supabase/settle-write'
 import { getOAuth2Client } from '@/lib/google-calendar'
 import { displayName } from '@/lib/employees/display-name'
 
@@ -178,7 +179,10 @@ export async function syncRotaWeekToCalendar(
   const removedShiftEntries = [...existingMap].filter(([shiftId]) => !currentShiftIds.has(shiftId))
   await Promise.all(removedShiftEntries.map(async ([shiftId, eventId]) => {
     await safeDeleteEvent(auth, calendarId, eventId, shiftId)
-    await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
+    await settleWrite(
+      admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId),
+      { table: 'rota_google_calendar_events', what: 'Removing the calendar mapping for a removed shift', ids: { shiftId, weekId } },
+    )
   }))
 
   // -- Rebuild mapping from Google Calendar extended properties ------------
@@ -284,12 +288,15 @@ export async function syncRotaWeekToCalendar(
       // Recover orphaned-but-valid events in parallel
       await Promise.all(toRecover.map(async ({ evId, evShiftId }) => {
         existingMap.set(evShiftId, evId)
-        await admin.from('rota_google_calendar_events').upsert({
-          shift_id: evShiftId,
-          week_id: weekId,
-          google_event_id: evId,
-          updated_at: new Date().toISOString(),
-        })
+        await settleWrite(
+          admin.from('rota_google_calendar_events').upsert({
+            shift_id: evShiftId,
+            week_id: weekId,
+            google_event_id: evId,
+            updated_at: new Date().toISOString(),
+          }),
+          { table: 'rota_google_calendar_events', what: 'Recording the recovered calendar event mapping', ids: { shiftId: evShiftId, weekId } },
+        )
         console.warn('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
       }))
 
@@ -318,7 +325,10 @@ export async function syncRotaWeekToCalendar(
         if (!gcalEventIds.has(eventId)) {
           existingMap.delete(shiftId)
           // Also clean up the stale DB mapping so it doesn't persist
-          await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
+          await settleWrite(
+            admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId),
+            { table: 'rota_google_calendar_events', what: 'Removing the stale calendar mapping', ids: { shiftId, weekId } },
+          )
           staleCount++
         }
       }
@@ -339,7 +349,10 @@ export async function syncRotaWeekToCalendar(
         const existingEventId = existingMap.get(shift.id)
         if (existingEventId) {
           await safeDeleteEvent(auth, calendarId, existingEventId, shift.id)
-          await admin.from('rota_google_calendar_events').delete().eq('shift_id', shift.id)
+          await settleWrite(
+            admin.from('rota_google_calendar_events').delete().eq('shift_id', shift.id),
+            { table: 'rota_google_calendar_events', what: 'Removing the calendar mapping for a cancelled shift', ids: { shiftId: shift.id, weekId } },
+          )
         }
       })
   )
@@ -501,12 +514,15 @@ export async function syncRotaWeekToCalendar(
           } else {
             result.created++
           }
-          await admin.from('rota_google_calendar_events').upsert({
-            shift_id: shift.id,
-            week_id: weekId,
-            google_event_id: googleEventId,
-            updated_at: new Date().toISOString(),
-          })
+          await settleWrite(
+            admin.from('rota_google_calendar_events').upsert({
+              shift_id: shift.id,
+              week_id: weekId,
+              google_event_id: googleEventId,
+              updated_at: new Date().toISOString(),
+            }),
+            { table: 'rota_google_calendar_events', what: 'Recording the calendar event mapping', ids: { shiftId: shift.id, weekId } },
+          )
         } else {
           result.failed++
         }
