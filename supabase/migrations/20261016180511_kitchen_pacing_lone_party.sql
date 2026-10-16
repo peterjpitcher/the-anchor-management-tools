@@ -1,3 +1,8 @@
+-- APPLIED to production on 16 October 2026 through the Supabase MCP, which recorded it at
+-- version 20261016180511. This file is named after that version, as supabase/migrations/README.md
+-- requires. The applied statement is this file byte for byte as it stood before this header was
+-- added (SHA-256 244b113db42cc114180dfb2a1e164acc3baf141b7051d4f68a159f9f9a5b447a).
+--
 -- A party that is alone in its kitchen arrival window always fits.
 --
 -- The pacing cap allows (pace - walk-in reserve) food covers to arrive in any rolling window.

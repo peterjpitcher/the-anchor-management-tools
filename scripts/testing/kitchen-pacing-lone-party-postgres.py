@@ -16,7 +16,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261016170000_kitchen_pacing_lone_party.sql'
+MIGRATION = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
 
 SOURCES = {
     'create_table_booking_core_v06': MIGRATIONS / '20260913120622_booking_start_inside_trading_day.sql',
