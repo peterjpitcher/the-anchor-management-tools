@@ -649,7 +649,12 @@ export async function createContact(input: ContactInput, userId: string): Promis
     .select('*')
     .single()
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    // business_contacts_email_key: the address is already a contact. Say so plainly rather
+    // than passing Postgres's constraint wording up to the page.
+    if (error.code === '23505') throw new Error(`${email} is already in your contacts`)
+    throw new Error(error.message)
+  }
   return mapBusinessContact(data)
 }
 
