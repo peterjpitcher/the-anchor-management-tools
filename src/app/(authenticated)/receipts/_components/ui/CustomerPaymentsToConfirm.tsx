@@ -11,9 +11,16 @@ import { formatCurrency } from '@/app/(authenticated)/receipts/utils'
 /** Why a payment is waiting, in words for the person deciding. */
 const REASONS: Record<string, string> = {
   several_invoices_fit: 'More than one invoice fits this payment exactly. Choose the one it paid.',
+  set_of_invoices_fits: 'This payment adds up to these invoices together. Confirm it paid all of them.',
+  invoice_claimed_by_another_payment:
+    'Another bank payment already points at this invoice. Check it is not paid twice before recording it.',
+  too_many_invoices_owing: 'So many invoices are owing that the payment could be for several of them. Choose, or deal with it by hand.',
   several_entries_fit: 'More than one payment already entered on the invoices could be this one. Choose which.',
   entry_fits_another_payment:
     'A payment already entered on the invoices could be this one or another bank payment. Confirm it is this one.',
+  entries_split_payment: 'Payments entered on several invoices add up to this one. Confirm they are this payment.',
+  entry_may_be_this_payment:
+    'A payment of the same amount was entered on an invoice a while before or after this arrived. Check it is not the same money before recording anything.',
   no_exact_fit:
     'No recent invoice owes exactly this amount. If it paid an invoice, enter the payment on that invoice, then mark this as dealt with.',
   over_allocated: 'This payment is already used in full against other invoices. Check it, then mark it as dealt with.',
@@ -80,7 +87,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
     <Card>
       <CardHeader
         title="Customer payments to confirm"
-        subtitle="These customer payments quoted no invoice number and fitted more than one invoice, or none exactly. Nothing is recorded until you choose, and their invoices are not chased meanwhile."
+        subtitle="These customer payments quoted no invoice number and could not be settled safely on their own. Nothing is recorded until you choose. Invoices offered as a choice here are not chased while the payment waits."
         action={<Badge tone="warning">{items.length}</Badge>}
       />
       <CardBody className="space-y-4">
@@ -96,6 +103,11 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
               {REASONS[item.reason] ?? REASONS.error}
               {item.error ? ` (${item.error})` : ''}
             </p>
+            {item.partlyDone.length > 0 && (
+              <p className="text-sm text-text-muted">
+                Already done from an earlier attempt: {item.partlyDone.join(' and ')}. Choose the same option again to finish.
+              </p>
+            )}
             {item.recentInvoices.length > 0 && (
               <p className="text-sm text-text-muted">
                 Recent invoices:{' '}

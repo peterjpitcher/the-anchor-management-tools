@@ -94,6 +94,19 @@ describe('confirmCustomerPayment', () => {
   })
 })
 
+describe('confirmCustomerPayment when something unexpected fails', () => {
+  it('still writes the audit entry and says so plainly', async () => {
+    allow({ 'receipts.manage': true, 'invoices.edit': true })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    ;(performConfirmCustomerPayment as unknown as Mock).mockRejectedValue(new Error('connection reset'))
+
+    expect(await confirmCustomerPayment({ matchId: MATCH, optionIndex: 0 })).toEqual({
+      error: 'The payment could not be confirmed. Refresh the page to see where it stands.',
+    })
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'confirm_customer_payment', operation_status: 'failure' }))
+  })
+})
+
 describe('dismissCustomerPayment', () => {
   it('needs receipts manage', async () => {
     allow({ 'receipts.view': true })

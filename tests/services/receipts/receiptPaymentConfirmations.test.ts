@@ -248,3 +248,77 @@ describe('performDismissCustomerPayment', () => {
     })
   })
 })
+
+describe('performConfirmCustomerPayment with two people, and with a choice in two parts', () => {
+  const TWO_PART = {
+    review_reason: 'set_of_invoices_fits',
+    options: [
+      {
+        kind: 'record',
+        allocations: [
+          { invoice_id: 'w8', invoice_number: 'INV-003W8', invoice_date: '2026-08-01', amount: 1260 },
+          { invoice_id: 'wd', invoice_number: 'INV-003WD', invoice_date: '2026-09-01', amount: 1260 },
+        ],
+      },
+    ],
+  }
+
+  it('lets only one of two people acting at once carry out a choice', async () => {
+    const { calls } = arrange()
+
+    const results = await Promise.all([
+      performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 0, userId: USER }),
+      performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 1, userId: USER }),
+    ])
+
+    expect(results.filter((result) => 'success' in result)).toHaveLength(1)
+    expect(results.filter((result) => 'error' in result).map((result) => ('error' in result ? result.error : ''))[0]).toMatch(
+      /Someone else is dealing with this payment|already been dealt with/
+    )
+    expect(ledgerCalls(calls)).toHaveLength(1)
+  })
+
+  it('keeps a part-done choice on the list, and finishes it when chosen again without recording anything twice', async () => {
+    const { db, calls } = arrange({
+      match: { payload: TWO_PART, invoice_number: 'REVIEW' },
+      invoices: [invoice('w8', 'INV-003W8', { total_amount: 1260 }), invoice('wd', 'INV-003WD', { invoice_date: '2026-09-01', total_amount: 1260 })],
+    })
+    let refuseSecond = true
+    db.onRpc((name, args) => {
+      calls.push({ name, args })
+      if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
+      if (name === 'record_receipt_invoice_payment') {
+        if (args.p_invoice_number === 'INV-003WD' && refuseSecond) {
+          return { data: { outcome: 'over_allocated', available: 2520, allocated: 2520, requested: 1260 }, error: null }
+        }
+        // As the database function does: the match is stored with the payment.
+        db.rows('receipt_invoice_matches').push({
+          id: `m-${String(args.p_invoice_number)}`,
+          receipt_transaction_id: args.p_transaction_id,
+          invoice_number: args.p_invoice_number,
+          match_status: 'payment_recorded',
+          payload: {},
+        })
+        return { data: { outcome: 'applied', status_updated: false, vendor_updated: false, payment_recorded: true, invoice_payment_id: 'p' }, error: null }
+      }
+      throw new Error(`Unexpected rpc ${name}`)
+    })
+
+    const first = await performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 0, userId: USER })
+
+    expect(first).toEqual({
+      error: 'The bank payment has nothing left to record against INV-003WD. INV-003W8 was done. Choose the same option again to finish.',
+    })
+    const waiting = db.rows('receipt_invoice_matches').find((row) => row.id === MATCH)
+    expect(waiting).toMatchObject({ match_status: 'review_required', payload: { partial: { done: ['INV-003W8'] } } })
+    expect((await loadCustomerPaymentsToConfirm())[0]).toMatchObject({ partlyDone: ['INV-003W8'] })
+
+    refuseSecond = false
+    const second = await performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 0, userId: USER })
+
+    expect(second).toEqual({ success: true, invoiceNumbers: ['INV-003W8', 'INV-003WD'] })
+    expect(ledgerCalls(calls).map((call) => call.args.p_invoice_number)).toEqual(['INV-003W8', 'INV-003WD', 'INV-003WD'])
+    expect(db.rows('receipt_invoice_matches').find((row) => row.id === MATCH)).toBeUndefined()
+  })
+})
+
