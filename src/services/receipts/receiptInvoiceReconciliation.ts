@@ -497,30 +497,34 @@ async function resolveInvoiceVendorIds(
 
   if (!vendorIds.size && !vendorKeys.size) return new Map()
 
-  const filters: string[] = []
-  if (vendorIds.size) filters.push(`id.in.(${[...vendorIds].join(',')})`)
-  if (vendorKeys.size) {
-    const quoted = [...vendorKeys].map((key) => `"${key.replace(/"/g, '\\"')}"`)
-    filters.push(`vendor_key.in.(${quoted.join(',')})`)
-  }
-
-  const { data, error } = await supabase
-    .from('receipt_vendors')
-    .select('id, vendor_key, invoice_vendor_id')
-    .not('invoice_vendor_id', 'is', null)
-    .or(filters.join(','))
-
-  if (error) {
-    console.warn('Failed to resolve invoice vendors for reference-free pairing', error)
-    return new Map()
-  }
-
+  // In chunks, so a long run never builds a filter too long for one request. A failure stops
+  // the run: an empty answer would read as "no customer payments" and skip them all quietly.
   const byId = new Map<string, string>()
   const byKey = new Map<string, string>()
-  for (const row of (data ?? []) as Array<{ id: string; vendor_key: string | null; invoice_vendor_id: string | null }>) {
-    if (!row.invoice_vendor_id) continue
-    byId.set(row.id, row.invoice_vendor_id)
-    if (row.vendor_key) byKey.set(row.vendor_key, row.invoice_vendor_id)
+  const record = (rows: Array<{ id: string; vendor_key: string | null; invoice_vendor_id: string | null }>) => {
+    for (const row of rows) {
+      if (!row.invoice_vendor_id) continue
+      byId.set(row.id, row.invoice_vendor_id)
+      if (row.vendor_key) byKey.set(row.vendor_key, row.invoice_vendor_id)
+    }
+  }
+  for (const chunk of chunkArray([...vendorIds], 100)) {
+    const { data, error } = await supabase
+      .from('receipt_vendors')
+      .select('id, vendor_key, invoice_vendor_id')
+      .not('invoice_vendor_id', 'is', null)
+      .in('id', chunk)
+    if (error) throw new Error(`Failed to find the customers for these payments: ${error.message}`)
+    record((data ?? []) as Array<{ id: string; vendor_key: string | null; invoice_vendor_id: string | null }>)
+  }
+  for (const chunk of chunkArray([...vendorKeys], 100)) {
+    const { data, error } = await supabase
+      .from('receipt_vendors')
+      .select('id, vendor_key, invoice_vendor_id')
+      .not('invoice_vendor_id', 'is', null)
+      .in('vendor_key', chunk)
+    if (error) throw new Error(`Failed to find the customers for these payments: ${error.message}`)
+    record((data ?? []) as Array<{ id: string; vendor_key: string | null; invoice_vendor_id: string | null }>)
   }
 
   const result = new Map<string, string>()
@@ -538,16 +542,23 @@ async function resolveInvoiceVendorIds(
   return result
 }
 
-/** Everything needed to decide one customer's payments: their invoices, entries and unmatched money. */
+/**
+ * The invoice number a match waiting for a person is filed under. Matches are unique per bank
+ * payment and invoice number, so filing it under a real invoice let the first payment recorded
+ * against that invoice overwrite it, and the rest of a person's choice dropped off the list.
+ */
+export const REVIEW_MATCH_KEY = 'REVIEW'
+
+/** Everything needed to decide one customer's payments: their invoices, entries and other money. */
 type CustomerBook = {
   invoices: CustomerInvoice[]
   rowById: Map<string, InvoiceRow>
-  /** Payments entered against their invoices that no bank line is linked to yet. */
+  /** Bank-transfer payments entered against their invoices that no bank line is linked to yet. */
   entries: EnteredPayment[]
-  /** Their bank payments that are not matched to anything yet. */
+  /** Their bank payments that no entered payment accounts for, matched otherwise or not, filed or not. */
   others: CustomerBankPayment[]
-  /** An invoice number to file a match under when no candidate gives one. */
-  fallbackNumber: string
+  /** Their invoices another bank payment already points at. */
+  claimedInvoiceIds: Set<string>
 }
 
 type EnteredPaymentRow = {
@@ -555,14 +566,34 @@ type EnteredPaymentRow = {
   invoice_id: string
   payment_date: string
   amount: number | string
+  payment_method: string | null
   source_kind: string | null
+}
+
+/** Which of these bank payments an entered payment already accounts for. */
+async function loadLinesLinkedToEntries(supabase: AdminClient, transactionIds: string[]): Promise<Set<string>> {
+  const linked = new Set<string>()
+  for (const chunk of chunkArray([...new Set(transactionIds)], 100)) {
+    const rows = await fetchAllRows<{ receipt_transaction_id: string }>(
+      (from, to) =>
+        supabase
+          .from('receipt_invoice_matches')
+          .select('id, receipt_transaction_id')
+          .in('receipt_transaction_id', chunk)
+          .not('invoice_payment_id', 'is', null)
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'bank payments linked to an entered payment' }
+    )
+    for (const row of rows) linked.add(row.receipt_transaction_id)
+  }
+  return linked
 }
 
 async function loadCustomerBook(
   supabase: AdminClient,
   invoiceVendorId: string,
-  payments: ReceiptTransaction[],
-  lockDate: string | null
+  payments: ReceiptTransaction[]
 ): Promise<CustomerBook> {
   const rows = await fetchAllRows<InvoiceRow & { invoice_date: string }>(
     (from, to) =>
@@ -586,7 +617,7 @@ async function loadCustomerBook(
         (from, to) =>
           supabase
             .from('invoice_payments')
-            .select('id, invoice_id, payment_date, amount, source_kind')
+            .select('id, invoice_id, payment_date, amount, payment_method, source_kind')
             .in('invoice_id', chunk)
             .order('id', { ascending: true })
             .range(from, to),
@@ -624,13 +655,37 @@ async function loadCustomerBook(
     paidAmount: paidByInvoice.get(row.id) ?? 0,
   }))
 
-  // PayPal payments arrive through PayPal's own settlement, never as a bank payment from the customer.
+  // Only a bank transfer arrives as a bank payment from the customer: cash, cards, cheques and
+  // PayPal reach the account some other way, if at all.
   const entries: EnteredPayment[] = entered
-    .filter((entry) => !linked.has(entry.id) && entry.source_kind !== 'paypal')
+    .filter(
+      (entry) =>
+        !linked.has(entry.id) &&
+        entry.source_kind !== 'paypal' &&
+        (!entry.payment_method || entry.payment_method === 'bank_transfer')
+    )
     .map((entry) => ({ id: entry.id, invoiceId: entry.invoice_id, paymentDate: entry.payment_date, amount: moneyValue(entry.amount) }))
 
-  // The customer's other unmatched bank payments around these dates: an entry that one of them
-  // could equally be is not linked to any.
+  // Invoices another bank payment already points at: a second payment on one goes to a person.
+  const claimedInvoiceIds = new Set<string>()
+  for (const chunk of chunkArray(invoiceIds, 100)) {
+    const claims = await fetchAllRows<{ invoice_id: string | null }>(
+      (from, to) =>
+        supabase
+          .from('receipt_invoice_matches')
+          .select('id, invoice_id')
+          .in('invoice_id', chunk)
+          .neq('match_status', 'review_required')
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'invoices other payments point at' }
+    )
+    for (const claim of claims) if (claim.invoice_id) claimedInvoiceIds.add(claim.invoice_id)
+  }
+
+  // The customer's other bank payments around these dates that no entered payment accounts for,
+  // whether matched some other way or in a filed period: an entry one of them could equally be is
+  // linked to none of them. A quoted-reference payment marked "already paid" is one of these.
   const { data: vendorRows, error: vendorError } = await supabase
     .from('receipt_vendors')
     .select('id')
@@ -645,7 +700,7 @@ async function loadCustomerBook(
   const nearby = receiptVendorIds.length
     ? await fetchAllRows<{ id: string; transaction_date: string; amount_in: number | string | null }>(
         (from, to) => {
-          let query = supabase
+          const query = supabase
             .from('receipt_transactions')
             .select('id, transaction_date, amount_in')
             .in('vendor_id', receiptVendorIds)
@@ -654,16 +709,15 @@ async function loadCustomerBook(
             .lte('transaction_date', windowEnd)
             .order('transaction_date', { ascending: true })
             .order('id', { ascending: true })
-          if (lockDate) query = query.gt('transaction_date', lockDate)
           return query.range(from, to)
         },
         { label: "the customer's bank payments nearby" }
       )
     : []
-  const nearbyMatched = await loadMatchedTransactionIds(supabase, nearby.map((row) => row.id))
+  const nearbyLinked = await loadLinesLinkedToEntries(supabase, nearby.map((row) => row.id))
   const others = new Map<string, CustomerBankPayment>()
   for (const row of nearby) {
-    if (!nearbyMatched.has(row.id)) others.set(row.id, { id: row.id, date: row.transaction_date, amount: moneyValue(row.amount_in) })
+    if (!nearbyLinked.has(row.id)) others.set(row.id, { id: row.id, date: row.transaction_date, amount: moneyValue(row.amount_in) })
   }
   for (const payment of payments) {
     others.set(payment.id, { id: payment.id, date: payment.transaction_date, amount: receiptTransactionAmount(payment) })
@@ -674,7 +728,7 @@ async function loadCustomerBook(
     rowById: new Map(rows.map((row) => [row.id, row])),
     entries,
     others: [...others.values()],
-    fallbackNumber: rows[rows.length - 1]?.invoice_number ?? 'UNMATCHED',
+    claimedInvoiceIds,
   }
 }
 
@@ -694,16 +748,10 @@ async function storeCustomerPaymentForReview(
   initiatedBy: string | null
 ): Promise<void> {
   const numberOf = (invoiceId: string) => book.rowById.get(invoiceId)?.invoice_number ?? null
-  const firstEntry = decision.entryOptions[0]?.[0]
-  const invoiceNumber =
-    decision.invoiceOptions[0]?.[0]?.invoice.invoiceNumber ??
-    (firstEntry ? numberOf(firstEntry.invoiceId) : null) ??
-    decision.recentInvoices[decision.recentInvoices.length - 1]?.invoiceNumber ??
-    book.fallbackNumber
 
   await applyInvoiceMatch(supabase, {
     transaction,
-    invoiceNumber,
+    invoiceNumber: REVIEW_MATCH_KEY,
     invoice: null,
     invoicePaymentId: null,
     status: 'review_required',
@@ -759,7 +807,8 @@ async function settleCustomerPayment(
     { id: transaction.id, date: transaction.transaction_date, amount },
     book.invoices,
     book.entries,
-    book.others
+    book.others,
+    book.claimedInvoiceIds
   )
 
   if (decision.kind === 'none') return
@@ -774,80 +823,72 @@ async function settleCustomerPayment(
   }
 
   if (decision.kind === 'link') {
-    for (const entry of decision.entries) {
-      const invoice = book.rowById.get(entry.invoiceId)
-      if (!invoice) throw new Error(`Invoice ${entry.invoiceId} for an entered payment was not loaded`)
-      const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(supabase, invoice.vendor?.name ?? null, invoice.vendor_id)
-      const result = await applyInvoiceMatch(supabase, {
-        transaction,
-        invoiceNumber: invoice.invoice_number,
-        invoice,
-        invoicePaymentId: entry.id,
-        status: 'matched',
-        amountMatch: true,
-        allowStatusChange: true,
-        receiptVendor,
-        initiatedBy,
-        matchedAmount: entry.amount,
-        payload: {
-          match_method: 'entered_payment',
-          entered_payment_id: entry.id,
-          entered_payment_date: entry.paymentDate,
-          entries_for_this_payment: decision.entries.length,
-        },
-      })
-      if (result.statusUpdated) summary.statusUpdated += 1
-      if (result.classificationUpdated) summary.classificationUpdated += 1
-      if (summary.samples.length < 20) {
-        summary.samples.push({ transactionId: transaction.id, invoiceNumber: invoice.invoice_number, status: 'matched', details: transaction.details, amount })
-      }
-    }
-    const used = new Set(decision.entries.map((entry) => entry.id))
-    book.entries = book.entries.filter((entry) => !used.has(entry.id))
-    book.others = book.others.filter((other) => other.id !== transaction.id)
-    summary.referenceFreeLinked += 1
-    summary.matched += 1
-    return
-  }
-
-  for (const allocation of decision.allocations) {
-    const invoice = book.rowById.get(allocation.invoice.id)
-    if (!invoice) throw new Error(`Invoice ${allocation.invoice.invoiceNumber} was not loaded`)
+    const { entry } = decision
+    const invoice = book.rowById.get(entry.invoiceId)
+    if (!invoice) throw new Error(`Invoice ${entry.invoiceId} for an entered payment was not loaded`)
     const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(supabase, invoice.vendor?.name ?? null, invoice.vendor_id)
     const result = await applyInvoiceMatch(supabase, {
       transaction,
       invoiceNumber: invoice.invoice_number,
       invoice,
-      invoicePaymentId: null,
-      status: 'payment_recorded',
+      invoicePaymentId: entry.id,
+      status: 'matched',
       amountMatch: true,
       allowStatusChange: true,
       receiptVendor,
       initiatedBy,
-      recordPaymentAmount: allocation.amount,
-      payload: {
-        match_method: 'customer_amount_date',
-        invoices_for_this_payment: decision.allocations.length,
-        invoice_total: allocation.invoice.totalAmount,
-        invoice_credited: allocation.invoice.creditedAmount,
-        invoice_outstanding_before: allocation.amount,
-      },
+      matchedAmount: entry.amount,
+      payload: { match_method: 'entered_payment', entered_payment_id: entry.id, entered_payment_date: entry.paymentDate },
     })
-    if (result.overAllocated) {
-      throw new Error(`The bank payment has nothing left to record against ${invoice.invoice_number}`)
-    }
-    if (result.paymentRecorded) summary.paymentsRecorded += 1
     if (result.statusUpdated) summary.statusUpdated += 1
     if (result.classificationUpdated) summary.classificationUpdated += 1
-    // The invoice now owes less, and a later payment in this run must see that.
-    allocation.invoice.paidAmount += allocation.amount
+    book.entries = book.entries.filter((candidate) => candidate.id !== entry.id)
+    book.claimedInvoiceIds.add(entry.invoiceId)
+    summary.referenceFreeLinked += 1
+    summary.matched += 1
     if (summary.samples.length < 20) {
-      summary.samples.push({ transactionId: transaction.id, invoiceNumber: invoice.invoice_number, status: 'payment_recorded', details: transaction.details, amount })
+      summary.samples.push({ transactionId: transaction.id, invoiceNumber: invoice.invoice_number, status: 'matched', details: transaction.details, amount })
     }
+    return
   }
+
+  const { allocation } = decision
+  const invoice = book.rowById.get(allocation.invoice.id)
+  if (!invoice) throw new Error(`Invoice ${allocation.invoice.invoiceNumber} was not loaded`)
+  const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(supabase, invoice.vendor?.name ?? null, invoice.vendor_id)
+  const result = await applyInvoiceMatch(supabase, {
+    transaction,
+    invoiceNumber: invoice.invoice_number,
+    invoice,
+    invoicePaymentId: null,
+    status: 'payment_recorded',
+    amountMatch: true,
+    allowStatusChange: true,
+    receiptVendor,
+    initiatedBy,
+    recordPaymentAmount: allocation.amount,
+    payload: {
+      match_method: 'customer_amount_date',
+      invoice_total: allocation.invoice.totalAmount,
+      invoice_credited: allocation.invoice.creditedAmount,
+      invoice_outstanding_before: allocation.amount,
+    },
+  })
+  if (result.overAllocated) {
+    throw new Error(`The bank payment has nothing left to record against ${invoice.invoice_number}`)
+  }
+  if (result.paymentRecorded) summary.paymentsRecorded += 1
+  if (result.statusUpdated) summary.statusUpdated += 1
+  if (result.classificationUpdated) summary.classificationUpdated += 1
+  // The invoice now owes less and has a payment, and a later payment in this run must see that.
+  allocation.invoice.paidAmount += allocation.amount
+  book.claimedInvoiceIds.add(allocation.invoice.id)
   book.others = book.others.filter((other) => other.id !== transaction.id)
   summary.referenceFreeRecorded += 1
   summary.matched += 1
+  if (summary.samples.length < 20) {
+    summary.samples.push({ transactionId: transaction.id, invoiceNumber: invoice.invoice_number, status: 'payment_recorded', details: transaction.details, amount })
+  }
 }
 
 /**
@@ -882,13 +923,13 @@ async function runReferenceFreePass(
     const ordered = [...payments].sort(
       (left, right) => left.transaction_date.localeCompare(right.transaction_date) || left.id.localeCompare(right.id)
     )
-    const book = await loadCustomerBook(supabase, invoiceVendorId, ordered, lockDate)
+    const book = await loadCustomerBook(supabase, invoiceVendorId, ordered)
     for (const transaction of ordered) {
       summary.referenceFreeReviewed += 1
       try {
         await settleCustomerPayment(supabase, summary, transaction, book, options.initiatedBy)
       } catch (error) {
-        await storeFailureForReview(supabase, summary, failures, transaction, book.fallbackNumber, error, options.initiatedBy)
+        await storeFailureForReview(supabase, summary, failures, transaction, REVIEW_MATCH_KEY, error, options.initiatedBy)
       }
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MAX_SET_SEARCH_INVOICES,
+  MAX_SET_SEARCH_ITEMS,
   decideCustomerPayment,
   outstandingOf,
   type CustomerBankPayment,
@@ -39,7 +39,7 @@ describe('decideCustomerPayment', () => {
     // The live shape: "CRICKETERS CRICKETERS", 2,460.90 on 3 July, against INV-003W6 of 1 July.
     const decision = decideCustomerPayment(payment('2026-07-03', 2460.9), [invoice()], [], [])
 
-    expect(decision).toEqual({ kind: 'record', allocations: [{ invoice: invoice(), amount: 2460.9 }] })
+    expect(decision).toEqual({ kind: 'record', allocation: { invoice: invoice(), amount: 2460.9 } })
   })
 
   it('links to a payment already entered by hand instead of recording it again', () => {
@@ -48,7 +48,7 @@ describe('decideCustomerPayment', () => {
 
     const decision = decideCustomerPayment(payment('2026-08-26', 2520), [paidJuly, KIER_AUGUST], [entered], [])
 
-    expect(decision).toEqual({ kind: 'link', entries: [entered] })
+    expect(decision).toEqual({ kind: 'link', entry: entered })
   })
 
   it('leaves identical monthly invoices to a person rather than guessing', () => {
@@ -68,17 +68,20 @@ describe('decideCustomerPayment', () => {
     ])
   })
 
-  it('records one payment across the only set of invoices that adds up to it', () => {
+  it('offers one payment across a set of invoices to a person, even when only one set adds up', () => {
     const may = invoice({ id: 'vs', invoiceNumber: 'INV-003VS', invoiceDate: '2026-05-01', totalAmount: 500 })
     const june = invoice({ id: 'vw', invoiceNumber: 'INV-003VW', invoiceDate: '2026-06-01', totalAmount: 500 })
 
     const decision = decideCustomerPayment(payment('2026-08-21', 1000), [may, june], [], [])
 
-    expect(decision).toEqual({
-      kind: 'record',
-      allocations: [
-        { invoice: may, amount: 500 },
-        { invoice: june, amount: 500 },
+    expect(decision).toMatchObject({
+      kind: 'review',
+      reason: 'set_of_invoices_fits',
+      invoiceOptions: [
+        [
+          { invoice: may, amount: 500 },
+          { invoice: june, amount: 500 },
+        ],
       ],
     })
   })
@@ -105,7 +108,7 @@ describe('decideCustomerPayment', () => {
     expect(outstandingOf(credited)).toBe(500)
     expect(decideCustomerPayment(payment('2026-07-10', 500), [credited], [], [])).toEqual({
       kind: 'record',
-      allocations: [{ invoice: credited, amount: 500 }],
+      allocation: { invoice: credited, amount: 500 },
     })
   })
 
@@ -122,13 +125,13 @@ describe('decideCustomerPayment', () => {
     expect(decision).toMatchObject({ kind: 'review', reason: 'entry_fits_another_payment' })
   })
 
-  it('links one day of entries that split one bank payment across invoices', () => {
+  it('offers one day of entries that split one bank payment to a person', () => {
     const first = entry({ id: 'pay-a', invoiceId: 'vz', paymentDate: '2026-08-21', amount: 500 })
     const second = entry({ id: 'pay-b', invoiceId: 'wc', paymentDate: '2026-08-21', amount: 500 })
 
     const decision = decideCustomerPayment(payment('2026-08-21', 1000), [], [first, second], [])
 
-    expect(decision).toEqual({ kind: 'link', entries: [first, second] })
+    expect(decision).toMatchObject({ kind: 'review', reason: 'entries_split_payment', entryOptions: [[first, second]] })
   })
 
   it('asks a person when the payment fits no invoice exactly', () => {
@@ -148,7 +151,7 @@ describe('decideCustomerPayment', () => {
   })
 
   it('does not search sets of invoices when too many are owing', () => {
-    const owing = Array.from({ length: MAX_SET_SEARCH_INVOICES + 1 }, (_, index) =>
+    const owing = Array.from({ length: MAX_SET_SEARCH_ITEMS + 1 }, (_, index) =>
       invoice({ id: `inv-${index}`, invoiceNumber: `INV-${index}`, invoiceDate: '2026-07-01', totalAmount: 100 })
     )
 
@@ -158,7 +161,7 @@ describe('decideCustomerPayment', () => {
     })
   })
 
-  it('ignores an entered payment dated more than a week from the bank date', () => {
+  it('asks a person when an entry of the same amount from further away may be this money', () => {
     const entered = entry({ id: 'pay-w4', invoiceId: 'w4', paymentDate: '2026-08-26' })
 
     const decision = decideCustomerPayment(
@@ -168,7 +171,9 @@ describe('decideCustomerPayment', () => {
       []
     )
 
-    expect(decision).toEqual({ kind: 'record', allocations: [{ invoice: KIER_AUGUST, amount: 2520 }] })
+    // Entered on 26 August, the bank date is 3 September: it may be this money entered early, so
+    // recording it against August as well could count one payment twice.
+    expect(decision).toMatchObject({ kind: 'review', reason: 'entry_may_be_this_payment', entryOptions: [[entered]] })
   })
 
   it('compares money to the penny, not to floating point noise', () => {
@@ -196,3 +201,33 @@ describe('decideCustomerPayment and old invoices', () => {
     })
   })
 })
+
+describe('decideCustomerPayment and other payments', () => {
+  it('sends a payment to a person when another payment already points at the only invoice that fits', () => {
+    const decision = decideCustomerPayment(payment('2026-09-03', 2520), [KIER_AUGUST], [], [], new Set(['w8']))
+
+    expect(decision).toMatchObject({ kind: 'review', reason: 'invoice_claimed_by_another_payment' })
+  })
+
+  it('records nothing, not even one exact fit, when more invoices are owing than can be ruled out', () => {
+    const owing = Array.from({ length: MAX_SET_SEARCH_ITEMS + 1 }, (_, index) =>
+      invoice({ id: `inv-${index}`, invoiceNumber: `INV-${index}`, invoiceDate: '2026-07-01', totalAmount: index === 0 ? 200 : 100 })
+    )
+
+    expect(decideCustomerPayment(payment('2026-07-20', 200), owing, [], [])).toMatchObject({
+      kind: 'review',
+      reason: 'too_many_invoices_owing',
+    })
+  })
+
+  it('does not search combinations of a very busy day of entries', () => {
+    const busyDay = Array.from({ length: 30 }, (_, index) => entry({ id: `pay-${index}`, paymentDate: '2026-08-21', amount: 1 }))
+
+    const started = Date.now()
+    const decision = decideCustomerPayment(payment('2026-08-21', 2), [], busyDay, [])
+
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(decision).toEqual({ kind: 'none' })
+  })
+})
+
