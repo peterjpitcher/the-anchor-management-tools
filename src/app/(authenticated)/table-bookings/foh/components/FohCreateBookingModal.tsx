@@ -1,7 +1,7 @@
 'use client'
 
 import React, { FormEvent, useEffect } from 'react'
-import { Alert, Button, Input, Modal, Select, Textarea } from '@/ds'
+import { Alert, Button, Checkbox, Input, Modal, Select, Textarea } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   computeDepositAmount,
@@ -45,6 +45,10 @@ export type CreateForm = {
   waive_deposit: boolean
   is_venue_event: boolean
   bypass_pacing: boolean
+  // '0' to '2'; the API caps at 2 and the database grants only what is free.
+  high_chair_count: string
+  outside_seating: boolean
+  requires_accessible_table: boolean
 }
 
 type FohCreateBookingModalProps = {
@@ -437,6 +441,48 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 <p className="text-xs text-danger md:col-span-2">{eventOptionsError}</p>
               )}
             </>
+          )}
+
+          {createForm.purpose !== 'event' && (
+            <Select
+              label="High chairs"
+              value={createForm.high_chair_count}
+              onChange={(event) => {
+                const count = event.target.value
+                onSetCreateForm((current) => ({ ...current, high_chair_count: count }))
+              }}
+              className={FIELD_CLASS}
+            >
+              <option value="0">None</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+            </Select>
+          )}
+
+          {createForm.purpose !== 'event' && (
+            <div className="flex items-end">
+              <div className={cn(CHECKBOX_ROW_CLASS, 'w-full')}>
+                <Checkbox
+                  label="Outside table"
+                  checked={createForm.outside_seating}
+                  onChange={(checked) => onSetCreateForm((prev) => ({ ...prev, outside_seating: checked }))}
+                  className="min-h-touch flex-1"
+                />
+              </div>
+            </div>
+          )}
+
+          {createMode === 'booking' && createForm.purpose !== 'event' && !createForm.outside_seating && (
+            <div className="md:col-span-2">
+              <div className={CHECKBOX_ROW_CLASS}>
+                <Checkbox
+                  label="Needs a step-free table"
+                  checked={createForm.requires_accessible_table}
+                  onChange={(checked) => onSetCreateForm((prev) => ({ ...prev, requires_accessible_table: checked }))}
+                  className="min-h-touch flex-1"
+                />
+              </div>
+            </div>
           )}
 
           {!selectedCustomer && createMode === 'walk_in' && (

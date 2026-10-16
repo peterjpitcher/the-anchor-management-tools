@@ -97,6 +97,19 @@ export type UseFohCreateBookingReturn = {
   handleCreateBooking: (event: FormEvent<HTMLFormElement>) => void
 }
 
+/**
+ * High chairs are granted by the database from what is free, so it can be fewer than asked
+ * for. Staff need to hear that while the guest is still on the phone, not on arrival.
+ */
+export function describeHighChairs(requested: number, granted: number | null | undefined): string {
+  if (requested <= 0) return ''
+  const given = typeof granted === 'number' && Number.isFinite(granted) ? Math.max(0, Math.trunc(granted)) : null
+  const chairs = (n: number) => `${n} high chair${n === 1 ? '' : 's'}`
+  if (given === null || given >= requested) return ` ${chairs(given ?? requested)} reserved.`
+  if (given === 0) return ` No high chairs were free at that time, so none are reserved.`
+  return ` Only ${chairs(given)} free at that time, so ${given} reserved instead of ${requested}.`
+}
+
 export function useFohCreateBooking(input: {
   date: string
   clockNow: Date
@@ -150,7 +163,10 @@ export function useFohCreateBooking(input: {
     notes: '',
     waive_deposit: false,
     is_venue_event: false,
-    bypass_pacing: false
+    bypass_pacing: false,
+    high_chair_count: '0',
+    outside_seating: false,
+    requires_accessible_table: false
   })
 
   // --- Customer search ---
@@ -383,7 +399,8 @@ export function useFohCreateBooking(input: {
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
-      notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false
+      notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+      high_chair_count: '0', outside_seating: false, requires_accessible_table: false
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
     setSelectedCustomer(null); setEventOptions([]); setEventOptionsError(null)
@@ -441,7 +458,8 @@ export function useFohCreateBooking(input: {
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
         phone: walkInMode ? '' : current.phone, email: walkInMode ? '' : current.email, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
-        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false
+        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+        high_chair_count: '0', outside_seating: false, requires_accessible_table: false
       }
     })
     if (walkInMode) {
@@ -588,6 +606,7 @@ export function useFohCreateBooking(input: {
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
     }
+    const requestedHighChairs = Math.max(0, Math.min(2, Number.parseInt(createForm.high_chair_count, 10) || 0))
     setSubmittingBooking(true)
     try {
       const response = await fetch('/api/foh/bookings', {
@@ -606,6 +625,11 @@ export function useFohCreateBooking(input: {
           sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined,
           bypass_pacing: createForm.bypass_pacing || undefined,
+          high_chair_count: requestedHighChairs || undefined,
+          outside_seating: createForm.outside_seating || undefined,
+          // Indoor only: an outside booking holds no indoor table to make step-free.
+          requires_accessible_table:
+            (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
           // never the truthiness. Absent for Christmas, which travels as a
@@ -636,9 +660,11 @@ export function useFohCreateBooking(input: {
         }
       }
       const paymentLinkText = payload.data.state === 'pending_payment' && payload.data.next_step_url ? ` Deposit link: ${payload.data.next_step_url}` : ''
+      if (payload.data.is_outside_seating && !tableText) tableText = ' at an outside table'
+      const highChairText = describeHighChairs(requestedHighChairs, payload.data.high_chairs_granted)
       await reloadSchedule()
       const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${paymentLinkText}`)
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')
