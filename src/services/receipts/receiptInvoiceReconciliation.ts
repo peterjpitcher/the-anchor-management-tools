@@ -56,7 +56,7 @@ type InvoicePaymentMatchStatus =
   | 'vendor_amount_matched'
   | 'vendor_amount_ambiguous'
 
-type InvoiceRow = {
+export type InvoiceRow = {
   id: string
   invoice_number: string
   vendor_id: string | null
@@ -213,7 +213,7 @@ type LinkedReceiptVendor = { id: string; name: string }
  * The receipts vendor for an invoicing customer, created if this is the first time it is seen.
  * A lookup failure leaves the payment's vendor alone: the match itself is still recorded.
  */
-async function ensureReceiptVendorLinkedToInvoiceVendor(
+export async function ensureReceiptVendorLinkedToInvoiceVendor(
   supabase: AdminClient,
   vendorName: string | null | undefined,
   invoiceVendorId: string | null | undefined
@@ -259,7 +259,7 @@ type StoredInvoiceMatchStatus = (typeof STORED_INVOICE_MATCH_STATUSES)[number]
  * the status may move and whether the vendor may be written, so a payment a person closed,
  * reopened or named by hand is left as they left it.
  */
-async function applyInvoiceMatch(
+export async function applyInvoiceMatch(
   supabase: AdminClient,
   params: {
     transaction: ReceiptTransaction
@@ -454,7 +454,7 @@ async function loadMatchedTransactionIds(supabase: AdminClient, transactionIds: 
 }
 
 /** Issued credit notes per invoice: they reduce what the customer owes. */
-async function loadCreditedByInvoice(supabase: AdminClient, invoiceIds: string[]): Promise<Map<string, number>> {
+export async function loadCreditedByInvoice(supabase: AdminClient, invoiceIds: string[]): Promise<Map<string, number>> {
   const credited = new Map<string, number>()
   for (const chunk of chunkArray([...new Set(invoiceIds)], 100)) {
     const rows = await fetchAllRows<{ invoice_id: string; amount_inc_vat: number | string | null }>(
