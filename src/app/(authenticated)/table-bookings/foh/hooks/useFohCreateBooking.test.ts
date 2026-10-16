@@ -481,6 +481,62 @@ describe('useFohCreateBooking high chairs, outside and step-free', () => {
   })
 })
 
+describe('useFohCreateBooking outside walk-in from a table lane', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('does not try to move an outside walk-in onto the indoor lane it was started from', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      urls.push(url)
+      if (url === '/api/foh/bookings') {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          data: {
+            state: 'confirmed', table_booking_id: 'tb-out', booking_reference: 'TB-OUT1', reason: null,
+            blocked_reason: null, next_step_url: null, hold_expires_at: null, table_name: null,
+            high_chairs_granted: 0, is_outside_seating: true,
+          },
+        }), { status: 201, headers: { 'content-type': 'application/json' } }))
+      }
+      if (url.startsWith('/api/foh/periods')) {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { period: null } }), { status: 200 }))
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: true, data: [] }), { status: 200 }))
+    }))
+    const setStatusMessage = vi.fn()
+    const { result } = renderHook(() =>
+      useFohCreateBooking({
+        date: '2026-05-23',
+        clockNow: new Date('2026-05-23T12:00:00.000Z'),
+        canEdit: true,
+        schedule,
+        timeline,
+        setErrorMessage: vi.fn(),
+        setStatusMessage,
+        reloadSchedule: vi.fn().mockResolvedValue(undefined),
+      })
+    )
+    await act(async () => {
+      result.current.openCreateModal({ mode: 'walk_in', laneTableId: 'table-4a', laneTableName: 'Low 4a' })
+    })
+    await waitFor(() => expect(result.current.loadingEventOptions).toBe(false))
+    await act(async () => {
+      result.current.setWalkInPurposeAutoSelectionEnabled(false)
+      result.current.setCreateForm((current) => ({ ...current, purpose: 'food', party_size: '2', outside_seating: true }))
+    })
+    await act(async () => {
+      await result.current.handleCreateBooking({ preventDefault: vi.fn() } as never)
+    })
+
+    expect(urls.some((u) => u.includes('/move-table'))).toBe(false)
+    expect(setStatusMessage).toHaveBeenLastCalledWith(expect.stringContaining('at an outside table'))
+    expect(setStatusMessage).toHaveBeenLastCalledWith(expect.not.stringContaining('not moved'))
+  })
+})
+
 describe('describeHighChairs', () => {
   it('says nothing when none were asked for', () => {
     expect(describeHighChairs(0, 0)).toBe('')
