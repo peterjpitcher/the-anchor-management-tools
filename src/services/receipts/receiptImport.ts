@@ -29,6 +29,7 @@ import {
   type StatementParseResult,
 } from './statementParsing'
 import { applyAutomationRules } from './receiptAutomation'
+import { checkBalanceContinuity, describeBalanceContinuity } from '@/lib/receipts/statement-continuity'
 
 export type ReceiptBatchFollowupStatus = 'queued' | 'running' | 'done' | 'failed'
 
@@ -172,6 +173,21 @@ export async function performImportReceiptStatement(
     }
   }
 
+  if (sourceType === 'bank') {
+    try {
+      const balanceWarning = await checkBankBalanceAround(supabase, parsed.rows)
+      if (balanceWarning) warnings.push(balanceWarning)
+    } catch (balanceError) {
+      // The statement is stored either way. Saying the check did not run is better than
+      // silence, which would read as "the balance joins up".
+      console.error(
+        'Bank balance check after a statement import failed:',
+        balanceError instanceof Error ? balanceError.message : String(balanceError)
+      )
+      warnings.push('The bank balance could not be checked this time, so missing payments would not have been spotted.')
+    }
+  }
+
   return {
     success: true,
     inserted,
@@ -186,6 +202,69 @@ export async function performImportReceiptStatement(
     followupStatus,
     warning: warnings.join(' ') || undefined,
   }
+}
+
+type BankBalanceRow = {
+  transaction_date: string
+  amount_in: number | null
+  amount_out: number | null
+  balance: number | null
+}
+
+/**
+ * Whether the bank balance joins up where this statement meets the lines already held: the last
+ * day held before it, its own dates and the first day held after it. A break means lines are
+ * missing, such as a line an older importer skipped, a download that stopped part way through a
+ * month, or a statement never uploaded. Returns the message to show, or null when it joins up.
+ */
+async function checkBankBalanceAround(
+  supabase: ReturnType<typeof createAdminClient>,
+  rows: ParsedTransactionRow[]
+): Promise<string | null> {
+  const dates = rows.map((row) => row.transactionDate).sort()
+  const first = dates[0]
+  const last = dates[dates.length - 1]
+  if (!first || !last) return null
+
+  const neighbour = async (side: 'before' | 'after'): Promise<string | null> => {
+    const base = supabase
+      .from('receipt_transactions')
+      .select('transaction_date')
+      .eq('source_type', 'bank')
+      .not('balance', 'is', null)
+    const { data, error } =
+      side === 'before'
+        ? await base.lt('transaction_date', first).order('transaction_date', { ascending: false }).limit(1)
+        : await base.gt('transaction_date', last).order('transaction_date', { ascending: true }).limit(1)
+    if (error) throw new Error(`Failed to find the bank lines ${side} the statement: ${error.message}`)
+    return (data?.[0] as { transaction_date: string } | undefined)?.transaction_date ?? null
+  }
+
+  const [from, to] = await Promise.all([neighbour('before'), neighbour('after')])
+  const lines = await fetchAllRows<BankBalanceRow>(
+    (fromRow, toRow) =>
+      supabase
+        .from('receipt_transactions')
+        .select('id, transaction_date, amount_in, amount_out, balance')
+        .eq('source_type', 'bank')
+        .gte('transaction_date', from ?? first)
+        .lte('transaction_date', to ?? last)
+        .order('transaction_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(fromRow, toRow),
+    { label: 'bank lines for the balance check' }
+  )
+
+  return describeBalanceContinuity(
+    checkBalanceContinuity(
+      lines.map((line) => ({
+        date: line.transaction_date,
+        amountIn: line.amount_in,
+        amountOut: line.amount_out,
+        balance: line.balance,
+      }))
+    )
+  )
 }
 
 // ---------------------------------------------------------------------------

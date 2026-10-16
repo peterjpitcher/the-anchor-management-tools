@@ -488,3 +488,85 @@ describe('processReceiptBatchFollowup', () => {
     expect(mockedRules).not.toHaveBeenCalled()
   })
 })
+
+describe('the bank balance check after an import', () => {
+  /** Stores what it is sent, as the real database function does, so the check can see it. */
+  function storeOnImport(db: FakeDb) {
+    db.onRpc((_name, args) => {
+      const rows = args.p_rows as Array<Record<string, unknown>>
+      rows.forEach((row, index) => db.rows('receipt_transactions').push({ id: `new-${index + 1}`, batch_id: BATCH, ...row }))
+      return {
+        data: { outcome: 'imported', batch: { id: BATCH, followup_status: 'done' }, inserted_count: rows.length, duplicate_count: 0 },
+        error: null,
+      }
+    })
+  }
+
+  function held(date: string, moneyOut: number, balance: number) {
+    return { id: `held-${date}`, source_type: 'bank', transaction_date: date, amount_in: null, amount_out: moneyOut, balance }
+  }
+
+  // Opens on 1 June at 50,235.99: 50,038.99 after the first line, plus the 197.00 it paid out.
+  const JUNE = ['02/06/2026,NEST,Direct Debit,,38.99,50000.00', '01/06/2026,SPELTHORNE BCCTAX,Direct Debit,,197.00,50038.99']
+
+  it('warns when the statement does not join up with the one held before it', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(held('2026-05-27', 113.78, 48072))
+    storeOnImport(db)
+    const { file, buffer } = statement(JUNE)
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'bank')
+
+    expect(result.success).toBe(true)
+    expect(result.warning).toContain(
+      'between 27 May 2026 and 1 June 2026, £2,163.99 more came in than the payments held show'
+    )
+  })
+
+  it('says nothing when the statement joins up', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(held('2026-05-29', 3.4, 50235.99))
+    storeOnImport(db)
+    const { file, buffer } = statement(JUNE)
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'bank')
+
+    expect(result).toMatchObject({ success: true, inserted: 2 })
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('also looks at the statement held after it', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(held('2026-05-29', 3.4, 50235.99), held('2026-06-03', 12.99, 49900))
+    storeOnImport(db)
+    const { file, buffer } = statement(JUNE)
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'bank')
+
+    expect(result.warning).toContain('between 2 June 2026 and 3 June 2026, £87.01 more went out than the payments held show')
+  })
+
+  it('keeps the import and says so when the balance cannot be read', async () => {
+    const db = seed({}, 0)
+    storeOnImport(db)
+    db.failNext({ table: 'receipt_transactions', operation: 'select', message: 'connection reset' })
+    const { file, buffer } = statement(JUNE)
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'bank')
+
+    expect(result).toMatchObject({ success: true, inserted: 2 })
+    expect(result.warning).toContain('The bank balance could not be checked this time')
+  })
+
+  it('does not run on an American Express statement', async () => {
+    const db = seed({}, 0)
+    storeOnImport(db)
+    db.failNext({ table: 'receipt_transactions', operation: 'select', message: 'should not be read' })
+    const text = ['Date,Description,Card Member,Account #,Amount', '03/09/2026,TESCO STORE,MR A PERSON,-12345,12.50'].join('\n')
+
+    const result = await performImportReceiptStatement(USER, '', new File([text], 'amex.csv'), Buffer.from(text), 'amex')
+
+    expect(result.success).toBe(true)
+    expect(result.warning).toBeUndefined()
+  })
+})
