@@ -54,6 +54,12 @@ export type {
 
 import type { ReceiptTransaction } from '@/types/database'
 import { performApplyReceiptBulkClassification, type BulkApplyResult } from '@/services/receipts/receiptBulkApply'
+import {
+  loadCustomerPaymentsToConfirm,
+  performConfirmCustomerPayment,
+  performDismissCustomerPayment,
+  type CustomerPaymentToConfirm,
+} from '@/services/receipts/receiptPaymentConfirmations'
 
 // ---------------------------------------------------------------------------
 // Service layer imports
@@ -1233,5 +1239,94 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
     },
   })
 
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Customer payments to confirm
+// ---------------------------------------------------------------------------
+
+export async function getCustomerPaymentsToConfirm(): Promise<{ items: CustomerPaymentToConfirm[]; error?: string }> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { items: [], error: 'Insufficient permissions' }
+  }
+
+  try {
+    return { items: await loadCustomerPaymentsToConfirm() }
+  } catch (error) {
+    console.error('Failed to load the customer payments to confirm', error instanceof Error ? error.message : String(error))
+    return { items: [], error: 'The customer payments to confirm could not be loaded.' }
+  }
+}
+
+/**
+ * Records a stored customer payment against the invoices in the option a person chose, or links
+ * it to the payments already entered on them. Recording a payment on an invoice needs the same
+ * permission as entering one by hand.
+ */
+export async function confirmCustomerPayment(input: {
+  matchId: string
+  optionIndex: number
+}): Promise<{ success?: boolean; invoiceNumbers?: string[]; error?: string }> {
+  const [canManage, canEditInvoices] = await Promise.all([
+    checkUserPermission('receipts', 'manage'),
+    checkUserPermission('invoices', 'edit'),
+  ])
+  if (!canManage || !canEditInvoices) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const matchId = String(input?.matchId ?? '')
+  const optionIndex = Number(input?.optionIndex)
+  if (!UUID_PATTERN.test(matchId) || !Number.isInteger(optionIndex) || optionIndex < 0) {
+    return { error: 'That choice could not be read. Nothing was recorded.' }
+  }
+
+  const actor = await requireCurrentUser()
+  const result = await performConfirmCustomerPayment({ matchId, optionIndex, userId: actor.user_id })
+
+  await logReceiptAudit(actor, {
+    operation_type: 'confirm_customer_payment',
+    resource_type: 'receipt_invoice_match',
+    resource_id: matchId,
+    operation_status: 'success' in result ? 'success' : 'failure',
+    error_message: 'error' in result ? result.error : undefined,
+    additional_info: { option_index: optionIndex, invoices: 'success' in result ? result.invoiceNumbers : undefined },
+  })
+
+  if ('success' in result) {
+    revalidatePath('/receipts')
+    revalidatePath('/invoices')
+  }
+  return result
+}
+
+/** Takes a stored customer payment off the list: not an invoice payment, or dealt with by hand. */
+export async function dismissCustomerPayment(input: { matchId: string }): Promise<{ success?: boolean; error?: string }> {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const matchId = String(input?.matchId ?? '')
+  if (!UUID_PATTERN.test(matchId)) {
+    return { error: 'That payment could not be found.' }
+  }
+
+  const actor = await requireCurrentUser()
+  const result = await performDismissCustomerPayment({ matchId, userId: actor.user_id })
+
+  await logReceiptAudit(actor, {
+    operation_type: 'set_aside_customer_payment',
+    resource_type: 'receipt_invoice_match',
+    resource_id: matchId,
+    operation_status: 'success' in result ? 'success' : 'failure',
+    error_message: 'error' in result ? result.error : undefined,
+  })
+
+  if ('success' in result) {
+    revalidatePath('/receipts')
+  }
   return result
 }
