@@ -211,9 +211,12 @@ export function decideCustomerPayment(
   const others = otherPayments.filter((other) => other.id !== payment.id)
   const entryOptions = entryOptionsFor(payment, entries)
   if (entryOptions.length === 1 && entryOptions[0].length === 1) {
-    return fitsAnotherPayment(entryOptions[0][0], others)
-      ? review('entry_fits_another_payment', entryOptions, [])
-      : { kind: 'link', entry: entryOptions[0][0] }
+    const [entry] = entryOptions[0]
+    if (fitsAnotherPayment(entry, others)) return review('entry_fits_another_payment', entryOptions, [])
+    // Another payment pointing at the entry's invoice may own the entry, even one this customer
+    // lookup cannot see (filed under another vendor, or none).
+    if (claimedInvoiceIds.has(entry.invoiceId)) return review('invoice_claimed_by_another_payment', entryOptions, [])
+    return { kind: 'link', entry }
   }
   if (entryOptions.length === 1) return review('entries_split_payment', entryOptions, [])
   if (entryOptions.length > 1) return review('several_entries_fit', entryOptions, [])
