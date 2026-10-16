@@ -812,6 +812,10 @@ type FohCreateBookingResponseData = {
     | 'link_sent'
     | 'link_not_sent'
   sunday_preorder_reason: string | null
+  // What the database granted, which can be fewer than asked for when the venue's
+  // high chairs are already held, so staff can tell the guest before they arrive.
+  high_chairs_granted: number
+  is_outside_seating: boolean
 }
 
 async function recordFohTableBookingAnalyticsSafe(
@@ -976,7 +980,9 @@ async function createFohTableBooking(
       hold_expires_at: null,
       table_name: mgmtResult.table_name ?? null,
       sunday_preorder_state: 'not_applicable',
-      sunday_preorder_reason: null
+      sunday_preorder_reason: null,
+      high_chairs_granted: mgmtResult.high_chairs_granted ?? mgmtResult.high_chair_count ?? 0,
+      is_outside_seating: mgmtResult.is_outside_seating ?? false
     }
     return NextResponse.json({ success: true, data: responseData })
   }
@@ -1167,7 +1173,7 @@ async function createFohTableBooking(
       // the stored value and narrow on booking_type instead. Without this a
       // Christmas retry would never match and would create a duplicate.
       let duplicateQuery = (auth.supabase.from('table_bookings') as any)
-        .select('id, booking_reference, status')
+        .select('id, booking_reference, status, high_chair_count')
         .eq('customer_id', customerId)
         .eq('booking_date', payload.date)
         .eq('booking_time', bookingTime)
@@ -1201,7 +1207,10 @@ async function createFohTableBooking(
               hold_expires_at: null,
               table_name: null,
               sunday_preorder_state: 'not_applicable',
-              sunday_preorder_reason: null
+              sunday_preorder_reason: null,
+              // The first submit's grant, so a double-tap reports the chairs actually held.
+              high_chairs_granted: Number(recentDuplicate.high_chair_count) || 0,
+              is_outside_seating: payload.outside_seating ?? false
             } satisfies FohCreateBookingResponseData
           },
           { status: 200 }
@@ -1796,7 +1805,9 @@ async function createFohTableBooking(
         hold_expires_at: responseState === 'pending_payment' ? holdExpiresAt : null,
         table_name: bookingResult.table_name || null,
         sunday_preorder_state: sundayPreorderState,
-        sunday_preorder_reason: sundayPreorderReason
+        sunday_preorder_reason: sundayPreorderReason,
+        high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
+        is_outside_seating: bookingResult.is_outside_seating ?? false
       } satisfies FohCreateBookingResponseData
     },
     { status: responseStatus }

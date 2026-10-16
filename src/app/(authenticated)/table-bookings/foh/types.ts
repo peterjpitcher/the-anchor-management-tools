@@ -110,6 +110,8 @@ export type FohCreateBookingResponse = {
       | 'link_sent'
       | 'link_not_sent'
     sunday_preorder_reason?: string | null
+    high_chairs_granted?: number
+    is_outside_seating?: boolean
   }
   error?: string
   code?: string

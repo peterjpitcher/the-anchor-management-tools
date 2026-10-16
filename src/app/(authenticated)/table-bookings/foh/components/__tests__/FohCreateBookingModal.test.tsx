@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { FohCreateBookingModal, type CreateForm } from '../FohCreateBookingModal'
 
 const CHRISTMAS_FORM: CreateForm = {
@@ -19,13 +19,19 @@ const CHRISTMAS_FORM: CreateForm = {
   waive_deposit: false,
   is_venue_event: false,
   bypass_pacing: false,
+  high_chair_count: '0',
+  outside_seating: false,
+  requires_accessible_table: false,
 }
 
-function renderModal(createForm: CreateForm) {
+function renderModal(
+  createForm: CreateForm,
+  options: { createMode?: 'booking' | 'walk_in' | 'management'; onSetCreateForm?: (updater: (current: CreateForm) => CreateForm) => void } = {},
+) {
   render(
     <FohCreateBookingModal
       open
-      createMode="booking"
+      createMode={options.createMode ?? 'booking'}
       createForm={createForm}
       canWaiveDeposit={false}
       walkInTargetTable={null}
@@ -49,7 +55,7 @@ function renderModal(createForm: CreateForm) {
       errorMessage={null}
       onClose={vi.fn()}
       onSubmit={vi.fn()}
-      onSetCreateForm={vi.fn()}
+      onSetCreateForm={options.onSetCreateForm ?? vi.fn()}
       onSetCustomerQuery={vi.fn()}
       onSelectCustomer={vi.fn()}
       onClearCustomer={vi.fn()}
@@ -75,5 +81,47 @@ describe('FohCreateBookingModal: the Christmas rules staff are shown', () => {
   it('shows the Christmas rules only for a Christmas booking', () => {
     renderModal({ ...CHRISTMAS_FORM, purpose: 'food' })
     expect(screen.queryByText(/Christmas bookings need/)).not.toBeInTheDocument()
+  })
+})
+
+describe('FohCreateBookingModal: high chairs, outside and step-free', () => {
+  const FOOD_FORM: CreateForm = { ...CHRISTMAS_FORM, purpose: 'food', party_size: '2' }
+
+  function applyLastUpdate(onSetCreateForm: ReturnType<typeof vi.fn>, form: CreateForm): CreateForm {
+    const updater = onSetCreateForm.mock.calls.at(-1)?.[0] as (current: CreateForm) => CreateForm
+    return updater(form)
+  }
+
+  it('offers high chairs, an outside table and a step-free table on a food booking', () => {
+    renderModal(FOOD_FORM)
+    expect(screen.getByLabelText('High chairs')).toBeInTheDocument()
+    expect(screen.getByLabelText('Outside table')).toBeInTheDocument()
+    expect(screen.getByLabelText('Needs a step-free table')).toBeInTheDocument()
+  })
+
+  it('records the high chairs staff choose', () => {
+    const onSetCreateForm = vi.fn()
+    renderModal(FOOD_FORM, { onSetCreateForm })
+    fireEvent.change(screen.getByLabelText('High chairs'), { target: { value: '2' } })
+    expect(applyLastUpdate(onSetCreateForm, FOOD_FORM).high_chair_count).toBe('2')
+  })
+
+  it('records an outside table', () => {
+    const onSetCreateForm = vi.fn()
+    renderModal(FOOD_FORM, { onSetCreateForm })
+    fireEvent.click(screen.getByLabelText('Outside table'))
+    expect(applyLastUpdate(onSetCreateForm, FOOD_FORM).outside_seating).toBe(true)
+  })
+
+  it('hides the step-free choice for an outside table, which has no indoor table to choose', () => {
+    renderModal({ ...FOOD_FORM, outside_seating: true })
+    expect(screen.queryByLabelText('Needs a step-free table')).not.toBeInTheDocument()
+  })
+
+  it('keeps high chairs and outside on a walk-in, without the step-free choice', () => {
+    renderModal(FOOD_FORM, { createMode: 'walk_in' })
+    expect(screen.getByLabelText('High chairs')).toBeInTheDocument()
+    expect(screen.getByLabelText('Outside table')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Needs a step-free table')).not.toBeInTheDocument()
   })
 })
