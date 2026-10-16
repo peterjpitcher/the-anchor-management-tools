@@ -1,211 +1,198 @@
 import { describe, expect, it } from 'vitest'
 import {
-  evaluateInvoiceCandidate,
-  pairInvoiceByAmountAndDate,
-  type PairableInvoice,
+  MAX_SET_SEARCH_INVOICES,
+  decideCustomerPayment,
+  outstandingOf,
+  type CustomerBankPayment,
+  type CustomerInvoice,
+  type EnteredPayment,
 } from './invoice-pairing'
 
-function invoice(overrides: Partial<PairableInvoice> = {}): PairableInvoice {
+function invoice(overrides: Partial<CustomerInvoice> = {}): CustomerInvoice {
   return {
     id: 'inv-1',
     invoiceNumber: 'INV-003W6',
     invoiceDate: '2026-07-01',
     status: 'sent',
     totalAmount: 2460.9,
+    creditedAmount: 0,
     paidAmount: 0,
     ...overrides,
   }
 }
 
-describe('pairInvoiceByAmountAndDate', () => {
-  it('pairs the real CRICKETERS payment that carried no invoice reference', () => {
-    // The live case: bank narrative "CRICKETERS CRICKETERS", GBP 2460.90 on
-    // 2026-07-03, against Barons Pubs invoice INV-003W6 dated 2026-07-01.
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-07-03', amount: 2460.9 },
-      [invoice({ status: 'paid', paidAmount: 2460.9 })]
-    )
+function payment(date: string, amount: number, id = 'tx-1'): CustomerBankPayment {
+  return { id, date, amount }
+}
 
-    expect(result.outcome).toBe('paired')
-    if (result.outcome !== 'paired') return
-    expect(result.candidate.invoice.invoiceNumber).toBe('INV-003W6')
-    expect(result.candidate.basis).toBe('total')
-    expect(result.candidate.dayGap).toBe(2)
-    expect(result.viaTiebreak).toBe(false)
-    expect(result.candidateCount).toBe(1)
+function entry(overrides: Partial<EnteredPayment> = {}): EnteredPayment {
+  return { id: 'pay-1', invoiceId: 'inv-1', paymentDate: '2026-08-26', amount: 2520, ...overrides }
+}
+
+// Kier bills 2,520.00 on the first of each month.
+const KIER_JULY = invoice({ id: 'w4', invoiceNumber: 'INV-003W4', invoiceDate: '2026-07-01', totalAmount: 2520 })
+const KIER_AUGUST = invoice({ id: 'w8', invoiceNumber: 'INV-003W8', invoiceDate: '2026-08-01', totalAmount: 2520 })
+const KIER_SEPTEMBER = invoice({ id: 'wd', invoiceNumber: 'INV-003WD', invoiceDate: '2026-09-01', totalAmount: 2520 })
+
+describe('decideCustomerPayment', () => {
+  it('records a payment against the one invoice it settles', () => {
+    // The live shape: "CRICKETERS CRICKETERS", 2,460.90 on 3 July, against INV-003W6 of 1 July.
+    const decision = decideCustomerPayment(payment('2026-07-03', 2460.9), [invoice()], [], [])
+
+    expect(decision).toEqual({ kind: 'record', allocations: [{ invoice: invoice(), amount: 2460.9 }] })
   })
 
-  it('pairs on the outstanding balance when the invoice is part paid', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-07-10', amount: 500 },
-      [invoice({ totalAmount: 2000, paidAmount: 1500, status: 'partially_paid' })]
-    )
+  it('links to a payment already entered by hand instead of recording it again', () => {
+    const paidJuly = { ...KIER_JULY, paidAmount: 2520 }
+    const entered = entry({ id: 'pay-w4', invoiceId: 'w4', paymentDate: '2026-08-26' })
 
-    expect(result.outcome).toBe('paired')
-    if (result.outcome !== 'paired') return
-    expect(result.candidate.basis).toBe('outstanding')
+    const decision = decideCustomerPayment(payment('2026-08-26', 2520), [paidJuly, KIER_AUGUST], [entered], [])
+
+    expect(decision).toEqual({ kind: 'link', entries: [entered] })
   })
 
-  it('applies to the oldest still-owing invoice when several match', () => {
-    // The real Golden Barrels shape: identical 500 invoices every month.
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-08-05', amount: 500 },
-      [
-        invoice({ id: 'b', invoiceNumber: 'INV-003W9', invoiceDate: '2026-08-01', totalAmount: 500, status: 'overdue' }),
-        invoice({ id: 'a', invoiceNumber: 'INV-003W5', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-      ]
+  it('leaves identical monthly invoices to a person rather than guessing', () => {
+    const decision = decideCustomerPayment(
+      payment('2026-09-03', 2520),
+      [{ ...KIER_JULY, paidAmount: 2520 }, KIER_AUGUST, KIER_SEPTEMBER],
+      [],
+      []
     )
 
-    expect(result.outcome).toBe('paired')
-    if (result.outcome !== 'paired') return
-    expect(result.candidate.invoice.invoiceNumber).toBe('INV-003W5')
-    expect(result.viaTiebreak).toBe(true)
-    expect(result.candidateCount).toBe(2)
+    expect(decision.kind).toBe('review')
+    if (decision.kind !== 'review') return
+    expect(decision.reason).toBe('several_invoices_fit')
+    expect(decision.invoiceOptions.map((option) => option.map((part) => part.invoice.invoiceNumber))).toEqual([
+      ['INV-003W8'],
+      ['INV-003WD'],
+    ])
   })
 
-  it('prefers a still-owing invoice over an older one already paid', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-08-05', amount: 500 },
-      [
-        invoice({ id: 'old', invoiceNumber: 'INV-OLD', invoiceDate: '2026-06-01', totalAmount: 500, paidAmount: 500, status: 'paid' }),
-        invoice({ id: 'owing', invoiceNumber: 'INV-OWING', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-      ]
-    )
+  it('records one payment across the only set of invoices that adds up to it', () => {
+    const may = invoice({ id: 'vs', invoiceNumber: 'INV-003VS', invoiceDate: '2026-05-01', totalAmount: 500 })
+    const june = invoice({ id: 'vw', invoiceNumber: 'INV-003VW', invoiceDate: '2026-06-01', totalAmount: 500 })
 
-    expect(result.outcome).toBe('paired')
-    if (result.outcome !== 'paired') return
-    expect(result.candidate.invoice.invoiceNumber).toBe('INV-OWING')
+    const decision = decideCustomerPayment(payment('2026-08-21', 1000), [may, june], [], [])
+
+    expect(decision).toEqual({
+      kind: 'record',
+      allocations: [
+        { invoice: may, amount: 500 },
+        { invoice: june, amount: 500 },
+      ],
+    })
   })
 
-  it('will not settle an invoice that did not exist when the money arrived', () => {
-    // The live Golden Barrels case: paid 25 Jun, and the only outstanding
-    // invoice is dated 1 Jul. Applying it there would be back-dating a debt.
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-06-25', amount: 500 },
-      [
-        invoice({ id: 'jun', invoiceNumber: 'INV-003VZ', invoiceDate: '2026-06-01', totalAmount: 500, paidAmount: 500, status: 'paid' }),
-        invoice({ id: 'jul', invoiceNumber: 'INV-003W5', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-      ]
+  it('asks a person when more than one set of invoices adds up', () => {
+    const owing = ['05', '06', '07'].map((month) =>
+      invoice({ id: `gb-${month}`, invoiceNumber: `INV-${month}`, invoiceDate: `2026-${month}-01`, totalAmount: 500 })
     )
 
-    expect(result.outcome).toBe('ambiguous')
+    const decision = decideCustomerPayment(payment('2026-08-21', 1000), owing, [], [])
+
+    expect(decision).toMatchObject({ kind: 'review', reason: 'several_invoices_fit' })
   })
 
-  it('leaves it ambiguous when several match but every one is already settled', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-08-05', amount: 500 },
-      [
-        invoice({ id: 'b', invoiceNumber: 'INV-JUL', invoiceDate: '2026-07-01', totalAmount: 500, paidAmount: 500, status: 'paid' }),
-        invoice({ id: 'a', invoiceNumber: 'INV-JUN', invoiceDate: '2026-06-01', totalAmount: 500, paidAmount: 500, status: 'paid' }),
-      ]
-    )
+  it('will not record against an invoice dated after the money arrived', () => {
+    const decision = decideCustomerPayment(payment('2026-08-30', 2520), [KIER_SEPTEMBER], [], [])
 
-    expect(result.outcome).toBe('ambiguous')
-    if (result.outcome !== 'ambiguous') return
-    expect(result.candidates).toHaveLength(2)
+    expect(decision).toMatchObject({ kind: 'review', reason: 'no_exact_fit', recentInvoices: [KIER_SEPTEMBER] })
   })
 
-  it('still pairs a single already-paid invoice, which is the CRICKETERS shape', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-08-05', amount: 500 },
-      [invoice({ invoiceNumber: 'INV-JUL', invoiceDate: '2026-07-01', totalAmount: 500, paidAmount: 500, status: 'paid' })]
-    )
+  it('takes credit notes off what is owed', () => {
+    const credited = invoice({ totalAmount: 600, creditedAmount: 100 })
 
-    expect(result.outcome).toBe('paired')
-    if (result.outcome !== 'paired') return
-    expect(result.viaTiebreak).toBe(false)
+    expect(outstandingOf(credited)).toBe(500)
+    expect(decideCustomerPayment(payment('2026-07-10', 500), [credited], [], [])).toEqual({
+      kind: 'record',
+      allocations: [{ invoice: credited, amount: 500 }],
+    })
   })
 
-  it('is deterministic across runs when date and standing are identical', () => {
-    const invoices = [
-      invoice({ id: 'b', invoiceNumber: 'INV-BBB', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-      invoice({ id: 'a', invoiceNumber: 'INV-AAA', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-    ]
-    const tx = { id: 'tx-2', transactionDate: '2026-08-05', amount: 500 }
+  it('does not link an entered payment that another bank payment could equally be', () => {
+    const entered = entry({ id: 'pay-w4', invoiceId: 'w4' })
 
-    const first = pairInvoiceByAmountAndDate(tx, invoices)
-    const second = pairInvoiceByAmountAndDate(tx, [...invoices].reverse())
+    const decision = decideCustomerPayment(
+      payment('2026-08-26', 2520, 'tx-a'),
+      [{ ...KIER_JULY, paidAmount: 2520 }],
+      [entered],
+      [payment('2026-08-28', 2520, 'tx-b')]
+    )
 
-    expect(first.outcome).toBe('paired')
-    expect(second.outcome).toBe('paired')
-    if (first.outcome !== 'paired' || second.outcome !== 'paired') return
-    expect(first.candidate.invoice.invoiceNumber).toBe('INV-AAA')
-    expect(second.candidate.invoice.invoiceNumber).toBe('INV-AAA')
+    expect(decision).toMatchObject({ kind: 'review', reason: 'entry_fits_another_payment' })
   })
 
-  it('does not claim an invoice a successive payment in the same run already took', () => {
-    const invoices = [
-      invoice({ id: 'jun', invoiceNumber: 'INV-JUN', invoiceDate: '2026-06-01', totalAmount: 500, status: 'overdue' }),
-      invoice({ id: 'jul', invoiceNumber: 'INV-JUL', invoiceDate: '2026-07-01', totalAmount: 500, status: 'overdue' }),
-    ]
-    const claimed = new Set<string>()
+  it('links one day of entries that split one bank payment across invoices', () => {
+    const first = entry({ id: 'pay-a', invoiceId: 'vz', paymentDate: '2026-08-21', amount: 500 })
+    const second = entry({ id: 'pay-b', invoiceId: 'wc', paymentDate: '2026-08-21', amount: 500 })
 
-    const first = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-07-05', amount: 500 }, invoices, { claimedInvoiceIds: claimed }
-    )
-    expect(first.outcome).toBe('paired')
-    if (first.outcome !== 'paired') return
-    expect(first.candidate.invoice.invoiceNumber).toBe('INV-JUN')
-    claimed.add(first.candidate.invoice.id)
+    const decision = decideCustomerPayment(payment('2026-08-21', 1000), [], [first, second], [])
 
-    const second = pairInvoiceByAmountAndDate(
-      { id: 'tx-2', transactionDate: '2026-08-05', amount: 500 }, invoices, { claimedInvoiceIds: claimed }
-    )
-    expect(second.outcome).toBe('paired')
-    if (second.outcome !== 'paired') return
-    expect(second.candidate.invoice.invoiceNumber).toBe('INV-JUL')
+    expect(decision).toEqual({ kind: 'link', entries: [first, second] })
   })
 
-  it('returns no candidate when nothing matches the amount', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-1', transactionDate: '2026-07-03', amount: 99.99 },
-      [invoice()]
-    )
+  it('asks a person when the payment fits no invoice exactly', () => {
+    const decision = decideCustomerPayment(payment('2026-07-10', 400), [invoice({ totalAmount: 1000 })], [], [])
 
-    expect(result.outcome).toBe('no_candidate')
+    expect(decision).toMatchObject({ kind: 'review', reason: 'no_exact_fit' })
   })
 
-  it('ignores an invoice already claimed by an earlier payment in the same run', () => {
-    const result = pairInvoiceByAmountAndDate(
-      { id: 'tx-2', transactionDate: '2026-07-03', amount: 2460.9 },
-      [invoice({ id: 'inv-1' })],
-      { claimedInvoiceIds: new Set(['inv-1']) }
+  it('does nothing when the customer has no invoices from around then', () => {
+    expect(decideCustomerPayment(payment('2026-12-20', 2520), [KIER_JULY], [], [])).toEqual({ kind: 'none' })
+  })
+
+  it('never offers a void, written-off or draft invoice', () => {
+    for (const status of ['void', 'written_off', 'draft']) {
+      expect(decideCustomerPayment(payment('2026-07-03', 2460.9), [invoice({ status })], [], [])).toEqual({ kind: 'none' })
+    }
+  })
+
+  it('does not search sets of invoices when too many are owing', () => {
+    const owing = Array.from({ length: MAX_SET_SEARCH_INVOICES + 1 }, (_, index) =>
+      invoice({ id: `inv-${index}`, invoiceNumber: `INV-${index}`, invoiceDate: '2026-07-01', totalAmount: 100 })
     )
 
-    expect(result.outcome).toBe('no_candidate')
+    expect(decideCustomerPayment(payment('2026-07-20', 200), owing, [], [])).toMatchObject({
+      kind: 'review',
+      reason: 'no_exact_fit',
+    })
+  })
+
+  it('ignores an entered payment dated more than a week from the bank date', () => {
+    const entered = entry({ id: 'pay-w4', invoiceId: 'w4', paymentDate: '2026-08-26' })
+
+    const decision = decideCustomerPayment(
+      payment('2026-09-03', 2520),
+      [{ ...KIER_JULY, paidAmount: 2520 }, KIER_AUGUST],
+      [entered],
+      []
+    )
+
+    expect(decision).toEqual({ kind: 'record', allocations: [{ invoice: KIER_AUGUST, amount: 2520 }] })
+  })
+
+  it('compares money to the penny, not to floating point noise', () => {
+    const owing = invoice({ totalAmount: 0.3 })
+
+    expect(decideCustomerPayment(payment('2026-07-03', 0.1 + 0.2), [owing], [], []).kind).toBe('record')
+    expect(decideCustomerPayment(payment('2026-07-03', 0.31), [owing], [], []).kind).toBe('review')
+  })
+
+  it('ignores a zero or negative amount', () => {
+    expect(decideCustomerPayment(payment('2026-07-03', 0), [invoice()], [], [])).toEqual({ kind: 'none' })
+    expect(decideCustomerPayment(payment('2026-07-03', -5), [invoice()], [], [])).toEqual({ kind: 'none' })
   })
 })
 
-describe('evaluateInvoiceCandidate', () => {
-  const transaction = { id: 'tx-1', transactionDate: '2026-07-03', amount: 2460.9 }
+describe('decideCustomerPayment and old invoices', () => {
+  it('does not record a payment against an invoice older than four months', () => {
+    const old = invoice({ invoiceDate: '2026-03-01', totalAmount: 2520 })
+    const recent = invoice({ id: 'inv-2', invoiceNumber: 'INV-NEW', invoiceDate: '2026-07-01', totalAmount: 900 })
 
-  it('never pairs a void invoice', () => {
-    expect(evaluateInvoiceCandidate(transaction, invoice({ status: 'void' }))).toBeNull()
-  })
-
-  it('never pairs a draft invoice', () => {
-    expect(evaluateInvoiceCandidate(transaction, invoice({ status: 'draft' }))).toBeNull()
-  })
-
-  it('allows a payment up to 7 days before the invoice date', () => {
-    expect(evaluateInvoiceCandidate(transaction, invoice({ invoiceDate: '2026-07-10' }))).not.toBeNull()
-    expect(evaluateInvoiceCandidate(transaction, invoice({ invoiceDate: '2026-07-11' }))).toBeNull()
-  })
-
-  it('stops matching once the payment is more than 120 days after the invoice', () => {
-    expect(evaluateInvoiceCandidate(transaction, invoice({ invoiceDate: '2026-03-05' }))).not.toBeNull()
-    expect(evaluateInvoiceCandidate(transaction, invoice({ invoiceDate: '2026-03-04' }))).toBeNull()
-  })
-
-  it('tolerates floating point noise but not a genuine penny difference', () => {
-    expect(
-      evaluateInvoiceCandidate({ ...transaction, amount: 2460.9000001 }, invoice())
-    ).not.toBeNull()
-    expect(evaluateInvoiceCandidate({ ...transaction, amount: 2460.91 }, invoice())).toBeNull()
-  })
-
-  it('ignores zero and negative payment amounts', () => {
-    expect(evaluateInvoiceCandidate({ ...transaction, amount: 0 }, invoice({ totalAmount: 0 }))).toBeNull()
-    expect(evaluateInvoiceCandidate({ ...transaction, amount: -10 }, invoice())).toBeNull()
+    expect(decideCustomerPayment(payment('2026-07-20', 2520), [old, recent], [], [])).toMatchObject({
+      kind: 'review',
+      reason: 'no_exact_fit',
+      recentInvoices: [recent],
+    })
   })
 })
