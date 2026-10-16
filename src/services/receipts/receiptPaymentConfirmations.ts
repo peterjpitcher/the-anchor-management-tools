@@ -360,11 +360,15 @@ export async function performConfirmCustomerPayment(input: {
     const note = invoiceNumbers.length
       ? `${failure} ${invoiceNumbers.join(' and ')} ${invoiceNumbers.length === 1 ? 'was' : 'were'} done. Choose the same option again to finish.`
       : `${failure} Nothing was recorded.`
-    await supabase
+    const { error: noteError } = await supabase
       .from('receipt_invoice_matches')
       .update({ payload: { ...payload, partial: { option_index: option.index, done: invoiceNumbers, error: failure } }, updated_at: new Date().toISOString() })
       .eq('id', match.id)
       .eq('match_status', 'review_required')
+    if (noteError) {
+      // The payment stays on the list either way; only the note of what was done is missing.
+      console.error('Failed to note a part-done customer payment choice:', noteError.message)
+    }
     return { error: note }
   }
 
