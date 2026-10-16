@@ -221,7 +221,9 @@ export function buildTimelineRange(schedule: FohScheduleResponse['data'] | null)
 }
 
 export function mapFohBlockedReason(blockedReason?: string | null, reason?: string | null): string {
-  switch (blockedReason || reason) {
+  // The server folds reasons it has no code for into a generic 'blocked', so read the
+  // database's own reason then, or an outside table that is full reads as an unknown error.
+  switch (blockedReason && blockedReason !== 'blocked' ? blockedReason : reason || blockedReason) {
     case 'private_booking_blocked':
       return 'Selected table area is blocked for a private booking in that time window.'
     case 'outside_hours':
@@ -238,6 +240,10 @@ export function mapFohBlockedReason(blockedReason?: string | null, reason?: stri
       return 'Selected time has already passed. Pick the current or next available time.'
     case 'slot_full':
       return 'This kitchen arrival window is full. Choose another time or use the pacing override if appropriate.'
+    case 'outside_full':
+      return 'All the outside tables are taken at that time. Choose another time or book inside.'
+    case 'drinks_full':
+      return 'Too many drinks arrivals are booked around that time. Choose another time.'
     default:
       return 'Booking could not be created for the selected details.'
   }
