@@ -651,7 +651,9 @@ export function useFohCreateBooking(input: {
       const outcome = payload.data.state === 'pending_payment' ? 'reserved and awaiting deposit payment' : isSameDayWalkIn ? 'created, confirmed and seated' : 'created and confirmed'
       let tableText = payload.data.table_name ? ` on ${payload.data.table_name}` : ''
       let walkInTableMoveText = ''
-      if (isWalkIn && walkInTargetTable?.id && payload.data.table_booking_id) {
+      // An outside booking holds no indoor table, so the lane it was started from does not apply
+      // (the move route refuses outside bookings, which read as a failed move).
+      if (isWalkIn && walkInTargetTable?.id && payload.data.table_booking_id && !payload.data.is_outside_seating) {
         try {
           await postBookingAction(`/api/foh/bookings/${payload.data.table_booking_id}/move-table`, { table_id: walkInTargetTable.id })
           tableText = ` on ${walkInTargetTable.name}`

@@ -26,7 +26,11 @@ const CHRISTMAS_FORM: CreateForm = {
 
 function renderModal(
   createForm: CreateForm,
-  options: { createMode?: 'booking' | 'walk_in' | 'management'; onSetCreateForm?: (updater: (current: CreateForm) => CreateForm) => void } = {},
+  options: {
+    createMode?: 'booking' | 'walk_in' | 'management'
+    onSetCreateForm?: (updater: (current: CreateForm) => CreateForm) => void
+    walkInTargetTable?: { id: string; name: string } | null
+  } = {},
 ) {
   render(
     <FohCreateBookingModal
@@ -34,7 +38,7 @@ function renderModal(
       createMode={options.createMode ?? 'booking'}
       createForm={createForm}
       canWaiveDeposit={false}
-      walkInTargetTable={null}
+      walkInTargetTable={options.walkInTargetTable ?? null}
       submittingBooking={false}
       customerQuery=""
       completedCustomerSearchQuery=""
@@ -116,6 +120,16 @@ describe('FohCreateBookingModal: high chairs, outside and step-free', () => {
   it('hides the step-free choice for an outside table, which has no indoor table to choose', () => {
     renderModal({ ...FOOD_FORM, outside_seating: true })
     expect(screen.queryByLabelText('Needs a step-free table')).not.toBeInTheDocument()
+  })
+
+  it('drops the "will be moved to" note once a walk-in is outside', () => {
+    renderModal({ ...FOOD_FORM, outside_seating: true }, { createMode: 'walk_in', walkInTargetTable: { id: 't1', name: 'Low 4a' } })
+    expect(screen.queryByText(/Walk-in will be moved to/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the "will be moved to" note for an indoor walk-in', () => {
+    renderModal(FOOD_FORM, { createMode: 'walk_in', walkInTargetTable: { id: 't1', name: 'Low 4a' } })
+    expect(screen.getByText(/Walk-in will be moved to/)).toBeInTheDocument()
   })
 
   it('keeps high chairs and outside on a walk-in, without the step-free choice', () => {
