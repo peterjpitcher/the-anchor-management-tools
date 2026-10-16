@@ -17,7 +17,7 @@ import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { jobQueue } from '@/lib/unified-job-queue'
-import type { ReceiptBatch, ReceiptSourceType } from '@/types/database'
+import type { ReceiptBatch, ReceiptSourceType, ReceiptTransactionStatus } from '@/types/database'
 
 import { RECEIPT_AI_JOB_CHUNK_SIZE } from './types'
 import type { ParsedTransactionRow } from './types'
@@ -30,6 +30,8 @@ import {
 } from './statementParsing'
 import { applyAutomationRules } from './receiptAutomation'
 import { checkBalanceContinuity, describeBalanceContinuity } from '@/lib/receipts/statement-continuity'
+import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatCurrency } from '@/lib/format'
 
 export type ReceiptBatchFollowupStatus = 'queued' | 'running' | 'done' | 'failed'
 
@@ -119,6 +121,28 @@ export async function performImportReceiptStatement(
   const supabase = createAdminClient()
   const sourceHash = createHash('sha256').update(buffer).digest('hex')
 
+  let offered = parsed.rows
+  let heldFromAnotherDownload = 0
+  let referencesAdded = 0
+  if (sourceType === 'amex') {
+    try {
+      const matched = await matchAmexLinesHeldFromAnotherDownload(supabase, parsed.rows, receiptFile.name, userId)
+      offered = matched.toOffer
+      heldFromAnotherDownload = matched.alreadyHeld
+      referencesAdded = matched.referencesAdded
+    } catch (matchError) {
+      // Storing the lines unchecked is how one purchase came to be held twice, so refuse instead.
+      console.error(
+        'Amex lines could not be checked against the payments already held:',
+        matchError instanceof Error ? matchError.message : String(matchError)
+      )
+      return {
+        error:
+          'The statement could not be checked against the payments already held, so nothing was imported. It is safe to upload it again.',
+      }
+    }
+  }
+
   const { data, error } = await (supabase as any).rpc('import_receipt_statement', {
     p_batch: {
       source_type: sourceType,
@@ -130,7 +154,7 @@ export async function performImportReceiptStatement(
       rejected_records: parsed.rejected,
       repeated_in_file: parsed.repeatedInFile,
     },
-    p_rows: parsed.rows.map((row) => toRpcRow(row, sourceType)),
+    p_rows: offered.map((row) => toRpcRow(row, sourceType)),
   })
 
   if (error || !data) {
@@ -143,6 +167,7 @@ export async function performImportReceiptStatement(
     batch: ReceiptBatch & { followup_status?: ReceiptBatchFollowupStatus }
     inserted_count: number
     duplicate_count: number
+    inserted_ids?: string[]
   }
 
   const inserted = Number(result.inserted_count ?? 0)
@@ -151,6 +176,38 @@ export async function performImportReceiptStatement(
 
   if (parsed.rejected.length) {
     warnings.push(describeRejected(parsed.rejected))
+  }
+
+  if (heldFromAnotherDownload) {
+    const one = heldFromAnotherDownload === 1
+    warnings.push(
+      `${heldFromAnotherDownload} ${one ? 'line was' : 'lines were'} already held from another download of this statement, so ${
+        one ? 'it was' : 'they were'
+      } not added again${referencesAdded ? ` (Amex reference numbers added to ${referencesAdded} of them)` : ''}.`
+    )
+    if (!alreadyImported) {
+      // The database function counts only the lines it was offered; keep the batch's own sums whole.
+      const { error: countError } = await (supabase as any)
+        .from('receipt_batches')
+        .update({ duplicate_count: Number(result.batch.duplicate_count ?? 0) + heldFromAnotherDownload })
+        .eq('id', result.batch.id)
+      if (countError) {
+        console.error('Failed to add lines held from another download to the batch count:', countError.message)
+      }
+    }
+  }
+
+  if (sourceType === 'amex' && result.inserted_ids?.length) {
+    try {
+      const lookalikes = await describeAmexLookalikes(supabase, result.inserted_ids)
+      if (lookalikes) warnings.push(lookalikes)
+    } catch (lookalikeError) {
+      console.error(
+        'Amex duplicate check after an import failed:',
+        lookalikeError instanceof Error ? lookalikeError.message : String(lookalikeError)
+      )
+      warnings.push('The new lines could not be checked for duplicates this time.')
+    }
   }
 
   let autoApplied = 0
@@ -191,7 +248,7 @@ export async function performImportReceiptStatement(
   return {
     success: true,
     inserted,
-    skipped: Number(result.duplicate_count ?? 0),
+    skipped: Number(result.duplicate_count ?? 0) + heldFromAnotherDownload,
     recordsInFile: parsed.recordsInFile,
     rejected: parsed.rejected,
     repeatedInFile: parsed.repeatedInFile,
@@ -202,6 +259,227 @@ export async function performImportReceiptStatement(
     followupStatus,
     warning: warnings.join(' ') || undefined,
   }
+}
+
+type HeldAmexRow = {
+  id: string
+  transaction_date: string
+  amount_in: number | null
+  amount_out: number | null
+  card_account: string | null
+  card_member: string | null
+  details: string
+  external_reference: string | null
+  dedupe_hash: string
+  status: ReceiptTransactionStatus
+}
+
+function pence(value: number | null | undefined): number {
+  return Math.round(Number(value ?? 0) * 100)
+}
+
+/** An Amex purchase apart from its reference number: the same whichever download it came from. */
+function amexIdentity(line: {
+  date: string
+  amountIn: number | null
+  amountOut: number | null
+  cardAccount: string | null
+  cardMember: string | null
+  details: string
+}): string {
+  return [
+    line.date,
+    pence(line.amountIn),
+    pence(line.amountOut),
+    line.cardAccount ?? '',
+    (line.cardMember ?? '').trim().toUpperCase(),
+    line.details.trim().replace(/\s+/g, ' ').toUpperCase(),
+  ].join('|')
+}
+
+function heldAmexIdentity(row: HeldAmexRow): string {
+  return amexIdentity({
+    date: row.transaction_date,
+    amountIn: row.amount_in,
+    amountOut: row.amount_out,
+    cardAccount: row.card_account,
+    cardMember: row.card_member,
+    details: row.details,
+  })
+}
+
+/**
+ * Amex lines already held from another download of the same statement.
+ *
+ * An Amex line is recognised by its details including Amex's reference number. A download
+ * without reference numbers gives the same purchase different details, so it would be stored a
+ * second time: 84 lines were, on 14 October 2026. A line here is the same purchase as a held
+ * line when the date, amount, card, card member and description all agree and only one of the
+ * two has a reference. When the new line brings the reference, the held line takes it, with the
+ * new line's identity, so the next upload of either kind matches it straight away. Identical
+ * lines pair one for one, so two genuine purchases of the same thing stay two.
+ */
+async function matchAmexLinesHeldFromAnotherDownload(
+  supabase: ReturnType<typeof createAdminClient>,
+  rows: ParsedTransactionRow[],
+  filename: string,
+  userId: string | null
+): Promise<{ toOffer: ParsedTransactionRow[]; alreadyHeld: number; referencesAdded: number }> {
+  const hashes = rows.map((row) => row.dedupeHash)
+  const heldHashes = new Set<string>()
+  for (const chunk of chunkArray(hashes, 100)) {
+    // The import hash is unique, so a chunk of hashes matches at most that many lines.
+    const { data, error } = await supabase
+      .from('receipt_transactions')
+      .select('dedupe_hash')
+      .in('dedupe_hash', chunk)
+      .limit(chunk.length)
+    if (error) throw new Error(`Failed to read the lines already held: ${error.message}`)
+    for (const row of (data ?? []) as Array<{ dedupe_hash: string }>) heldHashes.add(row.dedupe_hash)
+  }
+
+  // Lines held under their own identity are skipped by the import itself.
+  const unheld = rows.filter((row) => !heldHashes.has(row.dedupeHash))
+  if (!unheld.length) return { toOffer: rows, alreadyHeld: 0, referencesAdded: 0 }
+
+  const dates = unheld.map((row) => row.transactionDate).sort()
+  const held = await fetchAllRows<HeldAmexRow>(
+    (from, to) =>
+      supabase
+        .from('receipt_transactions')
+        .select('id, transaction_date, amount_in, amount_out, card_account, card_member, details, external_reference, dedupe_hash, status')
+        .eq('source_type', 'amex')
+        .gte('transaction_date', dates[0])
+        .lte('transaction_date', dates[dates.length - 1])
+        .order('transaction_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    { label: 'Amex lines held for the same dates' }
+  )
+
+  // A held line that one of this file's own lines already matches cannot stand for another.
+  const incoming = new Set(hashes)
+  const pool = new Map<string, HeldAmexRow[]>()
+  for (const row of held) {
+    if (incoming.has(row.dedupe_hash)) continue
+    const key = heldAmexIdentity(row)
+    pool.set(key, [...(pool.get(key) ?? []), row])
+  }
+
+  const alreadyHeld = new Set<ParsedTransactionRow>()
+  const adopt: Array<{ row: HeldAmexRow; line: ParsedTransactionRow }> = []
+  for (const line of unheld) {
+    const candidates = pool.get(
+      amexIdentity({
+        date: line.transactionDate,
+        amountIn: line.amountIn,
+        amountOut: line.amountOut,
+        cardAccount: line.cardAccount ?? null,
+        cardMember: line.cardMember ?? null,
+        details: line.details,
+      })
+    )
+    if (!candidates?.length) continue
+    const hasReference = Boolean(line.externalReference)
+    const index = candidates.findIndex((row) => (hasReference ? !row.external_reference : Boolean(row.external_reference)))
+    if (index === -1) continue
+    const [row] = candidates.splice(index, 1)
+    alreadyHeld.add(line)
+    if (hasReference) adopt.push({ row, line })
+  }
+
+  let referencesAdded = 0
+  for (const { row, line } of adopt) {
+    const { data, error } = await supabase
+      .from('receipt_transactions')
+      .update({ external_reference: line.externalReference, dedupe_hash: line.dedupeHash })
+      .eq('id', row.id)
+      .is('external_reference', null)
+      .select('id')
+    if (error || !data?.length) {
+      // Someone else's upload got there first, or the held line changed: offer the line to the
+      // import as normal, which skips it if it is now held under this identity.
+      alreadyHeld.delete(line)
+      continue
+    }
+    referencesAdded += 1
+    const { error: logError } = await supabase.from('receipt_transaction_logs').insert({
+      transaction_id: row.id,
+      previous_status: row.status,
+      new_status: row.status,
+      action_type: 'reference_added',
+      note: `Amex reference ${line.externalReference} added from ${filename}. The line was already held from a download without reference numbers, so it was not stored again.`,
+      performed_by: userId,
+    })
+    if (logError) console.error('Failed to record the Amex reference added to a held line:', logError.message)
+  }
+
+  return {
+    toOffer: rows.filter((row) => !alreadyHeld.has(row)),
+    alreadyHeld: alreadyHeld.size,
+    referencesAdded,
+  }
+}
+
+/** The first letters of a description: enough to tell one shop from another. */
+function merchantStem(details: string): string {
+  return details.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6)
+}
+
+/**
+ * New Amex lines that look like payments already held: the same date, amount and card, and a
+ * description that starts the same way, whatever the held line's status or direction (credits
+ * and closed lines included). A statement period appears in one Amex statement only, so a match
+ * across uploads is almost always the same purchase downloaded twice.
+ */
+async function describeAmexLookalikes(
+  supabase: ReturnType<typeof createAdminClient>,
+  insertedIds: string[]
+): Promise<string | null> {
+  const fresh: HeldAmexRow[] = []
+  for (const chunk of chunkArray(insertedIds, 100)) {
+    const { data, error } = await supabase
+      .from('receipt_transactions')
+      .select('id, transaction_date, amount_in, amount_out, card_account, card_member, details, external_reference, dedupe_hash, status')
+      .in('id', chunk)
+    if (error) throw new Error(`Failed to read the new lines: ${error.message}`)
+    fresh.push(...((data ?? []) as HeldAmexRow[]))
+  }
+  if (!fresh.length) return null
+
+  const freshIds = new Set(insertedIds)
+  const dates = fresh.map((row) => row.transaction_date).sort()
+  const others = (
+    await fetchAllRows<HeldAmexRow>(
+      (from, to) =>
+        supabase
+          .from('receipt_transactions')
+          .select('id, transaction_date, amount_in, amount_out, card_account, card_member, details, external_reference, dedupe_hash, status')
+          .eq('source_type', 'amex')
+          .gte('transaction_date', dates[0])
+          .lte('transaction_date', dates[dates.length - 1])
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'Amex lines held for the same dates' }
+    )
+  ).filter((row) => !freshIds.has(row.id))
+
+  const key = (row: HeldAmexRow) =>
+    [row.transaction_date, pence(row.amount_in), pence(row.amount_out), row.card_account ?? '', merchantStem(row.details)].join('|')
+  const heldKeys = new Set(others.map(key))
+  const lookalikes = fresh.filter((row) => heldKeys.has(key(row)))
+  if (!lookalikes.length) return null
+
+  const first = lookalikes[0]
+  const amount = formatCurrency(Number(first.amount_out ?? first.amount_in ?? 0))
+  const when = formatDateInLondon(first.transaction_date, { day: 'numeric', month: 'long', year: 'numeric' })
+  const one = lookalikes.length === 1
+  return `${lookalikes.length} new ${one ? 'line looks' : 'lines look'} like ${
+    one ? 'a payment' : 'payments'
+  } already held, with the same date, amount and card (for example ${first.details}, ${amount} on ${when}). Check for a duplicate before claiming ${
+    one ? 'it' : 'them'
+  }.`
 }
 
 type BankBalanceRow = {
