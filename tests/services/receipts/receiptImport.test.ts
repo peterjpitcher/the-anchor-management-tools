@@ -560,13 +560,180 @@ describe('the bank balance check after an import', () => {
 
   it('does not run on an American Express statement', async () => {
     const db = seed({}, 0)
+    // A bank line that would not join up with anything, were the bank check to run.
+    db.rows('receipt_transactions').push(held('2026-09-02', 10, 999))
     storeOnImport(db)
-    db.failNext({ table: 'receipt_transactions', operation: 'select', message: 'should not be read' })
     const text = ['Date,Description,Card Member,Account #,Amount', '03/09/2026,TESCO STORE,MR A PERSON,-12345,12.50'].join('\n')
 
     const result = await performImportReceiptStatement(USER, '', new File([text], 'amex.csv'), Buffer.from(text), 'amex')
 
     expect(result.success).toBe(true)
+    expect(result.warning ?? '').not.toContain('bank balance')
+  })
+})
+
+describe('Amex lines held from another download', () => {
+  const WITH_REFERENCE = 'Date,Description,Card Member,Account #,Amount,Reference'
+  const WITHOUT_REFERENCE = 'Date,Description,Card Member,Account #,Amount'
+
+  function amexFile(header: string, lines: string[]) {
+    const text = [header, ...lines].join('\n')
+    return { file: new File([text], 'activity.csv', { type: 'text/csv' }), buffer: Buffer.from(text, 'utf-8') }
+  }
+
+  /** A held Amex line as the import stores it. */
+  function heldAmex(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'held-amex-1',
+      source_type: 'amex',
+      transaction_date: '2026-07-01',
+      amount_in: 370.52,
+      amount_out: null,
+      card_account: '71001',
+      card_member: 'Mr P Pitcher',
+      details: 'PAYMENT RECEIVED - THANK YOU',
+      external_reference: null,
+      dedupe_hash: 'old-hash-1',
+      status: 'no_receipt_required',
+      ...overrides,
+    }
+  }
+
+  /** Stores what the import is sent, as the real function does, and records each call. */
+  function captureImport(db: FakeDb) {
+    const sent: Array<Array<Record<string, unknown>>> = []
+    db.onRpc((_name, args) => {
+      const rows = args.p_rows as Array<Record<string, unknown>>
+      sent.push(rows)
+      const ids = rows.map((_row, index) => `new-amex-${index + 1}`)
+      rows.forEach((row, index) => db.rows('receipt_transactions').push({ id: ids[index], batch_id: BATCH, ...row }))
+      return {
+        data: {
+          outcome: 'imported',
+          batch: { id: BATCH, followup_status: 'done', duplicate_count: 0 },
+          inserted_count: rows.length,
+          duplicate_count: 0,
+          inserted_ids: ids,
+        },
+        error: null,
+      }
+    })
+    return sent
+  }
+
+  const PAYMENT = "01/07/2026,PAYMENT RECEIVED - THANK YOU,MR P PITCHER,-71001,-370.52,'10000000010627999902460'"
+
+  it('gives a held line its reference instead of storing the purchase again', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(heldAmex())
+    const sent = captureImport(db)
+    const { file, buffer } = amexFile(WITH_REFERENCE, [PAYMENT])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(sent).toEqual([[]])
+    expect(result).toMatchObject({ success: true, inserted: 0, skipped: 1, recordsInFile: 1 })
+    expect(result.warning).toContain(
+      '1 line was already held from another download of this statement, so it was not added again (Amex reference numbers added to 1 of them).'
+    )
+    const heldLine = db.rows('receipt_transactions').find((row) => row.id === 'held-amex-1')
+    expect(heldLine).toMatchObject({ external_reference: '10000000010627999902460' })
+    expect(heldLine?.dedupe_hash).not.toBe('old-hash-1')
+    expect(db.rows('receipt_transaction_logs')).toEqual([
+      expect.objectContaining({ transaction_id: 'held-amex-1', action_type: 'reference_added', new_status: 'no_receipt_required' }),
+    ])
+    expect(db.rows('receipt_batches')[0]).toMatchObject({ duplicate_count: 1 })
+  })
+
+  it('does not store again a purchase held with its reference when the new download has none', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(heldAmex({ external_reference: '10000000010627999902460', dedupe_hash: 'hash-with-reference' }))
+    const sent = captureImport(db)
+    const { file, buffer } = amexFile(WITHOUT_REFERENCE, ['01/07/2026,PAYMENT RECEIVED - THANK YOU,MR P PITCHER,-71001,-370.52'])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(sent).toEqual([[]])
+    expect(result).toMatchObject({ success: true, inserted: 0, skipped: 1 })
+    expect(db.rows('receipt_transactions')[0]).toMatchObject({ dedupe_hash: 'hash-with-reference' })
+    expect(db.rows('receipt_transaction_logs')).toEqual([])
+  })
+
+  it('pairs identical purchases one for one', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(
+      heldAmex({ transaction_date: '2026-07-21', amount_in: null, amount_out: 5.7, card_account: '71019', card_member: 'Mr B Summers', details: 'TESCO STORE 2047 2047TE STAINES' })
+    )
+    const sent = captureImport(db)
+    const { file, buffer } = amexFile(WITH_REFERENCE, [
+      "21/07/2026,TESCO STORE 2047 2047TE STAINES,MR B SUMMERS,-71019,5.70,'AT-FIRST'",
+      "21/07/2026,TESCO STORE 2047 2047TE STAINES,MR B SUMMERS,-71019,5.70,'AT-SECOND'",
+    ])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(sent[0]).toHaveLength(1)
+    expect(sent[0][0]).toMatchObject({ external_reference: 'AT-SECOND' })
+    expect(result).toMatchObject({ inserted: 1, skipped: 1 })
+    expect(db.rows('receipt_transactions').find((row) => row.id === 'held-amex-1')).toMatchObject({ external_reference: 'AT-FIRST' })
+  })
+
+  it('keeps a purchase on another card apart', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(heldAmex({ card_account: '71019' }))
+    const sent = captureImport(db)
+    const { file, buffer } = amexFile(WITH_REFERENCE, [PAYMENT])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(sent[0]).toHaveLength(1)
+    expect(result).toMatchObject({ inserted: 1, skipped: 0 })
+    expect(db.rows('receipt_transactions').find((row) => row.id === 'held-amex-1')).toMatchObject({ external_reference: null })
+  })
+
+  it('refuses the upload when the lines already held cannot be read', async () => {
+    const db = seed({}, 0)
+    const sent = captureImport(db)
+    db.failNext({ table: 'receipt_transactions', operation: 'select', message: 'connection reset' })
+    const { file, buffer } = amexFile(WITH_REFERENCE, [PAYMENT])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(result.error).toBe(
+      'The statement could not be checked against the payments already held, so nothing was imported. It is safe to upload it again.'
+    )
+    expect(sent).toEqual([])
+  })
+
+  it('warns about a new line that looks like a payment already held, credits included', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(
+      heldAmex({ transaction_date: '2026-07-15', amount_in: 1187.93, details: 'AMZNMKTPLACE AMAZON.CO.UK', status: 'no_receipt_required' })
+    )
+    captureImport(db)
+    const { file, buffer } = amexFile(WITH_REFERENCE, [
+      "15/07/2026,AMZNMKTPLACE*CZ6WV1P45  AMAZON.CO.UK,MR P PITCHER,-71001,-1187.93,'AT261970048000012596112'",
+    ])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(result).toMatchObject({ success: true, inserted: 1 })
+    expect(result.warning).toContain(
+      '1 new line looks like a payment already held, with the same date, amount and card (for example AMZNMKTPLACE*CZ6WV1P45 AMAZON.CO.UK, £1,187.93 on 15 July 2026). Check for a duplicate before claiming it.'
+    )
+  })
+
+  it('says nothing about a different shop on the same day for the same amount', async () => {
+    const db = seed({}, 0)
+    db.rows('receipt_transactions').push(
+      heldAmex({ transaction_date: '2026-07-21', amount_in: null, amount_out: 5.7, details: 'TESCO STORE 2047 2047TE STAINES', status: 'pending' })
+    )
+    captureImport(db)
+    const { file, buffer } = amexFile(WITH_REFERENCE, ["21/07/2026,BOOTS STAINES,MR P PITCHER,-71001,5.70,'AT-BOOTS'"])
+
+    const result = await performImportReceiptStatement(USER, '', file, buffer, 'amex')
+
+    expect(result).toMatchObject({ success: true, inserted: 1 })
     expect(result.warning).toBeUndefined()
   })
 })
