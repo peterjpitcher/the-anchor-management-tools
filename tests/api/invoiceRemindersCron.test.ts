@@ -70,6 +70,12 @@ interface Scenario {
   /** The re-read immediately before a send fails. */
   failFreshRead?: boolean
   failReminderColumnWrite?: boolean
+  /** Receipt vendors linked to the client, bank payments in and their invoice matches. */
+  receiptVendors?: Row[]
+  bankPayments?: Row[]
+  receiptMatches?: Row[]
+  /** Reading the client's bank payments fails. */
+  failBankCheck?: boolean
 }
 
 const OWNER = 'owner@orangejelly.example'
@@ -160,6 +166,13 @@ function fakeDb(scenario: Scenario) {
     }
     if (query.table === 'email_messages') return ok(scenario.emails ?? [])
     if (query.table === 'invoice_email_logs') return ok(null)
+    if (query.table === 'receipt_vendors') {
+      return scenario.failBankCheck
+        ? { data: null, error: { message: 'connection reset' } }
+        : ok(scenario.receiptVendors ?? [])
+    }
+    if (query.table === 'receipt_transactions') return ok(scenario.bankPayments ?? [])
+    if (query.table === 'receipt_invoice_matches') return ok(scenario.receiptMatches ?? [])
 
     throw new Error(`Unexpected table ${query.table}`)
   }
@@ -1025,3 +1038,73 @@ describe('go-live preview', () => {
     expect(monday.payload.would_send).toEqual([expect.objectContaining({ invoice_number: 'INV-0101', reminder: 'first', days_overdue: 7 })])
   })
 })
+
+describe('invoice reminders cron: a payment from the client waiting to be matched', () => {
+  const linked = { receiptVendors: [{ id: 'receipt-vendor-1' }] }
+  const paid = (overrides: Row = {}): Row => ({ id: 'bank-1', transaction_date: '2026-10-08', amount_in: 1200, ...overrides })
+
+  it('holds the reminder and lists it under Needs you', async () => {
+    const { queries } = fakeDb({ invoices: [invoice()], ...linked, bankPayments: [paid()] })
+
+    await run()
+
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(claimIdempotencyKey).not.toHaveBeenCalled()
+    expect(reminderColumnWrites(queries)).toEqual([])
+    const email = summary()
+    expect(email.text).toContain('Needs you')
+    expect(email.text).toContain(
+      '£1,200.00 from this client arrived on Thursday 8 October 2026 and is not matched to an invoice yet, so no reminder was sent'
+    )
+  })
+
+  it('holds the reminder while a person is asked to choose, and this invoice is one of the choices', async () => {
+    fakeDb({
+      invoices: [invoice()],
+      ...linked,
+      bankPayments: [paid({ amount_in: 2400 })],
+      receiptMatches: [
+        {
+          receipt_transaction_id: 'bank-1',
+          match_status: 'review_required',
+          payload: { review_reason: 'several_invoices_fit', options: [{ kind: 'record', allocations: [{ invoice_id: 'inv-1' }] }] },
+        },
+      ],
+    })
+
+    await run()
+
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+  })
+
+  it('sends when the payment is already matched to an invoice', async () => {
+    fakeDb({
+      invoices: [invoice()],
+      ...linked,
+      bankPayments: [paid()],
+      receiptMatches: [{ receipt_transaction_id: 'bank-1', match_status: 'payment_recorded', payload: {} }],
+    })
+
+    await run()
+
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends when the payment fits neither what is owed nor any choice', async () => {
+    fakeDb({ invoices: [invoice()], ...linked, bankPayments: [paid({ amount_in: 50 })] })
+
+    await run()
+
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing and says why when the bank cannot be checked', async () => {
+    fakeDb({ invoices: [invoice()], failBankCheck: true })
+
+    await run()
+
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(summary().text).toContain('Could not check the bank for a payment from this client, so nothing was sent: connection reset')
+  })
+})
+
