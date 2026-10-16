@@ -1,177 +1,259 @@
 /**
- * Reference-free pairing of inward bank payments to invoices.
+ * What to do with a customer's bank payment that quotes no invoice number.
  *
- * Most customer payments quote the invoice number in the bank narrative, and
- * those are handled by the reference matcher. A meaningful minority do not:
- * the narrative is just the payer's short bank name (e.g. "CRICKETERS
- * CRICKETERS"). This module pairs those on vendor + amount + date instead.
+ * Most customer payments quote the invoice number and are matched by it. Some carry only the
+ * payer's bank name ("CRICKETERS CRICKETERS", "KIER SERVICES LTD"), so they are matched on the
+ * customer, the amount and the date. The owner's rule (16 October 2026): one payment can settle
+ * one invoice or several, but an invoice is normally settled by one payment, and be careful.
+ * So only the plainest cases are settled automatically and everything else goes to a person:
  *
- * The bar for an automatic pair is deliberately high. We only pair when
- * exactly one invoice for that vendor can explain the payment. Anything
- * ambiguous is left alone for a human, because silently attaching a payment
- * to the wrong invoice is far more expensive than leaving it pending.
+ * 1. A bank-transfer payment already entered by hand on the customer's invoices, of the same
+ *    amount and dated within a week, is linked to this bank payment when it is the only entry that
+ *    fits and no other bank payment from the customer could be it. Nothing is recorded twice.
+ * 2. Any other unlinked entry of the same amount, from a month before to two months after, could
+ *    be this money entered late or early: a person decides.
+ * 3. When exactly one recent invoice still owing, and existing on the payment date, is for exactly
+ *    this amount, and no other bank payment already points at it, the payment is recorded on it.
+ * 4. Everything else goes to a person, with the options that fitted: several entries or invoices
+ *    (Kier and Golden Barrels bill the same amount every month), one payment covering a set of
+ *    invoices, an invoice another payment points at, or nothing that fits exactly. Guessing is how
+ *    a payment lands on the wrong invoice and a paid invoice gets chased.
+ *
+ * Pure: no database access. Money is compared in pence.
  */
 
-export const PAIRING_MONEY_EPSILON = 0.005
+/** How far either side of the bank date a hand-entered payment can be dated and be linked to it. */
+export const ENTRY_WINDOW_DAYS = 7
 
-/** A payment can land slightly before the invoice is dated (payment on account). */
-export const PAIRING_DAYS_BEFORE_INVOICE = 7
+/** An unlinked entry of the same amount this far before the bank date could still be this money. */
+export const LOOSE_ENTRY_DAYS_BEFORE = 30
 
-/** How long after the invoice date a payment can still be considered the same bill. */
-export const PAIRING_DAYS_AFTER_INVOICE = 120
+/** An unlinked entry of the same amount this far after the bank date could still be this money. */
+export const LOOSE_ENTRY_DAYS_AFTER = 60
 
-/** Invoice states that can never be paired: the bill was cancelled. */
-const UNPAIRABLE_INVOICE_STATUSES = new Set(['void', 'written_off', 'draft'])
+/**
+ * How old an invoice can be and still take a payment automatically, and still be shown to the
+ * person deciding. An older invoice still showing as owed may well have been paid some other way.
+ */
+export const RECENT_INVOICE_DAYS = 120
 
-export type PairableInvoice = {
+/** Above this many invoices owing, or entries on one day, combinations are not searched. */
+export const MAX_SET_SEARCH_ITEMS = 12
+
+/** Invoices that can never take a payment: cancelled, or never sent. */
+const UNPAYABLE_STATUSES = new Set(['void', 'written_off', 'draft'])
+
+export type CustomerInvoice = {
   id: string
   invoiceNumber: string
   invoiceDate: string
   status: string | null
   totalAmount: number
+  /** Issued credit notes against the invoice. */
+  creditedAmount: number
+  /** Payments already entered against the invoice. */
   paidAmount: number
 }
 
-export type PairableTransaction = {
+/** A bank-transfer payment entered against one of the customer's invoices, not linked to a bank line. */
+export type EnteredPayment = {
   id: string
-  transactionDate: string
+  invoiceId: string
+  paymentDate: string
   amount: number
 }
 
-export type PairingBasis = 'total' | 'outstanding'
-
-export type PairingCandidate = {
-  invoice: PairableInvoice
-  basis: PairingBasis
-  dayGap: number
+export type CustomerBankPayment = {
+  id: string
+  date: string
+  amount: number
 }
 
-export type InvoicePairingResult =
+export type InvoiceAllocation = { invoice: CustomerInvoice; amount: number }
+
+export type ReviewReason =
+  | 'several_entries_fit'
+  | 'entry_fits_another_payment'
+  | 'entries_split_payment'
+  | 'entry_may_be_this_payment'
+  | 'several_invoices_fit'
+  | 'set_of_invoices_fits'
+  | 'invoice_claimed_by_another_payment'
+  | 'too_many_invoices_owing'
+  | 'no_exact_fit'
+
+export type CustomerPaymentDecision =
+  | { kind: 'link'; entry: EnteredPayment }
+  | { kind: 'record'; allocation: InvoiceAllocation }
   | {
-      outcome: 'paired'
-      candidate: PairingCandidate
-      /** How many invoices could have explained this payment. */
-      candidateCount: number
-      /** True when more than one matched and the oldest-owing rule chose. */
-      viaTiebreak: boolean
+      kind: 'review'
+      reason: ReviewReason
+      entryOptions: EnteredPayment[][]
+      invoiceOptions: InvoiceAllocation[][]
+      /** The customer's invoices from around the payment, paid or not, for the person deciding. */
+      recentInvoices: CustomerInvoice[]
     }
-  | { outcome: 'no_candidate' }
-  | { outcome: 'ambiguous'; candidates: PairingCandidate[] }
+  | { kind: 'none' }
 
-export type PairingOptions = {
-  daysBeforeInvoice?: number
-  daysAfterInvoice?: number
-  /** Invoice ids already claimed by another payment in this run. */
-  claimedInvoiceIds?: ReadonlySet<string>
+function pence(value: number): number {
+  return Math.round(Number(value) * 100)
 }
 
-function toUtcDays(isoDate: string): number | null {
-  // Bank and invoice dates are plain calendar dates, so compare them as such.
+function dayNumber(isoDate: string): number | null {
+  // Bank, invoice and payment dates are plain calendar dates, so compare them as such.
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate ?? '')
   if (!match) return null
-  const [, year, month, day] = match
-  const time = Date.UTC(Number(year), Number(month) - 1, Number(day))
+  const time = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
   return Number.isFinite(time) ? time / 86_400_000 : null
 }
 
-function amountsMatch(left: number, right: number): boolean {
-  return Math.abs(left - right) < PAIRING_MONEY_EPSILON
+/** Days from `from` to `to`, or null when either is not a date. */
+function daysBetween(from: string, to: string): number | null {
+  const start = dayNumber(from)
+  const end = dayNumber(to)
+  return start === null || end === null ? null : end - start
 }
 
-function outstandingOf(invoice: PairableInvoice): number {
-  return Math.max(0, invoice.totalAmount - invoice.paidAmount)
+/** What the customer still owes on an invoice, after credit notes and entered payments. */
+export function outstandingOf(invoice: CustomerInvoice): number {
+  return Math.max(0, pence(invoice.totalAmount) - pence(invoice.creditedAmount) - pence(invoice.paidAmount)) / 100
+}
+
+function payable(invoice: CustomerInvoice): boolean {
+  return !UNPAYABLE_STATUSES.has((invoice.status ?? '').toLowerCase())
+}
+
+function oldestFirst(left: CustomerInvoice, right: CustomerInvoice): number {
+  return left.invoiceDate.localeCompare(right.invoiceDate) || left.invoiceNumber.localeCompare(right.invoiceNumber)
+}
+
+/** Every set of at least `minSize` items whose amounts, in pence, add up to `target`. */
+function setsAddingUpTo<T>(items: T[], amountOf: (item: T) => number, target: number, minSize: number): T[][] {
+  const found: T[][] = []
+  const chosen: T[] = []
+  const walk = (start: number, sum: number) => {
+    if (sum === target) {
+      if (chosen.length >= minSize) found.push([...chosen])
+      return
+    }
+    if (sum > target) return
+    for (let index = start; index < items.length; index += 1) {
+      chosen.push(items[index])
+      walk(index + 1, sum + amountOf(items[index]))
+      chosen.pop()
+    }
+  }
+  walk(0, 0)
+  return found
+}
+
+function within(days: number | null, before: number, after: number): boolean {
+  return days !== null && days >= -before && days <= after
+}
+
+/** Entries dated within a week that could be this bank payment: one of the same amount, or one day's set adding up to it. */
+function entryOptionsFor(payment: CustomerBankPayment, entries: EnteredPayment[]): EnteredPayment[][] {
+  const target = pence(payment.amount)
+  const near = entries.filter((entry) => within(daysBetween(payment.date, entry.paymentDate), ENTRY_WINDOW_DAYS, ENTRY_WINDOW_DAYS))
+
+  const singles = near.filter((entry) => pence(entry.amount) === target).map((entry) => [entry])
+
+  // One bank payment entered as several, one per invoice, on the same day.
+  const byDay = new Map<string, EnteredPayment[]>()
+  for (const entry of near) byDay.set(entry.paymentDate, [...(byDay.get(entry.paymentDate) ?? []), entry])
+  const splits = [...byDay.values()]
+    .filter((day) => day.length > 1 && day.length <= MAX_SET_SEARCH_ITEMS)
+    .flatMap((day) => setsAddingUpTo(day, (entry) => pence(entry.amount), target, 2))
+
+  return [...singles, ...splits]
+}
+
+/** Whether another of the customer's bank payments could equally be this entry. */
+function fitsAnotherPayment(entry: EnteredPayment, others: CustomerBankPayment[]): boolean {
+  return others.some(
+    (other) =>
+      pence(other.amount) === pence(entry.amount) &&
+      within(daysBetween(other.date, entry.paymentDate), ENTRY_WINDOW_DAYS, ENTRY_WINDOW_DAYS)
+  )
 }
 
 /**
- * Decide whether a single invoice could explain this payment, and on what basis.
- * Returns null when the invoice is not a candidate at all.
- */
-export function evaluateInvoiceCandidate(
-  transaction: PairableTransaction,
-  invoice: PairableInvoice,
-  options: PairingOptions = {}
-): PairingCandidate | null {
-  if (UNPAIRABLE_INVOICE_STATUSES.has((invoice.status ?? '').toLowerCase())) return null
-  if (options.claimedInvoiceIds?.has(invoice.id)) return null
-  if (!(transaction.amount > 0)) return null
-  if (!(invoice.totalAmount > 0)) return null
-
-  const transactionDay = toUtcDays(transaction.transactionDate)
-  const invoiceDay = toUtcDays(invoice.invoiceDate)
-  if (transactionDay === null || invoiceDay === null) return null
-
-  const dayGap = transactionDay - invoiceDay
-  const daysBefore = options.daysBeforeInvoice ?? PAIRING_DAYS_BEFORE_INVOICE
-  const daysAfter = options.daysAfterInvoice ?? PAIRING_DAYS_AFTER_INVOICE
-  if (dayGap < -daysBefore || dayGap > daysAfter) return null
-
-  if (amountsMatch(transaction.amount, invoice.totalAmount)) {
-    return { invoice, basis: 'total', dayGap }
-  }
-
-  const outstanding = outstandingOf(invoice)
-  if (outstanding > 0 && amountsMatch(transaction.amount, outstanding)) {
-    return { invoice, basis: 'outstanding', dayGap }
-  }
-
-  return null
-}
-
-/**
- * A candidate the payment could actually have been settling: the invoice was
- * still owing money, and it already existed on the day the money arrived.
+ * Decides what to do with one bank payment from a customer.
  *
- * Both halves matter. An invoice that is already paid in full is not a debt
- * this payment can clear, and an invoice dated after the payment did not exist
- * to be paid. Without the date half, a June payment gets applied to a July
- * invoice purely because July is the only one still outstanding.
+ * @param entries bank-transfer payments entered on the customer's invoices that no bank line is linked to
+ * @param otherPayments the customer's other bank payments that no entered payment accounts for, whether
+ *   or not they are matched otherwise or fall in a filed period: any of them could be an entry's money
+ * @param claimedInvoiceIds invoices another bank payment already points at
  */
-function isSettleable(candidate: PairingCandidate): boolean {
-  return outstandingOf(candidate.invoice) > 0 && candidate.dayGap >= 0
-}
+export function decideCustomerPayment(
+  payment: CustomerBankPayment,
+  invoices: CustomerInvoice[],
+  entries: EnteredPayment[],
+  otherPayments: CustomerBankPayment[],
+  claimedInvoiceIds: ReadonlySet<string> = new Set()
+): CustomerPaymentDecision {
+  if (!(payment.amount > 0)) return { kind: 'none' }
 
-function oldestFirst(left: PairingCandidate, right: PairingCandidate): number {
-  const byDate = left.invoice.invoiceDate.localeCompare(right.invoice.invoiceDate)
-  if (byDate !== 0) return byDate
-  // Same date: pick deterministically so repeat runs agree with each other.
-  return left.invoice.invoiceNumber.localeCompare(right.invoice.invoiceNumber)
-}
+  const recentInvoices = invoices
+    .filter((invoice) => {
+      const age = daysBetween(invoice.invoiceDate, payment.date)
+      return payable(invoice) && within(age, ENTRY_WINDOW_DAYS, RECENT_INVOICE_DAYS)
+    })
+    .sort(oldestFirst)
+  const review = (reason: ReviewReason, entryOptions: EnteredPayment[][], invoiceOptions: InvoiceAllocation[][]): CustomerPaymentDecision => ({
+    kind: 'review',
+    reason,
+    entryOptions,
+    invoiceOptions,
+    recentInvoices,
+  })
 
-/**
- * Pair a payment against a vendor's invoices.
- *
- * One match is the pair. Several matches are settled the way a bookkeeper
- * would: the payment clears the oldest invoice still owing. Vendors who bill
- * the same amount every month (Kier at 2520, Golden Barrels at 500) always
- * produce several identical-looking candidates, and the bank narrative carries
- * nothing that can separate them.
- *
- * When several match but none of them is actually settleable, the payment is
- * explaining an already-closed bank line rather than clearing a debt. There is
- * no convention to lean on there, so it stays ambiguous for a human.
- */
-export function pairInvoiceByAmountAndDate(
-  transaction: PairableTransaction,
-  invoices: readonly PairableInvoice[],
-  options: PairingOptions = {}
-): InvoicePairingResult {
-  const candidates = invoices
-    .map((invoice) => evaluateInvoiceCandidate(transaction, invoice, options))
-    .filter((candidate): candidate is PairingCandidate => candidate !== null)
+  const others = otherPayments.filter((other) => other.id !== payment.id)
+  const entryOptions = entryOptionsFor(payment, entries)
+  if (entryOptions.length === 1 && entryOptions[0].length === 1) {
+    const [entry] = entryOptions[0]
+    if (fitsAnotherPayment(entry, others)) return review('entry_fits_another_payment', entryOptions, [])
+    // Another payment pointing at the entry's invoice may own the entry, even one this customer
+    // lookup cannot see (filed under another vendor, or none).
+    if (claimedInvoiceIds.has(entry.invoiceId)) return review('invoice_claimed_by_another_payment', entryOptions, [])
+    return { kind: 'link', entry }
+  }
+  if (entryOptions.length === 1) return review('entries_split_payment', entryOptions, [])
+  if (entryOptions.length > 1) return review('several_entries_fit', entryOptions, [])
 
-  if (candidates.length === 0) return { outcome: 'no_candidate' }
+  // An entry of the same amount further away may be this money, entered late or early.
+  const target = pence(payment.amount)
+  const looseEntries = entries.filter(
+    (entry) =>
+      pence(entry.amount) === target &&
+      within(daysBetween(payment.date, entry.paymentDate), LOOSE_ENTRY_DAYS_BEFORE, LOOSE_ENTRY_DAYS_AFTER)
+  )
+  if (looseEntries.length) return review('entry_may_be_this_payment', looseEntries.map((entry) => [entry]), [])
 
-  if (candidates.length === 1) {
-    return { outcome: 'paired', candidate: candidates[0], candidateCount: 1, viaTiebreak: false }
+  const owing = invoices
+    .filter((invoice) => {
+      const age = daysBetween(invoice.invoiceDate, payment.date)
+      return payable(invoice) && outstandingOf(invoice) > 0 && within(age, 0, RECENT_INVOICE_DAYS)
+    })
+    .sort(oldestFirst)
+  const allocation = (invoice: CustomerInvoice): InvoiceAllocation => ({ invoice, amount: outstandingOf(invoice) })
+  const singles = owing.filter((invoice) => pence(outstandingOf(invoice)) === target).map((invoice) => [allocation(invoice)])
+
+  if (owing.length > MAX_SET_SEARCH_ITEMS) {
+    // Too many owing to rule out a combination, so not even a single exact fit is recorded.
+    return singles.length ? review('too_many_invoices_owing', [], singles) : review('no_exact_fit', [], [])
   }
 
-  const settleable = candidates.filter(isSettleable).sort(oldestFirst)
-  if (settleable.length === 0) return { outcome: 'ambiguous', candidates }
+  const sets = setsAddingUpTo(owing, (invoice) => pence(outstandingOf(invoice)), target, 2).map((set) => set.map(allocation))
+  const options = [...singles, ...sets]
 
-  return {
-    outcome: 'paired',
-    candidate: settleable[0],
-    candidateCount: candidates.length,
-    viaTiebreak: true,
+  if (options.length === 1 && options[0].length === 1) {
+    return claimedInvoiceIds.has(options[0][0].invoice.id)
+      ? review('invoice_claimed_by_another_payment', [], options)
+      : { kind: 'record', allocation: options[0][0] }
   }
+  if (options.length === 1) return review('set_of_invoices_fits', [], options)
+  if (options.length > 1) return review('several_invoices_fit', [], options)
+
+  return recentInvoices.length ? review('no_exact_fit', [], []) : { kind: 'none' }
 }

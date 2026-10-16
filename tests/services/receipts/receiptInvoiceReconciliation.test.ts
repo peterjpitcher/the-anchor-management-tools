@@ -79,13 +79,18 @@ function arrange(seed: {
   matches?: Array<Record<string, unknown>>
   files?: Array<Record<string, unknown>>
   settings?: Array<Record<string, unknown>>
+  /** Payments entered against invoices (invoice_payments). */
+  entered?: Array<Record<string, unknown>>
+  /** Credit notes against invoices. */
+  credits?: Array<Record<string, unknown>>
   /** What the ledger function answers. Defaults to a payment recorded. */
   ledger?: (args: Record<string, unknown>) => Record<string, unknown>
 }): { db: FakeDb; calls: RpcCall[] } {
   const db = createFakeDb({
     receipt_transactions: seed.payments,
     invoices: seed.invoices,
-    invoice_payments: [],
+    invoice_payments: seed.entered ?? [],
+    credit_notes: seed.credits ?? [],
     receipt_invoice_matches: seed.matches ?? [],
     receipt_files: seed.files ?? [],
     receipt_settings: seed.settings ?? [],
@@ -326,27 +331,281 @@ describe('reconciliation: a payment quoting several invoice numbers', () => {
   })
 })
 
-describe('reconciliation: a payment with no invoice number', () => {
-  it('pairs on vendor and amount through the same single call, with the status the database now accepts', async () => {
-    const { db, calls } = arrange({
-      payments: [inwardPayment('tx-free', { details: 'CLIENT CLIENT', vendor_id: RECEIPT_VENDOR, vendor_name: 'Client Ltd', vendor_source: 'rule' })],
+describe('reconciliation: a customer payment with no invoice number', () => {
+  const customerPayment = (id: string, overrides: Record<string, unknown> = {}) =>
+    inwardPayment(id, { details: 'CLIENT CLIENT', vendor_id: RECEIPT_VENDOR, vendor_name: 'Client Ltd', vendor_source: 'rule', ...overrides })
+
+  it('records the payment against the one invoice it settles, in the same single call', async () => {
+    const { db, calls } = arrange({ payments: [customerPayment('tx-free')], invoices: [invoice('inv-1', 'INV-A1')] })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ referenceFreeRecorded: 1, paymentsRecorded: 1, matched: 1 })
+    expect(ledgerCalls(calls)).toHaveLength(1)
+    expect(ledgerCalls(calls)[0].args).toMatchObject({
+      p_transaction_id: 'tx-free',
+      p_invoice_id: 'inv-1',
+      p_invoice_number: 'INV-A1',
+      p_amount: 100,
+      p_initiated_by: USER,
+    })
+    expect((ledgerCalls(calls)[0].args.p_payload as Record<string, unknown>).match_method).toBe('customer_amount_date')
+    expect(paymentCalls(calls)).toHaveLength(0)
+    expectNoDirectWrites(db)
+  })
+
+  it('looks at a payment a rule already closed, as Kier\'s 3 September payment was', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free', { status: 'no_receipt_required' })],
       invoices: [invoice('inv-1', 'INV-A1')],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(1)
+  })
+
+  it('links to a payment already entered by hand instead of recording it again', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1', { status: 'paid', paid_amount: 100 })],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-10', amount: 100, source_kind: null }],
     })
 
     const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
 
-    expect(summary).toMatchObject({ referenceFreePaired: 1, matched: 1 })
-    expect(paymentCalls(calls)).toHaveLength(0)
+    expect(summary).toMatchObject({ referenceFreeLinked: 1, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
     expect(matchCalls(calls)).toHaveLength(1)
     expect(matchCalls(calls)[0].args).toMatchObject({
       p_transaction_id: 'tx-free',
       p_invoice_id: 'inv-1',
-      p_match_status: 'vendor_amount_matched',
-      p_allow_status_change: true,
-      p_initiated_by: USER,
+      p_invoice_payment_id: 'pay-1',
+      p_match_status: 'matched',
+      p_matched_amount: 100,
     })
-    expect((matchCalls(calls)[0].args.p_payload as Record<string, unknown>).match_method).toBe('vendor_amount')
+  })
+
+  it('does not link to a PayPal payment, which never arrives as a bank payment from the customer', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1', { status: 'paid', paid_amount: 100 })],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-10', amount: 100, source_kind: 'paypal' }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(matchCalls(calls).map((call) => call.args.p_match_status)).toEqual(['review_required'])
+  })
+
+  it('stores identical invoices for a person to choose between, and records nothing', async () => {
+    const { db, calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [
+        invoice('inv-aug', 'INV-AUG', { invoice_date: '2026-08-01' }),
+        invoice('inv-sep', 'INV-SEP', { invoice_date: '2026-09-01' }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ referenceFreeForReview: 1, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(1)
+    const review = matchCalls(calls)[0].args
+    expect(review).toMatchObject({
+      p_match_status: 'review_required',
+      p_invoice_id: null,
+      // Filed under a key no real invoice has, so recording one choice cannot overwrite it.
+      p_invoice_number: 'REVIEW',
+      p_allow_status_change: false,
+      p_vendor_name: null,
+    })
+    const payload = review.p_payload as { review_reason: string; options: Array<{ kind: string; allocations: Array<{ invoice_number: string }> }> }
+    expect(payload.review_reason).toBe('several_invoices_fit')
+    expect(payload.options.map((option) => option.allocations.map((part) => part.invoice_number))).toEqual([['INV-AUG'], ['INV-SEP']])
     expectNoDirectWrites(db)
+  })
+
+  it('offers one payment across a pair of invoices to a person rather than recording it in parts', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free', { amount_in: 200, amount_total: 200 })],
+      invoices: [
+        invoice('inv-a', 'INV-A', { invoice_date: '2026-08-01' }),
+        invoice('inv-b', 'INV-B', { invoice_date: '2026-09-01' }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ referenceFreeForReview: 1, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect((matchCalls(calls)[0].args.p_payload as Record<string, unknown>).review_reason).toBe('set_of_invoices_fits')
+  })
+
+  it('does not link an entry that a payment quoting the invoice could equally be', async () => {
+    // A quoted-reference payment marked "already paid" is not linked to the entry, but it may be
+    // that entry's money: another payment of the same amount must not take the entry from it.
+    const { calls } = arrange({
+      payments: [
+        inwardPayment('tx-quoted', { transaction_date: '2026-09-08', vendor_id: RECEIPT_VENDOR, status: 'no_receipt_required' }),
+        customerPayment('tx-free'),
+      ],
+      invoices: [invoice('inv-1', 'INV-A1', { status: 'paid', paid_amount: 100 })],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-08', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+      matches: [{ id: 'm-quoted', receipt_transaction_id: 'tx-quoted', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'already_paid', invoice_payment_id: null, transaction_date: '2026-09-08' }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_match_status: 'review_required', p_invoice_payment_id: null })
+    expect((matchCalls(calls)[0].args.p_payload as Record<string, unknown>).review_reason).toBe('entry_fits_another_payment')
+  })
+
+  it('does not record against an invoice another payment already points at', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1')],
+      matches: [{ id: 'm-other', receipt_transaction_id: 'tx-other', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'multiple_invoice_refs', invoice_payment_id: null, transaction_date: '2026-09-09' }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect((matchCalls(calls)[0].args.p_payload as Record<string, unknown>).review_reason).toBe('invoice_claimed_by_another_payment')
+  })
+
+  it('links only a bank transfer, never a cash or card entry', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1', { status: 'paid', paid_amount: 100 })],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-10', amount: 100, payment_method: 'cash', source_kind: null }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(matchCalls(calls).map((call) => call.args.p_invoice_payment_id)).toEqual([null])
+  })
+
+  it('stops, and is retried, when the customers for the payments cannot be found', async () => {
+    const { db, calls } = arrange({ payments: [customerPayment('tx-free')], invoices: [invoice('inv-1', 'INV-A1')] })
+    db.failNext({ table: 'receipt_vendors', operation: 'select', message: 'connection reset' })
+
+    await expect(performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })).rejects.toThrow(
+      'Failed to find the customers for these payments: connection reset'
+    )
+    expect(ledgerCalls(calls)).toHaveLength(0)
+  })
+
+  it('does not look again at a payment already matched or waiting for a person', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1')],
+      matches: [{ id: 'm1', receipt_transaction_id: 'tx-free', invoice_id: null, invoice_number: 'INV-A1', match_status: 'review_required', transaction_date: '2026-09-10' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(summary.referenceFreeReviewed).toBe(0)
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+  })
+
+  it('leaves a payment on or before the lock date alone', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free', { transaction_date: '2026-06-30' })],
+      invoices: [invoice('inv-1', 'INV-A1', { invoice_date: '2026-06-01' })],
+      settings: [{ key: 'locked_before', value: { date: '2026-06-30' } }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(summary.referenceFreeReviewed).toBe(0)
+    expect(calls.filter((call) => call.name !== 'resolve_receipt_vendor')).toEqual([])
+  })
+
+  it('stops, without matching anything, when it cannot read which payments are already matched', async () => {
+    const { db, calls } = arrange({ payments: [customerPayment('tx-free')], invoices: [invoice('inv-1', 'INV-A1')] })
+    db.failNext({ table: 'receipt_invoice_matches', operation: 'select', message: 'connection reset' })
+
+    await expect(performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })).rejects.toThrow(
+      'connection reset'
+    )
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+  })
+
+  it('does not record against an invoice already paid', async () => {
+    const { calls } = arrange({
+      payments: [customerPayment('tx-free')],
+      invoices: [invoice('inv-1', 'INV-A1', { status: 'paid', paid_amount: 100 })],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-07-01', amount: 100, source_kind: null }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls).map((call) => call.args.p_match_status)).toEqual(['review_required'])
+  })
+})
+
+describe('reconciliation: one payment failing does not stop the rest', () => {
+  it('stores a failed payment for a person, with the reason, and goes on with the others', async () => {
+    const { db, calls } = arrange({
+      payments: [inwardPayment('tx-1'), inwardPayment('tx-2', { details: 'CLIENT LTD INV-A2' })],
+      invoices: [invoice('inv-1', 'INV-A1'), invoice('inv-2', 'INV-A2')],
+    })
+    db.onRpc((name, args) => {
+      calls.push({ name, args })
+      if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
+      if (name === 'record_receipt_invoice_payment' && args.p_invoice_number === 'INV-A1') {
+        return { data: null, error: { message: 'Payment amount exceeds outstanding balance' } }
+      }
+      if (name === 'record_receipt_invoice_payment') {
+        return { data: { outcome: 'applied', status_updated: true, vendor_updated: false, payment_recorded: true, invoice_payment_id: 'payment-2' }, error: null }
+      }
+      return { data: { outcome: 'applied', status_updated: false, vendor_updated: false, previous_status: 'pending' }, error: null }
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1', 'tx-2'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ failedForReview: 1, paymentsRecorded: 1 })
+    const parked = matchCalls(calls).find((call) => call.args.p_transaction_id === 'tx-1')
+    expect(parked?.args).toMatchObject({ p_match_status: 'review_required', p_invoice_number: 'INV-A1', p_invoice_id: null })
+    expect(parked?.args.p_payload).toMatchObject({
+      review_reason: 'error',
+      error: 'Failed to record invoice payment for INV-A1: Payment amount exceeds outstanding balance',
+    })
+    expect(ledgerCalls(calls).filter((call) => call.args.p_transaction_id === 'tx-2')).toHaveLength(1)
+  })
+
+  it('does not work out again a payment it already recorded, so a part payment is never downgraded', async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-1', { amount_in: 40, amount_total: 40 })],
+      invoices: [invoice('inv-1', 'INV-A1', { paid_amount: 40, status: 'partially_paid' })],
+      matches: [{ id: 'm1', receipt_transaction_id: 'tx-1', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'payment_recorded', transaction_date: '2026-09-10' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(summary.matched).toBe(1)
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+  })
+
+  it('offers no more than the credit notes leave owing', async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-1')],
+      invoices: [invoice('inv-1', 'INV-A1', { total_amount: 150 })],
+      credits: [{ id: 'cn-1', invoice_id: 'inv-1', amount_inc_vat: 60, status: 'issued' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    // 150 less 60 credited leaves 90 owing: a payment of 100 is more than the ledger would take.
+    expect(summary.amountMismatch).toBe(1)
+    expect(ledgerCalls(calls)).toHaveLength(0)
   })
 })
 
@@ -366,35 +625,6 @@ describe('reconciliation: failure', () => {
     db.onRpc(() => ({ data: { outcome: 'transaction_not_found' }, error: null }))
 
     await expect(performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'] })).rejects.toThrow('transaction_not_found')
-  })
-})
-
-describe('reconciliation: invoices spoken for', () => {
-  it('stops rather than pair a second payment to an invoice when it cannot read which are taken', async () => {
-    const { db, calls } = arrange({
-      payments: [inwardPayment('tx-free', { details: 'CLIENT CLIENT', vendor_id: RECEIPT_VENDOR, vendor_name: 'Client Ltd', vendor_source: 'rule' })],
-      invoices: [invoice('inv-1', 'INV-A1')],
-    })
-    // An empty answer here used to mean "no invoice is taken", and the pass carried on.
-    db.failNext({ table: 'receipt_invoice_matches', operation: 'select', message: 'connection reset' })
-
-    await expect(performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })).rejects.toThrow(
-      'claimed invoice ids failed: connection reset'
-    )
-    expect(matchCalls(calls)).toHaveLength(0)
-  })
-
-  it('does not pair a payment to an invoice another payment already has', async () => {
-    const { calls } = arrange({
-      payments: [inwardPayment('tx-free', { details: 'CLIENT CLIENT', vendor_id: RECEIPT_VENDOR, vendor_name: 'Client Ltd', vendor_source: 'rule' })],
-      invoices: [invoice('inv-1', 'INV-A1')],
-      matches: [{ id: 'm1', receipt_transaction_id: 'tx-other', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'missing_invoice', transaction_date: '2026-09-01' }],
-    })
-
-    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-free'], initiatedBy: USER })
-
-    expect(summary.referenceFreePaired).toBe(0)
-    expect(matchCalls(calls)).toHaveLength(0)
   })
 })
 
