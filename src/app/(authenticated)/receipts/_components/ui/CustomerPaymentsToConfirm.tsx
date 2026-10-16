@@ -122,7 +122,9 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              {item.options.map((option) => {
+              {item.options
+                .filter((option) => (item.partDoneOption ?? null) === null || option.index === item.partDoneOption)
+                .map((option) => {
                 const key = `${item.matchId}:${option.index}`
                 return (
                   <Button

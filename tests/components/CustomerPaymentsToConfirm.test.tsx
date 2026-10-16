@@ -32,6 +32,7 @@ const KIER: CustomerPaymentToConfirm = {
   reason: 'several_invoices_fit',
   error: null,
   partlyDone: [],
+  partDoneOption: null,
   options: [
     { index: 0, kind: 'record', parts: [{ invoiceId: 'w8', invoiceNumber: 'INV-003W8', amount: 2520, paymentId: null, date: '2026-08-01' }] },
     { index: 1, kind: 'record', parts: [{ invoiceId: 'wd', invoiceNumber: 'INV-003WD', amount: 2520, paymentId: null, date: '2026-09-01' }] },
@@ -116,5 +117,12 @@ describe('CustomerPaymentsToConfirm', () => {
     render(<CustomerPaymentsToConfirm items={[{ ...KIER, partlyDone: ['INV-003W8'] }]} canConfirm />)
 
     expect(screen.getByText('Already done from an earlier attempt: INV-003W8. Choose the same option again to finish.')).toBeInTheDocument()
+  })
+
+  it('offers only the unfinished choice when one is part done', () => {
+    render(<CustomerPaymentsToConfirm items={[{ ...KIER, partlyDone: ['INV-003WD'], partDoneOption: 1 }]} canConfirm />)
+
+    expect(screen.getByRole('button', { name: 'Record against INV-003WD' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Record against INV-003W8' })).not.toBeInTheDocument()
   })
 })

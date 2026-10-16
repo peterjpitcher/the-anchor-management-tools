@@ -52,6 +52,8 @@ export type CustomerPaymentToConfirm = {
   error: string | null
   /** Invoices an earlier, unfinished attempt at a choice already recorded or linked. */
   partlyDone: string[]
+  /** The option that unfinished attempt was for: the only one that can be chosen now. */
+  partDoneOption: number | null
   options: ConfirmationOption[]
   recentInvoices: Array<{
     invoiceId: string
@@ -76,6 +78,21 @@ type StoredMatch = {
 const MONEY_EPSILON = 0.005
 const ALREADY_DEALT_WITH = 'This payment has already been dealt with.'
 const SOMEONE_ELSE = 'Someone else is dealing with this payment. Refresh the page to see what they did.'
+
+/** How long a choice being carried out holds the payment against anyone else, in case it dies part way. */
+const CONFIRM_HOLD_MS = 2 * 60 * 1000
+
+/** Whether someone is carrying out a choice on this payment right now. */
+function beingConfirmed(payload: Record<string, unknown>): boolean {
+  const at = Date.parse(String(asRecord(payload.confirming).at ?? ''))
+  return Number.isFinite(at) && Date.now() - at < CONFIRM_HOLD_MS
+}
+
+/** The option a part-done choice was started with, if any. */
+function partDoneOption(payload: Record<string, unknown>): number | null {
+  const index = asRecord(payload.partial).option_index
+  return typeof index === 'number' ? index : null
+}
 
 /**
  * Takes the waiting match for this request: rewrites it only if nobody has changed it since it
@@ -189,6 +206,7 @@ export async function loadCustomerPaymentsToConfirm(): Promise<CustomerPaymentTo
           partlyDone: Array.isArray(asRecord(payload.partial).done)
             ? (asRecord(payload.partial).done as unknown[]).map(String)
             : [],
+          partDoneOption: partDoneOption(payload),
           options: readConfirmationOptions(payload),
           recentInvoices: asArray(payload.recent_invoices).map((invoice) => ({
             invoiceId: String(invoice.invoice_id ?? ''),
@@ -282,6 +300,15 @@ export async function performConfirmCustomerPayment(input: {
   const match = await loadWaitingMatch(supabase, input.matchId)
   if ('error' in match) return match
 
+  const current = asRecord(match.payload)
+  // The version check alone let a second request that read the payment after the first took it
+  // act as well, while the first was still writing.
+  if (beingConfirmed(current)) return { error: SOMEONE_ELSE }
+  const started = partDoneOption(current)
+  if (started !== null && started !== input.optionIndex) {
+    return { error: 'This payment is part done with another choice. Choose that one again to finish it.' }
+  }
+
   const option = readConfirmationOptions(match.payload).find((candidate) => candidate.index === input.optionIndex)
   if (!option) return { error: 'That choice is not one of the options for this payment. Nothing was recorded.' }
 
@@ -318,8 +345,12 @@ export async function performConfirmCustomerPayment(input: {
   const problem = await checkChoice(supabase, remaining, invoices)
   if (problem) return { error: problem }
 
-  const payload = asRecord(match.payload)
-  const taken = await takeWaitingMatch(supabase, match, { ...payload, confirming: { by: input.userId, option_index: option.index } })
+  // Without the hold marker, so a failure below leaves the payment free for the next attempt.
+  const { confirming: _previousHold, ...payload } = current
+  const taken = await takeWaitingMatch(supabase, match, {
+    ...payload,
+    confirming: { by: input.userId, option_index: option.index, at: new Date().toISOString() },
+  })
   if (!taken) return { error: SOMEONE_ELSE }
 
   const invoiceNumbers = option.parts.filter(isDone).map((part) => invoices.get(part.invoiceId)?.invoice_number ?? String(part.invoiceNumber))
@@ -391,6 +422,7 @@ export async function performDismissCustomerPayment(input: {
   const supabase = createAdminClient()
   const match = await loadWaitingMatch(supabase, input.matchId)
   if ('error' in match) return match
+  if (beingConfirmed(asRecord(match.payload))) return { error: SOMEONE_ELSE }
 
   const taken = await takeWaitingMatch(supabase, match, {
     ...asRecord(match.payload),

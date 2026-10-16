@@ -322,3 +322,38 @@ describe('performConfirmCustomerPayment with two people, and with a choice in tw
   })
 })
 
+describe('performConfirmCustomerPayment while a choice is being carried out', () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+
+  it('refuses while someone else is carrying out a choice', async () => {
+    const { calls } = arrange({ match: { payload: { ...PAYLOAD, confirming: { by: 'someone-else', option_index: 0, at: minutesAgo(0) } } } })
+
+    expect(await performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 1, userId: USER })).toEqual({
+      error: 'Someone else is dealing with this payment. Refresh the page to see what they did.',
+    })
+    expect(await performDismissCustomerPayment({ matchId: MATCH, userId: USER })).toEqual({
+      error: 'Someone else is dealing with this payment. Refresh the page to see what they did.',
+    })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+  })
+
+  it('goes ahead once an abandoned attempt\'s hold has lapsed', async () => {
+    arrange({ match: { payload: { ...PAYLOAD, confirming: { by: 'someone-else', option_index: 0, at: minutesAgo(10) } } } })
+
+    expect(await performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 0, userId: USER })).toEqual({
+      success: true,
+      invoiceNumbers: ['INV-003W8'],
+    })
+  })
+
+  it('accepts only the choice a part-done payment was started with', async () => {
+    const { calls } = arrange({ match: { payload: { ...PAYLOAD, partial: { option_index: 0, done: ['INV-003W8'], error: 'x' } } } })
+
+    expect(await performConfirmCustomerPayment({ matchId: MATCH, optionIndex: 1, userId: USER })).toEqual({
+      error: 'This payment is part done with another choice. Choose that one again to finish it.',
+    })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect((await loadCustomerPaymentsToConfirm())[0]).toMatchObject({ partDoneOption: 0 })
+  })
+})
+
