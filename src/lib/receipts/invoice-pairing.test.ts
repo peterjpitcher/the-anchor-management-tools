@@ -229,5 +229,18 @@ describe('decideCustomerPayment and other payments', () => {
     expect(Date.now() - started).toBeLessThan(1000)
     expect(decision).toEqual({ kind: 'none' })
   })
-})
 
+  it('sends a link to a person when another payment already points at the entry\'s invoice', () => {
+    const entered = entry({ id: 'pay-w4', invoiceId: 'w4', paymentDate: '2026-08-26' })
+
+    const decision = decideCustomerPayment(
+      payment('2026-08-26', 2520),
+      [{ ...KIER_JULY, paidAmount: 2520 }],
+      [entered],
+      [],
+      new Set(['w4'])
+    )
+
+    expect(decision).toMatchObject({ kind: 'review', reason: 'invoice_claimed_by_another_payment', entryOptions: [[entered]] })
+  })
+})
