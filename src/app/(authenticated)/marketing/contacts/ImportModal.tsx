@@ -65,7 +65,7 @@ const FREEMAIL_LABELS = new Set([
 ])
 
 /** Deliberately loose, matching the service. A bounce is what really proves an address. */
-const EMAIL_PATTERN = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/
+export const EMAIL_PATTERN = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/
 
 interface PreviewRow {
   rowNumber: number
@@ -84,7 +84,7 @@ function normalise(value: string | undefined | null): string {
   return (value ?? '').trim()
 }
 
-function isFreemail(email: string): boolean {
+export function isFreemail(email: string): boolean {
   const domain = email.toLowerCase().split('@')[1]
   if (!domain) return false
   return FREEMAIL_LABELS.has(domain.split('.')[0] ?? '')

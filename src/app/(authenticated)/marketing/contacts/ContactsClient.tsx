@@ -54,6 +54,7 @@ import {
 } from '../_shared/marketing-ui'
 import { marketingLayout } from '../_shared/nav'
 import { suggestSubscriberType } from '@/lib/email/marketing/subscriber-type'
+import { AddContactModal } from './AddContactModal'
 import { EligibilityModal } from './EligibilityModal'
 import { ImportModal } from './ImportModal'
 
@@ -138,6 +139,7 @@ export function ContactsClient({
   const [unsubscribeTarget, setUnsubscribeTarget] = useState<BusinessContact | null>(null)
   const [resubscribeTarget, setResubscribeTarget] = useState<BusinessContact | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [engagement, setEngagement] = useState<Record<string, EngagementState>>({})
@@ -304,9 +306,19 @@ export function ContactsClient({
       {...marketingLayout('contacts', { canManageSettings })}
       headerActions={
         canCreate ? (
-          <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
-            Import Contacts
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
+              Import Contacts
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Icon name="plus" size={16} />}
+              onClick={() => setAddOpen(true)}
+            >
+              Add Contact
+            </Button>
+          </>
         ) : undefined
       }
     >
@@ -406,7 +418,7 @@ export function ContactsClient({
               description={
                 hasFilters
                   ? 'Try a wider search, or clear the filters to see everyone.'
-                  : 'Import a CSV of business contacts to get started. Everyone arrives waiting for eligibility review, and nobody can be emailed until that review is done.'
+                  : 'Add a business contact, or import a CSV of them, to get started. Everyone arrives waiting for eligibility review, and nobody can be emailed until that review is done.'
               }
               action={
                 canCreate && !hasFilters ? (
@@ -696,6 +708,16 @@ export function ContactsClient({
         confirmLabel="Resubscribe"
         tone="primary"
       />
+
+      {addOpen && (
+        <AddContactModal
+          onClose={() => setAddOpen(false)}
+          onAdded={() => {
+            setAddOpen(false)
+            refresh()
+          }}
+        />
+      )}
 
       {importOpen && (
         <ImportModal
