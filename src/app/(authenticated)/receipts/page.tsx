@@ -1,14 +1,22 @@
 import ReceiptsClient from './_components/ReceiptsClient'
-import { currentUserCanGovernReceiptRules, getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
+import {
+  currentUserCanGovernReceiptRules,
+  getCustomerPaymentsToConfirm,
+  getReceiptWorkspaceData,
+  type ReceiptWorkspaceFilters,
+} from '@/app/actions/receipts'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { ReceiptsPageChrome } from './_components/ReceiptsPageChrome'
 import { ReceiptReclassify } from './_components/ui/ReceiptReclassify'
+import { CustomerPaymentsToConfirm } from './_components/ui/CustomerPaymentsToConfirm'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
 const SORT_COLUMNS = new Set(['transaction_date', 'details', 'amount_in', 'amount_out', 'amount_total'])
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
+/** What getCustomerPaymentsToConfirm says when the list could not be read (not a permission refusal). */
+const LOAD_FAILED = 'The customer payments to confirm could not be loaded.'
 
 function resolveMonthParam(value?: string) {
   if (value && MONTH_PATTERN.test(value)) {
@@ -106,7 +114,11 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   }
 
   let data = await getReceiptWorkspaceData(filters)
-  const canGovernRules = await currentUserCanGovernReceiptRules()
+  const [canGovernRules, paymentsToConfirm, canEditInvoices] = await Promise.all([
+    currentUserCanGovernReceiptRules(),
+    getCustomerPaymentsToConfirm(),
+    checkUserPermission('invoices', 'edit'),
+  ])
 
   if (
     !rawMonth &&
@@ -138,6 +150,15 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
       canManage={canManage}
       headerActions={<ReceiptReclassify />}
     >
+      {(paymentsToConfirm.items.length > 0 || paymentsToConfirm.error === LOAD_FAILED) && (
+        <div className="mb-6">
+          <CustomerPaymentsToConfirm
+            items={paymentsToConfirm.items}
+            canConfirm={canManage && canEditInvoices}
+            loadError={paymentsToConfirm.error === LOAD_FAILED ? paymentsToConfirm.error : null}
+          />
+        </div>
+      )}
       <ReceiptsClient
         initialData={data}
         canExport={canExport}
