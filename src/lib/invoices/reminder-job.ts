@@ -131,7 +131,7 @@ function failureIsAmbiguous(result: { uncertain?: boolean; error?: string | null
   return result.uncertain === true || String(result.error ?? '').trim() === ''
 }
 
-type BlockedReason = 'no_address' | 'reminder_outcome_unknown'
+type BlockedReason = 'no_address' | 'reminder_outcome_unknown' | 'payment_waiting'
 
 interface Candidate {
   invoice: InvoiceWithDetails
@@ -575,6 +575,74 @@ async function keepClaim(
   }
 }
 
+type WaitingPayment = { date: string; amount: number }
+
+/** Whether a payment waiting for a person names this invoice among its options. */
+function namesInvoice(payload: Record<string, unknown> | null, invoiceId: string): boolean {
+  const options = Array.isArray(payload?.options) ? (payload?.options as Array<Record<string, unknown>>) : []
+  return options.some((option) =>
+    [option.allocations, option.entries].some(
+      (parts) => Array.isArray(parts) && (parts as Array<Record<string, unknown>>).some((part) => part.invoice_id === invoiceId)
+    )
+  )
+}
+
+/**
+ * A payment from this client that is in the bank, dated from a week before the invoice, and not
+ * matched to any invoice yet or waiting for a person to match it, that fits what this invoice
+ * owes or is offered as paying it. A reminder then risks asking a client who has paid to pay
+ * again: Kier was sent a second and a final reminder in September 2026 for an invoice it paid on
+ * the 3rd. The bank statement arrives late, so this only helps once it is uploaded.
+ */
+async function findWaitingClientPayment(supabase: RunContext['supabase'], candidate: Candidate): Promise<WaitingPayment | null> {
+  const { data: vendors, error: vendorError } = await supabase
+    .from('receipt_vendors')
+    .select('id')
+    .eq('invoice_vendor_id', candidate.vendorId)
+    .limit(100)
+  if (vendorError) throw new Error(vendorError.message)
+  const vendorIds = ((vendors ?? []) as Array<{ id: string }>).map((vendor) => vendor.id)
+  if (!vendorIds.length) return null
+
+  const invoiceDate = String(candidate.invoice.invoice_date ?? '').slice(0, 10)
+  const { data: lines, error: lineError } = await supabase
+    .from('receipt_transactions')
+    .select('id, transaction_date, amount_in')
+    .in('vendor_id', vendorIds)
+    .gte('transaction_date', shiftIsoDate(invoiceDate, -7) ?? invoiceDate)
+    .not('amount_in', 'is', null)
+    .order('transaction_date', { ascending: false })
+    .limit(50)
+  if (lineError) throw new Error(lineError.message)
+  const received = ((lines ?? []) as Array<{ id: string; transaction_date: string; amount_in: number | string | null }>).filter(
+    (line) => Number(line.amount_in) > 0
+  )
+  if (!received.length) return null
+
+  const { data: matches, error: matchError } = await supabase
+    .from('receipt_invoice_matches')
+    .select('receipt_transaction_id, match_status, payload')
+    .in('receipt_transaction_id', received.map((line) => line.id))
+    .limit(500)
+  if (matchError) throw new Error(matchError.message)
+  const matchRows = (matches ?? []) as Array<{ receipt_transaction_id: string; match_status: string; payload: Record<string, unknown> | null }>
+
+  const pence = (value: unknown) => Math.round(Number(value ?? 0) * 100)
+  const owed = [candidate.balance, candidate.invoice.total_amount].filter((value) => value !== null && value !== undefined).map(pence)
+  for (const line of received) {
+    const rows = matchRows.filter((match) => match.receipt_transaction_id === line.id)
+    const forPerson = rows.filter((match) => match.match_status === 'review_required' && !match.payload?.dismissed_at)
+    if (rows.length && !forPerson.length) continue
+    const fits = owed.includes(pence(line.amount_in)) || forPerson.some((match) => namesInvoice(match.payload, candidate.invoice.id))
+    if (fits) return { date: line.transaction_date, amount: Number(line.amount_in) }
+  }
+  return null
+}
+
+function describeWaitingPayment(waiting: WaitingPayment): string {
+  return `${formatInvoiceMoney(waiting.amount)} from this client arrived on ${formatInvoiceDate(waiting.date, { withYear: true })} and is not matched to an invoice yet, so no reminder was sent. Match it on the receipts page, or chase by hand if it was for something else`
+}
+
 /**
  * Tries to send one reminder. Returns true when the client must be left alone for the rest of
  * this run: something was attempted, or the invoice could not be checked. Returns false when
@@ -607,6 +675,23 @@ async function attemptReminder(context: RunContext, candidate: Candidate, stage:
 
   const decision = candidate.decision
   if (decision.action !== 'send' || decision.stage !== stage) {
+    return false
+  }
+
+  // The bank may already show this client paying, and a reminder would then ask them to pay twice.
+  let waiting: WaitingPayment | null
+  try {
+    waiting = await findWaitingClientPayment(supabase, candidate)
+  } catch (error) {
+    addProblem(
+      context,
+      candidate,
+      `Could not check the bank for a payment from this client, so nothing was sent: ${getErrorMessage(error)}`
+    )
+    return true
+  }
+  if (waiting) {
+    candidate.blocked = { reason: 'payment_waiting', detail: describeWaitingPayment(waiting) }
     return false
   }
 
@@ -1328,6 +1413,17 @@ export async function previewInvoiceReminders(input: {
       } else if (decision.action === 'send') {
         if (doneVendors.has(candidate.vendorId)) {
           waiting.push({ ...line(), why: 'one_reminder_per_client_per_run' })
+          continue
+        }
+        let paymentWaiting: WaitingPayment | null = null
+        try {
+          paymentWaiting = await findWaitingClientPayment(supabase, candidate)
+        } catch {
+          unreadable.push(candidate.invoice.invoice_number)
+          continue
+        }
+        if (paymentWaiting) {
+          needsYou.push({ ...line(), why: describeWaitingPayment(paymentWaiting) })
           continue
         }
         let hasAddress = false
