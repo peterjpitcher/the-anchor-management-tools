@@ -31,6 +31,7 @@ const KIER: CustomerPaymentToConfirm = {
   vendorName: 'Kier Services Maintenance South',
   reason: 'several_invoices_fit',
   error: null,
+  partlyDone: [],
   options: [
     { index: 0, kind: 'record', parts: [{ invoiceId: 'w8', invoiceNumber: 'INV-003W8', amount: 2520, paymentId: null, date: '2026-08-01' }] },
     { index: 1, kind: 'record', parts: [{ invoiceId: 'wd', invoiceNumber: 'INV-003WD', amount: 2520, paymentId: null, date: '2026-09-01' }] },
@@ -109,5 +110,11 @@ describe('CustomerPaymentsToConfirm', () => {
     render(<CustomerPaymentsToConfirm items={[]} canConfirm loadError="The customer payments to confirm could not be loaded." />)
 
     expect(screen.getByText(/The customer payments to confirm could not be loaded\. Reload the page to try again\./)).toBeInTheDocument()
+  })
+
+  it('says when an earlier attempt at a choice was only partly done', () => {
+    render(<CustomerPaymentsToConfirm items={[{ ...KIER, partlyDone: ['INV-003W8'] }]} canConfirm />)
+
+    expect(screen.getByText('Already done from an earlier attempt: INV-003W8. Choose the same option again to finish.')).toBeInTheDocument()
   })
 })

@@ -1284,7 +1284,13 @@ export async function confirmCustomerPayment(input: {
   }
 
   const actor = await requireCurrentUser()
-  const result = await performConfirmCustomerPayment({ matchId, optionIndex, userId: actor.user_id })
+  let result: Awaited<ReturnType<typeof performConfirmCustomerPayment>>
+  try {
+    result = await performConfirmCustomerPayment({ matchId, optionIndex, userId: actor.user_id })
+  } catch (error) {
+    console.error('Confirming a customer payment failed:', error instanceof Error ? error.message : String(error))
+    result = { error: 'The payment could not be confirmed. Refresh the page to see where it stands.' }
+  }
 
   await logReceiptAudit(actor, {
     operation_type: 'confirm_customer_payment',
@@ -1315,7 +1321,13 @@ export async function dismissCustomerPayment(input: { matchId: string }): Promis
   }
 
   const actor = await requireCurrentUser()
-  const result = await performDismissCustomerPayment({ matchId, userId: actor.user_id })
+  let result: Awaited<ReturnType<typeof performDismissCustomerPayment>>
+  try {
+    result = await performDismissCustomerPayment({ matchId, userId: actor.user_id })
+  } catch (error) {
+    console.error('Setting aside a customer payment failed:', error instanceof Error ? error.message : String(error))
+    result = { error: 'The payment could not be updated. Refresh the page and try again.' }
+  }
 
   await logReceiptAudit(actor, {
     operation_type: 'set_aside_customer_payment',

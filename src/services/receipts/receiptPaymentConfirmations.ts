@@ -50,6 +50,8 @@ export type CustomerPaymentToConfirm = {
   /** Why it was stored: several_invoices_fit, several_entries_fit, entry_fits_another_payment, no_exact_fit, over_allocated or error. */
   reason: string
   error: string | null
+  /** Invoices an earlier, unfinished attempt at a choice already recorded or linked. */
+  partlyDone: string[]
   options: ConfirmationOption[]
   recentInvoices: Array<{
     invoiceId: string
@@ -68,10 +70,32 @@ type StoredMatch = {
   match_status: string
   payload: Record<string, unknown> | null
   matched_at?: string | null
+  updated_at?: string | null
 }
 
 const MONEY_EPSILON = 0.005
 const ALREADY_DEALT_WITH = 'This payment has already been dealt with.'
+const SOMEONE_ELSE = 'Someone else is dealing with this payment. Refresh the page to see what they did.'
+
+/**
+ * Takes the waiting match for this request: rewrites it only if nobody has changed it since it
+ * was read. Two people choosing at the same moment cannot both act; the second is told.
+ */
+async function takeWaitingMatch(
+  supabase: AdminClient,
+  match: StoredMatch,
+  payload: Record<string, unknown>
+): Promise<StoredMatch | null> {
+  let query = supabase
+    .from('receipt_invoice_matches')
+    .update({ payload, updated_at: new Date().toISOString() })
+    .eq('id', match.id)
+    .eq('match_status', 'review_required')
+  query = match.updated_at ? query.eq('updated_at', match.updated_at) : query.is('updated_at', null)
+  const { data, error } = await query.select('id, receipt_transaction_id, invoice_number, match_status, payload, updated_at')
+  if (error || !data?.length) return null
+  return data[0] as StoredMatch
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -129,6 +153,7 @@ export async function loadCustomerPaymentsToConfirm(): Promise<CustomerPaymentTo
     .from('receipt_invoice_matches')
     .select('id, receipt_transaction_id, invoice_number, match_status, payload, matched_at')
     .eq('match_status', 'review_required')
+    .is('payload->>dismissed_at', null)
     .order('matched_at', { ascending: false })
     .limit(200)
   if (error) throw new Error(`Failed to load the payments to confirm: ${error.message}`)
@@ -160,7 +185,10 @@ export async function loadCustomerPaymentsToConfirm(): Promise<CustomerPaymentTo
           amount: money(line.amount_in ?? line.amount_out),
           vendorName: line.vendor_name ?? null,
           reason: reasonOf(payload),
-          error: text(payload.error),
+          error: text(payload.error) ?? text(asRecord(payload.partial).error),
+          partlyDone: Array.isArray(asRecord(payload.partial).done)
+            ? (asRecord(payload.partial).done as unknown[]).map(String)
+            : [],
           options: readConfirmationOptions(payload),
           recentInvoices: asArray(payload.recent_invoices).map((invoice) => ({
             invoiceId: String(invoice.invoice_id ?? ''),
@@ -179,7 +207,7 @@ export async function loadCustomerPaymentsToConfirm(): Promise<CustomerPaymentTo
 async function loadWaitingMatch(supabase: AdminClient, matchId: string): Promise<StoredMatch | { error: string }> {
   const { data, error } = await supabase
     .from('receipt_invoice_matches')
-    .select('id, receipt_transaction_id, invoice_number, match_status, payload')
+    .select('id, receipt_transaction_id, invoice_number, match_status, payload, updated_at')
     .eq('id', matchId)
     .maybeSingle()
   if (error) return { error: 'The payment could not be loaded. Nothing was changed.' }
@@ -196,6 +224,7 @@ async function checkChoice(
   option: ConfirmationOption,
   invoices: Map<string, InvoiceRow>
 ): Promise<string | null> {
+  if (!option.parts.length) return null
   for (const part of option.parts) {
     const invoice = invoices.get(part.invoiceId)
     if (!invoice) return `Invoice ${part.invoiceNumber ?? part.invoiceId} no longer exists. Nothing was recorded.`
@@ -263,6 +292,16 @@ export async function performConfirmCustomerPayment(input: {
     .maybeSingle()
   if (transactionError || !transaction) return { error: 'The bank payment could not be loaded. Nothing was recorded.' }
 
+  // Parts an earlier attempt at this choice already carried out are not done again.
+  const { data: existing, error: existingError } = await supabase
+    .from('receipt_invoice_matches')
+    .select('id, invoice_number, match_status')
+    .eq('receipt_transaction_id', match.receipt_transaction_id)
+    .in('match_status', ['payment_recorded', 'matched'])
+    .limit(50)
+  if (existingError) return { error: 'The bank payment could not be loaded. Nothing was recorded.' }
+  const done = new Set(((existing ?? []) as Array<{ invoice_number: string }>).map((row) => row.invoice_number.toUpperCase()))
+
   const { data: invoiceRows, error: invoiceError } = await supabase
     .from('invoices')
     .select('*, vendor:invoice_vendors(id, name)')
@@ -270,39 +309,66 @@ export async function performConfirmCustomerPayment(input: {
     .is('deleted_at', null)
   if (invoiceError) return { error: 'The invoices could not be loaded. Nothing was recorded.' }
   const invoices = new Map(((invoiceRows ?? []) as InvoiceRow[]).map((invoice) => [invoice.id, invoice]))
+  const isDone = (part: ConfirmationPart) => {
+    const number = invoices.get(part.invoiceId)?.invoice_number ?? part.invoiceNumber
+    return Boolean(number && done.has(number.toUpperCase()))
+  }
+  const remaining: ConfirmationOption = { ...option, parts: option.parts.filter((part) => !isDone(part)) }
 
-  const problem = await checkChoice(supabase, option, invoices)
+  const problem = await checkChoice(supabase, remaining, invoices)
   if (problem) return { error: problem }
 
-  const invoiceNumbers: string[] = []
-  for (const part of option.parts) {
+  const payload = asRecord(match.payload)
+  const taken = await takeWaitingMatch(supabase, match, { ...payload, confirming: { by: input.userId, option_index: option.index } })
+  if (!taken) return { error: SOMEONE_ELSE }
+
+  const invoiceNumbers = option.parts.filter(isDone).map((part) => invoices.get(part.invoiceId)?.invoice_number ?? String(part.invoiceNumber))
+  let failure: string | null = null
+  for (const part of remaining.parts) {
     const invoice = invoices.get(part.invoiceId) as InvoiceRow
-    const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(supabase, invoice.vendor?.name ?? null, invoice.vendor_id)
-    const result = await applyInvoiceMatch(supabase, {
-      transaction: transaction as ReceiptTransaction,
-      invoiceNumber: invoice.invoice_number,
-      invoice,
-      invoicePaymentId: option.kind === 'link' ? part.paymentId : null,
-      status: option.kind === 'link' ? 'matched' : 'payment_recorded',
-      amountMatch: true,
-      allowStatusChange: true,
-      receiptVendor,
-      initiatedBy: input.userId,
-      matchedAmount: part.amount,
-      recordPaymentAmount: option.kind === 'record' ? part.amount : undefined,
-      payload: { match_method: 'confirmed_by_person', review_match_id: match.id, option_index: option.index },
-    })
-    if (result.overAllocated) {
-      return {
-        error: `The bank payment has nothing left to record against ${invoice.invoice_number}.${
-          invoiceNumbers.length ? ` ${invoiceNumbers.join(' and ')} ${invoiceNumbers.length === 1 ? 'was' : 'were'} recorded.` : ' Nothing was recorded.'
-        }`,
+    try {
+      const receiptVendor = await ensureReceiptVendorLinkedToInvoiceVendor(supabase, invoice.vendor?.name ?? null, invoice.vendor_id)
+      const result = await applyInvoiceMatch(supabase, {
+        transaction: transaction as ReceiptTransaction,
+        invoiceNumber: invoice.invoice_number,
+        invoice,
+        invoicePaymentId: option.kind === 'link' ? part.paymentId : null,
+        status: option.kind === 'link' ? 'matched' : 'payment_recorded',
+        amountMatch: true,
+        allowStatusChange: true,
+        receiptVendor,
+        initiatedBy: input.userId,
+        matchedAmount: part.amount,
+        recordPaymentAmount: option.kind === 'record' ? part.amount : undefined,
+        payload: { match_method: 'confirmed_by_person', review_match_id: match.id, option_index: option.index },
+      })
+      if (result.overAllocated) {
+        failure = `The bank payment has nothing left to record against ${invoice.invoice_number}.`
+        break
       }
+      invoiceNumbers.push(invoice.invoice_number)
+    } catch (error) {
+      failure = `${invoice.invoice_number} could not be ${option.kind === 'link' ? 'linked' : 'recorded'}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+      break
     }
-    invoiceNumbers.push(invoice.invoice_number)
   }
 
-  // Finished with: remove the stored match, unless a new match with its invoice number replaced it.
+  if (failure) {
+    // Left on the list, saying what was done, so choosing the same option again finishes it.
+    const note = invoiceNumbers.length
+      ? `${failure} ${invoiceNumbers.join(' and ')} ${invoiceNumbers.length === 1 ? 'was' : 'were'} done. Choose the same option again to finish.`
+      : `${failure} Nothing was recorded.`
+    await supabase
+      .from('receipt_invoice_matches')
+      .update({ payload: { ...payload, partial: { option_index: option.index, done: invoiceNumbers, error: failure } }, updated_at: new Date().toISOString() })
+      .eq('id', match.id)
+      .eq('match_status', 'review_required')
+    return { error: note }
+  }
+
+  // Finished with: the waiting match comes off the list.
   const { error: removeError } = await supabase
     .from('receipt_invoice_matches')
     .delete()
@@ -322,14 +388,12 @@ export async function performDismissCustomerPayment(input: {
   const match = await loadWaitingMatch(supabase, input.matchId)
   if ('error' in match) return match
 
-  const { data, error } = await supabase
-    .from('receipt_invoice_matches')
-    .update({ payload: { ...asRecord(match.payload), dismissed_at: new Date().toISOString(), dismissed_by: input.userId } })
-    .eq('id', match.id)
-    .eq('match_status', 'review_required')
-    .select('id')
-  if (error) return { error: 'The payment could not be updated. Try again.' }
-  if (!data?.length) return { error: ALREADY_DEALT_WITH }
+  const taken = await takeWaitingMatch(supabase, match, {
+    ...asRecord(match.payload),
+    dismissed_at: new Date().toISOString(),
+    dismissed_by: input.userId,
+  })
+  if (!taken) return { error: SOMEONE_ELSE }
 
   const { data: transaction } = await supabase
     .from('receipt_transactions')
