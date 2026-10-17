@@ -131,8 +131,23 @@ describe('CustomerPaymentsToConfirm', () => {
     render(<CustomerPaymentsToConfirm items={[{ ...KIER, quotedInvoiceNumber: 'INV-003VV' }]} canConfirm />)
 
     expect(
-      screen.getByText('The payment quotes INV-003VV, which has nothing left to pay, so it is probably for another invoice.')
+      screen.getByText('The payment quotes INV-003VV, which has nothing left to pay.')
     ).toBeInTheDocument()
+  })
+
+  it('explains a payment that may be part of the money for the invoice it quotes', () => {
+    render(<CustomerPaymentsToConfirm items={[{ ...KIER, reason: 'quoted_invoice_paid_nearby', quotedInvoiceNumber: 'INV-A1' }]} canConfirm />)
+
+    expect(
+      screen.getByText('The invoice this payment quotes was paid around the same time, so it may be part of that money. Check before choosing.')
+    ).toBeInTheDocument()
+  })
+
+  it('explains a payment whose sender looks like a different customer from the invoice it quotes', () => {
+    render(<CustomerPaymentsToConfirm items={[{ ...KIER, reason: 'payer_is_another_customer', quotedInvoiceNumber: 'INV-Y1', options: [] }]} canConfirm />)
+
+    expect(screen.getByText(/belongs to a different customer from the one who seems to have paid it/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dealt with' })).toBeEnabled()
   })
 
   it('says nothing about a quoted invoice when the payment quoted none', () => {
