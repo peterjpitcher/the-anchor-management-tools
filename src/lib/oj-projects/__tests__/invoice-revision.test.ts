@@ -112,4 +112,45 @@ describe('OJ Projects invoice revision', () => {
     expect(revision.notes).toContain('Invoice INV-001 revised 2026-06-02')
     expect(revision.internalNotes).toContain('OJ_PROJECTS_REVISED')
   })
+
+  it('bills new mileage with VAT and keeps older 0% mileage on its own line', () => {
+    const mileage = (id: string, miles: number, vat: number | null) => ({
+      id,
+      entry_type: 'mileage',
+      entry_date: '2026-10-03',
+      project_id: 'project-1',
+      project: { project_code: 'OJP-001', project_name: 'Retainer' },
+      duration_minutes_rounded: null,
+      miles,
+      hourly_rate_ex_vat_snapshot: null,
+      vat_rate_snapshot: vat,
+      mileage_rate_snapshot: 0.55,
+      amount_ex_vat_snapshot: null,
+      billable: true,
+      description: 'Travel',
+    })
+    const revision = buildOjInvoiceRevision({
+      invoice: {
+        invoice_number: 'INV-002',
+        invoice_date: '2026-11-01',
+        due_date: '2026-11-08',
+        reference: 'OJ Projects 2026-10',
+        notes: null,
+        internal_notes: null,
+        invoice_discount_percentage: 0,
+      },
+      settings: { hourly_rate_ex_vat: 75, mileage_rate: 0.55, vat_rate: 20, statement_mode: false },
+      recurringInstances: [],
+      entries: [mileage('new', 40, 20), mileage('old', 10, 0), mileage('legacy', 10, null)],
+      revisedAtIso: '2026-11-02T12:00:00.000Z',
+    })
+
+    expect(revision.lineItems).toEqual([
+      expect.objectContaining({ description: 'Mileage (40.00 miles @ GBP 0.550/mile)', unit_price: 0.55, vat_rate: 20 }),
+      expect.objectContaining({ description: 'Mileage (20.00 miles @ GBP 0.550/mile)', unit_price: 0.55, vat_rate: 0 }),
+    ])
+    // 40 miles at 0.55 = 22.00 plus 4.40 VAT; 20 miles at 0.55 = 11.00 with none.
+    expect(revision.totals.vatAmount).toBe(4.4)
+    expect(revision.totals.totalAmount).toBe(37.4)
+  })
 })

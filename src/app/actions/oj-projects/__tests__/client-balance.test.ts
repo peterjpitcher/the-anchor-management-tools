@@ -128,7 +128,7 @@ describe('getClientBalance', () => {
     expect(result.balance?.unbilledTotal).toBe(180)
   })
 
-  it('bills mileage with no VAT, matching the billing engine', async () => {
+  it('bills mileage at its VAT rate, matching the billing engine', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(true)
 
     const mockSb = createMockSupabase({
@@ -141,6 +141,34 @@ describe('getClientBalance', () => {
             miles: 100,
             hourly_rate_ex_vat_snapshot: null,
             vat_rate_snapshot: 20,
+            mileage_rate_snapshot: 0.55,
+            amount_ex_vat_snapshot: null,
+          },
+        ],
+      },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance?.unbilledMileageTotal).toBe(66)
+  })
+
+  it('keeps mileage logged before it carried VAT at 0%', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: { data: [] },
+      oj_entries: {
+        data: [
+          {
+            entry_type: 'mileage',
+            duration_minutes_rounded: null,
+            miles: 100,
+            hourly_rate_ex_vat_snapshot: null,
+            vat_rate_snapshot: 0,
             mileage_rate_snapshot: 0.55,
             amount_ex_vat_snapshot: null,
           },

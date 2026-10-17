@@ -4,7 +4,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { applyStatementCapTopUp } from '@/lib/oj-projects/statement-cap'
-import { getEntryCharge, getRecurringCharge } from '@/lib/oj-projects/charges'
+import { getEntryCharge, getRecurringCharge, mileageVatRate } from '@/lib/oj-projects/charges'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { generateOjTimesheetPDF } from '@/lib/oj-timesheet'
@@ -827,7 +827,7 @@ function computePartialMinutesForHeadroom(totalMinutes: number, rate: number, va
   return { minutes, exVat: charge.exVat, incVat: charge.incVat }
 }
 
-function computePartialMilesForHeadroom(totalMiles: number, rate: number, headroomIncVat: number) {
+function computePartialMilesForHeadroom(totalMiles: number, rate: number, vatRate: number, headroomIncVat: number) {
   const safeMiles = Number(totalMiles || 0)
   const safeRate = Number(rate || 0)
   const safeHeadroom = roundMoney(Number(headroomIncVat) || 0)
@@ -835,21 +835,27 @@ function computePartialMilesForHeadroom(totalMiles: number, rate: number, headro
   if (!Number.isFinite(safeRate) || safeRate <= 0) return null
   if (!Number.isFinite(safeHeadroom) || safeHeadroom <= 0) return null
 
-  let miles = Math.floor((safeHeadroom / safeRate) * 100) / 100
+  const safeVat = Number.isFinite(Number(vatRate)) ? Number(vatRate) : 0
+  const chargeFor = (m: number) => {
+    const exVat = roundMoney(m * safeRate)
+    return { exVat, incVat: moneyIncVat(exVat, safeVat) }
+  }
+
+  let miles = Math.floor((safeHeadroom / (safeRate * (1 + safeVat / 100))) * 100) / 100
   miles = Math.min(miles, roundMoney(safeMiles - 0.01))
   if (miles <= 0) return null
 
-  let incVat = roundMoney(miles * safeRate)
+  let charge = chargeFor(miles)
   let guard = 0
-  while (miles > 0 && incVat - safeHeadroom > 0.009 && guard < 500) {
+  while (miles > 0 && charge.incVat - safeHeadroom > 0.009 && guard < 500) {
     miles = roundMoney(miles - 0.01)
     if (miles <= 0) break
-    incVat = roundMoney(miles * safeRate)
+    charge = chargeFor(miles)
     guard += 1
   }
   if (miles <= 0) return null
 
-  return { miles, exVat: incVat, incVat }
+  return { miles, exVat: charge.exVat, incVat: charge.incVat }
 }
 
 function buildEntryInsertPayload(entry: any, overrides: Record<string, any>) {
@@ -1042,7 +1048,7 @@ async function splitMileageEntryForCap(input: {
   if (!Number.isFinite(totalMiles) || totalMiles <= 0) return null
 
   const rate = resolveRate(candidate.mileage_rate_snapshot, input.settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
-  const partial = computePartialMilesForHeadroom(totalMiles, rate, input.headroom)
+  const partial = computePartialMilesForHeadroom(totalMiles, rate, mileageVatRate(candidate), input.headroom)
   if (!partial) return null
   if (partial.miles < 0.01) return null
 
@@ -1530,8 +1536,14 @@ function buildDetailedLineItems(input: {
     })
   }
 
-  const selectedMileage = input.selectedMileageEntries || []
-  if (selectedMileage.length > 0) {
+  // One mileage line per VAT rate: entries logged before mileage carried VAT
+  // keep their 0% rate if they are billed alongside newer ones.
+  const mileageByVat = new Map<number, any[]>()
+  for (const e of input.selectedMileageEntries || []) {
+    const vatRate = mileageVatRate(e)
+    mileageByVat.set(vatRate, [...(mileageByVat.get(vatRate) || []), e])
+  }
+  for (const [mileageVat, selectedMileage] of mileageByVat) {
     const totalMiles = selectedMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
     const rateSet = new Set(selectedMileage.map((e: any) => resolveRate(e.mileage_rate_snapshot, input.settings?.mileage_rate, DEFAULT_MILEAGE_RATE)))
     if (rateSet.size === 1) {
@@ -1542,7 +1554,7 @@ function buildDetailedLineItems(input: {
         quantity: roundMoney(totalMiles),
         unit_price: roundMoney(rate),
         discount_percentage: 0,
-        vat_rate: 0,
+        vat_rate: mileageVat,
       })
     } else {
       const totalExVat = selectedMileage.reduce((acc: number, e: any) => {
@@ -1556,7 +1568,7 @@ function buildDetailedLineItems(input: {
         quantity: 1,
         unit_price: roundMoney(totalExVat),
         discount_percentage: 0,
-        vat_rate: 0,
+        vat_rate: mileageVat,
       })
     }
   }
@@ -3271,11 +3283,8 @@ export async function GET(request: Request) {
       }
 
       for (const e of mileageEntries) {
-        const miles = Number(e.miles || 0)
-        const rate = resolveRate(e.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
-        const exVat = roundMoney(miles * rate)
-        const incVat = exVat
-        if (includeItem(incVat)) selectedMileage.push(e)
+        const charge = getEntryCharge(e, settings)
+        if (includeItem(charge.incVat)) selectedMileage.push(e)
         else skippedMileage.push(e)
       }
 
@@ -3340,9 +3349,7 @@ export async function GET(request: Request) {
               return acc + charge.incVat
             }, 0) +
             (skippedMileage || []).reduce((acc: number, item: any) => {
-              const miles = Number(item.miles || 0)
-              const rate = resolveRate(item.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
-              return acc + roundMoney(miles * rate)
+              return acc + getEntryCharge(item, settings).incVat
             }, 0) +
             (skippedTime || []).reduce((acc: number, item: any) => {
               const minutes = Number(item.duration_minutes_rounded || 0)
