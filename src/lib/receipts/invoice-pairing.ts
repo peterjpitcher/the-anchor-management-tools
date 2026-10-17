@@ -1,9 +1,11 @@
 /**
- * What to do with a customer's bank payment that quotes no invoice number.
+ * What to do with a customer's bank payment that quotes no invoice number, or quotes one with
+ * nothing left to pay that it did not settle.
  *
  * Most customer payments quote the invoice number and are matched by it. Some carry only the
- * payer's bank name ("CRICKETERS CRICKETERS", "KIER SERVICES LTD"), so they are matched on the
- * customer, the amount and the date. The owner's rule (16 October 2026): one payment can settle
+ * payer's bank name ("CRICKETERS CRICKETERS", "KIER SERVICES LTD"), and some quote an old invoice
+ * every month (ASE Associates' standing order quotes its May 2026 invoice), so they are matched on
+ * the customer, the amount and the date. The owner's rule (16 October 2026): one payment can settle
  * one invoice or several, but an invoice is normally settled by one payment, and be careful.
  * So only the plainest cases are settled automatically and everything else goes to a person:
  *
@@ -18,6 +20,8 @@
  *    (Kier and Golden Barrels bill the same amount every month), one payment covering a set of
  *    invoices, an invoice another payment points at, or nothing that fits exactly. Guessing is how
  *    a payment lands on the wrong invoice and a paid invoice gets chased.
+ * 5. A payment quoting an invoice that may still be its money (paid around the same time, so this
+ *    may be one part of it, or written off) is settled automatically only against that invoice.
  *
  * Pure: no database access. Money is compared in pence.
  */
@@ -81,6 +85,17 @@ export type ReviewReason =
   | 'invoice_claimed_by_another_payment'
   | 'too_many_invoices_owing'
   | 'no_exact_fit'
+  /** The invoice the payment quoted was paid around the same time: this may be part of that money. */
+  | 'quoted_invoice_paid_nearby'
+  /** The invoice the payment quoted was written off: this may be paying that debt. */
+  | 'quoted_invoice_written_off'
+
+/**
+ * For a payment quoting an invoice with nothing left to pay that may still be that invoice's
+ * money: it is only settled automatically against that invoice's own entry, and anything else
+ * goes to a person for this reason.
+ */
+export type QuotedInvoiceCaution = { invoiceId: string; reason: ReviewReason }
 
 export type CustomerPaymentDecision =
   | { kind: 'link'; entry: EnteredPayment }
@@ -184,13 +199,16 @@ function fitsAnotherPayment(entry: EnteredPayment, others: CustomerBankPayment[]
  * @param otherPayments the customer's other bank payments that no entered payment accounts for, whether
  *   or not they are matched otherwise or fall in a filed period: any of them could be an entry's money
  * @param claimedInvoiceIds invoices another bank payment already points at
+ * @param caution for a payment quoting an invoice with nothing left to pay that may still be that
+ *   invoice's money: a link or record against any other invoice is offered to a person instead
  */
 export function decideCustomerPayment(
   payment: CustomerBankPayment,
   invoices: CustomerInvoice[],
   entries: EnteredPayment[],
   otherPayments: CustomerBankPayment[],
-  claimedInvoiceIds: ReadonlySet<string> = new Set()
+  claimedInvoiceIds: ReadonlySet<string> = new Set(),
+  caution: QuotedInvoiceCaution | null = null
 ): CustomerPaymentDecision {
   if (!(payment.amount > 0)) return { kind: 'none' }
 
@@ -207,6 +225,13 @@ export function decideCustomerPayment(
     invoiceOptions,
     recentInvoices,
   })
+  const settle = (decision: Extract<CustomerPaymentDecision, { kind: 'link' | 'record' }>): CustomerPaymentDecision => {
+    const invoiceId = decision.kind === 'link' ? decision.entry.invoiceId : decision.allocation.invoice.id
+    if (!caution || invoiceId === caution.invoiceId) return decision
+    return decision.kind === 'link'
+      ? review(caution.reason, [[decision.entry]], [])
+      : review(caution.reason, [], [[decision.allocation]])
+  }
 
   const others = otherPayments.filter((other) => other.id !== payment.id)
   const entryOptions = entryOptionsFor(payment, entries)
@@ -216,7 +241,7 @@ export function decideCustomerPayment(
     // Another payment pointing at the entry's invoice may own the entry, even one this customer
     // lookup cannot see (filed under another vendor, or none).
     if (claimedInvoiceIds.has(entry.invoiceId)) return review('invoice_claimed_by_another_payment', entryOptions, [])
-    return { kind: 'link', entry }
+    return settle({ kind: 'link', entry })
   }
   if (entryOptions.length === 1) return review('entries_split_payment', entryOptions, [])
   if (entryOptions.length > 1) return review('several_entries_fit', entryOptions, [])
@@ -250,7 +275,7 @@ export function decideCustomerPayment(
   if (options.length === 1 && options[0].length === 1) {
     return claimedInvoiceIds.has(options[0][0].invoice.id)
       ? review('invoice_claimed_by_another_payment', [], options)
-      : { kind: 'record', allocation: options[0][0] }
+      : settle({ kind: 'record', allocation: options[0][0] })
   }
   if (options.length === 1) return review('set_of_invoices_fits', [], options)
   if (options.length > 1) return review('several_invoices_fit', [], options)

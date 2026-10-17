@@ -23,9 +23,18 @@ const REASONS: Record<string, string> = {
     'A payment of the same amount was entered on an invoice a while before or after this arrived. Check it is not the same money before recording anything.',
   no_exact_fit:
     'No recent invoice owes exactly this amount. If it paid an invoice, enter the payment on that invoice, then mark this as dealt with.',
+  quoted_invoice_paid_nearby:
+    'The invoice this payment quotes was paid around the same time, so it may be part of that money. If it is, choose Dealt with. If not, choose where it goes.',
+  quoted_invoice_written_off:
+    'The invoice this payment quotes was written off, so it may be paying that debt. If it is, deal with it by hand and choose Dealt with. If not, choose where it goes.',
+  payer_is_another_customer:
+    'The invoice this payment quotes belongs to a different customer from the one who seems to have paid it. Check who paid it, then deal with it by hand.',
   over_allocated: 'This payment is already used in full against other invoices. Check it, then mark it as dealt with.',
   error: 'This payment could not be matched automatically.',
 }
+
+/** Payments that may be the money of the invoice they quote: setting one aside means it is dealt with, not that it is no invoice payment. */
+const MAY_BE_QUOTED_INVOICE_MONEY = new Set(['quoted_invoice_paid_nearby', 'quoted_invoice_written_off'])
 
 function day(isoDate: string | null): string {
   return isoDate ? formatDateInLondon(isoDate, { day: 'numeric', month: 'long', year: 'numeric' }) : ''
@@ -87,7 +96,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
     <Card>
       <CardHeader
         title="Customer payments to confirm"
-        subtitle="These customer payments quoted no invoice number and could not be settled safely on their own. Nothing is recorded until you choose. Invoices offered as a choice here are not chased while the payment waits."
+        subtitle="These customer payments quoted no invoice number, or quoted one with nothing left to pay, and could not be settled safely on their own. Nothing is recorded until you choose. Invoices offered as a choice here are not chased while the payment waits."
         action={<Badge tone="warning">{items.length}</Badge>}
       />
       <CardBody className="space-y-4">
@@ -103,6 +112,11 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
               {REASONS[item.reason] ?? REASONS.error}
               {item.error ? ` (${item.error})` : ''}
             </p>
+            {item.quotedInvoiceNumber && (
+              <p className="text-sm text-text-muted">
+                The payment quotes {item.quotedInvoiceNumber}, which has nothing left to pay.
+              </p>
+            )}
             {item.partlyDone.length > 0 && (
               <p className="text-sm text-text-muted">
                 Already done from an earlier attempt: {item.partlyDone.join(' and ')}. Choose the same option again to finish.
@@ -151,7 +165,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
                 loading={busyKey === `${item.matchId}:aside`}
                 onClick={() => run(`${item.matchId}:aside`, () => dismissCustomerPayment({ matchId: item.matchId }), 'Taken off the list')}
               >
-                {item.options.length ? 'Not an invoice payment' : 'Dealt with'}
+                {item.options.length && !MAY_BE_QUOTED_INVOICE_MONEY.has(item.reason) ? 'Not an invoice payment' : 'Dealt with'}
               </Button>
             </div>
           </div>

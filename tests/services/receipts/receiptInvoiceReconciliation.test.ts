@@ -550,6 +550,563 @@ describe('reconciliation: a customer payment with no invoice number', () => {
   })
 })
 
+describe('reconciliation: a payment quoting an invoice with nothing left to pay', () => {
+  // ASE Associates' standing order quotes its May invoice every month, for the monthly amount.
+  const standingOrder = (id: string, date: string, overrides: Record<string, unknown> = {}) =>
+    inwardPayment(id, {
+      transaction_date: date,
+      details: 'ASE INV-003VV',
+      amount_in: 56.4,
+      amount_total: 56.4,
+      vendor_id: RECEIPT_VENDOR,
+      vendor_name: 'Client Ltd',
+      status: 'completed',
+      ...overrides,
+    })
+  const mayInvoice = invoice('inv-vv', 'INV-003VV', { invoice_date: '2026-05-01', status: 'paid', total_amount: 464.4, paid_amount: 464.4 })
+  const julyInvoice = (overrides: Record<string, unknown> = {}) =>
+    invoice('inv-w7', 'INV-003W7', { invoice_date: '2026-07-01', total_amount: 56.4, ...overrides })
+  const mayEntry = { id: 'pay-vv', invoice_id: 'inv-vv', payment_date: '2026-05-01', amount: 464.4, payment_method: 'bank_transfer', source_kind: null }
+  const julyEntry = { id: 'pay-w7', invoice_id: 'inv-w7', payment_date: '2026-07-02', amount: 56.4, payment_method: 'bank_transfer', source_kind: null }
+  /** The May payment, which did settle INV-003VV. */
+  const mayMatch = {
+    id: 'm-may',
+    receipt_transaction_id: 'tx-may',
+    invoice_id: 'inv-vv',
+    invoice_number: 'INV-003VV',
+    match_status: 'already_paid',
+    invoice_payment_id: null,
+    transaction_date: '2026-05-01',
+  }
+  /** What the July payment was given before: "amount mismatch" against the invoice it quotes. */
+  const oldJulyMatch = (overrides: Record<string, unknown> = {}) => ({
+    id: 'm-old',
+    receipt_transaction_id: 'tx-jul',
+    invoice_id: 'inv-vv',
+    invoice_number: 'INV-003VV',
+    match_status: 'amount_mismatch',
+    invoice_payment_id: null,
+    transaction_date: '2026-07-02',
+    ...overrides,
+  })
+  const removed = (db: FakeDb) =>
+    db.writes.filter((write) => write.table === 'receipt_invoice_matches' && write.operation === 'delete').map((write) => write.ids)
+
+  it("links the payment to the month's payment entered by hand, and clears the old mismatch", async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice({ status: 'paid', paid_amount: 56.4 })],
+      entered: [mayEntry, julyEntry],
+      matches: [mayMatch, oldJulyMatch()],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledLinked: 1, amountMismatch: 0, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({
+      p_transaction_id: 'tx-jul',
+      p_invoice_id: 'inv-w7',
+      p_invoice_number: 'INV-003W7',
+      p_invoice_payment_id: 'pay-w7',
+      p_match_status: 'matched',
+      p_matched_amount: 56.4,
+    })
+    // Only the old match against INV-003VV is written directly; the May payment's stays.
+    expect(removed(db)).toEqual([['m-old']])
+    expect(db.rows('receipt_invoice_matches').map((row) => row.id)).toEqual(['m-may'])
+  })
+
+  it("links each month's payment to its own month when several are decided in one run", async () => {
+    const augustInvoice = invoice('inv-wb', 'INV-003WB', { invoice_date: '2026-08-01', total_amount: 56.4, status: 'paid', paid_amount: 56.4 })
+    const augustEntry = { id: 'pay-wb', invoice_id: 'inv-wb', payment_date: '2026-08-02', amount: 56.4, payment_method: 'bank_transfer', source_kind: null }
+    const { calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02'), standingOrder('tx-aug', '2026-07-31')],
+      invoices: [mayInvoice, julyInvoice({ status: 'paid', paid_amount: 56.4 }), augustInvoice],
+      entered: [mayEntry, julyEntry, augustEntry],
+      matches: [mayMatch],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul', 'tx-aug'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledLinked: 2, paymentsRecorded: 0, amountMismatch: 0 })
+    expect(
+      matchCalls(calls)
+        .map((call) => [call.args.p_transaction_id, call.args.p_invoice_number, call.args.p_invoice_payment_id])
+        .sort()
+    ).toEqual([
+      ['tx-aug', 'INV-003WB', 'pay-wb'],
+      ['tx-jul', 'INV-003W7', 'pay-w7'],
+    ])
+  })
+
+  it("records the payment on the month's invoice when nobody entered it by hand", async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledRecorded: 1, paymentsRecorded: 1, amountMismatch: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(1)
+    expect(ledgerCalls(calls)[0].args).toMatchObject({
+      p_transaction_id: 'tx-jul',
+      p_invoice_id: 'inv-w7',
+      p_invoice_number: 'INV-003W7',
+      p_amount: 56.4,
+    })
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([])
+  })
+
+  it('asks a person, naming the invoice it quoted, when none of the recent invoices fits', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice],
+      entered: [mayEntry],
+      matches: [mayMatch, oldJulyMatch()],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledForReview: 1, amountMismatch: 0 })
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({
+      p_invoice_number: 'REVIEW',
+      p_invoice_id: null,
+      p_match_status: 'review_required',
+      p_allow_status_change: false,
+    })
+    expect(matchCalls(calls)[0].args.p_payload).toMatchObject({
+      review_reason: 'no_exact_fit',
+      quoted_invoice_number: 'INV-003VV',
+      quoted_invoice_status: 'paid',
+    })
+    expect(removed(db)).toEqual([['m-old']])
+  })
+
+  it('offers each invoice that fits when more than one does', async () => {
+    const { calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, invoice('inv-w1', 'INV-003W1', { invoice_date: '2026-06-01', total_amount: 56.4 }), julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    const payload = matchCalls(calls)[0].args.p_payload as { review_reason: string; quoted_invoice_number: string; options: Array<{ allocations: Array<{ invoice_number: string }> }> }
+    expect(payload.review_reason).toBe('several_invoices_fit')
+    expect(payload.quoted_invoice_number).toBe('INV-003VV')
+    expect(payload.options.map((option) => option.allocations.map((part) => part.invoice_number))).toEqual([['INV-003W1'], ['INV-003W7']])
+  })
+
+  it('stores the match against the quoted invoice as before when the customer has no recent invoices', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [invoice('inv-vv', 'INV-003VV', { invoice_date: '2026-01-05', status: 'paid', total_amount: 464.4, paid_amount: 464.4 })],
+      matches: [{ ...mayMatch, transaction_date: '2026-01-05' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ amountMismatch: 1, quotedSettledForReview: 0, matched: 1 })
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003VV', p_match_status: 'amount_mismatch', p_allow_status_change: true })
+    expect(removed(db)).toEqual([])
+  })
+
+  it('leaves a payment in a filed period matched as it always was', async () => {
+    const { calls } = arrange({
+      payments: [standingOrder('tx-jun', '2026-06-01')],
+      invoices: [mayInvoice, invoice('inv-w1', 'INV-003W1', { invoice_date: '2026-06-01', total_amount: 56.4 })],
+      entered: [mayEntry],
+      matches: [mayMatch],
+      settings: [{ key: 'locked_before', value: { date: '2026-06-30' } }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jun'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ amountMismatch: 1, quotedSettledRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003VV', p_match_status: 'amount_mismatch' })
+  })
+
+  it('leaves as it was a payment from a known other customer that quotes this invoice by mistake', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02', { vendor_id: 'vendor-other', vendor_name: 'Other Ltd' })],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch],
+    })
+    db.rows('receipt_vendors').push({ id: 'vendor-other', canonical_name: 'Other Ltd', vendor_key: 'other ltd', invoice_vendor_id: 'other-customer' })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledForReview: 1, quotedSettledRecorded: 0, amountMismatch: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(1)
+    // For a person, and the payment keeps its own vendor and status, so the next run still sees
+    // who paid it rather than taking the quoted customer as the payer.
+    expect(matchCalls(calls)[0].args).toMatchObject({
+      p_invoice_number: 'INV-003VV',
+      p_invoice_id: null,
+      p_match_status: 'review_required',
+      p_allow_status_change: false,
+      p_vendor_id: null,
+      p_vendor_name: null,
+    })
+    expect(matchCalls(calls)[0].args.p_payload).toMatchObject({
+      review_reason: 'payer_is_another_customer',
+      quoted_invoice_number: 'INV-003VV',
+      payer_invoice_vendor_id: 'other-customer',
+    })
+  })
+
+  it('keeps a payment left to a person for its payer there, even once its vendor is cleared', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02', { vendor_id: null, vendor_name: null })],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [
+        mayMatch,
+        oldJulyMatch({ id: 'm-payer', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'payer_is_another_customer', payer_invoice_vendor_id: 'other-customer' } }),
+      ],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([])
+  })
+
+  it('decides a payment left for its payer once it is put down to the quoted customer', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [
+        mayMatch,
+        oldJulyMatch({ id: 'm-payer', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'payer_is_another_customer', payer_invoice_vendor_id: 'other-customer' } }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary.quotedSettledRecorded).toBe(1)
+    expect(ledgerCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003W7', p_amount: 56.4 })
+    expect(removed(db)).toEqual([['m-payer']])
+  })
+
+  it('still marks the payment that settled the invoice as already paid', async () => {
+    const { calls } = arrange({
+      payments: [standingOrder('tx-may', '2026-05-01', { amount_in: 464.4, amount_total: 464.4 })],
+      invoices: [mayInvoice],
+      entered: [mayEntry],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-may'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ alreadyPaid: 1, quotedSettledLinked: 0, quotedSettledRecorded: 0, quotedSettledForReview: 0 })
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003VV', p_match_status: 'already_paid' })
+  })
+
+  it('treats a later payment of the same amount, quoting an invoice an earlier payment settled, as paying another', async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-jun', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR })],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+      ],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-05-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+      matches: [{ id: 'm-may', receipt_transaction_id: 'tx-may', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'already_paid', invoice_payment_id: null, transaction_date: '2026-05-01' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jun'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledRecorded: 1, alreadyPaid: 0 })
+    expect(ledgerCalls(calls)[0].args).toMatchObject({ p_transaction_id: 'tx-jun', p_invoice_number: 'INV-A2', p_amount: 100 })
+  })
+
+  it('takes the earlier of two payments quoting one invoice in a run as the one that settled it, even read last', async () => {
+    const { calls } = arrange({
+      payments: [
+        inwardPayment('tx-jun', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR }),
+        inwardPayment('tx-may', { transaction_date: '2026-05-01', vendor_id: RECEIPT_VENDOR }),
+      ],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+      ],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-05-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jun', 'tx-may'], initiatedBy: USER })
+
+    // May's payment settled INV-A1; June's, quoting it too, pays INV-A2.
+    expect(matchCalls(calls).map((call) => [call.args.p_transaction_id, call.args.p_invoice_number, call.args.p_match_status])).toEqual([
+      ['tx-may', 'INV-A1', 'already_paid'],
+    ])
+    expect(ledgerCalls(calls).map((call) => [call.args.p_transaction_id, call.args.p_invoice_number])).toEqual([['tx-jun', 'INV-A2']])
+  })
+
+  it.each(['amount_mismatch', 'multiple_invoice_refs'])(
+    'still takes the exact payment as settling the invoice when an earlier payment only quoted it (%s)',
+    async (earlierStatus) => {
+      const { calls } = arrange({
+        payments: [inwardPayment('tx-exact', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR })],
+        invoices: [
+          invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+          invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+        ],
+        entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-06-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+        matches: [{ id: 'm-earlier', receipt_transaction_id: 'tx-earlier', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: earlierStatus, invoice_payment_id: null, transaction_date: '2026-05-20' }],
+      })
+
+      const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-exact'], initiatedBy: USER })
+
+      // The earlier payment never said it was INV-A1's money, so nothing moves to INV-A2.
+      expect(summary).toMatchObject({ alreadyPaid: 1, quotedSettledRecorded: 0, quotedSettledLinked: 0, quotedSettledForReview: 0 })
+      expect(ledgerCalls(calls)).toHaveLength(0)
+      expect(matchCalls(calls)[0].args).toMatchObject({ p_transaction_id: 'tx-exact', p_invoice_number: 'INV-A1', p_match_status: 'already_paid' })
+    }
+  )
+
+  it('does not let an earlier payment quoting several invoices in the same run take the settling place', async () => {
+    const { calls } = arrange({
+      payments: [
+        inwardPayment('tx-exact', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR }),
+        inwardPayment('tx-multi', { transaction_date: '2026-05-20', details: 'CLIENT LTD INV-A1 INV-A2', amount_in: 100, amount_total: 100, vendor_id: RECEIPT_VENDOR }),
+      ],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+      ],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-06-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-exact', 'tx-multi'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(
+      matchCalls(calls)
+        .filter((call) => call.args.p_transaction_id === 'tx-exact')
+        .map((call) => [call.args.p_invoice_number, call.args.p_match_status])
+    ).toEqual([['INV-A1', 'already_paid']])
+  })
+
+  it("takes a payment of a credited invoice's total less its credit notes as paying it in full", async () => {
+    const { db, calls } = arrange({
+      payments: [inwardPayment('tx-1', { amount_in: 90, amount_total: 90, vendor_id: RECEIPT_VENDOR })],
+      invoices: [invoice('inv-1', 'INV-A1', { total_amount: 150, status: 'paid', paid_amount: 90 })],
+      credits: [{ id: 'cn-1', invoice_id: 'inv-1', amount_inc_vat: 60, status: 'issued' }],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-10', amount: 90, payment_method: 'bank_transfer', source_kind: null }],
+      matches: [{ id: 'm-own', receipt_transaction_id: 'tx-1', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: 'amount_mismatch', invoice_payment_id: null, transaction_date: '2026-09-10' }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ alreadyPaid: 1, amountMismatch: 0, quotedSettledLinked: 0, quotedSettledRecorded: 0, quotedSettledForReview: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    // Stored under the same invoice number, so it replaces the old "amount mismatch".
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-A1', p_match_status: 'already_paid', p_amount_match: true })
+    expect(removed(db)).toEqual([])
+  })
+
+  it('asks a person, rather than paying another invoice, when the quoted invoice was paid around the same time', async () => {
+    // INV-A1 was paid in two transfers that both quote it, and the owner entered one £100 payment.
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-part', { transaction_date: '2026-09-08', amount_in: 40, amount_total: 40, vendor_id: RECEIPT_VENDOR })],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-08-25', status: 'paid', paid_amount: 100 }),
+        invoice('inv-b', 'INV-B1', { invoice_date: '2026-09-01', total_amount: 40 }),
+      ],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-09-20', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-part'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledForReview: 1, quotedSettledRecorded: 0, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    const payload = matchCalls(calls)[0].args.p_payload as { review_reason: string; quoted_invoice_number: string; options: Array<{ allocations: Array<{ invoice_number: string }> }> }
+    expect(payload.review_reason).toBe('quoted_invoice_paid_nearby')
+    expect(payload.quoted_invoice_number).toBe('INV-A1')
+    expect(payload.options.map((option) => option.allocations.map((part) => part.invoice_number))).toEqual([['INV-B1']])
+  })
+
+  it("links a part payment to the quoted invoice's own entry when the parts were entered separately", async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-part', { transaction_date: '2026-09-08', amount_in: 40, amount_total: 40, vendor_id: RECEIPT_VENDOR })],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-08-25', status: 'paid', paid_amount: 100 }),
+        invoice('inv-b', 'INV-B1', { invoice_date: '2026-09-01', total_amount: 40 }),
+      ],
+      entered: [
+        { id: 'pay-60', invoice_id: 'inv-1', payment_date: '2026-09-05', amount: 60, payment_method: 'bank_transfer', source_kind: null },
+        { id: 'pay-40', invoice_id: 'inv-1', payment_date: '2026-09-08', amount: 40, payment_method: 'bank_transfer', source_kind: null },
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-part'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledLinked: 1, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-A1', p_invoice_payment_id: 'pay-40', p_match_status: 'matched' })
+  })
+
+  it('records a payment quoting a cancelled invoice on the one that replaced it', async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-1', { vendor_id: RECEIPT_VENDOR })],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-08-01', status: 'void' }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-08-05' }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledRecorded: 1, alreadyPaid: 0 })
+    expect(ledgerCalls(calls)[0].args).toMatchObject({ p_transaction_id: 'tx-1', p_invoice_number: 'INV-A2', p_amount: 100 })
+  })
+
+  it('asks a person about a payment quoting a written-off invoice rather than paying another one', async () => {
+    const { calls } = arrange({
+      payments: [inwardPayment('tx-1', { vendor_id: RECEIPT_VENDOR })],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-08-01', status: 'written_off' }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-08-05' }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-1'], initiatedBy: USER })
+
+    expect(summary).toMatchObject({ quotedSettledForReview: 1, paymentsRecorded: 0 })
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)[0].args.p_payload).toMatchObject({ review_reason: 'quoted_invoice_written_off', quoted_invoice_number: 'INV-A1' })
+  })
+
+  it('leaves alone, and does not remove, a failure a person took off the list', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch, oldJulyMatch({ id: 'm-set-aside', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'error', dismissed_at: '2026-10-17T09:00:00Z' } })],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([])
+  })
+
+  it('does not decide again a payment already filed under the invoice it paid, and clears the old match', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice({ status: 'paid', paid_amount: 56.4 })],
+      entered: [mayEntry, julyEntry],
+      matches: [
+        mayMatch,
+        oldJulyMatch(),
+        { id: 'm-w7', receipt_transaction_id: 'tx-jul', invoice_id: 'inv-w7', invoice_number: 'INV-003W7', match_status: 'matched', invoice_payment_id: 'pay-w7', transaction_date: '2026-07-02' },
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([['m-old']])
+    expect(summary).toMatchObject({ quotedSettledLinked: 0, amountMismatch: 0 })
+  })
+
+  it('leaves alone a payment a person already took off the list', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [
+        mayMatch,
+        {
+          id: 'm-review',
+          receipt_transaction_id: 'tx-jul',
+          invoice_id: null,
+          invoice_number: 'REVIEW',
+          match_status: 'review_required',
+          invoice_payment_id: null,
+          transaction_date: '2026-07-02',
+          payload: { review_reason: 'no_exact_fit', dismissed_at: '2026-10-17T09:00:00Z' },
+        },
+      ],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([])
+  })
+
+  it('stores a failure for a person under the quoted invoice, and clears it once the payment is filed', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch],
+    })
+    db.onRpc((name, args) => {
+      calls.push({ name, args })
+      if (name === 'resolve_receipt_vendor') return fakeResolveReceiptVendor(db, args)
+      if (name === 'record_receipt_invoice_payment') return { data: null, error: { message: 'connection reset' } }
+      return { data: { outcome: 'applied', status_updated: false, vendor_updated: false, previous_status: 'completed' }, error: null }
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary.failedForReview).toBe(1)
+    expect(matchCalls(calls)).toHaveLength(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003VV', p_match_status: 'review_required', p_invoice_id: null })
+    expect(matchCalls(calls)[0].args.p_payload).toMatchObject({ review_reason: 'error', error: 'Failed to record invoice payment for INV-003W7: connection reset' })
+
+    // The next run records it, and the failure left for a person goes, so it holds no reminder.
+    const retry = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [mayMatch, oldJulyMatch({ id: 'm-failed', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'error' } })],
+    })
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+    expect(ledgerCalls(retry.calls)).toHaveLength(1)
+    expect(removed(retry.db)).toEqual([['m-failed']])
+  })
+
+  it('still files the payment when the old match cannot be removed, and says so in the log', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice({ status: 'paid', paid_amount: 56.4 })],
+      entered: [mayEntry, julyEntry],
+      matches: [mayMatch, oldJulyMatch()],
+    })
+    db.failNext({ table: 'receipt_invoice_matches', operation: 'delete', message: 'connection reset' })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary.quotedSettledLinked).toBe(1)
+    expect(matchCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003W7', p_invoice_payment_id: 'pay-w7' })
+    expect(console.error).toHaveBeenCalledWith(
+      'Failed to remove a match against the invoice a payment quoted',
+      expect.objectContaining({ matchId: 'm-old' })
+    )
+  })
+})
+
 describe('reconciliation: one payment failing does not stop the rest', () => {
   it('stores a failed payment for a person, with the reason, and goes on with the others', async () => {
     const { db, calls } = arrange({
