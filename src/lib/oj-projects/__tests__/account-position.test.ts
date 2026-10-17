@@ -58,12 +58,26 @@ describe('buildAccountPosition', () => {
     })
 
     expect(position.notYetInvoicedTime).toBe(1200)
-    // Mileage is a disbursement and carries no VAT.
-    expect(position.notYetInvoicedMileage).toBe(22)
+    // Mileage carries VAT like the rest of the work: 40 miles at 0.55 is 22.00 + 4.40.
+    expect(position.notYetInvoicedMileage).toBe(26.4)
     expect(position.notYetInvoicedOneOff).toBe(108)
     expect(position.notYetInvoicedRecurring).toBe(96)
-    expect(position.notYetInvoicedGross).toBe(1426)
-    expect(position.notYetInvoicedNet).toBe(1426)
+    expect(position.notYetInvoicedGross).toBe(1430.4)
+    expect(position.notYetInvoicedNet).toBe(1430.4)
+  })
+
+  it('keeps mileage logged before it carried VAT at 0%, as it was invoiced', () => {
+    const position = buildAccountPosition({
+      entries: [
+        { ...time(0), entry_type: 'mileage', duration_minutes_rounded: null, miles: 40, vat_rate_snapshot: 0 },
+        { ...time(0), entry_type: 'mileage', duration_minutes_rounded: null, miles: 10, vat_rate_snapshot: null },
+      ],
+      recurring: [],
+      invoices: [],
+      settings: SETTINGS,
+    })
+
+    expect(position.notYetInvoicedMileage).toBe(27.5)
   })
 
   it('takes money invoiced with no work behind it off what is still to be invoiced', () => {
@@ -171,10 +185,10 @@ describe('buildAccountPosition', () => {
 
     expect(toStatementPosition(position, '2026-10-09', 500)).toEqual({
       asAt: '2026-10-09',
-      notYetInvoicedWork: 1222,
+      notYetInvoicedWork: 1226.4,
       notYetInvoicedCharges: 48,
       invoicedOnAccount: 0,
-      notYetInvoicedNet: 1270,
+      notYetInvoicedNet: 1274.4,
       monthlyCapIncVat: 500,
     })
   })

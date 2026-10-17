@@ -27,15 +27,24 @@ export function moneyIncVat(exVat: number, vatRate: number): number {
   return roundMoney(exVat + roundMoney(exVat * (vatRate / 100)))
 }
 
+/** The VAT rate a mileage entry is billed at. See getEntryCharge. */
+export function mileageVatRate(entry: any): number {
+  return Number(entry?.vat_rate_snapshot ?? 0)
+}
+
 export function getEntryCharge(entry: any, settings: any): Charge {
   const entryType = String(entry?.entry_type || '')
 
   if (entryType === 'mileage') {
-    // Mileage is a disbursement and is billed zero-rated.
+    // Mileage recharged to a client is part of the service and carries VAT
+    // (owner decision, 17 October 2026). Entries logged before then hold a 0%
+    // snapshot, or none, and were invoiced without VAT, so a missing snapshot
+    // stays at 0% and the Work Record keeps matching those invoices.
     const miles = Number(entry.miles || 0)
     const rate = resolveRate(entry.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
     const exVat = roundMoney(miles * rate)
-    return { exVat, vatRate: 0, incVat: roundMoney(exVat) }
+    const vatRate = mileageVatRate(entry)
+    return { exVat, vatRate, incVat: moneyIncVat(exVat, vatRate) }
   }
 
   if (entryType === 'one_off') {
