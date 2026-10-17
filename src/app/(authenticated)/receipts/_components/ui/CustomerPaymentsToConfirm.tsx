@@ -24,13 +24,17 @@ const REASONS: Record<string, string> = {
   no_exact_fit:
     'No recent invoice owes exactly this amount. If it paid an invoice, enter the payment on that invoice, then mark this as dealt with.',
   quoted_invoice_paid_nearby:
-    'The invoice this payment quotes was paid around the same time, so it may be part of that money. Check before choosing.',
-  quoted_invoice_written_off: 'The invoice this payment quotes was written off, so it may be paying that debt. Check before choosing.',
+    'The invoice this payment quotes was paid around the same time, so it may be part of that money. If it is, choose Dealt with. If not, choose where it goes.',
+  quoted_invoice_written_off:
+    'The invoice this payment quotes was written off, so it may be paying that debt. If it is, deal with it by hand and choose Dealt with. If not, choose where it goes.',
   payer_is_another_customer:
     'The invoice this payment quotes belongs to a different customer from the one who seems to have paid it. Check who paid it, then deal with it by hand.',
   over_allocated: 'This payment is already used in full against other invoices. Check it, then mark it as dealt with.',
   error: 'This payment could not be matched automatically.',
 }
+
+/** Payments that may be the money of the invoice they quote: setting one aside means it is dealt with, not that it is no invoice payment. */
+const MAY_BE_QUOTED_INVOICE_MONEY = new Set(['quoted_invoice_paid_nearby', 'quoted_invoice_written_off'])
 
 function day(isoDate: string | null): string {
   return isoDate ? formatDateInLondon(isoDate, { day: 'numeric', month: 'long', year: 'numeric' }) : ''
@@ -161,7 +165,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
                 loading={busyKey === `${item.matchId}:aside`}
                 onClick={() => run(`${item.matchId}:aside`, () => dismissCustomerPayment({ matchId: item.matchId }), 'Taken off the list')}
               >
-                {item.options.length ? 'Not an invoice payment' : 'Dealt with'}
+                {item.options.length && !MAY_BE_QUOTED_INVOICE_MONEY.has(item.reason) ? 'Not an invoice payment' : 'Dealt with'}
               </Button>
             </div>
           </div>
