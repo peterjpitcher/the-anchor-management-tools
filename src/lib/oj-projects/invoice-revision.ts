@@ -5,6 +5,7 @@ import {
   DEFAULT_MILEAGE_RATE,
   resolveRate,
 } from '@/lib/oj-projects/rates'
+import { mileageVatRate } from '@/lib/oj-projects/charges'
 import { applyStatementCapTopUp } from '@/lib/oj-projects/statement-cap'
 import type { InvoiceLineItemInput } from '@/types/invoices'
 
@@ -99,7 +100,8 @@ function getEntryCharge(entry: OjInvoiceRevisionEntry, settings: RevisionSetting
     const miles = Number(entry.miles || 0)
     const rate = resolveRate(entry.mileage_rate_snapshot, settings.mileage_rate, DEFAULT_MILEAGE_RATE)
     const exVat = roundMoney(miles * rate)
-    return { exVat, vatRate: 0, incVat: exVat }
+    const vatRate = mileageVatRate(entry)
+    return { exVat, vatRate, incVat: moneyIncVat(exVat, vatRate) }
   }
 
   if (entry.entry_type === 'one_off') {
@@ -199,8 +201,14 @@ function buildDetailedLineItems(input: {
     })
   }
 
-  const mileageEntries = input.entries.filter((entry) => entry.entry_type === 'mileage')
-  if (mileageEntries.length > 0) {
+  // One mileage line per VAT rate: entries logged before mileage carried VAT
+  // keep their 0% rate when an invoice holding both is revised.
+  const mileageByVat = new Map<number, OjInvoiceRevisionEntry[]>()
+  for (const entry of input.entries.filter((item) => item.entry_type === 'mileage')) {
+    const vatRate = mileageVatRate(entry)
+    mileageByVat.set(vatRate, [...(mileageByVat.get(vatRate) || []), entry])
+  }
+  for (const [vatRate, mileageEntries] of mileageByVat) {
     const totalMiles = mileageEntries.reduce((acc, entry) => acc + Number(entry.miles || 0), 0)
     const rates = new Set(
       mileageEntries.map((entry) =>
@@ -216,7 +224,7 @@ function buildDetailedLineItems(input: {
         quantity: roundMoney(totalMiles),
         unit_price: roundMoney(rate),
         discount_percentage: 0,
-        vat_rate: 0,
+        vat_rate: vatRate,
       })
     } else {
       const totalExVat = mileageEntries.reduce((acc, entry) => acc + getEntryCharge(entry, input.settings).exVat, 0)
@@ -226,7 +234,7 @@ function buildDetailedLineItems(input: {
         quantity: 1,
         unit_price: roundMoney(totalExVat),
         discount_percentage: 0,
-        vat_rate: 0,
+        vat_rate: vatRate,
       })
     }
   }

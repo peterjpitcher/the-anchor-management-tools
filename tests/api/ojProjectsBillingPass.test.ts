@@ -487,6 +487,61 @@ describe('OJ billing cron: a pass cut short is carried on the next weekday', () 
     expect(body).not.toContain('timesheet')
   })
 
+  it('charges VAT on mileage logged since 17 October, and none on mileage logged before', async () => {
+    at('2026-11-03T09:05:00Z')
+    const entry = (id: string, over: Row) => ({
+      id,
+      vendor_id: 'vendor-c',
+      status: 'billing_pending',
+      billing_run_id: 'run-c',
+      invoice_id: null,
+      billable: true,
+      entry_date: '2026-10-14',
+      start_at: null,
+      end_at: null,
+      project_id: 'project-1',
+      project: { id: 'project-1', project_code: 'OJP-001', project_name: 'Website' },
+      ...over,
+    })
+    const db = makeDb({
+      cron_job_runs: [passRecord('running')],
+      invoice_vendors: [vendor('vendor-c', 'Charlie Ltd')],
+      oj_billing_runs: [
+        {
+          id: 'run-c',
+          vendor_id: 'vendor-c',
+          ...OCTOBER,
+          status: 'processing',
+          invoice_id: null,
+          run_started_at: '2026-11-02T09:05:30.000Z',
+          created_at: '2026-11-02T09:05:30.000Z',
+        },
+      ],
+      oj_entries: [
+        entry('entry-time', {
+          entry_type: 'time',
+          duration_minutes_rounded: 120,
+          hourly_rate_ex_vat_snapshot: 75,
+          vat_rate_snapshot: 20,
+          work_type_name_snapshot: 'Development',
+          description: 'Booking form changes',
+        }),
+        // 40 miles at 0.55 = 22.00 plus 4.40 VAT.
+        entry('entry-new-miles', { entry_type: 'mileage', miles: 40, mileage_rate_snapshot: 0.55, vat_rate_snapshot: 20 }),
+        // Logged before mileage carried VAT: 10 miles at 0.55 = 5.50, no VAT.
+        entry('entry-old-miles', { entry_type: 'mileage', miles: 10, mileage_rate_snapshot: 0.55, vat_rate_snapshot: 0 }),
+      ],
+    })
+    vi.mocked(createAdminClient).mockReturnValue(db.client as any)
+
+    const payload = await (await run()).json()
+
+    expect(payload).toMatchObject({ processed: 1, sent: 1, failed: 0 })
+    // 150.00 + 30.00 VAT for the time, 22.00 + 4.40 for the new mileage, 5.50 for the old.
+    const { body } = emailFor(db.tables.invoices[0].invoice_number)
+    expect(body).toContain("Here's the invoice for October: £211.90,")
+  })
+
   // An earlier attempt raised the invoice and failed before emailing it. The retry sends that
   // same draft; it must not raise a second invoice.
   it('re-sends a draft left by a failed attempt, in the new wording, without a second invoice', async () => {

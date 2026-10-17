@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
+import { mileageVatRate } from '@/lib/oj-projects/charges'
 
 const CreateProjectSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -345,7 +346,7 @@ export async function getProjectPaymentHistory(projectId: string) {
   const defaultHourlyRate = typeof vendorSettings?.hourly_rate_ex_vat === 'number' ? vendorSettings.hourly_rate_ex_vat : 75
   const defaultMileageRate = typeof vendorSettings?.mileage_rate === 'number' ? vendorSettings.mileage_rate : 0.55
 
-  // Mirrors getEntryCharge in the billing cron: mileage carries no VAT.
+  // Mirrors getEntryCharge in src/lib/oj-projects/charges.ts.
   const projectValueByInvoice = new Map<string, number>()
   for (const entry of entries || []) {
     if (entry.billable === false) continue
@@ -353,8 +354,9 @@ export async function getProjectPaymentHistory(projectId: string) {
     const vatRate = typeof entry.vat_rate_snapshot === 'number' ? entry.vat_rate_snapshot : defaultVatRate
     let incVat = 0
     if (entry.entry_type === 'mileage') {
-      const miles = Number(entry.miles || 0)
-      incVat = roundMoney(miles * Number(entry.mileage_rate_snapshot ?? defaultMileageRate))
+      const exVat = roundMoney(Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot ?? defaultMileageRate))
+      const mileageVat = mileageVatRate(entry)
+      incVat = roundMoney(exVat + roundMoney(exVat * (mileageVat / 100)))
     } else if (entry.entry_type === 'one_off') {
       const exVat = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
       incVat = roundMoney(exVat + roundMoney(exVat * (vatRate / 100)))
