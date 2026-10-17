@@ -782,6 +782,51 @@ describe('reconciliation: a payment quoting an invoice with nothing left to pay'
     expect(ledgerCalls(calls).map((call) => [call.args.p_transaction_id, call.args.p_invoice_number])).toEqual([['tx-jun', 'INV-A2']])
   })
 
+  it.each(['amount_mismatch', 'multiple_invoice_refs'])(
+    'still takes the exact payment as settling the invoice when an earlier payment only quoted it (%s)',
+    async (earlierStatus) => {
+      const { calls } = arrange({
+        payments: [inwardPayment('tx-exact', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR })],
+        invoices: [
+          invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+          invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+        ],
+        entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-06-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+        matches: [{ id: 'm-earlier', receipt_transaction_id: 'tx-earlier', invoice_id: 'inv-1', invoice_number: 'INV-A1', match_status: earlierStatus, invoice_payment_id: null, transaction_date: '2026-05-20' }],
+      })
+
+      const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-exact'], initiatedBy: USER })
+
+      // The earlier payment never said it was INV-A1's money, so nothing moves to INV-A2.
+      expect(summary).toMatchObject({ alreadyPaid: 1, quotedSettledRecorded: 0, quotedSettledLinked: 0, quotedSettledForReview: 0 })
+      expect(ledgerCalls(calls)).toHaveLength(0)
+      expect(matchCalls(calls)[0].args).toMatchObject({ p_transaction_id: 'tx-exact', p_invoice_number: 'INV-A1', p_match_status: 'already_paid' })
+    }
+  )
+
+  it('does not let an earlier payment quoting several invoices in the same run take the settling place', async () => {
+    const { calls } = arrange({
+      payments: [
+        inwardPayment('tx-exact', { transaction_date: '2026-06-01', vendor_id: RECEIPT_VENDOR }),
+        inwardPayment('tx-multi', { transaction_date: '2026-05-20', details: 'CLIENT LTD INV-A1 INV-A2', amount_in: 100, amount_total: 100, vendor_id: RECEIPT_VENDOR }),
+      ],
+      invoices: [
+        invoice('inv-1', 'INV-A1', { invoice_date: '2026-05-01', status: 'paid', paid_amount: 100 }),
+        invoice('inv-2', 'INV-A2', { invoice_date: '2026-06-01' }),
+      ],
+      entered: [{ id: 'pay-1', invoice_id: 'inv-1', payment_date: '2026-06-01', amount: 100, payment_method: 'bank_transfer', source_kind: null }],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-exact', 'tx-multi'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(
+      matchCalls(calls)
+        .filter((call) => call.args.p_transaction_id === 'tx-exact')
+        .map((call) => [call.args.p_invoice_number, call.args.p_match_status])
+    ).toEqual([['INV-A1', 'already_paid']])
+  })
+
   it('links a payment that paid a credited invoice in full under that invoice, despite its own earlier match', async () => {
     const { db, calls } = arrange({
       payments: [inwardPayment('tx-1', { amount_in: 90, amount_total: 90, vendor_id: RECEIPT_VENDOR })],
