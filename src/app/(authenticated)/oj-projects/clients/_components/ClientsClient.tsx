@@ -1294,7 +1294,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
                         <span>{formatCurrency(statement.position.notYetInvoicedNet)}</span>
                       </div>
                       <div className="flex justify-between mt-1 font-medium">
-                        <span>Total for all work to date</span>
+                        <span>Total still to pay, including work not yet invoiced</span>
                         <span>{formatCurrency(statement.closingBalance + statement.position.notYetInvoicedNet)}</span>
                       </div>
                     </>
