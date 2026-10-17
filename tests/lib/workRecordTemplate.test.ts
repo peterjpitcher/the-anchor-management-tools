@@ -209,7 +209,7 @@ describe('work record template', () => {
     it('opens with where the account stands, so an unpaid balance cannot be missed', () => {
       expect(html).toContain('Where your account stands')
       expect(html).toContain('Invoiced and unpaid, 1 invoice')
-      expect(html).toContain('Total for all work to date')
+      expect(html).toContain('Total still to pay, including work not yet invoiced')
       // 500.00 unpaid plus 1,106.50 still to be invoiced.
       expect(html).toContain('£1606.50')
       expect(html).toContain('As at 09 Oct 2026, including VAT')

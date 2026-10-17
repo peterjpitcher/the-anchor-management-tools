@@ -306,7 +306,7 @@ ${row('Invoiced to date', money(p.invoicedTotal))}
 ${row('Paid to date', money(p.paidTotal))}
 ${row(unpaidLabel, p.invoicedUnpaid > 0 ? `<span class="unpaid">${money(p.invoicedUnpaid)}</span>` : money(0))}
 ${row('Work done, not yet invoiced', money(p.notYetInvoicedNet))}
-${row('Total for all work to date', money(total), 'total')}
+${row('Total still to pay, including work not yet invoiced', money(total), 'total')}
     </tbody>
   </table>
   <p class="note">As at ${escapeHtml(formatDate(account.asAt))}, including VAT. Only invoiced amounts are due for payment.</p>

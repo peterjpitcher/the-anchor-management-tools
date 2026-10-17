@@ -316,7 +316,7 @@ describe('statement account position', () => {
     expect(html).toContain('Work done, not yet invoiced')
     expect(html).toContain('Regular charges, not yet invoiced')
     expect(html).toContain('-£257.02')
-    expect(html).toMatch(/Total for all work to date<\/td>\s*<td class="text-right">£4034\.98<\/td>/)
+    expect(html).toMatch(/Total still to pay, including work not yet invoiced<\/td>\s*<td class="text-right">£4034\.98<\/td>/)
     expect(html.match(/Closing Balance/g)).toHaveLength(1)
   })
 

@@ -300,7 +300,7 @@ function buildPositionBlock(position: StatementPosition | undefined, closingBala
     <tbody>
 ${rows.join('\n')}
       <tr class="total">
-        <td>Total for all work to date</td>
+        <td>Total still to pay, including work not yet invoiced</td>
         <td class="text-right">${formatBalance(total)}</td>
       </tr>
     </tbody>
