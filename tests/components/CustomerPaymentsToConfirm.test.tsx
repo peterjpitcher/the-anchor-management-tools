@@ -139,8 +139,14 @@ describe('CustomerPaymentsToConfirm', () => {
     render(<CustomerPaymentsToConfirm items={[{ ...KIER, reason: 'quoted_invoice_paid_nearby', quotedInvoiceNumber: 'INV-A1' }]} canConfirm />)
 
     expect(
-      screen.getByText('The invoice this payment quotes was paid around the same time, so it may be part of that money. Check before choosing.')
+      screen.getByText(
+        'The invoice this payment quotes was paid around the same time, so it may be part of that money. If it is, choose Dealt with. If not, choose where it goes.'
+      )
     ).toBeInTheDocument()
+    // Setting it aside means the money was the quoted invoice's, so it is not "not an invoice payment".
+    expect(screen.getByRole('button', { name: 'Dealt with' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Not an invoice payment' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Record against INV-003W8' })).toBeEnabled()
   })
 
   it('explains a payment whose sender looks like a different customer from the invoice it quotes', () => {

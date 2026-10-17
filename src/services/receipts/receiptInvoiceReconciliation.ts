@@ -1065,6 +1065,9 @@ type StoredMatchRow = {
 
 const STORED_MATCH_COLUMNS = 'id, receipt_transaction_id, invoice_id, invoice_number, match_status, invoice_payment_id, transaction_date, payload'
 
+/** Why a payment quoting another customer's invoice was left to a person. */
+const PAYER_IS_ANOTHER_CUSTOMER = 'payer_is_another_customer'
+
 /** A match waiting for a person that a person has taken off the list. */
 function isSetAside(match: StoredMatchRow): boolean {
   return match.match_status === 'review_required' && Boolean(match.payload?.dismissed_at)
@@ -1490,8 +1493,17 @@ async function settlePaymentsQuotingSettledInvoices(
 
       // The quoted invoice says whose payment it is, unless the payer is known to be someone else:
       // a payment quoting another customer's invoice number by mistake goes to a person, with its
-      // own vendor and status left as they are, so later runs still see who paid it.
+      // own vendor and status left as they are, so later runs still see who paid it. Once there,
+      // it stays there unless the payment has since been put down to the quoted customer, even if
+      // its vendor is cleared.
       const payer = payerByPayment.get(transaction.id)
+      const leftForPayer = held.some(
+        (match) =>
+          match.invoice_number.toUpperCase() === invoiceNumber &&
+          match.match_status === 'review_required' &&
+          match.payload?.review_reason === PAYER_IS_ANOTHER_CUSTOMER
+      )
+      if (leftForPayer && payer !== customer) continue
       if (payer && payer !== customer) {
         await applyInvoiceMatch(supabase, {
           transaction,
@@ -1505,7 +1517,7 @@ async function settlePaymentsQuotingSettledInvoices(
           initiatedBy,
           payload: {
             ...payment.matchPayload,
-            review_reason: 'payer_is_another_customer',
+            review_reason: PAYER_IS_ANOTHER_CUSTOMER,
             quoted_invoice_number: invoiceNumber,
             quoted_invoice_status: payment.invoice.status,
             payer_invoice_vendor_id: payer,

@@ -768,6 +768,42 @@ describe('reconciliation: a payment quoting an invoice with nothing left to pay'
     })
   })
 
+  it('keeps a payment left to a person for its payer there, even once its vendor is cleared', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02', { vendor_id: null, vendor_name: null })],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [
+        mayMatch,
+        oldJulyMatch({ id: 'm-payer', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'payer_is_another_customer', payer_invoice_vendor_id: 'other-customer' } }),
+      ],
+    })
+
+    await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(ledgerCalls(calls)).toHaveLength(0)
+    expect(matchCalls(calls)).toHaveLength(0)
+    expect(removed(db)).toEqual([])
+  })
+
+  it('decides a payment left for its payer once it is put down to the quoted customer', async () => {
+    const { db, calls } = arrange({
+      payments: [standingOrder('tx-jul', '2026-07-02')],
+      invoices: [mayInvoice, julyInvoice()],
+      entered: [mayEntry],
+      matches: [
+        mayMatch,
+        oldJulyMatch({ id: 'm-payer', match_status: 'review_required', invoice_id: null, payload: { review_reason: 'payer_is_another_customer', payer_invoice_vendor_id: 'other-customer' } }),
+      ],
+    })
+
+    const summary = await performReconcileReceiptInvoicePayments({ transactionIds: ['tx-jul'], initiatedBy: USER })
+
+    expect(summary.quotedSettledRecorded).toBe(1)
+    expect(ledgerCalls(calls)[0].args).toMatchObject({ p_invoice_number: 'INV-003W7', p_amount: 56.4 })
+    expect(removed(db)).toEqual([['m-payer']])
+  })
+
   it('still marks the payment that settled the invoice as already paid', async () => {
     const { calls } = arrange({
       payments: [standingOrder('tx-may', '2026-05-01', { amount_in: 464.4, amount_total: 464.4 })],
