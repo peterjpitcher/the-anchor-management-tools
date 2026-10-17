@@ -144,6 +144,24 @@ function isPaidStatus(status: string | null | undefined): boolean {
   return status === 'paid' || status === 'void' || status === 'written_off'
 }
 
+/**
+ * What the ledger will accept on an invoice: the total less issued credit notes, less what is
+ * paid. Using the bare total offered more than that, the ledger refused, and the whole run failed.
+ */
+function amountLeftToPay(invoice: InvoiceRow, credited: number): number {
+  return Math.max(0, Math.max(0, moneyValue(invoice.total_amount) - credited) - moneyValue(invoice.paid_amount))
+}
+
+/** Whether a payment of this amount fits an invoice: its total, what is left on it, or part of that. */
+function amountFitsInvoice(amount: number, invoice: InvoiceRow, credited: number): boolean {
+  const outstanding = amountLeftToPay(invoice, credited)
+  return (
+    moneyMatches(amount, moneyValue(invoice.total_amount)) ||
+    moneyMatches(amount, outstanding) ||
+    (amount > 0 && amount <= outstanding + MONEY_EPSILON)
+  )
+}
+
 async function fetchCandidateTransactions(
   supabase: AdminClient,
   transactionIds?: string[]
@@ -1078,26 +1096,24 @@ function settledMatchKeys(rows: StoredMatchRow[]): Set<string> {
   )
 }
 
-/** Matches that say a bank payment was this invoice's money, or quoted it: not ones waiting for a person. */
-const PAID_OR_QUOTED_STATUSES = new Set([
-  'matched',
-  'payment_recorded',
-  'already_paid',
-  'amount_mismatch',
-  'multiple_invoice_refs',
-  'vendor_amount_matched',
-])
+/**
+ * Matches that say a bank payment was the invoice's money. "Amount mismatch" and "several invoice
+ * numbers" only say the payment quoted it, which says nothing about who paid it.
+ */
+const SETTLING_STATUSES = new Set(['matched', 'payment_recorded', 'already_paid', 'vendor_amount_matched'])
 
 /**
- * The first bank payment, by date, to quote each invoice or be matched to it: from the matches
- * held and the payments in this run, so the answer does not depend on the order they are read in.
- * Only that payment can be the one that settled an invoice it quotes in full.
+ * The bank payment that settled each invoice: the first by date that a match says was its money,
+ * or, in this run, that quotes only that invoice for an amount that fits it. From the matches held
+ * and the run's own payments, so the answer does not depend on the order they are read in. Only
+ * that payment can be the one that settled an invoice it quotes for the right amount.
  */
-function firstPaymentForEachInvoice(
+function settlingPaymentForEachInvoice(
   held: StoredMatchRow[],
   transactions: ReceiptTransaction[],
   refsByTransaction: Map<string, string[]>,
-  invoiceByNumber: Map<string, InvoiceRow>
+  invoiceByNumber: Map<string, InvoiceRow>,
+  creditedByInvoice: Map<string, number>
 ): Map<string, string> {
   const first = new Map<string, { date: string; id: string }>()
   const consider = (invoiceId: string, date: string, id: string) => {
@@ -1105,14 +1121,17 @@ function firstPaymentForEachInvoice(
     if (!current || date < current.date || (date === current.date && id < current.id)) first.set(invoiceId, { date, id })
   }
   for (const row of held) {
-    if (row.invoice_id && PAID_OR_QUOTED_STATUSES.has(row.match_status)) {
+    if (row.invoice_id && SETTLING_STATUSES.has(row.match_status)) {
       consider(row.invoice_id, row.transaction_date, row.receipt_transaction_id)
     }
   }
   for (const transaction of transactions) {
-    for (const ref of refsByTransaction.get(transaction.id) ?? []) {
-      const invoice = invoiceByNumber.get(ref)
-      if (invoice) consider(invoice.id, transaction.transaction_date, transaction.id)
+    const refs = refsByTransaction.get(transaction.id) ?? []
+    // A payment quoting several invoices is split by a person, so it settles none on its own here.
+    if (refs.length !== 1) continue
+    const invoice = invoiceByNumber.get(refs[0])
+    if (invoice && amountFitsInvoice(receiptTransactionAmount(transaction), invoice, creditedByInvoice.get(invoice.id) ?? 0)) {
+      consider(invoice.id, transaction.transaction_date, transaction.id)
     }
   }
   return new Map([...first].map(([invoiceId, payment]) => [invoiceId, payment.id]))
@@ -1140,8 +1159,8 @@ type ReferencedPaymentContext = {
   initiatedBy: string | null
   /** Payments on or before this date are in filed periods and are matched as they always were. */
   lockDate: string | null
-  /** The first bank payment to quote each invoice or be matched to it, by invoice id. */
-  firstPaymentByInvoice: Map<string, string>
+  /** The bank payment that settled each invoice, by invoice id (settlingPaymentForEachInvoice). */
+  settlingPaymentByInvoice: Map<string, string>
   /** Collects the payments decided after this pass by `settlePaymentsQuotingSettledInvoices`. */
   quotingSettled: QuotedSettledPayment[]
 }
@@ -1191,10 +1210,8 @@ async function reconcileReferencedPayment(
 
     const invoiceTotal = moneyValue(invoice.total_amount)
     const paidBefore = moneyValue(invoice.paid_amount)
-    // What the ledger will accept: the total less issued credit notes, less what is paid. Using the
-    // bare total offered more than that, the ledger refused, and the whole run failed with it.
     const credited = creditedByInvoice.get(invoice.id) ?? 0
-    const outstanding = Math.max(0, Math.max(0, invoiceTotal - credited) - paidBefore)
+    const outstanding = amountLeftToPay(invoice, credited)
     const matchPayload = {
       invoice_status_before: invoice.status,
       invoice_total: invoiceTotal,
@@ -1228,10 +1245,9 @@ async function reconcileReferencedPayment(
       continue
     }
 
-    const exactAmountMatch = moneyMatches(amount, invoiceTotal)
-    const outstandingAmountMatch = moneyMatches(amount, outstanding)
     const amountCanBePayment = amount > 0 && amount <= outstanding + MONEY_EPSILON
-    const amountMatch = exactAmountMatch || outstandingAmountMatch || amountCanBePayment
+    // The same test decides which payment settled an invoice (settlingPaymentForEachInvoice).
+    const amountMatch = amountFitsInvoice(amount, invoice, credited)
 
     let status: StoredInvoiceMatchStatus = 'matched'
     let recordPayment = false
@@ -1242,7 +1258,7 @@ async function reconcileReferencedPayment(
       // paying another of the customer's invoices: ASE Associates' standing order quotes its May
       // invoice every month. Outside filed periods it is decided after this pass, as a payment
       // with no invoice number.
-      const settledByThisPayment = amountMatch && context.firstPaymentByInvoice.get(invoice.id) === transaction.id
+      const settledByThisPayment = amountMatch && context.settlingPaymentByInvoice.get(invoice.id) === transaction.id
       const filed = Boolean(context.lockDate && transaction.transaction_date <= context.lockDate)
       if (!settledByThisPayment && !filed && invoice.vendor_id) {
         context.quotingSettled.push({ transaction, invoiceNumber, invoice, fallbackStatus: closedStatus, amountMatch, matchPayload })
@@ -1493,11 +1509,12 @@ export async function performReconcileReceiptInvoicePayments(options: {
   for (const match of heldMatches) {
     matchesByPayment.set(match.receipt_transaction_id, [...(matchesByPayment.get(match.receipt_transaction_id) ?? []), match])
   }
-  const firstPaymentByInvoice = firstPaymentForEachInvoice(
+  const settlingPaymentByInvoice = settlingPaymentForEachInvoice(
     await loadMatchesOnInvoices(supabase, invoiceIds),
     transactions,
     refsByTransaction,
-    invoiceByNumber
+    invoiceByNumber,
+    creditedByInvoice
   )
   const { lockDate } = referencedIds.length ? await loadReceiptSettings(supabase) : { lockDate: null }
   const quotingSettled: QuotedSettledPayment[] = []
@@ -1542,7 +1559,7 @@ export async function performReconcileReceiptInvoicePayments(options: {
         recordPayments: options.recordPayments !== false,
         initiatedBy,
         lockDate,
-        firstPaymentByInvoice,
+        settlingPaymentByInvoice,
         quotingSettled,
       })
     } catch (error) {
