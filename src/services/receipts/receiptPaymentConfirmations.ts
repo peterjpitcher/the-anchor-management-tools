@@ -49,6 +49,8 @@ export type CustomerPaymentToConfirm = {
   vendorName: string | null
   /** Why it was stored: several_invoices_fit, several_entries_fit, entry_fits_another_payment, no_exact_fit, over_allocated or error. */
   reason: string
+  /** The invoice number the payment quoted, when that invoice had nothing left to pay. */
+  quotedInvoiceNumber: string | null
   error: string | null
   /** Invoices an earlier, unfinished attempt at a choice already recorded or linked. */
   partlyDone: string[]
@@ -202,6 +204,7 @@ export async function loadCustomerPaymentsToConfirm(): Promise<CustomerPaymentTo
           amount: money(line.amount_in ?? line.amount_out),
           vendorName: line.vendor_name ?? null,
           reason: reasonOf(payload),
+          quotedInvoiceNumber: text(payload.quoted_invoice_number),
           error: text(payload.error) ?? text(asRecord(payload.partial).error),
           partlyDone: Array.isArray(asRecord(payload.partial).done)
             ? (asRecord(payload.partial).done as unknown[]).map(String)

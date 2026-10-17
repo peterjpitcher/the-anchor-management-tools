@@ -1,9 +1,11 @@
 /**
- * What to do with a customer's bank payment that quotes no invoice number.
+ * What to do with a customer's bank payment that quotes no invoice number, or quotes one with
+ * nothing left to pay that it did not settle.
  *
  * Most customer payments quote the invoice number and are matched by it. Some carry only the
- * payer's bank name ("CRICKETERS CRICKETERS", "KIER SERVICES LTD"), so they are matched on the
- * customer, the amount and the date. The owner's rule (16 October 2026): one payment can settle
+ * payer's bank name ("CRICKETERS CRICKETERS", "KIER SERVICES LTD"), and some quote an old invoice
+ * every month (ASE Associates' standing order quotes its May 2026 invoice), so they are matched on
+ * the customer, the amount and the date. The owner's rule (16 October 2026): one payment can settle
  * one invoice or several, but an invoice is normally settled by one payment, and be careful.
  * So only the plainest cases are settled automatically and everything else goes to a person:
  *

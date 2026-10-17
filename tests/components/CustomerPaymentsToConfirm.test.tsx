@@ -30,6 +30,7 @@ const KIER: CustomerPaymentToConfirm = {
   amount: 2520,
   vendorName: 'Kier Services Maintenance South',
   reason: 'several_invoices_fit',
+  quotedInvoiceNumber: null,
   error: null,
   partlyDone: [],
   partDoneOption: null,
@@ -124,5 +125,19 @@ describe('CustomerPaymentsToConfirm', () => {
 
     expect(screen.getByRole('button', { name: 'Record against INV-003WD' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Record against INV-003W8' })).not.toBeInTheDocument()
+  })
+
+  it('says which invoice a payment quoted when that invoice had nothing left to pay', () => {
+    render(<CustomerPaymentsToConfirm items={[{ ...KIER, quotedInvoiceNumber: 'INV-003VV' }]} canConfirm />)
+
+    expect(
+      screen.getByText('The payment quotes INV-003VV, which has nothing left to pay, so it is probably for another invoice.')
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about a quoted invoice when the payment quoted none', () => {
+    render(<CustomerPaymentsToConfirm items={[KIER]} canConfirm />)
+
+    expect(screen.queryByText(/The payment quotes/)).not.toBeInTheDocument()
   })
 })

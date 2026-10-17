@@ -87,7 +87,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
     <Card>
       <CardHeader
         title="Customer payments to confirm"
-        subtitle="These customer payments quoted no invoice number and could not be settled safely on their own. Nothing is recorded until you choose. Invoices offered as a choice here are not chased while the payment waits."
+        subtitle="These customer payments quoted no invoice number, or quoted one with nothing left to pay, and could not be settled safely on their own. Nothing is recorded until you choose. Invoices offered as a choice here are not chased while the payment waits."
         action={<Badge tone="warning">{items.length}</Badge>}
       />
       <CardBody className="space-y-4">
@@ -103,6 +103,11 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
               {REASONS[item.reason] ?? REASONS.error}
               {item.error ? ` (${item.error})` : ''}
             </p>
+            {item.quotedInvoiceNumber && (
+              <p className="text-sm text-text-muted">
+                The payment quotes {item.quotedInvoiceNumber}, which has nothing left to pay, so it is probably for another invoice.
+              </p>
+            )}
             {item.partlyDone.length > 0 && (
               <p className="text-sm text-text-muted">
                 Already done from an earlier attempt: {item.partlyDone.join(' and ')}. Choose the same option again to finish.
