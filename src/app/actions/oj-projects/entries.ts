@@ -1022,7 +1022,7 @@ export async function createMileageEntry(formData: FormData) {
       billable: parsed.data.billable ?? true,
       status: 'unbilled',
       hourly_rate_ex_vat_snapshot: null,
-      vat_rate_snapshot: 0,
+      vat_rate_snapshot: settings.vat_rate,
       mileage_rate_snapshot: settings.mileage_rate,
     })
     .select('*')
@@ -1303,7 +1303,7 @@ export async function updateEntry(formData: FormData) {
       billable: parsed.data.billable ?? true,
       hourly_rate_ex_vat_snapshot: null,
       mileage_rate_snapshot: settings.mileage_rate,
-      vat_rate_snapshot: 0,
+      vat_rate_snapshot: settings.vat_rate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.id)

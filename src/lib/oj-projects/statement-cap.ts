@@ -15,7 +15,8 @@
 
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { roundMoney } from '@/lib/oj-projects/utils'
-import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
+import { DEFAULT_HOURLY_RATE_EX_VAT, resolveRate } from '@/lib/oj-projects/rates'
+import { getEntryCharge } from '@/lib/oj-projects/charges'
 
 export type StatementCapLineItem = {
   catalog_item_id?: string | null
@@ -45,9 +46,7 @@ function periodEndFromReference(reference: string | null | undefined, fallbackDa
 
 function entryIncVat(entry: any, settings: any): number {
   if (entry?.entry_type === 'mileage') {
-    // Mileage is a disbursement and is billed zero-rated.
-    const rate = resolveRate(entry.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
-    return roundMoney(Number(entry.miles || 0) * rate)
+    return getEntryCharge(entry, settings).incVat
   }
 
   const vatRate = Number(entry?.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
