@@ -130,6 +130,18 @@ describe('loadCustomerPaymentsToConfirm', () => {
 
     expect(await loadCustomerPaymentsToConfirm()).toEqual([])
   })
+
+  it('carries the invoice number a payment quoted when that invoice had nothing left to pay', async () => {
+    arrange({ match: { invoice_number: 'REVIEW', payload: { ...PAYLOAD, quoted_invoice_number: 'INV-003VV', quoted_invoice_status: 'paid' } } })
+
+    expect((await loadCustomerPaymentsToConfirm())[0]).toMatchObject({ quotedInvoiceNumber: 'INV-003VV' })
+  })
+
+  it('has no quoted invoice number for a payment that quoted none', async () => {
+    arrange()
+
+    expect((await loadCustomerPaymentsToConfirm())[0]).toMatchObject({ quotedInvoiceNumber: null })
+  })
 })
 
 describe('readConfirmationOptions', () => {
