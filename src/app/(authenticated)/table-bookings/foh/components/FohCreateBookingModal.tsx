@@ -647,7 +647,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           )}
         </div>
 
-        {createMode === 'walk_in' && walkInTargetTable && (
+        {createMode === 'walk_in' && walkInTargetTable && !createForm.outside_seating && (
           <div className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-xs text-success-fg">
             Walk-in will be moved to <span className="font-semibold">{walkInTargetTable.name}</span> after creation.
           </div>

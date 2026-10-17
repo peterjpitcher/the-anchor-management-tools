@@ -638,3 +638,32 @@ describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline
     expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
   })
 })
+
+describe('POST /api/foh/bookings: double-submit fingerprint', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('counts a step-free need as part of the request, so adding it is never replayed as a duplicate', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+        requires_accessible_table: true,
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const duplicateLookup = (db.builders.table_bookings ?? []).find((b) =>
+      vi.mocked(b.select as (cols: string) => unknown).mock.calls.some(([cols]) => String(cols).includes('booking_reference, status')),
+    )
+    expect(duplicateLookup).toBeDefined()
+    expect(duplicateLookup?.eq).toHaveBeenCalledWith('requires_accessible_table', true)
+  })
+})

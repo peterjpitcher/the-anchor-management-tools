@@ -1180,6 +1180,9 @@ async function createFohTableBooking(
         .eq('party_size', payload.party_size)
         .eq('booking_purpose', toStoredBookingPurpose(payload.purpose))
         .eq('is_outside_seating', payload.outside_seating ?? false)
+        // A retry that adds a step-free need is a different booking request, not a double-tap:
+        // replaying the first row would silently drop the guest's accessibility requirement.
+        .eq('requires_accessible_table', payload.requires_accessible_table ?? false)
         .not('status', 'in', '("cancelled","no_show")')
         .gte('created_at', sixtySecondsAgo)
       if (isChristmasPurpose(payload.purpose)) {
