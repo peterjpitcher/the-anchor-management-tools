@@ -244,3 +244,40 @@ describe('decideCustomerPayment and other payments', () => {
     expect(decision).toMatchObject({ kind: 'review', reason: 'invoice_claimed_by_another_payment', entryOptions: [[entered]] })
   })
 })
+
+describe('decideCustomerPayment for a payment that may still be the quoted invoice\'s money', () => {
+  const quoted = invoice({ id: 'quoted', invoiceNumber: 'INV-A1', invoiceDate: '2026-08-25', status: 'paid', totalAmount: 100, paidAmount: 100 })
+  const other = invoice({ id: 'other', invoiceNumber: 'INV-B1', invoiceDate: '2026-09-01', totalAmount: 40 })
+
+  it('offers another invoice to a person instead of recording the payment on it', () => {
+    const decision = decideCustomerPayment(payment('2026-09-08', 40), [quoted, other], [], [], new Set(), {
+      invoiceId: 'quoted',
+      reason: 'quoted_invoice_paid_nearby',
+    })
+
+    expect(decision).toMatchObject({ kind: 'review', reason: 'quoted_invoice_paid_nearby', entryOptions: [] })
+    expect(decision.kind === 'review' && decision.invoiceOptions.map((option) => option.map((part) => part.invoice.invoiceNumber))).toEqual([['INV-B1']])
+  })
+
+  it("still links the payment to the quoted invoice's own entry", () => {
+    const own = entry({ id: 'pay-40', invoiceId: 'quoted', paymentDate: '2026-09-08', amount: 40 })
+
+    const decision = decideCustomerPayment(payment('2026-09-08', 40), [quoted, other], [own], [], new Set(), {
+      invoiceId: 'quoted',
+      reason: 'quoted_invoice_paid_nearby',
+    })
+
+    expect(decision).toEqual({ kind: 'link', entry: own })
+  })
+
+  it("offers another invoice's entry to a person instead of linking it", () => {
+    const elsewhere = entry({ id: 'pay-b', invoiceId: 'other', paymentDate: '2026-09-08', amount: 40 })
+
+    const decision = decideCustomerPayment(payment('2026-09-08', 40), [quoted, other], [elsewhere], [], new Set(), {
+      invoiceId: 'quoted',
+      reason: 'quoted_invoice_written_off',
+    })
+
+    expect(decision).toMatchObject({ kind: 'review', reason: 'quoted_invoice_written_off', entryOptions: [[elsewhere]], invoiceOptions: [] })
+  })
+})
