@@ -23,6 +23,11 @@ const REASONS: Record<string, string> = {
     'A payment of the same amount was entered on an invoice a while before or after this arrived. Check it is not the same money before recording anything.',
   no_exact_fit:
     'No recent invoice owes exactly this amount. If it paid an invoice, enter the payment on that invoice, then mark this as dealt with.',
+  quoted_invoice_paid_nearby:
+    'The invoice this payment quotes was paid around the same time, so it may be part of that money. Check before choosing.',
+  quoted_invoice_written_off: 'The invoice this payment quotes was written off, so it may be paying that debt. Check before choosing.',
+  payer_is_another_customer:
+    'The invoice this payment quotes belongs to a different customer from the one who seems to have paid it. Check who paid it, then deal with it by hand.',
   over_allocated: 'This payment is already used in full against other invoices. Check it, then mark it as dealt with.',
   error: 'This payment could not be matched automatically.',
 }
@@ -105,7 +110,7 @@ export function CustomerPaymentsToConfirm({ items, canConfirm, loadError }: Cust
             </p>
             {item.quotedInvoiceNumber && (
               <p className="text-sm text-text-muted">
-                The payment quotes {item.quotedInvoiceNumber}, which has nothing left to pay, so it is probably for another invoice.
+                The payment quotes {item.quotedInvoiceNumber}, which has nothing left to pay.
               </p>
             )}
             {item.partlyDone.length > 0 && (

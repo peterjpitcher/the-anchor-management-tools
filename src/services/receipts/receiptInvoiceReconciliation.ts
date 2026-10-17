@@ -14,11 +14,14 @@ import { shiftIsoDate } from '@/lib/dateUtils'
 import { enqueueMissingInvoiceAttachments } from './receiptInvoiceFiles'
 import {
   decideCustomerPayment,
+  LOOSE_ENTRY_DAYS_AFTER,
+  LOOSE_ENTRY_DAYS_BEFORE,
   outstandingOf,
   type CustomerBankPayment,
   type CustomerInvoice,
   type CustomerPaymentDecision,
   type EnteredPayment,
+  type QuotedInvoiceCaution,
 } from '@/lib/receipts/invoice-pairing'
 import { loadReceiptSettings } from './receiptSettings'
 
@@ -160,6 +163,19 @@ function amountFitsInvoice(amount: number, invoice: InvoiceRow, credited: number
     moneyMatches(amount, outstanding) ||
     (amount > 0 && amount <= outstanding + MONEY_EPSILON)
   )
+}
+
+/**
+ * Whether a payment of this amount is what the invoice asked for: as above, or its total less
+ * credit notes, which is what a customer pays on a credited invoice.
+ */
+function paysInvoiceInFull(amount: number, invoice: InvoiceRow, credited: number): boolean {
+  return amountFitsInvoice(amount, invoice, credited) || moneyMatches(amount, Math.max(0, moneyValue(invoice.total_amount) - credited))
+}
+
+/** A cancelled or written-off invoice was settled by no payment, whatever it quotes. */
+function isCancelledStatus(status: string | null | undefined): boolean {
+  return status === 'void' || status === 'written_off'
 }
 
 async function fetchCandidateTransactions(
@@ -843,13 +859,18 @@ async function storeCustomerPaymentForReview(
 }
 
 /** What to do with one customer payment, from the customer's invoices, entries and other payments. */
-function decideForBook(transaction: ReceiptTransaction, book: CustomerBook): CustomerPaymentDecision {
+function decideForBook(
+  transaction: ReceiptTransaction,
+  book: CustomerBook,
+  caution: QuotedInvoiceCaution | null = null
+): CustomerPaymentDecision {
   return decideCustomerPayment(
     { id: transaction.id, date: transaction.transaction_date, amount: receiptTransactionAmount(transaction) },
     book.invoices,
     book.entries,
     book.others,
-    invoicesClaimedByOthers(book, transaction.id)
+    invoicesClaimedByOthers(book, transaction.id),
+    caution
   )
 }
 
@@ -1039,9 +1060,15 @@ type StoredMatchRow = {
   match_status: string
   invoice_payment_id: string | null
   transaction_date: string
+  payload: Record<string, unknown> | null
 }
 
-const STORED_MATCH_COLUMNS = 'id, receipt_transaction_id, invoice_id, invoice_number, match_status, invoice_payment_id, transaction_date'
+const STORED_MATCH_COLUMNS = 'id, receipt_transaction_id, invoice_id, invoice_number, match_status, invoice_payment_id, transaction_date, payload'
+
+/** A match waiting for a person that a person has taken off the list. */
+function isSetAside(match: StoredMatchRow): boolean {
+  return match.match_status === 'review_required' && Boolean(match.payload?.dismissed_at)
+}
 
 /** Every match held for these bank payments, whatever its status. */
 async function loadMatchesOfPayments(supabase: AdminClient, transactionIds: string[]): Promise<StoredMatchRow[]> {
@@ -1130,7 +1157,7 @@ function settlingPaymentForEachInvoice(
     // A payment quoting several invoices is split by a person, so it settles none on its own here.
     if (refs.length !== 1) continue
     const invoice = invoiceByNumber.get(refs[0])
-    if (invoice && amountFitsInvoice(receiptTransactionAmount(transaction), invoice, creditedByInvoice.get(invoice.id) ?? 0)) {
+    if (invoice && paysInvoiceInFull(receiptTransactionAmount(transaction), invoice, creditedByInvoice.get(invoice.id) ?? 0)) {
       consider(invoice.id, transaction.transaction_date, transaction.id)
     }
   }
@@ -1146,6 +1173,26 @@ type QuotedSettledPayment = {
   fallbackStatus: 'already_paid' | 'amount_mismatch'
   amountMatch: boolean
   matchPayload: Record<string, unknown>
+  /** Set when the payment may still be the quoted invoice's money (cautionForQuotedInvoice). */
+  caution: QuotedInvoiceCaution | null
+}
+
+/**
+ * Whether a payment quoting an invoice with nothing left to pay may still be that invoice's
+ * money: the invoice was written off, or a payment was entered on it, by any method, from a month
+ * before to two months after this one. A customer paying one invoice in two transfers, entered by
+ * hand as one sum, is the case: the second transfer must not be recorded on another invoice.
+ */
+function cautionForQuotedInvoice(
+  invoice: InvoiceRow,
+  transaction: ReceiptTransaction,
+  entered: InvoicePaymentRow[]
+): QuotedInvoiceCaution | null {
+  if (invoice.status === 'written_off') return { invoiceId: invoice.id, reason: 'quoted_invoice_written_off' }
+  const from = shiftIsoDate(transaction.transaction_date, -LOOSE_ENTRY_DAYS_BEFORE)
+  const to = shiftIsoDate(transaction.transaction_date, LOOSE_ENTRY_DAYS_AFTER)
+  const nearby = entered.some((payment) => Boolean(from && to && payment.payment_date >= from && payment.payment_date <= to))
+  return nearby ? { invoiceId: invoice.id, reason: 'quoted_invoice_paid_nearby' } : null
 }
 
 type ReferencedPaymentContext = {
@@ -1251,20 +1298,32 @@ async function reconcileReferencedPayment(
 
     let status: StoredInvoiceMatchStatus = 'matched'
     let recordPayment = false
+    let storedAmountMatch = amountMatch
 
     if (isPaidStatus(invoice.status) || outstanding <= MONEY_EPSILON) {
-      const closedStatus = amountMatch ? ('already_paid' as const) : ('amount_mismatch' as const)
+      const paidInFull = paysInvoiceInFull(amount, invoice, credited)
+      const closedStatus = paidInFull ? ('already_paid' as const) : ('amount_mismatch' as const)
       // Nothing is left to pay. Unless this is the payment that settled the invoice, it may be
       // paying another of the customer's invoices: ASE Associates' standing order quotes its May
       // invoice every month. Outside filed periods it is decided after this pass, as a payment
-      // with no invoice number.
-      const settledByThisPayment = amountMatch && context.settlingPaymentByInvoice.get(invoice.id) === transaction.id
+      // with no invoice number. A cancelled or written-off invoice was settled by no payment.
+      const settledByThisPayment =
+        paidInFull && !isCancelledStatus(invoice.status) && context.settlingPaymentByInvoice.get(invoice.id) === transaction.id
       const filed = Boolean(context.lockDate && transaction.transaction_date <= context.lockDate)
       if (!settledByThisPayment && !filed && invoice.vendor_id) {
-        context.quotingSettled.push({ transaction, invoiceNumber, invoice, fallbackStatus: closedStatus, amountMatch, matchPayload })
+        context.quotingSettled.push({
+          transaction,
+          invoiceNumber,
+          invoice,
+          fallbackStatus: closedStatus,
+          amountMatch: paidInFull,
+          matchPayload,
+          caution: cautionForQuotedInvoice(invoice, transaction, paymentByInvoice.get(invoice.id) ?? []),
+        })
         continue
       }
       status = closedStatus
+      storedAmountMatch = paidInFull
     } else if (!amountCanBePayment) {
       status = 'amount_mismatch'
     } else if (context.recordPayments) {
@@ -1272,7 +1331,16 @@ async function reconcileReferencedPayment(
       recordPayment = true
     }
 
-    await storeReferencedMatch(supabase, summary, { transaction, invoiceNumber, invoice, status, amountMatch, recordPayment, matchPayload, initiatedBy })
+    await storeReferencedMatch(supabase, summary, {
+      transaction,
+      invoiceNumber,
+      invoice,
+      status,
+      amountMatch: storedAmountMatch,
+      recordPayment,
+      matchPayload,
+      initiatedBy,
+    })
   }
 }
 
@@ -1368,6 +1436,7 @@ async function removeQuotedSettledMatch(supabase: AdminClient, match: StoredMatc
     .eq('id', match.id)
     .in('match_status', SUPERSEDED_QUOTED_STATUSES)
     .is('invoice_payment_id', null)
+    .is('payload->>dismissed_at', null)
   if (error) {
     console.error('Failed to remove a match against the invoice a payment quoted', { matchId: match.id, error })
   }
@@ -1380,7 +1449,9 @@ async function removeQuotedSettledMatch(supabase: AdminClient, match: StoredMatc
  * invoice they quoted. ASE Associates' standing order quotes its May invoice every month; each
  * month's payment was stored as "amount mismatch" against it, and the month's invoice was marked
  * paid only because the owner entered every payment by hand. When nothing fits at all, the match
- * is stored against the quoted invoice as it always was.
+ * is stored against the quoted invoice as it always was. A payer known to be another customer, and
+ * a payment that may still be the quoted invoice's own money (cautionForQuotedInvoice), go to a
+ * person rather than onto another invoice.
  */
 async function settlePaymentsQuotingSettledInvoices(
   supabase: AdminClient,
@@ -1390,60 +1461,80 @@ async function settlePaymentsQuotingSettledInvoices(
   matchesByPayment: Map<string, StoredMatchRow[]>,
   initiatedBy: string | null
 ): Promise<void> {
-  // The quoted invoice says whose payment it is, unless the payer is known to be someone else: a
-  // payment quoting another customer's invoice number by mistake is left as it always was.
   const payerByPayment = await resolveInvoiceVendorIds(supabase, payments.map((payment) => payment.transaction))
-  const byCustomer = new Map<string, QuotedSettledPayment[]>()
+  const byCustomer = new Map<string, Array<{ payment: QuotedSettledPayment; quotedMatch: StoredMatchRow | undefined }>>()
+
   for (const payment of payments) {
+    const { transaction, invoiceNumber } = payment
     const customer = payment.invoice.vendor_id
-    const payer = payerByPayment.get(payment.transaction.id)
     if (!customer) continue
-    if (payer && payer !== customer) {
-      try {
-        await storeReferencedMatch(supabase, summary, {
-          transaction: payment.transaction,
-          invoiceNumber: payment.invoiceNumber,
-          invoice: payment.invoice,
-          status: payment.fallbackStatus,
-          amountMatch: payment.amountMatch,
-          recordPayment: false,
-          matchPayload: payment.matchPayload,
-          initiatedBy,
-        })
-      } catch (error) {
-        await storeFailureForReview(supabase, summary, failures, payment.transaction, payment.invoiceNumber, error, initiatedBy)
+    const held = matchesByPayment.get(transaction.id) ?? []
+    // What the payment holds against the quoted invoice from before: removed once it is filed
+    // elsewhere. Never one a person has taken off the list.
+    const quotedMatch = held.find(
+      (match) =>
+        match.invoice_number.toUpperCase() === invoiceNumber &&
+        SUPERSEDED_QUOTED_STATUSES.includes(match.match_status) &&
+        !match.invoice_payment_id &&
+        !isSetAside(match)
+    )
+
+    try {
+      // Decided by an earlier run: linked, recorded, or waiting for a person under another invoice.
+      if (held.some((match) => match.invoice_number.toUpperCase() !== invoiceNumber)) {
+        if (quotedMatch) await removeQuotedSettledMatch(supabase, quotedMatch)
+        continue
       }
+      // A person already took it off the list.
+      if (held.some((match) => match.invoice_number.toUpperCase() === invoiceNumber && isSetAside(match))) continue
+
+      // The quoted invoice says whose payment it is, unless the payer is known to be someone else:
+      // a payment quoting another customer's invoice number by mistake goes to a person, with its
+      // own vendor and status left as they are, so later runs still see who paid it.
+      const payer = payerByPayment.get(transaction.id)
+      if (payer && payer !== customer) {
+        await applyInvoiceMatch(supabase, {
+          transaction,
+          invoiceNumber,
+          invoice: null,
+          invoicePaymentId: null,
+          status: 'review_required',
+          amountMatch: false,
+          allowStatusChange: false,
+          receiptVendor: null,
+          initiatedBy,
+          payload: {
+            ...payment.matchPayload,
+            review_reason: 'payer_is_another_customer',
+            quoted_invoice_number: invoiceNumber,
+            quoted_invoice_status: payment.invoice.status,
+            payer_invoice_vendor_id: payer,
+          },
+        })
+        summary.quotedSettledForReview += 1
+        continue
+      }
+    } catch (error) {
+      await storeFailureForReview(supabase, summary, failures, transaction, invoiceNumber, error, initiatedBy)
       continue
     }
-    byCustomer.set(customer, [...(byCustomer.get(customer) ?? []), payment])
+
+    byCustomer.set(customer, [...(byCustomer.get(customer) ?? []), { payment, quotedMatch }])
   }
 
   for (const [invoiceVendorId, group] of byCustomer) {
     // Oldest first, so that an earlier payment settles an invoice before a later one looks at it.
     const ordered = [...group].sort(
       (left, right) =>
-        left.transaction.transaction_date.localeCompare(right.transaction.transaction_date) ||
-        left.transaction.id.localeCompare(right.transaction.id)
+        left.payment.transaction.transaction_date.localeCompare(right.payment.transaction.transaction_date) ||
+        left.payment.transaction.id.localeCompare(right.payment.transaction.id)
     )
-    const book = await loadCustomerBook(supabase, invoiceVendorId, ordered.map((payment) => payment.transaction))
+    const book = await loadCustomerBook(supabase, invoiceVendorId, ordered.map((item) => item.payment.transaction))
 
-    for (const payment of ordered) {
+    for (const { payment, quotedMatch } of ordered) {
       const { transaction, invoiceNumber } = payment
-      const held = matchesByPayment.get(transaction.id) ?? []
-      const quotedMatch = held.find(
-        (match) =>
-          match.invoice_number.toUpperCase() === invoiceNumber &&
-          SUPERSEDED_QUOTED_STATUSES.includes(match.match_status) &&
-          !match.invoice_payment_id
-      )
       try {
-        // Decided by an earlier run: linked, recorded, or waiting for a person under another invoice.
-        if (held.some((match) => match.invoice_number.toUpperCase() !== invoiceNumber)) {
-          if (quotedMatch) await removeQuotedSettledMatch(supabase, quotedMatch)
-          continue
-        }
-
-        const decision = decideForBook(transaction, book)
+        const decision = decideForBook(transaction, book, payment.caution)
         if (decision.kind === 'none') {
           await storeReferencedMatch(supabase, summary, {
             transaction,
@@ -1466,8 +1557,8 @@ async function settlePaymentsQuotingSettledInvoices(
         else if (decision.kind === 'record') summary.quotedSettledRecorded += 1
         else summary.quotedSettledForReview += 1
 
-        // A credited invoice paid in full by this payment is linked under its own number, which
-        // replaced the old match; anything filed elsewhere leaves the old match to remove.
+        // A payment linked to the quoted invoice's own entry is stored under that invoice's number,
+        // which replaced the old match; anything filed elsewhere leaves the old match to remove.
         if (quotedMatch && decidedInvoiceNumber(decision, book)?.toUpperCase() !== invoiceNumber) {
           await removeQuotedSettledMatch(supabase, quotedMatch)
         }
