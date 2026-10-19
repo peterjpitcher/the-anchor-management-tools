@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  IDEMPOTENCY_KEY_MAX_LENGTH,
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
   getIdempotencyKey,
-  lookupIdempotencyKey
+  lookupIdempotencyKey,
+  toStorableIdempotencyKey
 } from '@/lib/api/idempotency'
 
 type IdempotencyRow = {
@@ -215,6 +217,44 @@ describe('getIdempotencyKey', () => {
   it('returns null when the header is missing', () => {
     const request = new Request('https://example.com', { method: 'POST' })
     expect(getIdempotencyKey(request)).toBeNull()
+  })
+
+  // idempotency_keys.key is varchar(255). The website's parking key ran to about 370
+  // characters, so the claim insert was refused and every online parking booking got a 500.
+  it('shortens a key too long for the table to the same storable key on every retry', () => {
+    const websiteParkingKey = Buffer.from(
+      `07700900123|AB12CDE|2026-10-20T06:00:00.000Z|2026-10-27T18:00:00.000Z|${JSON.stringify({
+        service_contact_notice_shown: true,
+        marketing_email_opt_in: false,
+        marketing_sms_opt_in: false,
+        whatsapp_opt_in: false,
+        marketing_whatsapp_opt_in: false,
+        consent_text_version: 'guest-comms-consent-v6'
+      })}`
+    ).toString('base64')
+    expect(websiteParkingKey.length).toBeGreaterThan(IDEMPOTENCY_KEY_MAX_LENGTH)
+
+    const request = () =>
+      new Request('https://example.com', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': websiteParkingKey }
+      })
+
+    const first = getIdempotencyKey(request())
+    expect(first).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(first!.length).toBeLessThanOrEqual(IDEMPOTENCY_KEY_MAX_LENGTH)
+    expect(getIdempotencyKey(request())).toBe(first)
+  })
+
+  it('gives two different over-long keys two different storable keys', () => {
+    const base = 'k'.repeat(IDEMPOTENCY_KEY_MAX_LENGTH)
+    expect(toStorableIdempotencyKey(`${base}-a`)).not.toBe(toStorableIdempotencyKey(`${base}-b`))
+  })
+
+  it('keeps a key that fits exactly as sent, so keys already stored still match', () => {
+    const longestThatFits = 'k'.repeat(IDEMPOTENCY_KEY_MAX_LENGTH)
+    expect(toStorableIdempotencyKey(longestThatFits)).toBe(longestThatFits)
+    expect(toStorableIdempotencyKey('tbl_abc123')).toBe('tbl_abc123')
   })
 })
 
