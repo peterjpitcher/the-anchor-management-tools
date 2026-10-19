@@ -48,6 +48,26 @@ export function computeIdempotencyRequestHash(payload: unknown): string {
     .digest('hex')
 }
 
+// idempotency_keys.key is varchar(255). A longer key cannot be stored: the claim insert is
+// refused (Postgres 22001, a PostgREST 400) and the route answers 500. The website's parking
+// key is about 370 characters once it carries the guest's consent choices, so every online
+// parking booking failed that way for months (found 19 October 2026).
+export const IDEMPOTENCY_KEY_MAX_LENGTH = 255
+
+/**
+ * The form of a caller's key that fits the table. A key that fits is kept exactly as sent; a
+ * longer one is replaced by its SHA-256, which is the same for the same key on every retry,
+ * so duplicate requests still meet. No stored key changes, because nothing over the limit was
+ * ever stored.
+ */
+export function toStorableIdempotencyKey(key: string): string {
+  if (key.length <= IDEMPOTENCY_KEY_MAX_LENGTH) {
+    return key
+  }
+
+  return `sha256:${crypto.createHash('sha256').update(key).digest('hex')}`
+}
+
 export function getIdempotencyKey(request: Request): string | null {
   const key = request.headers.get('Idempotency-Key')
   if (!key) {
@@ -55,7 +75,7 @@ export function getIdempotencyKey(request: Request): string | null {
   }
 
   const trimmed = key.trim()
-  return trimmed.length > 0 ? trimmed : null
+  return trimmed.length > 0 ? toStorableIdempotencyKey(trimmed) : null
 }
 
 function isExpired(expiresAt: string | null | undefined): boolean {
