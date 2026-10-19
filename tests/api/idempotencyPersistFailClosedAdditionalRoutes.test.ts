@@ -136,6 +136,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('does not release the parking booking idempotency claim when response persistence fails after booking creation', async () => {
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-parking-1')
     ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-1',
@@ -188,6 +189,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
         booking_id: 'parking-booking-1',
       },
     })
+    expect(claimIdempotencyKey).toHaveBeenCalledWith(expect.anything(), 'idem-parking-1', 'hash-1')
     expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
     expect(createPendingParkingBooking).toHaveBeenCalledWith(
@@ -201,6 +203,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('surfaces logging_failed SMS meta for parking booking create responses', async () => {
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue(null)
     ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-logging-failed',
@@ -268,6 +271,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('surfaces unsent SMS meta when initial parking payment request SMS fails before send', async () => {
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue(null)
     ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-sms-failed',

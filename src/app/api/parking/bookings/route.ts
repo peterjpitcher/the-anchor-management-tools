@@ -11,6 +11,7 @@ import { createPendingParkingBooking } from '@/services/parking'
 import {
   computeIdempotencyRequestHash,
   claimIdempotencyKey,
+  getIdempotencyKey,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
@@ -41,6 +42,26 @@ const CreateBookingSchema = z.object({
 
 function sanitizeRegistration(reg: string): string {
   return reg.replace(/\s+/g, '').toUpperCase()
+}
+
+/**
+ * Supabase throws plain objects, not Errors, and String() of one is "[object Object]": all the
+ * log said while every website booking failed (19 October 2026). Keeps the code, message and
+ * hint. Not details, where Postgres puts the failing row's values, a guest's phone number
+ * among them.
+ */
+function toLoggableError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error
+  }
+
+  const fields = (error && typeof error === 'object' ? error : {}) as {
+    code?: unknown
+    message?: unknown
+    hint?: unknown
+  }
+  const loggable = new Error(typeof fields.message === 'string' ? fields.message : String(error))
+  return Object.assign(loggable, { code: fields.code ?? null, hint: fields.hint ?? null })
 }
 
 function mapParkingCreateError(message: string) {
@@ -196,7 +217,9 @@ export async function POST(request: NextRequest) {
       }
 
       const supabase = createAdminClient()
-      const idempotencyKey = req.headers.get('Idempotency-Key')
+      // Through the shared reader, which shortens a key too long for the table. Read raw, the
+      // website's key (about 370 characters) failed the claim on every online booking.
+      const idempotencyKey = getIdempotencyKey(req)
       const requestHashPayload = {
         start_at: payload.start_at,
         end_at: payload.end_at,
@@ -470,7 +493,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       logger.error('Error creating parking booking via API', {
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: toLoggableError(error),
       })
       return createErrorResponse('Failed to create parking booking', 'INTERNAL_ERROR', 500)
     }
