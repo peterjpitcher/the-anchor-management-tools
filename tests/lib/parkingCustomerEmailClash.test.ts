@@ -341,6 +341,7 @@ describe('parking booking when the typed email is already on another customer', 
 
     const result = await resolveCustomerByPhone(customers.client as never, {
       firstName: GUEST.first_name,
+      lastName: GUEST.last_name,
       email: 'dan.okafor@example.com',
       phone: GUEST.mobile_number,
     })
@@ -386,6 +387,7 @@ describe('parking booking when the typed email is already on another customer', 
     await expect(
       resolveCustomerByPhone(customers.client as never, {
         firstName: GUEST.first_name,
+        lastName: GUEST.last_name,
         email: GUEST.email,
         phone: GUEST.mobile_number,
       })
