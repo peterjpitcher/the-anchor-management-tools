@@ -86,6 +86,14 @@ export async function resolveCustomerByPhone(
   const lastNameTrimmed = sanitizeLastName(params.lastName)
   const existingCustomer = await lookupCustomerByPhone(supabase, standardizedPhone, variants)
 
+  // customers.last_name is NOT NULL, so a new customer cannot be added without
+  // one, and a surname of only spaces trims to nothing. The insert used to fail
+  // and the guest got a server error; asking for the surname is the answer. A
+  // customer already on file needs none: theirs is stored.
+  if (!existingCustomer && !lastNameTrimmed) {
+    throw new Error('Surname is required for a new customer')
+  }
+
   if (existingCustomer) {
     const customer = existingCustomer
     let resolvedEmail = (customer.email as string | null) || undefined
