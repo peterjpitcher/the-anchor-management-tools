@@ -18,6 +18,7 @@ import {
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
+import { formatPhoneForStorage } from '@/lib/utils'
 
 const CreateBookingSchema = z.object({
   customer: z.object({
@@ -87,6 +88,16 @@ function mapParkingCreateError(message: string) {
 
   if (message.includes('Override price must be greater than zero')) {
     return createErrorResponse('Override price must be greater than zero', 'VALIDATION_ERROR', 400)
+  }
+
+  // Typing mistakes the guest can put right. Each used to fall through to a 500,
+  // which told them nothing and raised an alert for something that was not a fault.
+  if (message.includes('Parking duration must be at least 30 minutes')) {
+    return createErrorResponse('Parking must be booked for at least 30 minutes', 'VALIDATION_ERROR', 400)
+  }
+
+  if (message.includes('Surname is required for a new customer')) {
+    return createErrorResponse('Please enter your surname', 'VALIDATION_ERROR', 400)
   }
 
   return null
@@ -214,6 +225,16 @@ export async function POST(request: NextRequest) {
 
       if (end <= start) {
         return createErrorResponse('End time must be after start time', 'VALIDATION_ERROR', 400)
+      }
+
+      // Checked before anything is claimed or stored, as the other public booking routes do.
+      // A mistyped number used to reach the customer lookup and come back as a 500.
+      try {
+        formatPhoneForStorage(payload.customer.mobile_number, {
+          defaultCountryCode: payload.customer.default_country_code
+        })
+      } catch {
+        return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
       }
 
       const supabase = createAdminClient()
