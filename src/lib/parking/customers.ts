@@ -74,6 +74,68 @@ async function lookupCustomerByPhone(
   return legacyMatches && legacyMatches.length > 0 ? (legacyMatches[0] as CustomerLookupRow) : null
 }
 
+// Postgres names the index in a unique violation's message:
+// duplicate key value violates unique constraint "idx_customers_email_unique"
+const CUSTOMER_EMAIL_UNIQUE_INDEX = 'idx_customers_email_unique'
+
+type InsertError = { code?: string; message?: string } | null
+
+function isUniqueViolation(error: InsertError): boolean {
+  return error?.code === '23505'
+}
+
+function violatesCustomerEmailIndex(error: InsertError): boolean {
+  return isUniqueViolation(error) && Boolean(error?.message?.includes(`"${CUSTOMER_EMAIL_UNIQUE_INDEX}"`))
+}
+
+/**
+ * After a unique violation on insert: the customer a concurrent request created
+ * for this mobile, or null when there is none.
+ */
+async function findConcurrentlyCreatedCustomer(
+  supabase: SupabaseClient<any, 'public', any>,
+  standardizedPhone: string,
+  variants: string[]
+): Promise<ResolvedCustomer | null> {
+  try {
+    const concurrentCustomer = await lookupCustomerByPhone(supabase, standardizedPhone, variants)
+    if (concurrentCustomer?.id) {
+      return {
+        id: concurrentCustomer.id as string,
+        first_name: concurrentCustomer.first_name as string,
+        last_name: (concurrentCustomer.last_name as string | null) ?? undefined,
+        mobile_number:
+          (concurrentCustomer.mobile_number as string | null) || standardizedPhone,
+        email: (concurrentCustomer.email as string | null) ?? undefined
+      }
+    }
+  } catch (concurrentLookupError) {
+    console.error('Failed to load concurrently-created customer', concurrentLookupError)
+  }
+
+  const fallbackLookup = await supabase
+    .from('customers')
+    .select('*')
+    .in('mobile_number', variants)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (fallbackLookup.error) {
+    console.error('Failed fallback lookup for concurrently-created customer', fallbackLookup.error)
+  } else if (fallbackLookup.data && fallbackLookup.data.length > 0) {
+    const fallbackCustomer = fallbackLookup.data[0] as CustomerLookupRow
+    return {
+      id: fallbackCustomer.id as string,
+      first_name: fallbackCustomer.first_name as string,
+      last_name: (fallbackCustomer.last_name as string | null) ?? undefined,
+      mobile_number: (fallbackCustomer.mobile_number as string | null) || standardizedPhone,
+      email: (fallbackCustomer.email as string | null) ?? undefined
+    }
+  }
+
+  return null
+}
+
 export async function resolveCustomerByPhone(
   supabase: SupabaseClient<any, 'public', any>,
   params: CustomerResolutionParams
@@ -171,69 +233,60 @@ export async function resolveCustomerByPhone(
     }
   }
 
-  const { data: newCustomer, error: insertError } = await supabase
-    .from('customers')
-    .insert({
-      first_name: params.firstName,
-      last_name: lastNameTrimmed ?? null,
-      mobile_number: standardizedPhone,
-      mobile_e164: standardizedPhone,
-      email: emailLower ?? null,
-      sms_opt_in: true,
-      sms_status: 'active',
-      marketing_sms_opt_in: false,
-      whatsapp_opt_in: true,
-      whatsapp_status: 'active',
-      marketing_whatsapp_opt_in: false,
-      marketing_email_opt_in: false
-    })
-    .select()
-    .single()
+  const newCustomerRow = {
+    first_name: params.firstName,
+    last_name: lastNameTrimmed ?? null,
+    mobile_number: standardizedPhone,
+    mobile_e164: standardizedPhone,
+    email: emailLower ?? null,
+    sms_opt_in: true,
+    sms_status: 'active',
+    marketing_sms_opt_in: false,
+    whatsapp_opt_in: true,
+    whatsapp_status: 'active',
+    marketing_whatsapp_opt_in: false,
+    marketing_email_opt_in: false
+  }
+  const insertCustomer = (row: typeof newCustomerRow) =>
+    supabase.from('customers').insert(row).select().single()
 
-  if (insertError) {
-    const pgError = insertError as { code?: string; message?: string }
-    if (pgError?.code === '23505') {
-      try {
-        const concurrentCustomer = await lookupCustomerByPhone(supabase, standardizedPhone, variants)
-        if (concurrentCustomer?.id) {
-          return {
-            id: concurrentCustomer.id as string,
-            first_name: concurrentCustomer.first_name as string,
-            last_name: (concurrentCustomer.last_name as string | null) ?? undefined,
-            mobile_number:
-              (concurrentCustomer.mobile_number as string | null) || standardizedPhone,
-            email: (concurrentCustomer.email as string | null) ?? undefined
-          }
-        }
-      } catch (concurrentLookupError) {
-        console.error('Failed to load concurrently-created customer', concurrentLookupError)
-      }
+  let created = await insertCustomer(newCustomerRow)
 
-      const fallbackLookup = await supabase
-        .from('customers')
-        .select('*')
-        .in('mobile_number', variants)
-        .order('created_at', { ascending: true })
-        .limit(1)
-
-      if (fallbackLookup.error) {
-        console.error('Failed fallback lookup for concurrently-created customer', fallbackLookup.error)
-      } else if (fallbackLookup.data && fallbackLookup.data.length > 0) {
-        const fallbackCustomer = fallbackLookup.data[0] as CustomerLookupRow
-        return {
-          id: fallbackCustomer.id as string,
-          first_name: fallbackCustomer.first_name as string,
-          last_name: (fallbackCustomer.last_name as string | null) ?? undefined,
-          mobile_number: (fallbackCustomer.mobile_number as string | null) || standardizedPhone,
-          email: (fallbackCustomer.email as string | null) ?? undefined
-        }
-      }
+  if (isUniqueViolation(created.error)) {
+    const concurrentCustomer = await findConcurrentlyCreatedCustomer(supabase, standardizedPhone, variants)
+    if (concurrentCustomer) {
+      return concurrentCustomer
     }
 
-    console.error('Failed to create customer', insertError)
+    // Nobody has this mobile. A clash on the email index means the typed email
+    // is on another customer's record, which is left as it is. Booking under
+    // that customer would put their stored mobile on the booking, so the
+    // guest's texts would go to someone else's number, and the parking_bookings
+    // trigger would copy their name across. The mobile gets a customer of its
+    // own without the email, and the booking still carries the typed email.
+    // Until 19 October 2026 this threw and the website told the guest to phone.
+    if (emailLower && violatesCustomerEmailIndex(created.error)) {
+      created = await insertCustomer({ ...newCustomerRow, email: null })
+
+      if (isUniqueViolation(created.error)) {
+        const racedCustomer = await findConcurrentlyCreatedCustomer(supabase, standardizedPhone, variants)
+        if (racedCustomer) {
+          return racedCustomer
+        }
+      } else if (!created.error) {
+        console.warn('Parking customer created without the typed email, which is on another customer', {
+          customerId: created.data?.id
+        })
+      }
+    }
+  }
+
+  if (created.error) {
+    console.error('Failed to create customer', created.error)
     throw new Error('Failed to create customer')
   }
 
+  const newCustomer = created.data
   return {
     id: newCustomer!.id as string,
     first_name: newCustomer!.first_name as string,
