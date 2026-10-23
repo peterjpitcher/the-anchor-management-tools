@@ -735,6 +735,13 @@ export class ShortLinkService {
     const channel: ShortLinkVariantChannel = data.channel ?? 'meta_ads';
     const namePrefix = channel === 'facebook_post' ? 'Facebook post' : 'Meta ad';
     const utmContent = data.utm_content.trim().toLowerCase();
+    // With the parent's own utm_content the variant would lead exactly where the parent does,
+    // create_short_link would hand back the parent's row, and the writes below would relabel the
+    // event's own link as a variant of itself (review finding on #244).
+    const parentUtmContent = new URL(parent.destination_url).searchParams.get('utm_content')?.trim().toLowerCase();
+    if (parentUtmContent === utmContent) {
+      throw new Error('A variant needs a utm_content different from its parent link');
+    }
     const destinationUrl = withUtmContent(data.destination_url || parent.destination_url, utmContent);
     assertAllowedShortLinkDestination(destinationUrl);
     const metadata = {
@@ -805,6 +812,24 @@ export class ShortLinkService {
     if (createError) throw new Error(createError.message || 'Failed to create short link variant');
 
     const shortCode = (result as Record<string, unknown>)?.short_code as string;
+    // create_short_link reuses any link with the same destination. Write only to a row that is
+    // this variant (made just now with the metadata above); never to the parent or another link.
+    const { data: landed, error: landedError } = await supabase
+      .from('short_links')
+      .select('id, short_code, metadata')
+      .eq('short_code', shortCode)
+      .maybeSingle();
+    if (landedError) throw new Error('Failed to check the new short link variant');
+    const landedMetadata = ((landed as { metadata?: Record<string, any> | null } | null)?.metadata ?? {}) as Record<string, any>;
+    if (
+      !landed ||
+      normalizeShortCode(shortCode) === normalizeShortCode(parent.short_code) ||
+      landedMetadata.utm_variant !== true ||
+      landedMetadata.parent_short_code !== parent.short_code ||
+      landedMetadata.utm_content !== utmContent
+    ) {
+      throw new Error('A variant would reuse another short link');
+    }
     await settleWrite(
       supabase
         .from('short_links')

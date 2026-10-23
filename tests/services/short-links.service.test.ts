@@ -486,3 +486,84 @@ describe('ShortLinkService.findEventIdForShortCode', () => {
     await expect(ShortLinkService.findEventIdForShortCode('missing')).resolves.toBeNull()
   })
 })
+
+describe('ShortLinkService.getOrCreateShortLinkVariantInternal never turns another link into a variant', () => {
+  const PARENT = {
+    id: 'parent-fb',
+    short_code: 'fbabc1',
+    destination_url: 'https://www.the-anchor.pub/events/music-bingo?utm_source=facebook&utm_medium=social&utm_content=facebook_main',
+    link_type: 'promotion',
+    expires_at: null,
+    metadata: { event_id: 'evt-1', channel: 'facebook' },
+  }
+
+  /** Answers each query in order: parent, existing variants, then the row create_short_link landed on. */
+  function creationClient(landedRow: unknown, rpcCode = 'fp0009') {
+    const answers: unknown[] = [
+      { data: PARENT, error: null },
+      { data: [], error: null },
+      { data: landedRow, error: null },
+      { data: null, error: null },
+      { data: { id: 'new-variant' }, error: null },
+    ]
+    const updates: unknown[] = []
+    function query() {
+      const chain: object = new Proxy({}, {
+        get(_target, property) {
+          if (property === 'then') {
+            const answer = answers.shift() ?? { data: null, error: null }
+            return (resolve: (value: unknown) => unknown) => resolve(answer)
+          }
+          return (...args: unknown[]) => {
+            if (property === 'update') updates.push(args[0])
+            return chain
+          }
+        },
+      })
+      return chain
+    }
+    const rpc = vi.fn(() => ({ single: async () => ({ data: { short_code: rpcCode }, error: null }) }))
+    return { client: { from: vi.fn(() => query()), rpc }, updates, rpc }
+  }
+
+  it("refuses the parent's own utm_content, before creating anything", async () => {
+    const { client, rpc, updates } = creationClient(null)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({
+      parent_short_code: 'fbabc1',
+      utm_content: 'FACEBOOK_MAIN',
+      channel: 'facebook_post',
+    })).rejects.toThrow('A variant needs a utm_content different from its parent link')
+    expect(rpc).not.toHaveBeenCalled()
+    expect(updates).toEqual([])
+  })
+
+  it('never writes to the parent or another link that create_short_link hands back', async () => {
+    const parentReused = creationClient({ id: 'parent-fb', short_code: 'fbabc1', metadata: PARENT.metadata }, 'fbabc1')
+    ;(createAdminClient as unknown as Mock).mockReturnValue(parentReused.client)
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' }))
+      .rejects.toThrow('A variant would reuse another short link')
+    expect(parentReused.updates).toEqual([])
+
+    const otherReused = creationClient({ id: 'other', short_code: 'zz0001', metadata: { channel: 'poster' } }, 'zz0001')
+    ;(createAdminClient as unknown as Mock).mockReturnValue(otherReused.client)
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' }))
+      .rejects.toThrow('A variant would reuse another short link')
+    expect(otherReused.updates).toEqual([])
+  })
+
+  it('links a freshly made variant to its parent', async () => {
+    const fresh = creationClient({
+      id: 'new-variant',
+      short_code: 'fp0009',
+      metadata: { channel: 'facebook_post', utm_variant: true, parent_short_code: 'fbabc1', utm_content: 'post_1' },
+    })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(fresh.client)
+
+    const result = await ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' })
+
+    expect(result).toMatchObject({ short_code: 'fp0009', already_exists: false })
+    expect(fresh.updates[0]).toMatchObject({ parent_link_id: 'parent-fb', name: 'Facebook post post_1' })
+  })
+})
