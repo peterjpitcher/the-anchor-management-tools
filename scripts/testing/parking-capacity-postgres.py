@@ -9,6 +9,10 @@ the same races end with one booking refused, while payments, cancellations, shor
 and late payments still go through on a car park that staff overrides have filled past its limit. It also
 checks that a rolled-back run changes nothing, that the function keeps its settings and grants,
 and that the rollback restores the old definition exactly.
+
+Then the forward fix runs: before it, a cancelled booking could be confirmed onto full dates
+through the late-payment exception; after it, only a lapsed booking skips the check, and the rest
+of the run (moves, payments, races) passes on the fixed function.
 """
 import os
 from pathlib import Path
@@ -20,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
 MIGRATION = MIGRATIONS / '20261023162908_parking_last_space_capacity.sql'
+# Limits the late-payment exception to a lapsed booking (Codex review of PR 241).
+FIX = MIGRATIONS / '20261023171329_parking_late_payment_bypass_expired_only.sql'
 CHECK_SOURCE = MIGRATIONS / '20260811120000_parking_capacity_half_open.sql'
 OLD_SOURCE = MIGRATIONS / '20260517000000_fix_parking_toctou.sql'
 
@@ -204,6 +210,7 @@ def main():
             check(definition() == original_body and settings() == original_settings, 'a rolled-back run changes nothing')
 
             sql(MIGRATION.read_text())
+            applied_body = definition()
             check(definition() != original_body, 'the migration replaces the function')
             check(settings() == original_settings, 'search_path, SECURITY INVOKER and grants are unchanged')
             holds("(SELECT count(*) FROM pg_proc WHERE proname = 'enforce_parking_capacity') = 1", 'still one function')
@@ -244,6 +251,22 @@ def main():
             # Claiming a space again (3 of 3 held now).
             check(refused(update('existing-1', "status = 'pending_payment'")),
                   'new: a cancelled booking cannot be reopened onto full dates')
+
+            # The late-payment exception never looked at the old status.
+            confirm_cancelled = update('existing-1', "status = 'confirmed', payment_status = 'paid'")
+            check(sql('BEGIN;' + confirm_cancelled
+                      + "SELECT status::text FROM public.parking_bookings WHERE notes = 'existing-1'; ROLLBACK;")
+                  == 'confirmed', 'new: a cancelled booking can still be confirmed onto full dates (the gap)')
+            sql(FIX.read_text())
+            check(definition() not in (original_body, applied_body), 'fix: the forward fix replaces the function')
+            check(settings() == original_settings, 'fix: search_path, SECURITY INVOKER and grants are unchanged')
+            check(sql("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'trg_enforce_parking_capacity';")
+                  == trigger_def, 'fix: the trigger is untouched')
+            check(refused(confirm_cancelled), 'fix: a cancelled booking cannot be confirmed onto full dates')
+            sql(insert(INSIDE, 'finished', status='completed'))
+            check(refused(update('finished', "status = 'confirmed'")),
+                  'fix: a completed booking cannot be confirmed again onto full dates')
+
             sql(insert(INSIDE, 'lapsed', status='expired'))
             sql(update('lapsed', "status = 'confirmed', payment_status = 'paid'"))
             holds("(SELECT status::text FROM public.parking_bookings WHERE notes = 'lapsed') = 'confirmed'",
@@ -263,6 +286,11 @@ def main():
                   'new: an overlapping booking on other days now queues for the same lock and is refused')
             holds(f'{active(INSIDE)} = 3', 'new: the car park ends at capacity after the overlapping race')
             check(race(FREE, b_waits=True) == 'booked', 'new: a booking with room waits its turn and goes in')
+
+            # Rolling the fix back is re-running the capacity migration.
+            sql(MIGRATION.read_text())
+            check(definition() == applied_body and settings() == original_settings,
+                  'fix rollback: re-running 20261023162908 restores the applied definition')
 
             # Rollback restores production's definition exactly.
             sql(old_definition())
