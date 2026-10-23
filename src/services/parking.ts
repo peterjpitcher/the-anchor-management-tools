@@ -119,7 +119,7 @@ export async function createPendingParkingBooking(
   // not the guard: two requests at once can both pass it. The guard is the
   // enforce_parking_capacity trigger on parking_bookings, which queues every claim on a space
   // behind one lock and refuses the insert, in these same words, when none is left (PK-1,
-  // closed by migration 20261020001531_parking_last_space_capacity).
+  // closed by migration 20261023162908_parking_last_space_capacity).
   if (!input.capacityOverride) {
     const capacity = await checkParkingCapacity(input.startAt, input.endAt)
     if (capacity.remaining <= 0) {

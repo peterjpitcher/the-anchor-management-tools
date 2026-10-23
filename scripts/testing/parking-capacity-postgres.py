@@ -19,7 +19,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261020001531_parking_last_space_capacity.sql'
+MIGRATION = MIGRATIONS / '20261023162908_parking_last_space_capacity.sql'
 CHECK_SOURCE = MIGRATIONS / '20260811120000_parking_capacity_half_open.sql'
 OLD_SOURCE = MIGRATIONS / '20260517000000_fix_parking_toctou.sql'
 
