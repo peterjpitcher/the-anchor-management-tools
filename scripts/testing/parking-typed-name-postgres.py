@@ -17,7 +17,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261023163653_parking_booking_keeps_typed_name.sql'
+MIGRATION = MIGRATIONS / '20261023171307_parking_booking_keeps_typed_name.sql'
 OLD_SOURCE = MIGRATIONS / '20260725020000_parking_bookings_customer_relink_sync.sql'
 
 SETUP = """
