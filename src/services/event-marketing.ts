@@ -11,6 +11,7 @@ import {
   type EventMarketingLinkPayload,
 } from '@/lib/event-marketing-links';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { isShortLinkVariant } from '@/lib/short-links/variants';
 import { isEventPromoTemplateKey } from '@/lib/sms/promo-template-keys';
 import QRCode from 'qrcode';
 
@@ -452,6 +453,9 @@ export class EventMarketingService {
 
     const existingByChannel = new Map<EventMarketingChannelKey, ExistingShortLink>();
     for (const link of existingLinks || []) {
+      // A per-ad or per-post variant shares the event id and, for ads, the channel; taking it for
+      // the event's own link would repoint it and strip its utm_content.
+      if (isShortLinkVariant(link)) continue;
       const channelKey = link.metadata?.channel as EventMarketingChannelKey | undefined;
       if (channelKey) {
         existingByChannel.set(channelKey, link as ExistingShortLink);
@@ -608,9 +612,8 @@ export class EventMarketingService {
       throw new Error('Failed to check for existing marketing link');
     }
 
-    const existing = (existingLinks && existingLinks.length > 0)
-      ? existingLinks[0] as ExistingShortLink
-      : null;
+    // The event's own link for the channel, never a per-ad or per-post variant of it.
+    const existing = ((existingLinks ?? []).find((link) => !isShortLinkVariant(link)) as ExistingShortLink | undefined) ?? null;
 
     const record = existing ?? await insertShortLinkWithRetries(event, payload, metadata);
     const shortUrl = buildShortLinkUrl(record.short_code);

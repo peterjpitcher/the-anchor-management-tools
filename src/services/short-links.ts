@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import { assertAllowedShortLinkDestination } from '@/lib/short-links/destination-allowlist';
 import { resolveShortLinkName } from '@/lib/short-links/names';
+import type { ShortLinkVariantChannel } from '@/lib/short-links/variants';
 import {
   SHORT_LINK_INSIGHTS_TIMEZONE,
   type ShortLinkInsightsGranularity,
@@ -405,6 +406,13 @@ export class ShortLinkService {
     return data;
   }
 
+  /** The event a short link was made for (its own link or a variant of it), or null. */
+  static async findEventIdForShortCode(shortCode: string): Promise<string | null> {
+    const link = await this.findShortLinkByShortCode(createAdminClient(), shortCode);
+    const eventId = link?.metadata?.event_id;
+    return typeof eventId === 'string' && eventId.trim() ? eventId : null;
+  }
+
   private static async findShortLinkByShortCode(
     supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
     shortCode: string
@@ -698,12 +706,19 @@ export class ShortLinkService {
     };
   }
 
+  /**
+   * A variant of a short link that differs only by `utm_content`: one per ad (`meta_ads`, the
+   * default) or one per organic social post (`facebook_post`, CheersAI's per-post links). A
+   * variant carries `utm_variant: true`, so the event's own link for its channel is never
+   * mistaken for it.
+   */
   static async getOrCreateShortLinkVariantInternal(data: {
     parent_short_code: string;
     destination_url?: string;
     utm_content: string;
     name?: string;
     metadata?: Record<string, any>;
+    channel?: ShortLinkVariantChannel;
   }): Promise<{
     id: string;
     short_code: string;
@@ -717,6 +732,8 @@ export class ShortLinkService {
       throw new Error('Parent short link not found');
     }
 
+    const channel: ShortLinkVariantChannel = data.channel ?? 'meta_ads';
+    const namePrefix = channel === 'facebook_post' ? 'Facebook post' : 'Meta ad';
     const utmContent = data.utm_content.trim().toLowerCase();
     const destinationUrl = withUtmContent(data.destination_url || parent.destination_url, utmContent);
     assertAllowedShortLinkDestination(destinationUrl);
@@ -728,7 +745,7 @@ export class ShortLinkService {
       // then either block a legitimate variant or miss a real duplicate.
       ...(data.metadata || {}),
       ...(parent.metadata?.event_id ? { event_id: parent.metadata.event_id } : {}),
-      channel: 'meta_ads',
+      channel,
       parent_link_id: parent.id,
       parent_short_code: parent.short_code,
       utm_variant: true,
@@ -739,7 +756,7 @@ export class ShortLinkService {
       .from('short_links')
       .select('id, short_code, destination_url, metadata')
       .eq('parent_link_id', parent.id)
-      .contains('metadata', { channel: 'meta_ads', utm_content: utmContent });
+      .contains('metadata', { channel, utm_content: utmContent });
 
     if (existingError) throw new Error('Failed to check for existing short link variant');
 
@@ -755,7 +772,7 @@ export class ShortLinkService {
             .update({
               destination_url: destinationUrl,
               metadata: { ...(existing.metadata || {}), ...metadata },
-              name: data.name || `Meta ad ${utmContent}`,
+              name: data.name || `${namePrefix} ${utmContent}`,
               updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id),
@@ -793,7 +810,7 @@ export class ShortLinkService {
         .from('short_links')
         .update({
           parent_link_id: parent.id,
-          name: data.name || `Meta ad ${utmContent}`,
+          name: data.name || `${namePrefix} ${utmContent}`,
           metadata,
         })
         .eq('short_code', shortCode),
