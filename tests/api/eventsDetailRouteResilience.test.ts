@@ -27,7 +27,7 @@ function buildSupabaseMock(options: {
     short_code: string
     destination_url?: string | null
     updated_at: string | null
-    metadata: { channel?: string | null } | null
+    metadata: { channel?: string | null; utm_variant?: boolean | null; utm_content?: string | null } | null
   }>
 }) {
   const eventFound = options.eventFound ?? true
@@ -273,5 +273,29 @@ describe('events detail route resilience', () => {
       game_sheet: 'https://l.the-anchor.pub/gcabc1',
       in_game_screen: 'https://l.the-anchor.pub/scabc1',
     })
+  })
+
+  it('never hands out a per-ad or per-post variant as the event link, however recent', async () => {
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
+      buildSupabaseMock({
+        shortLinksRows: [
+          { short_code: 'fbabc1', updated_at: '2026-02-10T10:00:00.000Z', metadata: { channel: 'facebook' } },
+          { short_code: 'maabc1', updated_at: '2026-02-12T10:00:00.000Z', metadata: { channel: 'meta_ads' } },
+          // Newer variants: a per-ad link and a CheersAI per-post link.
+          { short_code: 'mv0001', updated_at: '2026-03-01T10:00:00.000Z', metadata: { channel: 'meta_ads', utm_variant: true, utm_content: 'ad_one' } },
+          { short_code: 'fp0001', updated_at: '2026-03-02T10:00:00.000Z', metadata: { channel: 'facebook_post', utm_variant: true, utm_content: 'cheers_post_1' } },
+        ],
+      })
+    )
+
+    const response = await GET(new Request('http://localhost/api/events/evt-1') as any, {
+      params: Promise.resolve({ id: 'evt-1' }),
+    })
+    const payload = await response.json()
+    expect(payload.data.facebookShortLink).toBe('https://l.the-anchor.pub/fbabc1')
+    expect(payload.data.metaAdsShortLink).toBe('https://l.the-anchor.pub/maabc1')
+    expect(payload.data.marketing_short_links).not.toHaveProperty('facebook_post')
+    expect(JSON.stringify(payload.data)).not.toContain('mv0001')
+    expect(JSON.stringify(payload.data)).not.toContain('fp0001')
   })
 })
