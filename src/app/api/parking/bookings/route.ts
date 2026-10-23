@@ -347,8 +347,10 @@ export async function POST(request: NextRequest) {
             )
           }
         } catch (serviceError) {
-          const message = serviceError instanceof Error ? serviceError.message : 'Failed to create parking booking'
-          const mappedError = mapParkingCreateError(message)
+          // A database refusal is a plain object, not an Error (see toLoggableError), so read its
+          // message too. The capacity trigger's refusal of the second of two guests booking the
+          // last space at once must answer 409 like the service's own check, not 500.
+          const mappedError = mapParkingCreateError(toLoggableError(serviceError).message)
           if (mappedError) {
             return mappedError
           }
