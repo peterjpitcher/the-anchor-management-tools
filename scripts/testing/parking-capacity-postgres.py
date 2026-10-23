@@ -25,7 +25,7 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
 MIGRATION = MIGRATIONS / '20261023162908_parking_last_space_capacity.sql'
 # Limits the late-payment exception to a lapsed booking (Codex review of PR 241).
-FIX = MIGRATIONS / '20261023165724_parking_late_payment_bypass_expired_only.sql'
+FIX = MIGRATIONS / '20261023171329_parking_late_payment_bypass_expired_only.sql'
 CHECK_SOURCE = MIGRATIONS / '20260811120000_parking_capacity_half_open.sql'
 OLD_SOURCE = MIGRATIONS / '20260517000000_fix_parking_toctou.sql'
 
