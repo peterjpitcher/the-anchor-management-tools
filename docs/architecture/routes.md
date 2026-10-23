@@ -134,6 +134,7 @@ Auth legend: **session** = `auth.getUser()`; **rbac** = `checkUserPermission`; *
 | `/api/external/table-bookings/[id]/paypal/create-order` · `/capture-order` | POST | `src/app/api/external/table-bookings/[id]/paypal/*/route.ts` |
 | `/api/marketing/event-booking-conversions` | GET, OPTIONS | `src/app/api/marketing/event-booking-conversions/route.ts` |
 | `/api/marketing/meta-ads-link` | POST, OPTIONS | `src/app/api/marketing/meta-ads-link/route.ts` |
+| `/api/marketing/social-post-links` | POST, OPTIONS | `src/app/api/marketing/social-post-links/route.ts` |
 | `/api/menu`, `/api/menu/dietary/[type]`, `/api/menu/specials`, `/api/menu/sunday-lunch` | GET, OPTIONS | `src/app/api/menu/**/route.ts` |
 | `/api/parking/availability`, `/api/parking/rates`, `/api/parking/bookings`, `/api/parking/bookings/[id]`, `/api/parking/payment/capture` | GET / POST | `src/app/api/parking/**/route.ts` |
 | `/api/recruitment/applications` | POST, OPTIONS (+ratelimit) | `src/app/api/recruitment/applications/route.ts` |

@@ -385,3 +385,185 @@ describe('ShortLinkService.getOrCreateShortLinkVariantInternal repointing an exi
     expect(result.destination_url).toContain('utm_content=ad_one')
   })
 })
+
+describe('ShortLinkService.getOrCreateShortLinkVariantInternal for a Facebook post', () => {
+  const PARENT = {
+    id: 'parent-fb',
+    short_code: 'fbabc1',
+    destination_url: 'https://www.the-anchor.pub/events/music-bingo?utm_source=facebook&utm_medium=social&utm_campaign=music-bingo&utm_content=facebook_main',
+    link_type: 'promotion',
+    expires_at: null,
+    metadata: { event_id: 'evt-1', channel: 'facebook' },
+  }
+
+  /** Records the existing-variant lookup and the repoint, and finds one existing post variant. */
+  function postClient() {
+    const lookups: unknown[] = []
+    const updates: unknown[] = []
+    function query() {
+      const methods: string[] = []
+      const chain: object = new Proxy({}, {
+        get(_target, property) {
+          if (property === 'then') {
+            const result = methods.includes('maybeSingle')
+              ? { data: PARENT, error: null }
+              : methods.includes('contains')
+                ? { data: [{ id: 'variant-fb', short_code: 'fp0001', destination_url: 'https://www.the-anchor.pub/events/old', metadata: { channel: 'facebook_post', utm_content: 'cheers_post_1' } }], error: null }
+                : { data: null, error: null }
+            return (resolve: (value: unknown) => unknown) => resolve(result)
+          }
+          return (...args: unknown[]) => {
+            methods.push(String(property))
+            if (property === 'contains') lookups.push(args[1])
+            if (property === 'update') updates.push(args[0])
+            return chain
+          }
+        },
+      })
+      return chain
+    }
+    return { client: { from: vi.fn(() => query()), rpc: vi.fn() }, lookups, updates }
+  }
+
+  it('looks for and labels the variant as a Facebook post, keeping the parent UTMs', async () => {
+    const { client, lookups, updates } = postClient()
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await ShortLinkService.getOrCreateShortLinkVariantInternal({
+      parent_short_code: 'fbabc1',
+      utm_content: 'cheers_post_1',
+      channel: 'facebook_post',
+    })
+
+    expect(lookups).toEqual([{ channel: 'facebook_post', utm_content: 'cheers_post_1' }])
+    expect(updates[0]).toMatchObject({
+      name: 'Facebook post cheers_post_1',
+      metadata: expect.objectContaining({ channel: 'facebook_post', utm_variant: true, event_id: 'evt-1', utm_content: 'cheers_post_1' }),
+    })
+    expect(result.destination_url).toContain('utm_source=facebook')
+    expect(result.destination_url).toContain('utm_campaign=music-bingo')
+    expect(result.destination_url).toContain('utm_content=cheers_post_1')
+    expect(result.destination_url).not.toContain('facebook_main')
+  })
+
+  it('still makes Meta ad variants by default', async () => {
+    const { client, lookups } = postClient()
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    await ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'ad_one' })
+
+    expect(lookups).toEqual([{ channel: 'meta_ads', utm_content: 'ad_one' }])
+  })
+})
+
+describe('ShortLinkService.findEventIdForShortCode', () => {
+  function lookupClient(row: unknown) {
+    const eqCalls: unknown[][] = []
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn((...args: unknown[]) => {
+        eqCalls.push(args)
+        return chain
+      }),
+      maybeSingle: vi.fn(async () => ({ data: row, error: null })),
+    }
+    return { client: { from: vi.fn(() => chain) }, eqCalls }
+  }
+
+  it("returns the event a link was made for, from the link's code", async () => {
+    const { client, eqCalls } = lookupClient({ id: 'l1', short_code: 'fb6e761f', metadata: { event_id: 'evt-1', channel: 'facebook' } })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    await expect(ShortLinkService.findEventIdForShortCode('/FB6E761F')).resolves.toBe('evt-1')
+    expect(eqCalls).toEqual([['short_code', 'fb6e761f']])
+  })
+
+  it('returns null for a link with no event, or no link at all', async () => {
+    ;(createAdminClient as unknown as Mock).mockReturnValue(lookupClient({ id: 'l2', short_code: 'abc', metadata: { channel: 'poster' } }).client)
+    await expect(ShortLinkService.findEventIdForShortCode('abc')).resolves.toBeNull()
+
+    ;(createAdminClient as unknown as Mock).mockReturnValue(lookupClient(null).client)
+    await expect(ShortLinkService.findEventIdForShortCode('missing')).resolves.toBeNull()
+  })
+})
+
+describe('ShortLinkService.getOrCreateShortLinkVariantInternal never turns another link into a variant', () => {
+  const PARENT = {
+    id: 'parent-fb',
+    short_code: 'fbabc1',
+    destination_url: 'https://www.the-anchor.pub/events/music-bingo?utm_source=facebook&utm_medium=social&utm_content=facebook_main',
+    link_type: 'promotion',
+    expires_at: null,
+    metadata: { event_id: 'evt-1', channel: 'facebook' },
+  }
+
+  /** Answers each query in order: parent, existing variants, then the row create_short_link landed on. */
+  function creationClient(landedRow: unknown, rpcCode = 'fp0009') {
+    const answers: unknown[] = [
+      { data: PARENT, error: null },
+      { data: [], error: null },
+      { data: landedRow, error: null },
+      { data: null, error: null },
+      { data: { id: 'new-variant' }, error: null },
+    ]
+    const updates: unknown[] = []
+    function query() {
+      const chain: object = new Proxy({}, {
+        get(_target, property) {
+          if (property === 'then') {
+            const answer = answers.shift() ?? { data: null, error: null }
+            return (resolve: (value: unknown) => unknown) => resolve(answer)
+          }
+          return (...args: unknown[]) => {
+            if (property === 'update') updates.push(args[0])
+            return chain
+          }
+        },
+      })
+      return chain
+    }
+    const rpc = vi.fn(() => ({ single: async () => ({ data: { short_code: rpcCode }, error: null }) }))
+    return { client: { from: vi.fn(() => query()), rpc }, updates, rpc }
+  }
+
+  it("refuses the parent's own utm_content, before creating anything", async () => {
+    const { client, rpc, updates } = creationClient(null)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({
+      parent_short_code: 'fbabc1',
+      utm_content: 'FACEBOOK_MAIN',
+      channel: 'facebook_post',
+    })).rejects.toThrow('A variant needs a utm_content different from its parent link')
+    expect(rpc).not.toHaveBeenCalled()
+    expect(updates).toEqual([])
+  })
+
+  it('never writes to the parent or another link that create_short_link hands back', async () => {
+    const parentReused = creationClient({ id: 'parent-fb', short_code: 'fbabc1', metadata: PARENT.metadata }, 'fbabc1')
+    ;(createAdminClient as unknown as Mock).mockReturnValue(parentReused.client)
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' }))
+      .rejects.toThrow('A variant would reuse another short link')
+    expect(parentReused.updates).toEqual([])
+
+    const otherReused = creationClient({ id: 'other', short_code: 'zz0001', metadata: { channel: 'poster' } }, 'zz0001')
+    ;(createAdminClient as unknown as Mock).mockReturnValue(otherReused.client)
+    await expect(ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' }))
+      .rejects.toThrow('A variant would reuse another short link')
+    expect(otherReused.updates).toEqual([])
+  })
+
+  it('links a freshly made variant to its parent', async () => {
+    const fresh = creationClient({
+      id: 'new-variant',
+      short_code: 'fp0009',
+      metadata: { channel: 'facebook_post', utm_variant: true, parent_short_code: 'fbabc1', utm_content: 'post_1' },
+    })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(fresh.client)
+
+    const result = await ShortLinkService.getOrCreateShortLinkVariantInternal({ parent_short_code: 'fbabc1', utm_content: 'post_1', channel: 'facebook_post' })
+
+    expect(result).toMatchObject({ short_code: 'fp0009', already_exists: false })
+    expect(fresh.updates[0]).toMatchObject({ parent_link_id: 'parent-fb', name: 'Facebook post post_1' })
+  })
+})
