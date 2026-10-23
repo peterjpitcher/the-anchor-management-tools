@@ -16,6 +16,19 @@ import type { ParkingRateConfig } from '@/lib/parking/pricing'
 import { createPendingParkingBooking } from '@/services/parking'
 import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
+/**
+ * The capacity trigger's refusal, worded for staff, or null for any other failure. It refuses
+ * an edit that moves or lengthens a booking onto full dates, and a Payment Link that reopens a
+ * lapsed booking whose space has gone. It arrives as a plain database error, which these
+ * actions used to answer with only "Failed to ...".
+ */
+function parkingCapacityRefusal(error: unknown): string | null {
+  const message = (error as { message?: unknown } | null)?.message
+  return typeof message === 'string' && message.includes('No parking spaces remaining')
+    ? 'No parking spaces are free for these dates. Tick capacity override on the booking to go past the limit.'
+    : null
+}
+
 const CreateParkingBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
   customer_last_name: z.string().optional().transform((value) => value?.trim() || undefined),
@@ -606,7 +619,7 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
     return { success: true, booking: updated }
   } catch (error) {
     console.error('Failed to update parking booking details', error)
-    return { error: 'Failed to update parking booking' }
+    return { error: parkingCapacityRefusal(error) ?? 'Failed to update parking booking' }
   }
 }
 
@@ -829,7 +842,7 @@ export async function generateParkingPaymentLink(bookingId: string) {
     return { success: true, approveUrl }
   } catch (error) {
     console.error('Failed to generate parking payment link', error)
-    return { error: 'Failed to generate payment link' }
+    return { error: parkingCapacityRefusal(error) ?? 'Failed to generate payment link' }
   }
 }
 

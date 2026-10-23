@@ -42,6 +42,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import {
+  generateParkingPaymentLink,
   markParkingBookingPaid,
   saveParkingRateConfig,
   updateParkingBookingDetails,
@@ -276,5 +277,103 @@ describe('Parking action payment mutation guards', () => {
       notes: 'summer',
       effective_from: expect.any(String),
     }))
+  })
+})
+
+// The capacity trigger refuses an edit that moves a booking onto full dates, and a Payment Link
+// that reopens a lapsed booking whose space has gone. The refusal arrives as a plain database
+// error, and both actions used to answer only "Failed to ...", which told staff nothing.
+describe('Parking actions: a capacity refusal', () => {
+  const capacityRefusal = {
+    code: 'P0001',
+    message: 'No parking spaces remaining for the selected period',
+    details: null,
+    hint: null,
+  }
+  const staffMessage = 'No parking spaces are free for these dates. Tick capacity override on the booking to go past the limit.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockedPermission.mockResolvedValue(true)
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+    })
+    mockedCreateAdminClient.mockReturnValue({})
+  })
+
+  function editForm(): FormData {
+    const formData = new FormData()
+    formData.append('customer_first_name', 'Pat')
+    formData.append('customer_mobile', '+447700900001')
+    formData.append('default_country_code', '44')
+    formData.append('vehicle_registration', 'AB12CDE')
+    formData.append('start_at', '2026-07-21T10:00:00.000Z')
+    formData.append('end_at', '2026-07-21T12:00:00.000Z')
+    return formData
+  }
+
+  it('tells staff the dates are full when an edit moves a booking onto them', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'pending_payment',
+      payment_status: 'pending',
+      start_at: '2026-07-20T10:00:00.000Z',
+      end_at: '2026-07-20T12:00:00.000Z',
+      override_price: null,
+      calculated_price: 20,
+    })
+    mockedGetActiveParkingRate.mockResolvedValue({
+      hourly_rate: 10,
+      daily_rate: 40,
+      weekly_rate: 120,
+      monthly_rate: 300,
+    })
+    mockedUpdateParkingBooking.mockRejectedValue(capacityRefusal)
+
+    const result = await updateParkingBookingDetails('booking-1', editForm())
+
+    expect(result).toEqual({ error: staffMessage })
+  })
+
+  it('keeps the general message when an edit fails for any other reason', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'pending_payment',
+      payment_status: 'pending',
+      start_at: '2026-07-20T10:00:00.000Z',
+      end_at: '2026-07-20T12:00:00.000Z',
+      override_price: null,
+      calculated_price: 20,
+    })
+    mockedGetActiveParkingRate.mockResolvedValue({
+      hourly_rate: 10,
+      daily_rate: 40,
+      weekly_rate: 120,
+      monthly_rate: 300,
+    })
+    mockedUpdateParkingBooking.mockRejectedValue({ code: '57014', message: 'canceling statement due to statement timeout' })
+
+    const result = await updateParkingBookingDetails('booking-1', editForm())
+
+    expect(result).toEqual({ error: 'Failed to update parking booking' })
+  })
+
+  it('tells staff the dates are full when Payment Link cannot reopen a lapsed booking', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'expired',
+      payment_status: 'pending',
+      payment_due_at: '2026-07-01T10:00:00.000Z',
+      start_at: '2026-07-20T10:00:00.000Z',
+      end_at: '2026-07-20T12:00:00.000Z',
+    })
+    mockedUpdateParkingBooking.mockRejectedValue(capacityRefusal)
+
+    const result = await generateParkingPaymentLink('booking-1')
+
+    expect(result).toEqual({ error: staffMessage })
   })
 })

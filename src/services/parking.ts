@@ -115,11 +115,11 @@ export async function createPendingParkingBooking(
     monthlyRate: monthly
   })
 
-  // TODO(tech-debt): TOCTOU race condition — capacity check and insert are not atomic — tracked in technical debt report PK-1
-  // Under concurrent requests, two bookings could both pass the capacity check before
-  // either inserts. For a single-pub system this is low-risk, but the proper fix is a
-  // Supabase RPC that checks capacity and inserts atomically within a transaction,
-  // or a database-level constraint (e.g. a trigger that enforces max bookings per slot).
+  // A quick refusal while there is no space, before a customer is looked up or added. It is
+  // not the guard: two requests at once can both pass it. The guard is the
+  // enforce_parking_capacity trigger on parking_bookings, which queues every claim on a space
+  // behind one lock and refuses the insert, in these same words, when none is left (PK-1,
+  // closed by migration 20261023162908_parking_last_space_capacity).
   if (!input.capacityOverride) {
     const capacity = await checkParkingCapacity(input.startAt, input.endAt)
     if (capacity.remaining <= 0) {
