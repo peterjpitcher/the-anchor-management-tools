@@ -202,6 +202,24 @@ describe('Parking action payment mutation guards', () => {
     expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
   })
 
+  // The capacity trigger lets a lapsed booking back onto full dates only because it has been
+  // paid for, so a status-only confirm (or any status but cancelled and completed) is refused
+  // before the database is touched. The parking screen only ever sends those two.
+  it.each(['confirmed', 'pending_payment', 'expired'])(
+    'refuses to set a booking to %s through the status action, before any read or write',
+    async (status) => {
+      const from = vi.fn()
+      mockedCreateAdminClient.mockReturnValue({ from })
+
+      const result = await updateParkingBookingStatus('booking-1', { status: status as never })
+
+      expect(result).toEqual({ error: 'A booking can only be cancelled or completed here' })
+      expect(mockedGetParkingBooking).not.toHaveBeenCalled()
+      expect(from).not.toHaveBeenCalled()
+      expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
+    }
+  )
+
   // Confirming one of these claims a space again, which the capacity trigger can refuse after
   // the payment row has already been written. The Mark Paid button shows only while payment is
   // pending; a direct call to the action is held to the same rule.

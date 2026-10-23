@@ -662,6 +662,14 @@ export async function updateParkingBookingStatus(
       return { error: 'You do not have permission to update parking bookings' }
     }
 
+    // Staff cancel or complete a booking here, and that is all the parking screen asks of it.
+    // Confirming one goes through Mark Paid or a payment, which also record the money: the
+    // capacity trigger lets a lapsed booking back in on full dates only because it has been
+    // paid for, so a status-only confirm must not reach it (Codex review of PR 243).
+    if (updates.status !== undefined && updates.status !== 'cancelled' && updates.status !== 'completed') {
+      return { error: 'A booking can only be cancelled or completed here' }
+    }
+
     const adminClient = createAdminClient()
 
     const existing = await getParkingBooking(bookingId, adminClient)
