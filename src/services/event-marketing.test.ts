@@ -99,10 +99,91 @@ describe('EventMarketingService.generateLinks', () => {
       )
     })
   })
+
+  it('never repoints a per-ad variant as if it were the event link', async () => {
+    const variant = {
+      id: 'sl-variant',
+      short_code: 'mv0001',
+      destination_url: 'https://www.the-anchor.pub/events/test-event?utm_source=facebook&utm_content=ad_one',
+      metadata: { event_id: mockEvent.id, channel: 'meta_ads', utm_variant: true, utm_content: 'ad_one' },
+      updated_at: null,
+    }
+    const insertMock = vi.fn().mockImplementation((row: any) => ({
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'sl-new', short_code: 'xx123456', destination_url: 'https://x', metadata: { channel: row?.metadata?.channel, utm: {} }, updated_at: null },
+        error: null,
+      }),
+    }))
+    const updateMock = vi.fn().mockReturnThis()
+    const supabaseMock = {
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: mockEvent, error: null }),
+      contains: vi.fn().mockResolvedValue({ data: [variant], error: null }),
+      insert: insertMock,
+      update: updateMock,
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    vi.mocked(createAdminClient).mockReturnValue(supabaseMock as any)
+
+    await EventMarketingService.generateLinks(mockEvent.id)
+
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ channel: 'meta_ads' }) })
+    )
+  })
 })
 
 describe('EventMarketingService.generateSingleLink', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it("returns the event's own link, never a per-post variant of it", async () => {
+    const variant = { id: 'sl-v', short_code: 'fp0001', destination_url: 'https://www.the-anchor.pub/events/test-event?utm_content=cheers_post_1', metadata: { event_id: mockEvent.id, channel: 'facebook', utm_variant: true }, updated_at: null }
+    const own = { id: 'sl-1', short_code: 'fb123456', destination_url: 'https://www.the-anchor.pub/events/test-event?utm_source=facebook', metadata: { event_id: mockEvent.id, channel: 'facebook', utm: {} }, updated_at: null }
+    const insert = vi.fn()
+    const supabaseMock = {
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValueOnce({ data: mockEvent, error: null }),
+      contains: vi.fn().mockResolvedValue({ data: [variant, own], error: null }),
+      insert,
+    }
+    vi.mocked(createAdminClient).mockReturnValue(supabaseMock as any)
+
+    const result = await EventMarketingService.generateSingleLink(mockEvent.id, 'facebook')
+
+    expect(result.shortCode).toBe('fb123456')
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it("makes the event's own link when only variants exist", async () => {
+    const variant = { id: 'sl-v', short_code: 'mv0001', destination_url: 'https://www.the-anchor.pub/events/test-event?utm_content=ad_one', metadata: { event_id: mockEvent.id, channel: 'meta_ads', utm_variant: true }, updated_at: null }
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'sl-2', short_code: 'ma654321', destination_url: 'https://www.the-anchor.pub/events/test-event?utm_source=facebook&utm_medium=paid_social', metadata: { event_id: mockEvent.id, channel: 'meta_ads', utm: {} }, updated_at: null },
+        error: null,
+      }),
+    })
+    const supabaseMock = {
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValueOnce({ data: mockEvent, error: null }),
+      contains: vi.fn().mockResolvedValue({ data: [variant], error: null }),
+      insert,
+    }
+    vi.mocked(createAdminClient).mockReturnValue(supabaseMock as any)
+
+    const result = await EventMarketingService.generateSingleLink(mockEvent.id, 'meta_ads')
+
+    expect(insert).toHaveBeenCalledOnce()
+    expect(result.shortCode).toBe('ma654321')
+  })
 
   it('returns a link for a valid on_demand channel', async () => {
     const supabaseMock = {

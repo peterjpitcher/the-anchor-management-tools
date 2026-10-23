@@ -4,6 +4,7 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 import { buildEventImageFields } from '@/lib/api/eventImageFields';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { isShortLinkVariant } from '@/lib/short-links/variants';
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { EVENT_MARKETING_CHANNEL_MAP, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links';
 import { eventTicketTypesEnabled, type EventTicketTypeDTO } from '@/lib/events/ticket-types';
@@ -45,6 +46,7 @@ type EventShortLinkRow = {
   updated_at: string | null
   metadata: {
     channel?: string | null
+    utm_variant?: boolean | null
   } | null
 }
 
@@ -355,6 +357,10 @@ function resolveMarketingShortLinkRow(rows: EventShortLinkRow[], channel: string
         return false;
       }
       if (!row.metadata || typeof row.metadata !== 'object') {
+        return false;
+      }
+      // The event's own link only: a per-ad or per-post variant is never handed out in its place.
+      if (isShortLinkVariant(row)) {
         return false;
       }
       return row.metadata.channel === channel;
