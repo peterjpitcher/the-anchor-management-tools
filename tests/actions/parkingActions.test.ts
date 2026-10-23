@@ -202,6 +202,27 @@ describe('Parking action payment mutation guards', () => {
     expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
   })
 
+  // Confirming one of these claims a space again, which the capacity trigger can refuse after
+  // the payment row has already been written. The Mark Paid button shows only while payment is
+  // pending; a direct call to the action is held to the same rule.
+  it.each(['cancelled', 'completed'])('refuses to mark a %s booking paid, before any write', async (status) => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status,
+      override_price: null,
+      calculated_price: 45,
+      payment_status: 'pending',
+    })
+    const from = vi.fn()
+    mockedCreateAdminClient.mockReturnValue({ from })
+
+    const result = await markParkingBookingPaid('booking-1')
+
+    expect(result).toEqual({ error: `This booking is ${status}, so it cannot be marked as paid` })
+    expect(from).not.toHaveBeenCalled()
+    expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
+  })
+
   it('blocks price-affecting parking edits after payment', async () => {
     mockedGetParkingBooking.mockResolvedValue({
       id: 'booking-1',

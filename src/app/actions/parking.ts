@@ -867,6 +867,15 @@ export async function markParkingBookingPaid(bookingId: string) {
       return { error: 'Parking booking not found' }
     }
 
+    // Mark Paid settles a booking still waiting for its money. Confirming a cancelled or
+    // completed one claims a space again, which the capacity trigger can refuse, and the
+    // payment row below is written before the booking, so a refusal would leave the money
+    // recorded against a booking that stayed cancelled. The button shows only while payment
+    // is pending; this holds a direct call to the action to the same rule.
+    if (booking.status === 'cancelled' || booking.status === 'completed') {
+      return { error: `This booking is ${booking.status}, so it cannot be marked as paid` }
+    }
+
     const amount = booking.override_price ?? booking.calculated_price ?? 0
     const nowIso = new Date().toISOString()
 
