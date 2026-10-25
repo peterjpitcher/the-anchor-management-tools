@@ -8,14 +8,19 @@ payment functions start as production holds them (the rollback file). Against th
 defect: paying for a shared-seating booking reserves a table or ends in manual review. Then the
 migration runs and PayPal and manual payments confirm shared-seating bookings without a table,
 re-check seats only when the payment hold lapsed, and send the booking to manual review when
-the seats have gone. Table and general events confirm as before, the table reservation function
-refuses shared-seating events, and grants and settings are unchanged. It also checks that a
-rolled-back run changes nothing and that the rollback restores the old definitions exactly.
+the seats have gone. Two races run in parallel sessions: a booking made while a payment is being
+decided waits for it, and a payment whose transaction began before its hold lapsed, but which
+waited behind a booking that took the seats after the lapse, is judged by the clock and goes to
+review rather than overselling the table (Codex review of PR 245). Table and general events
+confirm as before, the table reservation function refuses shared-seating events, and grants and
+settings are unchanged. It also checks that a rolled-back run changes nothing and that the
+rollback restores the old definitions exactly.
 """
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
@@ -178,7 +183,119 @@ def main():
             check(f"(SELECT coalesce(sum(a.seats),0) FROM event_communal_seat_allocations a JOIN bookings b ON b.id=a.event_booking_id "
                   f"WHERE a.table_id='10000000-0000-0000-0000-000000000003' AND b.event_id='{full}' AND is_active_event_booking_for_capacity_v01(b.status,b.hold_expires_at))<=9",
                   'the shared table is never oversold')
+
+            def session(first):
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                proc.stdin.write(first); proc.stdin.flush()
+                return proc
+
+            def finish(proc, last=''):
+                out, err = proc.communicate(last)
+                if proc.returncode: raise RuntimeError(err)
+                return out
+
+            def waiting_on_lock(function):
+                return f"(SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query ILIKE '%{function}(%')=1"
+
+            def table_c_seats(event_id):
+                return (f"(SELECT coalesce(sum(a.seats),0) FROM event_communal_seat_allocations a JOIN bookings b ON b.id=a.event_booking_id "
+                        f"WHERE a.table_id='10000000-0000-0000-0000-000000000003' AND b.event_id='{event_id}' "
+                        f"AND is_active_event_booking_for_capacity_v01(b.status,b.hold_expires_at))")
+
+            # Race 1: the payment is decided while its hold is live; the hold then lapses before it
+            # commits. A booking made after the lapse must wait for the payment, then find the seats taken.
+            race = event('communal', seated=9)
+            book('held', race, 4)
+            sql(f"UPDATE bookings SET hold_expires_at=clock_timestamp()+interval '3 seconds' WHERE id={booking('held')};")
+            payer = session(f"BEGIN;\nSELECT confirm_event_paypal_payment_v01({booking('held')},'ORDER-held','CAPTURE-held',90,'GBP','paypal_capture');\n")
+            time.sleep(4)
+            rival = session(f"SELECT create_event_booking_v05('{race}',gen_random_uuid(),9,'brand_site','seated');\n")
+            time.sleep(1.5)
+            check(waiting_on_lock('create_event_booking_v05'), 'race 1: a booking made while the payment is decided waits for it')
+            finish(payer, 'COMMIT;\n')
+            rival_output = finish(rival)
+            check(f"(SELECT status FROM bookings WHERE id={booking('held')})='confirmed' AND {seats_for('held')}=4",
+                  'race 1: the payment decided before the lapse keeps its seats')
+            check(f"{table_c_seats(race)}<=9", 'race 1: the shared table is not oversold')
+            if '"pending_payment"' in rival_output or '"confirmed"' in rival_output: raise RuntimeError('FAIL race 1: the later booking was not refused: ' + rival_output)
+            print('PASS race 1: the later booking is refused')
+
+            # Race 2: the payment's transaction starts before its hold lapses, but it waits behind a
+            # booking made after the lapse that took the seats. Judged by the clock, it goes to review.
+            race2 = event('communal', seated=9)
+            book('late', race2, 4)
+            sql(f"UPDATE bookings SET hold_expires_at=clock_timestamp()+interval '2 seconds' WHERE id={booking('late')};")
+            payer = session('BEGIN;\nSELECT 1;\n')
+            time.sleep(3)
+            rival = session(f"BEGIN;\nSELECT create_event_booking_v05('{race2}',gen_random_uuid(),9,'brand_site','seated');\n")
+            time.sleep(1.5)
+            payer.stdin.write(f"SELECT confirm_event_paypal_payment_v01({booking('late')},'ORDER-late','CAPTURE-late',90,'GBP','paypal_capture');\n")
+            payer.stdin.flush()
+            time.sleep(1.5)
+            check(waiting_on_lock('confirm_event_paypal_payment_v01'), 'race 2: the payment waits for the booking holding the seats')
+            finish(rival, 'COMMIT;\n')
+            finish(payer, 'COMMIT;\n')
+            check(f"(SELECT status FROM bookings WHERE id={booking('late')})='pending_payment'", 'race 2: the payment is not confirmed onto taken seats')
+            check(f"(SELECT count(*) FROM event_payment_exceptions WHERE event_booking_id={booking('late')} AND reason='capacity_unavailable_after_capture' AND status='open')=1",
+                  'race 2: it goes to manual review with the money recorded')
+            check(f"{table_c_seats(race2)}<=9", 'race 2: the shared table is not oversold')
             sql(f"UPDATE tables SET is_bookable=true WHERE id IN ('{TABLE_A}','{TABLE_B}');")
+
+            # The event's own seat limit counts, not only the physical seats: 6 seats on sale, 49 at the tables.
+            capped = event('communal', seated=6)
+            book('capped_first', capped, 4)
+            sql(f"UPDATE bookings SET hold_expires_at=now()-interval '5 minutes' WHERE id={booking('capped_first')};")
+            book('capped_second', capped, 4)
+            paypal('capped_paid', 'capped_first')
+            check(f"{result('capped_paid')}->>'state'='manual_review' AND {result('capped_paid')}->>'table_reason'='event_full'",
+                  'a late payment that would pass the event seat limit goes to review')
+            check(f"(SELECT status FROM bookings WHERE id={booking('capped_first')})='pending_payment'", 'the over-limit booking is not confirmed')
+
+            # Standing places have a limit too (10 in the fixture).
+            standing_capped = event('communal')
+            book('standing_first', standing_capped, 6, 'standing', 'admin')
+            sql(f"UPDATE bookings SET hold_expires_at=now()-interval '5 minutes' WHERE id={booking('standing_first')};")
+            book('standing_second', standing_capped, 6, 'standing', 'admin')
+            paypal('standing_capped_paid', 'standing_first')
+            check(f"{result('standing_capped_paid')}->>'state'='manual_review' AND {result('standing_capped_paid')}->>'table_reason'='event_full'",
+                  'a late standing payment past the standing limit goes to review')
+            standing_free = event('communal')
+            book('standing_lapsed', standing_free, 2, 'standing', 'admin')
+            sql(f"UPDATE bookings SET hold_expires_at=now()-interval '5 minutes' WHERE id={booking('standing_lapsed')};")
+            paypal('standing_lapsed_paid', 'standing_lapsed')
+            check(f"{result('standing_lapsed_paid')}->>'state'='confirmed'", 'a late standing payment with room left is confirmed')
+
+            # A payment for a shared-seating event that has been cancelled goes to review, as before.
+            cancelled = event('communal')
+            book('cancelled', cancelled, 2)
+            sql(f"UPDATE events SET event_status='cancelled' WHERE id='{cancelled}';")
+            paypal('cancelled_paid', 'cancelled')
+            check(f"{result('cancelled_paid')}->>'state'='manual_review' AND {result('cancelled_paid')}->>'table_reason'='not_bookable'",
+                  'a payment for a cancelled shared-seating event goes to review')
+            manual('cancelled_cash', 'cancelled')
+            check(f"{result('cancelled_cash')}->>'state'='blocked' OR {result('cancelled_cash')}->>'state'='manual_review'",
+                  'staff cash on a cancelled shared-seating event is not confirmed')
+
+            # A deadlock with another transaction that locks tables in a different order (as a
+            # joined-table booking can) is retried: the paid booking is confirmed, not sent to review.
+            deadlock = event('communal')
+            book('deadlock', deadlock, 2)
+            deadlocks_before = int(sql('SELECT deadlocks FROM pg_stat_database WHERE datname=current_database();'))
+            other = session(f"BEGIN;\nSELECT 1 FROM tables WHERE id='10000000-0000-0000-0000-000000000003' FOR UPDATE;\n")
+            time.sleep(0.5)
+            payer = session(f"SELECT confirm_event_paypal_payment_v01({booking('deadlock')},'ORDER-deadlock','CAPTURE-deadlock',90,'GBP','paypal_capture');\n")
+            time.sleep(0.6)
+            other.stdin.write(f"SELECT 1 FROM tables WHERE id='{TABLE_A}' FOR UPDATE;\n"); other.stdin.flush()
+            time.sleep(2)
+            finish(other, 'COMMIT;\n')
+            finish(payer)
+            time.sleep(1.5)  # let the cancelled backend's statistics reach the shared counters
+            if int(sql('SELECT deadlocks FROM pg_stat_database WHERE datname=current_database();')) <= deadlocks_before:
+                raise RuntimeError('FAIL the deadlock was not reproduced')
+            print('PASS the payment really was cancelled to break a deadlock')
+            check(f"(SELECT status FROM bookings WHERE id={booking('deadlock')})='confirmed' AND {seats_for('deadlock')}=2",
+                  'a payment cancelled to break a deadlock is retried and confirmed')
+            check(f"(SELECT count(*) FROM event_payment_exceptions WHERE event_booking_id={booking('deadlock')})=0", 'the retried payment raises no review')
 
             # Table and general events are unchanged.
             table_event = event('table')

@@ -12,12 +12,19 @@
 -- takes payment online today is Tinsel & Tipples (20 November 2026), with no sales yet.
 --
 -- Now both functions reserve a table only for 'table' and 'mixed' events, matching
--- create_event_booking_v05 and src/services/event-bookings.ts. For a seated communal
--- booking they check its seats again only when the payment hold has lapsed (other
--- guests may have taken the seats) or the seats on record no longer add up; if the
--- seats cannot be found the booking goes to manual review as
--- capacity_unavailable_after_capture, an existing reason. Standing communal bookings
--- and 'general' events confirm as before.
+-- create_event_booking_v05 and src/services/event-bookings.ts. For a communal booking
+-- they lock the event row (as the table step did) and, for seated guests, every table
+-- in the order allocate_event_communal_seats_v01 uses, so no booking, seat change or
+-- table assignment can claim the seats while the payment is decided. A cancelled or
+-- draft event goes to review, as the table step sent it. When the payment hold has
+-- lapsed by the clock (other guests may have taken the seats) or the seats on record no
+-- longer add up, they check the event's own limits (get_event_capacity_snapshot_v05,
+-- seated or standing) and then find the seats again; if either fails, the booking goes
+-- to manual review as capacity_unavailable_after_capture, an existing reason. A
+-- deadlock with another booking is retried up to three times rather than sent to
+-- review. 'general' events confirm as before.
+-- (Locking, the clock check, event limits, cancelled events and the retry follow a
+-- Codex review comment and an internal review on PR 245.)
 --
 -- As a second guard, create_event_table_reservation_v05 now refuses communal events, as
 -- it already refused 'general' ones; nothing calls it for them on purpose.
@@ -51,6 +58,9 @@ DECLARE
   v_table_state text := NULL;
   v_table_reason text := NULL;
   v_exception_reason text := NULL;
+  v_event_status text;
+  v_capacity RECORD;
+  v_own_seats integer;
 BEGIN
   SELECT
     b.id,
@@ -182,36 +192,109 @@ BEGIN
           v_table_state := 'blocked';
           v_table_reason := 'no_table';
       END;
-    ELSIF v_event.booking_mode = 'communal'
-      AND v_booking.event_seating_type = 'seated'
-      AND (
-        v_booking.hold_expires_at <= v_now
-        OR COALESCE((
-          SELECT SUM(a.seats)
-          FROM public.event_communal_seat_allocations a
-          WHERE a.event_booking_id = v_booking.id
-        ), 0) <> COALESCE(v_booking.seats, 1)
-      ) THEN
-      -- Shared seating holds seats, never a whole table. Seats under a live
-      -- payment hold counted against capacity all along, so they are only checked
-      -- again when the hold lapsed (someone else may have taken them) or the seats
-      -- on record no longer match the booking.
-      BEGIN
-        v_table_result := public.reallocate_event_communal_booking_v01(
-          v_booking.id,
-          COALESCE(v_booking.seats, 1)
-        );
-        v_table_state := COALESCE(v_table_result->>'state', 'blocked');
-        v_table_reason := COALESCE(v_table_result->>'reason', NULL);
-        IF v_table_state <> 'confirmed' THEN
-          v_exception_reason := 'capacity_unavailable_after_capture';
-        END IF;
-      EXCEPTION
-        WHEN OTHERS THEN
-          v_exception_reason := 'capacity_unavailable_after_capture';
-          v_table_state := 'blocked';
-          v_table_reason := 'insufficient_seated_capacity';
-      END;
+    ELSIF v_event.booking_mode = 'communal' THEN
+      -- Shared seating holds seats, never a whole table. Lock the event row (as
+      -- the table step did, so other bookings and seat changes for this event wait)
+      -- and, for seated guests, every table in the order
+      -- allocate_event_communal_seats_v01 takes them, so nothing can claim these
+      -- seats while the payment is decided. A cancelled or draft event goes to
+      -- review, as the table step sent it. Then judge the hold by the clock, not the
+      -- transaction start: seats under a live hold counted against capacity all
+      -- along, but once it lapses another guest may have taken them, so the event's
+      -- limits and the physical seats are checked again. If Postgres cancels this
+      -- check to break a deadlock with another booking (a joined-table booking can
+      -- lock tables in a different order), the other side finishes and the check
+      -- is retried rather than sending a paid booking to review.
+      FOR v_attempt IN 1..3 LOOP
+        v_exception_reason := NULL;
+        v_table_result := NULL;
+        v_table_state := NULL;
+        v_table_reason := NULL;
+        BEGIN
+          SELECT e.event_status
+          INTO v_event_status
+          FROM public.events e
+          WHERE e.id = v_booking.event_id
+          FOR UPDATE;
+
+          IF COALESCE(v_event_status, 'scheduled') IN ('cancelled', 'draft') THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'not_bookable';
+          ELSE
+            IF v_booking.event_seating_type = 'seated' THEN
+              PERFORM 1
+              FROM public.tables t
+              WHERE (COALESCE(t.is_bookable, true) AND t.capacity > 0)
+                OR t.id IN (
+                  SELECT a.table_id
+                  FROM public.event_communal_seat_allocations a
+                  WHERE a.event_booking_id = v_booking.id
+                )
+              ORDER BY t.bar_priority ASC, t.capacity ASC,
+                COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999), t.id
+              FOR UPDATE OF t;
+            END IF;
+
+            IF v_booking.hold_expires_at <= clock_timestamp()
+              OR (
+                v_booking.event_seating_type = 'seated'
+                AND COALESCE((
+                  SELECT SUM(a.seats)
+                  FROM public.event_communal_seat_allocations a
+                  WHERE a.event_booking_id = v_booking.id
+                ), 0) <> COALESCE(v_booking.seats, 1)
+              ) THEN
+              SELECT s.seated_remaining, s.standing_remaining, s.total_remaining
+              INTO v_capacity
+              FROM public.get_event_capacity_snapshot_v05(ARRAY[v_booking.event_id]) s;
+
+              -- The snapshot judges holds by the transaction start, so it may still
+              -- count this booking; add its own seats back in that case.
+              v_own_seats := CASE
+                WHEN public.is_active_event_booking_for_capacity_v01(v_booking.status, v_booking.hold_expires_at)
+                  THEN COALESCE(v_booking.seats, 1)
+                ELSE 0
+              END;
+
+              IF COALESCE(LEAST(
+                   CASE WHEN v_booking.event_seating_type = 'standing'
+                     THEN v_capacity.standing_remaining
+                     ELSE v_capacity.seated_remaining
+                   END,
+                   v_capacity.total_remaining
+                 ), 0) + v_own_seats < COALESCE(v_booking.seats, 1) THEN
+                v_exception_reason := 'capacity_unavailable_after_capture';
+                v_table_state := 'blocked';
+                v_table_reason := 'event_full';
+              ELSIF v_booking.event_seating_type = 'seated' THEN
+                v_table_result := public.reallocate_event_communal_booking_v01(
+                  v_booking.id,
+                  COALESCE(v_booking.seats, 1)
+                );
+                v_table_state := COALESCE(v_table_result->>'state', 'blocked');
+                v_table_reason := COALESCE(v_table_result->>'reason', NULL);
+                IF v_table_state <> 'confirmed' THEN
+                  v_exception_reason := 'capacity_unavailable_after_capture';
+                END IF;
+              END IF;
+            END IF;
+          END IF;
+          EXIT;
+        EXCEPTION
+          WHEN deadlock_detected OR lock_not_available THEN
+            IF v_attempt = 3 THEN
+              v_exception_reason := 'capacity_unavailable_after_capture';
+              v_table_state := 'blocked';
+              v_table_reason := 'seat_check_' || SQLSTATE;
+            END IF;
+          WHEN OTHERS THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'seat_check_' || SQLSTATE;
+            EXIT;
+        END;
+      END LOOP;
     END IF;
   END IF;
 
@@ -330,6 +413,9 @@ DECLARE
   v_table_state text := NULL;
   v_table_reason text := NULL;
   v_exception_reason text := NULL;
+  v_event_status text;
+  v_capacity RECORD;
+  v_own_seats integer;
 BEGIN
   IF v_method IS NULL OR v_method NOT IN ('cash', 'card_terminal', 'comp') THEN
     RETURN jsonb_build_object('state', 'blocked', 'reason', 'invalid_payment_method');
@@ -436,37 +522,109 @@ BEGIN
         v_table_state := 'blocked';
         v_table_reason := 'no_table';
     END;
-  ELSIF v_exception_reason IS NULL
-    AND v_event.booking_mode = 'communal'
-    AND v_booking.event_seating_type = 'seated'
-    AND (
-      v_booking.hold_expires_at <= v_now
-      OR COALESCE((
-        SELECT SUM(a.seats)
-        FROM public.event_communal_seat_allocations a
-        WHERE a.event_booking_id = v_booking.id
-      ), 0) <> COALESCE(v_booking.seats, 1)
-    ) THEN
-    -- Shared seating holds seats, never a whole table. Seats under a live
-    -- payment hold counted against capacity all along, so they are only checked
-    -- again when the hold lapsed (someone else may have taken them) or the seats
-    -- on record no longer match the booking.
-    BEGIN
-      v_table_result := public.reallocate_event_communal_booking_v01(
-        v_booking.id,
-        COALESCE(v_booking.seats, 1)
-      );
-      v_table_state := COALESCE(v_table_result->>'state', 'blocked');
-      v_table_reason := COALESCE(v_table_result->>'reason', NULL);
-      IF v_table_state <> 'confirmed' THEN
-        v_exception_reason := 'capacity_unavailable_after_capture';
-      END IF;
-    EXCEPTION
-      WHEN OTHERS THEN
-        v_exception_reason := 'capacity_unavailable_after_capture';
-        v_table_state := 'blocked';
-        v_table_reason := 'insufficient_seated_capacity';
-    END;
+  ELSIF v_exception_reason IS NULL AND v_event.booking_mode = 'communal' THEN
+    -- Shared seating holds seats, never a whole table. Lock the event row (as
+    -- the table step did, so other bookings and seat changes for this event wait)
+    -- and, for seated guests, every table in the order
+    -- allocate_event_communal_seats_v01 takes them, so nothing can claim these
+    -- seats while the payment is decided. A cancelled or draft event goes to
+    -- review, as the table step sent it. Then judge the hold by the clock, not the
+    -- transaction start: seats under a live hold counted against capacity all
+    -- along, but once it lapses another guest may have taken them, so the event's
+    -- limits and the physical seats are checked again. If Postgres cancels this
+    -- check to break a deadlock with another booking (a joined-table booking can
+    -- lock tables in a different order), the other side finishes and the check
+    -- is retried rather than sending a paid booking to review.
+    FOR v_attempt IN 1..3 LOOP
+      v_exception_reason := NULL;
+      v_table_result := NULL;
+      v_table_state := NULL;
+      v_table_reason := NULL;
+      BEGIN
+        SELECT e.event_status
+        INTO v_event_status
+        FROM public.events e
+        WHERE e.id = v_booking.event_id
+        FOR UPDATE;
+
+        IF COALESCE(v_event_status, 'scheduled') IN ('cancelled', 'draft') THEN
+          v_exception_reason := 'capacity_unavailable_after_capture';
+          v_table_state := 'blocked';
+          v_table_reason := 'not_bookable';
+        ELSE
+          IF v_booking.event_seating_type = 'seated' THEN
+            PERFORM 1
+            FROM public.tables t
+            WHERE (COALESCE(t.is_bookable, true) AND t.capacity > 0)
+              OR t.id IN (
+                SELECT a.table_id
+                FROM public.event_communal_seat_allocations a
+                WHERE a.event_booking_id = v_booking.id
+              )
+            ORDER BY t.bar_priority ASC, t.capacity ASC,
+              COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999), t.id
+            FOR UPDATE OF t;
+          END IF;
+
+          IF v_booking.hold_expires_at <= clock_timestamp()
+            OR (
+              v_booking.event_seating_type = 'seated'
+              AND COALESCE((
+                SELECT SUM(a.seats)
+                FROM public.event_communal_seat_allocations a
+                WHERE a.event_booking_id = v_booking.id
+              ), 0) <> COALESCE(v_booking.seats, 1)
+            ) THEN
+            SELECT s.seated_remaining, s.standing_remaining, s.total_remaining
+            INTO v_capacity
+            FROM public.get_event_capacity_snapshot_v05(ARRAY[v_booking.event_id]) s;
+
+            -- The snapshot judges holds by the transaction start, so it may still
+            -- count this booking; add its own seats back in that case.
+            v_own_seats := CASE
+              WHEN public.is_active_event_booking_for_capacity_v01(v_booking.status, v_booking.hold_expires_at)
+                THEN COALESCE(v_booking.seats, 1)
+              ELSE 0
+            END;
+
+            IF COALESCE(LEAST(
+                 CASE WHEN v_booking.event_seating_type = 'standing'
+                   THEN v_capacity.standing_remaining
+                   ELSE v_capacity.seated_remaining
+                 END,
+                 v_capacity.total_remaining
+               ), 0) + v_own_seats < COALESCE(v_booking.seats, 1) THEN
+              v_exception_reason := 'capacity_unavailable_after_capture';
+              v_table_state := 'blocked';
+              v_table_reason := 'event_full';
+            ELSIF v_booking.event_seating_type = 'seated' THEN
+              v_table_result := public.reallocate_event_communal_booking_v01(
+                v_booking.id,
+                COALESCE(v_booking.seats, 1)
+              );
+              v_table_state := COALESCE(v_table_result->>'state', 'blocked');
+              v_table_reason := COALESCE(v_table_result->>'reason', NULL);
+              IF v_table_state <> 'confirmed' THEN
+                v_exception_reason := 'capacity_unavailable_after_capture';
+              END IF;
+            END IF;
+          END IF;
+        END IF;
+        EXIT;
+      EXCEPTION
+        WHEN deadlock_detected OR lock_not_available THEN
+          IF v_attempt = 3 THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'seat_check_' || SQLSTATE;
+          END IF;
+        WHEN OTHERS THEN
+          v_exception_reason := 'capacity_unavailable_after_capture';
+          v_table_state := 'blocked';
+          v_table_reason := 'seat_check_' || SQLSTATE;
+          EXIT;
+      END;
+    END LOOP;
   END IF;
 
   IF v_exception_reason IS NOT NULL THEN
