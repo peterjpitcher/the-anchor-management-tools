@@ -13,7 +13,9 @@ import {
   isCoverComplete,
   isPreorderCourse,
   isPreorderSelectionCourse,
+  loadPreorderDishTotals,
   savePreorderCover,
+  summariseChristmasTiers,
   summariseCoverAddons,
   summariseOrderAddons,
   summarisePreorderDishTotals,
@@ -388,6 +390,10 @@ describe('summarisePreorderDishTotals', () => {
       date: '2026-12-12',
       bookingCount: 0,
       coverCount: 0,
+      // Added for BK-058: tier counts, unpaid holds and withdrawn dishes, all empty on an empty day.
+      pendingPaymentBookingCount: 0,
+      christmasTiers: { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 },
+      withdrawn: [],
       byCourse: { starter: [], main: [], dessert: [] },
       addons: [],
       addonTotalGbp: 0,
@@ -700,5 +706,84 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
     })
 
     expect(heldCourses(fake)).toEqual(['dessert', 'main', 'starter'])
+  })
+})
+
+/**
+ * BK-058: the kitchen totals keep withdrawn dishes out of the counts, list them apart, and count
+ * Christmas guests by tier from the bookings themselves, because an all 1 course booking has no seats.
+ */
+describe('kitchen totals by tier', () => {
+  it('lists a withdrawn dish apart and never counts it as a plate to cook', () => {
+    const totals = summarisePreorderDishTotals({
+      date: '2026-12-12',
+      bookingCount: 1,
+      coverCount: 2,
+      selections: [
+        { course: 'main', menuItemId: 'item-a', itemName: 'Fixture main' },
+        { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', itemWithdrawn: true },
+        { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', itemWithdrawn: true },
+      ],
+    })
+
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 1 }])
+    expect(totals.withdrawn).toEqual([
+      { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 2 },
+    ])
+  })
+
+  it('tallies guests by tier, and counts a booking with no tiers as not recorded', () => {
+    expect(
+      summariseChristmasTiers([
+        { partySize: 4, courseCounts: [3, 3, 2, 1] },
+        { partySize: 5, courseCounts: [1, 1, 1, 1, 1] },
+        { partySize: 6, courseCounts: null },
+      ]),
+    ).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 2, notRecorded: 6, guests: 15 })
+  })
+
+  it('loads a day: tiers from bookings with no seats, withdrawn dishes apart, unpaid holds counted', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 2, 1, 1] },
+        { id: 'b-2', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [1, 1, 1, 1] },
+        { id: 'b-3', booking_date: '2026-12-12', status: 'pending_payment', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 3, 3, 3] },
+        { id: 'b-4', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'regular', party_size: 2, christmas_course_counts: null },
+      ],
+      booking_preorder_covers: [
+        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1 },
+        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2 },
+        { id: 'c-3', table_booking_id: 'b-3', ordinal: 1 },
+      ],
+      booking_preorder_selections: [
+        { cover_id: 'c-1', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null },
+        { cover_id: 'c-2', course: 'main', menu_item_id: 'item-b', item_name: 'Withdrawn main', price_gbp: null },
+        { cover_id: 'c-3', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null },
+      ],
+      booking_period_menu_items: [
+        { id: 'item-a', is_active: true },
+        { id: 'item-b', is_active: false },
+      ],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.christmasTiers).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 5, notRecorded: 0, guests: 12 })
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
+    expect(totals.withdrawn).toEqual([{ course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 1 }])
+    expect(totals.pendingPaymentBookingCount).toBe(1)
+  })
+
+  it('still reports the tiers on a day where every Christmas guest is on 1 course', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [1, 1, 1, 1] },
+      ],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.coverCount).toBe(0)
+    expect(totals.christmasTiers.oneCourse).toBe(4)
   })
 })

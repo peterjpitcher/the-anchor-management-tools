@@ -42,7 +42,9 @@ const bookingRow = {
   start_datetime: '2026-07-10T17:00:00.000Z',
   end_datetime: '2026-07-10T19:00:00.000Z',
   duration_minutes: 120,
-  christmas_course_counts: undefined as number[] | undefined
+  christmas_course_counts: undefined as number[] | undefined,
+  booking_type: 'regular' as string,
+  booking_period_answer: null as boolean | null
 }
 
 type UpdateResult = { data: Record<string, unknown> | null; error: { message: string } | null }
@@ -96,6 +98,8 @@ const availability = {
 beforeEach(() => {
   vi.clearAllMocks()
   bookingRow.christmas_course_counts = undefined
+  bookingRow.booking_type = 'regular'
+  bookingRow.booking_period_answer = null
   mockedGetAvailability.mockResolvedValue(availability)
   mockedMoveToTables.mockResolvedValue({ ok: true })
 })
@@ -244,5 +248,46 @@ describe('Christmas amendment preflight', () => {
     await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 7, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1, 1, 1, 2] }))
       .rejects.toThrow('deadline has passed')
     expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+})
+
+// BK-057: a Christmas booking taken by staff with no courses can have them recorded once, before
+// the deadline, so its guests stop being chased for a main they may not owe.
+describe('recording Christmas courses on a booking that has none', () => {
+  it('records the courses at the same party size', async () => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    const { client, updateMock } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 6, committed_party_size: 6, updated_at: '2026-10-26T10:00:00.000Z' },
+      error: null
+    })
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: true }, error: null })) })
+
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [3, 3, 2, 2, 1, 1]
+    })
+
+    expect(result.state).toBe('updated')
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ christmas_course_counts: [3, 3, 2, 2, 1, 1] }))
+  })
+
+  it('refuses 2 or 3 courses once the deadline has passed', async () => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    const { client, updateMock } = createSupabaseStub({ data: null, error: null })
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: false }, error: null })) })
+
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [3, 3, 2, 2, 1, 1]
+    })).rejects.toThrow('deadline has passed')
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('still refuses courses on a booking that is not a Christmas dinner', async () => {
+    const { client } = createSupabaseStub({ data: null, error: null })
+
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1, 1, 1]
+    })).rejects.toThrow('retains its original course policy')
   })
 })

@@ -1153,11 +1153,40 @@ export type PreorderAddonDishTotal = PreorderDishTotal & {
   hasUnpricedSelection: boolean
 }
 
+/** A dish taken off the menu that guests had already chosen. Never counted in `byCourse`. */
+export type PreorderWithdrawnDishTotal = PreorderDishTotal & { course: PreorderSelectionCourse }
+
+/**
+ * How many Christmas guests are on each tier that day, read from `table_bookings.christmas_course_counts`
+ * rather than from cover rows: a booking where everyone is on 1 course has no covers at all, and
+ * the kitchen still has to expect them.
+ */
+export type PreorderChristmasTierTotals = {
+  oneCourse: number
+  twoCourses: number
+  threeCourses: number
+  /** Guests on Christmas bookings that recorded no tiers (older staff bookings). */
+  notRecorded: number
+  /** Every guest on a Christmas booking that day. */
+  guests: number
+}
+
 export type PreorderDishTotals = {
   date: string
   /** Bookings on that date that have at least one pre-order seat. */
   bookingCount: number
   coverCount: number
+  /**
+   * Bookings in these totals still waiting for their deposit. They are counted, because the guest
+   * may still pay, and labelled, because an unpaid hold can lapse before the night.
+   */
+  pendingPaymentBookingCount: number
+  christmasTiers: PreorderChristmasTierTotals
+  /**
+   * Choices whose dish has since been withdrawn. Listed apart and kept OUT of `byCourse`, so the
+   * kitchen does not order stock for a dish that is off the menu; each one is a guest to ring.
+   */
+  withdrawn: PreorderWithdrawnDishTotal[]
   byCourse: Record<PreorderCourse, PreorderDishTotal[]>
   /**
    * Add-ons, counted SEPARATELY from the courses and never folded into them. The kitchen reads the
@@ -1172,11 +1201,43 @@ export type PreorderDishTotals = {
 }
 
 /** The shape to return when a date has nothing on it. One definition, so no caller invents its own. */
+export function emptyChristmasTierTotals(): PreorderChristmasTierTotals {
+  return { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 }
+}
+
+/** Tally each guest's tier across a day's Christmas bookings. */
+export function summariseChristmasTiers(
+  bookings: Array<{ partySize: number | null; courseCounts: ReadonlyArray<number> | null }>,
+): PreorderChristmasTierTotals {
+  const totals = emptyChristmasTierTotals()
+  for (const booking of bookings) {
+    const counts = booking.courseCounts
+    if (!counts || counts.length === 0) {
+      const guests = Math.max(0, Math.trunc(Number(booking.partySize) || 0))
+      totals.notRecorded += guests
+      totals.guests += guests
+      continue
+    }
+    for (const count of counts) {
+      const tier = toPreorderCourseCount(count)
+      if (tier === 1) totals.oneCourse += 1
+      else if (tier === 2) totals.twoCourses += 1
+      else if (tier === 3) totals.threeCourses += 1
+      else totals.notRecorded += 1
+      totals.guests += 1
+    }
+  }
+  return totals
+}
+
 export function emptyPreorderDishTotals(date: string): PreorderDishTotals {
   return {
     date,
     bookingCount: 0,
     coverCount: 0,
+    pendingPaymentBookingCount: 0,
+    christmasTiers: emptyChristmasTierTotals(),
+    withdrawn: [],
     byCourse: { starter: [], main: [], dessert: [] },
     addons: [],
     addonTotalGbp: 0,
@@ -1196,10 +1257,35 @@ export function summarisePreorderDishTotals(input: {
   date: string
   bookingCount: number
   coverCount: number
+  pendingPaymentBookingCount?: number
+  christmasTiers?: PreorderChristmasTierTotals
   selections: Array<
-    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & { priceGbp?: number | null }
+    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & {
+      priceGbp?: number | null
+      itemWithdrawn?: boolean
+    }
   >
 }): PreorderDishTotals {
+  const withdrawnTallies = new Map<string, PreorderWithdrawnDishTotal>()
+  const live: typeof input.selections = []
+  for (const selection of input.selections) {
+    if (!selection.itemWithdrawn) {
+      live.push(selection)
+      continue
+    }
+    const key = `${selection.course}:${selection.menuItemId}`
+    const tally = withdrawnTallies.get(key)
+    if (tally) tally.count += 1
+    else {
+      withdrawnTallies.set(key, {
+        course: selection.course,
+        menuItemId: selection.menuItemId,
+        itemName: selection.itemName,
+        count: 1,
+      })
+    }
+  }
+
   type Tally = {
     course: PreorderSelectionCourse
     names: Map<string, number>
@@ -1212,7 +1298,7 @@ export function summarisePreorderDishTotals(input: {
 
   const tallies = new Map<string, Tally>()
 
-  for (const selection of input.selections) {
+  for (const selection of live) {
     const key = `${selection.course}:${selection.menuItemId}`
     const tally: Tally = tallies.get(key) ?? {
       course: selection.course,
@@ -1270,10 +1356,20 @@ export function summarisePreorderDishTotals(input: {
   }
   addons.sort((a, b) => b.count - a.count || a.itemName.localeCompare(b.itemName))
 
+  const withdrawn = Array.from(withdrawnTallies.values()).sort(
+    (a, b) =>
+      PREORDER_SELECTION_COURSES.indexOf(a.course) - PREORDER_SELECTION_COURSES.indexOf(b.course) ||
+      b.count - a.count ||
+      a.itemName.localeCompare(b.itemName),
+  )
+
   return {
     date: input.date,
     bookingCount: input.bookingCount,
     coverCount: input.coverCount,
+    pendingPaymentBookingCount: input.pendingPaymentBookingCount ?? 0,
+    christmasTiers: input.christmasTiers ?? emptyChristmasTierTotals(),
+    withdrawn,
     byCourse,
     addons,
     addonTotalGbp: addons.reduce((running, addon) => running + toPence(addon.totalGbp), 0) / 100,
@@ -1294,14 +1390,28 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
 
   const { data: bookingRows, error: bookingError } = await supabase
     .from('table_bookings')
-    .select('id')
+    .select('id, status, booking_type, party_size, christmas_course_counts')
     .eq('booking_date', date)
     .not('status', 'in', `(${DEAD_BOOKING_STATUSES.join(',')})`)
 
   if (bookingError) throw bookingError
 
-  const bookingIds = ((bookingRows ?? []) as Array<{ id: string }>).map((row) => row.id)
-  if (bookingIds.length === 0) return empty
+  const bookings = (bookingRows ?? []) as Array<{
+    id: string
+    status: string | null
+    booking_type: string | null
+    party_size: number | null
+    christmas_course_counts: number[] | null
+  }>
+  if (bookings.length === 0) return empty
+
+  const christmasTiers = summariseChristmasTiers(
+    bookings
+      .filter((row) => row.booking_type === 'christmas')
+      .map((row) => ({ partySize: row.party_size, courseCounts: row.christmas_course_counts })),
+  )
+  const bookingIds = bookings.map((row) => row.id)
+  const statusById = new Map(bookings.map((row) => [row.id, row.status]))
 
   const { data: coverRows, error: coverError } = await supabase
     .from('booking_preorder_covers')
@@ -1311,7 +1421,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
   if (coverError) throw coverError
 
   const covers = (coverRows ?? []) as Array<{ id: string; table_booking_id: string }>
-  if (covers.length === 0) return empty
+  if (covers.length === 0) return { ...empty, christmasTiers }
 
   // price_gbp is read here and nowhere else in this query, purely so the add-on money total is
   // summed from what each guest was actually quoted rather than from today's menu.
@@ -1325,28 +1435,43 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
 
   if (selectionError) throw selectionError
 
-  const selections: Array<
-    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & { priceGbp: number | null }
-  > = []
-  for (const row of (selectionRows ?? []) as Array<{
+  const rawSelections = (selectionRows ?? []) as Array<{
     course: string
     menu_item_id: string
     item_name: string
     price_gbp: number | string | null
-  }>) {
+  }>
+  const withdrawnIds = await loadWithdrawnMenuItemIds(
+    supabase,
+    Array.from(new Set(rawSelections.map((row) => row.menu_item_id))),
+  )
+
+  const selections: Array<
+    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & {
+      priceGbp: number | null
+      itemWithdrawn: boolean
+    }
+  > = []
+  for (const row of rawSelections) {
     if (!isPreorderSelectionCourse(row.course)) continue
     selections.push({
       course: row.course,
       menuItemId: row.menu_item_id,
       itemName: row.item_name,
       priceGbp: toNullableNumber(row.price_gbp),
+      itemWithdrawn: withdrawnIds.has(row.menu_item_id),
     })
   }
 
+  const coveredBookingIds = new Set(covers.map((cover) => cover.table_booking_id))
   return summarisePreorderDishTotals({
     date,
-    bookingCount: new Set(covers.map((cover) => cover.table_booking_id)).size,
+    bookingCount: coveredBookingIds.size,
     coverCount: covers.length,
+    pendingPaymentBookingCount: Array.from(coveredBookingIds).filter(
+      (id) => statusById.get(id) === 'pending_payment',
+    ).length,
+    christmasTiers,
     selections,
   })
 }

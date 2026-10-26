@@ -62,3 +62,36 @@ describe('ChristmasCourseFields', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/Course choices could not be loaded/)
   })
 })
+
+// BK-057: a Christmas booking taken by staff with no courses can have them recorded once.
+describe('ChristmasCourseFields on a Christmas booking with no courses recorded', () => {
+  function installFirstTime(canSet: boolean) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ course_counts: null, can_set: canSet }) })),
+    )
+  }
+
+  it('offers the controls, and sends nothing until every guest has a choice', async () => {
+    installFirstTime(true)
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<ChristmasCourseFields bookingId="b1" partySize={2} onChange={onChange} />)
+
+    expect(await screen.findByText(/No courses are recorded for this Christmas booking yet/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Guest 1'), '3')
+    expect(onChange).toHaveBeenLastCalledWith(undefined)
+
+    await user.selectOptions(screen.getByLabelText('Guest 2'), '1')
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([3, 1]))
+  })
+
+  it('shows nothing on a booking that may not take courses', async () => {
+    installFirstTime(false)
+    const onChange = vi.fn()
+    render(<ChristmasCourseFields bookingId="b1" partySize={2} onChange={onChange} />)
+
+    await waitFor(() => expect(onChange).toHaveBeenCalled())
+    expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  })
+})

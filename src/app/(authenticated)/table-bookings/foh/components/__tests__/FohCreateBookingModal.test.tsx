@@ -139,3 +139,38 @@ describe('FohCreateBookingModal: high chairs, outside and step-free', () => {
     expect(screen.queryByLabelText('Needs a step-free table')).not.toBeInTheDocument()
   })
 })
+
+// BK-057: a Christmas booking taken here records each guest's 1, 2 or 3 courses.
+describe('FohCreateBookingModal: Christmas courses for each guest', () => {
+  it('asks for a course choice for every guest on a Christmas booking', () => {
+    renderModal(CHRISTMAS_FORM)
+    expect(screen.getByText('Christmas courses for each guest')).toBeInTheDocument()
+    for (const guest of [1, 2, 3, 4]) {
+      expect(screen.getByLabelText(`Guest ${guest}`)).toHaveValue('0')
+    }
+  })
+
+  it('sets every guest at once from "Everyone", and one guest on their own', () => {
+    let form = CHRISTMAS_FORM
+    const onSetCreateForm = vi.fn((updater: (current: CreateForm) => CreateForm) => {
+      form = updater(form)
+    })
+    renderModal(CHRISTMAS_FORM, { onSetCreateForm })
+
+    fireEvent.change(screen.getByLabelText('Everyone'), { target: { value: '3' } })
+    expect(form.christmas_course_counts).toEqual([3, 3, 3, 3])
+
+    fireEvent.change(screen.getByLabelText('Guest 2'), { target: { value: '1' } })
+    expect(form.christmas_course_counts).toEqual([0, 1, 0, 0])
+  })
+
+  it('does not ask on a walk-in, which is on the day and so 1 course', () => {
+    renderModal(CHRISTMAS_FORM, { createMode: 'walk_in' })
+    expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  })
+
+  it('does not ask on any other kind of booking', () => {
+    renderModal({ ...CHRISTMAS_FORM, purpose: 'food' })
+    expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  })
+})

@@ -195,9 +195,21 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const oldPartySize = Math.max(1, Number(tableBooking.party_size || 1))
   const newPartySize = Math.max(1, Number(input.partySize || 1))
   const recordedCourses: number[] | null = tableBooking.christmas_course_counts ?? null
-  const nextCourses = recordedCourses ? (input.christmasCourseCounts ?? recordedCourses) : null
+  // A Christmas booking taken with no courses (a staff booking before BK-057) may have them set
+  // ONCE, here, so its guests stop being chased for a main they may not owe. The same checks apply
+  // as to a change, and the database trigger repeats them on the write.
+  const recordingFirstCourses =
+    !recordedCourses &&
+    Boolean(input.christmasCourseCounts) &&
+    String(tableBooking.booking_type || '') === 'christmas' &&
+    tableBooking.booking_period_answer === true
+  const nextCourses = recordedCourses
+    ? (input.christmasCourseCounts ?? recordedCourses)
+    : recordingFirstCourses
+      ? input.christmasCourseCounts ?? null
+      : null
   const coursesChanged = JSON.stringify(recordedCourses) !== JSON.stringify(nextCourses)
-  if (recordedCourses) {
+  if (nextCourses) {
     // Before looking for or moving tables. The database repeats these checks on the final update.
     if (newPartySize < CHRISTMAS_MIN_PARTY_SIZE || newPartySize > CHRISTMAS_MAX_PARTY_SIZE) {
       throw new ChristmasCourseValidationError(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)

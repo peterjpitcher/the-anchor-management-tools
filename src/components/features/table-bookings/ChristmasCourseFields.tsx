@@ -25,29 +25,49 @@ interface ChristmasCourseFieldsProps {
   appearance?: 'default' | 'foh'
 }
 
-/** Existing bookings without a snapshot retain their original policy and show no controls. */
+const FIRST_TIME_HELP =
+  'No courses are recorded for this Christmas booking yet. Choose them for every guest to record them; leave them blank to change only the party size.'
+
+/**
+ * Bookings with tiers show one control per guest. A Christmas booking with none recorded (taken by
+ * staff before BK-057) shows the same controls once, so its tiers can be set; nothing is sent until
+ * every guest has one, so a plain party-size change still works. Any other booking shows nothing.
+ */
 export function ChristmasCourseFields({ bookingId, partySize, onChange, appearance = 'default' }: ChristmasCourseFieldsProps) {
   const [counts, setCounts] = useState<number[] | null>(null)
+  const [firstTime, setFirstTime] = useState(false)
   const [failed, setFailed] = useState(false)
   const idBase = useId()
   useEffect(() => {
     const controller = new AbortController()
     setCounts(null)
+    setFirstTime(false)
     setFailed(false)
     onChange(undefined)
     void fetch(`/api/foh/bookings/${bookingId}/christmas-courses`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error('Could not load courses')
         const data = await response.json()
-        if (!controller.signal.aborted) setCounts(data.course_counts)
+        if (controller.signal.aborted) return
+        if (data.course_counts) {
+          setCounts(data.course_counts)
+        } else if (data.can_set === true) {
+          setFirstTime(true)
+          setCounts([])
+        }
       }).catch(() => { if (!controller.signal.aborted) setFailed(true) })
     return () => controller.abort()
   }, [bookingId, onChange])
   useEffect(() => {
     if (!counts) return
     const next = Array.from({ length: Math.min(20, Math.max(0, partySize || 0)) }, (_, index) => counts[index] ?? 0)
+    // Recording tiers for the first time is all or nothing: half a list would be refused.
+    if (firstTime && next.some((count) => count < 1 || count > 3)) {
+      onChange(undefined)
+      return
+    }
     onChange(next)
-  }, [counts, partySize, onChange])
+  }, [counts, firstTime, partySize, onChange])
 
   const isFoh = appearance === 'foh'
 
@@ -74,7 +94,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
     return (
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Christmas courses for each guest</legend>
-        <p className="text-sm">{COURSES_HELP}</p>
+        <p className="text-sm">{firstTime ? FIRST_TIME_HELP : COURSES_HELP}</p>
         {next.map((count, index) => {
           const labelId = `${idBase}-guest-${index}`
           return (
@@ -97,7 +117,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
   return (
     <Fieldset legend="Christmas courses for each guest">
       <div className="space-y-3">
-        <p className="text-sm text-text">{COURSES_HELP}</p>
+        <p className="text-sm text-text">{firstTime ? FIRST_TIME_HELP : COURSES_HELP}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {next.map((count, index) => (
             <Select

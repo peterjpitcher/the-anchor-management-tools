@@ -69,3 +69,60 @@ export async function recordOneCourseInsideCutoff(
 
   return (updated?.length ?? 0) > 0 ? 'recorded' : 'not_needed'
 }
+
+export type ChristmasCourseAvailability = 'available' | 'closed' | 'unknown'
+
+/**
+ * Whether 2 and 3 courses can still be booked for this date, from the same database function the
+ * booking functions and the `table_bookings` trigger ask. `closed` covers both "the pre-order
+ * deadline has passed" and "the date is not in a live Christmas period"; `unknown` is a failed read.
+ */
+export async function getChristmasCourseAvailability(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingDate: string
+): Promise<ChristmasCourseAvailability> {
+  const { data, error } = await supabase.rpc('christmas_course_policy_v01', { p_booking_date: bookingDate })
+  if (error) {
+    logger.error('Could not read the Christmas course policy before a staff booking', {
+      error: new Error(error.message),
+      metadata: { bookingDate },
+    })
+    return 'unknown'
+  }
+  const policy = data as CoursePolicy
+  return policy?.multiple_courses_available === true ? 'available' : 'closed'
+}
+
+/**
+ * Record the course tiers staff chose for each guest on a Christmas booking they have just taken
+ * (BK-057). Staff bookings go through `create_table_booking_staff_v06`, which takes no tiers, so
+ * they are written straight after it. The `table_bookings` trigger checks them (one per guest, each
+ * 1 to 3, still before the deadline when any guest is on 2 or 3) and sets
+ * `booking_period_requires_preorder` from them. Only a Christmas booking with no tiers yet is
+ * touched, so a retry can never overwrite tiers recorded since.
+ *
+ * A failure is logged as an error rather than thrown: the booking already exists and staff can set
+ * the tiers from the booking page, which the caller tells them to do.
+ */
+export async function recordChristmasCourseCounts(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: { id: string; bookingDate: string },
+  courseCounts: number[]
+): Promise<'recorded' | 'failed'> {
+  const { data: updated, error } = await supabase
+    .from('table_bookings')
+    .update({ christmas_course_counts: courseCounts })
+    .eq('id', booking.id)
+    .eq('booking_type', 'christmas')
+    .is('christmas_course_counts', null)
+    .select('id')
+
+  if (error || (updated?.length ?? 0) === 0) {
+    logger.error('Could not record the Christmas courses staff chose for a new booking', {
+      error: new Error(error?.message ?? 'No Christmas booking without courses matched'),
+      metadata: { tableBookingId: booking.id, bookingDate: booking.bookingDate },
+    })
+    return 'failed'
+  }
+  return 'recorded'
+}
