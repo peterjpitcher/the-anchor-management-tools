@@ -112,3 +112,41 @@ describe('SeasonalPreorderSection with Christmas tiers', () => {
     expect(screen.getByLabelText('Starter (optional)')).toBeInTheDocument()
   })
 })
+
+// BK-051, owner decision D21: after the cutoff a manager can still record a change, marked as late.
+describe('SeasonalPreorderSection after the cutoff', () => {
+  const closedOrder = () => order([3], [seat(1, 3, [])])
+
+  it('stays read-only for staff who are not managers, and says a manager records changes', () => {
+    render(
+      <SeasonalPreorderSection
+        order={closedOrder()}
+        menu={MENU}
+        canEdit
+        preorderEnabled
+        closed
+        closesAtIso="2026-11-03T12:00:00.000Z"
+      />,
+    )
+
+    expect(screen.getByLabelText('Main (required)')).toBeDisabled()
+    expect(screen.getByText(/a manager has to record any change now/)).toBeInTheDocument()
+  })
+
+  it('lets a manager record a late change and says it will be marked', () => {
+    render(
+      <SeasonalPreorderSection
+        order={closedOrder()}
+        menu={MENU}
+        canEdit
+        preorderEnabled
+        closed
+        closesAtIso="2026-11-03T12:00:00.000Z"
+        canRecordLate
+      />,
+    )
+
+    expect(screen.getByLabelText('Main (required)')).not.toBeDisabled()
+    expect(screen.getByText(/As a manager you can still record a change/)).toBeInTheDocument()
+  })
+})

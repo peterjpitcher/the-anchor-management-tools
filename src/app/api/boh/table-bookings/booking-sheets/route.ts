@@ -27,6 +27,8 @@ import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   describeCourseCount,
   formatPreorderAddonPrice,
+  getPreorderCutoff,
+  isCoverChangedAfterCutoff,
   formatPreorderMoney,
   isPreorderAddon,
   isPreorderEnabled,
@@ -86,6 +88,8 @@ type BookingRow = {
   booking_type: string | null
   /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. The tier source, not the cover rows. */
   christmas_course_counts: number[] | null
+  /** The seasonal period, for when its pre-order form locked. */
+  booking_period_id: string | null
   /** Booking-level allergy list the pub already records. Printed on the food page, never elsewhere. */
   allergies: string[] | null
   customer: CustomerRow | CustomerRow[] | null
@@ -211,7 +215,8 @@ function toSheetAddonTotal(summary: PreorderAddonSummary): TableBookingSheetPreo
  */
 function toSheetCover(
   cover: PreorderCover,
-  courseCount: PreorderCourseCount | null
+  courseCount: PreorderCourseCount | null,
+  closesAt: Date | null = null
 ): TableBookingSheetPreorderCover {
   const addons = summariseCoverAddons(cover)
 
@@ -223,6 +228,8 @@ function toSheetCover(
     // the day and must not read as a missing order (BK-058).
     ...(courseCount ? { tierLabel: describeCourseCount(courseCount) } : {}),
     ...(courseCount === 1 ? { choosesOnTheDay: true } : {}),
+    // Recorded by a manager after the form locked (D21): the kitchen ordered before it (BK-051).
+    ...(isCoverChangedAfterCutoff(cover, closesAt) ? { lateChange: true } : {}),
     courses: cover.selections
       .filter((selection) => !isPreorderAddon(selection))
       .map((selection) => ({
@@ -256,15 +263,45 @@ function toSheetCover(
  * Bookings with no covers get no entry, and so no food page: an order nobody has started is the
  * reminder cron's business (spec section 7), not the kitchen's.
  */
+type SheetBookingFacts = {
+  bookingDate: string
+  courseCounts: number[] | null
+  periodId: string | null
+}
+
 async function loadPreordersForSheets(
   bookingIds: string[],
-  courseCountsByBooking: Map<string, number[] | null> = new Map()
+  factsByBooking: Map<string, SheetBookingFacts> = new Map()
 ): Promise<Map<string, TableBookingSheetPreorder>> {
   const byBooking = new Map<string, TableBookingSheetPreorder>()
   if (bookingIds.length === 0) return byBooking
 
   const admin = createAdminClient()
   if (!(await isPreorderEnabled(admin))) return byBooking
+
+  // When each booking's form locked, so a seat a manager changed after it is marked as late.
+  const periodIds = Array.from(
+    new Set(Array.from(factsByBooking.values()).map((facts) => facts.periodId).filter((id): id is string => Boolean(id)))
+  )
+  const cutoffDaysByPeriod = new Map<string, number | null>()
+  if (periodIds.length > 0) {
+    const { data: periodData, error: periodError } = await admin
+      .from('booking_periods')
+      .select('id, preorder_cutoff_days')
+      .in('id', periodIds)
+    if (periodError) throw periodError
+    for (const period of (periodData ?? []) as Array<{ id: string; preorder_cutoff_days: number | null }>) {
+      cutoffDaysByPeriod.set(period.id, period.preorder_cutoff_days ?? null)
+    }
+  }
+  const closesAtFor = (tableBookingId: string): Date | null => {
+    const facts = factsByBooking.get(tableBookingId)
+    if (!facts?.periodId) return null
+    return getPreorderCutoff({
+      bookingDate: facts.bookingDate,
+      preorderCutoffDays: cutoffDaysByPeriod.get(facts.periodId) ?? null,
+    }).closesAt
+  }
 
   const { data: coverData, error: coverError } = await admin
     .from('booking_preorder_covers')
@@ -339,7 +376,8 @@ async function loadPreordersForSheets(
       covers: covers.map((cover) =>
         toSheetCover(
           cover,
-          toPreorderCourseCount(courseCountsByBooking.get(tableBookingId)?.[cover.ordinal - 1] ?? null)
+          toPreorderCourseCount(factsByBooking.get(tableBookingId)?.courseCounts?.[cover.ordinal - 1] ?? null),
+          closesAtFor(tableBookingId)
         )
       ),
       ...(addons.count > 0 ? { addonTotal: toSheetAddonTotal(addons) } : {}),
@@ -372,6 +410,7 @@ export async function GET(request: NextRequest) {
         deposit_waived, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked,
         booking_type,
         christmas_course_counts,
+        booking_period_id,
         is_outside_seating,
         high_chair_count,
         requires_accessible_table,
@@ -421,7 +460,16 @@ export async function GET(request: NextRequest) {
 
     const preorders = await loadPreordersForSheets(
       ordered.map((row) => row.id),
-      new Map(ordered.map((row) => [row.id, row.christmas_course_counts ?? null]))
+      new Map(
+        ordered.map((row) => [
+          row.id,
+          {
+            bookingDate: row.booking_date,
+            courseCounts: row.christmas_course_counts ?? null,
+            periodId: row.booking_period_id ?? null,
+          },
+        ])
+      )
     )
 
     const sheets = ordered.map((row) => {

@@ -605,7 +605,9 @@ async function sendManagerEscalation(
     '<ul>',
     ...details,
     '</ul>',
-    '<p>Nothing has been cancelled. Ring the guest and take the choices over the telephone.</p>',
+    // A manager can record what the guest says on the booking after the cutoff (owner decision D21,
+    // BK-051); it is marked as late on the kitchen sheet and totals.
+    '<p>Nothing has been cancelled. Ring the guest, take the choices over the telephone and record them on the booking. A manager can still save them after the cutoff, and they are marked as late for the kitchen.</p>',
   ].join('')
 
   const emailResult = await sendEmail({

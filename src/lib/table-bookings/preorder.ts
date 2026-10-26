@@ -481,6 +481,28 @@ export function getPreorderCutoff(input: {
   return { closesAt, closed: now.getTime() >= closesAt.getTime() }
 }
 
+/**
+ * True when this row was written at or after the form locked. Guests and staff cannot save after the
+ * cutoff, so a choice made after it was recorded by a manager as a late change (D21, BK-051), and
+ * the kitchen sheet and totals say so: the kitchen ordered before it happened.
+ */
+export function isChangedAfterCutoff(writtenAtIso: string | null | undefined, closesAt: Date | null): boolean {
+  if (!writtenAtIso || !closesAt) return false
+  const written = new Date(writtenAtIso).getTime()
+  return Number.isFinite(written) && written >= closesAt.getTime()
+}
+
+/** Whether any choice or detail on this seat was changed after the cutoff. */
+export function isCoverChangedAfterCutoff(
+  cover: Pick<PreorderCover, 'updatedAt' | 'createdAt' | 'selections'>,
+  closesAt: Date | null,
+): boolean {
+  if (!closesAt) return false
+  // A cover row created after the cutoff is a seat added by a party-size change, not a choice.
+  const coverEdited = cover.updatedAt !== cover.createdAt && isChangedAfterCutoff(cover.updatedAt, closesAt)
+  return coverEdited || cover.selections.some((selection) => isChangedAfterCutoff(selection.createdAt, closesAt))
+}
+
 export type PreorderChaseInput = {
   /** Whole days from today to the booking, on the London calendar. 0 means the booking is today. */
   daysUntilBooking: number
@@ -1181,6 +1203,11 @@ export type PreorderDishTotals = {
    * may still pay, and labelled, because an unpaid hold can lapse before the night.
    */
   pendingPaymentBookingCount: number
+  /**
+   * Choices a manager recorded after the cutoff (D21). They are in the counts, because they are what
+   * the guest is now having, but the kitchen ordered before them, so the totals say how many.
+   */
+  lateChangeCount: number
   christmasTiers: PreorderChristmasTierTotals
   /**
    * Choices whose dish has since been withdrawn. Listed apart and kept OUT of `byCourse`, so the
@@ -1236,6 +1263,7 @@ export function emptyPreorderDishTotals(date: string): PreorderDishTotals {
     bookingCount: 0,
     coverCount: 0,
     pendingPaymentBookingCount: 0,
+    lateChangeCount: 0,
     christmasTiers: emptyChristmasTierTotals(),
     withdrawn: [],
     byCourse: { starter: [], main: [], dessert: [] },
@@ -1258,6 +1286,7 @@ export function summarisePreorderDishTotals(input: {
   bookingCount: number
   coverCount: number
   pendingPaymentBookingCount?: number
+  lateChangeCount?: number
   christmasTiers?: PreorderChristmasTierTotals
   selections: Array<
     Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & {
@@ -1368,6 +1397,7 @@ export function summarisePreorderDishTotals(input: {
     bookingCount: input.bookingCount,
     coverCount: input.coverCount,
     pendingPaymentBookingCount: input.pendingPaymentBookingCount ?? 0,
+    lateChangeCount: input.lateChangeCount ?? 0,
     christmasTiers: input.christmasTiers ?? emptyChristmasTierTotals(),
     withdrawn,
     byCourse,
@@ -1390,7 +1420,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
 
   const { data: bookingRows, error: bookingError } = await supabase
     .from('table_bookings')
-    .select('id, status, booking_type, party_size, christmas_course_counts')
+    .select('id, status, booking_type, party_size, christmas_course_counts, booking_period_id')
     .eq('booking_date', date)
     .not('status', 'in', `(${DEAD_BOOKING_STATUSES.join(',')})`)
 
@@ -1402,6 +1432,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
     booking_type: string | null
     party_size: number | null
     christmas_course_counts: number[] | null
+    booking_period_id: string | null
   }>
   if (bookings.length === 0) return empty
 
@@ -1427,7 +1458,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
   // summed from what each guest was actually quoted rather than from today's menu.
   const { data: selectionRows, error: selectionError } = await supabase
     .from('booking_preorder_selections')
-    .select('cover_id, course, menu_item_id, item_name, price_gbp')
+    .select('cover_id, course, menu_item_id, item_name, price_gbp, created_at')
     .in(
       'cover_id',
       covers.map((cover) => cover.id),
@@ -1436,11 +1467,35 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
   if (selectionError) throw selectionError
 
   const rawSelections = (selectionRows ?? []) as Array<{
+    cover_id: string
     course: string
     menu_item_id: string
     item_name: string
     price_gbp: number | string | null
+    created_at: string | null
   }>
+
+  // When each booking's form locked, so a choice a manager recorded after it can be counted.
+  const periodIds = Array.from(
+    new Set(bookings.map((row) => row.booking_period_id).filter((id): id is string => Boolean(id))),
+  )
+  const cutoffDaysByPeriod = new Map<string, number | null>()
+  await Promise.all(
+    periodIds.map(async (periodId) => {
+      cutoffDaysByPeriod.set(periodId, await loadPreorderCutoffDays(supabase, periodId))
+    }),
+  )
+  const bookingIdByCover = new Map(covers.map((cover) => [cover.id, cover.table_booking_id]))
+  const periodByBooking = new Map(bookings.map((row) => [row.id, row.booking_period_id]))
+  const closesAtFor = (coverId: string): Date | null => {
+    const periodId = periodByBooking.get(bookingIdByCover.get(coverId) ?? '') ?? null
+    if (!periodId) return null
+    return getPreorderCutoff({ bookingDate: date, preorderCutoffDays: cutoffDaysByPeriod.get(periodId) ?? null })
+      .closesAt
+  }
+  const lateChangeCount = rawSelections.filter((row) =>
+    isChangedAfterCutoff(row.created_at, closesAtFor(row.cover_id)),
+  ).length
   const withdrawnIds = await loadWithdrawnMenuItemIds(
     supabase,
     Array.from(new Set(rawSelections.map((row) => row.menu_item_id))),
@@ -1471,6 +1526,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
     pendingPaymentBookingCount: Array.from(coveredBookingIds).filter(
       (id) => statusById.get(id) === 'pending_payment',
     ).length,
+    lateChangeCount,
     christmasTiers,
     selections,
   })

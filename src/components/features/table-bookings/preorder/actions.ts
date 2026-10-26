@@ -7,6 +7,12 @@
  * manage page so there is one completeness rule and one snapshotting rule. This file is the staff
  * gate around it: who is asking, whether they may, and whether the order is still open.
  *
+ * LATE CHANGES (owner decision D21, BK-051). The form locks for guests and staff at the cutoff, noon
+ * seven days out. After that a manager (table_bookings 'manage') may still record a choice, because
+ * the escalation email tells them to ring the guest and take it over the telephone and it has to be
+ * saved somewhere the kitchen reads. Every such save is audited with `late_change: true`, and the
+ * sheet and the BOH totals mark it as changed after the cutoff.
+ *
  * The three pre-order tables are service-role only under RLS, so the reads and writes go through
  * the admin client. Permission is proven first, on the cookie client, before that client is made.
  *
@@ -40,7 +46,7 @@ export type StaffPreorderCoverInput = {
 }
 
 const CLOSED_MESSAGE =
-  'Pre-orders for this booking have closed. The kitchen has already ordered to these numbers, so ring the pub to change anything now.'
+  'Pre-orders for this booking have closed. The kitchen has already ordered to these numbers, so a manager has to record any change now.'
 
 /**
  * Prove the caller may edit this booking's pre-order, and hand back everything the write needs.
@@ -74,9 +80,13 @@ async function openEditableOrder(tableBookingId: string) {
     bookingDate: order.bookingDate,
     preorderCutoffDays: order.preorderCutoffDays,
   })
-  if (cutoff.closed) return { error: CLOSED_MESSAGE } as const
+  // After the cutoff only a manager may record a change, and it is marked as late.
+  if (cutoff.closed) {
+    const canManage = await checkUserPermission('table_bookings', 'manage', user.id)
+    if (!canManage) return { error: CLOSED_MESSAGE } as const
+  }
 
-  return { user, admin, order } as const
+  return { user, admin, order, lateChange: cutoff.closed } as const
 }
 
 /**
@@ -118,6 +128,8 @@ export async function saveSeasonalPreorderCovers(
       additional_info: {
         booking_reference: gate.order.bookingReference,
         seats_saved: covers.map((cover) => ordinalByCoverId.get(cover.coverId)).filter(Boolean),
+        // A manager recording a choice after the cutoff (D21). The kitchen has already ordered.
+        ...(gate.lateChange ? { late_change: true } : {}),
       },
     })
 
@@ -157,6 +169,7 @@ export async function syncSeasonalPreorderCovers(tableBookingId: string): Promis
         cover_count: result.coverCount,
         seats_added: result.added,
         seats_removed: result.removed.map((cover) => cover.ordinal),
+        ...(gate.lateChange ? { late_change: true } : {}),
       },
     })
 

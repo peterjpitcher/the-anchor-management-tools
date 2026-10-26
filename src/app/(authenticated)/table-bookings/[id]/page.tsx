@@ -124,7 +124,7 @@ export default async function BookingDetailPage({ params }: Props) {
   } as unknown as Booking
 
   const [seasonalPreorder, depositRefunds] = await Promise.all([
-    loadSeasonalPreorder(rawBooking, canEdit),
+    loadSeasonalPreorder(rawBooking, canEdit, canManage),
     loadDepositRefunds(rawBooking.id),
   ])
   // P7: the guest message card offers email when the option is on (and defaults to it for a
@@ -182,7 +182,7 @@ async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefu
  * The pre-order tables are service-role only under RLS, so the read goes through the admin client.
  * Permission was proven at the top of the page before we got here.
  */
-async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
+async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage: boolean) {
   // The booking's own snapshot answers this, not the live period row: a guest who said "no, this
   // is not a Christmas dinner" gets the normal menu and owes nobody a choice.
   if (rawBooking.booking_period_requires_preorder !== true || rawBooking.booking_period_answer !== true) {
@@ -214,6 +214,7 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
       preorderEnabled={preorderEnabled}
       closed={cutoff.closed}
       closesAtIso={cutoff.closesAt?.toISOString() ?? null}
+      canRecordLate={canManage}
     />
   )
 }

@@ -918,6 +918,30 @@ describe('generateTableBookingSheetsHTML', () => {
       expect(html).toContain('Withdrawn main<span class="seat-withdrawn">OFF THE MENU, ring the guest</span>')
     })
 
+    // BK-051: a seat a manager changed after the cutoff is marked, because the kitchen ordered first.
+    it('marks a seat changed after the cutoff', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  tierLabel: '2 courses',
+                  lateChange: true,
+                  courses: [{ courseLabel: 'Main', itemName: 'Fixture main' }],
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('<p class="seat-head">Seat 1 · 2 courses · CHANGED AFTER THE CUTOFF</p>')
+    })
+
     it('leaves a booking with no tiers exactly as before', () => {
       const html = generateTableBookingSheetsHTML([makeSheet({ preorder: makePreorder() })], { logoDataUrl: LOGO })
 

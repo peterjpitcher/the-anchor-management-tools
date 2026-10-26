@@ -254,3 +254,21 @@ describe('pre-order reminder email renders', () => {
     expect(email.html).toContain('href="https://l.the-anchor.pub/food1"')
   })
 })
+
+// BK-051, owner decision D21: after the cutoff a manager can record late choices, so the escalation
+// tells them to record what the guest says on the booking rather than only to take it by phone.
+describe('pre-order manager escalation', () => {
+  it('tells the manager to record the choices on the booking, where they are marked as late', async () => {
+    const { decidePreorderChases } = await import('@/lib/table-bookings/preorder')
+    vi.mocked(decidePreorderChases).mockReturnValueOnce(['manager_escalation'])
+    buildDb()
+
+    const payload = await runSweep()
+
+    expect(payload.result.managerEscalations).toBe(1)
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(email.subject).toBe('Pre-order still incomplete: TB-XMAS1')
+    expect(email.html).toContain('record them on the booking')
+    expect(email.html).toContain('A manager can still save them after the cutoff')
+  })
+})
