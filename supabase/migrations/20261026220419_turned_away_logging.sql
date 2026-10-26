@@ -9,7 +9,7 @@
 -- website table bookings are fewer visitors, "no tables" answers or a broken step.
 --
 --   * booking_funnel_events: one row per availability answer (recorded by /api/table-bookings/load),
---     per website refusal or failure (reported by the website to /api/website/booking-refusals)
+--     per website refusal or failure (reported by the website to /api/website/booking-funnel)
 --     and per booking-form signal (opened, submit pressed, blocked, sent). No personal data:
 --     no name, phone number, email address or booking reference, only codes, counts, the
 --     requested date and party size, the page path with ids stripped, and which API key sent it
