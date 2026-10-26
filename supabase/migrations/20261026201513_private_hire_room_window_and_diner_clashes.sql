@@ -150,6 +150,7 @@ other_bookings AS (
     w.occupied_from AS occ_start,
     w.occupied_until AS occ_end
   FROM public.private_bookings pb
+  CROSS JOIN candidate_window cw
   CROSS JOIN LATERAL public.private_booking_occupied_window(
     pb.event_date, pb.start_time, pb.end_time, pb.end_time_next_day,
     pb.setup_date, pb.setup_time, pb.cleardown_time) w
@@ -157,7 +158,11 @@ other_bookings AS (
     AND COALESCE(pb.date_tbd, false) = false
     AND (p_exclude_booking_id IS NULL OR pb.id <> p_exclude_booking_id)
     AND public.private_booking_occupies_space(pb.status, pb.deposit_paid_date, pb.hold_expiry, pb.date_tbd)
-    AND pb.event_date BETWEEN p_event_date - 2 AND p_event_date + 2
+    -- Narrowed by both occupied windows, setup days included, as private_hire_table_blocks does.
+    -- A fixed span around the event date missed a hire set up days before its own date, or a
+    -- candidate whose setup starts days early; the overlap test below does the real work.
+    AND pb.event_date >= (cw.win_start AT TIME ZONE 'Europe/London')::date - 2
+    AND COALESCE(pb.setup_date, pb.event_date) <= (cw.win_end AT TIME ZONE 'Europe/London')::date + 1
 )
 SELECT
   ob.id AS booking_id,
