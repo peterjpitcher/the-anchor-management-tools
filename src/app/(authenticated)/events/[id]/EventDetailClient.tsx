@@ -52,6 +52,7 @@ import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawe
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
+import { EventNightNotice } from '../_components/EventNightNotice'
 import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
@@ -514,6 +515,9 @@ export default function EventDetailClient({
       {initialError && (
         <Alert tone="danger">{initialError}</Alert>
       )}
+
+      {/* Private hires that night, and whether a whole-pub hire has stopped ticket sales (D24). */}
+      <EventNightNotice date={event.date} eventId={event.id} />
 
       {/* Tabs */}
       <Tabs

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { Alert } from '@/ds'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -518,6 +519,13 @@ export function FohScheduleClient({
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}
       />
+
+      {schedule?.private_hires_unavailable && (
+        <Alert tone="warning" title="Private hires not shown">
+          Private hires could not be loaded, so tables they take are not shown as blocked. Refresh before seating anyone
+          in a room that may be hired tonight.
+        </Alert>
+      )}
 
       {viewMode === 'inside' ? (
         <>

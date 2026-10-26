@@ -12,6 +12,7 @@ import {
   loadOneHireReadiness,
   type HireReadinessView,
 } from '@/services/private-bookings/readiness'
+import { loadHireNightView, type HireNightView } from '@/services/private-bookings/night-clashes'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
 export const dynamic = 'force-dynamic'
@@ -150,6 +151,19 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     }
   }
 
+  // Diners, event seats and events in this hire's rooms that night (BK-070, BK-071, D24). If this
+  // cannot be read the page says so, rather than looking as if the night is clear.
+  let hireNight: HireNightView | null = null
+  let hireNightError = false
+  if (bookingData) {
+    try {
+      hireNight = await loadHireNightView(bookingData.id)
+    } catch (error) {
+      console.error('Failed to load the private hire night', error)
+      hireNightError = true
+    }
+  }
+
   // Invoicing is super_admin only. The server action re-checks this on every
   // call; asking here just avoids showing a manager a button that will refuse.
   let canInvoice = false
@@ -183,6 +197,8 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
       depositConfirmation={depositConfirmation}
       hireReadiness={hireReadiness}
       hireReadinessError={hireReadinessError}
+      hireNight={hireNight}
+      hireNightError={hireNightError}
       canOverrideCapacity={canOverrideCapacity}
       initialError={initialError}
     />

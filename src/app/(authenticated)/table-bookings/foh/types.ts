@@ -78,6 +78,9 @@ export type FohScheduleResponse = {
     // Outside bookings (no physical table) — rendered as cards via the Outside view
     // toggle. Optional so existing schedule fixtures keep compiling; consumers read `?? []`.
     outside_bookings?: FohBooking[]
+    // True when private hires could not be read, so their tables are not drawn as blocked
+    // (BK-159). Optional so existing fixtures keep compiling.
+    private_hires_unavailable?: boolean
   }
   error?: string
 }

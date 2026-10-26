@@ -10,6 +10,8 @@ interface Props {
   depositConfirmation?: React.ComponentProps<typeof PrivateBookingDetailClient>['depositConfirmation']
   hireReadiness?: React.ComponentProps<typeof PrivateBookingDetailClient>['hireReadiness']
   hireReadinessError?: boolean
+  hireNight?: React.ComponentProps<typeof PrivateBookingDetailClient>['hireNight']
+  hireNightError?: boolean
   canOverrideCapacity?: boolean
   initialError?: string | null
 }
@@ -23,6 +25,8 @@ export default function PrivateBookingDetailServer({
   depositConfirmation,
   hireReadiness,
   hireReadinessError,
+  hireNight,
+  hireNightError,
   canOverrideCapacity,
   initialError,
 }: Props) {
@@ -36,6 +40,8 @@ export default function PrivateBookingDetailServer({
       depositConfirmation={depositConfirmation}
       hireReadiness={hireReadiness}
       hireReadinessError={hireReadinessError}
+      hireNight={hireNight}
+      hireNightError={hireNightError}
       canOverrideCapacity={canOverrideCapacity}
       initialError={initialError}
     />

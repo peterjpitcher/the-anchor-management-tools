@@ -193,7 +193,9 @@ export default function EditPrivateBookingPage({
     async (prevState: FormState, formData: FormData) => {
       const result = await updatePrivateBooking(id, formData)
       if (result.success) {
-        toast.success('Private booking updated successfully')
+        // Diners, event seats or events already in the rooms that night (D24: warned, not refused).
+        if ('warning' in result && result.warning) toast.warning(result.warning, { duration: 12000 })
+        else toast.success('Private booking updated successfully')
         router.push(`/private-bookings/${id}`)
       }
       return result

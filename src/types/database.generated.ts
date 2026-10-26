@@ -21935,6 +21935,13 @@ export type Database = {
         }
         Returns: number
       }
+      events_closed_by_whole_pub_hire: {
+        Args: { p_assume_holding?: string; p_event_ids: string[] }
+        Returns: {
+          event_id: string
+          private_booking_id: string
+        }[]
+      }
       finalise_marketing_send: {
         Args: {
           p_email_message_id: string
@@ -22371,6 +22378,22 @@ export type Database = {
           occupies_from: string
           occupies_until: string
           space_name: string
+        }[]
+      }
+      get_private_booking_diner_clashes: {
+        Args: { p_booking_id: string }
+        Returns: {
+          booking_reference: string
+          clash_kind: string
+          covers: number
+          ends_at: string
+          event_booking_id: string
+          event_id: string
+          event_name: string
+          guest_name: string
+          starts_at: string
+          table_booking_id: string
+          table_names: string
         }[]
       }
       get_private_booking_settlement_total: {
@@ -22929,6 +22952,21 @@ export type Database = {
           unsubscribed_count: number
         }[]
       }
+      private_booking_occupied_window: {
+        Args: {
+          p_cleardown_time: string
+          p_end_time: string
+          p_end_time_next_day: boolean
+          p_event_date: string
+          p_setup_date: string
+          p_setup_time: string
+          p_start_time: string
+        }
+        Returns: {
+          occupied_from: string
+          occupied_until: string
+        }[]
+      }
       private_booking_occupies_space: {
         Args: {
           p_date_tbd: boolean
@@ -22944,6 +22982,19 @@ export type Database = {
           amount: number
           method: string
           paid_at: string
+        }[]
+      }
+      private_hire_table_blocks: {
+        Args: {
+          p_exclude_private_booking_id?: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: {
+          blocked_from: string
+          blocked_until: string
+          private_booking_id: string
+          table_id: string
         }[]
       }
       process_pending_jobs: {
