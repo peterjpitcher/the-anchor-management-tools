@@ -59,6 +59,7 @@ import {
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_shared/status-ui'
+import type { BookingAuditTrailEntry } from '@/lib/table-bookings/audit-trail'
 
 /**
  * Staff must know when a guest was not told their booking was cancelled. The cancellation notice
@@ -169,32 +170,6 @@ function parseMeta(meta: unknown): Record<string, unknown> {
   return typeof meta === 'object' && !Array.isArray(meta) ? meta as Record<string, unknown> : {}
 }
 
-function formatAuditEvent(event: string): string {
-  const labels: Record<string, string> = {
-    booking_created: 'Booking created',
-    status_changed: 'Status changed',
-    status_updated: 'Status updated',
-    party_size_updated: 'Party size updated',
-    table_moved: 'Table moved',
-    table_assigned: 'Table assigned',
-    sms_sent: 'SMS sent',
-    sms_failed: 'SMS failed',
-    deposit_paid: 'Deposit paid',
-    deposit_link_created: 'Deposit link created',
-    refund_created: 'Refund created',
-    payment_completed: 'Payment completed',
-  }
-
-  return labels[event] ?? formatLabel(event)
-}
-
-function getAuditActor(entry: BookingAuditEntry): string {
-  const meta = parseMeta(entry.meta)
-  const actor = formatMetaValue(meta.actor_name) ?? formatMetaValue(meta.user_email) ?? formatMetaValue(meta.performed_by)
-  if (actor) return actor
-  return entry.created_by ? 'Team member' : 'System'
-}
-
 function getAuditDetails(entry: BookingAuditEntry): string[] {
   const meta = parseMeta(entry.meta)
   const details: string[] = []
@@ -234,7 +209,8 @@ function getAuditDetails(entry: BookingAuditEntry): string[] {
   if (details.length > 0) return details
 
   return Object.entries(meta)
-    .filter(([key]) => !/(token|secret|signature|hash|url)/i.test(key))
+    // Ids and anything secret stay out of the card: they mean nothing to the reader.
+    .filter(([key]) => !/(token|secret|signature|hash|url|_id$|^id$)/i.test(key))
     .map(([key, value]) => {
       const rendered = formatMetaValue(value)
       return rendered ? `${formatLabel(key)}: ${rendered}` : null
@@ -295,15 +271,8 @@ interface BookingItem {
   menu_dish: BookingItemDish | null
 }
 
-export interface BookingAuditEntry {
-  id: number
-  event: string
-  old_status: string | null
-  new_status: string | null
-  meta: unknown
-  created_at: string
-  created_by: string | null
-}
+/** One line of the Audit Trail card, built by buildBookingAuditTrail (BK-038). */
+export type BookingAuditEntry = BookingAuditTrailEntry
 
 export interface Booking {
   id: string
@@ -1469,10 +1438,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 first:pt-0 last:pb-0 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
                       <div>
                         <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
-                        <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
+                        <p className="mt-0.5 text-xs text-text-muted">{entry.actor}</p>
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
+                        <p className="text-sm font-semibold text-text">{entry.label}</p>
                         {details.length > 0 && (
                           <ul className="mt-2 space-y-1">
                             {details.map((detail) => (

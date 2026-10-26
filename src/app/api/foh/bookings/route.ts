@@ -872,6 +872,54 @@ async function recordFohTableBookingAnalyticsSafe(
 
 // PostgREST errors arrive as plain objects rather than Errors, so name their fields instead of
 // logging "Unknown error" (tasks/lessons.md, 2026-05-28).
+/**
+ * One "Booking created" audit row for every booking FOH makes, whichever way it was made (BK-038):
+ * the staff booking function, the walk-in fallback or the super admin override. Website bookings
+ * always wrote one; staff-made bookings wrote none, so a disputed booking, waiver or table showed
+ * nobody behind it. FOH runs on one shared login, so the row names that login, not the person.
+ * Never fails the booking: the audit writer swallows its own errors.
+ */
+async function recordFohBookingCreated(input: {
+  userId: string | null | undefined
+  bookingResult: TableBookingRpcResult
+  details: {
+    path: 'staff_booking' | 'walk_in_fallback' | 'management_override'
+    source: string
+    channel: string
+    bookingDate: string
+    depositMethod: string | null
+    waiveDeposit: boolean
+    isVenueEvent: boolean
+    bypassPacing: boolean
+    managementOverride: boolean
+  }
+}): Promise<void> {
+  const { bookingResult, details } = input
+  if (!bookingResult.table_booking_id) return
+  await logAuditEvent({
+    user_id: input.userId ?? undefined,
+    operation_type: 'create',
+    resource_type: 'table_booking',
+    resource_id: bookingResult.table_booking_id,
+    operation_status: 'success',
+    additional_info: {
+      booking_reference: bookingResult.booking_reference ?? null,
+      booking_state: bookingResult.state,
+      booking_date: details.bookingDate,
+      party_size: bookingResult.party_size ?? null,
+      path: details.path,
+      source: details.source,
+      channel: details.channel,
+      deposit_method: details.depositMethod,
+      waive_deposit: details.waiveDeposit,
+      is_venue_event: details.isVenueEvent,
+      bypass_pacing: details.bypassPacing,
+      management_override: details.managementOverride,
+      table_ids: bookingResult.table_ids ?? (bookingResult.table_id ? [bookingResult.table_id] : []),
+    },
+  })
+}
+
 function describeDatabaseError(error: unknown): {
   code: string | null
   message: string | null
@@ -1008,6 +1056,24 @@ async function createFohTableBooking(
       return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
     }
 
+    if (mgmtResult.state === 'confirmed') {
+      await recordFohBookingCreated({
+        userId: auth.userId,
+        bookingResult: mgmtResult,
+        details: {
+          path: 'management_override',
+          source: 'management',
+          channel: 'staff',
+          bookingDate: payload.date,
+          depositMethod: null,
+          waiveDeposit: false,
+          isVenueEvent: false,
+          bypassPacing: true,
+          managementOverride: true,
+        },
+      })
+    }
+
     const responseData: FohCreateBookingResponseData = {
       state: mgmtResult.state as FohCreateBookingResponseData['state'],
       table_booking_id: mgmtResult.table_booking_id ?? null,
@@ -1048,13 +1114,8 @@ async function createFohTableBooking(
         { status: 403 }
       )
     }
-    await logAuditEvent({
-      user_id: auth.userId,
-      operation_type: 'create',
-      resource_type: 'table_booking_deposit_waiver',
-      operation_status: 'success',
-      additional_info: { waive_deposit: true }
-    })
+    // The waiver is audited once the booking exists, against it (BK-038): logged here it carried
+    // no booking id, so it could never be tied to the booking it waived.
   }
 
   let normalizedPhone: string | null = null
@@ -1529,6 +1590,35 @@ async function createFohTableBooking(
   // can carry another booking's id (tasks/lessons.md, 2026-07-03).
   if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
     walkInTrail.bookingPersisted = true
+    await recordFohBookingCreated({
+      userId: auth.userId,
+      bookingResult,
+      details: {
+        path: shouldBypassHoursForWalkIn ? 'walk_in_fallback' : 'staff_booking',
+        source: payload.walk_in === true ? 'walk-in' : 'admin',
+        channel: payload.walk_in === true ? 'walkin' : 'staff',
+        bookingDate: payload.date,
+        depositMethod,
+        waiveDeposit: payload.waive_deposit === true,
+        isVenueEvent: payload.is_venue_event === true,
+        bypassPacing,
+        managementOverride: false,
+      },
+    })
+    if (payload.waive_deposit === true && bookingResult.table_booking_id) {
+      await logAuditEvent({
+        user_id: auth.userId,
+        operation_type: 'table_booking.deposit_waived',
+        resource_type: 'table_booking',
+        resource_id: bookingResult.table_booking_id,
+        operation_status: 'success',
+        additional_info: {
+          reason: 'manager_waiver',
+          booking_reference: bookingResult.booking_reference ?? null,
+          party_size: payload.party_size,
+        },
+      })
+    }
   }
 
   // Stamp is_venue_event on the booking record when set — the RPC does not accept this field,
