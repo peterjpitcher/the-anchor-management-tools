@@ -422,7 +422,12 @@ export async function capturePayPalPayment(orderId: string, expectedCurrency?: s
 
   return {
     transactionId: capture.id,
+    /** The order's status. Not proof of payment: an order can be COMPLETED while its capture is PENDING. */
     status: data.status,
+    /** The capture's own status. Only COMPLETED means PayPal has taken the money (BK-019). */
+    captureStatus: typeof capture?.status === 'string' ? capture.status.trim().toUpperCase() : null,
+    /** Why PayPal is holding or refused it, for example PENDING_REVIEW. */
+    captureStatusReason: typeof capture?.status_details?.reason === 'string' ? capture.status_details.reason : null,
     payerId: data.payer?.payer_id,
     amount: capture.amount.value,
     currency: captureCurrency,

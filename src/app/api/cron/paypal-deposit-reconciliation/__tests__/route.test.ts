@@ -168,4 +168,36 @@ describe('PayPal deposit reconciliation cron', () => {
       }),
     }))
   })
+
+  // BK-019: the order can be COMPLETED while PayPal still holds its capture as PENDING; the
+  // deposit used to be recorded as paid from the order's status alone.
+  it('records no deposit for a completed order whose capture PayPal is still holding', async () => {
+    const { finalizeDepositPayment } = await import('@/services/private-bookings')
+    mockGetPayPalOrder.mockResolvedValueOnce({
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-1', status: 'PENDING', amount: { value: '100.00', currency_code: 'GBP' } }] } }],
+    })
+
+    const response = await callRoute()
+    const body = await response.json()
+
+    expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'capture_pending' }])
+    expect(finalizeDepositPayment).not.toHaveBeenCalled()
+  })
+
+  it('records no deposit when the capture it makes for an approved order is not completed', async () => {
+    const { finalizeDepositPayment } = await import('@/services/private-bookings')
+    mockGetPayPalOrder.mockResolvedValueOnce({
+      status: 'APPROVED',
+      purchase_units: [{ amount: { value: '100.00', currency_code: 'GBP' } }],
+    })
+    mockCapturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'DECLINED', amount: '100.00', currency: 'GBP' })
+
+    const response = await callRoute()
+    const body = await response.json()
+
+    expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'capture_declined' }])
+    expect(finalizeDepositPayment).not.toHaveBeenCalled()
+  })
 })
+

@@ -71,6 +71,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })
   }
 
+  if (result.state === 'capture_pending') {
+    // PayPal is holding the money for review (BK-019): nothing is confirmed yet, and the guest
+    // is messaged when the webhook confirms the booking.
+    return NextResponse.json(
+      {
+        success: false,
+        state: 'capture_pending',
+        booking_id: result.bookingId,
+        error: 'PayPal is still processing this payment. The booking will be confirmed when it clears.',
+      },
+      { status: 202 }
+    )
+  }
+
   if (result.state === 'manual_review') {
     await sendEventPaymentManualReviewSms(supabase, { bookingId: result.bookingId })
     await sendEventPaymentManualReviewEmail(supabase, {

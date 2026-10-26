@@ -7,6 +7,7 @@ import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-pay
 import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createInlinePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
 import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
@@ -315,6 +316,31 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           },
         })
         return { success: false, error: 'Payment verification failed — please contact us.' }
+      }
+
+      // Only a COMPLETED capture is a paid deposit (BK-019). A PENDING one is
+      // recorded by the PAYMENT.CAPTURE.COMPLETED webhook if PayPal releases it;
+      // a refused one took no money. Either way the booking is left as it is.
+      const captureOutcome = payPalCaptureOutcome(capture.captureStatus)
+      if (captureOutcome !== 'completed') {
+        void logAuditEvent({
+          operation_type: captureOutcome === 'pending' ? 'payment.capture_pending' : 'payment.capture_declined',
+          resource_type: 'table_booking',
+          resource_id: bookingIdForCapture,
+          operation_status: 'failure',
+          additional_info: {
+            orderId: captureOrderId,
+            transactionId: capture.transactionId,
+            captureStatus: capture.captureStatus ?? null,
+            captureStatusReason: capture.captureStatusReason ?? null,
+            action_needed: captureOutcome === 'pending'
+              ? 'PayPal is holding this deposit for review. The booking is not marked paid; the PayPal webhook records it if PayPal completes it. Check the payment in PayPal if it does not clear.'
+              : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
+          },
+        })
+        return captureOutcome === 'pending'
+          ? { success: false, error: 'PayPal is still processing this payment. Please contact us; do not retry.' }
+          : { success: false, error: 'PayPal did not take this payment. Please contact us.' }
       }
 
       // Parse the actually-captured GBP amount from PayPal's response. This

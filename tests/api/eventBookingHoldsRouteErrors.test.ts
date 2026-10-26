@@ -59,6 +59,8 @@ describe('event booking holds route error payloads', () => {
 
     const responses = [
       { data: [{ id: 'booking-1', event_id: 'event-1' }], error: null },
+      // No payment PayPal is still deciding (BK-019), so the lapsed hold is expired.
+      { data: [], error: null },
       { data: [{ id: 'booking-1', event_id: 'event-1' }], error: null },
       { data: [{ id: 'hold-1' }], error: null },
       { data: null, error: null },
@@ -100,4 +102,39 @@ describe('event booking holds route error payloads', () => {
       { context: 'event_booking_hold_expired' },
     )
   })
+
+  // BK-019: a booking whose payment PayPal is still holding for review is not "unpaid". The job
+  // used to expire it and text the guest that payment was not completed.
+  it('leaves a booking alone while PayPal holds its payment, and sends no expiry message', async () => {
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    const tables: string[] = []
+    const updates: Array<{ table: string; payload: unknown }> = []
+    const responses: Record<string, Array<{ data: unknown; error: unknown }>> = {
+      bookings: [{ data: [{ id: 'booking-1', event_id: 'event-1' }], error: null }],
+      payments: [{ data: [{ event_booking_id: 'booking-1', status: 'pending', paypal_capture_id: 'CAPTURE-1', metadata: { capture_status: 'PENDING' } }], error: null }],
+    }
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        tables.push(table)
+        const builder: Record<string, Mock> & { then?: Promise<{ data: unknown; error: unknown }>['then'] } = {} as any
+        const resolveNext = () => Promise.resolve(responses[table]?.shift() ?? { data: [], error: null })
+        for (const method of ['select', 'eq', 'not', 'lte', 'limit', 'in', 'neq']) builder[method] = vi.fn(() => builder)
+        builder.update = vi.fn((payload: unknown) => { updates.push({ table, payload }); return builder })
+        builder.maybeSingle = vi.fn(resolveNext)
+        builder.then = (resolve, reject) => resolveNext().then(resolve, reject)
+        return builder
+      }),
+    }
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
+
+    const response = await GET(new Request('http://localhost/api/cron/event-booking-holds') as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toMatchObject({ success: true, expiredPendingBookings: 0, keptAwaitingPaymentDecision: 1 })
+    expect(updates.filter((update) => update.table === 'bookings')).toEqual([])
+    expect(syncPubOpsEventCalendarByEventId).not.toHaveBeenCalled()
+  })
 })
+

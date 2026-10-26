@@ -130,6 +130,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     capturePayPalPayment.mockResolvedValue({
       transactionId: 'TXN-999',
       status: 'COMPLETED',
+      // The capture's own status: only COMPLETED records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
       amount: 40,
     })
     getPayPalOrder.mockResolvedValue(makePayPalOrder('40.00'))
@@ -204,6 +206,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     capturePayPalPayment.mockResolvedValue({
       transactionId: 'TXN-42',
       status: 'COMPLETED',
+      // The capture's own status: only COMPLETED records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
       amount: 80,
     })
     getPayPalOrder.mockResolvedValue(makePayPalOrder('80.00'))
@@ -251,6 +255,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     capturePayPalPayment.mockResolvedValue({
       transactionId: 'TXN-NO-AMT',
       status: 'COMPLETED',
+      // The capture's own status: only COMPLETED records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
       // amount is deliberately missing
     })
     getPayPalOrder.mockResolvedValue(makePayPalOrder('40.00'))

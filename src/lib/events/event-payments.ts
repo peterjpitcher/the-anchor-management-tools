@@ -9,7 +9,9 @@ import {
   isPayPalOrderAlreadyCapturedError,
   isPayPalOrderNotFoundError,
 } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
+import { EVENT_CAPTURE_PENDING_STATUS, isEventCapturePendingPayment } from '@/lib/events/payment-awaiting-decision'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -177,7 +179,15 @@ function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: b
   }
 }
 
-type EventPayPalConfirmationState = 'confirmed' | 'already_confirmed' | 'manual_review'
+/**
+ * `capture_pending`: PayPal is holding the money for review (BK-019). The booking stays
+ * pending_payment with the capture recorded on its payment row, nothing is confirmed, and the
+ * PAYMENT.CAPTURE.COMPLETED webhook or the reconciliation cron confirms it once PayPal does.
+ */
+type EventPayPalConfirmationState = 'confirmed' | 'already_confirmed' | 'manual_review' | 'capture_pending'
+
+export { EVENT_CAPTURE_PENDING_STATUS, isEventCapturePendingPayment }
+
 
 export type EventPayPalOrderResult =
   | {
@@ -618,7 +628,7 @@ async function captureEventPayPalOrderFromPreview(
 ): Promise<EventPayPalCaptureResult> {
   const { data: payment, error: paymentError } = await supabase
     .from('payments')
-    .select('id, paypal_order_id, paypal_capture_id, amount, currency, status')
+    .select('id, paypal_order_id, paypal_capture_id, amount, currency, status, metadata')
     .eq('event_booking_id', preview.bookingId)
     .eq('charge_type', 'prepaid_event')
     .eq('payment_provider', 'paypal')
@@ -629,6 +639,17 @@ async function captureEventPayPalOrderFromPreview(
   if (paymentError) throw paymentError
   if (!payment?.paypal_order_id) return { state: 'blocked', reason: 'payment_order_not_found' }
   if (payment.paypal_order_id !== input.orderId) return { state: 'blocked', reason: 'order_mismatch' }
+  if (isEventCapturePendingPayment(payment)) {
+    // Captured earlier but still PENDING at PayPal: never confirm on the stored capture id.
+    return {
+      state: 'capture_pending',
+      bookingId: preview.bookingId,
+      amount: preview.totalAmount,
+      currency: preview.currency,
+      paymentId: payment.id,
+      reason: 'capture_pending',
+    }
+  }
 
   const order = await getPayPalOrder(input.orderId)
   const orderAmount = extractOrderAmount(order)
@@ -678,6 +699,19 @@ async function captureEventPayPalOrderFromPreview(
     }
     if (capture.customId && capture.customId !== `event_booking:${preview.bookingId}`) {
       return { state: 'blocked', reason: 'capture_reference_mismatch' }
+    }
+    const outcome = payPalCaptureOutcome(capture.captureStatus)
+    if (outcome !== 'completed') {
+      return recordUnfinishedEventCapture(supabase, {
+        preview,
+        paymentId: payment.id,
+        paymentMetadata: payment.metadata,
+        orderId: input.orderId,
+        captureId,
+        outcome,
+        captureStatus: capture.captureStatus ?? null,
+        captureStatusReason: capture.captureStatusReason ?? null,
+      })
     }
   }
 
@@ -737,6 +771,85 @@ async function captureEventPayPalOrderFromPreview(
   }
 }
 
+/**
+ * A capture PayPal has not completed (BK-019). Only a COMPLETED capture may confirm a booking.
+ *
+ * PENDING: PayPal is holding the money for review. The capture id and a PENDING marker go on
+ * the payment row, which stays `pending`, so no second order can be made for the booking, the
+ * hold job leaves the booking alone, and the PAYMENT.CAPTURE.COMPLETED webhook (or the
+ * reconciliation cron) confirms it when PayPal releases the money.
+ *
+ * DECLINED, FAILED or anything else: no money moved. The payment row is marked failed and the
+ * booking is not confirmed; its hold runs out as any unpaid hold does.
+ */
+async function recordUnfinishedEventCapture(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    preview: Extract<EventPaymentPreviewResult, { state: 'ready' }>
+    paymentId: string
+    paymentMetadata: unknown
+    orderId: string
+    captureId: string
+    outcome: 'pending' | 'declined'
+    captureStatus: string | null
+    captureStatusReason: string | null
+  }
+): Promise<EventPayPalCaptureResult> {
+  const nowIso = new Date().toISOString()
+  const metadata = {
+    ...((input.paymentMetadata ?? {}) as Record<string, unknown>),
+    capture_status: input.outcome === 'pending' ? EVENT_CAPTURE_PENDING_STATUS : (input.captureStatus || 'DECLINED'),
+    capture_status_reason: input.captureStatusReason,
+    capture_status_at: nowIso,
+  }
+  const update = input.outcome === 'pending'
+    ? { paypal_capture_id: input.captureId, metadata, updated_at: nowIso }
+    : { status: 'failed', paypal_capture_id: input.captureId, metadata, updated_at: nowIso }
+
+  const { error } = await supabase
+    .from('payments')
+    .update(update)
+    .eq('id', input.paymentId)
+    .eq('status', 'pending')
+
+  // Not thrown: the guest must not be told to retry a payment PayPal may be holding. The capture
+  // id is still in this log line for a person to find.
+  if (error) {
+    logger.error('Failed to record an unfinished PayPal capture on an event payment', {
+      error: new Error(error.message),
+      metadata: { bookingId: input.preview.bookingId, orderId: input.orderId, captureId: input.captureId, outcome: input.outcome },
+    })
+  }
+
+  logger.error(
+    input.outcome === 'pending'
+      ? 'PayPal is holding an event ticket payment; the booking stays unconfirmed until PayPal completes it'
+      : 'PayPal did not complete an event ticket capture; the booking was not confirmed',
+    {
+      error: new Error(`event_capture_${input.outcome}`),
+      metadata: {
+        bookingId: input.preview.bookingId,
+        orderId: input.orderId,
+        captureId: input.captureId,
+        captureStatus: input.captureStatus,
+        captureStatusReason: input.captureStatusReason,
+      },
+    }
+  )
+
+  if (input.outcome === 'pending') {
+    return {
+      state: 'capture_pending',
+      bookingId: input.preview.bookingId,
+      amount: input.preview.totalAmount,
+      currency: input.preview.currency,
+      paymentId: input.paymentId,
+      reason: 'capture_pending',
+    }
+  }
+  return { state: 'blocked', reason: 'capture_declined' }
+}
+
 export async function captureEventPayPalOrderByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: { rawToken: string; orderId: string }
@@ -744,22 +857,38 @@ export async function captureEventPayPalOrderByRawToken(
   const preview = await getEventPaymentPreviewByRawToken(supabase, input.rawToken, { allowGraceExpired: true })
   if (
     preview.state === 'blocked' &&
-    (preview.reason === 'booking_not_pending_payment' || preview.reason === 'token_used')
+    (preview.reason === 'booking_not_pending_payment' || preview.reason === 'token_used' || preview.reason === 'hold_expired' || preview.reason === 'token_expired')
   ) {
     const { data: payment } = await supabase
       .from('payments')
-      .select('event_booking_id, amount, currency, paypal_capture_id, status')
+      .select('id, event_booking_id, amount, currency, paypal_capture_id, status, metadata')
       .eq('paypal_order_id', input.orderId)
       .eq('payment_provider', 'paypal')
       .eq('charge_type', 'prepaid_event')
       .maybeSingle()
-    if (payment?.event_booking_id && payment.status === 'succeeded') {
+    if (
+      payment?.event_booking_id &&
+      payment.status === 'succeeded' &&
+      (preview.reason === 'booking_not_pending_payment' || preview.reason === 'token_used')
+    ) {
       return {
         state: 'already_confirmed',
         bookingId: payment.event_booking_id,
         amount: Number(payment.amount),
         currency: payment.currency || 'GBP',
         paymentId: null,
+      }
+    }
+    // PayPal is still holding this payment: a lapsed hold must not tell the guest to start again
+    // and pay a second time.
+    if (payment?.event_booking_id && isEventCapturePendingPayment(payment)) {
+      return {
+        state: 'capture_pending',
+        bookingId: payment.event_booking_id,
+        amount: Number(payment.amount),
+        currency: payment.currency || 'GBP',
+        paymentId: payment.id,
+        reason: 'capture_pending',
       }
     }
   }
@@ -775,22 +904,32 @@ export async function captureEventPayPalOrderByBookingId(
   input: { bookingId: string; orderId: string }
 ): Promise<EventPayPalCaptureResult> {
   const preview = await getEventPaymentPreviewByBookingId(supabase, { ...input, allowGraceExpired: true })
-  if (preview.state === 'blocked' && preview.reason === 'booking_not_pending_payment') {
+  if (preview.state === 'blocked' && (preview.reason === 'booking_not_pending_payment' || preview.reason === 'hold_expired')) {
     const { data: payment } = await supabase
       .from('payments')
-      .select('id, amount, currency, paypal_capture_id, status')
+      .select('id, amount, currency, paypal_capture_id, status, metadata')
       .eq('event_booking_id', input.bookingId)
       .eq('paypal_order_id', input.orderId)
       .eq('payment_provider', 'paypal')
       .eq('charge_type', 'prepaid_event')
       .maybeSingle()
-    if (payment?.status === 'succeeded') {
+    if (payment?.status === 'succeeded' && preview.reason === 'booking_not_pending_payment') {
       return {
         state: 'already_confirmed',
         bookingId: input.bookingId,
         amount: Number(payment.amount),
         currency: payment.currency || 'GBP',
         paymentId: payment.id,
+      }
+    }
+    if (isEventCapturePendingPayment(payment)) {
+      return {
+        state: 'capture_pending',
+        bookingId: input.bookingId,
+        amount: Number(payment!.amount),
+        currency: payment!.currency || 'GBP',
+        paymentId: payment!.id,
+        reason: 'capture_pending',
       }
     }
   }
