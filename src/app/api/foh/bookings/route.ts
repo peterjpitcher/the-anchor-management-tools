@@ -16,6 +16,7 @@ import {
 import { syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkUserPermission } from '@/app/actions/rbac'
 import {
   alignTablePaymentHoldToScheduledSend,
   chargedDepositAmount,
@@ -873,6 +874,25 @@ async function recordFohTableBookingAnalyticsSafe(
 // PostgREST errors arrive as plain objects rather than Errors, so name their fields instead of
 // logging "Unknown error" (tasks/lessons.md, 2026-05-28).
 /**
+ * Whether this user may take the deposit off a booking or override kitchen pacing: the
+ * table_bookings manage permission, which managers, super admins and the Deputy role hold
+ * (owner decision D18). It replaces checks on the role names 'manager' and 'super_admin', which
+ * refused the Deputy role although it holds the permission (BK-106). Null when it cannot be read.
+ */
+async function canManageTableBookings(userId: string | null | undefined): Promise<boolean | null> {
+  if (!userId) return false
+  try {
+    return await checkUserPermission('table_bookings', 'manage', userId)
+  } catch (permissionError) {
+    logger.error('Failed to check the table_bookings manage permission', {
+      error: permissionError instanceof Error ? permissionError : new Error(String(permissionError)),
+      metadata: { userId },
+    })
+    return null
+  }
+}
+
+/**
  * One "Booking created" audit row for every booking FOH makes, whichever way it was made (BK-038):
  * the staff booking function, the walk-in fallback or the super admin override. Website bookings
  * always wrote one; staff-made bookings wrote none, so a disputed booking, waiver or table showed
@@ -1093,24 +1113,29 @@ async function createFohTableBooking(
     return NextResponse.json({ success: true, data: responseData })
   }
 
-  // Deposit waiver: manager or super_admin can skip deposit for a specific booking.
-  if (payload.waive_deposit === true) {
-    const { data: roleRows, error: roleQueryError } = await auth.supabase
-      .from('user_roles')
-      .select('roles(name)')
-      .eq('user_id', auth.userId)
-    if (roleQueryError) {
-      logger.error('Failed to fetch user roles for deposit waiver check', {
-        error: roleQueryError,
-        metadata: { userId: auth.userId }
-      })
+  // Taking the deposit off a booking, by a waiver or by marking it a pub event, needs the
+  // table_bookings manage permission (D18, BK-106). The pub event tick used to need nothing beyond
+  // the FOH edit permission and wrote no audit row, so the shared FOH login could drop any 15+ or
+  // Christmas deposit with one tick and nobody could tell afterwards.
+  if (payload.is_venue_event === true && isChristmasPurpose(payload.purpose)) {
+    // A pub event never removes a Christmas deposit (D18).
+    return NextResponse.json(
+      { error: 'A Christmas booking always takes its deposit, so it cannot be marked as a pub event. A manager can waive it instead.' },
+      { status: 400 }
+    )
+  }
+  if (payload.waive_deposit === true || payload.is_venue_event === true) {
+    const canManage = await canManageTableBookings(auth.userId)
+    if (canManage === null) {
       return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 })
     }
-    const isManagerOrAbove = (roleRows as unknown as Array<{ roles: { name: string } | null }> | null)
-      ?.some((r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin') ?? false
-    if (!isManagerOrAbove) {
+    if (!canManage) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to waive deposit' },
+        {
+          error: payload.is_venue_event === true
+            ? 'Insufficient permissions to mark a booking as a pub event'
+            : 'Insufficient permissions to waive deposit',
+        },
         { status: 403 }
       )
     }
@@ -1382,6 +1407,7 @@ async function createFohTableBooking(
     bookingDate: payload.date,
     periodAccepted,
     depositWaived: treatAsWaived,
+    waivedFor: payload.is_venue_event === true ? 'pub_event' : 'manager',
   })
 
   const requiresDeposit = expectedDeposit
@@ -1407,15 +1433,12 @@ async function createFohTableBooking(
   // food-only kitchen pacing gate.
   let bypassPacing = payload.walk_in === true || payload.purpose === 'drinks'
   if (payload.bypass_pacing === true && payload.walk_in !== true) {
-    const { data: roleRows } = await auth.supabase
-      .from('user_roles')
-      .select('roles(name)')
-      .eq('user_id', auth.userId)
-    const isManagerOrAbove =
-      (roleRows as unknown as Array<{ roles: { name: string } | null }> | null)?.some(
-        (r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
-      ) ?? false
-    if (!isManagerOrAbove) {
+    // The table_bookings manage permission, not role names (BK-106).
+    const canManage = await canManageTableBookings(auth.userId)
+    if (canManage === null) {
+      return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 })
+    }
+    if (!canManage) {
       return NextResponse.json({ error: 'Insufficient permissions to override kitchen pacing' }, { status: 403 })
     }
     await logAuditEvent({
@@ -1605,7 +1628,7 @@ async function createFohTableBooking(
         managementOverride: false,
       },
     })
-    if (payload.waive_deposit === true && bookingResult.table_booking_id) {
+    if ((payload.waive_deposit === true || payload.is_venue_event === true) && bookingResult.table_booking_id) {
       await logAuditEvent({
         user_id: auth.userId,
         operation_type: 'table_booking.deposit_waived',
@@ -1613,7 +1636,9 @@ async function createFohTableBooking(
         resource_id: bookingResult.table_booking_id,
         operation_status: 'success',
         additional_info: {
-          reason: 'manager_waiver',
+          // Who and why: a pub event, or a manager's waiver (BK-106).
+          reason: payload.is_venue_event === true ? 'pub_event' : 'manager_waiver',
+          description: payload.is_venue_event === true ? 'No deposit: pub event' : 'Deposit waived by a manager',
           booking_reference: bookingResult.booking_reference ?? null,
           party_size: payload.party_size,
         },
@@ -1630,7 +1655,9 @@ async function createFohTableBooking(
       .eq('id', bookingResult.table_booking_id)
 
     if (venueEventUpdateError) {
-      logger.warn('Failed to stamp is_venue_event on table booking', {
+      // Error, not warn: production drops warn, and a booking whose deposit was taken off for a
+      // pub event must say so (BK-106).
+      logger.error('Failed to stamp is_venue_event on table booking', {
         metadata: {
           userId: auth.userId,
           tableBookingId: bookingResult.table_booking_id,

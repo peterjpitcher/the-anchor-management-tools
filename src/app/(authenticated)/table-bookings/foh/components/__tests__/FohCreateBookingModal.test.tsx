@@ -30,6 +30,7 @@ function renderModal(
     createMode?: 'booking' | 'walk_in' | 'management'
     onSetCreateForm?: (updater: (current: CreateForm) => CreateForm) => void
     walkInTargetTable?: { id: string; name: string } | null
+    canWaiveDeposit?: boolean
   } = {},
 ) {
   render(
@@ -37,7 +38,7 @@ function renderModal(
       open
       createMode={options.createMode ?? 'booking'}
       createForm={createForm}
-      canWaiveDeposit={false}
+      canWaiveDeposit={options.canWaiveDeposit ?? false}
       walkInTargetTable={options.walkInTargetTable ?? null}
       submittingBooking={false}
       customerQuery=""
@@ -172,5 +173,26 @@ describe('FohCreateBookingModal: Christmas courses for each guest', () => {
   it('does not ask on any other kind of booking', () => {
     renderModal({ ...CHRISTMAS_FORM, purpose: 'food' })
     expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  })
+})
+
+// BK-106 (D18): the Pub Event tick takes the deposit off, so only staff who may waive one see it,
+// and never on a Christmas booking, which always takes its deposit.
+describe('the Pub Event tick', () => {
+  const FOOD_FORM: CreateForm = { ...CHRISTMAS_FORM, purpose: 'food', party_size: '20' }
+
+  it('is shown to staff who may waive a deposit', () => {
+    renderModal(FOOD_FORM, { canWaiveDeposit: true })
+    expect(screen.getByLabelText(/Pub Event/)).toBeInTheDocument()
+  })
+
+  it('is hidden from staff who may not', () => {
+    renderModal(FOOD_FORM, { canWaiveDeposit: false })
+    expect(screen.queryByLabelText(/Pub Event/)).not.toBeInTheDocument()
+  })
+
+  it('is never shown on a Christmas booking', () => {
+    renderModal({ ...CHRISTMAS_FORM, party_size: '20' }, { canWaiveDeposit: true })
+    expect(screen.queryByLabelText(/Pub Event/)).not.toBeInTheDocument()
   })
 })

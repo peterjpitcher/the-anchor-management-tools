@@ -19,6 +19,7 @@ vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
 }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn().mockResolvedValue(true) }))
 vi.mock('@/lib/analytics/events', () => ({ recordAnalyticsEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/table-bookings/bookings', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/table-bookings/bookings')>()),
