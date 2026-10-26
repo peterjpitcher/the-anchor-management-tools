@@ -62,7 +62,7 @@ export function describeChristmasCourseCounts(counts?: number[] | null): string 
 // ---------------------------------------------------------------------------
 
 export type TableBookingCancellationRefundResult =
-  | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
+  | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number; cutoffDays?: number }
   | {
       refunded: true
       amountPence: number
@@ -102,6 +102,19 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
 
   if (refundResult.reason === 'zero_tier') {
     return "As it's within 3 days, the deposit can't be refunded. Hope to see you another time!"
+  }
+
+  // A seasonal booking (Christmas) is refunded in full up to its own cutoff and not after. Name that
+  // rule, as the cancel page did, never the sliding rule's 3 days (BK-003, 24 October review).
+  if (refundResult.reason === 'seasonal_cutoff') {
+    const cutoff = refundResult.cutoffDays
+    if (cutoff === 0) {
+      return "This booking's deposit wasn't refundable, so it can't be returned. Hope to see you another time!"
+    }
+    if (typeof cutoff === 'number' && cutoff > 0) {
+      return `As it's fewer than ${cutoff} days before your booking, the deposit can't be refunded. Hope to see you another time!`
+    }
+    return "As it's inside the cancellation deadline for this booking, the deposit can't be refunded. Hope to see you another time!"
   }
 
   if (refundResult.reason === 'refund_failed' || refundResult.depositOwed) {
