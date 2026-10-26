@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026150301_christmas_booking_minimum_four.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261026172410_christmas_booking_minimum_four.sql'
 ROLLBACK = ROOT / 'tasks/christmas-minimum-four/rollback.sql'
 SIGNATURE = 'create_table_booking_christmas_v01(jsonb,integer[])'
 PERIOD = '70000000-0000-0000-0000-000000000001'
