@@ -49,6 +49,15 @@ describe('netPaidAmount', () => {
     ])).toBe(60)
     expect(netPaidAmount([])).toBe(0)
   })
+
+  it('counts a fully refunded charge as taken, and its refund once', () => {
+    // £80 ticket plus a £40 seat increase that was refunded in full: £80 is still held.
+    expect(netPaidAmount([
+      { charge_type: 'prepaid_event', status: 'succeeded', amount: 80 },
+      { charge_type: 'seat_increase', status: 'refunded', amount: 40 },
+      { charge_type: 'refund', status: 'refunded', amount: 40 },
+    ])).toBe(80)
+  })
 })
 
 describe('describeGuestChangeRequest', () => {

@@ -77,6 +77,23 @@ describe('summariseGuestAnswers', () => {
     expect(allergy.missingRequired).toEqual([{ reference: 'ANC-11111111', guestName: 'Bo' }])
   })
 
+  it('flags guests who booked before a required question was added', () => {
+    const LATE = { ...ALLERGY, id: 'late-question', label: 'Any mobility needs?', required: true }
+    const late = summariseGuestAnswers(bookings, [ALLERGY, LATE]).questions.find((question) => question.questionId === LATE.id)!
+    expect(late.missingRequired).toEqual([
+      { reference: 'ANC-11111111', guestName: 'Ann' },
+      { reference: 'ANC-11111111', guestName: 'Bo' },
+      { reference: 'ANC-22222222', guestName: 'Cat' },
+    ])
+  })
+
+  it('does not flag a guest whose details were removed under the retention rule', () => {
+    const LATE = { ...ALLERGY, id: 'late-question', label: 'Any mobility needs?', required: true }
+    const removed = [{ ...bookings[1], attendees: [{ ...guest('Cat', 'None'), details_removed_at: '2027-02-18T03:30:00Z' }] }]
+    const late = summariseGuestAnswers(removed, [LATE]).questions[0]
+    expect(late.missingRequired).toEqual([])
+  })
+
   it('lists the booking notes and marks an online request as unconfirmed', () => {
     expect(summariseGuestAnswers(bookings).notes).toEqual([
       { reference: 'ANC-11111111', bookerName: 'Pat Booker', note: 'UNCONFIRMED REQUEST: food before the event', unconfirmedRequest: true },

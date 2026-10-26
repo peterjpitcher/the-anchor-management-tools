@@ -34,7 +34,11 @@ const BAND_TEXT: Record<string, string> = {
   '0': 'fewer than 3 days before, so not refunded',
 }
 
-/** Net money in: charges taken, less refunds. */
+/**
+ * Net money in: charges taken, less refunds. A fully refunded charge still counts as taken: its
+ * refund is a refund row of its own, subtracted here once, so leaving the charge out as well would
+ * take the same money off twice.
+ */
 export function netPaidAmount(payments: DoorPaymentRow[]): number {
   let net = 0
   for (const payment of payments) {
@@ -42,7 +46,7 @@ export function netPaidAmount(payments: DoorPaymentRow[]): number {
     const amount = Math.max(0, Number(payment.amount ?? 0))
     if (String(payment.charge_type ?? '').toLowerCase() === 'refund') {
       if (status === 'succeeded' || status === 'pending' || status === 'refunded') net -= amount
-    } else if (status === 'succeeded' || status === 'paid' || status === 'partially_refunded') {
+    } else if (status === 'succeeded' || status === 'paid' || status === 'partially_refunded' || status === 'refunded') {
       net += amount
     }
   }

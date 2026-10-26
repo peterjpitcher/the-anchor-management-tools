@@ -87,12 +87,23 @@ export function summariseGuestAnswers(bookings: GuestAnswersBooking[], currentQu
   for (const booking of bookings) {
     for (const attendee of storedAttendees(booking.attendees)) {
       guests += 1
+      const askedIds = new Set<string>()
       for (const answer of Array.isArray(attendee.answers) ? attendee.answers : []) {
         if (!answer?.question_id) continue
+        askedIds.add(answer.question_id)
         const summary = questionFor(answer.question_id, String(answer.label ?? ''), Boolean(answer.required))
         const value = typeof answer.value === 'string' ? answer.value.trim() : ''
         if (value) summary.answered.push({ reference: booking.reference, guestName: attendee.name, value: displayAnswer(answer.type, value) })
         else if (answer.required && !attendee.details_removed_at) summary.missingRequired.push({ reference: booking.reference, guestName: attendee.name })
+      }
+      // A required question added after this guest booked is not in their snapshot at all, so it
+      // is missing too (unless their details were removed under the retention rule).
+      if (!attendee.details_removed_at) {
+        for (const question of currentQuestions) {
+          if (question.required && !askedIds.has(question.id)) {
+            questionFor(question.id, question.label, question.required).missingRequired.push({ reference: booking.reference, guestName: attendee.name })
+          }
+        }
       }
     }
     const note = booking.notes?.trim()
