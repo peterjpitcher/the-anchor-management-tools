@@ -607,6 +607,7 @@ export function FohScheduleClient({
         onOpenPartySizeEdit={(bid, size) => { setPartySizeEditBookingId(bid); setPartySizeEditValue(String(size)); setPartySizeEditOpen(true) }}
         onOpenWalkoutModal={(bid) => { setWalkoutBookingId(bid); setWalkoutAmountValue(''); setWalkoutModalOpen(true) }}
         onOpenChangeTime={(bid) => { setChangeTimeBookingId(bid); setChangeTimeError(null); setChangeTimeOpen(true) }}
+        canManageDeposit={canWaiveDeposit}
       />
 
       <FohCreateBookingModal

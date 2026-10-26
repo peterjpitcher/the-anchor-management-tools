@@ -53,6 +53,7 @@ import {
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
 import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
+import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 import {
   describeGuestNotificationChannel,
   describeGuestNotificationProblem,
@@ -399,6 +400,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // What staff must read after a party-size change, kept until dismissed rather than a toast that
   // vanishes in seconds (BK-043).
   const [partySizeNotice, setPartySizeNotice] = useState<string[] | null>(null)
+  // A manager settling an owed deposit after booking: waive, taken at the bar, or longer to pay (BK-045).
+  const [depositAction, setDepositAction] = useState<'waive' | 'cash' | 'extend' | null>(null)
+  const [depositActionReason, setDepositActionReason] = useState('')
+  const [depositActionUntil, setDepositActionUntil] = useState('')
   const [moveTableId, setMoveTableId] = useState<string>('')
   const [availableMoveTables, setAvailableMoveTables] = useState<MoveTableOption[]>([])
   const [loadingMoveTables, setLoadingMoveTables] = useState(false)
@@ -829,6 +834,40 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     )
   }
 
+  function openDepositAction(action: 'waive' | 'cash' | 'extend') {
+    setDepositAction(action)
+    setDepositActionReason('')
+    // Offer the booking start as the latest time the guest can pay by.
+    setDepositActionUntil(booking.start_datetime ? utcIsoToLondonLocalInput(booking.start_datetime) : '')
+  }
+
+  async function handleSubmitDepositAction() {
+    if (!depositAction) return
+    const reason = depositActionReason.trim()
+    if (reason.length < 3) {
+      toast.error('Say why, so the next person can see it')
+      return
+    }
+    const holdUntil = depositAction === 'extend' ? londonLocalInputToUtcIso(depositActionUntil) : null
+    if (depositAction === 'extend' && !holdUntil) {
+      toast.error('Choose when the guest must pay by')
+      return
+    }
+    await runAction(
+      'deposit-action',
+      async () => {
+        const payload = await requestTableBookingAction<{ message?: string; warning?: string | null }>(
+          `/api/boh/table-bookings/${booking.id}/deposit`,
+          { body: { action: depositAction, reason, ...(holdUntil ? { hold_until: holdUntil } : {}) } },
+        )
+        setDepositAction(null)
+        if (payload.warning) toast.error(payload.warning, { duration: 10000 })
+        return payload
+      },
+      (payload) => payload.message || 'Deposit updated'
+    )
+  }
+
   async function handleCopyDepositLink() {
     await runAction(
       'deposit-link',
@@ -1252,7 +1291,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     >
                       Edit Party Size
                     </Button>
-                    {booking.status === 'pending_payment' && (
+                    {depositState.kind === 'pending' && (
                       <Button
                         size="sm"
                         variant="secondary"
@@ -1346,6 +1385,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   )}
                   {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
                 </div>
+
+                {canManage && depositState.kind === 'pending' && (
+                  // BK-045 (owner decision D18): a manager can settle an owed deposit after booking.
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" disabled={Boolean(actionLoadingKey)} onClick={() => openDepositAction('cash')}>
+                      Deposit taken at the bar
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={Boolean(actionLoadingKey)} onClick={() => openDepositAction('extend')}>
+                      Give longer to pay
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={Boolean(actionLoadingKey)} onClick={() => openDepositAction('waive')}>
+                      Waive deposit
+                    </Button>
+                  </div>
+                )}
 
                 {booking.deposit_review_needed_at && (
                   // BK-043: a party-size change left the deposit for a manager to settle on the bill.
@@ -1600,6 +1654,61 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
         {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)
             each dialog's controls get the 44px floor (D6). */}
+        <Modal
+          open={depositAction !== null}
+          onClose={() => setDepositAction(null)}
+          title={
+            depositAction === 'waive'
+              ? 'Waive the deposit'
+              : depositAction === 'cash'
+                ? 'Deposit taken at the bar'
+                : 'Give the guest longer to pay'
+          }
+          width="md"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDepositAction(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void handleSubmitDepositAction()}
+                loading={actionLoadingKey === 'deposit-action'}
+                disabled={Boolean(actionLoadingKey)}
+              >
+                {depositAction === 'waive' ? 'Waive deposit' : depositAction === 'cash' ? 'Record payment' : 'Save new time'}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">
+              {depositAction === 'waive'
+                ? 'The booking is confirmed with no deposit, and the guest\'s payment link stops working.'
+                : depositAction === 'cash'
+                  ? `Records ${depositState.amount != null ? formatGbp(depositState.amount) : 'the deposit'} as paid at the bar and confirms the booking.`
+                  : 'The guest\'s payment link keeps working until the new time. It can be no later than the booking start.'}
+            </p>
+            {depositAction === 'extend' && (
+              <Input
+                label="Pay by"
+                type="datetime-local"
+                value={depositActionUntil}
+                max={booking.start_datetime ? utcIsoToLondonLocalInput(booking.start_datetime) : undefined}
+                onChange={(event) => setDepositActionUntil(event.target.value)}
+              />
+            )}
+            <Textarea
+              label="Why"
+              value={depositActionReason}
+              onChange={(event) => setDepositActionReason(event.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder={depositAction === 'cash' ? 'Who took it, and card or cash' : 'Recorded on the booking'}
+            />
+          </div>
+        </Modal>
+
         <Modal
           open={bookingEditOpen}
           onClose={() => setBookingEditOpen(false)}

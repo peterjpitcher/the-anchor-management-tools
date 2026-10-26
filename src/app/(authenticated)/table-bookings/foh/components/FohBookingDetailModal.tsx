@@ -5,6 +5,7 @@ import { Badge, Button, Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { FohDepositActions } from './FohDepositActions'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -46,6 +47,8 @@ type FohBookingDetailModalProps = {
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
   onOpenChangeTime: (bookingId: string) => void
+  /** table_bookings manage: may settle an owed deposit after booking (BK-045, D18). */
+  canManageDeposit?: boolean
 }
 
 export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(props: FohBookingDetailModalProps) {
@@ -66,6 +69,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
     onOpenChangeTime,
+    canManageDeposit = false,
   } = props
 
   const selectedBooking = selectedBookingContext?.booking ?? null
@@ -176,6 +180,15 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         </div>
 
         <GuestRequirements booking={selectedBooking} />
+
+        {canManageDeposit && selectedBookingDeposit.kind === 'pending' && !selectedBookingIsEventOnly && !selectedBooking.is_private_block && (
+          <FohDepositActions
+            bookingId={selectedBooking.id}
+            bookingStartIso={selectedBooking.start_datetime ?? null}
+            bookingActionInFlight={bookingActionInFlight}
+            onRunAction={onRunAction}
+          />
+        )}
 
         {selectedBooking.is_private_block && (
           <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">

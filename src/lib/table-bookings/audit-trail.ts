@@ -67,6 +67,8 @@ const LABELS: Record<string, string> = {
   'table_booking.deposit_owed': 'Deposit now owed',
   'table_booking.deposit_review_needed': 'Deposit flagged for a manager',
   'table_booking.deposit_review_cleared': 'Deposit checked by a manager',
+  'table_booking.deposit_cash_recorded': 'Deposit taken at the bar',
+  'table_booking.deposit_hold_extended': 'More time to pay the deposit',
   'table_booking.notification_sent': 'Guest message sent',
   'table_booking.notification_failed': 'Guest message not delivered',
   'table_booking.sms_sent': 'Text sent',
