@@ -11,6 +11,7 @@ import { render, screen } from '@testing-library/react'
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/lib/table-bookings/confirm-token', () => ({
   isAnswerable: (status: string) => status === 'confirmed',
+  hasBookingStarted: () => false,
   lookupConfirmToken: vi.fn(async () => ({
     ok: true,
     booking: {
@@ -18,6 +19,7 @@ vi.mock('@/lib/table-bookings/confirm-token', () => ({
       bookingReference: 'TB-0001',
       bookingDate: '2026-09-12',
       bookingTime: '19:30:00',
+      startDateTime: null,
       partySize: 4,
       status: 'confirmed',
       guestConfirmedAt: null,
