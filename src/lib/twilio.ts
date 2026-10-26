@@ -5,6 +5,7 @@ import { logger } from './logger';
 import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { recordProviderSmsOptOut } from '@/lib/sms/provider-opt-out';
+import { maskPhone } from '@/lib/phone/mask';
 import { recordOutboundMessage, recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { resolveSmsSuspensionReason, SMS_SUSPENSION_SWITCHES } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -186,14 +187,14 @@ export async function isCustomerSmsSendAllowed(
 
       if (!doesCustomerPhoneMatchTo({ customerPhones: rawPhones, to })) {
         logger.error('Customer phone does not match destination phone; blocking SMS send', {
-          metadata: { customerId, to }
+          metadata: { customerId, to: maskPhone(to) }
         })
         return { allowed: false, reason: 'customer_phone_mismatch' };
       }
     } catch (phoneMatchError: unknown) {
       logger.error('Failed to validate customer phone match while checking SMS eligibility', {
         error: phoneMatchError instanceof Error ? phoneMatchError : new Error(String(phoneMatchError)),
-        metadata: { customerId, to }
+        metadata: { customerId, to: maskPhone(to) }
       })
       return { allowed: false, reason: 'customer_phone_mismatch' };
     }
@@ -320,7 +321,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     console.warn(
       `Outbound SMS blocked: emergency suspension active (${SMS_SUSPENSION_SWITCHES[suspensionReason]})`,
       JSON.stringify({
-        to,
+        to: maskPhone(to),
         suspensionReason,
         templateKey: options.metadata?.template_key ?? null
       })
@@ -343,7 +344,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     if (customerResolution.resolutionError) {
       logger.error('SMS blocked because customer resolution safety check failed', {
         metadata: {
-          to,
+          to: maskPhone(to),
           reason: customerResolution.resolutionError
         }
       })
@@ -394,7 +395,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       if (!safetyLimits.allowed) {
         logger.warn('Outbound SMS blocked by safety limits', {
           metadata: {
-            to,
+            to: maskPhone(to),
             code: safetyLimits.code,
             reason: safetyLimits.reason,
             metrics: safetyLimits.metrics
@@ -413,7 +414,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       if (claimResult === 'duplicate') {
         logger.warn('Suppressed duplicate SMS send attempt', {
           metadata: {
-            to,
+            to: maskPhone(to),
             templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
           }
         });
@@ -432,7 +433,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       if (claimResult === 'conflict') {
         logger.warn('SMS send blocked by idempotency conflict', {
           metadata: {
-            to,
+            to: maskPhone(to),
             templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
           }
         });
@@ -455,7 +456,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     } catch (shortenError: unknown) {
       logger.warn('Failed to shorten URLs in SMS body; sending original content', {
         error: shortenError instanceof Error ? shortenError : new Error(String(shortenError)),
-        metadata: { to }
+        metadata: { to: maskPhone(to) }
       });
     }
 
@@ -475,7 +476,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
                 await releaseSmsIdempotencyClaim(supabase, dedupContext);
               }
               logger.error('Failed to defer SMS during quiet hours due to missing customer context', {
-                metadata: { to, scheduledFor: scheduledFor.toISOString() }
+                metadata: { to: maskPhone(to), scheduledFor: scheduledFor.toISOString() }
               });
               return {
                 success: false,
@@ -505,7 +506,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
                 await releaseSmsIdempotencyClaim(supabase, dedupContext);
               }
               logger.error('Failed to defer SMS job during quiet hours', {
-                metadata: { to, scheduledFor: scheduledFor.toISOString(), error: enqueueResult.error }
+                metadata: { to: maskPhone(to), scheduledFor: scheduledFor.toISOString(), error: enqueueResult.error }
               });
               return {
                 success: false,
@@ -515,7 +516,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
 
             logger.info('Deferred SMS to respect quiet hours', {
               metadata: {
-                to,
+                to: maskPhone(to),
                 scheduledFor: scheduledFor.toISOString(),
                 timezone: quietHoursState.timezone,
                 jobId: enqueueResult.jobId
@@ -544,7 +545,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             }
             logger.error('Unexpected error deferring SMS during quiet hours', {
               error: deferError instanceof Error ? deferError : new Error(String(deferError)),
-              metadata: { to, scheduledFor: scheduledFor.toISOString() }
+              metadata: { to: maskPhone(to), scheduledFor: scheduledFor.toISOString() }
             });
             return {
               success: false,
@@ -592,7 +593,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           onRetry: (error, attempt) => {
             logger.warn(`SMS send retry attempt ${attempt}`, {
               error,
-              metadata: { to, bodyLength: smsBody.length }
+              metadata: { to: maskPhone(to), bodyLength: smsBody.length }
             });
           }
         }
@@ -605,7 +606,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
 
       logger.info('SMS sent successfully', {
         metadata: { 
-          to, 
+          to: maskPhone(to), 
           messageSid: message.sid,
           segments
         }
@@ -668,7 +669,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             // Fail closed: safety limits depend on `messages` persistence, so treat logging failures as fatal.
             logger.error('SMS sent but failed to persist outbound message log; blocking further sends', {
               metadata: {
-                to,
+                to: maskPhone(to),
                 sid: message.sid,
                 customerId: usedCustomerId
               }
@@ -693,7 +694,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           // means we cannot log this outbound message at all (messages.customer_id is non-null), so
           // treat this as logging_failed to force callers (especially bulk/queue loops) to abort.
           logger.error('SMS sent but could not resolve customer for logging; blocking further sends', {
-            metadata: { to, sid: message.sid }
+            metadata: { to: maskPhone(to), sid: message.sid }
           })
 
           return {
@@ -714,7 +715,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         const error = logError instanceof Error ? logError : new Error(String(logError));
         logger.error('Failed to automatically log outbound SMS', {
           error,
-          metadata: { to, sid: message.sid }
+          metadata: { to: maskPhone(to), sid: message.sid }
         });
 
         return {
@@ -750,7 +751,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       const errCode = getErrorCode(error);
       logger.error('Failed to send SMS after retries', {
         error: error instanceof Error ? error : new Error(getErrorMessage(error)),
-        metadata: { to, errorCode: errCode }
+        metadata: { to: maskPhone(to), customerId: resolvedCustomerId ?? options.customerId ?? null, errorCode: errCode }
       });
 
       // Record failed attempt so downstream logic can enforce failure limits
@@ -774,7 +775,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         } catch (logError: unknown) {
           logger.error('Failed to log outbound SMS failure', {
             error: logError instanceof Error ? logError : new Error(String(logError)),
-            metadata: { to }
+            metadata: { to: maskPhone(to) }
           })
         }
       }
@@ -809,7 +810,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     logger.error('Unexpected SMS pipeline failure', {
       error: unexpectedError instanceof Error ? unexpectedError : new Error(String(unexpectedError)),
       metadata: {
-        to,
+        to: maskPhone(to),
         templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
       }
     })
@@ -895,7 +896,7 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
         onRetry: (error, attempt) => {
           logger.warn(`WhatsApp send retry attempt ${attempt}`, {
             error,
-            metadata: { to: normalizedTo, bodyLength: body.length }
+            metadata: { to: maskPhone(normalizedTo), bodyLength: body.length }
           })
         }
       }
@@ -922,7 +923,7 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
 
     if (options.skipMessageLogging !== true && !messageId) {
       logger.error('WhatsApp sent but failed to persist outbound message log', {
-        metadata: { to: normalizedTo, sid: message.sid, customerId }
+        metadata: { to: maskPhone(normalizedTo), sid: message.sid, customerId }
       })
       return {
         success: false,
@@ -946,7 +947,7 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
     const errCode = getErrorCode(error)
     logger.error('Failed to send WhatsApp after retries', {
       error: error instanceof Error ? error : new Error(getErrorMessage(error)),
-      metadata: { to: normalizedTo, errorCode: errCode }
+      metadata: { to: maskPhone(normalizedTo), customerId, errorCode: errCode }
     })
 
     if (options.skipMessageLogging !== true) {
@@ -968,7 +969,7 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
       } catch (logError: unknown) {
         logger.error('Failed to log outbound WhatsApp failure', {
           error: logError instanceof Error ? logError : new Error(String(logError)),
-          metadata: { to: normalizedTo, customerId }
+          metadata: { to: maskPhone(normalizedTo), customerId }
         })
       }
     }

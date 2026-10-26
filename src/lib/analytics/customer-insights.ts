@@ -24,7 +24,9 @@ const NON_PRODUCTION_CUSTOMER_FILTER = [
   'first_name.ilike.%staging%',
   'last_name.ilike.%staging%',
   'first_name.ilike.%api_test%',
-  'last_name.ilike.%api_test%'
+  'last_name.ilike.%api_test%',
+  // Made-up walk-in and anonymised records were over 40% of new customers in 90 days (BK-082).
+  'is_placeholder.eq.true'
 ].join(',')
 
 const WINDOW_DAYS: Record<CustomerInsightsWindow, number> = {
@@ -756,6 +758,7 @@ export async function loadCustomerInsightsSnapshot(input: {
       supabase
         .from('customers')
         .select('id, created_at')
+        .eq('is_placeholder', false)
         .gte('created_at', previousSinceIso)
         .range(from, to)
     ),
