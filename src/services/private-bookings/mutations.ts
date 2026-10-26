@@ -961,8 +961,9 @@ export async function createBooking(
   };
   delete (bookingPayload as Record<string, unknown>).is_web_enquiry;
 
-  // 2. Atomic Transaction
-  const { data: booking, error } = await supabase.rpc('create_private_booking_transaction', {
+  // 2. Atomic Transaction. The function is server-only (BK-105), so it runs through the service-role client; every caller has
+  // already checked private_bookings create or manage, or is a public route using that client anyway.
+  const { data: booking, error } = await createAdminClient().rpc('create_private_booking_transaction', {
     p_booking_data: bookingPayload,
     p_items: input.items || [],
     p_customer_data: null

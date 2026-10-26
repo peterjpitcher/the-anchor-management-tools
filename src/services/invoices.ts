@@ -165,9 +165,9 @@ export class InvoiceService {
    * Records a payment and updates invoice status atomically.
    */
   static async recordPayment(input: RecordPaymentInput) {
-    const supabase = await createClient();
-
-    const { data: result, error } = await supabase.rpc('record_invoice_payment_transaction', {
+    // The function is server-only (BK-105), so it runs through the service-role client; the recordPayment
+    // action has already checked invoices edit.
+    const { data: result, error } = await createAdminClient().rpc('record_invoice_payment_transaction', {
       p_payment_data: {
         invoice_id: input.invoice_id,
         payment_date: input.payment_date,
