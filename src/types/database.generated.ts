@@ -4975,6 +4975,44 @@ export type Database = {
           },
         ]
       }
+      event_door_takings: {
+        Row: {
+          event_id: string
+          free_entries: number
+          note: string | null
+          recorded_at: string
+          recorded_by: string | null
+          till_total: number
+          updated_at: string
+        }
+        Insert: {
+          event_id: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total: number
+          updated_at?: string
+        }
+        Update: {
+          event_id?: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_door_takings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_faqs: {
         Row: {
           answer: string

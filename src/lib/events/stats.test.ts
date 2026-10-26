@@ -25,6 +25,19 @@ describe('event stats', () => {
     })
   })
 
+  it('still counts a booking marked as a no-show as booked seats (BK-130)', () => {
+    const stats = buildEventBookingStats(
+      { capacity: 20, price: 3, payment_mode: 'cash_only' },
+      [
+        { seats: 4, status: 'confirmed', is_reminder_only: false },
+        { seats: 2, status: 'no_show', is_reminder_only: false },
+      ],
+    )
+
+    expect(stats.activeBookings).toBe(2)
+    expect(stats.totalSeats).toBe(6)
+  })
+
   it('counts unexpired pending_payment holds as booked seats', () => {
     const now = new Date('2026-07-04T12:00:00Z')
     const stats = buildEventBookingStats(

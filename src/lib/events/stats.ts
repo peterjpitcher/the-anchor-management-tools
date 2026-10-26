@@ -38,6 +38,9 @@ const BOOKED_BOOKING_STATUSES = new Set([
   'visited_waiting_for_review',
   'review_clicked',
   'completed',
+  // A guest marked as not coming after the event (BK-130) still booked those seats; who came is
+  // counted separately on the event page.
+  'no_show',
 ])
 
 export type EventBookingStats = {

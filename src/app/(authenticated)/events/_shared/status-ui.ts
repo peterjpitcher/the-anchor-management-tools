@@ -39,6 +39,8 @@ const EVENT_BOOKING_STATUS_TONES = new Map<string, EventBadgeTone>([
   ['confirmed', 'primary'],
   ['pending_payment', 'warning'],
   ['cancelled', 'neutral'],
+  // A guest staff marked as not coming (BK-130), red as a table no-show is.
+  ['no_show', 'danger'],
 ])
 
 export function eventBookingStatusTone(status: string | null | undefined): EventBadgeTone {
