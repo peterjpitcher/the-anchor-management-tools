@@ -31,8 +31,37 @@ let bookingRow: BookingRow
 let paymentRow: Record<string, unknown> | null
 const bookingUpdates: Record<string, unknown>[] = []
 
+/*
+ * The guest manage link and the confirm-booking "no" answer have no session. Under RLS the anon
+ * role sees no table_bookings or payments rows, so a session-client read finds nothing. That is
+ * what made a paid deposit read as no deposit (BK-002). The session client here behaves exactly
+ * so; if the refund code ever reads through it again, every test that expects a refund fails.
+ */
+const sessionReads: string[] = []
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
+    from: (table: string) => {
+      sessionReads.push(table)
+      const empty = { data: null, error: null }
+      const chain: Record<string, unknown> = {}
+      for (const method of ['select', 'eq', 'in', 'update']) chain[method] = () => chain
+      chain.maybeSingle = async () => empty
+      return chain
+    },
+  }),
+}))
+
+// The service-role client reads and writes everything: the deposit on the booking, the Stripe
+// ledger and payment_refunds.
+const refundRowInserts: Record<string, unknown>[] = []
+const refundRowUpdates: { values: Record<string, unknown>; paypalRefundId: unknown }[] = []
+let refundInsertError: { code?: string; message: string } | null = null
+/** The completed and pending payment_refunds rows already on the booking. */
+let ledgerRows: { amount: number; status: 'completed' | 'pending' }[] = []
+let ledgerReadError: { message: string } | null = null
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
     from: (table: string) => {
       if (table === 'payments') {
         return {
@@ -43,49 +72,38 @@ vi.mock('@/lib/supabase/server', () => ({
           }),
         }
       }
-      // table_bookings
+      if (table === 'table_bookings') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: bookingRow, error: null }) }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            bookingUpdates.push(values)
+            return { eq: async () => ({ error: null }) }
+          },
+        }
+      }
+      // payment_refunds
       return {
         select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: bookingRow, error: null }) }),
-        }),
-        update: (values: Record<string, unknown>) => {
-          bookingUpdates.push(values)
-          return { eq: async () => ({ error: null }) }
-        },
-      }
-    },
-  }),
-}))
-
-// payment_refunds is service-role only, so the ledger row goes through the admin client.
-const refundRowInserts: Record<string, unknown>[] = []
-const refundRowUpdates: { values: Record<string, unknown>; paypalRefundId: unknown }[] = []
-let refundInsertError: { code?: string; message: string } | null = null
-/** The completed and pending payment_refunds rows already on the booking. */
-let ledgerRows: { amount: number; status: 'completed' | 'pending' }[] = []
-let ledgerReadError: { message: string } | null = null
-
-vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
           eq: () => ({
-            in: async () => ({ data: ledgerReadError ? null : ledgerRows, error: ledgerReadError }),
+            eq: () => ({
+              in: async () => ({ data: ledgerReadError ? null : ledgerRows, error: ledgerReadError }),
+            }),
           }),
         }),
-      }),
-      insert: async (values: Record<string, unknown>) => {
-        refundRowInserts.push(values)
-        return { error: refundInsertError }
-      },
-      update: (values: Record<string, unknown>) => ({
-        eq: async (_column: string, paypalRefundId: unknown) => {
-          refundRowUpdates.push({ values, paypalRefundId })
-          return { error: null }
+        insert: async (values: Record<string, unknown>) => {
+          refundRowInserts.push(values)
+          return { error: refundInsertError }
         },
-      }),
-    }),
+        update: (values: Record<string, unknown>) => ({
+          eq: async (_column: string, paypalRefundId: unknown) => {
+            refundRowUpdates.push({ values, paypalRefundId })
+            return { error: null }
+          },
+        }),
+      }
+    },
   }),
 }))
 
@@ -101,6 +119,7 @@ function farFutureDate(): Date {
 beforeEach(() => {
   vi.clearAllMocks()
   bookingUpdates.length = 0
+  sessionReads.length = 0
   refundRowInserts.length = 0
   refundRowUpdates.length = 0
   refundInsertError = null
@@ -135,6 +154,27 @@ describe('refundTableBookingDeposit, PayPal deposits', () => {
     expect(refundPayPalPayment.mock.calls[0][0]).toBe('CAP-1')
     expect(refundPayPalPayment.mock.calls[0][1]).toBe(150)
     expect(result).toMatchObject({ refunded: true, amountPence: 15000, tier: 'full' })
+  })
+
+  it('refunds a guest cancelling through their own link, who has no logged-in session', async () => {
+    // BK-002: the guest paths have no session, and RLS shows the anon role nothing, so the deposit
+    // read empty and was kept. The deposit must be found without the caller's session at all.
+    bookingRow = {
+      paypal_deposit_capture_id: 'CAP-GUEST',
+      deposit_amount_locked: 160,
+      deposit_amount: null,
+      payment_status: 'completed',
+      deposit_refund_status: null,
+      booking_date: null,
+      deposit_refund_cutoff_days: null,
+      booking_period_code: null,
+    }
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate())
+
+    expect(result).toMatchObject({ refunded: true, amountPence: 16000, tier: 'full' })
+    expect(refundPayPalPayment.mock.calls[0][0]).toBe('CAP-GUEST')
+    expect(sessionReads).toEqual([])
   })
 
   it('reconciles payment_status as well as deposit_refund_status', async () => {
@@ -257,7 +297,7 @@ describe('refundTableBookingDeposit, PayPal deposits', () => {
 
     const result = await refundTableBookingDeposit('booking-1', bookingDate)
 
-    expect(result).toEqual({ refunded: false, reason: 'zero_tier' })
+    expect(result).toEqual({ refunded: false, reason: 'seasonal_cutoff', cutoffDays: 14 })
     expect(refundPayPalPayment).not.toHaveBeenCalled()
   })
 
