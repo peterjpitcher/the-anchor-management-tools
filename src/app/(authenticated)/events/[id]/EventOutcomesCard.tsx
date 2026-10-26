@@ -11,6 +11,7 @@ import {
   Input,
   Stat,
   StatGrid,
+  SubHeading,
   Textarea,
   toast,
 } from '@/ds'
@@ -23,7 +24,6 @@ import {
   type EventDoorTakings,
 } from '@/app/actions/event-outcomes'
 import {
-  ATTENDANCE_LABELS,
   canRecordAttendance,
   expectedDoorMoney,
   isStaffListCheckIn,
@@ -34,6 +34,7 @@ import {
 import { resolveEventStartIso } from '@/lib/events/event-when'
 import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { EVENT_ATTENDANCE_LABEL, EVENT_ATTENDANCE_TONE } from '../_shared/status-ui'
 
 interface EventOutcomesCardProps {
   event: Event
@@ -49,12 +50,6 @@ function formatCurrency(amount: number): string {
 
 function seatsText(seats: number): string {
   return seats === 1 ? '1 seat' : `${seats} seats`
-}
-
-const ATTENDANCE_TONES: Record<EventAttendance, 'success' | 'danger' | 'neutral'> = {
-  came: 'success',
-  did_not_come: 'danger',
-  not_recorded: 'neutral',
 }
 
 /**
@@ -146,8 +141,8 @@ export function EventOutcomesCard({ event, bookings, canManage, onChanged }: Eve
                       <span className="ml-2 text-sm text-text-muted">{seatsText(Number(row.booking.seats ?? 0))}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={ATTENDANCE_TONES[row.attendance]} size="sm">
-                        {atTheDoor ? 'Checked in at the door' : ATTENDANCE_LABELS[row.attendance]}
+                      <Badge tone={EVENT_ATTENDANCE_TONE[row.attendance]} size="sm">
+                        {atTheDoor ? 'Checked in at the door' : EVENT_ATTENDANCE_LABEL[row.attendance]}
                       </Badge>
                       {canManage && !atTheDoor && (
                         <>
@@ -270,7 +265,7 @@ function DoorMoneyPanel({
   return (
     <div className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-text-strong">Door money (till total)</h3>
+        <SubHeading>Door money (till total)</SubHeading>
         {record && (
           <span className="text-xs text-text-muted">Last saved {formatDateTime12Hour(record.updatedAt)}</span>
         )}

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { eventBookingStatusTone, eventStatusLabel, eventStatusTone } from '../status-ui'
+import {
+  EVENT_ATTENDANCE_LABEL,
+  EVENT_ATTENDANCE_TONE,
+  eventBookingStatusTone,
+  eventStatusLabel,
+  eventStatusTone,
+} from '../status-ui'
 
 describe('event status map', () => {
   it('gives each event status the tone the events list, board and event page share', () => {
@@ -31,5 +37,10 @@ describe('event status map', () => {
     expect(eventBookingStatusTone('no_show')).toBe('danger')
     expect(eventBookingStatusTone('constructor')).toBe('neutral')
     expect(eventBookingStatusTone(null)).toBe('neutral')
+  })
+
+  it('shows who came after the night, never a quiet no-show (BK-130)', () => {
+    expect(EVENT_ATTENDANCE_TONE).toEqual({ came: 'success', did_not_come: 'danger', not_recorded: 'neutral' })
+    expect(EVENT_ATTENDANCE_LABEL).toEqual({ came: 'Came', did_not_come: 'Did not come', not_recorded: 'Not recorded' })
   })
 })

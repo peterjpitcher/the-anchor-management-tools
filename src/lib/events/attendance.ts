@@ -163,9 +163,3 @@ export function expectedDoorMoney(seats: number, ticketPrice: number): number {
   if (!Number.isFinite(seats) || !Number.isFinite(ticketPrice) || seats <= 0 || ticketPrice <= 0) return 0
   return Math.round(seats * ticketPrice * 100) / 100
 }
-
-export const ATTENDANCE_LABELS: Record<EventAttendance, string> = {
-  came: 'Came',
-  did_not_come: 'Did not come',
-  not_recorded: 'Not recorded',
-}
