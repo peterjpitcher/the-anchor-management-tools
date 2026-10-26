@@ -25,6 +25,7 @@ function view(overrides: Partial<HireReadinessView> = {}): HireReadinessView {
     roomNames: ['The Dining Room'],
     roomCapacity: 50,
     capacityOverride: null,
+    contractNotSent: false,
     ...overrides,
   }
 }
@@ -102,6 +103,21 @@ describe('the hire readiness panel', () => {
       })
     )
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
+  })
+
+  // Review BK-006, owner decision D25: from the moment the deposit is confirmed, a missing contract
+  // shows on the booking, not only 14 days before the event.
+  it('says the contract has not been sent, and that the booking cannot be confirmed until it is', () => {
+    render(
+      <HireReadinessPanel bookingId="booking-1" view={view({ contractNotSent: true })} guestCount={40} canOverrideCapacity={false} onChanged={() => {}} />
+    )
+
+    expect(screen.getByText('Contract not sent')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'The contract has not been sent, so this booking cannot be confirmed. Send it from the Signatures panel, or record that the customer accepted it another way.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('shows nothing for a hire that is in order', () => {

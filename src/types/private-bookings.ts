@@ -348,6 +348,10 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
     roomProblems: string[]
     /** The deposit is paid and the booking is still a draft. */
     paidNotConfirmed: boolean
+    /** Where the contract is: accepted, sent, or not sent (review BK-006). */
+    contract: 'accepted' | 'sent' | 'not_sent'
+    /** Not sent, and the deposit is confirmed, paid or waived: the booking cannot be confirmed (D25). */
+    contractNotSentAfterDeposit: boolean
   } | null
   days_until_event?: number
   sms_queue?: PrivateBookingSmsQueue[]

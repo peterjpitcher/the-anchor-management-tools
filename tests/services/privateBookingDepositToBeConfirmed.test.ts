@@ -224,6 +224,27 @@ describe('creating a private booking', () => {
     expect(state.db.tables.private_bookings[0].status).toBe('draft')
     expect(mockedSend).not.toHaveBeenCalled()
   })
+
+  // Owner decision D25: no contract exists when a booking is made, so even a waived deposit on a
+  // hire with its room booked is a draft until the contract is sent and staff confirm it.
+  it('a waived deposit with a room booked is still a draft, because no contract has been sent', async () => {
+    // The room's clash check calls its own RPC: no clash.
+    const createRpc = state.db.rpc
+    state.db.rpc = vi.fn(async (name: string, args: { p_booking_data: Record<string, unknown> }) =>
+      name === 'get_private_booking_conflicts' ? { data: [], error: null } : createRpc(name, args)
+    )
+    await PrivateBookingService.createBooking({
+      ...createInput,
+      deposit_amount: 0,
+      deposit_waived: true,
+      deposit_waived_reason: 'Venue-hosted event',
+      items: [{ item_type: 'space', space_id: 'space-dining', description: 'The Dining Room', quantity: 4, unit_price: 50 }],
+    } as Parameters<typeof PrivateBookingService.createBooking>[0])
+    await flushBackgroundSends()
+
+    expect(state.db.tables.private_bookings[0].status).toBe('draft')
+    expect(mockedSend).not.toHaveBeenCalled()
+  })
 })
 
 describe('extending the hold on a booking', () => {

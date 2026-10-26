@@ -408,3 +408,66 @@ describe('waiving the deposit', () => {
     expect(outcome.confirmationBlockedReasons).toBeUndefined()
   })
 })
+
+/**
+ * Owner decision D25 (review BK-006): a hire cannot be confirmed until its contract has been sent,
+ * or recorded as accepted another way. Four of the six upcoming confirmed hires had no contract:
+ * three confirmed themselves when the deposit was paid and one on a waived £0 deposit.
+ */
+describe('the contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('stops staff confirming a hire whose contract has not been sent', async () => {
+    seed(bookingRow({ contract_sent_at: null }), [roomItem(DINING.id)])
+
+    await expect(updateBookingStatus('booking-1', 'confirmed', 'user-1')).rejects.toThrow(
+      'This booking cannot be confirmed yet. The contract has not been sent. Send it from the Signatures panel, or record that the customer accepted it another way.'
+    )
+    expect(saved().status).toBe('draft')
+  })
+
+  it('lets staff confirm once the contract is recorded as accepted another way', async () => {
+    seed(bookingRow({ contract_sent_at: null, contract_accepted_at: '2026-10-23T11:00:00.000Z' }), [roomItem(DINING.id)])
+
+    await updateBookingStatus('booking-1', 'confirmed', 'user-1')
+
+    expect(saved().status).toBe('confirmed')
+  })
+
+  it('keeps a paid hire with no contract a draft, and says why', async () => {
+    seed(bookingRow({ contract_sent_at: null }), [roomItem(DINING.id)])
+
+    const result = await finalizeDepositPayment({ bookingId: 'booking-1', amount: 250, method: 'paypal' }, state.db)
+
+    expect(saved().status).toBe('draft')
+    expect(result.confirmationBlockedReasons).toEqual([
+      'Contract not sent. Send the contract, or record that the customer accepted it another way, then confirm the booking.',
+    ])
+  })
+
+  it('keeps a waived hire with no contract a draft', async () => {
+    seed(bookingRow({ contract_sent_at: null, deposit_confirmed_at: null }), [roomItem(DINING.id)])
+
+    const outcome = await updateDepositAmount('booking-1', 0, 'user-1', { waived: true, waivedReason: 'Regular customer' })
+
+    expect(saved().status).toBe('draft')
+    expect(outcome.confirmationBlockedReasons).toEqual([
+      'Contract not sent. Send the contract, or record that the customer accepted it another way, then confirm the booking.',
+    ])
+  })
+
+  it('shows "contract not sent" once the deposit is confirmed', async () => {
+    seed(bookingRow({ contract_sent_at: null }), [roomItem(DINING.id)])
+    const { facts, rooms } = await loadOneHireReadiness('booking-1')
+    expect(buildHireReadinessView(facts, rooms).contractNotSent).toBe(true)
+
+    seed(bookingRow({ contract_sent_at: null, deposit_confirmed_at: null }), [roomItem(DINING.id)])
+    const before = await loadOneHireReadiness('booking-1')
+    expect(buildHireReadinessView(before.facts, before.rooms).contractNotSent).toBe(false)
+  })
+})

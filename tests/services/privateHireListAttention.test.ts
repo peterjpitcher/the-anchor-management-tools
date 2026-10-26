@@ -76,13 +76,47 @@ describe('the private bookings list', () => {
 
     const { data } = await fetchPrivateBookings({ status: 'all', dateFilter: 'all' })
 
-    expect(Object.fromEntries(data.map((row) => [row.id, row.hire_attention]))).toEqual({
+    expect(
+      Object.fromEntries(
+        data.map((row) => [row.id, row.hire_attention ? { roomProblems: row.hire_attention.roomProblems, paidNotConfirmed: row.hire_attention.paidNotConfirmed } : null])
+      )
+    ).toEqual({
       'no-room': { roomProblems: ['no_room'], paidNotConfirmed: false },
       'no-guests': { roomProblems: ['no_guest_count'], paidNotConfirmed: false },
       'too-many': { roomProblems: ['over_capacity'], paidNotConfirmed: false },
       'paid-draft': { roomProblems: ['over_capacity'], paidNotConfirmed: true },
       fine: { roomProblems: [], paidNotConfirmed: false },
       done: null,
+    })
+  })
+
+  // Review BK-006: the list showed nothing about the contract until 14 days before the event. It
+  // now has a Contract column, red once the deposit is confirmed, paid or waived and the contract
+  // has not been sent, because the booking cannot be confirmed until it has (D25).
+  it('shows where each contract is, and flags a missing one once the deposit is confirmed', async () => {
+    seed(
+      [
+        booking('accepted', { contract_sent_at: '2026-10-01T10:00:00.000Z', contract_accepted_at: '2026-10-02T10:00:00.000Z' }),
+        booking('accepted-on-paper', { contract_accepted_at: '2026-10-02T11:00:00.000Z' }),
+        booking('sent', { contract_sent_at: '2026-10-01T10:00:00.000Z' }),
+        booking('not-sent-deposit-confirmed', { status: 'draft', deposit_paid_date: null }),
+        booking('not-sent-enquiry', { status: 'draft', deposit_paid_date: null, deposit_confirmed_at: null }),
+      ],
+      [],
+    )
+
+    const { data } = await fetchPrivateBookings({ status: 'all', dateFilter: 'all' })
+
+    expect(
+      Object.fromEntries(
+        data.map((row) => [row.id, [row.hire_attention?.contract, row.hire_attention?.contractNotSentAfterDeposit]])
+      )
+    ).toEqual({
+      accepted: ['accepted', false],
+      'accepted-on-paper': ['accepted', false],
+      sent: ['sent', false],
+      'not-sent-deposit-confirmed': ['not_sent', true],
+      'not-sent-enquiry': ['not_sent', false],
     })
   })
 

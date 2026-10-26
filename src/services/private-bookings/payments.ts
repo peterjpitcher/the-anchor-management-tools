@@ -33,7 +33,7 @@ import {
 } from './types';
 import { getBookingConflictSummary } from './conflicts'
 import {
-  hireRoomProblems,
+  hireConfirmationProblems,
   loadOneHireReadiness,
   type HireProblem,
 } from './readiness';
@@ -70,12 +70,15 @@ type FinalizeDepositPaymentResult = {
 
 /** Why a paid deposit left the booking a draft, when the confirmation checks themselves failed. */
 export const GATE_CHECK_FAILED_REASON =
-  'The checks before confirming could not run, so the booking was left as a draft. Check its rooms and guest count, then confirm it by hand.'
+  'The checks before confirming could not run, so the booking was left as a draft. Check its rooms, guest count and contract, then confirm it by hand.'
 
 /** A room problem as the reason a paid deposit did not confirm the booking. */
 function depositGateReason(problem: HireProblem): string {
   if (problem.code === 'no_room') return 'No room booked. Add the room the party will use, then confirm the booking.'
   if (problem.code === 'no_guest_count') return 'No guest count set. Add the number of guests, then confirm the booking.'
+  if (problem.code === 'contract_not_sent') {
+    return 'Contract not sent. Send the contract, or record that the customer accepted it another way, then confirm the booking.'
+  }
   return problem.message
 }
 
@@ -265,6 +268,9 @@ async function sendDepositReceivedSideEffects(input: {
       // £0.00" (review PB-7).
       total_amount: positiveTotal(calculatedTotal ?? booking.total_amount),
       bookingConfirmed,
+      // Where the cancellation policy is: the contract, or the standard terms (review BK-006).
+      contract_sent_at: booking.contract_sent_at ?? null,
+      contract_accepted_at: updatedBooking?.contract_accepted_at ?? booking.contract_accepted_at ?? null,
     }).catch(e =>
       logger.error('Failed to send deposit received email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
@@ -495,9 +501,10 @@ async function finalizeDepositPaymentWithClient(
     return { success: true, alreadyRecorded: true }
   }
 
-  // SOP §6/§18/§28 and owner decision D24: gate the draft→confirmed flip on
-  // space conflicts, a room being booked, a guest count, the capacity (or a
-  // manager's override) and an outstanding risk review. The payment is ALWAYS
+  // SOP §6/§18/§28 and owner decisions D24 and D25: gate the draft→confirmed
+  // flip on space conflicts, a room being booked, a guest count, the capacity
+  // (or a manager's override), the contract having been sent or accepted
+  // another way, and an outstanding risk review. The payment is ALWAYS
   // recorded, because the money has already been taken (especially PayPal);
   // when gated the booking stays 'draft', the reasons go on its audit trail,
   // the booking page and list show "Deposit paid, not confirmed" with them,
@@ -518,7 +525,7 @@ async function finalizeDepositPaymentWithClient(
       }
 
       const { facts, rooms } = await loadOneHireReadiness(bookingId)
-      for (const problem of hireRoomProblems(facts, rooms)) {
+      for (const problem of hireConfirmationProblems(facts, rooms)) {
         confirmationBlockedReasons.push(depositGateReason(problem))
       }
 
@@ -1029,15 +1036,15 @@ export async function updateDepositAmount(
 
     if (fetchError || !booking) throw new Error('Booking not found')
 
-    // Waiving the deposit confirms a draft only when nothing else stops it (owner decision D24,
-    // review BK-066: this path confirmed a hire with no capacity check at all). Otherwise the
-    // waiver is saved, the booking stays a draft and staff are told why. A check that cannot
-    // run keeps it a draft too.
+    // Waiving the deposit confirms a draft only when nothing else stops it (owner decisions D24
+    // and D25, reviews BK-066 and BK-006: this path confirmed a hire with no capacity check and no
+    // contract). Otherwise the waiver is saved, the booking stays a draft and staff are told why.
+    // A check that cannot run keeps it a draft too.
     let confirmationBlockedReasons: string[] = []
     if (booking.status === 'draft') {
       try {
         const { facts, rooms } = await loadOneHireReadiness(bookingId, db)
-        confirmationBlockedReasons = hireRoomProblems(facts, rooms).map(depositGateReason)
+        confirmationBlockedReasons = hireConfirmationProblems(facts, rooms).map(depositGateReason)
       } catch (gateError) {
         logger.error('Deposit waiver confirmation check failed: the booking stays a draft', {
           error: gateError instanceof Error ? gateError : new Error(String(gateError)),
