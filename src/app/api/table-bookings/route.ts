@@ -635,8 +635,12 @@ export async function POST(request: NextRequest) {
       mutationCommitted = Boolean(bookingResult.table_booking_id)
 
       // The email typed for this booking when the customer record does not hold it, kept before
-      // any message goes so the confirmation and payment link reach it (BK-078).
-      await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, customerResolution.bookingContactEmail)
+      // any message goes so the confirmation and payment link reach it (BK-078). Only on a booking
+      // this request made, as the event path and the FOH route do: an id on a refused answer is
+      // somebody's existing booking, which a typed address must never redirect.
+      if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
+        await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, customerResolution.bookingContactEmail)
+      }
 
       if (customerResolution.customerId && bookingResult.table_booking_id) {
         await ConsentService.applyBookingContactConsent(

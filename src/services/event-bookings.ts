@@ -668,8 +668,10 @@ export class EventBookingService {
     const rpcResult = (rpcResultRaw ?? {}) as EventBookingRpcResult
     const state = rpcResult.state || 'blocked'
 
-    // Before any message is sent, so every one of them reads it.
-    if (contactEmail && rpcResult.booking_id) {
+    // Before any message is sent, so every one of them reads it. Only on a booking this request
+    // made: a refused duplicate (customer_conflict) names the guest's EXISTING booking, and writing
+    // the typed address onto it would redirect that booking's payment links and ticket emails.
+    if (contactEmail && rpcResult.booking_id && (state === 'confirmed' || state === 'pending_payment')) {
       await recordBookingContactEmail('bookings', rpcResult.booking_id, contactEmail)
     }
     let resolvedState: EventBookingRpcResult['state'] = state
