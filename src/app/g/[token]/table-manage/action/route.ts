@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAuditEvent } from '@/app/actions/audit'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { logger } from '@/lib/logger'
 import {
@@ -163,6 +164,43 @@ function normaliseSeatText(value: string, maxLength: number): string | null {
 }
 
 /**
+ * Record a guest's saved seats on the audit trail (BK-149), as staff saves already are, so an "I
+ * ordered the beef" question can be traced. Seat numbers and dish ids only: never a name or a
+ * dietary note. Never throws: the choices are already saved.
+ */
+async function auditGuestPreorderSave(input: {
+  tableBookingId: string
+  bookingReference: string
+  seats: number[]
+  dishIds: string[]
+  failedSeat?: number
+}): Promise<void> {
+  if (input.seats.length === 0) return
+  try {
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'table_booking_preorder',
+      resource_id: input.tableBookingId,
+      operation_status: 'success',
+      additional_info: {
+        booking_reference: input.bookingReference,
+        seats_saved: input.seats,
+        dish_ids: Array.from(new Set(input.dishIds)),
+        source: 'guest_manage_page',
+        ...(input.failedSeat ? { stopped_at_seat: input.failedSeat } : {}),
+      },
+    })
+  } catch (error) {
+    logger.warn('Could not audit a guest pre-order save', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+  }
+}
+
+/**
  * Save the booker's food choices, one seat at a time through the shared write path.
  *
  * Seats the guest did not change are skipped rather than rewritten, which keeps a party of twenty
@@ -202,6 +240,8 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
 
     const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
     let sawAnySeatField = false
+    const savedSeats: number[] = []
+    const savedDishIds: string[] = []
 
     for (let ordinal = 1; ordinal <= order.partySize; ordinal += 1) {
       const cover = coversByOrdinal.get(ordinal)
@@ -291,6 +331,11 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
 
       try {
         await savePreorderCover(supabase, input)
+        savedSeats.push(ordinal)
+        for (const entry of input.selections ?? []) {
+          if (entry.menuItemId) savedDishIds.push(entry.menuItemId)
+        }
+        savedDishIds.push(...(input.addonMenuItemIds ?? []))
       } catch (error) {
         // Never log the seat's dietary note or name: this field is staff-and-kitchen only.
         logger.warn('Guest pre-order seat could not be saved', {
@@ -299,6 +344,13 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
             ordinal,
             error: error instanceof Error ? error.message : String(error)
           }
+        })
+        await auditGuestPreorderSave({
+          tableBookingId: order.tableBookingId,
+          bookingReference: order.bookingReference,
+          seats: savedSeats,
+          dishIds: savedDishIds,
+          failedSeat: ordinal
         })
         // A seat that chose more courses than its tier pays for is told so, rather than being told
         // the dish may have come off the menu.
@@ -315,6 +367,13 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
     if (!sawAnySeatField) {
       return redirectWithPreorderStatus(request, token, 'error')
     }
+
+    await auditGuestPreorderSave({
+      tableBookingId: order.tableBookingId,
+      bookingReference: order.bookingReference,
+      seats: savedSeats,
+      dishIds: savedDishIds
+    })
 
     return redirectWithPreorderStatus(request, token, 'saved')
   } catch (error) {

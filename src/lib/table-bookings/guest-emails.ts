@@ -693,3 +693,72 @@ export function buildTableBookingCancelledEmail(input: BookingFacts & { refundSe
     beforeContact: ['If this does not look right, tell us.'],
   })
 }
+
+/** One seat on the booker's copy of their choices. Seat numbers only: no names, no dietary notes. */
+export type PreorderChoicesCopySeat = {
+  ordinal: number
+  /** The seat's Christmas tier, or null when the booking recorded none. */
+  courseCount: 1 | 2 | 3 | null
+  /** In menu order. `withdrawn` marks a dish since taken off the menu. */
+  courses: Array<{ courseLabel: string; itemName: string; withdrawn?: boolean }>
+  addons: string[]
+}
+
+function describeCopySeat(seat: PreorderChoicesCopySeat): string {
+  const tier = seat.courseCount ? `, ${seat.courseCount} course${seat.courseCount === 1 ? '' : 's'}` : ''
+  if (seat.courseCount === 1) return `Seat ${seat.ordinal}${tier}: chosen on the day.`
+  if (seat.courses.length === 0) return `Seat ${seat.ordinal}${tier}: not chosen yet.`
+  const courses = seat.courses
+    .map(
+      (course) =>
+        `${course.courseLabel}: ${course.itemName}${course.withdrawn ? ' (no longer on the menu, please ring us to choose again)' : ''}.`
+    )
+    .join(' ')
+  const addons = seat.addons.length > 0 ? ` Add-ons: ${seat.addons.join(', ')}.` : ''
+  return `Seat ${seat.ordinal}${tier}: ${courses}${addons}`
+}
+
+/**
+ * The booker's copy of their food choices, sent once when the pre-order closes (BK-149), so they
+ * have a record of what everyone is having. Seat numbers and dishes only: names and dietary notes
+ * stay on staff screens (spec section 8). Sent only while the messaging flag
+ * `table_preorder_choices_copy` is on.
+ */
+export function buildTableBookingPreorderChoicesEmail(
+  input: BookingFacts & {
+    periodName?: string | null
+    seats: PreorderChoicesCopySeat[]
+    /** True when every seat has the courses its tier needs. */
+    complete: boolean
+    /** The add-on money note, verbatim, when any seat has an add-on. */
+    addonNote?: string | null
+  }
+): TableBookingEmail {
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const date = formatBookingDateForEmail(input.bookingDate, input.startDateTime)
+  const reference = input.bookingReference ? ` (reference ${input.bookingReference})` : ''
+  const season = input.periodName?.trim() || null
+  const hasAddons = input.seats.some((seat) => seat.addons.length > 0)
+
+  return renderTableBookingEmail({
+    subject: [season ? `Your ${season} food choices` : 'Your food choices', date ? `for ${date}` : null]
+      .filter((part): part is string => Boolean(part))
+      .join(' '),
+    preheader: moment ? `A copy of what everyone is having on ${moment}` : 'A copy of what everyone is having',
+    heading: season ? `Your ${season} food choices` : 'Your food choices',
+    opening: [
+      `Hi ${input.firstName}, here is a copy of the food choices for your booking at The Anchor` +
+        `${moment ? ` on ${moment}` : ''}${reference}.`,
+      'Choices have now closed, and the kitchen orders from this list.',
+      ...(input.complete
+        ? []
+        : [`Some choices are still missing. Please ring us on ${GUEST_CONTACT.phoneDisplay} so we can add them.`]),
+    ],
+    details: bookingDetailRows(input),
+    closing: [
+      ...input.seats.map(describeCopySeat),
+      ...(hasAddons && input.addonNote ? [input.addonNote] : []),
+    ],
+    beforeContact: ['If anything needs to change, please give us a ring.'],
+  })
+}

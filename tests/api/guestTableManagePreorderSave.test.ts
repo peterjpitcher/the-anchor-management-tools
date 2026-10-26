@@ -105,4 +105,43 @@ describe('guest pre-order save route', () => {
     expect(location.searchParams.get('seat')).toBe('1')
     expect(location.searchParams.get('reason')).toBeNull()
   })
+
+  // BK-149: guest saves are audited like staff saves, by seat number and dish id only.
+  it('audits a guest save with seat numbers and dish ids, never the name or the dietary note', async () => {
+    mocks.savePreorderCover.mockResolvedValue({})
+
+    await POST(
+      saveRequest({
+        seat_1_name: 'Fixture Seat Name',
+        seat_1_note: 'Fixture dietary note',
+        seat_1_main: '11111111-1111-4111-8111-111111111111',
+        seat_1_dessert: '33333333-3333-4333-8333-333333333333',
+      }),
+      { params: Promise.resolve({ token: 'raw-token' }) },
+    )
+
+    expect(mocks.logAuditEvent).toHaveBeenCalledTimes(1)
+    const audit = mocks.logAuditEvent.mock.calls[0][0]
+    expect(audit).toEqual(
+      expect.objectContaining({
+        resource_type: 'table_booking_preorder',
+        resource_id: 'booking-1',
+        operation_status: 'success',
+        additional_info: {
+          booking_reference: 'TB-FIXTURE',
+          seats_saved: [1],
+          dish_ids: ['11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333333'],
+          source: 'guest_manage_page',
+        },
+      }),
+    )
+    expect(JSON.stringify(audit)).not.toContain('Fixture Seat Name')
+    expect(JSON.stringify(audit)).not.toContain('Fixture dietary note')
+  })
+
+  it('writes no audit row when nothing changed', async () => {
+    await POST(saveRequest({ seat_1_main: '' }), { params: Promise.resolve({ token: 'raw-token' }) })
+
+    expect(mocks.logAuditEvent).not.toHaveBeenCalled()
+  })
 })

@@ -60,6 +60,7 @@ import {
 } from '@/lib/table-bookings/guest-notify'
 import { buildTableBookingPreorderReminderEmail } from '@/lib/table-bookings/guest-emails'
 import { buildPreorderReminderText } from '@/lib/table-bookings/guest-texts'
+import { sendPreorderCutoffDigests, type CutoffDigestResult } from '@/lib/table-bookings/preorder-cutoff-digest'
 import { preorderReminderFacts } from '@/lib/table-bookings/fallback-details'
 
 export const runtime = 'nodejs'
@@ -193,6 +194,8 @@ export async function GET(request: NextRequest) {
       failed: 0,
       // Chases that went out at full link length because shortening failed.
       shortLinkFallbacks: 0,
+      // The kitchen order and the bookers' copies for dates whose form has just locked (BK-149).
+      cutoffDigests: null as CutoffDigestResult | null,
     }
 
     // Cutoffs are per period, so the window has to reach the furthest one. Without this a period
@@ -215,6 +218,21 @@ export async function GET(request: NextRequest) {
     )
     const today = getTodayIsoDate()
     const windowEnd = getLocalIsoDateDaysAhead(windowDays)
+
+    // This sweep runs at noon, the moment a date's form locks, so it is also when the kitchen is
+    // sent that date's order and each booker their copy (BK-149). A failure here is logged as an
+    // error and never stops the chase below.
+    try {
+      result.cutoffDigests = await sendPreorderCutoffDigests(supabase, {
+        todayIso: today,
+        cutoffDays: cutoffByPeriod.values(),
+        choicesCopyEnabled: await isMessagingFlagOn('table_preorder_choices_copy'),
+      })
+    } catch (digestError) {
+      logger.error('Pre-order cutoff digests failed', {
+        error: digestError instanceof Error ? digestError : new Error(String(digestError)),
+      })
+    }
 
     const { data: bookingRows, error: bookingError } = await supabase
       .from('table_bookings')
