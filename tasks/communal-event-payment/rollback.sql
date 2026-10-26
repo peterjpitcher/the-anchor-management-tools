@@ -1,4 +1,4 @@
--- Rollback for 20261025034143_event_payment_confirm_communal_seats.sql.
+-- Rollback for 20261026135338_event_payment_confirm_communal_seats.sql.
 -- Restores the three functions exactly as production held them before it (bodies from
 -- 20260616000002_event_ticket_paypal_payments and 20260921074304_event_physical_capacity).
 

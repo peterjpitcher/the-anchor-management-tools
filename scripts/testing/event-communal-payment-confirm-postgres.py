@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 FIXTURE = ROOT / 'tests/database/event-physical-capacity/setup.sql'
 CAPACITY = ROOT / 'supabase/migrations/20260921074304_event_physical_capacity.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261025034143_event_payment_confirm_communal_seats.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261026135338_event_payment_confirm_communal_seats.sql'
 ROLLBACK = ROOT / 'tasks/communal-event-payment/rollback.sql'
 SIGNATURES = {
     'confirm_event_paypal_payment_v01': 'confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text)',
