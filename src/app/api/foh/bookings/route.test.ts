@@ -766,3 +766,71 @@ describe('POST /api/foh/bookings: double-submit fingerprint', () => {
     expect(duplicateLookup?.eq).toHaveBeenCalledWith('requires_accessible_table', true)
   })
 })
+
+// BK-052: staff record allergies in their own field, so the allergy flag, the kitchen sheet and the
+// FOH marker see them, and are told when they did not save.
+describe('POST /api/foh/bookings: allergies', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const allergyRequest = () =>
+    makeRequest({
+      customer_id: CUSTOMER_ID,
+      date: '2026-08-01',
+      time: '18:00',
+      party_size: 2,
+      purpose: 'food',
+      allergies: ['Peanuts', 'Shellfish'],
+    })
+
+  it('writes them to the allergy field on the new booking', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(allergyRequest())
+
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.data.allergies_saved).toBe(true)
+    const allergyWrite = (db.builders.table_bookings ?? []).find((builder) =>
+      vi.mocked(builder.update as (payload: unknown) => unknown).mock.calls.some(
+        ([payload]) => JSON.stringify(payload) === JSON.stringify({ allergies: ['Peanuts', 'Shellfish'] }),
+      ),
+    )
+    expect(allergyWrite?.eq).toHaveBeenCalledWith('id', 'booking-1')
+  })
+
+  it('tells staff, and logs an error, when the allergies did not save', async () => {
+    const db = createSupabaseMock()
+    const original = db.from.getMockImplementation()!
+    db.from.mockImplementation((table: string) => {
+      const builder = original(table)
+      if (table === 'table_bookings') {
+        const realUpdate = builder.update as (payload: unknown) => unknown
+        builder.update = vi.fn((payload: Record<string, unknown>) =>
+          'allergies' in payload ? makeBuilder({ data: null, error: { message: 'allergy write failed' } }) : realUpdate(payload),
+        )
+      }
+      return builder
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(allergyRequest())
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).data.allergies_saved).toBe(false)
+    expect(logger.error).toHaveBeenCalledWith('Staff booking saved but its allergies did not', expect.anything())
+  })
+
+  it('says nothing about allergies when none were sent', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({ customer_id: CUSTOMER_ID, date: '2026-08-01', time: '18:00', party_size: 2, purpose: 'food' }),
+    )
+
+    expect((await res.json()).data).not.toHaveProperty('allergies_saved')
+  })
+})

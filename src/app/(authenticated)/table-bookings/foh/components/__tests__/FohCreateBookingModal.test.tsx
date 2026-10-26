@@ -16,6 +16,7 @@ const CHRISTMAS_FORM: CreateForm = {
   seating_preference: 'seated',
   sunday_deposit_method: 'payment_link',
   notes: '',
+  allergies: '',
   waive_deposit: false,
   is_venue_event: false,
   bypass_pacing: false,

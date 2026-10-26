@@ -313,7 +313,8 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
     await syncPreorderCovers(supabase, preview.table_booking_id)
 
     const order = await loadPreorderOrder(supabase, preview.table_booking_id)
-    if (!order || !order.requiresPreorder) {
+    // Names and dietary notes save on every Christmas seat, 1 course included (BK-148).
+    if (!order || !order.hasGuestSeats) {
       return redirectWithPreorderStatus(request, token, 'error')
     }
 

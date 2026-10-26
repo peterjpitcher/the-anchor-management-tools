@@ -63,6 +63,20 @@ export interface TableBookingSheetPreorder {
   addonTotal?: TableBookingSheetPreorderAddonTotal
 }
 
+/**
+ * What the guest told us about allergies and dietary needs, and the booking's notes (BK-052).
+ * Printed on the booking page and the food page, marked confidential: the owner agreed they may be
+ * printed because the sheets are shredded after service (decision D6).
+ */
+export interface TableBookingSheetGuestNotes {
+  /** `table_bookings.allergies`. */
+  allergies: string[]
+  /** `table_bookings.dietary_requirements`. */
+  dietary: string[]
+  /** `table_bookings.special_requirements`, the notes box on every booking form. */
+  notes: string | null
+}
+
 export interface TableBookingSheetData {
   bookingRef: string
   customerName: string
@@ -90,6 +104,11 @@ export interface TableBookingSheetData {
    * kitchen knows how many 1 course guests to expect. Omitted on every other booking.
    */
   christmasCourses?: string
+  /**
+   * Allergies, dietary needs and notes, when the booking has any. Omitted on a booking with none,
+   * which keeps that sheet byte-identical to what the pub printed before (the baseline test).
+   */
+  guestNotes?: TableBookingSheetGuestNotes
 }
 
 interface TemplateOptions {
@@ -177,6 +196,50 @@ function tableBookingSheetStyles(): string {
   .foot-line{ text-align:center; font-size:11px; line-height:1.5; color:var(--ink-soft); margin:0; }
   .foot-tag{ text-align:center; font-family:var(--font-script); font-size:19px; color:var(--ink-soft); margin:0; padding-top:1mm; }
   @page{ size:A4 portrait; margin:0; }`
+}
+
+/**
+ * Styles for the confidential notes block, appended only when a sheet carries one, so a run of
+ * bookings with no notes produces the same bytes it always did.
+ */
+function guestNotesStyles(): string {
+  return `
+  .confidential{ border:1.4px solid var(--ink); padding:4.8mm 5mm; margin-bottom:6mm; }
+  .confidential-label{ font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 2.2mm; }
+  .confidential-line{ font-size:13px; line-height:1.45; color:var(--ink); margin:0 0 1.4mm; overflow-wrap:anywhere; word-break:break-word; }
+  .confidential-line:last-child{ margin-bottom:0; }
+  .confidential-allergy{ font-weight:700; font-size:15px; }
+  .confidential-key{ display:inline-block; width:24mm; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); }`
+}
+
+/**
+ * The guest's allergies, dietary needs and notes, labelled confidential. Allergies lead, and say so
+ * when the allergy field is empty rather than printing nothing, because an empty box reads as "no
+ * allergies" when the guest may have written one in the notes instead.
+ */
+function renderGuestNotes(notes: TableBookingSheetGuestNotes): string {
+  const lines = [
+    `<p class="confidential-line confidential-allergy"><span class="confidential-key">Allergies</span>${
+      notes.allergies.length
+        ? notes.allergies.map((item) => escapeHtml(item)).join(' · ')
+        : notes.notes
+          ? 'None in the allergy field, read the notes below'
+          : 'None in the allergy field'
+    }</p>`,
+  ]
+  if (notes.dietary.length) {
+    lines.push(
+      `<p class="confidential-line"><span class="confidential-key">Dietary</span>${notes.dietary.map((item) => escapeHtml(item)).join(' · ')}</p>`
+    )
+  }
+  if (notes.notes) {
+    lines.push(`<p class="confidential-line"><span class="confidential-key">Notes</span>${escapeHtml(notes.notes)}</p>`)
+  }
+  return `
+      <div class="confidential">
+        <p class="confidential-label">Allergies and notes · Confidential, shred after service</p>
+        ${lines.join('\n        ')}
+      </div>`
 }
 
 /**
@@ -328,9 +391,20 @@ function renderPreorderPage(
   preorder: TableBookingSheetPreorder,
   options: TemplateOptions
 ): string {
+  // Never a bare "None recorded": allergies have mostly arrived in the booking notes, so an empty
+  // allergy field says to read them, and the notes are printed right here (BK-052, D6).
+  const notesText = data.guestNotes?.notes ?? null
   const allergies = preorder.allergies.length
     ? `<p class="alerts-value">${preorder.allergies.map((item) => escapeHtml(item)).join(' · ')}</p>`
-    : '<p class="alerts-value alerts-none">None recorded</p>'
+    : notesText
+      ? '<p class="alerts-value alerts-none">None in the allergy field, read the booking notes below</p>'
+      : '<p class="alerts-value alerts-none">None in the allergy field, and no booking notes</p>'
+  const extra = [
+    data.guestNotes?.dietary.length
+      ? `<p class="alerts-value">Dietary: ${data.guestNotes.dietary.map((item) => escapeHtml(item)).join(' · ')}</p>`
+      : '',
+    notesText ? `<p class="alerts-value">Booking notes: ${escapeHtml(notesText)}</p>` : '',
+  ].filter(Boolean)
 
   return `
   <section class="food-page">
@@ -344,8 +418,9 @@ function renderPreorderPage(
       </div>
 
       <div class="alerts">
-        <p class="alerts-label">Allergies, whole booking</p>
-        ${allergies}
+        <p class="alerts-label">Allergies, whole booking${data.guestNotes ? ' · Confidential, shred after service' : ''}</p>
+        ${allergies}${extra.length ? `
+        ${extra.join('\n        ')}` : ''}
       </div>
 
       <div class="seats">${preorder.covers.map((cover) => renderPreorderCover(cover)).join('')}
@@ -406,7 +481,7 @@ ${data.requirements.length ? `
       <div class="needs">
         <p class="needs-label">Christmas courses</p>
         <p class="needs-value">${escapeHtml(data.christmasCourses)}</p>
-      </div>` : ''}
+      </div>` : ''}${data.guestNotes ? renderGuestNotes(data.guestNotes) : ''}
 
       <div class="foot">
         <p class="foot-line">Generated at ${escapeHtml(data.generatedAt)}</p>
@@ -428,6 +503,7 @@ export function generateTableBookingSheetsHTML(
   options: TemplateOptions
 ): string {
   const hasPreorder = sheets.some((sheet) => sheet.preorder)
+  const hasGuestNotes = sheets.some((sheet) => sheet.guestNotes)
 
   return `<!DOCTYPE html>
 <html lang="en-GB">
@@ -438,7 +514,7 @@ export function generateTableBookingSheetsHTML(
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&family=Clicker+Script&display=swap" rel="stylesheet">
 <style>
-${tableBookingSheetStyles()}${hasPreorder ? preorderPageStyles() : ''}
+${tableBookingSheetStyles()}${hasPreorder ? preorderPageStyles() : ''}${hasGuestNotes ? guestNotesStyles() : ''}
 </style>
 </head>
 <body>
