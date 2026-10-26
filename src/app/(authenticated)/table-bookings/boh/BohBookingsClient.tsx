@@ -170,6 +170,8 @@ type BohBooking = {
   deposit_amount: number | null
   deposit_amount_locked: number | null
   deposit_waived: boolean | null
+  /** A party-size change left the deposit for a manager to settle (BK-043, D20). */
+  deposit_review_needed?: boolean
   high_chair_count: number | null
   is_outside_seating: boolean | null
   created_at: string | null
@@ -1309,8 +1311,9 @@ export function BohBookingsClient({
                           )}
                         </dl>
 
-                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
+                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none' || booking.deposit_review_needed) && (
                           <div className="mt-3 flex flex-wrap gap-2">
+                            {booking.deposit_review_needed && <Badge tone="warning">Deposit to check</Badge>}
                             {(booking.high_chair_count ?? 0) > 0 && (
                               <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
                             )}
@@ -1404,6 +1407,9 @@ export function BohBookingsClient({
                                 {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                                 {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
                               </Badge>
+                            ) : null}
+                            {booking.deposit_review_needed ? (
+                              <Badge size="sm" tone="warning" className="ml-1">Deposit to check</Badge>
                             ) : null}
                           </TableCell>
                           <TableCell align="right">

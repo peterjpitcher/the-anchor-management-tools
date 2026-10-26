@@ -331,7 +331,7 @@ export async function GET(request: NextRequest) {
   )
 
   // Run assignments and events queries in parallel (they only depend on bookingRows, not each other)
-  const [assignmentsResult, eventsResult] = await Promise.all([
+  const [assignmentsResult, eventsResult, depositReviewResult] = await Promise.all([
     bookingIds.length > 0
       ? auth.supabase.from('booking_table_assignments')
           .select('table_booking_id, table_id, start_datetime, end_datetime')
@@ -339,8 +339,27 @@ export async function GET(request: NextRequest) {
       : { data: [], error: null },
     eventIds.length > 0
       ? auth.supabase.from('events').select('id, name').in('id', eventIds)
+      : { data: [], error: null },
+    // Bookings whose deposit a party-size change left for a manager (BK-043, D20). Read on its own,
+    // so a failure only loses the marker, never the list.
+    bookingIds.length > 0
+      ? auth.supabase.from('table_bookings')
+          .select('id')
+          .in('id', bookingIds)
+          .not('deposit_review_needed_at', 'is', null)
       : { data: [], error: null }
   ])
+
+  const depositReviewIds = new Set<string>()
+  if (depositReviewResult.error) {
+    logger.error('[boh/table-bookings] could not read which deposits need checking', {
+      error: new Error(depositReviewResult.error.message),
+    })
+  } else {
+    for (const row of (depositReviewResult.data || [])) {
+      if (typeof row?.id === 'string') depositReviewIds.add(row.id)
+    }
+  }
 
   const assignmentsByBookingId = new Map<string, any[]>()
   if (assignmentsResult.error) {
@@ -493,6 +512,7 @@ export async function GET(request: NextRequest) {
         deposit_amount: row.deposit_amount ?? null,
         deposit_amount_locked: row.deposit_amount_locked ?? null,
         deposit_waived: row.deposit_waived ?? null,
+        deposit_review_needed: depositReviewIds.has(row.id),
         high_chair_count: typeof row.high_chair_count === 'number' ? row.high_chair_count : 0,
         is_outside_seating: row.is_outside_seating === true,
         created_at: row.created_at || null,

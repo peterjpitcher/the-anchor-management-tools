@@ -247,9 +247,13 @@ export function buildPartySizeDepositText(input: {
   firstName: string
   wording: PartySizeDepositWording
   paymentUrl: string
+  /** The booking stays confirmed while the deposit is owed (owner decision D20, BK-044). */
+  stillBooked?: boolean
 }): string {
   const { wording } = input
-  const body = `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${input.paymentUrl}`
+  const body = input.stillBooked
+    ? `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. Your table is still booked. There's now a ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} to pay before your visit. Pay here: ${input.paymentUrl}`
+    : `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${input.paymentUrl}`
   return ensureReplyInstruction(body, supportPhone())
 }
 

@@ -104,8 +104,10 @@ function grow(db: ReturnType<typeof buildDb>, sendSms = true) {
   })
 }
 
+// A confirmed booking that grows past the threshold stays booked with the deposit owed (owner
+// decision D20), so the request no longer says the deposit secures the table or that a hold runs out.
 const TEXT_WITH_SHORT_LINK =
-  'The Anchor: Hi Jo, your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is now required to secure your booking. Pay now: https://l.the-anchor.pub/pay1'
+  "The Anchor: Hi Jo, your party size has been updated to 16 people. Your table is still booked. There's now a table deposit of £160.00 (16 x GBP 10) to pay before your visit. Pay here: https://l.the-anchor.pub/pay1"
 
 afterEach(() => {
   vi.useRealTimers()
@@ -145,18 +147,20 @@ describe('party-size deposit request, email first', () => {
     expect(email).toEqual(
       expect.objectContaining({
         to: 'jo@example.com',
-        subject: 'Pay your deposit to secure your booking at The Anchor',
+        subject: 'Your booking at The Anchor now has a deposit to pay',
         commType: 'table_booking_pending_payment',
         tableBookingId: 'b-2',
-        idempotencyKey: `table_booking_pending_payment:party_size:b-2:${HOLD_EXPIRES}`,
+        // The amount is in the key, so a re-priced deposit is a new request.
+        idempotencyKey: `table_booking_pending_payment:party_size:b-2:${HOLD_EXPIRES}:16000`,
       })
     )
     expect(email.text).toContain(
-      'Hi Jo, your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is now required to secure your booking.'
+      "Hi Jo, your party size has been updated to 16 people. Your table is still booked. There's now a table deposit of £160.00 (16 x GBP 10) to pay."
     )
     expect(email.text).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
-    // Friday 4 December 2026, 18:00 GMT: when the hold, and so the link, runs out.
-    expect(email.text).toContain('Please pay by Friday 4 December 2026 at 6pm, which is when the hold on your table runs out.')
+    // No hold runs out on a booking that stays confirmed (D20).
+    expect(email.text).toContain('Your table stays booked. Please pay the deposit before your visit.')
+    expect(email.text).not.toContain('hold on your table runs out')
   })
 
   it('texts the same words when the email fails, records both attempts, and says it went by text', async () => {

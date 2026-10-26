@@ -42,3 +42,24 @@ describe('a refused guest party-size change', () => {
     expect(response.headers.get('location')).toBe(`http://localhost/g/raw-token/table-manage?status=${status}`)
   })
 })
+
+describe('a guest whose bigger party now owes a deposit (BK-044)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('is taken straight to the payment page after saving', async () => {
+    mocks.updateTableBookingByRawToken.mockResolvedValue({
+      state: 'updated',
+      table_booking_id: 'booking-1',
+      customer_id: 'customer-1',
+      status: 'confirmed',
+      old_party_size: 12,
+      new_party_size: 16,
+      deposit_payment_url: 'https://management.orangejelly.co.uk/g/pay-token/table-payment',
+    })
+
+    const response = await POST(updateRequest(), { params: Promise.resolve({ token: 'raw-token' }) })
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/g/pay-token/table-payment')
+  })
+})

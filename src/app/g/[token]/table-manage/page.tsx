@@ -27,6 +27,7 @@ import {
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP, LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
 import { logger } from '@/lib/logger'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
@@ -247,6 +248,15 @@ export default async function TableManageBookingPage({
     }
   }
 
+  // Said before the guest saves (BK-044): a party growing to the group threshold owes the group
+  // deposit. SSOT section 7's standard line, from the live threshold and rate, then what happens.
+  // Not shown to a Christmas booking, whose deposit is per person at any size, or to a party
+  // already over the threshold, which has already been asked.
+  const partySizeHint =
+    preview.booking_type !== 'christmas' && Number(preview.party_size || 1) < LARGE_GROUP_DEPOSIT_THRESHOLD
+      ? `Groups of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more: a £${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP} per person deposit, fully deducted from your bill. If your party grows to ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more, your table stays booked and you'll go straight to the payment page when you save.`
+      : undefined
+
   const preorderBanner = preorderMessage(query.preorder)
   const errorSeat = Number.parseInt(query.seat || '', 10)
   const bookingReference = preview.booking_reference || preview.table_booking_id
@@ -305,9 +315,9 @@ export default async function TableManageBookingPage({
           <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
             <input type="hidden" name="action" value="update" />
 
-            <GuestField id="party_size" label="Party size" required>
+            <GuestField id="party_size" label="Party size" required hint={partySizeHint}>
               <GuestInput
-                {...guestFieldControlProps({ id: 'party_size', required: true })}
+                {...guestFieldControlProps({ id: 'party_size', required: true, hint: partySizeHint })}
                 name="party_size"
                 type="number"
                 min="1"

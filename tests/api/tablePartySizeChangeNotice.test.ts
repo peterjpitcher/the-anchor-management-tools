@@ -22,6 +22,7 @@ vi.mock('@/lib/events/staff-seat-updates', () => ({
 }))
 vi.mock('@/lib/table-bookings/staff-deposit-transitions', () => ({
   applyPartySizeDepositTransition: mocks.applyTransition,
+  PARTY_SIZE_DEPOSIT_COLUMNS: 'id, party_size, status, payment_status',
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   sendTableBookingRescheduledNotificationIfAllowed: mocks.sendNotice,

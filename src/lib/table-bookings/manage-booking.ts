@@ -6,7 +6,11 @@ import { logger } from '@/lib/logger'
 import { formatCancellationReason } from './cancellation-reasons'
 import { isChristmasBookingType } from './christmas'
 import { guestCancellationRefundNotice } from './deposit-terms'
-import { applyPartySizeDepositTransition } from './staff-deposit-transitions'
+import {
+  applyPartySizeDepositTransition,
+  PARTY_SIZE_DEPOSIT_COLUMNS,
+  type PartySizeDepositTransitionBooking,
+} from './staff-deposit-transitions'
 import { carriedTurnaroundMs, moveBookingAssignmentToTables, readConfiguredTurnaroundMinutes } from './move-table'
 import { guestIncreaseOverfillsKitchen } from './kitchen-pacing'
 import { AuditService } from '@/services/audit'
@@ -45,6 +49,11 @@ export type TableManageUpdateResult = {
   committed_party_size?: number
   charge_request_id?: string | null
   charge_amount?: number | null
+  /**
+   * Set when the new size now owes a deposit: the link the guest is taken to straight after saving,
+   * so they see what to pay rather than a bare "Booking updated" (BK-044).
+   */
+  deposit_payment_url?: string | null
 }
 
 function resolveAppBaseUrl(appBaseUrl?: string): string {
@@ -785,40 +794,40 @@ export async function updateTableBookingByRawToken(
   }
 
   /*
-   * Re-price the deposit, exactly as the staff party-size routes do.
+   * The deposit follows the new size exactly as on the staff screens (owner decision D20): an
+   * unpaid one is re-priced, a paid one is left and flagged to a manager, and a confirmed booking
+   * that grows into owing one stays confirmed with the deposit owed and gets the payment link.
    *
-   * The guest manage link accepts party sizes up to the online maximum, so a guest could
-   * take a booking from six to twenty and cross the deposit threshold without ever being
-   * asked for one, and without anybody being told. The staff path has always called this;
-   * the guest path never did.
-   *
-   * A failure here must not fail the amendment: the size is already saved, and the
-   * transition raises its own manual-review state for cases a person has to decide.
+   * A failure here must not fail the amendment: the size is already saved, and the transition
+   * flags the cases a person has to decide.
    */
+  let depositPaymentUrl: string | null = null
   try {
     // Read the deposit state separately rather than widening the preview: that preview is
     // serialised straight to the guest-facing page, and it must not start carrying the
-    // venue's internal payment state.
+    // venue's internal payment state. Only the size columns changed above, so its status and
+    // payment state are still the ones from before the change.
     const { data: depositState } = await supabase
       .from('table_bookings')
-      .select(
-        'id, customer_id, party_size, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name',
-      )
+      .select(PARTY_SIZE_DEPOSIT_COLUMNS)
       .eq('id', bookingId)
       .maybeSingle()
 
     if (depositState) {
-      await applyPartySizeDepositTransition(supabase, {
+      const transition = await applyPartySizeDepositTransition(supabase, {
         booking: {
-          ...(depositState as Record<string, unknown>),
+          ...(depositState as PartySizeDepositTransitionBooking),
           // The row now carries the NEW size; the transition needs the old one as its base.
           party_size: oldPartySize,
-        } as Parameters<typeof applyPartySizeDepositTransition>[1]['booking'],
+        },
         previousPartySize: oldPartySize,
         newPartySize,
         sendSms: true,
         appBaseUrl: resolveAppBaseUrl(input.appBaseUrl),
       })
+      if (transition.state === 'deposit_required') {
+        depositPaymentUrl = transition.depositUrl
+      }
     }
   } catch (depositError) {
     logger.error('Guest party-size amendment saved but the deposit transition failed', {
@@ -836,6 +845,7 @@ export async function updateTableBookingByRawToken(
     new_party_size: newPartySize,
     committed_party_size: nextCommittedSize,
     charge_request_id: null,
-    charge_amount: null
+    charge_amount: null,
+    deposit_payment_url: depositPaymentUrl
   }
 }
