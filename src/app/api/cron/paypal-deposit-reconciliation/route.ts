@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError, PayPalApiError } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
+import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 
@@ -195,6 +196,16 @@ async function clearStalePayPalOrder(
   return true
 }
 
+/** BK-114: these used to reach a log line only. Once per booking and kind, to the manager (D17). */
+async function alertPrivateDeposit(
+  admin: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  kind: string,
+  text: { title: string; summary: string; context: Record<string, unknown> },
+): Promise<void> {
+  await alertMoneyNeedsAPerson(admin, { domain: 'private_bookings', bookingId, kind, ...text })
+}
+
 export async function GET(request: NextRequest) {
   logger.info('PayPal deposit reconciliation cron starting', {
     metadata: { startedAt: new Date().toISOString() }
@@ -306,6 +317,13 @@ export async function GET(request: NextRequest) {
             error: new Error(`private_deposit_capture_${captureOutcome}`),
             metadata: { bookingId, orderId, captureStatus: order.purchase_units?.[0]?.payments?.captures?.[0]?.status ?? null },
           })
+          if (captureOutcome === 'pending') {
+            await alertPrivateDeposit(admin, bookingId, 'capture_pending', {
+              title: 'PayPal is holding a private hire deposit',
+              summary: 'PayPal is holding the deposit for this private booking for review, so it is not recorded as paid. It is recorded automatically when PayPal releases it. Check the payment in PayPal if it does not clear.',
+              context: { 'PayPal order': orderId },
+            })
+          }
           results.push({ bookingId, outcome: `capture_${captureOutcome}` })
           continue
         }
@@ -319,6 +337,11 @@ export async function GET(request: NextRequest) {
         ) {
           logger.error('PayPal reconciliation: amount mismatch on completed order', {
             metadata: { bookingId, orderId, capturedAmount, capturedCurrency, expectedAmount, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
+          })
+          await alertPrivateDeposit(admin, bookingId, 'amount_mismatch', {
+            title: 'A private hire deposit was paid for the wrong amount',
+            summary: `PayPal took ${formatPounds(capturedAmount)} (${capturedCurrency ?? 'unknown currency'}) for this private booking, which owes a ${formatPounds(expectedAmount)} deposit, so it was not recorded. Refund the difference, or correct the booking and record it by hand.`,
+            context: { 'PayPal order': orderId, Captured: formatPounds(capturedAmount), Owed: formatPounds(expectedAmount) },
           })
           results.push({ bookingId, outcome: 'amount_mismatch' })
           continue
@@ -350,6 +373,11 @@ export async function GET(request: NextRequest) {
             logger.error('PayPal reconciliation: currency mismatch before capture', {
               metadata: { bookingId, orderId, orderCurrency, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
             })
+            await alertPrivateDeposit(admin, bookingId, 'amount_mismatch', {
+              title: 'A private hire deposit order is not in pounds',
+              summary: `The guest approved a deposit payment in ${orderCurrency ?? 'an unknown currency'}, so it was not taken. Send them a fresh payment link.`,
+              context: { 'PayPal order': orderId },
+            })
             results.push({ bookingId, outcome: 'amount_mismatch' })
             continue
           }
@@ -364,6 +392,13 @@ export async function GET(request: NextRequest) {
               error: new Error(`private_deposit_capture_${captureOutcome}`),
               metadata: { bookingId, orderId, captureId: captureResult.transactionId, captureStatus: captureResult.captureStatus },
             })
+            if (captureOutcome === 'pending') {
+              await alertPrivateDeposit(admin, bookingId, 'capture_pending', {
+                title: 'PayPal is holding a private hire deposit',
+                summary: 'PayPal is holding the deposit for this private booking for review, so it is not recorded as paid. It is recorded automatically when PayPal releases it. Check the payment in PayPal if it does not clear.',
+                context: { 'PayPal order': orderId, 'PayPal capture': captureResult.transactionId },
+              })
+            }
             results.push({ bookingId, outcome: `capture_${captureOutcome}` })
             continue
           }
@@ -373,6 +408,11 @@ export async function GET(request: NextRequest) {
           if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
             logger.error('PayPal reconciliation: amount mismatch during capture', {
               metadata: { bookingId, orderId, capturedAmount, expectedAmount }
+            })
+            await alertPrivateDeposit(admin, bookingId, 'amount_mismatch', {
+              title: 'A private hire deposit was taken for the wrong amount',
+              summary: `PayPal took ${formatPounds(capturedAmount)} for this private booking, which owes a ${formatPounds(expectedAmount)} deposit, so it was not recorded. Refund the difference, or correct the booking and record it by hand.`,
+              context: { 'PayPal order': orderId, 'PayPal capture': captureResult.transactionId },
             })
             results.push({ bookingId, outcome: 'amount_mismatch' })
             continue
@@ -404,6 +444,11 @@ export async function GET(request: NextRequest) {
           logger.error('PayPal reconciliation: capture failed for approved order', {
             error: captureError instanceof Error ? captureError : new Error(String(captureError)),
             metadata: { bookingId, orderId }
+          })
+          await alertPrivateDeposit(admin, bookingId, 'capture_failed', {
+            title: 'A private hire deposit could not be taken',
+            summary: 'The guest approved the deposit payment for this private booking but taking it from PayPal failed. It is retried each run; check the order in PayPal, or send a fresh payment link, if this repeats.',
+            context: { 'PayPal order': orderId, Error: captureError instanceof Error ? captureError.message.slice(0, 200) : null },
           })
           results.push({ bookingId, outcome: 'capture_failed' })
         }

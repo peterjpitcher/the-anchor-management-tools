@@ -93,7 +93,9 @@ describe('a PayPal deposit captured for a booking that can no longer take it', (
     expect(alert.summary).toMatch(/the booking had been cancelled or closed/)
     expect(alert.summary).toMatch(/Refund it in PayPal/)
     expect(alert.summary).toMatch(/No message has been sent to the customer/)
-    expect(alert.to).toBeUndefined()
+    // D17 (24 October 2026): money that needs a person goes to the manager inbox, no longer to
+    // CRON_ALERT_EMAIL, which keeps failed scheduled jobs.
+    expect(alert.to).toBe('manager@the-anchor.pub')
     expect(alert.context).toMatchObject({
       'PayPal capture': 'CAP-1',
       'PayPal order': 'ORDER-1',

@@ -2238,6 +2238,11 @@ export async function getEventBookingRefundInfo(bookingId: string): Promise<Even
 
 const refundEventBookingManualSchema = z.object({
   bookingId: z.string().uuid(),
+  // One per refund the manager asks for, made when the refund window opens (BK-024). Required:
+  // without it two refunds on one booking would share a key and the second would move no money.
+  requestId: z
+    .string({ required_error: 'Please reload the page and try the refund again.' })
+    .uuid({ message: 'Please reload the page and try the refund again.' }),
   // Omitted → refund everything still refundable.
   amount: z.number().min(0.01).max(100000).optional(),
   reason: z.string().trim().max(200).optional()
@@ -2264,6 +2269,7 @@ type RefundEventBookingManualResult =
  */
 export async function refundEventBookingManual(input: {
   bookingId: string
+  requestId: string
   amount?: number
   reason?: string
 }): Promise<RefundEventBookingManualResult> {
@@ -2332,7 +2338,8 @@ export async function refundEventBookingManual(input: {
         amount: resolvedAmount,
         reason: 'staff_manual_refund',
         metadata: {
-          idempotency_key: `staff-manual-refund:${bookingRow.id}`,
+          // Per request, not per booking (BK-024): a double click replays, a second refund is new.
+          idempotency_key: `staff-manual-refund:${bookingRow.id}:${parsed.data.requestId}`,
           initiated_by: actingUserId,
           note: parsed.data.reason || null,
           max_refundable: maxRefundable

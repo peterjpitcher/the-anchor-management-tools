@@ -23,6 +23,7 @@ vi.mock('@/lib/events/event-payments', () => ({
   sendEventPaymentConfirmationSms: vi.fn().mockResolvedValue({ success: true }),
   sendEventPaymentManualReviewSms: vi.fn().mockResolvedValue({ success: true }),
 }))
+vi.mock('@/lib/events/payment-alerts', () => ({ alertEventPaymentNeedsAPerson: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/email/event-ticket-emails', () => ({
   sendEventPaymentConfirmationEmail: vi.fn().mockResolvedValue(undefined),
   sendEventPaymentManualReviewEmail: vi.fn().mockResolvedValue(undefined),
@@ -35,6 +36,7 @@ import {
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
 import { sendEventPaymentConfirmationEmail, sendEventPaymentManualReviewEmail } from '@/lib/email/event-ticket-emails'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { POST as externalCapture } from '@/app/api/external/event-bookings/[id]/paypal/capture-order/route'
 import { POST as guestCapture } from '@/app/g/[token]/event-payment/paypal/capture-order/route'
 
@@ -73,6 +75,7 @@ describe.each(routes)('$name', ({ capture, call }) => {
     expect(sendEventPaymentConfirmationEmail).toHaveBeenCalledTimes(1)
     expect(sendEventPaymentManualReviewSms).not.toHaveBeenCalled()
     expect(sendEventPaymentManualReviewEmail).not.toHaveBeenCalled()
+    expect(alertEventPaymentNeedsAPerson).not.toHaveBeenCalled()
   })
 
   it('sends no second text for a payment that was already confirmed', async () => {
@@ -96,5 +99,29 @@ describe.each(routes)('$name', ({ capture, call }) => {
     expect(sendEventPaymentManualReviewEmail).toHaveBeenCalledTimes(1)
     expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
     expect(sendEventPaymentConfirmationEmail).not.toHaveBeenCalled()
+    // BK-018: the guest is told staff will check the booking, so a manager is told, once.
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      bookingId: BOOKING,
+      kind: 'manual_review',
+      reason: 'capacity_unavailable_after_capture',
+      amount: 80,
+    }))
+  })
+
+  // BK-019: PayPal holding the payment is not a confirmation, and not yet a message to the guest.
+  it('answers 202, confirms nothing and messages no guest while PayPal holds the payment, and tells a manager', async () => {
+    vi.mocked(capture).mockResolvedValueOnce({ state: 'capture_pending', bookingId: BOOKING, amount: 80, currency: 'GBP', paymentId: 'payment-1', reason: 'capture_pending' })
+
+    const response = await call()
+
+    expect(response.status).toBe(202)
+    await expect(response.json()).resolves.toMatchObject({ success: false, state: 'capture_pending', booking_id: BOOKING })
+    expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
+    expect(sendEventPaymentConfirmationEmail).not.toHaveBeenCalled()
+    expect(sendEventPaymentManualReviewSms).not.toHaveBeenCalled()
+    expect(sendEventPaymentManualReviewEmail).not.toHaveBeenCalled()
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: BOOKING, kind: 'capture_pending' }))
   })
 })

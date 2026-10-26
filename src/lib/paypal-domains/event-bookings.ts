@@ -10,6 +10,7 @@ import {
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 import { recordEventPayPalRefund } from '@/lib/events/paypal-webhook-refund'
 import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import {
   getCaptureAmount,
   getCaptureCurrency,
@@ -214,6 +215,17 @@ export async function handleEventBookingCapture(
       state,
       reason,
     })
+    // Raised after the audit row, which throws on failure, so a retried delivery alerts instead.
+    await alertEventPaymentNeedsAPerson(supabase, {
+      bookingId,
+      kind: state === 'manual_review' ? 'manual_review' : 'paid_booking_not_payable',
+      reason,
+      amount,
+      currency,
+      orderId,
+      captureId,
+      source: 'PayPal webhook',
+    })
     responseState = 'manual_review'
     responseStatus = 202
   }
@@ -334,6 +346,19 @@ export async function handleEventBookingDenied(
   })
   if (auditError) {
     throw new Error(`Failed to audit PayPal event-booking capture denial: ${auditError.message}`)
+  }
+
+  if (needsDecision) {
+    await alertEventPaymentNeedsAPerson(supabase, {
+      bookingId,
+      kind: 'capture_denied_on_confirmed_booking',
+      reason,
+      amount,
+      currency,
+      orderId,
+      captureId,
+      source: 'PayPal webhook',
+    })
   }
 
   const state = needsDecision ? 'manual_review' : 'capture_denied'

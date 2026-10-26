@@ -3,6 +3,7 @@ import { refreshDashboard } from './actions'
 import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { countOpenEventPaymentExceptions } from '@/app/actions/event-payment-exceptions'
 import DashboardClient from './_components/DashboardClient'
 import { EVENT_FILL_BADGE, attentionCountTone, eventFillStatus } from './_shared/status-ui'
 
@@ -60,10 +61,13 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
 }
 
 export default async function DashboardPage() {
-  const [snapshot, canManageEvents, canManageSettings] = await Promise.all([
+  const [snapshot, canManageEvents, canManageSettings, paidNeedsAction] = await Promise.all([
     loadDashboardSnapshot(),
     checkUserPermission('events', 'manage'),
     checkUserPermission('settings', 'manage'),
+    // Read live, outside the cached snapshot: a paid booking waiting on a person must not wait
+    // for the cache (BK-018). Empty without the events view permission.
+    countOpenEventPaymentExceptions().catch(() => ({ count: 0, eventId: null })),
   ])
   // Calendar notes are written on events:manage, with settings:manage kept as a
   // fallback so nobody loses access. Gating on settings:manage alone meant only
@@ -255,6 +259,15 @@ export default async function DashboardPage() {
 
   const actionItems: Array<{ id: string; title: string; description: string; href: string; severity: 'high' | 'medium' | 'low' }> = []
 
+  if (paidNeedsAction.count > 0) {
+    actionItems.push({
+      id: 'event-paid-needs-action',
+      title: 'Paid, needs action',
+      description: `${paidNeedsAction.count} paid event ${paidNeedsAction.count === 1 ? 'booking' : 'bookings'} to confirm or refund`,
+      href: paidNeedsAction.eventId ? `/events/${paidNeedsAction.eventId}` : '/events',
+      severity: 'high',
+    })
+  }
   if (snapshot.privateBookings.permitted && holdsExpiringSoon > 0) {
     actionItems.push({ id: 'pb-holds', title: 'Draft Holds Expiring', description: `${holdsExpiringSoon} expiring in next 7 days`, href: '/private-bookings', severity: 'high' })
   }

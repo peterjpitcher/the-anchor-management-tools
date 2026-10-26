@@ -5,8 +5,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  *
  * The hold job expires every pending_payment booking 10 minutes after its hold ends and tells
  * the guest their seats were released because payment was not completed. That is untrue, and
- * lets the seats be resold, when PayPal is holding the guest's money for review (a PENDING
- * capture, BK-019, customer bookings review of 24 October 2026).
+ * lets the seats be resold, when the guest has paid (customer bookings review of 24 October
+ * 2026): when PayPal is holding the money for review (a PENDING capture, BK-019), when the
+ * payment succeeded but the booking went to manual review (BK-018), and when an open payment
+ * exception says staff must decide (BK-018).
  */
 
 /** The marker a payment row carries while its capture is PENDING at PayPal. */
@@ -38,12 +40,23 @@ export async function findEventBookingsAwaitingPaymentDecision(
     .select('event_booking_id, status, paypal_capture_id, metadata')
     .in('event_booking_id', bookingIds)
     .eq('charge_type', 'prepaid_event')
-    .eq('status', 'pending')
-    .not('paypal_capture_id', 'is', null)
+    .in('status', ['pending', 'succeeded'])
 
   if (error) throw error
   for (const payment of payments ?? []) {
-    if (payment.event_booking_id && isEventCapturePendingPayment(payment)) keep.add(payment.event_booking_id)
+    if (!payment.event_booking_id) continue
+    if (payment.status === 'succeeded' || isEventCapturePendingPayment(payment)) keep.add(payment.event_booking_id)
+  }
+
+  const { data: exceptions, error: exceptionsError } = await supabase
+    .from('event_payment_exceptions')
+    .select('event_booking_id')
+    .in('event_booking_id', bookingIds)
+    .eq('status', 'open')
+
+  if (exceptionsError) throw exceptionsError
+  for (const exception of exceptions ?? []) {
+    if (exception.event_booking_id) keep.add(exception.event_booking_id)
   }
   return keep
 }

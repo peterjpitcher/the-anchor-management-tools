@@ -21,6 +21,8 @@ vi.mock('@/lib/email/event-ticket-emails', () => ({
   sendEventPaymentManualReviewEmail: vi.fn(),
 }))
 
+vi.mock('@/lib/events/payment-alerts', () => ({ alertEventPaymentNeedsAPerson: vi.fn().mockResolvedValue(undefined) }))
+
 vi.mock('@/lib/api/idempotency', () => ({
   claimIdempotencyKey: vi.fn(),
   computeIdempotencyRequestHash: vi.fn(() => 'hash-1'),
@@ -29,6 +31,7 @@ vi.mock('@/lib/api/idempotency', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { sendEventPaymentManualReviewSms } from '@/lib/events/event-payments'
 import { sendEventPaymentManualReviewEmail } from '@/lib/email/event-ticket-emails'
 import {
@@ -124,6 +127,13 @@ describe('PayPal event-bookings webhook', () => {
       resource_id: 'booking-1',
       operation_status: 'failure',
     }))
+    // BK-018: the guest was told staff will check; a manager is told, once.
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      bookingId: 'booking-1',
+      kind: 'paid_booking_not_payable',
+      reason: 'booking_not_pending_payment',
+    }))
     expect(persistIdempotencyResponse).toHaveBeenCalledWith(
       expect.anything(),
       // One namespace for the whole app now, not one per URL.
@@ -211,6 +221,7 @@ describe('PayPal event-bookings webhook', () => {
         operation_type: 'event_payment.paypal_capture_denied',
         resource_id: 'booking-1',
       }))
+      expect(alertEventPaymentNeedsAPerson).not.toHaveBeenCalled()
     })
 
     it('flags a booking already confirmed on the refused payment for a person to decide', async () => {
@@ -227,6 +238,10 @@ describe('PayPal event-bookings webhook', () => {
       }))
       expect(db.auditInsert).toHaveBeenCalledWith(expect.objectContaining({
         additional_info: expect.objectContaining({ action_needed: expect.stringContaining('Decide whether the booking stands') }),
+      }))
+      expect(alertEventPaymentNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        bookingId: 'booking-1',
+        kind: 'capture_denied_on_confirmed_booking',
       }))
     })
   })

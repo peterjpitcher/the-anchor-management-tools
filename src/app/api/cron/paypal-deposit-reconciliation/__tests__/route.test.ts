@@ -25,6 +25,12 @@ vi.mock('@/services/private-bookings', () => ({
   finalizeDepositPayment: vi.fn(),
 }))
 
+const mockAlertMoneyNeedsAPerson = vi.fn()
+vi.mock('@/lib/money-alerts', () => ({
+  alertMoneyNeedsAPerson: mockAlertMoneyNeedsAPerson,
+  formatPounds: (amount: number) => `£${amount.toFixed(2)}`,
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -183,6 +189,26 @@ describe('PayPal deposit reconciliation cron', () => {
 
     expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'capture_pending' }])
     expect(finalizeDepositPayment).not.toHaveBeenCalled()
+    // BK-114: a person is told, once per booking and kind.
+    expect(mockAlertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      domain: 'private_bookings',
+      bookingId: 'booking-1',
+      kind: 'capture_pending',
+    }))
+  })
+
+  it('tells a manager when a completed deposit does not match what the booking owes', async () => {
+    mockGetPayPalOrder.mockResolvedValueOnce({
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-1', status: 'COMPLETED', amount: { value: '90.00', currency_code: 'GBP' } }] } }],
+    })
+
+    const response = await callRoute()
+    const body = await response.json()
+
+    expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'amount_mismatch' }])
+    expect(mockAlertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(mockAlertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'amount_mismatch' }))
   })
 
   it('records no deposit when the capture it makes for an approved order is not completed', async () => {
