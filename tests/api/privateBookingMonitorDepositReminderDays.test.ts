@@ -126,24 +126,16 @@ async function runOn(day: string): Promise<{ triggers: string[]; bodies: string[
                   }
                 }
                 if (columns.includes('start_time, guest_count')) {
-                  // Pass 4 event reminder
-                  return {
-                    eq: vi.fn(() => ({
-                      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-                    })),
-                  }
+                  // Pass 4 event reminder: .or(live hire statuses).eq('event_date', tomorrow)
+                  const byDate = () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) })
+                  return { eq: vi.fn(byDate), or: vi.fn(byDate) }
                 }
                 if (columns.includes('outcome_email_sent_at')) {
-                  // Pass 5a: outcome email eligibility
-                  return {
-                    eq: vi.fn(() => ({
-                      eq: vi.fn(() => ({
-                        eq: vi.fn(() => ({
-                          is: vi.fn().mockResolvedValue({ data: [], error: null }),
-                        })),
-                      })),
-                    })),
-                  }
+                  // Pass 5a: outcome email eligibility, .eq(date).or(live hire statuses).eq(outcome).is(sent)
+                  const byOutcome = () => ({
+                    eq: vi.fn(() => ({ is: vi.fn().mockResolvedValue({ data: [], error: null }) })),
+                  })
+                  return { eq: vi.fn(() => ({ eq: vi.fn(byOutcome), or: vi.fn(byOutcome) })) }
                 }
                 if (columns.includes('review_sms_sent_at')) {
                   // Pass 5b: review SMS eligibility
@@ -194,18 +186,17 @@ async function runOn(day: string): Promise<{ triggers: string[]; bodies: string[
           }
 
           if (table === 'private_bookings_with_details') {
-            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            // Pass 3: .or(live hire statuses).not('balance_due_date', 'is', null)
             //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  not: vi.fn(() => ({
-                    gte: vi.fn(() => ({
-                      lte: vi.fn().mockResolvedValue({ data: [], error: null }),
-                    })),
-                  })),
+            const balanceChain = () => ({
+              not: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  lte: vi.fn().mockResolvedValue({ data: [], error: null }),
                 })),
               })),
+            })
+            return {
+              select: vi.fn(() => ({ eq: vi.fn(balanceChain), or: vi.fn(balanceChain) })),
             }
           }
 
