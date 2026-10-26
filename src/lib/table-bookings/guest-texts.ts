@@ -15,6 +15,7 @@ import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 /** The number the reply instruction names, read exactly as the table booking texts always have. */
 function supportPhone(): string | undefined {
@@ -128,6 +129,12 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
 
   if (refundResult.reason === 'terms_unreadable') {
     return "We'll check your deposit and be in touch about it shortly."
+  }
+
+  // The payment hold ran out before the deposit was paid (BK-113). Without this the guest was told
+  // only "Hope to see you again soon!" and never why their table had gone.
+  if (refundResult.reason === 'hold_expired') {
+    return `The deposit wasn't paid in time, so the table has been released. If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay}.`
   }
 
   return 'Hope to see you again soon!'

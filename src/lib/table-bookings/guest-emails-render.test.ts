@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildTableBookingCancelledEmail,
   buildTableBookingConfirmedEmail,
   buildTableBookingDepositAtBookingEmail,
   buildTableBookingDepositRequestEmail,
@@ -8,6 +9,7 @@ import {
   buildTableBookingRescheduledEmail,
 } from './guest-emails'
 import { assertCleanRender, expectedLongDate } from '../../../tests/mocks/emailRenderChecks'
+import { describeTableBookingCancellationRefund } from './guest-texts'
 
 /**
  * Fixture renders of the table booking emails the 11 September review found wrong.
@@ -245,5 +247,23 @@ describe('pre-order chase email renders', () => {
     expect(email.text).toContain(`Time: ${time}`)
     expect(email.text).not.toContain('A starter and a dessert are optional')
     expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+  })
+})
+
+// BK-113: the cancellation after a deposit hold runs out says why the table has gone.
+describe('hold-expired cancellation email renders', () => {
+  it.each(CASES)('$label: $bookingDate at $bookingTime', ({ bookingDate, bookingTime, time }) => {
+    const email = buildTableBookingCancelledEmail({
+      ...BASE,
+      bookingDate,
+      bookingTime,
+      refundSentence: describeTableBookingCancellationRefund({ refunded: false, reason: 'hold_expired' }),
+    })
+
+    assertCleanRender(email)
+    expect(email.text).toContain(`Date: ${expectedLongDate(bookingDate)}`)
+    expect(email.text).toContain(`Time: ${time}`)
+    expect(email.text).toContain("The deposit wasn't paid in time, so the table has been released.")
+    expect(email.text).toContain("If you'd still like to come, call us on 01753 682707.")
   })
 })
