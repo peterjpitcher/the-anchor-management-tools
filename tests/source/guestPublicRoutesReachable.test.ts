@@ -21,7 +21,6 @@ const GUEST_REACHABLE_PREFIXES = [
   '/parking/guest',
   '/parking/payment-error',
   '/g',
-  '/m',
   '/r',
   '/sign',
 ]

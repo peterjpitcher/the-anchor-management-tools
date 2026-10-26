@@ -43,7 +43,6 @@ import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
 import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
-import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { createRateLimiter } from '@/lib/rate-limit'
 import { OptionalCommunicationConsentSchema } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
@@ -371,11 +370,10 @@ export async function OPTIONS(_request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // Resolved once and used for both gates below. It must be a real validation, not a test for
-  // the presence of an x-api-key header: nobody authenticates that header, so a header test
-  // would let any anonymous caller send `x-api-key: anything` and walk past both the IP limiter
-  // and Turnstile. withApiAuth re-validates and rejects the junk key, so the only thing an
-  // invalid key buys the caller now is the anonymous treatment it deserves.
+  // Resolved once for the IP limiter below. It must be a real validation, not a test for the
+  // presence of an x-api-key header: nobody authenticates that header, so a header test would let
+  // any anonymous caller send `x-api-key: anything` and walk past the limiter. withApiAuth
+  // re-validates and rejects the junk key.
   const authState = await getApiKeyAuthState(request.headers)
 
   // IP-based rate limiting, the first line of defence before any DB work, for anonymous callers.
@@ -383,7 +381,7 @@ export async function POST(request: NextRequest) {
   // covered every guest on the public site at once. Their budget is the per-key hourly limit
   // enforced in withApiAuth (5,000/hour for the website key) plus the per-guest limit below.
   // 'unavailable' is limited alongside anonymous: we cannot prove the caller is trusted, and
-  // the limiter only delays them, whereas the Turnstile gate below would refuse them outright.
+  // the limiter only delays them.
   if (authState !== 'authenticated') {
     const ipRateLimitResponse = await tableBookingIpLimiter(request)
     if (ipRateLimitResponse) {
@@ -391,30 +389,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Turnstile CAPTCHA verification, only for genuinely anonymous browser requests.
-  // API-key-authenticated requests (e.g. from the website proxy) skip Turnstile because the
-  // website has its own Turnstile widget, with a DIFFERENT secret key, and verifies the token
-  // itself before proxying. That difference is the whole reason this gate must not catch them:
-  // our secret cannot validate a token minted by their site key, so every guest routed here
-  // fails, no matter what they do.
-  //
-  // Hence 'anonymous' and not merely "not authenticated". A caller who presented a key we could
-  // not check (a database blip) is not a browser, has no widget to solve, and used to be told
-  // "Turnstile verification failed" for what was actually our outage. They now fall through to
-  // withApiAuth, which answers 503 AUTH_UNAVAILABLE and says what really happened.
-  if (authState === 'anonymous') {
-    const turnstileToken = request.headers.get('x-turnstile-token')
-    const clientIp = getClientIp(request)
-    const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
-    if (!turnstile.success) {
-      return createErrorResponse(
-        turnstile.error || 'Bot verification failed',
-        'TURNSTILE_FAILED',
-        403
-      )
-    }
-  }
-
+  // No Turnstile check here (BK-129). The website verifies its own Turnstile token before it
+  // proxies a booking, with its own widget and secret, and this route takes only API-key callers:
+  // withApiAuth refuses an anonymous one, so a bot check for anonymous callers could never let one
+  // through anyway. A key we could not check is our outage, and withApiAuth answers it 503.
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)
     if (!idempotencyKey) {

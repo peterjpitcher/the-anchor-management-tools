@@ -21,8 +21,9 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
  *
  * `pending_payment` is the case that matters. That guest has not paid a deposit, their
  * hold can still expire, and the booking may never exist. Asking them to confirm a table
- * they have not secured is the wrong conversation; the deposit chase is the right one.
- * They join this sweep the moment payment lands and they become confirmed.
+ * they have not secured is the wrong conversation; the deposit is the right one (the request,
+ * then the one reminder before the hold ends, BK-088). They join this sweep the moment payment
+ * lands and they become confirmed.
  */
 export const CONFIRMABLE_BOOKING_STATUSES = ['confirmed'] as const
 
@@ -62,9 +63,9 @@ export type ConfirmCandidate = {
 
 export type ConfirmReminderOptions = {
   /**
-   * Messaging flag table_confirm_reminder_email_first (owner decision, 11 September 2026): the
-   * reminder goes by email first, so a guest with a usable email address is eligible even with
-   * no mobile or with texts switched off.
+   * The reminder goes by email first (owner decision, 11 September 2026), so a guest with a usable
+   * email address is eligible even with no mobile or with texts switched off. The sweep always
+   * passes true since the messaging flag that switched it went (BK-129).
    */
   emailFirst?: boolean
 }
