@@ -48,11 +48,19 @@ export function depositPerPerson(depositAmount: number | null | undefined, party
 
 /**
  * What the deposit is and where it goes. SSOT section 16, "Group deposit" and "Christmas 2026".
+ *
+ * `depositRule` is the rule the booking function charged by. A seasonal ('period') deposit is not
+ * the group deposit, so it is never described as "Groups of 15 or more" (BK-049): a GBP 15 a head
+ * Mother's Day booking for two would otherwise be told a rule that does not apply to it.
  */
-export function depositPurposeLine(input: { isChristmas: boolean; perPersonGbp: number | null }): string {
+export function depositPurposeLine(input: {
+  isChristmas: boolean
+  perPersonGbp: number | null
+  depositRule?: string | null
+}): string {
   const rate = formatWholePounds(input.perPersonGbp)
 
-  if (input.isChristmas) {
+  if (input.isChristmas || input.depositRule === 'period') {
     return rate
       ? `There's a ${rate} per person deposit, which comes off your bill.`
       : 'The deposit comes off your bill.'
@@ -116,6 +124,7 @@ export function depositTermsLines(input: {
   perPersonGbp: number | null
   refundCutoffDays: number | null
   payByLabel: string | null
+  depositRule?: string | null
 }): string[] {
   const refund = depositRefundLine(input)
   return [

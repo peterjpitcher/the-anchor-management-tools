@@ -1849,10 +1849,13 @@ async function createFohTableBooking(
           metadata: {
             hold_expires_at: holdExpiresAt,
             next_step_url_provided: Boolean(nextStepUrl),
-            deposit_amount: computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
-              depositWaived: payload.waive_deposit === true,
-              isChristmas: isChristmasBooking,
-            }),
+            // What the booking function charged, as the guest is asked for it (BK-049).
+            deposit_amount: chargedDepositAmount(bookingResult, () =>
+              computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
+                depositWaived: payload.waive_deposit === true,
+                isChristmas: isChristmasBooking,
+              }),
+            ),
             source: 'foh',
           },
       }, {
