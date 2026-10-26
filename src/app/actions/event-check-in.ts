@@ -14,6 +14,7 @@ import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { EventBookingService } from '@/services/event-bookings'
+import { hasGuestAnswers } from '@/lib/events/guest-answers'
 
 const LONDON_TZ = 'Europe/London'
 const ACTIVE_BOOKING_STATUSES = ['pending_payment', 'confirmed']
@@ -80,6 +81,11 @@ export type KnownEventGuest = {
     id: string
     seats: number | null
     status: string | null
+    /**
+     * True when a guest on the booking answered the event's questions (BK-015). The kiosk only
+     * says so; the answers themselves stay on the door list and the kitchen summary.
+     */
+    answersOnFile?: boolean
   }
   alreadyCheckedIn: boolean
   attendance?: EventCategoryAttendanceSummary
@@ -260,7 +266,7 @@ async function getActiveBooking(eventId: string, customerId: string) {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bookings')
-    .select('id, seats, status')
+    .select('id, seats, status, attendees')
     .eq('event_id', eventId)
     .eq('customer_id', customerId)
     .in('status', ACTIVE_BOOKING_STATUSES)
@@ -978,6 +984,7 @@ export async function lookupEventGuest(input: z.infer<typeof lookupSchema>): Pro
             id: activeBooking.booking.id,
             seats: activeBooking.booking.seats,
             status: activeBooking.booking.status,
+            answersOnFile: hasGuestAnswers(activeBooking.booking.attendees),
           }
         : undefined,
       alreadyCheckedIn: checkIn.checkedIn,

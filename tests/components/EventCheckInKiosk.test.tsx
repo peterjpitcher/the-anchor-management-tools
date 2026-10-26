@@ -46,4 +46,45 @@ describe('event check-in kiosk', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Checked In' })).toBeInTheDocument()
     expect(screen.getByText(/eligible for tonight/)).toBeInTheDocument()
   })
+
+  // BK-015: the kiosk says the team has the party's answers, and never shows them.
+  it('tells a guest with answers on file that the team has them', async () => {
+    lookupEventGuest.mockResolvedValue({
+      success: true,
+      status: 'known',
+      normalizedPhone: '+447700900123',
+      data: {
+        customer: { id: 'c-1', first_name: 'Sam', last_name: 'Lee', mobile_number: '07700900123', email: null },
+        booking: { id: 'b-1', seats: 2, status: 'confirmed', answersOnFile: true },
+        alreadyCheckedIn: false,
+      },
+    })
+
+    render(<EventCheckInClient event={EVENT} />)
+    fireEvent.change(screen.getByLabelText(/Guest mobile number/i), { target: { value: '07700 900123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Check In' }))
+
+    expect(await screen.findByText('We have you down for 2 tickets.')).toBeInTheDocument()
+    expect(screen.getByText('The team has the answers you gave for your party. Let them know if anything has changed.')).toBeInTheDocument()
+  })
+
+  it('says nothing about answers when there are none', async () => {
+    lookupEventGuest.mockResolvedValue({
+      success: true,
+      status: 'known',
+      normalizedPhone: '+447700900123',
+      data: {
+        customer: { id: 'c-1', first_name: 'Sam', last_name: 'Lee', mobile_number: '07700900123', email: null },
+        booking: { id: 'b-1', seats: 2, status: 'confirmed', answersOnFile: false },
+        alreadyCheckedIn: false,
+      },
+    })
+
+    render(<EventCheckInClient event={EVENT} />)
+    fireEvent.change(screen.getByLabelText(/Guest mobile number/i), { target: { value: '07700 900123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Check In' }))
+
+    expect(await screen.findByText('We have you down for 2 tickets.')).toBeInTheDocument()
+    expect(screen.queryByText(/answers you gave/)).not.toBeInTheDocument()
+  })
 })
