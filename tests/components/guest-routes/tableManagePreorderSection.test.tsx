@@ -185,6 +185,82 @@ describe('PreorderSection', () => {
     )
   })
 
+  // BK-055: each seat follows the course tier the guest is paying for.
+  describe('Christmas course tiers', () => {
+    function tiered(): BookerPreorderView {
+      const base = view()
+      return {
+        ...base,
+        order: {
+          ...base.order,
+          partySize: 4,
+          courseCounts: [3, 2, 1, 3],
+          covers: [
+            cover({ id: 'cover-1', ordinal: 1, guestName: null, courseCount: 3, selections: [selection({ course: 'main' })] }),
+            cover({ id: 'cover-2', ordinal: 2, guestName: null, courseCount: 2, selections: [selection({ course: 'main' })] }),
+            cover({ id: 'cover-3', ordinal: 3, guestName: null, courseCount: 1, selections: [] }),
+            // Seat 4 has no cover row yet: its tier still comes from the booking.
+          ],
+        },
+        menuByCourse: {
+          starter: [{ ...menuItem('starter-1', 'Fixture starter'), course: 'starter' } as BookingPeriodMenuItem],
+          main: [menuItem('item-1', 'Roast turkey')],
+          dessert: [{ ...menuItem('dessert-1', 'Fixture dessert'), course: 'dessert' } as BookingPeriodMenuItem],
+        },
+        addons: [],
+      }
+    }
+
+    it('tells each seat what its tier needs, and stops calling courses optional', () => {
+      const { container } = render(<PreorderSection {...tiered()} {...baseProps} />)
+
+      expect(container.querySelector('#seat-1-courses')).toHaveTextContent(
+        '3 courses: choose a starter, a main and a dessert.'
+      )
+      expect(container.querySelector('#seat-2-courses')).toHaveTextContent(
+        '2 courses: choose a main, plus a starter or a dessert.'
+      )
+      expect(screen.getByText('Guest 3: 1 course, no pre-order required.')).toBeInTheDocument()
+      expect(container.querySelector('#seat-4-courses')).toHaveTextContent('3 courses')
+
+      expect(screen.queryByText('Starter (optional)')).not.toBeInTheDocument()
+      expect(screen.queryByText('Dessert (optional)')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Starter', { selector: '#seat-1-starter' })).toHaveAttribute(
+        'aria-describedby',
+        'seat-1-courses'
+      )
+
+      // A 3 course guest must choose a starter, so "None, thank you" is not offered; a 2 course
+      // guest leaves one of the two empty, so it is.
+      const threeCourseStarter = container.querySelector('#seat-1-starter option[value=""]')
+      expect(threeCourseStarter).toHaveTextContent('Please choose')
+      const twoCourseStarter = container.querySelector('#seat-2-starter option[value=""]')
+      expect(twoCourseStarter).toHaveTextContent('None, thank you')
+    })
+
+    it('names each seat and the course it is missing, instead of asking for a main', () => {
+      render(<PreorderSection {...tiered()} {...baseProps} />)
+
+      expect(screen.queryByText(/a main course for every seat/)).not.toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'Still to choose: Seat 1 needs a starter and a dessert. Seat 2 needs a starter or a dessert. ' +
+            'Seat 4 needs a starter, a main and a dessert.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('says why a 2 course seat was refused when it chose a starter and a dessert', () => {
+      const { container } = render(
+        <PreorderSection {...tiered()} {...baseProps} errorSeat={2} errorReason="courses" />
+      )
+
+      expect(container.querySelector('#seat-2-error')).toHaveTextContent(
+        'It is on 2 courses, so choose a main, plus a starter or a dessert, not both.'
+      )
+    })
+  })
+
   it('renders the record, not a form, once the cutoff has passed', () => {
     const closed = view({ cutoff: { at: new Date('2026-12-17T12:00:00.000Z'), editable: false } })
 

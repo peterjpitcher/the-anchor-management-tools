@@ -15,6 +15,7 @@ import {
 import {
   getCoverAddons,
   loadPreorderOrder,
+  PreorderCourseLimitError,
   savePreorderCover,
   syncPreorderCovers,
   type PreorderSelectionInput,
@@ -61,10 +62,12 @@ function redirectWithPreorderStatus(
   request: NextRequest,
   token: string,
   preorder: 'saved' | 'seats_removed' | 'error' | 'rate_limited',
-  seat?: number
+  seat?: number,
+  reason?: 'courses'
 ) {
   const query = new URLSearchParams({ preorder })
   if (seat) query.set('seat', String(seat))
+  if (seat && reason) query.set('reason', reason)
   return NextResponse.redirect(
     new URL(`/g/${token}/table-manage?${query.toString()}`, request.url),
     303
@@ -297,7 +300,15 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
             error: error instanceof Error ? error.message : String(error)
           }
         })
-        return redirectWithPreorderStatus(request, token, 'error', ordinal)
+        // A seat that chose more courses than its tier pays for is told so, rather than being told
+        // the dish may have come off the menu.
+        return redirectWithPreorderStatus(
+          request,
+          token,
+          'error',
+          ordinal,
+          error instanceof PreorderCourseLimitError ? 'courses' : undefined
+        )
       }
     }
 

@@ -414,8 +414,9 @@ describe('each email-first table booking message is rebuilt as the text its send
     expect((await response.json()).result).toEqual(expect.objectContaining({ bookerReminders: 1, failed: 0 }))
     const sent = onlyTextSent()
     const shortUrl = buildShortLinkUrl('sl1')
+    // The tier rule, not 'Every guest needs a main course.' (BK-056). The rebuild below must match it.
     expect(sent.body).toBe(
-      `The Anchor: Sarah, we still need the food choices for your booking on Saturday 24 October at 7pm. Every guest needs a main course. Choose here: ${shortUrl}`
+      `The Anchor: Sarah, we still need the food choices for your booking on Saturday 24 October at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: ${shortUrl}`
     )
 
     const render = ready(await rebuild())

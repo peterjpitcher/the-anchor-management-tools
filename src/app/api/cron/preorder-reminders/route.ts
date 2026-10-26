@@ -549,7 +549,7 @@ async function sendBookerReminderEmailFirst(
     email: buildPreorderReminderEmail(booking, booker, manage.url, deadline),
     sms: {
       to: booker.phone,
-      // Today's text, word for word.
+      // The same text the queued path sends.
       body: buildPreorderReminderText({
         firstName: booker.firstName,
         bookingDate: booking.booking_date,

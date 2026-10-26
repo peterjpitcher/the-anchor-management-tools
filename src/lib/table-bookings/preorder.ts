@@ -10,11 +10,12 @@
  * These are library functions, not server actions: they throw on failure and the calling action turns
  * that into `{ error }`.
  *
- * THE COMPLETENESS RULE, owner-confirmed 2026-08-04. Every cover must have a MAIN. That is the whole
- * requirement. A starter and a dessert are optional, and not choosing one is a complete answer rather
- * than a missing one. Covers in the same party may differ: one person has three courses, the next has
- * just a main. There is deliberately no "chosen / declined / not answered" state per course, because
- * with only the main required "not chosen" and "declined" mean the same thing.
+ * THE COMPLETENESS RULE follows each guest's Christmas course tier (`christmas_course_counts`, SSOT
+ * section 7): a 1 course guest owes nothing, a 2 course guest owes a main and one other course (a
+ * starter or a dessert), and a 3 course guest owes a starter, a main and a dessert. A seat may not
+ * hold more courses than its tier pays for, because the kitchen would cook a course nobody paid for.
+ * A booking that recorded no tiers keeps the rule it was taken under, owner-confirmed 2026-08-04:
+ * every cover needs a MAIN, and a starter and a dessert are optional.
  *
  * ADD-ONS, added 2026-08-04. An add-on is an optional extra a seat has ON TOP of its courses: the
  * farmhouse cheeseboard, which was mistakenly listed as a dessert and so cost the guest their pudding.
@@ -39,6 +40,7 @@ import {
   PREORDER_SELECTION_COURSES,
   type PreorderAddonSummary,
   type PreorderCourse,
+  type PreorderCourseCount,
   type PreorderCover,
   type PreorderCoverAddonSummary,
   type PreorderCoverRow,
@@ -128,18 +130,95 @@ export function mapPreorderCoverRow(
 // The completeness predicate
 // ---------------------------------------------------------------------------
 
+/** A recorded tier, or null for anything that is not 1, 2 or 3. */
+export function toPreorderCourseCount(value: unknown): PreorderCourseCount | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return parsed === 1 || parsed === 2 || parsed === 3 ? parsed : null
+}
+
 /**
- * A cover is complete when it has a main. Starter, dessert and add-ons are optional by design.
+ * The tier recorded for one seat (1-based), or null when the booking recorded none. Read from the
+ * order's own list first, because a seat can have no cover row yet and still owe its courses.
+ */
+export function getSeatCourseCount(
+  order: Pick<PreorderOrder, 'courseCounts' | 'covers'>,
+  ordinal: number,
+): PreorderCourseCount | null {
+  const fromOrder = order.courseCounts?.[ordinal - 1]
+  if (fromOrder !== undefined && fromOrder !== null) return toPreorderCourseCount(fromOrder)
+  const cover = order.covers.find((entry) => entry.ordinal === ordinal)
+  return toPreorderCourseCount(cover?.courseCount ?? null)
+}
+
+/** The single-choice courses a seat holds. Add-ons never count, so they cannot be in here. */
+/** Only the course of each choice matters to the tier rule, so a draft on screen can be judged too. */
+type CoursesHeld = {
+  selections: ReadonlyArray<Pick<PreorderSelection, 'course'>>
+  courseCount?: PreorderCourseCount | null
+}
+
+function chosenCourses(cover: Pick<CoursesHeld, 'selections'>): Set<PreorderCourse> {
+  const chosen = new Set<PreorderCourse>()
+  for (const selection of cover.selections) {
+    if (isPreorderCourse(selection.course)) chosen.add(selection.course)
+  }
+  return chosen
+}
+
+/**
+ * The most starters and desserts together that a seat on this tier may hold. A 2 course seat is a
+ * main and ONE other, so a starter and a dessert together is a course nobody has paid for.
+ */
+function maxOtherCourses(courseCount: PreorderCourseCount | null | undefined): number {
+  if (courseCount === 1) return 0
+  if (courseCount === 2) return 1
+  return 2
+}
+
+/**
+ * What one seat still has to choose, as words that finish "Seat 2 needs ...", or null when nothing
+ * is owed. Follows the seat's tier; a seat with no tier keeps the old rule of a main only.
+ */
+export function describeCoverMissingCourses(cover: CoursesHeld): string | null {
+  const courseCount = toPreorderCourseCount(cover.courseCount ?? null)
+  if (courseCount === 1) return null
+
+  const chosen = chosenCourses(cover)
+  const hasMain = chosen.has('main')
+
+  if (courseCount === null) return hasMain ? null : 'a main'
+
+  if (courseCount === 2) {
+    const others = (chosen.has('starter') ? 1 : 0) + (chosen.has('dessert') ? 1 : 0)
+    if (others > 1) {
+      // Only reachable from a save made before the tier was enforced. Say what to take off.
+      return hasMain ? 'only one of the starter and the dessert' : 'a main in place of the starter or the dessert'
+    }
+    if (!hasMain && others === 0) return 'a main, plus a starter or a dessert'
+    if (!hasMain) return 'a main'
+    if (others === 0) return 'a starter or a dessert'
+    return null
+  }
+
+  const missing = (['starter', 'main', 'dessert'] as const)
+    .filter((course) => !chosen.has(course))
+    .map((course) => `a ${course}`)
+  if (missing.length === 0) return null
+  if (missing.length === 1) return missing[0]
+  return `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`
+}
+
+/**
+ * A cover is complete when it holds exactly the courses its tier pays for, including a main: all
+ * three on 3 courses, a main and one other on 2, nothing at all on 1. A cover with no tier recorded
+ * keeps the rule it was booked under: a main, with a starter and a dessert optional.
  *
  * Add-ons deliberately cannot reach this function's answer. A seat that has ticked the cheeseboard
- * and chosen no main is NOT complete, and a seat with a main and no add-ons IS. Anything else would
- * mean the chase cron nagged a guest for not buying an extra.
+ * and chosen no main is NOT complete, and a seat with its courses and no add-ons IS. Anything else
+ * would mean the chase cron nagged a guest for not buying an extra.
  */
-export function isCoverComplete(cover: Pick<PreorderCover, 'selections' | 'courseCount'>): boolean {
-  if (cover.courseCount === 1) return true
-  const hasMain = cover.selections.some((selection) => selection.course === 'main')
-  if (!cover.courseCount) return hasMain // Existing records retain their recorded policy.
-  return hasMain && cover.selections.filter((selection) => isPreorderCourse(selection.course)).length === cover.courseCount
+export function isCoverComplete(cover: CoursesHeld): boolean {
+  return describeCoverMissingCourses(cover) === null
 }
 
 /**
@@ -160,13 +239,30 @@ export function getCoverAddons(cover: Pick<PreorderCover, 'selections'>): Preord
   return cover.selections.filter(isPreorderAddon)
 }
 
+export type PreorderSeatGap = {
+  ordinal: number
+  courseCount: PreorderCourseCount | null
+  /** Words that finish "Seat 2 needs ...", for example "a dessert". */
+  missing: string
+}
+
 export type PreorderCompleteness = {
-  /** One cover per seat, and every cover has a main. */
+  /** Every seat that owes a pre-order has a cover, and every cover holds the courses its tier pays for. */
   complete: boolean
   partySize: number
   coverCount: number
-  /** Seat numbers with no main yet. Empty when every seat has one. */
+  /**
+   * Seat numbers whose courses are not all chosen yet, following each seat's tier. Kept under its
+   * old name for its callers; with tiers it means "still owes a course", not only "has no main".
+   */
   ordinalsMissingMain: number[]
+  /**
+   * The same seats, with their tier and what each still needs, in seat order. Includes a seat with
+   * no cover row yet, unless it is on 1 course, which owes nothing.
+   */
+  seatsIncomplete: PreorderSeatGap[]
+  /** The seats in `seatsIncomplete` that have no cover row at all. */
+  seatsWithoutCover: number[]
   /**
    * Seat numbers whose choice has since been withdrawn from the menu. Reported separately and
    * deliberately NOT counted as incomplete: the chase cron only messages incomplete bookings, and
@@ -177,12 +273,23 @@ export type PreorderCompleteness = {
 }
 
 export function getPreorderCompleteness(
-  order: Pick<PreorderOrder, 'partySize' | 'covers'>,
+  order: Pick<PreorderOrder, 'partySize' | 'covers'> & Partial<Pick<PreorderOrder, 'courseCounts'>>,
 ): PreorderCompleteness {
-  const ordinalsMissingMain = order.covers
-    .filter((cover) => !isCoverComplete(cover))
-    .map((cover) => cover.ordinal)
-    .sort((a, b) => a - b)
+  const withTiers = { courseCounts: order.courseCounts ?? null, covers: order.covers }
+  const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
+
+  // Every seat in the party, whether or not it has a cover row yet: a seat with no row owes every
+  // course its tier pays for, and saying which is more use than "no order started".
+  const seatsIncomplete: PreorderSeatGap[] = []
+  const seatsWithoutCover: number[] = []
+  for (let ordinal = 1; ordinal <= order.partySize; ordinal += 1) {
+    const cover = coversByOrdinal.get(ordinal)
+    const courseCount = getSeatCourseCount(withTiers, ordinal)
+    const missing = describeCoverMissingCourses({ selections: cover?.selections ?? [], courseCount })
+    if (missing === null) continue
+    seatsIncomplete.push({ ordinal, courseCount, missing })
+    if (!cover) seatsWithoutCover.push(ordinal)
+  }
 
   const ordinalsWithWithdrawnChoice = order.covers
     .filter((cover) => cover.selections.some((selection) => selection.itemWithdrawn))
@@ -190,28 +297,42 @@ export function getPreorderCompleteness(
     .sort((a, b) => a - b)
 
   return {
-    complete: order.covers.length === order.partySize && ordinalsMissingMain.length === 0,
+    // More covers than seats is drift the nightly check reports, so it is never "complete".
+    complete:
+      order.covers.length <= order.partySize && seatsWithoutCover.length === 0 && seatsIncomplete.length === 0,
     partySize: order.partySize,
     coverCount: order.covers.length,
-    ordinalsMissingMain,
+    ordinalsMissingMain: seatsIncomplete.map((gap) => gap.ordinal),
+    seatsIncomplete,
+    seatsWithoutCover,
     ordinalsWithWithdrawnChoice,
   }
 }
 
-/** What is missing, in a sentence a member of staff can read out on the telephone. */
+/** "3 courses", for a seat's tier. Empty when the booking recorded no tier. */
+export function describeCourseCount(courseCount: PreorderCourseCount | null | undefined): string {
+  if (!courseCount) return ''
+  return courseCount === 1 ? '1 course' : `${courseCount} courses`
+}
+
+/**
+ * What is missing, in a sentence a member of staff can read out on the telephone: each seat, its
+ * tier, and the course it still needs. Used on the staff screen and in the manager escalation.
+ */
 export function describePreorderGaps(completeness: PreorderCompleteness): string {
   if (completeness.complete) return 'All courses chosen.'
 
   const parts: string[] = []
-  if (completeness.coverCount < completeness.partySize) {
+  for (const gap of completeness.seatsIncomplete) {
+    const tier = describeCourseCount(gap.courseCount)
+    parts.push(`Seat ${gap.ordinal}${tier ? ` (${tier})` : ''} needs ${gap.missing}.`)
+  }
+  if (parts.length === 0 && completeness.coverCount > completeness.partySize) {
     parts.push(
-      `${completeness.partySize - completeness.coverCount} of ${completeness.partySize} seats have no order started`,
+      `There are ${completeness.coverCount} pre-order seats for a party of ${completeness.partySize}.`,
     )
   }
-  if (completeness.ordinalsMissingMain.length > 0) {
-    parts.push(`course choices incomplete for seat ${completeness.ordinalsMissingMain.join(', ')}`)
-  }
-  return parts.length > 0 ? `${parts.join(', and ')}.` : 'Something is missing from this pre-order.'
+  return parts.length > 0 ? parts.join(' ') : 'Something is missing from this pre-order.'
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +667,10 @@ export async function loadPreorderOrder(
     loadPreorderCutoffDays(supabase, booking.booking_period_id),
   ])
 
+  const courseCounts = Array.isArray(booking.christmas_course_counts)
+    ? booking.christmas_course_counts.map((count) => toPreorderCourseCount(count) ?? 1)
+    : null
+
   return {
     tableBookingId: booking.id,
     bookingReference: booking.booking_reference,
@@ -560,7 +685,8 @@ export async function loadPreorderOrder(
     periodId: booking.booking_period_id ?? null,
     periodName: booking.booking_period_name ?? null,
     preorderCutoffDays,
-    covers: covers.map(cover => ({ ...cover, courseCount: booking.christmas_course_counts?.[cover.ordinal - 1] ?? null })),
+    courseCounts,
+    covers: covers.map((cover) => ({ ...cover, courseCount: courseCounts?.[cover.ordinal - 1] ?? null })),
   }
 }
 
@@ -665,6 +791,27 @@ export async function savePreorderCover(
 
   const cover = coverRow as unknown as PreorderCoverRow
 
+  const selections = input.selections ?? []
+  for (const entry of selections) {
+    // The type already forbids it, but this path is reached from a JSON request body on the
+    // booker's manage page, where types are a promise rather than a guarantee. An add-on smuggled
+    // in here would be written as a single-choice course and would silently replace whatever the
+    // seat had.
+    if (!isPreorderCourse(entry.course)) {
+      throw new Error('Add-ons are ticked separately, not chosen as a course.')
+    }
+  }
+
+  const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
+  const chosen = selections.filter(
+    (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
+  )
+
+  // Checked before anything is written, so a refused save changes nothing on the seat.
+  if (chosen.length > 0) {
+    await assertCoursesWithinTier(supabase, cover, cleared, chosen.map((entry) => entry.course))
+  }
+
   const patch: Record<string, unknown> = {}
   if (input.guestName !== undefined) patch.guest_name = normaliseText(input.guestName, 100)
   if (input.dietaryNote !== undefined) patch.dietary_note = normaliseText(input.dietaryNote, 200)
@@ -674,23 +821,7 @@ export async function savePreorderCover(
     if (error) throw error
   }
 
-  const selections = input.selections ?? []
   if (selections.length > 0) {
-    for (const entry of selections) {
-      // The type already forbids it, but this path is reached from a JSON request body on the
-      // booker's manage page, where types are a promise rather than a guarantee. An add-on smuggled
-      // in here would be written as a single-choice course and would silently replace whatever the
-      // seat had.
-      if (!isPreorderCourse(entry.course)) {
-        throw new Error('Add-ons are ticked separately, not chosen as a course.')
-      }
-    }
-
-    const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
-    const chosen = selections.filter(
-      (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
-    )
-
     // Clear every course this call names, whether it is being cleared or replaced, then insert the
     // replacements. This used to be an upsert on the (cover_id, course) UNIQUE constraint, and that
     // constraint is gone: the one that replaced it is PARTIAL, and Postgres will not infer a partial
@@ -745,6 +876,77 @@ export async function savePreorderCover(
   const saved = covers.find((entry) => entry.id === cover.id)
   if (!saved) throw new Error('That seat no longer exists on this booking.')
   return saved
+}
+
+/**
+ * A save that would give a seat more courses than its tier pays for. Its message is written for the
+ * person saving, guest or staff, and names the seat and what its tier allows.
+ */
+export class PreorderCourseLimitError extends Error {
+  readonly ordinal: number
+  readonly courseCount: PreorderCourseCount
+
+  constructor(ordinal: number, courseCount: PreorderCourseCount) {
+    super(
+      courseCount === 1
+        ? `Seat ${ordinal} is on 1 course, so there is nothing to choose in advance.`
+        : `Seat ${ordinal} is on 2 courses: choose a main, plus a starter or a dessert, not both.`,
+    )
+    this.name = 'PreorderCourseLimitError'
+    this.ordinal = ordinal
+    this.courseCount = courseCount
+  }
+}
+
+/** The tier this seat's booking recorded for it, or null when the booking recorded none. */
+async function loadSeatCourseCount(
+  supabase: Db,
+  tableBookingId: string,
+  ordinal: number,
+): Promise<PreorderCourseCount | null> {
+  const { data, error } = await supabase
+    .from('table_bookings')
+    .select('christmas_course_counts')
+    .eq('id', tableBookingId)
+    .maybeSingle()
+
+  if (error) throw error
+  const counts = (data as { christmas_course_counts?: unknown } | null)?.christmas_course_counts
+  return Array.isArray(counts) ? toPreorderCourseCount(counts[ordinal - 1]) : null
+}
+
+/**
+ * Refuse a save that would leave the seat holding more courses than its tier: anything at all on 1
+ * course, or a starter and a dessert together on 2. The database does not check this, and the
+ * kitchen would otherwise cook a course the guest has not paid for. 3 courses and untiered seats
+ * cannot go over: a seat holds at most one of each course.
+ */
+async function assertCoursesWithinTier(
+  supabase: Db,
+  cover: PreorderCoverRow,
+  cleared: PreorderCourse[],
+  chosen: PreorderCourse[],
+): Promise<void> {
+  const courseCount = await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
+  if (courseCount !== 1 && courseCount !== 2) return
+
+  const { data, error } = await supabase
+    .from('booking_preorder_selections')
+    .select('course')
+    .eq('cover_id', cover.id)
+
+  if (error) throw error
+
+  const after = new Set<PreorderCourse>()
+  for (const row of (data ?? []) as Array<{ course: string }>) {
+    if (isPreorderCourse(row.course)) after.add(row.course)
+  }
+  for (const course of cleared) after.delete(course)
+  for (const course of chosen) after.add(course)
+
+  const others = (after.has('starter') ? 1 : 0) + (after.has('dessert') ? 1 : 0)
+  const overTier = courseCount === 1 ? after.size > 0 : others > maxOtherCourses(courseCount)
+  if (overTier) throw new PreorderCourseLimitError(cover.ordinal, courseCount)
 }
 
 /**

@@ -596,7 +596,8 @@ export function buildTableBookingRescheduledEmail(
 
 /**
  * The seasonal pre-order chase. The text says "we still need the food choices for your booking
- * on {moment}. Every guest needs a main course. Choose here: {link}"; the email names the season
+ * on {moment}. Guests on 2 or 3 courses need every course chosen. Choose here: {link}"; the
+ * email names the season
  * and the booking date in its subject, says what each guest's course tier still needs, and gives
  * the deadline the sweep is chasing.
  */
