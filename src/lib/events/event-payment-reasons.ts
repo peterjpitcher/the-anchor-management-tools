@@ -45,6 +45,9 @@ const EVENT_PAYMENT_REASON_SENTENCES: Record<string, string> = {
   capture_reference_mismatch: CALL_BEFORE_PAYING_AGAIN,
   confirmation_blocked: CALL_BEFORE_PAYING_AGAIN,
   capture_already_captured_pending_confirmation: CALL_BEFORE_PAYING_AGAIN,
+  // PayPal took the money but the booking could not be confirmed (BK-124). Answered as manual
+  // review, never as a refusal, but named here so the guest is never shown the code.
+  confirmation_failed_after_capture: CALL_BEFORE_PAYING_AGAIN,
 }
 
 /** Reasons the routes are known to answer with. Used by the tests to keep the table complete. */

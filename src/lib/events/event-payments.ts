@@ -693,7 +693,31 @@ async function captureEventPayPalOrderFromPreview(
     }
   )
 
-  if (confirmError) throw confirmError
+  if (confirmError) {
+    // PayPal has taken the money by now, so this must never reach the guest as an error to
+    // retry (they could pay twice) and must never pass unseen. It used to throw: the website
+    // route answered 500 with nothing logged. The guest is told staff will check the booking,
+    // and the PAYMENT.CAPTURE.COMPLETED webhook and the reconciliation cron retry the confirm.
+    logger.error('Event PayPal payment was captured but the booking could not be confirmed', {
+      error: new Error(confirmError.message || 'confirm_event_paypal_payment_v01 failed'),
+      metadata: {
+        bookingId: preview.bookingId,
+        orderId: input.orderId,
+        captureId,
+        amount: capturedAmount,
+        currency: capturedCurrency,
+        code: (confirmError as { code?: string }).code ?? null,
+      },
+    })
+    return {
+      state: 'manual_review',
+      bookingId: preview.bookingId,
+      amount: preview.totalAmount,
+      currency: preview.currency,
+      paymentId: null,
+      reason: 'confirmation_failed_after_capture',
+    }
+  }
   const confirm = (confirmRaw || {}) as Record<string, unknown>
   const state = typeof confirm.state === 'string' ? confirm.state : 'blocked'
   if (state === 'confirmed' || state === 'already_confirmed' || state === 'manual_review') {
