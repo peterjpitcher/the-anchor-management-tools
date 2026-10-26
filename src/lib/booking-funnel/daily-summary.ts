@@ -16,6 +16,8 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 type AdminClient = ReturnType<typeof createAdminClient>
 
 const ROW_LIMIT = 1000
+/** At most 50,000 refusal and form rows a day are read; a day with more is marked truncated. */
+const MAX_PAGES = 50
 
 export type RefusalLine = {
   route: string
@@ -35,7 +37,7 @@ export type DailyFunnelSummary = {
   failedTotal: number
   availability: { searches: number; noTables: number; couldNotCheck: number }
   forms: FormLine[]
-  /** True when the day had more refusal and form rows than one read returns. */
+  /** True when the day had more refusal and form rows than the summary reads (ROW_LIMIT x MAX_PAGES). */
   truncated: boolean
   readError: string | null
 }
@@ -99,19 +101,29 @@ export async function loadDailyFunnelSummary(supabase: AdminClient, date: string
   const [searches, noTables, couldNotCheck] = [all.count ?? 0, empty.count ?? 0, unknown.count ?? 0]
   summary.availability = { searches, noTables, couldNotCheck }
 
-  const { data, error } = await supabase
-    .from('booking_funnel_events')
-    .select('stage, route, reason_code, upstream_code')
-    .in('stage', ['refused', 'failed', 'form'])
-    .in('api_key_id', keys)
-    .gte('occurred_at', startIso)
-    .lt('occurred_at', endIso)
-    .order('occurred_at', { ascending: true })
-    .limit(ROW_LIMIT)
-  if (error) throw new Error(`Could not read the refusals: ${error.message}`)
-
-  const rows = (data ?? []) as Array<{ stage: string; route: string; reason_code: string | null; upstream_code: string | null }>
-  summary.truncated = rows.length >= ROW_LIMIT
+  // Read in pages: one read of 1,000 rows let a busy day of ordinary form signals push every later
+  // refusal off the end, and the day could then send nothing at all. Bounded so a flood cannot
+  // run the job out of time; a day past the bound says so.
+  type EventRow = { stage: string; route: string; reason_code: string | null; upstream_code: string | null }
+  const rows: EventRow[] = []
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const from = page * ROW_LIMIT
+    const { data, error } = await supabase
+      .from('booking_funnel_events')
+      .select('stage, route, reason_code, upstream_code')
+      .in('stage', ['refused', 'failed', 'form'])
+      .in('api_key_id', keys)
+      .gte('occurred_at', startIso)
+      .lt('occurred_at', endIso)
+      .order('occurred_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + ROW_LIMIT - 1)
+    if (error) throw new Error(`Could not read the refusals: ${error.message}`)
+    const batch = (data ?? []) as EventRow[]
+    rows.push(...batch)
+    if (batch.length < ROW_LIMIT) break
+    if (page === MAX_PAGES - 1) summary.truncated = true
+  }
 
   const refusals = new Map<string, RefusalLine>()
   const forms = new Map<string, FormLine>()
@@ -145,6 +157,8 @@ export function summaryNeedsSending(summary: DailyFunnelSummary): boolean {
   const formsBlocked = summary.forms.filter((line) => line.step === 'blocked').reduce((sum, line) => sum + line.count, 0)
   return (
     summary.refusedTotal + summary.failedTotal + summary.availability.couldNotCheck + formsBlocked > 0 ||
+    // A day too busy to read in full is itself worth an email.
+    summary.truncated ||
     Boolean(summary.readError)
   )
 }
@@ -233,7 +247,7 @@ export function buildDailyFunnelEmail(summary: DailyFunnelSummary, reportsUrl: s
 
   const refusalLines = summary.refusals.map(describeRefusal)
   if (refusalLines.length === 0) refusalLines.push('No booking was refused or failed.')
-  if (summary.truncated) refusalLines.push(`More than ${ROW_LIMIT} were recorded; only the first ${ROW_LIMIT} are counted here.`)
+  if (summary.truncated) refusalLines.push(`More than ${ROW_LIMIT * MAX_PAGES} were recorded; only the first ${ROW_LIMIT * MAX_PAGES} are counted here.`)
 
   const availabilityLines = [
     `Table searches: ${summary.availability.searches}.`,

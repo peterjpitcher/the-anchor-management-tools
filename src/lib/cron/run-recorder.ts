@@ -196,11 +196,13 @@ async function recordOutcome(
 }
 
 /**
- * True when this job already failed in the last hour, in which case that failure was emailed and
- * this one is only recorded. When the check itself cannot be made, the email goes anyway: a
- * duplicate is a smaller problem than a failure nobody hears about.
+ * True when an alert about this job was delivered in the last hour, in which case this failure is
+ * only recorded. Counted from the last delivered ALERT, not the last failure: counted from the
+ * failures, a job failing every 15 minutes renewed its own quiet hour and was only ever emailed
+ * once, and an alert that never went out kept the next one back too. When the check itself cannot
+ * be made, the email goes anyway: a duplicate is a smaller problem than a failure nobody hears about.
  */
-async function failedRecentlyBefore(
+async function alertedRecently(
   supabase: AdminClient | null,
   jobName: string,
   currentRowId: string | null,
@@ -210,20 +212,45 @@ async function failedRecentlyBefore(
   try {
     let query = supabase
       .from('cron_job_runs')
-      .select('id', { count: 'exact', head: true })
+      .select('id, result')
       .eq('job_name', jobName)
       .eq('status', 'failed')
       .gte('started_at', new Date(now.getTime() - CRON_FAILURE_ALERT_WINDOW_MINUTES * 60_000).toISOString())
+      .limit(100)
     if (currentRowId) query = query.neq('id', currentRowId)
-    const { count, error } = await query
+    const { data, error } = await query
     if (error) throw new Error(error.message)
-    return (count ?? 0) > 0
+    return ((data ?? []) as Array<{ result?: Record<string, unknown> | null }>).some(
+      (row) => typeof row.result?.alertedAt === 'string',
+    )
   } catch (error) {
     logger.error('Cron run recorder: could not check for an earlier failure; alerting anyway', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { jobName },
     })
     return false
+  }
+}
+
+/** Notes on the failed run that its alert was delivered, which is what alertedRecently reads. */
+async function markAlerted(
+  supabase: AdminClient | null,
+  jobName: string,
+  rowId: string | null,
+  result: Record<string, unknown>,
+): Promise<void> {
+  if (!supabase || !rowId) return
+  try {
+    const { error } = await supabase
+      .from('cron_job_runs')
+      .update({ result: { ...result, alertedAt: new Date().toISOString() } })
+      .eq('id', rowId)
+    if (error) throw new Error(error.message)
+  } catch (error) {
+    logger.error('Cron run recorder: could not note that the alert went; the next failure alerts again', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { jobName },
+    })
   }
 }
 
@@ -272,11 +299,14 @@ export function withCronRun<Req extends Request>(
         result,
       })
 
-      if (failed && !(await failedRecentlyBefore(supabase, jobName, rowId, startedAt))) {
-        await reportCronFailure(jobName, thrown ?? new Error(errorMessage ?? 'Unknown failure'), {
+      if (failed && !(await alertedRecently(supabase, jobName, rowId, startedAt))) {
+        const delivered = await reportCronFailure(jobName, thrown ?? new Error(errorMessage ?? 'Unknown failure'), {
           ...result,
           note: `Any further failure of this job in the next ${CRON_FAILURE_ALERT_WINDOW_MINUTES} minutes is recorded but not emailed. The daily scheduled jobs check lists them all.`,
         })
+        // Only a delivered alert quiets the hour, so one that never went out is tried again on
+        // the next failure.
+        if (delivered) await markAlerted(supabase, jobName, rowId, result)
       }
     } catch (error) {
       logger.error('Cron run recorder failed after the run', {
