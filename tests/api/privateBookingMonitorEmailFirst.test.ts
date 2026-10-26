@@ -62,7 +62,8 @@ import { GET } from '@/app/api/cron/private-booking-monitor/route'
 const mockedSendEmail = sendEmail as unknown as Mock
 const mockedQueueAndSend = SmsQueueService.queueAndSend as unknown as Mock
 
-// 10:00 in London on Sunday 20 September 2026. The hold below expires in 5.6 days: the 7-day window.
+// 10:00 in London on Sunday 20 September 2026. The hold below ends on 25 September, 5 calendar days
+// away: the 7-day window.
 const NOW = new Date('2026-09-20T09:00:00.000Z')
 
 function seed(booking: Record<string, unknown>) {
@@ -144,7 +145,8 @@ describe('private booking monitor, email first', () => {
     const email = mockedSendEmail.mock.calls[0][0]
     expect(email.to).toBe('host@example.com')
     expect(email.commType).toBe('private_booking_deposit_reminder_7day')
-    expect(email.text).toContain('expires in 6 days, on 25 September 2026')
+    // London calendar days (BK-009): 20 to 25 September is 5 days. This said 6, the elapsed-hours count.
+    expect(email.text).toContain('expires in 5 days, on 25 September 2026')
     expect(email.text).toContain('Pay the £250 deposit')
 
     // The next day's run: the day's lock is new, but the send reservation for this hold window

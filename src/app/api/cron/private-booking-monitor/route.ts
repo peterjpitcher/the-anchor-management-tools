@@ -39,6 +39,7 @@ import {
 } from '@/lib/private-bookings/messages'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
 import {
   classifyBalanceReminderWindow,
   classifyDepositReminderWindow,
@@ -619,9 +620,10 @@ export async function GET(request: Request) {
           emailOnly = true
         }
 
-        const expiry = new Date(booking.hold_expiry)
-        const diffMs = expiry.getTime() - now.getTime()
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+        // London calendar days, the count the preview and the reminder wording use (PB-BR-1). Elapsed
+        // hours put every reminder a day late once holds ended at 23:59 on the deadline day (BK-009).
+        const diffDays = daysUntilHoldExpiry(booking.hold_expiry, now)
+        if (diffDays === null) continue
 
         const eventDateReadable = formatLondonDate(booking.event_date)
         const holdExpiryReadable = formatLondonDate(booking.hold_expiry)
