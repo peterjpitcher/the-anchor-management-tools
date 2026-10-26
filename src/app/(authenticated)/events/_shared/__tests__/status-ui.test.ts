@@ -28,6 +28,7 @@ describe('event status map', () => {
     expect(eventBookingStatusTone('confirmed')).toBe('primary')
     expect(eventBookingStatusTone('pending_payment')).toBe('warning')
     expect(eventBookingStatusTone('cancelled')).toBe('neutral')
+    expect(eventBookingStatusTone('no_show')).toBe('danger')
     expect(eventBookingStatusTone('constructor')).toBe('neutral')
     expect(eventBookingStatusTone(null)).toBe('neutral')
   })
