@@ -100,7 +100,10 @@ Reported by the sweep but not verified line by line: next-day end times in
 `get-outstanding-counts.ts`, `cashing-up.service.ts`, `financials.ts`, the birthdays page and
 `api/rota/resync-calendar`; a double London offset in the rota-staff-email and
 rota-manager-alert crons (right at their scheduled times); the private-booking-monitor windows
-(right at 09:00 UTC); client-only date defaults in private-bookings/new and HoursVersionStrip.
+(right at 09:00 UTC when written, but wrong from 12 September once holds ended at 23:59 on the
+deadline day: every deposit reminder landed a day late until the job moved to London calendar days,
+BK-009 in the customer bookings review of 24 October 2026); client-only date defaults in
+private-bookings/new and HoursVersionStrip.
 
 Cleared: the two inline copies in `src/app/actions/event-categories.ts` are never called;
 invoices/new anchors on UTC midnight and is right on either host; the local `shiftIsoDate`
