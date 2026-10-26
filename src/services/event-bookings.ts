@@ -178,7 +178,7 @@ export type CreateBookingResult = {
    * (per-type sell-out / unknown ticket type) rather than a genuine database
    * error. Callers should map these to a 409 payload, not a 500.
    */
-  rpcErrorCode?: 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | null
+  rpcErrorCode?: BookingRpcErrorCode | null
   /**
    * Callers should return HTTP 500 when this is true — the table-reservation rollback
    * could not be completed, leaving the system in a partially inconsistent state.
@@ -200,12 +200,47 @@ function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | '
  * (per-type sell-out / unknown ticket type) so callers can answer 409 instead of
  * a generic 500 — a type selling out is a normal state, not a database error.
  */
-function classifyBookingRpcError(message: string | null | undefined): 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | null {
+export type BookingRpcErrorCode = 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | 'guest_details_invalid'
+
+/**
+ * The codes create_event_booking_v08 raises when the event's questions moved under the guest:
+ * an answer to a question since removed, a required question since added, or a choice since
+ * changed. The website refetches the event and asks again.
+ */
+const QUESTIONS_CHANGED_CODES = ['unknown_attendee_question', 'attendee_answer_required', 'invalid_attendee_answer']
+
+/**
+ * The codes it raises for guest details the caller should never have sent (a wrong count, a bad
+ * id, a ticket type that is not on the event). The website checks all of these before it posts,
+ * so one arriving means something is broken, and it must not look like an ordinary change.
+ */
+const GUEST_DETAILS_INVALID_CODES = [
+  'invalid_attendees', 'attendee_count_mismatch', 'invalid_attendee_id', 'attendee_name_required',
+  'invalid_attendee_ticket_type', 'invalid_attendee_answers', 'attendee_answer_too_long',
+  'attendee_ticket_quantity_mismatch', 'attendee_quantity_mismatch',
+]
+
+function hasCode(text: string, code: string): boolean {
+  return new RegExp(`(^|[^a-z_])${code}([^a-z_]|$)`).test(text)
+}
+
+/**
+ * Recognise the business conditions create_event_booking_v07 and v08 raise, by exact code, so
+ * callers can answer 409 or 400 instead of a generic 500.
+ *
+ * It used to treat any error mentioning "attendee", "question" or "answer" as "the questions
+ * have changed", so a genuine fault (a wrong guest count, a column error) looked like a normal
+ * change and the website refetched without anyone hearing of it (BK-134, customer bookings review
+ * of 24 October 2026). Anything not listed here is a failure: the caller returns 500, and the raw
+ * message is logged below.
+ */
+function classifyBookingRpcError(message: string | null | undefined): BookingRpcErrorCode | null {
   const text = String(message || '')
-  if (text.includes('price_changed')) return 'price_changed'
-  if (text.includes('attendee') || text.includes('question') || text.includes('answer')) return 'questions_changed'
-  if (text.includes('ticket_type_capacity_exceeded')) return 'ticket_type_sold_out'
-  if (text.includes('invalid_ticket_type')) return 'invalid_ticket_type'
+  if (hasCode(text, 'price_changed')) return 'price_changed'
+  if (QUESTIONS_CHANGED_CODES.some((code) => hasCode(text, code))) return 'questions_changed'
+  if (GUEST_DETAILS_INVALID_CODES.some((code) => hasCode(text, code))) return 'guest_details_invalid'
+  if (hasCode(text, 'ticket_type_capacity_exceeded')) return 'ticket_type_sold_out'
+  if (hasCode(text, 'invalid_ticket_type')) return 'invalid_ticket_type'
   return null
 }
 

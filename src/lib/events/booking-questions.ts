@@ -67,6 +67,9 @@ export interface StoredEventAttendee {
   details_removed_at?: string
 }
 
+/** The one refusal that means the event's questions moved under the guest (BK-134). */
+export const QUESTIONS_CHANGED_MESSAGE = 'The event questions have changed. Refresh the event and check your answers.'
+
 /** Validate against the current event, never against question wording supplied by a buyer. */
 export function validateEventAttendees(input: {
   attendees: EventAttendeeInput[] | undefined
@@ -82,7 +85,7 @@ export function validateEventAttendees(input: {
   if (!parsed.success) return parsed.error.issues[0]?.message ?? 'Please check the guest details'
   const ids = new Set(questions.map(question => question.id))
   for (const [index, attendee] of attendees.entries()) {
-    if (Object.keys(attendee.answers).some(id => !ids.has(id))) return 'The event questions have changed. Refresh the event and check your answers.'
+    if (Object.keys(attendee.answers).some(id => !ids.has(id))) return QUESTIONS_CHANGED_MESSAGE
     for (const question of questions) {
       const value = attendee.answers[question.id]?.trim() ?? ''
       if (!value && question.required) return `Guest ${index + 1}: please answer ${question.label}`

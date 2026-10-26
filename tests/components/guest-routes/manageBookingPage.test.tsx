@@ -30,6 +30,10 @@ vi.mock('@/lib/guest/token-throttle', () => ({
   checkGuestTokenThrottle: vi.fn(),
 }))
 
+vi.mock('@/lib/events/guest-details-server', () => ({
+  loadBookingGuestDetails: vi.fn(async () => null),
+}))
+
 vi.mock('@/lib/events/manage-booking', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/events/manage-booking')>()
   return {
@@ -41,6 +45,7 @@ vi.mock('@/lib/events/manage-booking', async (importOriginal) => {
 import ManageBookingPage from '@/app/g/[token]/manage-booking/page'
 import { getEventManagePreviewByRawToken } from '@/lib/events/manage-booking'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { loadBookingGuestDetails } from '@/lib/events/guest-details-server'
 
 const readyPreview = {
   state: 'ready',
@@ -176,5 +181,59 @@ describe('manage-booking page', () => {
     await renderPage()
 
     expect(screen.getByRole('alert')).toHaveTextContent('This manage-booking link has expired.')
+  })
+})
+
+// BK-016: the booker adds or corrects each guest's name and answers until online sales close.
+describe('manage-booking page guest details', () => {
+  const question = { id: '22222222-2222-4222-8222-222222222222', label: 'Any allergies?', type: 'text' as const, required: true }
+  const details = (salesCutoff: string | null, attendees: unknown[] = []) => ({
+    booking: { id: 'booking-1', eventId: 'event-1', seats: 2, status: 'confirmed', isReminderOnly: false, updatedAt: null, attendees },
+    questions: [question],
+    event: { collectGuestDetails: null, paymentMode: 'prepaid', salesCutoff, start: '2099-11-20T19:00:00Z' },
+  })
+
+  beforeEach(() => {
+    vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue({
+      ...readyPreview, payment_mode: 'prepaid', price_per_seat: 45, seats: 2, event_start_datetime: '2099-11-20T19:00:00.000Z',
+    } as never)
+  })
+
+  it('offers a form with a name and the questions for every ticket, and the privacy line and confirmation', async () => {
+    vi.mocked(loadBookingGuestDetails).mockResolvedValue(details(null) as never)
+    const { container } = await renderPage()
+    expect(screen.getByRole('heading', { name: 'Who is coming' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Ticket 1 full name/)).toBeRequired()
+    expect(screen.getByLabelText(/^Ticket 2 full name/)).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Any allergies? (required)')).toHaveLength(2)
+    expect(screen.getByText(/Only add people who are happy to share these details with us/)).toBeInTheDocument()
+    expect(screen.getByLabelText("Everyone I've added is happy to share these details.")).toBeRequired()
+    const form = container.querySelector('input[name="intent"][value="update_guest_details"]')?.closest('form')
+    expect(form?.getAttribute('action')).toBe('/g/tok-123/manage-booking/action')
+    expect(form?.querySelectorAll('input[name="guest_id"]')).toHaveLength(2)
+  })
+
+  it('shows the details without a form once online sales have closed', async () => {
+    vi.mocked(loadBookingGuestDetails).mockResolvedValue(details('2000-01-01T00:00:00Z', [
+      { id: 'g1', name: 'Ann Guest', ticket_type_id: null, answers: [{ question_id: question.id, label: question.label, type: 'text', required: true, value: 'Peanuts' }] },
+      { id: 'g2', name: 'Bo Guest', ticket_type_id: null, answers: [{ question_id: question.id, label: question.label, type: 'text', required: true, value: '' }] },
+    ]) as never)
+    await renderPage()
+    expect(screen.getByRole('heading', { name: 'Who is coming' })).toBeInTheDocument()
+    expect(screen.getByText('Ann Guest')).toBeInTheDocument()
+    expect(screen.getByText('Any allergies?: Peanuts')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Ticket 1 full name/)).not.toBeInTheDocument()
+  })
+
+  it('says the details were saved', async () => {
+    vi.mocked(loadBookingGuestDetails).mockResolvedValue(details(null) as never)
+    await renderPage({ state: 'guest_details_saved' })
+    expect(screen.getByText('Guest details saved. Thank you.')).toBeInTheDocument()
+  })
+
+  it('shows nothing about guest details for an event that does not ask', async () => {
+    vi.mocked(loadBookingGuestDetails).mockResolvedValue({ ...details(null), questions: [], event: { collectGuestDetails: null, paymentMode: 'cash_only', salesCutoff: null, start: null } } as never)
+    await renderPage()
+    expect(screen.queryByRole('heading', { name: 'Who is coming' })).not.toBeInTheDocument()
   })
 })

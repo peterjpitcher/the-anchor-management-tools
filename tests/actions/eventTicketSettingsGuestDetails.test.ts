@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * puts a free event back on the default.
  */
 
-const state = vi.hoisted(() => ({ updates: [] as Array<Record<string, unknown>>, allowed: true, price: 45 }))
+const state = vi.hoisted(() => ({ updates: [] as Array<Record<string, unknown>>, allowed: true, price: 45, previousQuestions: [] as unknown[], liveBookings: 0 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
@@ -22,13 +22,16 @@ vi.mock('@/lib/supabase/admin', () => ({
       const builder = {
         select: () => builder,
         eq: () => builder,
-        single: async () => ({ data: { id: 'event-1', start_datetime: '2099-11-20T19:00:00Z', date: '2099-11-20', time: '19:00' }, error: null }),
+        not: () => builder,
+        single: async () => ({ data: { id: 'event-1', start_datetime: '2099-11-20T19:00:00Z', date: '2099-11-20', time: '19:00', booking_questions: state.previousQuestions }, error: null }),
         update: (values: Record<string, unknown>) => {
           state.updates.push(values)
           return { eq: async () => ({ error: null }) }
         },
         then: (resolve: (value: unknown) => unknown) =>
-          resolve({ data: table === 'event_ticket_types' ? [{ base_price: state.price }] : [], error: null }),
+          resolve(table === 'bookings'
+            ? { data: null, count: state.liveBookings, error: null }
+            : { data: table === 'event_ticket_types' ? [{ base_price: state.price }] : [], error: null }),
       }
       return builder
     },
@@ -48,6 +51,8 @@ beforeEach(() => {
   state.updates = []
   state.allowed = true
   state.price = 45
+  state.previousQuestions = []
+  state.liveBookings = 0
 })
 
 describe('saveEventTicketSettings guest details switch', () => {
@@ -74,5 +79,21 @@ describe('saveEventTicketSettings guest details switch', () => {
     const result = await saveEventTicketSettings('event-1', { ...base, payment_mode: 'free', booking_questions: [QUESTION], collect_guest_details: true })
     expect(result).toEqual({ success: true })
     expect(state.updates[0]).toMatchObject({ payment_mode: 'free', collect_guest_details: null, booking_questions: [] })
+  })
+
+  // BK-016: a question added now is not asked of anyone already booked.
+  it('warns how many bookings were made before a new question', async () => {
+    state.liveBookings = 3
+    const result = await saveEventTicketSettings('event-1', { ...base, payment_mode: 'prepaid', booking_questions: [QUESTION], collect_guest_details: true })
+    expect(result).toEqual({
+      success: true,
+      warning: "Saved. 3 bookings were made before this question, so those guests have not been asked. Add their answers from each booking's guest details.",
+    })
+  })
+
+  it('does not warn when the question was already there', async () => {
+    state.liveBookings = 3
+    state.previousQuestions = [QUESTION]
+    expect(await saveEventTicketSettings('event-1', { ...base, payment_mode: 'prepaid', booking_questions: [QUESTION], collect_guest_details: true })).toEqual({ success: true })
   })
 })

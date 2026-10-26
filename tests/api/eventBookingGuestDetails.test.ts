@@ -26,7 +26,8 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: (tabl
 } }) }))
 vi.mock('@/lib/sms/customers', () => ({ ensureCustomerForPhone: mocks.customer }))
 vi.mock('@/lib/utils', () => ({ formatPhoneForStorage: (phone: string) => phone }))
-vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock('@/lib/logger', () => ({ logger }))
 vi.mock('@/lib/turnstile', () => ({ verifyTurnstileToken: async () => ({ success: true }), getClientIp: () => '127.0.0.1' }))
 vi.mock('@/services/consent', () => ({ ConsentService: { applyBookingContactConsent: vi.fn(), recordConsent: vi.fn(), recordCommunicationConsent: vi.fn() } }))
 vi.mock('@/services/event-bookings', () => ({ EventBookingService: { createBooking: mocks.create, normalizeBookingMode: () => 'general' } }))
@@ -94,6 +95,33 @@ describe('public paid guest boundary', () => {
     const response = await POST(request({ ...payload, attendees: [attendee] }))
     expect(response.status).toBe(400)
     expect(mocks.customer).not.toHaveBeenCalled()
+  })
+  // BK-134: a refusal is reported as what it is.
+  it('reports a wrong guest count as a validation error, not as changed questions', async () => {
+    mocks.question = true
+    const response = await POST(request({ ...payload, seats: 2, attendees: [attendee] }))
+    expect(response.status).toBe(400)
+    expect((await response.json()).code).toBe('VALIDATION_ERROR')
+  })
+  it('still reports an answer to a question the event no longer asks as changed questions', async () => {
+    mocks.question = true
+    const stale = { ...attendee, answers: { '55555555-5555-4555-8555-555555555555': 'yes' } }
+    const response = await POST(request({ ...payload, attendees: [stale] }))
+    expect(response.status).toBe(400)
+    expect((await response.json()).code).toBe('BOOKING_QUESTIONS_CHANGED')
+  })
+  it('turns guest details the database refuses as malformed into a logged 400, not a quiet 409', async () => {
+    mocks.create.mockResolvedValue({ rpcFailed: true, rpcErrorCode: 'guest_details_invalid' })
+    const response = await POST(request({ ...payload, attendees: [attendee], expected_total: 40 }))
+    expect(response.status).toBe(400)
+    expect((await response.json()).code).toBe('VALIDATION_ERROR')
+    expect(logger.error).toHaveBeenCalledWith('Event booking refused guest details the website should have caught', expect.anything())
+  })
+  it('turns an unrecognised database error into a 500, not changed questions', async () => {
+    mocks.create.mockResolvedValue({ rpcFailed: true, rpcErrorCode: null })
+    const response = await POST(request({ ...payload, attendees: [attendee], expected_total: 40 }))
+    expect(response.status).toBe(500)
+    expect((await response.json()).code).toBe('DATABASE_ERROR')
   })
   // BK-098: the website added a pence price up in floating point, and the exact comparison in the
   // booking function refused it as "price changed" on every retry.

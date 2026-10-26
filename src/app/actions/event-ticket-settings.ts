@@ -8,6 +8,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { bookingQuestionsSchema } from '@/lib/events/booking-questions'
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils'
+import { DOOR_LIST_EXCLUDED_STATUS_FILTER } from '@/lib/events/door-list'
 
 const settingsSchema = z.object({
   payment_mode: z.enum(['free', 'cash_only', 'prepaid']),
@@ -31,7 +32,7 @@ const settingsSchema = z.object({
   }
 })
 
-export async function saveEventTicketSettings(eventId: string, input: z.input<typeof settingsSchema>): Promise<{ success?: boolean; error?: string }> {
+export async function saveEventTicketSettings(eventId: string, input: z.input<typeof settingsSchema>): Promise<{ success?: boolean; error?: string; warning?: string }> {
   try {
     const session = await createClient()
     const [allowed, { data: { user }, error: authError }] = await Promise.all([
@@ -41,7 +42,7 @@ export async function saveEventTicketSettings(eventId: string, input: z.input<ty
     const parsed = settingsSchema.safeParse(input)
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check your ticket settings' }
     const db = createAdminClient()
-    const { data: event, error: eventError } = await db.from('events').select('id, start_datetime, date, time').eq('id', eventId).single()
+    const { data: event, error: eventError } = await db.from('events').select('id, start_datetime, date, time, booking_questions').eq('id', eventId).single()
     if (eventError || !event) return { error: 'Event could not be loaded. Your changes have not been saved.' }
     const { data: types, error: typesError } = await db.from('event_ticket_types').select('base_price').eq('event_id', eventId).eq('is_active', true)
     if (typesError) return { error: 'Ticket prices could not be checked. Your changes have not been saved.' }
@@ -71,6 +72,26 @@ export async function saveEventTicketSettings(eventId: string, input: z.input<ty
     await logAuditEvent({ user_id: user.id, user_email: user.email ?? undefined, operation_type: 'update', resource_type: 'event', resource_id: eventId, operation_status: 'success', additional_info: { changed: 'ticket_settings', questionCount: values.booking_questions.length, collectGuestDetails: values.payment_mode === 'free' ? null : values.collect_guest_details } })
     revalidatePath(`/events/${eventId}`)
     revalidatePath('/events')
+    // BK-016: a question added now is not asked of anyone already booked. Say how many bookings
+    // that is, so staff can add their answers from each booking. The save itself has happened.
+    const previousIds = new Set((Array.isArray(event.booking_questions) ? event.booking_questions as Array<{ id?: string }> : []).map(question => question?.id))
+    const added = values.payment_mode === 'free' ? [] : values.booking_questions.filter(question => !previousIds.has(question.id))
+    if (added.length > 0) {
+      const { count, error: countError } = await db.from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('is_reminder_only', false)
+        .not('status', 'in', DOOR_LIST_EXCLUDED_STATUS_FILTER)
+      if (countError) {
+        return { success: true, warning: 'Saved. Bookings already made were not checked, so some guests may not have been asked the new question.' }
+      }
+      if ((count ?? 0) > 0) {
+        return {
+          success: true,
+          warning: `Saved. ${count} ${count === 1 ? 'booking was' : 'bookings were'} made before ${added.length === 1 ? 'this question' : 'these questions'}, so those guests have not been asked. Add their answers from each booking's guest details.`,
+        }
+      }
+    }
     return { success: true }
   } catch {
     return { error: 'Ticket settings could not be saved. Please try again.' }
