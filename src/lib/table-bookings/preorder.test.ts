@@ -390,8 +390,9 @@ describe('summarisePreorderDishTotals', () => {
       date: '2026-12-12',
       bookingCount: 0,
       coverCount: 0,
-      // Added for BK-058: tier counts, unpaid holds and withdrawn dishes, all empty on an empty day.
+      // Added for BK-058 and BK-051: tiers, unpaid holds, late changes and withdrawn dishes, all empty.
       pendingPaymentBookingCount: 0,
+      lateChangeCount: 0,
       christmasTiers: { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 },
       withdrawn: [],
       byCourse: { starter: [], main: [], dessert: [] },
@@ -772,6 +773,30 @@ describe('kitchen totals by tier', () => {
     expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
     expect(totals.withdrawn).toEqual([{ course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 1 }])
     expect(totals.pendingPaymentBookingCount).toBe(1)
+  })
+
+  // BK-051: choices a manager recorded after the cutoff are counted, and the totals say how many.
+  it('counts the choices recorded after the cutoff', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 3, 1, 1], booking_period_id: 'p-1' },
+      ],
+      booking_periods: [{ id: 'p-1', preorder_cutoff_days: 7 }],
+      booking_preorder_covers: [
+        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1 },
+        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2 },
+      ],
+      booking_preorder_selections: [
+        { cover_id: 'c-1', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null, created_at: '2026-12-05T11:00:00Z' },
+        { cover_id: 'c-2', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null, created_at: '2026-12-05T12:30:00Z' },
+      ],
+      booking_period_menu_items: [{ id: 'item-a', is_active: true }],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
+    expect(totals.lateChangeCount).toBe(1)
   })
 
   it('still reports the tiers on a day where every Christmas guest is on 1 course', async () => {

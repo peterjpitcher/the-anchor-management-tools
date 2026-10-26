@@ -30,6 +30,8 @@ export interface TableBookingSheetPreorderCover {
   tierLabel?: string
   /** A 1 course guest chooses on the day, so an empty course list is not a missing order. */
   choosesOnTheDay?: boolean
+  /** A manager changed this seat after the pre-order cutoff, so the kitchen ordered before it. */
+  lateChange?: boolean
   /**
    * Starter, main, dessert, in that order. Empty when this seat has chosen nothing yet. `withdrawn`
    * marks a dish since taken off the menu, which the kitchen must not cook as chosen.
@@ -276,7 +278,9 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
       ? '<p class="seat-empty">1 course, choosing on the day</p>'
       : '<p class="seat-empty">Nothing chosen yet</p>'
 
-  const head = cover.tierLabel ? `${cover.seatLabel} · ${cover.tierLabel}` : cover.seatLabel
+  const head = [cover.seatLabel, cover.tierLabel, cover.lateChange ? 'CHANGED AFTER THE CUTOFF' : null]
+    .filter(Boolean)
+    .join(' · ')
 
   const note = cover.dietaryNote
     ? `

@@ -86,6 +86,8 @@ type PreorderDishTotalsResponse = {
     addonHasUnpricedSelection: boolean
     /** Bookings in these totals still waiting for a deposit. Optional for an older server. */
     pendingPaymentBookingCount?: number
+    /** Choices a manager recorded after the cutoff (D21). In the counts, but ordered before. */
+    lateChangeCount?: number
     /** Christmas guests that day by tier, from the bookings rather than the seats (BK-058). */
     christmasTiers?: {
       oneCourse: number
@@ -1091,6 +1093,15 @@ export function BohBookingsClient({
                   : ''
               }. Dietary notes and allergies are on the booking sheet.`}
             />
+            {(dishTotals.lateChangeCount ?? 0) > 0 && (
+              <CardBody className="border-b border-border">
+                <Alert tone="warning" title="Changed after the cutoff">
+                  {dishTotals.lateChangeCount === 1 ? '1 choice was' : `${dishTotals.lateChangeCount} choices were`}{' '}
+                  recorded by a manager after the pre-order cutoff, so the kitchen order may not include{' '}
+                  {dishTotals.lateChangeCount === 1 ? 'it' : 'them'}. They are counted below and marked on the booking sheet.
+                </Alert>
+              </CardBody>
+            )}
             {dishTotals.christmasTiers && dishTotals.christmasTiers.guests > 0 && (
               <CardBody className="border-b border-border">
                 <SubHeading>Christmas Guests: {dishTotals.christmasTiers.guests}</SubHeading>

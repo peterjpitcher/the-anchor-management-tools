@@ -47,7 +47,8 @@ const preorderState: {
   covers: Record<string, unknown>[]
   selections: Record<string, unknown>[]
   menuItems: Record<string, unknown>[]
-} = { enabled: false, covers: [], selections: [], menuItems: [] }
+  periods: Record<string, unknown>[]
+} = { enabled: false, covers: [], selections: [], menuItems: [], periods: [] }
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -58,7 +59,9 @@ vi.mock('@/lib/supabase/admin', () => ({
             ? preorderState.covers
             : table === 'booking_period_menu_items'
               ? preorderState.menuItems
-              : preorderState.selections
+              : table === 'booking_periods'
+                ? preorderState.periods
+                : preorderState.selections
         const result = { data: rows, error: null }
         const chain = {
           in: () => chain,
@@ -168,6 +171,7 @@ beforeEach(() => {
   preorderState.covers = []
   preorderState.selections = []
   preorderState.menuItems = []
+  preorderState.periods = []
   vi.mocked(getLondonDateIso).mockReturnValue('2026-07-16')
   vi.mocked(generatePDFFromHTML).mockResolvedValue(Buffer.from('%PDF'))
   vi.mocked(requireBohTableBookingPermission).mockResolvedValue({
@@ -597,6 +601,25 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
       expect(covers[0].courses[0].withdrawn).toBeUndefined()
       expect(covers[1].courses[0]).toEqual(expect.objectContaining({ itemName: 'Withdrawn main', withdrawn: true }))
       expect(sheet.christmasCourses).toBe('1 x 3 courses, 1 x 2 courses, 2 x 1 course')
+    })
+
+    // BK-051: a seat a manager changed after the noon cutoff is marked for the kitchen.
+    it('marks a seat whose choice was recorded after the cutoff, and only that seat', async () => {
+      preorderState.enabled = true
+      preorderState.periods = [{ id: 'period-1', preorder_cutoff_days: 7 }]
+      preorderState.covers = [coverRow({ id: 'c1', ordinal: 1 }), coverRow({ id: 'c2', ordinal: 2 })]
+      preorderState.selections = [
+        // Before noon on 5 December, the cutoff for a 12 December booking.
+        selectionRow({ id: 's1', cover_id: 'c1', created_at: '2026-12-05T11:59:00Z' }),
+        // After it: a manager's late change.
+        selectionRow({ id: 's2', cover_id: 'c2', created_at: '2026-12-06T09:00:00Z' }),
+      ]
+      queryResult.data = [makeRow({ id: 'b1', booking_date: '2026-12-12', booking_period_id: 'period-1' })]
+
+      await GET(makeRequest('2026-12-12'))
+
+      const covers = lastSheets()[0].preorder?.covers as Array<{ lateChange?: boolean }>
+      expect(covers.map((cover) => cover.lateChange)).toEqual([undefined, true])
     })
 
     it('gives an all 1 course Christmas booking its tiers even though it has no seats', async () => {

@@ -100,6 +100,11 @@ interface SeasonalPreorderSectionProps {
   /** True once the cutoff has passed. Computed on the server: a browser clock is not evidence. */
   closed: boolean
   closesAtIso: string | null
+  /**
+   * A manager may still record a change after the cutoff (owner decision D21). The server action
+   * checks the same permission again; this only decides whether the form is offered.
+   */
+  canRecordLate?: boolean
 }
 
 type DraftCover = {
@@ -269,6 +274,7 @@ export default function SeasonalPreorderSection({
   preorderEnabled,
   closed,
   closesAtIso,
+  canRecordLate = false,
 }: SeasonalPreorderSectionProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -292,7 +298,8 @@ export default function SeasonalPreorderSection({
     setDraftState((current) => ({ ...current, draft: update(current.draft) }))
   }
 
-  const editable = canEdit && preorderEnabled && !closed
+  const editable = canEdit && preorderEnabled && (!closed || canRecordLate)
+  const recordingLate = editable && closed
   const completeness = useMemo(() => getPreorderCompleteness(order), [order])
   const seatsMismatched = order.covers.length !== order.partySize
 
@@ -445,7 +452,9 @@ export default function SeasonalPreorderSection({
                 loading={saving}
                 disabled={saving || dirtyCoverIds.length === 0}
               >
-                {dirtyCoverIds.length > 0 ? `Save ${dirtyCoverIds.length} Seat${dirtyCoverIds.length === 1 ? '' : 's'}` : 'Saved'}
+                {dirtyCoverIds.length > 0
+                  ? `Save ${dirtyCoverIds.length} Seat${dirtyCoverIds.length === 1 ? '' : 's'}${recordingLate ? ' as Late' : ''}`
+                  : 'Saved'}
               </Button>
             )}
           </div>
@@ -466,7 +475,9 @@ export default function SeasonalPreorderSection({
             {closesAtIso
               ? `Choices closed at noon on ${formatDateInLondon(closesAtIso, { weekday: 'long', day: 'numeric', month: 'long' })}. `
               : ''}
-            The kitchen has already ordered to these numbers, so ring the pub to change anything now.
+            {recordingLate
+              ? 'The kitchen has already ordered to these numbers. As a manager you can still record a change: it is marked as changed after the cutoff on the booking sheet and the kitchen totals.'
+              : 'The kitchen has already ordered to these numbers, so a manager has to record any change now.'}
           </Alert>
         )}
 
