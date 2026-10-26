@@ -51,6 +51,7 @@ function order(courseCounts: Array<1 | 2 | 3> | null, covers: PreorderCover[]): 
     bookingTime: '19:00',
     partySize: covers.length,
     requiresPreorder: true,
+    hasGuestSeats: true,
     bookingAllergies: [],
     periodId: 'period-1',
     periodName: 'Christmas dinner 2026',
@@ -84,7 +85,11 @@ describe('SeasonalPreorderSection with Christmas tiers', () => {
     expect(screen.getByText('Seat 2 · 2 courses')).toBeInTheDocument()
     expect(screen.getByText('Needs a starter or a dessert')).toBeInTheDocument()
     expect(screen.queryByText('Needs a main')).not.toBeInTheDocument()
-    expect(screen.getByText('Seat 3: 1 course, no pre-order required.')).toBeInTheDocument()
+    // BK-148: the 1 course guest has nothing to choose, but a name and a dietary note (D23).
+    expect(screen.getByText('Seat 3 · 1 course')).toBeInTheDocument()
+    expect(screen.getByText('Chosen on the day, nothing to pre-order.')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Guest name (optional)')).toHaveLength(3)
+    expect(screen.getAllByLabelText('Dietary requirement (optional)')).toHaveLength(3)
 
     expect(
       screen.getByText(

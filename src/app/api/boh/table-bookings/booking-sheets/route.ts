@@ -18,6 +18,7 @@ import { getTableBookingStatusLabel, getTableBookingVisualState } from '@/lib/ta
 import {
   generateTableBookingSheetsHTML,
   type TableBookingSheetData,
+  type TableBookingSheetGuestNotes,
   type TableBookingSheetPreorder,
   type TableBookingSheetPreorderAddonTotal,
   type TableBookingSheetPreorderCover,
@@ -90,8 +91,12 @@ type BookingRow = {
   christmas_course_counts: number[] | null
   /** The seasonal period, for when its pre-order form locked. */
   booking_period_id: string | null
-  /** Booking-level allergy list the pub already records. Printed on the food page, never elsewhere. */
+  /** Booking-level allergy list. Printed on both pages, marked confidential (D6, BK-052). */
   allergies: string[] | null
+  /** Booking-level dietary needs, printed beside the allergies. */
+  dietary_requirements: string[] | null
+  /** The notes box on every booking form, where most allergies have arrived. */
+  special_requirements: string | null
   customer: CustomerRow | CustomerRow[] | null
   table_booking_tables: AssignmentRow[] | null
 }
@@ -174,6 +179,23 @@ function requirementsField(row: BookingRow): string[] {
   return requirements
 }
 
+/**
+ * The guest's allergies, dietary needs and notes, or undefined when the booking has none (which keeps
+ * that sheet exactly as it printed before). The owner agreed these may be printed, marked
+ * confidential, because the sheets are shredded after service (decision D6, BK-052).
+ */
+function guestNotesField(row: BookingRow): TableBookingSheetGuestNotes | undefined {
+  const clean = (values: string[] | null) =>
+    (values ?? []).map((value) => (typeof value === 'string' ? value.trim() : '')).filter((value) => value.length > 0)
+  const allergies = clean(row.allergies)
+  const dietary = clean(row.dietary_requirements)
+  const notes = typeof row.special_requirements === 'string' && row.special_requirements.trim()
+    ? row.special_requirements.trim()
+    : null
+  if (allergies.length === 0 && dietary.length === 0 && !notes) return undefined
+  return { allergies, dietary, notes }
+}
+
 function toSheetData(
   row: BookingRow,
   bookingDate: string,
@@ -194,6 +216,7 @@ function toSheetData(
     ...(row.booking_type === 'christmas'
       ? { christmasCourses: formatChristmasCourseTally(row.christmas_course_counts) || 'Not recorded' }
       : {}),
+    ...(guestNotesField(row) ? { guestNotes: guestNotesField(row) } : {}),
   }
 }
 
@@ -415,6 +438,8 @@ export async function GET(request: NextRequest) {
         high_chair_count,
         requires_accessible_table,
         allergies,
+        dietary_requirements,
+        special_requirements,
         customer:customers!table_bookings_customer_id_fkey(first_name, last_name),
         table_booking_tables:booking_table_assignments!booking_table_assignments_table_booking_id_fkey(
           table:tables!booking_table_assignments_table_id_fkey(id, name, table_number, is_bookable)

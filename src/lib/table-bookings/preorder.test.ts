@@ -812,3 +812,36 @@ describe('kitchen totals by tier', () => {
     expect(totals.christmasTiers.oneCourse).toBe(4)
   })
 })
+
+// BK-148 and owner decision D23: a Christmas booking with courses recorded keeps a seat per guest for a
+// name and a dietary note, even when everyone is on 1 course and nothing is pre-ordered.
+describe('loadPreorderOrder seats for guest details', () => {
+  async function orderFor(row: Record<string, unknown>) {
+    const { loadPreorderOrder } = await import('./preorder')
+    const db = createFakeSupabase({
+      table_bookings: [{
+        id: 'booking-1', booking_reference: 'TB-1', booking_date: '2026-12-12', booking_time: '19:00:00',
+        party_size: 4, allergies: null, booking_period_id: null, booking_period_name: null, ...row,
+      }],
+      booking_preorder_covers: [],
+    })
+    return loadPreorderOrder(db as never, 'booking-1')
+  }
+
+  it('has seats but nothing to pre-order on a Christmas party all on 1 course', async () => {
+    const order = await orderFor({ booking_period_answer: true, booking_period_requires_preorder: false, christmas_course_counts: [1, 1, 1, 1] })
+    expect(order).toMatchObject({ requiresPreorder: false, hasGuestSeats: true })
+  })
+
+  it('has seats on a booking that requires a pre-order', async () => {
+    const order = await orderFor({ booking_period_answer: true, booking_period_requires_preorder: true, christmas_course_counts: null })
+    expect(order).toMatchObject({ requiresPreorder: true, hasGuestSeats: true })
+  })
+
+  it('has none on an ordinary booking or one whose guest declined the offer', async () => {
+    expect(await orderFor({ booking_period_answer: null, booking_period_requires_preorder: null, christmas_course_counts: null }))
+      .toMatchObject({ hasGuestSeats: false })
+    expect(await orderFor({ booking_period_answer: false, booking_period_requires_preorder: false, christmas_course_counts: [1, 1, 1, 1] }))
+      .toMatchObject({ hasGuestSeats: false })
+  })
+})
