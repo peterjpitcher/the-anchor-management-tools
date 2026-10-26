@@ -134,6 +134,27 @@ describe('public booking routes: a number that cannot take texts', () => {
     expect(recordBookingContactEmail).toHaveBeenCalledWith('table_bookings', 'tb-1', 'pat.new@example.com')
   })
 
+  it('table booking: keeps no typed email when the booking was refused', async () => {
+    // An id on a refused answer is somebody's existing booking; a typed address must never land on it.
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
+      rpc: vi.fn(async () => ({
+        data: { state: 'blocked', reason: 'no_table', table_booking_id: 'tb-existing' },
+        error: null,
+      })),
+      from: vi.fn(() => {
+        const builder: Record<string, unknown> = {}
+        for (const method of ['select', 'update', 'insert', 'eq', 'in', 'order', 'limit']) builder[method] = vi.fn(() => builder)
+        builder.maybeSingle = vi.fn(async () => ({ data: null, error: null }))
+        builder.single = vi.fn(async () => ({ data: null, error: null }))
+        return builder
+      }),
+    })
+
+    await postTableBooking(tableRequest({ phone: LANDLINE, email: 'pat.new@example.com' }) as any)
+
+    expect(recordBookingContactEmail).not.toHaveBeenCalled()
+  })
+
   it('table booking: takes a UK mobile with no email', async () => {
     const response = await postTableBooking(tableRequest({ phone: UK_MOBILE }) as any)
     expect(response.status).toBeLessThan(400)
