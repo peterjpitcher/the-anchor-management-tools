@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
 import { processEventRefund, type EventRefundResult } from '@/lib/events/manage-booking';
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts';
 import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails';
 import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
@@ -1142,14 +1143,45 @@ export class EventService {
     let refundsFailed = 0
     let customersNotified = 0
 
-    // 1. Fetch all active bookings with customer data
-    const { data: bookings } = await db
+    // 1. Fetch the bookings to cancel, and the payments to refund, before anything changes.
+    // Both reads used to ignore their errors: a failed bookings read looked like "no bookings",
+    // and a failed payments read cancelled everyone, refunded nobody, told guests nothing about
+    // their money and still reported success. A re-run could not find them, because their
+    // bookings were already cancelled (BK-025). Now either failure throws before any booking is
+    // cancelled, so the job fails and its retry starts from the same place.
+    // Expired bookings are read too: one PayPal paid for after its hold lapsed is owed a refund
+    // when the night is cancelled (BK-018).
+    const { data: bookingRows, error: bookingsError } = await db
       .from('bookings')
       .select('id, customer_id, seats, status, customers!inner(id, first_name, mobile_number, sms_status)')
       .eq('event_id', eventId)
-      .in('status', ['confirmed', 'pending_payment'])
+      .in('status', ['confirmed', 'pending_payment', 'expired'])
 
-    if (!bookings || bookings.length === 0) {
+    if (bookingsError) {
+      throw new Error(`Could not read the bookings for the cancelled event, so none were cancelled: ${bookingsError.message}`)
+    }
+
+    const candidateIds = (bookingRows ?? []).map((b) => b.id)
+    let payments: Array<{ id: string; event_booking_id: string | null; amount: number | null; status: string | null }> = []
+    if (candidateIds.length > 0) {
+      const { data: paymentRows, error: paymentsError } = await db
+        .from('payments')
+        .select('id, event_booking_id, amount, status')
+        .in('event_booking_id', candidateIds)
+        .in('charge_type', ['prepaid_event', 'seat_increase'])
+        .in('status', ['succeeded', 'partially_refunded'])
+
+      if (paymentsError) {
+        throw new Error(`Could not read the payments for the cancelled event, so no booking was cancelled: ${paymentsError.message}`)
+      }
+      payments = paymentRows ?? []
+    }
+
+    const paidBookingIds = new Set(payments.map((payment) => payment.event_booking_id).filter(Boolean))
+    // An expired booking matters only when money was taken for it.
+    const bookings = (bookingRows ?? []).filter((b) => b.status !== 'expired' || paidBookingIds.has(b.id))
+
+    if (bookings.length === 0) {
       // Still close booking_open and clean waitlist even if no active bookings
       await settleWrite(
         db.from('events').update({ booking_open: false }).eq('id', eventId),
@@ -1172,8 +1204,13 @@ export class EventService {
       return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
     }
 
-    // 2. Cancel each booking, release holds, cancel table bookings
+    // Track refund results per booking for SMS/email
+    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number }>()
+
+    // 2. Cancel each booking, release its holds and tables, then refund it straight away, so a
+    // failure part way through never leaves a cancelled booking that nobody will refund.
     for (const booking of bookings) {
+      const customer = booking.customers as unknown as { id: string } | undefined
       try {
         const cancelled = await settleWrite(
           db
@@ -1218,67 +1255,67 @@ export class EventService {
 
         bookingsCancelled++
       } catch (err) {
+        // Not known to be cancelled, so it is neither refunded nor told it is cancelled.
+        bookingsFailed++
+        failedBookingIds.push(booking.id)
         logger.error('Failed to cancel booking during event cancellation', {
           error: err instanceof Error ? err : new Error(String(err)),
           metadata: { bookingId: booking.id, eventId }
         })
+        continue
       }
-    }
 
-    // 3. Process refunds for prepaid bookings. A booking whose cancel write failed is still
-    // live, so it is neither refunded nor told it is cancelled (steps 3 and 4).
-    const uncancelledBookingIds = new Set(failedBookingIds)
-    const bookingIds = bookings.map(b => b.id)
-    const { data: payments } = await db
-      .from('payments')
-      .select('id, event_booking_id, amount, status')
-      .in('event_booking_id', bookingIds)
-      .in('charge_type', ['prepaid_event', 'seat_increase'])
-      .in('status', ['succeeded', 'partially_refunded'])
-
-    // Track refund results per booking for SMS/email
-    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number }>()
-
-    if (payments && payments.length > 0) {
-      for (const payment of payments) {
-        if (!payment.event_booking_id) continue
-        if (uncancelledBookingIds.has(payment.event_booking_id)) continue
-        // Find the customer_id for this booking
-        const booking = bookings.find(b => b.id === payment.event_booking_id)
-        const customer = booking?.customers as unknown as { id: string } | undefined
-
+      // 3. Refund this booking's payments.
+      for (const payment of payments.filter((row) => row.event_booking_id === booking.id)) {
         try {
           const refundResult = await processEventRefund(db, {
-            bookingId: payment.event_booking_id,
+            bookingId: booking.id,
             customerId: customer?.id || '',
             eventId,
-            amount: payment.amount,
+            amount: Number(payment.amount ?? 0),
             reason: 'event_cancelled',
             sourcePaymentId: payment.id,
-            metadata: { cancelled_by: cancelledBy }
+            // One refund per payment: a retried job replays it rather than refunding twice.
+            metadata: { cancelled_by: cancelledBy, idempotency_key: `event-cancelled-refund:${payment.id}` }
           })
           if (refundResult.status === 'succeeded' || refundResult.status === 'pending') {
             refundsProcessed++
           } else if (refundResult.status === 'manual_required' || refundResult.status === 'failed') {
             refundsFailed++
+            await alertEventPaymentNeedsAPerson(db, {
+              bookingId: booking.id,
+              kind: 'refund_failed',
+              reason: refundResult.reason ?? refundResult.status,
+              amount: Number(payment.amount ?? 0),
+              source: 'whole event cancellation',
+            })
           }
           const existing: { status: EventRefundResult['status']; amount: number } =
-            refundResults.get(payment.event_booking_id) ?? { status: 'succeeded', amount: 0 }
+            refundResults.get(booking.id) ?? { status: 'succeeded', amount: 0 }
           existing.amount += refundResult.amount
           if (refundResult.status !== 'succeeded') {
             existing.status = refundResult.status
           }
-          refundResults.set(payment.event_booking_id, existing)
+          refundResults.set(booking.id, existing)
         } catch (err) {
           refundsFailed++
-          refundResults.set(payment.event_booking_id, { status: 'failed', amount: Math.max(0, Number(payment.amount || 0)) })
+          refundResults.set(booking.id, { status: 'failed', amount: Math.max(0, Number(payment.amount || 0)) })
           logger.error('Failed to process refund during event cancellation', {
             error: err instanceof Error ? err : new Error(String(err)),
-            metadata: { paymentId: payment.id, bookingId: payment.event_booking_id, eventId }
+            metadata: { paymentId: payment.id, bookingId: booking.id, eventId }
+          })
+          await alertEventPaymentNeedsAPerson(db, {
+            bookingId: booking.id,
+            kind: 'refund_failed',
+            reason: err instanceof Error ? err.message.slice(0, 200) : 'the refund threw',
+            amount: Number(payment.amount ?? 0),
+            source: 'whole event cancellation',
           })
         }
       }
     }
+
+    const uncancelledBookingIds = new Set(failedBookingIds)
 
     // 4. Send cancellation SMS
     const formattedDate = formatEventDateForSms(eventDate, eventTime)

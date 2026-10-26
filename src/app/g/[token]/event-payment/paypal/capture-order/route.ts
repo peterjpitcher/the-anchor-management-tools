@@ -12,6 +12,7 @@ import {
   sendEventPaymentManualReviewEmail,
 } from '@/lib/email/event-ticket-emails'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -74,6 +75,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (result.state === 'capture_pending') {
     // PayPal is holding the money for review (BK-019): nothing is confirmed yet, and the guest
     // is messaged when the webhook confirms the booking.
+    await alertEventPaymentNeedsAPerson(supabase, {
+      bookingId: result.bookingId,
+      kind: 'capture_pending',
+      amount: result.amount,
+      orderId: parsed.data.orderId,
+      source: 'guest payment link',
+    })
     return NextResponse.json(
       {
         success: false,
@@ -86,6 +94,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   if (result.state === 'manual_review') {
+    // The guest is told staff will check the booking, so a manager must hear about it (BK-018).
+    await alertEventPaymentNeedsAPerson(supabase, {
+      bookingId: result.bookingId,
+      kind: 'manual_review',
+      reason: result.reason ?? null,
+      amount: result.amount,
+      orderId: parsed.data.orderId,
+      source: 'guest payment link',
+    })
     await sendEventPaymentManualReviewSms(supabase, { bookingId: result.bookingId })
     await sendEventPaymentManualReviewEmail(supabase, {
       bookingId: result.bookingId,

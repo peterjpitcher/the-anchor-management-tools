@@ -1,13 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import {
-  claimIdempotencyKey,
-  computeIdempotencyRequestHash,
-  persistIdempotencyResponse,
-  releaseIdempotencyClaim,
-} from '@/lib/api/idempotency'
-import { reportPaymentAlert } from '@/lib/cron/alerting'
-import { getAppUrl } from '@/lib/env'
-import { logger } from '@/lib/logger'
+import { alertMoneyNeedsAPerson, MANAGER_ALERT_RECIPIENT } from '@/lib/money-alerts'
 import type { PayPalRefundResource } from '@/lib/paypal-refund-resource'
 import type { PayPalDomain } from '@/lib/paypal-webhook-router'
 
@@ -36,22 +28,12 @@ export type PayPalMoneyAlertInput = {
   reason?: string | null
 }
 
-const ALERT_TTL_HOURS = 24 * 30
-
 const DOMAIN_LABEL: Record<PayPalDomain, string> = {
   invoices: 'an invoice',
   private_bookings: 'a private booking deposit',
   table_bookings: 'a table booking deposit',
   parking: 'a parking payment',
   event_bookings: 'an event ticket booking',
-}
-
-// Only pages whose route takes exactly the routed id. Parking routes by payment row and events by
-// booking, neither of which has a page of its own, so they get ids and no link.
-const DOMAIN_PATH: Partial<Record<PayPalDomain, (key: string) => string>> = {
-  invoices: (key) => `/invoices/${key}`,
-  private_bookings: (key) => `/private-bookings/${key}`,
-  table_bookings: (key) => `/table-bookings/${key}`,
 }
 
 const REASON_TEXT: Record<string, string> = {
@@ -108,39 +90,27 @@ function describe(input: PayPalMoneyAlertInput): { title: string; summary: strin
   }
 }
 
-function linkFor(input: { domain: PayPalDomain; key: string }): string | null {
-  const path = DOMAIN_PATH[input.domain]?.(input.key)
-  if (!path) return null
-  try {
-    return `${getAppUrl()}${path}`
-  } catch {
-    return null
-  }
-}
-
 /**
- * Invoice refunds and reversals need a credit note, which the owner raises, so those alerts go only
- * to this inbox rather than the general CRON_ALERT_EMAIL (owner decision, 27 September 2026). Every
- * other PayPal money alert still goes to CRON_ALERT_EMAIL.
+ * Invoice refunds and reversals need a credit note, which the owner raises, so those alerts went
+ * to this inbox rather than CRON_ALERT_EMAIL (owner decision, 27 September 2026). Since D17
+ * (24 October 2026) every money alert goes there, through alertMoneyNeedsAPerson.
  */
-export const INVOICE_CREDIT_NOTE_ALERT_RECIPIENT = 'manager@the-anchor.pub'
+export const INVOICE_CREDIT_NOTE_ALERT_RECIPIENT = MANAGER_ALERT_RECIPIENT
 
 export async function alertStaffToPayPalMoneyEvent(
   supabase: SupabaseClient<any, 'public', any>,
   input: PayPalMoneyAlertInput,
 ): Promise<void> {
   const { title, summary } = describe(input)
-  await raiseStaffAlertOnce(supabase, {
+  await alertMoneyNeedsAPerson(supabase, {
+    // Once per PayPal refund id, as before: PayPal sends one refund under two event types.
     onceKey: `paypal:staff-alert:${input.kind}:${input.refund.refundId ?? input.eventId}`,
-    eventId: input.eventId,
     domain: input.domain,
-    key: input.key,
+    bookingId: input.key,
+    kind: input.kind,
     title,
     summary,
-    to: input.domain === 'invoices' ? INVOICE_CREDIT_NOTE_ALERT_RECIPIENT : undefined,
     context: {
-      Record: `${input.domain} ${input.key}`,
-      Link: linkFor(input),
       Amount: formatAmount(input.refund.amount),
       'PayPal status': input.refund.rawStatus,
       'PayPal capture': input.refund.captureId,
@@ -188,16 +158,14 @@ export async function alertStaffToCaptureOnClosedBooking(
   const amount = formatAmount(input.amountGbp)
   const why = CAPTURE_BLOCK_TEXT[input.blockReason] ?? input.blockReason
 
-  await raiseStaffAlertOnce(supabase, {
+  await alertMoneyNeedsAPerson(supabase, {
     onceKey: `paypal:staff-alert:capture_on_closed_booking:${input.captureId}`,
-    eventId: input.eventId,
     domain: input.domain,
-    key: input.key,
+    bookingId: input.key,
+    kind: 'capture_on_closed_booking',
     title: `PayPal took ${amount} for ${label} that could no longer be paid`,
     summary: `PayPal captured ${amount} for ${label} after it stopped taking payment: ${why}. The app has not recorded the money on the booking and has not refunded it. Refund it in PayPal using the capture below, or record it on the booking if the guest is still coming. No message has been sent to the customer.`,
     context: {
-      Record: `${input.domain} ${input.key}`,
-      Link: linkFor(input),
       Amount: amount,
       'PayPal capture': input.captureId,
       'PayPal order': input.orderId,
@@ -205,82 +173,4 @@ export async function alertStaffToCaptureOnClosedBooking(
       'PayPal event': `${input.eventType} ${input.eventId}`,
     },
   })
-}
-
-/**
- * Sends a staff payment alert once per `onceKey`. The claim lives in `idempotency_keys`, so a
- * second delivery of the same PayPal event does not send a second email. A failed send releases the
- * claim, so a later delivery tries again. Never throws.
- */
-async function raiseStaffAlertOnce(
-  supabase: SupabaseClient<any, 'public', any>,
-  args: {
-    onceKey: string
-    eventId: string
-    domain: PayPalDomain
-    key: string
-    title: string
-    summary: string
-    to?: string
-    context: Record<string, unknown>
-  },
-): Promise<void> {
-  const { onceKey } = args
-  const requestHash = computeIdempotencyRequestHash({ onceKey })
-
-  let claimed = false
-  try {
-    const claim = await claimIdempotencyKey(supabase, onceKey, requestHash, ALERT_TTL_HOURS)
-    if (claim.state !== 'claimed') {
-      logger.info('PayPal staff alert already raised for this refund', {
-        metadata: { onceKey, eventId: args.eventId, claim: claim.state },
-      })
-      return
-    }
-    claimed = true
-  } catch (claimError) {
-    // Could not check whether staff were already told. Tell them anyway: a duplicate email is a
-    // far smaller problem than a chargeback nobody hears about.
-    logger.error('Could not claim the PayPal staff alert; sending it unclaimed', {
-      error: claimError instanceof Error ? claimError : new Error(String(claimError)),
-      metadata: { onceKey, eventId: args.eventId },
-    })
-  }
-
-  const result = await reportPaymentAlert({
-    title: args.title,
-    summary: args.summary,
-    to: args.to,
-    context: args.context,
-  })
-
-  if (!result.sent) {
-    // The audit row and the webhook log still carry the event; this makes the missed email loud.
-    logger.error('PayPal staff alert was NOT delivered', {
-      error: new Error(`paypal_staff_alert_${result.reason ?? 'not_sent'}`),
-      metadata: { onceKey, eventId: args.eventId, domain: args.domain, key: args.key },
-    })
-  }
-
-  if (!claimed) return
-
-  try {
-    if (result.sent) {
-      await persistIdempotencyResponse(
-        supabase,
-        onceKey,
-        requestHash,
-        { state: 'alerted', event_id: args.eventId },
-        ALERT_TTL_HOURS,
-      )
-    } else {
-      // Let a later delivery about the same refund try the email again.
-      await releaseIdempotencyClaim(supabase, onceKey, requestHash)
-    }
-  } catch (persistError) {
-    logger.error('Could not settle the PayPal staff alert claim', {
-      error: persistError instanceof Error ? persistError : new Error(String(persistError)),
-      metadata: { onceKey },
-    })
-  }
 }

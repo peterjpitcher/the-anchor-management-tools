@@ -16,6 +16,11 @@ vi.mock('@/lib/paypal', () => ({
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn().mockResolvedValue(undefined) }))
+// The first time a booking needs a person; tests below that model a repeat say so.
+vi.mock('@/lib/money-alerts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/money-alerts')>()),
+  alertMoneyNeedsAPerson: vi.fn().mockResolvedValue({ sent: true, duplicate: false }),
+}))
 vi.mock('@/lib/table-bookings/paypal-deposit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/table-bookings/paypal-deposit')>()
   return {
@@ -29,6 +34,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { sendTableBookingDepositCapturedNotifications } from '@/lib/table-bookings/paypal-deposit'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 
 const BOOKING_ID = 'b1111111-1111-4111-8111-111111111111'
 
@@ -193,4 +199,38 @@ describe('table booking reconciliation guards', () => {
     expect(lastUpdate).toBeNull()
     expect(auditCalls('payment.capture_booking_mismatch')).toHaveLength(0)
   })
+
+  // BK-114: every case above leaves the booking a candidate, so the sweep used to write a fresh
+  // audit row every hour for the same booking and tell nobody.
+  it('tells a manager about a mismatched amount, once, with one audit row however many runs see it', async () => {
+    mockDb([booking()])
+    vi.mocked(getPayPalOrder).mockResolvedValue(order({ amount: '80.00' }) as any)
+
+    await GET(request())
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      domain: 'table_bookings',
+      bookingId: BOOKING_ID,
+      kind: 'capture_amount_mismatch',
+    }))
+    expect(auditCalls('payment.capture_amount_mismatch')).toHaveLength(1)
+
+    // The next hour: the alert is already claimed, so neither an email nor another audit row.
+    vi.mocked(alertMoneyNeedsAPerson).mockResolvedValueOnce({ sent: false, duplicate: true })
+    await GET(request())
+    expect(auditCalls('payment.capture_amount_mismatch')).toHaveLength(1)
+  })
+
+  it('tells a manager when a guest paid for a booking the deposit timeout had cancelled', async () => {
+    mockDb([booking({ status: 'cancelled' })])
+    vi.mocked(getPayPalOrder).mockResolvedValue(order() as any)
+
+    await GET(request())
+
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      bookingId: BOOKING_ID,
+      kind: 'paid_after_cancel',
+    }))
+  })
 })
+

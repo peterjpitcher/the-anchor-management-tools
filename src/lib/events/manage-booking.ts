@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
@@ -312,6 +313,28 @@ export async function cancelEventBookingByRawToken(
   return (data ?? {}) as EventManageCancelResult
 }
 
+/**
+ * The PayPal-Request-Id for one refund. PayPal answers a repeated request id with the refund it
+ * already made, so two refunds that share one move money once. It used to be built from the
+ * reason and the amount alone: two £40 manual refunds on one booking were the same request
+ * (BK-024). With an idempotency key it is built from that key, which the caller makes once per
+ * refund asked for; without one it keeps its old form, so a retry stays the same request.
+ */
+function paypalRefundRequestId(input: {
+  bookingId: string
+  paymentId: string
+  reason: string
+  idempotencyKey: string | null
+  amount: number
+}): string {
+  const pennies = Math.round(input.amount * 100)
+  if (!input.idempotencyKey) {
+    return `event-refund-${input.bookingId}-${input.paymentId}-${input.reason}-${pennies}`.slice(0, 108)
+  }
+  const scope = createHash('sha256').update(input.idempotencyKey).digest('hex').slice(0, 24)
+  return `event-refund-${input.paymentId}-${scope}-${pennies}`
+}
+
 export async function processEventRefund(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -417,39 +440,10 @@ export async function processEventRefund(
     if (remaining <= 0.004) break
     if (!payment?.paypal_capture_id) continue
 
-    const { data: existingReasonRefunds, error: existingReasonError } = await supabase.from('payments')
-      .select('id, amount, status, currency, metadata')
-      .eq('charge_type', 'refund')
-      .contains('metadata', { source_payment_id: payment.id, reason: input.reason })
-      .in('status', ['refunded', 'pending', 'succeeded'])
-      .order('created_at', { ascending: false })
-
-    if (existingReasonError) {
-      throw existingReasonError
-    }
-
-    for (const existingRefund of existingReasonRefunds || []) {
-      const existingAmount = Math.max(0, Number(existingRefund.amount || 0))
-      if (existingAmount <= 0) continue
-
-      processedAmount += existingAmount
-      remaining = roundCurrencyAmount(Math.max(0, remaining - existingAmount))
-
-      if (existingRefund.status === 'pending') {
-        sawPending = true
-      }
-
-      const metadata =
-        typeof existingRefund.metadata === 'object' && existingRefund.metadata !== null
-          ? (existingRefund.metadata as Record<string, unknown>)
-          : {}
-      if (typeof metadata.paypal_refund_id === 'string') {
-        paypalRefundIds.push(metadata.paypal_refund_id)
-      }
-    }
-
-    if (remaining <= 0.004) break
-
+    // Earlier refunds with the same reason used to count as this one already done, so a second
+    // manual refund, or a second seat reduction in the same band, moved no money and still
+    // reported success (BK-024). Repeats are now caught by the idempotency key above alone, and
+    // what has already gone back only limits what is left to refund on the capture.
     const { data: allRefundsForPayment, error: allRefundsError } = await supabase.from('payments')
       .select('amount')
       .eq('charge_type', 'refund')
@@ -475,7 +469,13 @@ export async function processEventRefund(
       const paypalRefund = await refundPayPalPayment(
         payment.paypal_capture_id,
         amountForPayment,
-        `event-refund-${input.bookingId}-${payment.id}-${input.reason}-${Math.round(amountForPayment * 100)}`.slice(0, 108),
+        paypalRefundRequestId({
+          bookingId: input.bookingId,
+          paymentId: payment.id,
+          reason: input.reason,
+          idempotencyKey,
+          amount: amountForPayment,
+        }),
         payment.currency
       )
       paypalRefundMeta = {

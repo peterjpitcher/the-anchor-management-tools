@@ -8,6 +8,7 @@ import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createInlinePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
+import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
 import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
@@ -338,6 +339,17 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
               : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
           },
         })
+        if (captureOutcome === 'pending') {
+          await alertTableDepositNeedsAPerson(db, {
+            bookingId: bookingIdForCapture,
+            kind: 'capture_pending',
+            amountGbp: parsePayPalAmountGbp(capture.amount),
+            orderId: captureOrderId,
+            captureId: capture.transactionId,
+            detail: capture.captureStatusReason ?? null,
+            source: 'guest payment link',
+          })
+        }
         return captureOutcome === 'pending'
           ? { success: false, error: 'PayPal is still processing this payment. Please contact us; do not retry.' }
           : { success: false, error: 'PayPal did not take this payment. Please contact us.' }
@@ -365,6 +377,14 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
               'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required',
           },
         })
+        await alertTableDepositNeedsAPerson(db, {
+          bookingId: bookingIdForCapture,
+          kind: 'captured_amount_problem',
+          orderId: captureOrderId,
+          captureId: capture.transactionId,
+          detail: 'the captured amount could not be read',
+          source: 'guest payment link',
+        })
         return { success: false, error: 'Payment captured but amount could not be verified. Please contact us; do not retry.' }
       }
 
@@ -382,6 +402,15 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
             action_needed:
               'PayPal capture succeeded for an amount that no longer matches the booking — manual reconciliation required',
           },
+        })
+        await alertTableDepositNeedsAPerson(db, {
+          bookingId: bookingIdForCapture,
+          kind: 'captured_amount_problem',
+          amountGbp: lockedAmountGbp,
+          orderId: captureOrderId,
+          captureId: capture.transactionId,
+          detail: `the booking owes £${expectedAmount.toFixed(2)}`,
+          source: 'guest payment link',
         })
         return { success: false, error: 'Payment captured but amount did not match the booking. Please contact us; do not retry.' }
       }
@@ -413,6 +442,16 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
             dbError: updateError?.message || 'Booking was no longer payable at update time',
             action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
           },
+        })
+        // The guest is told the team was notified: make that true (BK-114).
+        await alertTableDepositNeedsAPerson(db, {
+          bookingId: bookingIdForCapture,
+          kind: 'capture_not_recorded',
+          amountGbp: lockedAmountGbp,
+          orderId: captureOrderId,
+          captureId: capture.transactionId,
+          detail: updateError?.message || 'the booking was no longer payable at update time',
+          source: 'guest payment link',
         })
         return { success: false, error: 'Payment captured but booking update failed — team notified' }
       }

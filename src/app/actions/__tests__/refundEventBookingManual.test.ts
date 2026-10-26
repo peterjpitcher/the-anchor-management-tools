@@ -142,6 +142,8 @@ function paymentsQueues(): QueryResult[] {
   ]
 }
 
+const REQUEST_ID = '0b9d6f2e-4c1a-4e8b-9f3d-2a7c5e1b8d40'
+
 describe('refundEventBookingManual', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -153,7 +155,7 @@ describe('refundEventBookingManual', () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
 
     const { refundEventBookingManual } = await import('../events')
-    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID })
 
     expect(result).toEqual({ error: expect.stringContaining('permission') })
     expect(processEventRefund).not.toHaveBeenCalled()
@@ -166,7 +168,7 @@ describe('refundEventBookingManual', () => {
     }) as never)
 
     const { refundEventBookingManual } = await import('../events')
-    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID })
 
     expect(result).toEqual({ error: 'Only a manager can issue refunds.' })
     expect(processEventRefund).not.toHaveBeenCalled()
@@ -185,6 +187,7 @@ describe('refundEventBookingManual', () => {
     const { refundEventBookingManual } = await import('../events')
     const result = await refundEventBookingManual({
       bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01',
+      requestId: REQUEST_ID,
       amount: 20,
     })
 
@@ -208,7 +211,7 @@ describe('refundEventBookingManual', () => {
     })
 
     const { refundEventBookingManual } = await import('../events')
-    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID })
 
     expect(processEventRefund).toHaveBeenCalledWith(
       expect.anything(),
@@ -219,7 +222,10 @@ describe('refundEventBookingManual', () => {
         amount: 15,
         reason: 'staff_manual_refund',
         metadata: expect.objectContaining({
-          idempotency_key: 'staff-manual-refund:booking-1',
+          // Keyed per request, not per booking (BK-024). This test used to pin the fixed key
+          // 'staff-manual-refund:booking-1', under which a second refund on the booking replayed
+          // the first without calling PayPal.
+          idempotency_key: `staff-manual-refund:booking-1:${REQUEST_ID}`,
         }),
       })
     )
@@ -260,6 +266,7 @@ describe('refundEventBookingManual', () => {
     const { refundEventBookingManual } = await import('../events')
     const result = await refundEventBookingManual({
       bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01',
+      requestId: REQUEST_ID,
       amount: 10,
     })
 
@@ -289,7 +296,7 @@ describe('refundEventBookingManual', () => {
     }) as never)
 
     const { refundEventBookingManual } = await import('../events')
-    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID })
 
     expect(result).toEqual({ error: 'There is nothing left to refund on this booking.' })
     expect(processEventRefund).not.toHaveBeenCalled()
@@ -313,11 +320,40 @@ describe('refundEventBookingManual', () => {
     })
 
     const { refundEventBookingManual } = await import('../events')
-    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' })
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID })
 
     expect(result).toMatchObject({
       success: true,
       data: { refund_status: 'succeeded', refund_amount: 15, warning: staffWarning },
     })
   })
+
+  // BK-024: every manual refund on a booking shared one key, so the second refund replayed the
+  // first, moved no money and still reported "Refund issued".
+  it('keys two refunds on the same booking apart, so the second is a new refund', async () => {
+    mockAuthUser({ id: 'user-1', email: 'boss@the-anchor.pub' })
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'succeeded', amount: 5, currency: 'GBP' })
+    const { refundEventBookingManual } = await import('../events')
+
+    for (const requestId of [REQUEST_ID, '7d3c1a9e-2b4f-4c6d-8e1a-5f9b3c7d2e10']) {
+      vi.mocked(createAdminClient).mockReturnValue(createAdminMock({
+        tables: { bookings: [{ data: CONFIRMED_BOOKING, error: null }], payments: paymentsQueues() },
+        rpc: { get_user_roles: MANAGER_ROLES },
+      }) as never)
+      await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId, amount: 5 })
+    }
+
+    const keys = vi.mocked(processEventRefund).mock.calls.map((call) => (call[1].metadata as Record<string, unknown>).idempotency_key)
+    expect(keys).toHaveLength(2)
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it('refuses a refund with no request id rather than risk sharing a key', async () => {
+    const { refundEventBookingManual } = await import('../events')
+    const result = await refundEventBookingManual({ bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01' } as never)
+
+    expect(result).toEqual({ error: 'Please reload the page and try the refund again.' })
+    expect(processEventRefund).not.toHaveBeenCalled()
+  })
 })
+

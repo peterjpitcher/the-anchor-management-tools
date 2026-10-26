@@ -24,6 +24,10 @@ vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: 
 vi.mock('@/services/audit', () => ({
   AuditService: { logAuditEvent: (...args: unknown[]) => logAuditEvent(...args) },
 }))
+const alertTableDepositNeedsAPerson = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/table-bookings/deposit-alerts', () => ({
+  alertTableDepositNeedsAPerson: (...args: unknown[]) => alertTableDepositNeedsAPerson(...args),
+}))
 
 type BookingRow = Record<string, unknown> | null
 
@@ -397,6 +401,13 @@ describe('refundTableBookingDeposit, the refund ledger', () => {
     await refundTableBookingDeposit('booking-1', farFutureDate())
 
     expect(refundRowInserts).toHaveLength(0)
+    // BK-114: the guest is owed money, so a manager is told, once.
+    expect(alertTableDepositNeedsAPerson).toHaveBeenCalledTimes(1)
+    expect(alertTableDepositNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      bookingId: 'booking-1',
+      kind: 'refund_failed',
+      amountGbp: 150,
+    }))
   })
 
   it('still reports the refund when the ledger write fails, because the money has gone back', async () => {

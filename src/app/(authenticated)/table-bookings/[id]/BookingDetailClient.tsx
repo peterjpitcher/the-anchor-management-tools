@@ -56,6 +56,7 @@ import {
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
+import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_shared/status-ui'
 
 /**
@@ -64,9 +65,13 @@ import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_
  * show, as before.
  */
 function warnIfCancellationNotReached(payload: unknown): void {
-  const outcome = readGuestNotificationOutcome(
-    payload && typeof payload === 'object' ? (payload as Record<string, unknown>).guest_notification : null
-  )
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
+  // What happened to the deposit, said to the person who cancelled (BK-114). A refund that did
+  // not go through used to look exactly like one that did.
+  const depositRefund = describeDepositRefundForStaff(readDepositRefundOutcome(record?.deposit_refund))
+  if (depositRefund?.tone === 'error') toast.error(depositRefund.message, { duration: 12000 })
+  else if (depositRefund) toast.success(depositRefund.message)
+  const outcome = readGuestNotificationOutcome(record?.guest_notification ?? null)
   const problem = describeGuestNotificationProblem(outcome, 'about the cancellation')
   if (problem) toast.error(problem, { duration: 10000 })
 }

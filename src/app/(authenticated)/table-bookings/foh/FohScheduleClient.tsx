@@ -44,6 +44,7 @@ import {
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
+import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -347,11 +348,17 @@ export function FohScheduleClient({
         ? (rp.booking as Parameters<typeof applyBookingPatch>[0]) : null
       if (snap) applyBookingPatch(snap)
       await reloadSchedule()
-      setStatusMessage(buildActionSuccessMessage(successMessage, result))
+      // What happened to the deposit on a cancellation, said to the person who cancelled (BK-114).
+      const depositRefund = describeDepositRefundForStaff(readDepositRefundOutcome(rp?.deposit_refund))
+      const successText = buildActionSuccessMessage(successMessage, result)
+      setStatusMessage(depositRefund?.tone === 'success' ? `${successText} ${depositRefund.message}` : successText)
       // The change stands, but staff must know when the guest was not told about it. Only the
       // email-first paths report this, so without their flags nothing new shows.
       const guestNotReached = describeGuestNotReached(result)
-      if (guestNotReached) setErrorMessage(guestNotReached)
+      const depositProblem = depositRefund?.tone === 'error' ? depositRefund.message : null
+      if (depositProblem && guestNotReached) setErrorMessage(`${depositProblem} ${guestNotReached}`)
+      else if (depositProblem) setErrorMessage(depositProblem)
+      else if (guestNotReached) setErrorMessage(guestNotReached)
       return true
     } catch (error) {
       if (error instanceof BookingActionError && error.payload) {
