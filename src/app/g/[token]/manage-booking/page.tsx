@@ -23,6 +23,10 @@ import {
   GUEST_SUNK_BOX_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import { bookerCanEditGuestDetails } from '@/lib/events/guest-details-edit'
+import { loadBookingGuestDetails } from '@/lib/events/guest-details-server'
+import { GuestDetailsSection } from './GuestDetailsSection'
 
 type ManageBookingPageProps = {
   params: Promise<{ token: string }>
@@ -87,6 +91,14 @@ function blockedReasonMessage(reason: string | undefined): string {
       return 'This booking has already been cancelled.'
     case 'rate_limited':
       return 'Too many attempts were made with this link. Please wait a few minutes and try again.'
+    case 'guest_details_closed':
+      return 'Online changes to guest details have closed. Please call us to change them.'
+    case 'guest_details_unconfirmed':
+      return 'Please confirm everyone you have added is happy to share their details.'
+    case 'guest_details_invalid':
+      return 'Please give a name for every ticket, and choose from the answers shown.'
+    case 'guest_details_changed':
+      return 'This booking changed while you were editing. Please check the details and save again.'
     default:
       return 'This booking cannot be changed using this link.'
   }
@@ -129,6 +141,10 @@ function actionStatusMessage(state: string | undefined, delta: number, refundSta
       return 'Booking cancelled. Refund requires manual follow-up.'
     }
     return 'Booking cancelled.'
+  }
+
+  if (state === 'guest_details_saved') {
+    return 'Guest details saved. Thank you.'
   }
 
   if (state === 'seat_increase_success') {
@@ -197,6 +213,18 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   const policy = preview.event_start_datetime ? getEventRefundPolicy(preview.event_start_datetime) : { refundRate: 0, policyBand: 'none' as const }
   const statusMessage = actionStatusMessage(state, delta, refundStatus, refundAmount)
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
+  // BK-016: the booker can add or correct each guest's name and answers until online sales close.
+  const guestDetails = preview.booking_id ? await loadBookingGuestDetails(supabase, preview.booking_id) : null
+  const showGuestDetails = Boolean(guestDetails && (
+    guestDetails.questions.length > 0 ||
+    guestDetails.booking.attendees.length > 0 ||
+    requiresGuestDetails({ collect_guest_details: guestDetails.event.collectGuestDetails, payment_mode: guestDetails.event.paymentMode })
+  ))
+  const guestDetailsEditable = Boolean(guestDetails && bookerCanEditGuestDetails({
+    status: preview.status,
+    eventStart: preview.event_start_datetime,
+    salesCutoff: guestDetails.event.salesCutoff,
+  }))
 
   return (
     <GuestShell>
@@ -269,6 +297,16 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
             </GuestButton>
           </form>
         </GuestCard>
+      )}
+
+      {showGuestDetails && guestDetails && (
+        <GuestDetailsSection
+          token={token}
+          seats={Math.max(1, guestDetails.booking.seats)}
+          attendees={guestDetails.booking.attendees}
+          questions={guestDetails.questions}
+          editable={guestDetailsEditable}
+        />
       )}
 
       <GuestHelpLine>

@@ -17,6 +17,9 @@ import {
   syncPubOpsEventCalendarByEventId,
 } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
+import { logAuditEvent } from '@/app/actions/audit'
+import { bookerCanEditGuestDetails, guestDetailsEditSchema } from '@/lib/events/guest-details-edit'
+import { loadBookingGuestDetails, saveBookingGuestDetails } from '@/lib/events/guest-details-server'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -26,6 +29,23 @@ function toNumber(input: FormDataEntryValue | null): number | null {
   if (typeof input !== 'string') return null
   const parsed = Number.parseInt(input, 10)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+/**
+ * The guest details form posts one guest_id per ticket, in order, with guest_name_<n> and
+ * answer_<n>_<questionId> beside it. Anything else in the form is ignored.
+ */
+function readGuestDetailsForm(formData: FormData): unknown {
+  const ids = formData.getAll('guest_id').map(String)
+  return ids.map((id, index) => {
+    const answers: Record<string, string> = {}
+    const prefix = `answer_${index}_`
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith(prefix) && typeof value === 'string') answers[key.slice(prefix.length)] = value
+    }
+    const name = formData.get(`guest_name_${index}`)
+    return { id, name: typeof name === 'string' ? name : '', answers }
+  })
 }
 
 function toMoney(value: number): number {
@@ -77,6 +97,48 @@ export async function POST(request: NextRequest, context: RouteContext) {
         state: 'blocked',
         reason: 'cancel_not_available'
       })
+    }
+
+    // BK-016: the booker adds or corrects each guest's name and answers.
+    if (intent === 'update_guest_details') {
+      if (!preview.booking_id) {
+        return redirectToState(request, token, { state: 'blocked', reason: 'booking_not_found' })
+      }
+      const loaded = await loadBookingGuestDetails(supabase, preview.booking_id)
+      if (!loaded || !bookerCanEditGuestDetails({
+        status: preview.status,
+        eventStart: preview.event_start_datetime,
+        salesCutoff: loaded.event.salesCutoff,
+      })) {
+        return redirectToState(request, token, { state: 'blocked', reason: 'guest_details_closed' })
+      }
+      if (formData.get('details_confirmed') !== 'yes') {
+        return redirectToState(request, token, { state: 'blocked', reason: 'guest_details_unconfirmed' })
+      }
+      const edits = guestDetailsEditSchema.safeParse(readGuestDetailsForm(formData))
+      if (!edits.success) {
+        return redirectToState(request, token, { state: 'blocked', reason: 'guest_details_invalid' })
+      }
+      const saved = await saveBookingGuestDetails(supabase, preview.booking_id, edits.data, {
+        confirmedAt: new Date().toISOString(),
+      })
+      if (!saved.ok) {
+        return redirectToState(request, token, {
+          state: 'blocked',
+          reason: saved.reason === 'conflict' || saved.error.startsWith('The guest list has changed')
+            ? 'guest_details_changed'
+            : saved.reason === 'not_editable' ? 'guest_details_closed' : 'guest_details_invalid',
+        })
+      }
+      // Counts only: the answers never reach the audit log.
+      await logAuditEvent({
+        operation_type: 'update',
+        resource_type: 'event_booking',
+        resource_id: preview.booking_id,
+        operation_status: 'success',
+        additional_info: { field: 'guest_details', actor: 'guest_manage_link', guest_count: saved.guestCount, created: saved.created },
+      })
+      return redirectToState(request, token, { state: 'guest_details_saved' })
     }
 
     if (intent === 'update_seats') {

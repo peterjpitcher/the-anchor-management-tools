@@ -60,7 +60,8 @@ export function EventTicketSettings({ event, canManage }: Props) {
           collect_guest_details: collectGuestDetails,
         })
         if (result.error) { setError(result.error); return }
-        toast.success('Ticket settings saved')
+        if (result.warning) toast.warning(result.warning)
+        else toast.success('Ticket settings saved')
         router.refresh()
       } catch { setError('Ticket settings could not be saved. Please try again.') }
     })
@@ -145,6 +146,12 @@ export function EventTicketSettings({ event, canManage }: Props) {
             <Button type="button" variant="secondary" disabled={questions.length >= 20} onClick={() => addQuestion()}>Add a Question</Button>
           </CardBody>
         </Card>
+      )}
+      {mode === 'free' && (event.booking_questions?.length ?? 0) > 0 && (
+        // BK-016: switching to free entry removes the questions.
+        <Alert tone="warning" size="sm" role="status">
+          Saving free entry removes this event&apos;s guest questions. Bookings already made keep the answers they gave.
+        </Alert>
       )}
       {error && <Alert tone="danger" size="sm">{error}</Alert>}
       {canManage && (

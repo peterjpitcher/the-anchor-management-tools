@@ -27,7 +27,7 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
-import { eventAttendeesInputSchema, bookingQuestionsSchema, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -268,7 +268,11 @@ export async function POST(request: NextRequest) {
         required: guestDetailsRequired,
         selections: parsed.data.ticket_selections,
       })
-      if (guestError) return createErrorResponse(guestError, questions.data.length ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
+      // Only an answer to a question the event no longer asks means "the questions changed"
+      // (BK-134). Every other problem is the guest's details, said as it is.
+      if (guestError) {
+        return createErrorResponse(guestError, guestError === QUESTIONS_CHANGED_MESSAGE ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
+      }
 
       if (eventRow.bookings_enabled === false) {
         return createErrorResponse(
@@ -420,6 +424,15 @@ export async function POST(request: NextRequest) {
       if (result.rpcFailed) {
         if (result.rpcErrorCode === 'questions_changed') {
           return createErrorResponse('The guest questions have changed. Please check the details for each guest.', 'BOOKING_QUESTIONS_CHANGED', 409)
+        }
+        // The website checks these before it posts, so one arriving here is a fault, not a change
+        // (BK-134): say what to fix, and log it as an error so it is seen.
+        if (result.rpcErrorCode === 'guest_details_invalid') {
+          logger.error('Event booking refused guest details the website should have caught', {
+            error: new Error('event_booking_guest_details_invalid'),
+            metadata: { eventId: parsed.data.event_id, seats: parsed.data.seats, attendees: parsed.data.attendees?.length ?? 0 },
+          })
+          return createErrorResponse('Please check the details for each guest: a name for every ticket, and an answer to each required question.', 'VALIDATION_ERROR', 400)
         }
         if (result.rpcErrorCode === 'price_changed') {
           return createErrorResponse('The ticket price has changed. Please check the updated total before booking.', 'PRICE_CHANGED', 409)
