@@ -46,14 +46,22 @@ const preorderState: {
   enabled: boolean
   covers: Record<string, unknown>[]
   selections: Record<string, unknown>[]
-} = { enabled: false, covers: [], selections: [] }
+  menuItems: Record<string, unknown>[]
+  periods: Record<string, unknown>[]
+} = { enabled: false, covers: [], selections: [], menuItems: [], periods: [] }
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => ({
       select: () => {
         const rows =
-          table === 'booking_preorder_covers' ? preorderState.covers : preorderState.selections
+          table === 'booking_preorder_covers'
+            ? preorderState.covers
+            : table === 'booking_period_menu_items'
+              ? preorderState.menuItems
+              : table === 'booking_periods'
+                ? preorderState.periods
+                : preorderState.selections
         const result = { data: rows, error: null }
         const chain = {
           in: () => chain,
@@ -162,6 +170,8 @@ beforeEach(() => {
   preorderState.enabled = false
   preorderState.covers = []
   preorderState.selections = []
+  preorderState.menuItems = []
+  preorderState.periods = []
   vi.mocked(getLondonDateIso).mockReturnValue('2026-07-16')
   vi.mocked(generatePDFFromHTML).mockResolvedValue(Buffer.from('%PDF'))
   vi.mocked(requireBohTableBookingPermission).mockResolvedValue({
@@ -327,6 +337,9 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     expect(select).toContain('customers!table_bookings_customer_id_fkey')
     expect(select).toContain('booking_table_assignments!booking_table_assignments_table_booking_id_fkey')
     expect(select).toContain('tables!booking_table_assignments_table_id_fkey')
+
+    // The Christmas tiers come from the booking, not from cover rows (BK-058).
+    expect(select).toContain('christmas_course_counts')
 
     // Never selected.
     expect(select).not.toContain('special_requirements')
@@ -553,6 +566,77 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
         { courseLabel: 'Starter', itemName: 'Parsnip soup' },
         { courseLabel: 'Main', itemName: 'Roast turkey' },
       ])
+    })
+
+    // BK-058: the kitchen sheet follows each guest's Christmas tier.
+    it('prints each seat tier, a 1 course seat as choosing on the day, and flags a withdrawn dish', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [
+        coverRow({ id: 'c1', ordinal: 1 }),
+        coverRow({ id: 'c2', ordinal: 2 }),
+        coverRow({ id: 'c3', ordinal: 3 }),
+      ]
+      preorderState.selections = [
+        selectionRow({ id: 's1', cover_id: 'c1', course: 'main', menu_item_id: 'm1', item_name: 'Fixture main' }),
+        selectionRow({ id: 's2', cover_id: 'c2', course: 'main', menu_item_id: 'm2', item_name: 'Withdrawn main' }),
+      ]
+      preorderState.menuItems = [
+        { id: 'm1', is_active: true },
+        { id: 'm2', is_active: false },
+      ]
+      queryResult.data = [
+        makeRow({ id: 'b1', party_size: 4, booking_type: 'christmas', christmas_course_counts: [3, 2, 1, 1] }),
+      ]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const sheet = lastSheets()[0] as Sheet & { christmasCourses?: string }
+      const covers = sheet.preorder?.covers as Array<{
+        tierLabel?: string
+        choosesOnTheDay?: boolean
+        courses: Array<{ itemName: string; withdrawn?: boolean }>
+      }>
+      expect(covers.map((cover) => cover.tierLabel)).toEqual(['3 courses', '2 courses', '1 course'])
+      expect(covers[2].choosesOnTheDay).toBe(true)
+      expect(covers[0].courses[0].withdrawn).toBeUndefined()
+      expect(covers[1].courses[0]).toEqual(expect.objectContaining({ itemName: 'Withdrawn main', withdrawn: true }))
+      expect(sheet.christmasCourses).toBe('1 x 3 courses, 1 x 2 courses, 2 x 1 course')
+    })
+
+    // BK-051: a seat a manager changed after the noon cutoff is marked for the kitchen.
+    it('marks a seat whose choice was recorded after the cutoff, and only that seat', async () => {
+      preorderState.enabled = true
+      preorderState.periods = [{ id: 'period-1', preorder_cutoff_days: 7 }]
+      preorderState.covers = [coverRow({ id: 'c1', ordinal: 1 }), coverRow({ id: 'c2', ordinal: 2 })]
+      preorderState.selections = [
+        // Before noon on 5 December, the cutoff for a 12 December booking.
+        selectionRow({ id: 's1', cover_id: 'c1', created_at: '2026-12-05T11:59:00Z' }),
+        // After it: a manager's late change.
+        selectionRow({ id: 's2', cover_id: 'c2', created_at: '2026-12-06T09:00:00Z' }),
+      ]
+      queryResult.data = [makeRow({ id: 'b1', booking_date: '2026-12-12', booking_period_id: 'period-1' })]
+
+      await GET(makeRequest('2026-12-12'))
+
+      const covers = lastSheets()[0].preorder?.covers as Array<{ lateChange?: boolean }>
+      expect(covers.map((cover) => cover.lateChange)).toEqual([undefined, true])
+    })
+
+    it('gives an all 1 course Christmas booking its tiers even though it has no seats', async () => {
+      preorderState.enabled = true
+      queryResult.data = [
+        makeRow({ id: 'b1', party_size: 4, booking_type: 'christmas', christmas_course_counts: [1, 1, 1, 1] }),
+        makeRow({ id: 'b2', booking_reference: 'ANC-002', booking_time: '20:00', booking_type: 'christmas', christmas_course_counts: null }),
+        makeRow({ id: 'b3', booking_reference: 'ANC-003', booking_time: '21:00', booking_type: 'regular' }),
+      ]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const sheets = lastSheets() as Array<Sheet & { christmasCourses?: string }>
+      expect(sheets[0].preorder).toBeUndefined()
+      expect(sheets[0].christmasCourses).toBe('4 x 1 course')
+      expect(sheets[1].christmasCourses).toBe('Not recorded')
+      expect(sheets[2].christmasCourses).toBeUndefined()
     })
 
     // Spec section 6 item 3: losing either allergy source is the worst regression this feature has.

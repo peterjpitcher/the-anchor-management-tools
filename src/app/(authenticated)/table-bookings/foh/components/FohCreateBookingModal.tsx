@@ -49,6 +49,8 @@ export type CreateForm = {
   high_chair_count: string
   outside_seating: boolean
   requires_accessible_table: boolean
+  /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. 0 means not chosen yet. */
+  christmas_course_counts?: number[]
 }
 
 type FohCreateBookingModalProps = {
@@ -100,6 +102,65 @@ const RADIO_LABEL_CLASS = 'flex min-h-touch items-center gap-2 text-xs text-text
 // The label fills the row, so the whole 44px strip ticks the box, not just the 16px box.
 const CHECKBOX_ROW_CLASS = 'flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3'
 const CHECKBOX_LABEL_CLASS = 'flex min-h-touch flex-1 cursor-pointer items-center text-xs font-medium text-text'
+
+const CHRISTMAS_COURSE_OPTIONS = [
+  { value: '0', label: 'Choose courses' },
+  { value: '1', label: '1 course' },
+  { value: '2', label: '2 courses' },
+  { value: '3', label: '3 courses' },
+]
+
+/**
+ * The 1, 2 or 3 courses each Christmas guest is having (BK-057). Without these a phone booking was
+ * stored with no tiers, so every guest was chased for a main, 1 course guests included, and the
+ * kitchen could not tell who was paying for what. "Everyone" fills every guest at once, because a
+ * table often all has the same.
+ */
+function ChristmasCreateCourses({
+  partySize,
+  counts,
+  onChange,
+}: {
+  partySize: number
+  counts: number[]
+  onChange: (counts: number[]) => void
+}) {
+  const seats = Number.isFinite(partySize) ? Math.max(0, Math.min(CHRISTMAS_MAX_PARTY_SIZE, partySize)) : 0
+  if (seats === 0) return null
+  const current = Array.from({ length: seats }, (_, index) => counts[index] ?? 0)
+  const allSame = current.every((count) => count === current[0]) ? String(current[0]) : '0'
+
+  return (
+    <fieldset className="space-y-2 md:col-span-2">
+      <legend className="text-sm font-medium text-text">Christmas courses for each guest</legend>
+      <p className="text-xs text-text-muted">
+        Guests on 1 course have nothing to pre-order. 2 courses is a main plus a starter or a dessert;
+        3 courses is all three. 2 and 3 courses need food choices by noon 7 days before the date.
+      </p>
+      <Select
+        label="Everyone"
+        value={allSame}
+        options={CHRISTMAS_COURSE_OPTIONS}
+        onChange={(event) => onChange(current.map(() => Number(event.target.value)))}
+        className={FIELD_CLASS}
+      />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {current.map((count, index) => (
+          <Select
+            key={index}
+            label={`Guest ${index + 1}`}
+            value={String(count)}
+            options={CHRISTMAS_COURSE_OPTIONS}
+            onChange={(event) =>
+              onChange(current.map((value, seat) => (seat === index ? Number(event.target.value) : value)))
+            }
+            className={FIELD_CLASS}
+          />
+        ))}
+      </div>
+    </fieldset>
+  )
+}
 
 function isPhoneLikeCustomerQuery(value: string): boolean {
   const trimmed = value.trim()
@@ -358,6 +419,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               </p>
             )}
           </div>
+
+          {createForm.purpose === 'christmas' && createMode === 'booking' && (
+            <ChristmasCreateCourses
+              partySize={Number.parseInt(createForm.party_size, 10)}
+              counts={createForm.christmas_course_counts ?? []}
+              onChange={(counts) => onSetCreateForm((current) => ({ ...current, christmas_course_counts: counts }))}
+            />
+          )}
 
           {createForm.purpose === 'event' && (
             <>

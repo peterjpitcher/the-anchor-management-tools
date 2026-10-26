@@ -4,9 +4,11 @@
  * Taking a seasonal pre-order on the booking detail page.
  *
  * This is the path that matters most in year one: staff are already on the telephone to these
- * guests, so the screen is laid out to be typed into while somebody talks. One block per seat, the
- * main first because it is the only required answer, and a single save for the whole table rather
- * than a save per seat, because a table's order arrives in one conversation.
+ * guests, so the screen is laid out to be typed into while somebody talks. One block per seat, each
+ * labelled with the Christmas tier that seat is paying for (3 courses: a starter, a main and a
+ * dessert; 2 courses: a main plus a starter or a dessert; 1 course: nothing to choose), and a single
+ * save for the whole table rather than a save per seat, because a table's order arrives in one
+ * conversation. A booking with no tiers recorded keeps its old rule: a main, the rest optional.
  *
  * ADD-ONS are the tick-boxes under each seat's courses. They are extras a guest has ON TOP of their
  * meal, so they are multi-select, they never count towards completeness, and the money against them
@@ -43,11 +45,14 @@ import {
   type StaffPreorderCoverInput,
 } from './actions'
 import {
+  describeCourseCount,
+  describeCoverMissingCourses,
   describePreorderGaps,
   formatPreorderAddonPrice,
   formatPreorderMoney,
   getCoverAddons,
   getPreorderCompleteness,
+  getSeatCourseCount,
   isPreorderCourse,
 } from '@/lib/table-bookings/preorder'
 import { formatGbp } from '@/lib/table-bookings/ui'
@@ -58,6 +63,7 @@ import {
   PREORDER_COURSE_LABELS,
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderCourse,
+  type PreorderCourseCount,
   type PreorderCover,
   type PreorderOrder,
   type PreorderSelectionCourse,
@@ -94,6 +100,11 @@ interface SeasonalPreorderSectionProps {
   /** True once the cutoff has passed. Computed on the server: a browser clock is not evidence. */
   closed: boolean
   closesAtIso: string | null
+  /**
+   * A manager may still record a change after the cutoff (owner decision D21). The server action
+   * checks the same permission again; this only decides whether the form is offered.
+   */
+  canRecordLate?: boolean
 }
 
 type DraftCover = {
@@ -151,6 +162,22 @@ function toDraftCover(cover: PreorderCover): DraftCover {
     choices,
     addonMenuItemIds,
   }
+}
+
+/**
+ * What the seat still needs, judged on what is typed rather than what is saved, so the badge moves as
+ * staff pick. Null when the seat has everything its tier pays for.
+ */
+function draftMissingCourses(draft: DraftCover, courseCount: PreorderCourseCount | null): string | null {
+  const selections = PREORDER_COURSES.filter((course) => Boolean(draft.choices[course])).map((course) => ({ course }))
+  return describeCoverMissingCourses({ selections, courseCount })
+}
+
+/** The card's subtitle: the tier rule when the booking recorded tiers, the old rule when it did not. */
+function describeSectionRule(order: PreorderOrder): string {
+  return order.courseCounts?.length
+    ? 'Each guest chooses the courses they are paying for: a starter, a main and a dessert on 3 courses, a main plus a starter or a dessert on 2, and nothing in advance on 1. Add-ons are extras that never make an order complete.'
+    : 'Every guest needs a main. A starter and a dessert are optional, and add-ons are extras that never make an order complete.'
 }
 
 function toDraft(covers: PreorderCover[]): Draft {
@@ -247,6 +274,7 @@ export default function SeasonalPreorderSection({
   preorderEnabled,
   closed,
   closesAtIso,
+  canRecordLate = false,
 }: SeasonalPreorderSectionProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -270,7 +298,8 @@ export default function SeasonalPreorderSection({
     setDraftState((current) => ({ ...current, draft: update(current.draft) }))
   }
 
-  const editable = canEdit && preorderEnabled && !closed
+  const editable = canEdit && preorderEnabled && (!closed || canRecordLate)
+  const recordingLate = editable && closed
   const completeness = useMemo(() => getPreorderCompleteness(order), [order])
   const seatsMismatched = order.covers.length !== order.partySize
 
@@ -410,7 +439,7 @@ export default function SeasonalPreorderSection({
     <Card>
       <CardHeader
         title={`Seasonal Pre-Order${order.periodName ? ` · ${order.periodName}` : ''}`}
-        subtitle="Every guest needs a main. A starter and a dessert are optional, and add-ons are extras that never make an order complete."
+        subtitle={describeSectionRule(order)}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={PREORDER_COMPLETENESS_TONE[completeness.complete ? 'complete' : 'incomplete']}>
@@ -423,7 +452,9 @@ export default function SeasonalPreorderSection({
                 loading={saving}
                 disabled={saving || dirtyCoverIds.length === 0}
               >
-                {dirtyCoverIds.length > 0 ? `Save ${dirtyCoverIds.length} Seat${dirtyCoverIds.length === 1 ? '' : 's'}` : 'Saved'}
+                {dirtyCoverIds.length > 0
+                  ? `Save ${dirtyCoverIds.length} Seat${dirtyCoverIds.length === 1 ? '' : 's'}${recordingLate ? ' as Late' : ''}`
+                  : 'Saved'}
               </Button>
             )}
           </div>
@@ -444,7 +475,9 @@ export default function SeasonalPreorderSection({
             {closesAtIso
               ? `Choices closed at noon on ${formatDateInLondon(closesAtIso, { weekday: 'long', day: 'numeric', month: 'long' })}. `
               : ''}
-            The kitchen has already ordered to these numbers, so ring the pub to change anything now.
+            {recordingLate
+              ? 'The kitchen has already ordered to these numbers. As a manager you can still record a change: it is marked as changed after the cutoff on the booking sheet and the kitchen totals.'
+              : 'The kitchen has already ordered to these numbers, so a manager has to record any change now.'}
           </Alert>
         )}
 
@@ -480,7 +513,8 @@ export default function SeasonalPreorderSection({
         ) : (
           <ul className="divide-y divide-border">
             {order.covers.map((cover) => {
-              if (cover.courseCount === 1) {
+              const courseCount = getSeatCourseCount(order, cover.ordinal)
+              if (courseCount === 1) {
                 return (
                   <li key={cover.id} className="py-4 text-sm first:pt-0 last:pb-0">
                     Seat {cover.ordinal}: 1 course, no pre-order required.
@@ -489,15 +523,21 @@ export default function SeasonalPreorderSection({
               }
               const coverDraft = draft[cover.id]
               if (!coverDraft) return null
-              const missingMain = !coverDraft.choices.main
+              const missing = draftMissingCourses(coverDraft, courseCount)
+              // A 2 course seat with a starter AND a dessert: the save refuses it, so say so here first.
+              const tooManyOthers =
+                courseCount === 2 && Boolean(coverDraft.choices.starter) && Boolean(coverDraft.choices.dessert)
               const withdrawn = cover.selections.filter((selection) => selection.itemWithdrawn)
               const addons = addonsByCover.get(cover.id)
 
               return (
                 <li key={cover.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <SubHeading>Seat {cover.ordinal}</SubHeading>
-                    {missingMain && <Badge tone="warning">Needs a main</Badge>}
+                    <SubHeading>
+                      Seat {cover.ordinal}
+                      {courseCount ? ` · ${describeCourseCount(courseCount)}` : ''}
+                    </SubHeading>
+                    {missing && <Badge tone="warning">Needs {missing}</Badge>}
                     {withdrawn.length > 0 && (
                       <Badge tone="danger">
                         {withdrawn
@@ -524,6 +564,8 @@ export default function SeasonalPreorderSection({
                       <CourseSelect
                         key={course}
                         course={course}
+                        courseCount={courseCount}
+                        tooManyOthers={tooManyOthers}
                         value={coverDraft.choices[course]}
                         options={optionsByCourse[course]}
                         selectedName={
@@ -598,7 +640,6 @@ export default function SeasonalPreorderSection({
           {bookingAddons.count > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-text">
               {order.covers.map((cover) => {
-                if (cover.courseCount === 1) return <li key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</li>
                 const summary = addonsByCover.get(cover.id)?.summary
                 if (!summary || summary.count === 0) return null
                 return (
@@ -618,11 +659,23 @@ export default function SeasonalPreorderSection({
 }
 
 /**
+ * The label for one course on a seat of this tier. 3 courses needs all three; 2 courses needs a main
+ * and one of the other two; a seat with no tier keeps the old rule of a main with the rest optional.
+ */
+function courseSelectLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+  if (course === 'main' || courseCount === 3) return `${PREORDER_COURSE_LABELS[course]} (required)`
+  if (courseCount === 2) return course === 'starter' ? 'Starter (or a dessert)' : 'Dessert (or a starter)'
+  return `${PREORDER_COURSE_LABELS[course]} (optional)`
+}
+
+/**
  * One course for one seat. A dish withdrawn from the menu is still shown, disabled, so the screen
  * says what the guest actually chose instead of silently reading as an empty answer.
  */
 function CourseSelect({
   course,
+  courseCount,
+  tooManyOthers,
   value,
   options,
   selectedName,
@@ -630,6 +683,9 @@ function CourseSelect({
   onChange,
 }: {
   course: PreorderCourse
+  courseCount: PreorderCourseCount | null
+  /** A 2 course seat holding a starter and a dessert: both are marked, because one must go. */
+  tooManyOthers: boolean
   value: string
   options: PreorderMenuOption[]
   selectedName: string | null
@@ -637,16 +693,17 @@ function CourseSelect({
   onChange: (menuItemId: string) => void
 }) {
   const withdrawn = Boolean(value) && !options.some((option) => option.id === value)
+  const required = course === 'main' || courseCount === 3
 
   return (
     <Select
-      label={course === 'main' ? 'Main (required)' : `${PREORDER_COURSE_LABELS[course]} (optional)`}
+      label={courseSelectLabel(course, courseCount)}
       value={value}
       disabled={disabled}
-      error={course === 'main' && !value}
+      error={(required && !value) || (tooManyOthers && course !== 'main')}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="">{course === 'main' ? 'Not chosen yet' : 'Not having one'}</option>
+      <option value="">{required ? 'Not chosen yet' : 'Not having one'}</option>
       {withdrawn && (
         <option value={value} disabled>
           {selectedName ?? 'Previous choice'} (no longer on the menu)

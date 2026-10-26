@@ -27,6 +27,11 @@ vi.mock('@/lib/table-bookings/manage-booking', () => ({
 vi.mock('@/lib/guest/guest-short-link', () => ({
   buildGuestShortLink: vi.fn(async () => ({ url: 'https://l.the-anchor.pub/food1', shortened: true })),
 }))
+// The cutoff kitchen order and booker copies (BK-149) have their own tests; here they would only
+// add emails to the ones these tests count.
+vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
+  sendPreorderCutoffDigests: vi.fn(async () => ({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })),
+}))
 vi.mock('@/lib/table-bookings/preorder', () => ({
   PREORDER_BOOKER_REMINDER_DAYS: 10,
   isPreorderEnabled: vi.fn(async () => true),
@@ -152,7 +157,8 @@ describe('pre-order booker reminder, email first (flag on)', () => {
     const [to, body, options] = vi.mocked(sendSMS).mock.calls[0]
     expect(to).toBe('+447700900777')
     expect(body.startsWith(TODAYS_TEXT_START)).toBe(true)
-    expect(body).toContain('Saturday 12 December at 7pm. Every guest needs a main course. Choose here: https://l.the-anchor.pub/food1')
+    // Was 'Every guest needs a main course.', which told 2 and 3 course guests a main would do (BK-056).
+    expect(body).toContain('Saturday 12 December at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: https://l.the-anchor.pub/food1')
     assertCleanText(body)
     expect(options?.metadata).toEqual({ table_booking_id: 'xmas-1', template_key: 'table_booking_preorder_reminder' })
     const attempts = db.queries
@@ -202,7 +208,8 @@ describe('pre-order booker reminder with the flag off: exactly today', () => {
     expect(payload.result.bookerReminders).toBe(1)
     expect(jobQueue.enqueue).toHaveBeenCalledWith('send_sms', {
       to: '+447700900777',
-      message: `${TODAYS_TEXT_START}Saturday 12 December at 7pm. Every guest needs a main course. Choose here: https://l.the-anchor.pub/food1`,
+      // The tier rule, not 'Every guest needs a main course.' (BK-056).
+      message: `${TODAYS_TEXT_START}Saturday 12 December at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: https://l.the-anchor.pub/food1`,
       customer_id: 'cust-7',
       booking_id: 'xmas-1',
       metadata: { table_booking_id: 'xmas-1', template_key: 'table_booking_preorder_reminder' },
@@ -250,5 +257,41 @@ describe('pre-order reminder email renders', () => {
     expect(email.text).toContain('Party size: 6 people')
     expect(email.text).toContain('Prefer to do it over the telephone? Ring us on 01753 682707.')
     expect(email.html).toContain('href="https://l.the-anchor.pub/food1"')
+  })
+})
+
+// BK-051, owner decision D21: after the cutoff a manager can record late choices, so the escalation
+// tells them to record what the guest says on the booking rather than only to take it by phone.
+describe('pre-order manager escalation', () => {
+  it('tells the manager to record the choices on the booking, where they are marked as late', async () => {
+    const { decidePreorderChases } = await import('@/lib/table-bookings/preorder')
+    vi.mocked(decidePreorderChases).mockReturnValueOnce(['manager_escalation'])
+    buildDb()
+
+    const payload = await runSweep()
+
+    expect(payload.result.managerEscalations).toBe(1)
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(email.subject).toBe('Pre-order still incomplete: TB-XMAS1')
+    expect(email.html).toContain('record them on the booking')
+    expect(email.html).toContain('A manager can still save them after the cutoff')
+  })
+})
+
+// BK-149: the noon sweep is when a date's form locks, so it sends that date's kitchen order and,
+// while the flag is on, the bookers' copies.
+describe('pre-order cutoff digests from the noon sweep', () => {
+  it('runs them with the period cutoffs, the booker copy following its own flag', async () => {
+    const { sendPreorderCutoffDigests } = await import('@/lib/table-bookings/preorder-cutoff-digest')
+    buildDb()
+
+    const payload = await runSweep()
+
+    expect(sendPreorderCutoffDigests).toHaveBeenCalledTimes(1)
+    const [, input] = vi.mocked(sendPreorderCutoffDigests).mock.calls[0]
+    expect(input.todayIso).toBe('2026-12-05')
+    expect(Array.from(input.cutoffDays)).toEqual([7])
+    expect(input.choicesCopyEnabled).toBe(false)
+    expect(payload.result.cutoffDigests).toEqual({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })
   })
 })

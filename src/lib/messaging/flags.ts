@@ -39,6 +39,9 @@ export const MESSAGING_FLAG_KEYS = [
   'table_deposit_confirmed_email_first',
   'table_party_size_deposit_email_first',
   'table_preorder_email_first',
+  // The booker's copy of their food choices, emailed once when the pre-order closes (BK-149, 26
+  // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
+  'table_preorder_choices_copy',
   'table_confirm_reminder_email_first',
   'private_booking_email_first',
   'bounce_sms_fallback',

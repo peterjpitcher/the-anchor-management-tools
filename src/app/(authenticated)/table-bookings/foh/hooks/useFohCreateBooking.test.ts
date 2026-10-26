@@ -472,6 +472,27 @@ describe('useFohCreateBooking high chairs, outside and step-free', () => {
     expect(body.requires_accessible_table).toBeUndefined()
   })
 
+  // BK-057: a Christmas booking taken here records each guest's 1, 2 or 3 courses.
+  it('sends the Christmas courses chosen for every guest', async () => {
+    const calls = stubBookingFetch({ christmas_courses_saved: true })
+    await submitBooking({ purpose: 'christmas', christmas_course_counts: [3, 2, 1, 1] })
+    expect(bookingBody(calls)).toMatchObject({ purpose: 'christmas', christmas_course_counts: [3, 2, 1, 1] })
+  })
+
+  it('will not post a Christmas booking until every guest has a course choice', async () => {
+    const calls = stubBookingFetch({})
+    await submitBooking({ purpose: 'christmas', christmas_course_counts: [3, 0, 1] })
+    expect(calls.some((call) => call.url === '/api/foh/bookings')).toBe(false)
+  })
+
+  it('tells staff to set the courses on the booking when they did not save', async () => {
+    stubBookingFetch({ christmas_courses_saved: false })
+    const { setStatusMessage } = await submitBooking({ purpose: 'christmas', christmas_course_counts: [1, 1, 1, 1] })
+    expect(setStatusMessage).toHaveBeenLastCalledWith(
+      expect.stringContaining('The Christmas courses did not save: set them on the booking.')
+    )
+  })
+
   it('tells staff when fewer high chairs were free than they asked for', async () => {
     stubBookingFetch({ high_chairs_granted: 1 })
     const { setStatusMessage } = await submitBooking({ high_chair_count: '2' })

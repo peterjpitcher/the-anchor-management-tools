@@ -39,6 +39,7 @@ import {
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
+import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
 import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
@@ -255,6 +256,12 @@ type TableBookingResponseData = {
     saved_covers: number
     saved: boolean
     error: string | null
+    /**
+     * Why, as a code the website can branch on (BK-059). Added after `saved`, so an older reader
+     * still has the flag. `late_one_course` is not a failure: the booking was made after the
+     * Christmas pre-order deadline, so every guest is on 1 course, chosen on the day.
+     */
+    reason: 'saved' | 'late_one_course' | 'too_many_choices' | 'save_failed'
   } | null
 }
 
@@ -281,7 +288,8 @@ async function persistPreorderSafe(
     requested_covers: entries.length,
     saved_covers: 0,
     saved: false,
-    error: null
+    error: null,
+    reason: 'save_failed'
   }
 
   try {
@@ -321,16 +329,19 @@ async function persistPreorderSafe(
     }
 
     result.saved = true
+    result.reason = 'saved'
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
     // Seat names and dietary notes are staff-and-kitchen only, so the log
-    // carries counts and the message, never the entries themselves.
-    logger.warn('Failed to persist pre-order on public table booking', {
+    // carries counts and the message, never the entries themselves. An error,
+    // not a warning: warnings are silent in production, and this is a guest
+    // whose dinner choices are missing (BK-059). The caller also alerts the pub.
+    logger.error('Failed to persist pre-order on public table booking', {
+      error: error instanceof Error ? error : new Error(String(error)),
       metadata: {
         tableBookingId,
         requestedCovers: result.requested_covers,
-        savedCovers: result.saved_covers,
-        error: result.error
+        savedCovers: result.saved_covers
       }
     })
   }
@@ -718,7 +729,8 @@ export async function POST(request: NextRequest) {
           requested_covers: payload.preorder?.length ?? 0,
           saved_covers: 0,
           saved: false,
-          error: 'The pre-order deadline for this date has passed, so every guest is booked for one course, chosen on the day.'
+          error: 'The pre-order deadline for this date has passed, so every guest is booked for one course, chosen on the day.',
+          reason: 'late_one_course'
         }
       } else if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
           && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false)) {
@@ -731,7 +743,8 @@ export async function POST(request: NextRequest) {
             requested_covers: entries.length,
             saved_covers: 0,
             saved: false,
-            error: 'More meal choices were sent than there are guests on the booking.'
+            error: 'More meal choices were sent than there are guests on the booking.',
+            reason: 'too_many_choices'
           }
         } else {
           preorderResult = await persistPreorderSafe(
@@ -739,6 +752,20 @@ export async function POST(request: NextRequest) {
             bookingResult.table_booking_id,
             entries
           )
+        }
+
+        // Missing dinner choices are the pub's problem to see, not just the guest's: an audit row
+        // and an email to the manager, naming the booking (BK-059). The guest is told by the
+        // website from `preorder.saved`.
+        if (!preorderResult.saved) {
+          await reportPreorderSaveFailure({
+            tableBookingId: bookingResult.table_booking_id,
+            bookingReference: bookingResult.booking_reference ?? null,
+            bookingDate: payload.date,
+            requestedCovers: preorderResult.requested_covers,
+            savedCovers: preorderResult.saved_covers,
+            error: preorderResult.error ?? 'Unknown error'
+          })
         }
       }
 

@@ -7,7 +7,13 @@ import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
-import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import {
+  getChristmasCourseAvailability,
+  oneCourseForEveryone,
+  recordChristmasCourseCounts,
+  recordOneCourseInsideCutoff,
+} from '@/lib/table-bookings/christmas-one-course'
+import { syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
@@ -92,6 +98,9 @@ const CreateFohTableBookingSchema = z.object({
   high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
   outside_seating: z.boolean().optional(),
   requires_accessible_table: z.boolean().optional(),
+  // Christmas only: the 1, 2 or 3 courses each guest is having, seat 1 first (BK-057). Optional so
+  // an older FOH bundle that never sends it keeps working; the database checks it again.
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(1).max(20).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
@@ -168,6 +177,20 @@ const CreateFohTableBookingSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'Choose cash or payment link for the table deposit'
     })
+  }
+
+  if (value.christmas_course_counts) {
+    if (!isChristmasPurpose(value.purpose)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Course choices are only taken for Christmas bookings.'
+      })
+    } else if (value.christmas_course_counts.length !== value.party_size) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Choose 1, 2 or 3 courses for every Christmas guest.'
+      })
+    }
   }
 })
 
@@ -787,6 +810,8 @@ async function markWalkInBookingAsSeated(
 }
 
 type FohCreateBookingResponseData = {
+  /** Present when staff sent Christmas courses: false means the booking exists without them. */
+  christmas_courses_saved?: boolean
   state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
@@ -1327,6 +1352,25 @@ async function createFohTableBooking(
     bypassPacing = true
   }
 
+  // Two or three courses need a pre-order, so they can only be booked before noon seven days out.
+  // Checked BEFORE the booking is made, so staff are told now rather than left with a booking that
+  // has no courses. The trigger on table_bookings checks the same rule again when they are saved.
+  const requestedCourses = isChristmasBooking ? payload.christmas_course_counts ?? null : null
+  if (requestedCourses?.some((count) => count > 1)) {
+    const availability = await getChristmasCourseAvailability(auth.supabase, payload.date)
+    if (availability !== 'available') {
+      return NextResponse.json(
+        {
+          error:
+            availability === 'closed'
+              ? 'The Christmas pre-order deadline has passed for that date, so every guest is on 1 course. Choose 1 course for each guest.'
+              : 'Could not check the Christmas pre-order deadline. Please try again.'
+        },
+        { status: availability === 'closed' ? 400 : 503 }
+      )
+    }
+  }
+
   // Staff path, so the STAFF entry point. It is service-role only, and this route has
   // already run requireFohTableBookingPermission above, which is what proves authority.
   // The channel is never taken from the request body: it is derived here from whether the
@@ -1491,12 +1535,48 @@ async function createFohTableBooking(
     }
   }
 
-  // This screen does not ask for courses. Inside the Christmas pre-order deadline the 1 course
+  // The courses staff chose for each guest are recorded on the booking (BK-057), so the pre-order
+  // forms, the chase and the kitchen know who is on 1, 2 or 3 courses. A request without them (an
+  // older FOH bundle) keeps the earlier rule: inside the Christmas pre-order deadline the 1 course
   // tier is the only one on offer (SSOT §7, owner decision 10 September 2026), so every guest is
-  // recorded as one course, with nothing to pre-order and nobody to chase. Before the deadline the
-  // booking keeps its existing policy. Non-fatal: the booking already exists, and the reminder cron
-  // no longer texts a guest once their form has locked.
+  // recorded as one course, with nothing to pre-order and nobody to chase. Non-fatal either way:
+  // the booking already exists, and staff are told when the courses did not save.
+  let christmasCoursesSaved: boolean | undefined
   if (
+    isChristmasBooking &&
+    bookingResult.table_booking_id &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') &&
+    requestedCourses
+  ) {
+    const createdBookingId = bookingResult.table_booking_id
+    const outcome = await recordChristmasCourseCounts(
+      auth.supabase,
+      { id: createdBookingId, bookingDate: payload.date },
+      requestedCourses
+    )
+    christmasCoursesSaved = outcome === 'recorded'
+    if (outcome === 'recorded') {
+      const requiresPreorder = requestedCourses.some((count) => count > 1)
+      bookingResult = {
+        ...bookingResult,
+        booking_period_requires_preorder: requiresPreorder,
+        christmas_course_counts: requestedCourses,
+      }
+      if (requiresPreorder) {
+        // One seat row per guest, so the booker's form and the staff card open ready to fill.
+        try {
+          await syncPreorderCovers(auth.supabase, createdBookingId)
+        } catch (syncError) {
+          logger.warn('Could not set up pre-order seats for a new staff Christmas booking', {
+            metadata: {
+              tableBookingId: createdBookingId,
+              error: syncError instanceof Error ? syncError.message : String(syncError)
+            }
+          })
+        }
+      }
+    }
+  } else if (
     isChristmasBooking &&
     bookingResult.table_booking_id &&
     (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
@@ -1810,7 +1890,8 @@ async function createFohTableBooking(
         sunday_preorder_state: sundayPreorderState,
         sunday_preorder_reason: sundayPreorderReason,
         high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
-        is_outside_seating: bookingResult.is_outside_seating ?? false
+        is_outside_seating: bookingResult.is_outside_seating ?? false,
+        ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved })
       } satisfies FohCreateBookingResponseData
     },
     { status: responseStatus }

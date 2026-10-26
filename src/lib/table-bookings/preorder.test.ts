@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createFakeSupabase } from '../../../tests/helpers/fakeSupabase'
 import {
+  PreorderCourseLimitError,
+  describeCoverMissingCourses,
   describePreorderGaps,
   emptyPreorderDishTotals,
   formatPreorderAddonPrice,
@@ -10,6 +13,9 @@ import {
   isCoverComplete,
   isPreorderCourse,
   isPreorderSelectionCourse,
+  loadPreorderDishTotals,
+  savePreorderCover,
+  summariseChristmasTiers,
   summariseCoverAddons,
   summariseOrderAddons,
   summarisePreorderDishTotals,
@@ -138,7 +144,9 @@ describe('getPreorderCompleteness', () => {
 
     expect(completeness.complete).toBe(false)
     expect(completeness.ordinalsMissingMain).toEqual([2, 3])
-    expect(describePreorderGaps(completeness)).toBe('course choices incomplete for seat 2, 3.')
+    // Was 'course choices incomplete for seat 2, 3.', which never said WHAT was missing (BK-055).
+    // The manager escalation reads this sentence out on the telephone, so it now names the course.
+    expect(describePreorderGaps(completeness)).toBe('Seat 2 needs a main. Seat 3 needs a main.')
   })
 
   it('is incomplete when there are fewer seats than the party size, even if every seat has a main', () => {
@@ -151,7 +159,10 @@ describe('getPreorderCompleteness', () => {
 
     expect(completeness.complete).toBe(false)
     expect(completeness.coverCount).toBe(2)
-    expect(describePreorderGaps(completeness)).toBe('2 of 4 seats have no order started.')
+    expect(completeness.seatsWithoutCover).toEqual([3, 4])
+    // Was '2 of 4 seats have no order started.' A seat with no row owes every course its tier pays
+    // for, so it is now named with what it needs, like any other incomplete seat (BK-055).
+    expect(describePreorderGaps(completeness)).toBe('Seat 3 needs a main. Seat 4 needs a main.')
   })
 
   // A withdrawn dish is a phone call for a manager, not a chase message. If it flipped `complete`,
@@ -379,6 +390,11 @@ describe('summarisePreorderDishTotals', () => {
       date: '2026-12-12',
       bookingCount: 0,
       coverCount: 0,
+      // Added for BK-058 and BK-051: tiers, unpaid holds, late changes and withdrawn dishes, all empty.
+      pendingPaymentBookingCount: 0,
+      lateChangeCount: 0,
+      christmasTiers: { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 },
+      withdrawn: [],
       byCourse: { starter: [], main: [], dessert: [] },
       addons: [],
       addonTotalGbp: 0,
@@ -524,5 +540,275 @@ describe('add-on money', () => {
     expect(formatPreorderAddonPrice(8.5)).toBe('£8.50')
     expect(formatPreorderAddonPrice(null)).toBe('Price on the day')
     expect(formatPreorderMoney(12.7)).toBe('£12.70')
+  })
+})
+
+/**
+ * BK-055: the forms, the alerts and the save follow each guest's Christmas tier. 3 courses owes a
+ * starter, a main and a dessert; 2 courses owes a main plus a starter or a dessert, and never both;
+ * 1 course owes nothing. A booking with no tiers recorded keeps the old main-only rule.
+ */
+describe('Christmas course tiers', () => {
+  const starter = selection('starter', 'Fixture starter')
+  const main = selection('main', 'Fixture main')
+  const dessert = selection('dessert', 'Fixture dessert')
+
+  it('says what a 3 course seat still needs', () => {
+    expect(describeCoverMissingCourses({ selections: [main], courseCount: 3 })).toBe('a starter and a dessert')
+    expect(describeCoverMissingCourses({ selections: [starter, main], courseCount: 3 })).toBe('a dessert')
+    expect(describeCoverMissingCourses({ selections: [], courseCount: 3 })).toBe('a starter, a main and a dessert')
+    expect(describeCoverMissingCourses({ selections: [starter, main, dessert], courseCount: 3 })).toBeNull()
+  })
+
+  it('says what a 2 course seat still needs, and flags a starter and a dessert together', () => {
+    expect(describeCoverMissingCourses({ selections: [main], courseCount: 2 })).toBe('a starter or a dessert')
+    expect(describeCoverMissingCourses({ selections: [dessert], courseCount: 2 })).toBe('a main')
+    expect(describeCoverMissingCourses({ selections: [], courseCount: 2 })).toBe('a main, plus a starter or a dessert')
+    expect(describeCoverMissingCourses({ selections: [main, dessert], courseCount: 2 })).toBeNull()
+    expect(describeCoverMissingCourses({ selections: [starter, main, dessert], courseCount: 2 })).toBe(
+      'only one of the starter and the dessert',
+    )
+  })
+
+  it('owes nothing on 1 course, and keeps the main-only rule with no tier', () => {
+    expect(describeCoverMissingCourses({ selections: [], courseCount: 1 })).toBeNull()
+    expect(describeCoverMissingCourses({ selections: [], courseCount: null })).toBe('a main')
+    expect(describeCoverMissingCourses({ selections: [main], courseCount: null })).toBeNull()
+  })
+
+  it('names each seat, its tier and the missing course for the staff screen and the escalation', () => {
+    const order = {
+      partySize: 4,
+      courseCounts: [3, 2, 1, 3] as Array<1 | 2 | 3>,
+      covers: [cover(1, [main, starter]), cover(2, [main]), cover(3, [])],
+    }
+
+    const completeness = getPreorderCompleteness(order)
+
+    expect(completeness.complete).toBe(false)
+    expect(completeness.ordinalsMissingMain).toEqual([1, 2, 4])
+    expect(completeness.seatsWithoutCover).toEqual([4])
+    expect(describePreorderGaps(completeness)).toBe(
+      'Seat 1 (3 courses) needs a dessert. Seat 2 (2 courses) needs a starter or a dessert. ' +
+        'Seat 4 (3 courses) needs a starter, a main and a dessert.',
+    )
+  })
+
+  it('treats a booking as complete when every seat has its tier, 1 course seats included', () => {
+    const order = {
+      partySize: 3,
+      courseCounts: [3, 2, 1] as Array<1 | 2 | 3>,
+      covers: [cover(1, [starter, main, dessert]), cover(2, [main, dessert])],
+    }
+
+    expect(getPreorderCompleteness(order).complete).toBe(true)
+  })
+})
+
+describe('savePreorderCover follows the seat tier (BK-055)', () => {
+  const BOOKING = 'booking-tiers'
+
+  function db(courseCounts: number[] | null, existing: Array<{ course: string; menu_item_id: string }>) {
+    return createFakeSupabase({
+      table_bookings: [{ id: BOOKING, booking_period_id: 'period-1', christmas_course_counts: courseCounts }],
+      booking_preorder_covers: [
+        { id: 'cover-2', table_booking_id: BOOKING, ordinal: 2, guest_name: null, dietary_note: null, created_at: 'x', updated_at: 'x' },
+      ],
+      booking_preorder_selections: existing.map((row, index) => ({
+        id: `existing-${index}`,
+        cover_id: 'cover-2',
+        item_name: row.menu_item_id,
+        price_gbp: null,
+        created_at: 'x',
+        updated_at: 'x',
+        ...row,
+      })),
+      booking_period_menu_items: [
+        { id: 'starter-1', period_id: 'period-1', name: 'Fixture starter', course: 'starter', price_gbp: null, is_active: true },
+        { id: 'main-1', period_id: 'period-1', name: 'Fixture main', course: 'main', price_gbp: null, is_active: true },
+        { id: 'dessert-1', period_id: 'period-1', name: 'Fixture dessert', course: 'dessert', price_gbp: null, is_active: true },
+      ],
+    })
+  }
+
+  function heldCourses(fake: ReturnType<typeof db>): string[] {
+    return fake.tables.booking_preorder_selections.map((row) => row.course).sort()
+  }
+
+  it('refuses a dessert on a 2 course seat that already has a main and a starter, and writes nothing', async () => {
+    const fake = db([3, 2, 1, 1], [
+      { course: 'main', menu_item_id: 'main-1' },
+      { course: 'starter', menu_item_id: 'starter-1' },
+    ])
+
+    const save = savePreorderCover(fake as never, {
+      coverId: 'cover-2',
+      guestName: 'Changed name',
+      selections: [{ course: 'dessert', menuItemId: 'dessert-1' }],
+    })
+
+    await expect(save).rejects.toBeInstanceOf(PreorderCourseLimitError)
+    await expect(save).rejects.toThrow('Seat 2 is on 2 courses: choose a main, plus a starter or a dessert, not both.')
+    expect(heldCourses(fake)).toEqual(['main', 'starter'])
+    // Refused before anything was written, the name included.
+    expect(fake.tables.booking_preorder_covers[0].guest_name).toBeNull()
+  })
+
+  it('lets a 2 course seat swap its starter for a dessert in one save', async () => {
+    const fake = db([3, 2, 1, 1], [
+      { course: 'main', menu_item_id: 'main-1' },
+      { course: 'starter', menu_item_id: 'starter-1' },
+    ])
+
+    await savePreorderCover(fake as never, {
+      coverId: 'cover-2',
+      selections: [
+        { course: 'starter', menuItemId: null },
+        { course: 'dessert', menuItemId: 'dessert-1' },
+      ],
+    })
+
+    expect(heldCourses(fake)).toEqual(['dessert', 'main'])
+  })
+
+  it('takes all three courses on a 3 course seat', async () => {
+    const fake = db([1, 3, 1, 1], [])
+
+    await savePreorderCover(fake as never, {
+      coverId: 'cover-2',
+      selections: [
+        { course: 'starter', menuItemId: 'starter-1' },
+        { course: 'main', menuItemId: 'main-1' },
+        { course: 'dessert', menuItemId: 'dessert-1' },
+      ],
+    })
+
+    expect(heldCourses(fake)).toEqual(['dessert', 'main', 'starter'])
+  })
+
+  it('refuses any course on a 1 course seat', async () => {
+    const fake = db([3, 1, 3, 3], [])
+
+    await expect(
+      savePreorderCover(fake as never, { coverId: 'cover-2', selections: [{ course: 'main', menuItemId: 'main-1' }] }),
+    ).rejects.toThrow('Seat 2 is on 1 course, so there is nothing to choose in advance.')
+    expect(heldCourses(fake)).toEqual([])
+  })
+
+  it('keeps the old rule on a booking with no tiers: three courses are allowed', async () => {
+    const fake = db(null, [{ course: 'main', menu_item_id: 'main-1' }])
+
+    await savePreorderCover(fake as never, {
+      coverId: 'cover-2',
+      selections: [
+        { course: 'starter', menuItemId: 'starter-1' },
+        { course: 'dessert', menuItemId: 'dessert-1' },
+      ],
+    })
+
+    expect(heldCourses(fake)).toEqual(['dessert', 'main', 'starter'])
+  })
+})
+
+/**
+ * BK-058: the kitchen totals keep withdrawn dishes out of the counts, list them apart, and count
+ * Christmas guests by tier from the bookings themselves, because an all 1 course booking has no seats.
+ */
+describe('kitchen totals by tier', () => {
+  it('lists a withdrawn dish apart and never counts it as a plate to cook', () => {
+    const totals = summarisePreorderDishTotals({
+      date: '2026-12-12',
+      bookingCount: 1,
+      coverCount: 2,
+      selections: [
+        { course: 'main', menuItemId: 'item-a', itemName: 'Fixture main' },
+        { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', itemWithdrawn: true },
+        { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', itemWithdrawn: true },
+      ],
+    })
+
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 1 }])
+    expect(totals.withdrawn).toEqual([
+      { course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 2 },
+    ])
+  })
+
+  it('tallies guests by tier, and counts a booking with no tiers as not recorded', () => {
+    expect(
+      summariseChristmasTiers([
+        { partySize: 4, courseCounts: [3, 3, 2, 1] },
+        { partySize: 5, courseCounts: [1, 1, 1, 1, 1] },
+        { partySize: 6, courseCounts: null },
+      ]),
+    ).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 2, notRecorded: 6, guests: 15 })
+  })
+
+  it('loads a day: tiers from bookings with no seats, withdrawn dishes apart, unpaid holds counted', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 2, 1, 1] },
+        { id: 'b-2', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [1, 1, 1, 1] },
+        { id: 'b-3', booking_date: '2026-12-12', status: 'pending_payment', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 3, 3, 3] },
+        { id: 'b-4', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'regular', party_size: 2, christmas_course_counts: null },
+      ],
+      booking_preorder_covers: [
+        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1 },
+        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2 },
+        { id: 'c-3', table_booking_id: 'b-3', ordinal: 1 },
+      ],
+      booking_preorder_selections: [
+        { cover_id: 'c-1', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null },
+        { cover_id: 'c-2', course: 'main', menu_item_id: 'item-b', item_name: 'Withdrawn main', price_gbp: null },
+        { cover_id: 'c-3', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null },
+      ],
+      booking_period_menu_items: [
+        { id: 'item-a', is_active: true },
+        { id: 'item-b', is_active: false },
+      ],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.christmasTiers).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 5, notRecorded: 0, guests: 12 })
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
+    expect(totals.withdrawn).toEqual([{ course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 1 }])
+    expect(totals.pendingPaymentBookingCount).toBe(1)
+  })
+
+  // BK-051: choices a manager recorded after the cutoff are counted, and the totals say how many.
+  it('counts the choices recorded after the cutoff', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [3, 3, 1, 1], booking_period_id: 'p-1' },
+      ],
+      booking_periods: [{ id: 'p-1', preorder_cutoff_days: 7 }],
+      booking_preorder_covers: [
+        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1 },
+        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2 },
+      ],
+      booking_preorder_selections: [
+        { cover_id: 'c-1', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null, created_at: '2026-12-05T11:00:00Z' },
+        { cover_id: 'c-2', course: 'main', menu_item_id: 'item-a', item_name: 'Fixture main', price_gbp: null, created_at: '2026-12-05T12:30:00Z' },
+      ],
+      booking_period_menu_items: [{ id: 'item-a', is_active: true }],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
+    expect(totals.lateChangeCount).toBe(1)
+  })
+
+  it('still reports the tiers on a day where every Christmas guest is on 1 course', async () => {
+    const fake = createFakeSupabase({
+      table_bookings: [
+        { id: 'b-1', booking_date: '2026-12-12', status: 'confirmed', booking_type: 'christmas', party_size: 4, christmas_course_counts: [1, 1, 1, 1] },
+      ],
+    })
+
+    const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
+
+    expect(totals.coverCount).toBe(0)
+    expect(totals.christmasTiers.oneCourse).toBe(4)
   })
 })

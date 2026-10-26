@@ -26,8 +26,17 @@ export interface TableBookingSheetPreorderAddonTotal {
 export interface TableBookingSheetPreorderCover {
   /** "Seat 1", or "Seat 1 · Jo Bloggs" when a name was given. Never blank. */
   seatLabel: string
-  /** Starter, main, dessert, in that order. Empty when this seat has chosen nothing yet. */
-  courses: Array<{ courseLabel: string; itemName: string }>
+  /** "3 courses", "2 courses" or "1 course": what this guest is paying for. Omitted with no tier. */
+  tierLabel?: string
+  /** A 1 course guest chooses on the day, so an empty course list is not a missing order. */
+  choosesOnTheDay?: boolean
+  /** A manager changed this seat after the pre-order cutoff, so the kitchen ordered before it. */
+  lateChange?: boolean
+  /**
+   * Starter, main, dessert, in that order. Empty when this seat has chosen nothing yet. `withdrawn`
+   * marks a dish since taken off the menu, which the kitchen must not cook as chosen.
+   */
+  courses: Array<{ courseLabel: string; itemName: string; withdrawn?: boolean }>
   /**
    * Extras this seat ticked, on top of the courses above. Optional on the interface so a sheet with
    * no add-ons, and every caller written before they existed, is unchanged.
@@ -76,6 +85,11 @@ export interface TableBookingSheetData {
   generatedAt: string
   /** Seasonal pre-order, when the booking has one. Omitted everywhere else. */
   preorder?: TableBookingSheetPreorder
+  /**
+   * Christmas only: "4 x 3 courses, 2 x 1 course", so front of house can price the bill and the
+   * kitchen knows how many 1 course guests to expect. Omitted on every other booking.
+   */
+  christmasCourses?: string
 }
 
 interface TemplateOptions {
@@ -199,6 +213,7 @@ function preorderPageStyles(): string {
   .seat-course:last-child{ margin-bottom:0; }
   .seat-course-label{ display:inline-block; width:20mm; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); }
   .seat-empty{ font-size:13px; color:var(--ink-mute); margin:0; }
+  .seat-withdrawn{ font-weight:600; font-size:11px; letter-spacing:.04em; margin-left:2mm; }
   .seat-note{ margin:2.6mm 0 0; padding-top:2.4mm; border-top:1px solid var(--rule); }
   .seat-note-label{ display:block; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 1.4mm; }
   .seat-note-value{ font-size:13px; line-height:1.45; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }
@@ -256,10 +271,16 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
     ? cover.courses
         .map(
           (course) =>
-            `<p class="seat-course"><span class="seat-course-label">${escapeHtml(course.courseLabel)}</span>${escapeHtml(course.itemName)}</p>`
+            `<p class="seat-course"><span class="seat-course-label">${escapeHtml(course.courseLabel)}</span>${escapeHtml(course.itemName)}${course.withdrawn ? '<span class="seat-withdrawn">OFF THE MENU, ring the guest</span>' : ''}</p>`
         )
         .join('\n          ')
-    : '<p class="seat-empty">Nothing chosen yet</p>'
+    : cover.choosesOnTheDay
+      ? '<p class="seat-empty">1 course, choosing on the day</p>'
+      : '<p class="seat-empty">Nothing chosen yet</p>'
+
+  const head = [cover.seatLabel, cover.tierLabel, cover.lateChange ? 'CHANGED AFTER THE CUTOFF' : null]
+    .filter(Boolean)
+    .join(' · ')
 
   const note = cover.dietaryNote
     ? `
@@ -271,7 +292,7 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
 
   return `
         <div class="seat">
-          <p class="seat-head">${escapeHtml(cover.seatLabel)}</p>
+          <p class="seat-head">${escapeHtml(head)}</p>
           ${courses}${renderCoverAddons(cover)}${note}
         </div>`
 }
@@ -318,7 +339,8 @@ function renderPreorderPage(
         <img class="mast-logo" src="${escapeHtml(options.logoDataUrl)}" alt="The Anchor">
         <p class="mast-kicker">Kitchen pre-order</p>
         <h1 class="mast-title">${escapeHtml(data.customerName)}</h1>
-        <p class="mast-note">Reference <span class="booking-ref">${escapeHtml(data.bookingRef)}</span> · ${escapeHtml(data.bookingDate)} · ${escapeHtml(data.startTime)} · ${escapeHtml(data.partySize)} guests</p>
+        <p class="mast-note">Reference <span class="booking-ref">${escapeHtml(data.bookingRef)}</span> · ${escapeHtml(data.bookingDate)} · ${escapeHtml(data.startTime)} · ${escapeHtml(data.partySize)} guests</p>${data.christmasCourses ? `
+        <p class="mast-note">Christmas courses: ${escapeHtml(data.christmasCourses)}</p>` : ''}
       </div>
 
       <div class="alerts">
@@ -380,6 +402,10 @@ ${data.requirements.length ? `
       <div class="needs">
         <p class="needs-label">Seating needs</p>
         <p class="needs-value">${data.requirements.map((item) => escapeHtml(item)).join(' · ')}</p>
+      </div>` : ''}${data.christmasCourses ? `
+      <div class="needs">
+        <p class="needs-label">Christmas courses</p>
+        <p class="needs-value">${escapeHtml(data.christmasCourses)}</p>
       </div>` : ''}
 
       <div class="foot">

@@ -18,6 +18,7 @@ import {
   getCoverAddons,
   getCoverCourse,
   getPreorderCompleteness,
+  getSeatCourseCount,
   summariseCoverAddons,
   summariseOrderAddons,
 } from '@/lib/table-bookings/preorder'
@@ -29,6 +30,7 @@ import {
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderAddonSummary,
   type PreorderCourse,
+  type PreorderCourseCount,
   type PreorderCover,
 } from '@/types/preorders'
 import { PREORDER_SEAT_BLOCK_CLASS } from './formStyles'
@@ -37,10 +39,12 @@ import type { BookerPreorderView } from './preorder-data'
 /**
  * The booker's food choices, on the manage-booking page they already have a link to.
  *
- * One block per seat: an optional name, a main, an optional starter, an optional dessert, any
- * add-ons, and an optional dietary requirement. Only the main is required for the order to count as
- * complete, so nothing here is marked `required`: a booker who knows two of six choices must be able
- * to save what they have and come back. The page tells them what is still outstanding instead.
+ * One block per seat: an optional name, the courses that seat's Christmas tier pays for, any
+ * add-ons, and an optional dietary requirement. Each seat says its tier: 3 courses is a starter, a
+ * main and a dessert; 2 courses is a main plus a starter or a dessert; 1 course has nothing to choose
+ * in advance. A booking with no tiers recorded keeps its old rule, a main with the rest optional.
+ * Nothing here is marked `required`: a booker who knows two of six choices must be able to save what
+ * they have and come back. The page tells them, seat by seat, what is still outstanding instead.
  *
  * ADD-ONS ARE TICK-BOXES, not a fourth dropdown. A seat may have several, and the farmhouse
  * cheeseboard exists to be had ALONGSIDE a pudding rather than instead of one, which is what a
@@ -63,6 +67,11 @@ type PreorderSectionProps = BookerPreorderView & {
   actionUrl: string
   /** Seat whose save failed, so its inputs can be marked invalid and pointed at the reason. */
   errorSeat: number | null
+  /**
+   * Why that seat failed, when it is known. `courses` means the seat chose more courses than its
+   * tier pays for; anything else is the general "could not save" reason.
+   */
+  errorReason?: 'courses' | null
 }
 
 /** The id of the one verbatim add-on note, pointed at by every seat's add-on group. */
@@ -109,6 +118,37 @@ function addonCountPhrase(count: number): string {
   return count === 1 ? '1 add-on' : `${count} add-ons`
 }
 
+/**
+ * What a seat on this tier chooses, shown under the seat's title. Null for a seat with no tier
+ * recorded, which keeps the booking's old wording.
+ */
+function tierInstruction(courseCount: PreorderCourseCount | null): string | null {
+  if (courseCount === 3) return '3 courses: choose a starter, a main and a dessert.'
+  if (courseCount === 2) return '2 courses: choose a main, plus a starter or a dessert.'
+  return null
+}
+
+/** The label above one course's dropdown. Only an untiered seat calls a course optional. */
+function courseLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+  if (courseCount !== null || course === 'main') return PREORDER_COURSE_LABELS[course]
+  return `${PREORDER_COURSE_LABELS[course]} (optional)`
+}
+
+/**
+ * The empty first option. A 3 course seat must choose every course, and a main is always needed; a
+ * 2 course seat leaves one of the starter and the dessert empty, so "None, thank you" is the right
+ * answer for that one.
+ */
+function emptyOptionLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+  if (course === 'main' || courseCount === 3) return 'Please choose'
+  return 'None, thank you'
+}
+
+/** "Seat 2 needs a dessert. Seat 4 needs a starter or a dessert." for the alert above the form. */
+function describeOutstanding(gaps: Array<{ ordinal: number; missing: string }>): string {
+  return gaps.map((gap) => `Seat ${gap.ordinal} needs ${gap.missing}.`).join(' ')
+}
+
 /** Seat title, shared by the editable fieldset legend and the read-only row. */
 const SEAT_TITLE_CLASS =
   'font-anchor-body text-guest-body font-bold leading-guest-snug text-guest-text-strong'
@@ -123,6 +163,7 @@ export function PreorderSection({
   cutoff,
   actionUrl,
   errorSeat,
+  errorReason = null,
 }: PreorderSectionProps) {
   const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
   const seats = Array.from({ length: Math.max(1, order.partySize) }, (_, index) => index + 1)
@@ -162,8 +203,8 @@ export function PreorderSection({
 
           {!completeness.complete && (
             <GuestAlert tone="notice">
-              {completeness.ordinalsMissingMain.length > 0 || completeness.coverCount < completeness.partySize
-                ? 'Still to choose: a main course for every seat below.'
+              {completeness.seatsIncomplete.length > 0
+                ? `Still to choose: ${describeOutstanding(completeness.seatsIncomplete)}`
                 : 'Please finish choosing below.'}
             </GuestAlert>
           )}
@@ -173,10 +214,13 @@ export function PreorderSection({
 
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
-              if (cover?.courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              const courseCount = getSeatCourseCount(order, ordinal)
+              if (courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              const instruction = tierInstruction(courseCount)
               const withdrawn = withdrawnChoices(cover)
               const hasError = errorSeat === ordinal
               const noteIds = [
+                instruction ? `seat-${ordinal}-courses` : null,
                 withdrawn.length > 0 ? `seat-${ordinal}-withdrawn` : null,
                 hasError ? `seat-${ordinal}-error` : null,
               ].filter(Boolean) as string[]
@@ -201,10 +245,17 @@ export function PreorderSection({
                       </GuestAlert>
                     )}
 
+                    {instruction && (
+                      <p id={`seat-${ordinal}-courses`} className={GUEST_BODY_CLASS}>
+                        {instruction}
+                      </p>
+                    )}
+
                     {hasError && (
                       <GuestAlert id={`seat-${ordinal}-error`} tone="problem">
-                        We could not save this seat. The dish you chose may have come off the menu. Please
-                        choose again, or call us on {contactPhone}.
+                        {errorReason === 'courses' && courseCount === 2
+                          ? `We could not save this seat. It is on 2 courses, so choose a main, plus a starter or a dessert, not both.`
+                          : `We could not save this seat. The dish you chose may have come off the menu. Please choose again, or call us on ${contactPhone}.`}
                       </GuestAlert>
                     )}
 
@@ -228,11 +279,7 @@ export function PreorderSection({
                         const courseId = `seat-${ordinal}-${course}`
 
                         return (
-                          <GuestField
-                            key={course}
-                            id={courseId}
-                            label={`${PREORDER_COURSE_LABELS[course]}${course === 'main' ? '' : ' (optional)'}`}
-                          >
+                          <GuestField key={course} id={courseId} label={courseLabel(course, courseCount)}>
                             <GuestSelect
                               {...guestFieldControlProps({ id: courseId })}
                               name={`seat_${ordinal}_${course}`}
@@ -241,9 +288,7 @@ export function PreorderSection({
                               aria-describedby={describedBy}
                               invalid={hasError}
                             >
-                              <option value="">
-                                {course === 'main' ? 'Please choose' : 'None, thank you'}
-                              </option>
+                              <option value="">{emptyOptionLabel(course, courseCount)}</option>
                               {items.map((item) => (
                                 <option key={item.id} value={item.id}>
                                   {item.name}
@@ -349,7 +394,8 @@ export function PreorderSection({
           <ul className="flex flex-col gap-guest-md">
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
-              if (cover?.courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              const courseCount = getSeatCourseCount(order, ordinal)
+              if (courseCount === 1) return <li key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</li>
               const chosen = PREORDER_COURSES.map((course) => {
                 const selection = cover ? getCoverCourse(cover, course) : null
                 return selection ? `${PREORDER_COURSE_LABELS[course]}: ${selection.itemName}` : null
@@ -363,7 +409,10 @@ export function PreorderSection({
 
               return (
                 <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, GUEST_BODY_CLASS)}>
-                  <p className={SEAT_TITLE_CLASS}>{seatLabel(cover, ordinal)}</p>
+                  <p className={SEAT_TITLE_CLASS}>
+                    {seatLabel(cover, ordinal)}
+                    {courseCount ? `, ${courseCount} courses` : ''}
+                  </p>
                   {chosen.length > 0 ? (
                     <ul className="mt-1">
                       {chosen.map((line) => (
