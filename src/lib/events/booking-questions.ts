@@ -22,11 +22,33 @@ export const bookingQuestionsSchema = z.array(bookingQuestionSchema).max(20).sup
 })
 export type BookingQuestion = z.infer<typeof bookingQuestionSchema>
 
+/**
+ * Whether a booking for this event must carry a name and the event's answers for every ticket
+ * (BK-014, customer bookings review of 24 October 2026).
+ *
+ * One setting on each event, events.collect_guest_details. Unset means the default, which is
+ * owner decision D4: events paid online in advance need guest details, others do not, and a
+ * manager can switch any paid event either way in Ticket settings. The rule used to be worked
+ * out separately in the website form, twice in the booking route and in the database function,
+ * and the copies disagreed. Now the website reads `guest_details_required` from /api/events,
+ * and create_event_booking_v08 applies the same rule to the same column.
+ */
+export function requiresGuestDetails(event: {
+  collect_guest_details?: boolean | null
+  payment_mode?: string | null
+}): boolean {
+  if (typeof event.collect_guest_details === 'boolean') return event.collect_guest_details
+  return event.payment_mode === 'prepaid'
+}
+
 export const eventAttendeeInputSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1, 'Each ticket needs a guest name').max(120),
   ticket_type_id: z.string().uuid().nullable().optional(),
   answers: z.record(z.string().uuid(), z.string().trim().max(2000)),
+  // The booker ticked "everyone I've added is happy to share these details" (BK-017). The
+  // booking function stamps the guest with the time it was saved.
+  details_confirmed: z.literal(true).optional(),
 })
 export const eventAttendeesInputSchema = z.array(eventAttendeeInputSchema).max(20).superRefine((attendees, context) => {
   if (new Set(attendees.map(attendee => attendee.id)).size !== attendees.length) {
@@ -39,6 +61,10 @@ export interface StoredEventAttendee {
   name: string
   ticket_type_id: string | null
   answers: Array<{ question_id: string; label: string; type: BookingQuestion['type']; value: string; required?: boolean; options?: string[] }>
+  /** When the booker confirmed the guest was happy to share these details (BK-017). */
+  details_confirmed_at?: string
+  /** When the 90-day retention job blanked the answers (owner decision D6). */
+  details_removed_at?: string
 }
 
 /** Validate against the current event, never against question wording supplied by a buyer. */

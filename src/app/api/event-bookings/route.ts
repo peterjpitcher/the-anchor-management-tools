@@ -27,8 +27,7 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
-import { eventAttendeesInputSchema, bookingQuestionsSchema, validateEventAttendees } from '@/lib/events/booking-questions'
-import { resolveEventTicketPriceAmount } from '@/lib/events/pricing'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -245,7 +244,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions, collect_guest_details')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -257,19 +256,16 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Selected event could not be found', 'NOT_FOUND', 404)
       }
 
-      let paidEvent = eventRow.payment_mode !== 'free' && resolveEventTicketPriceAmount(eventRow) > 0
-      if (!paidEvent && (eventRow.payment_mode === 'prepaid' || eventRow.payment_mode === 'cash_only')) {
-        const { data: pricedTypes, error: priceError } = await supabase.from('event_ticket_types').select('base_price').eq('event_id', eventRow.id).eq('is_active', true)
-        if (priceError) return createErrorResponse('Ticket prices could not be loaded', 'DATABASE_ERROR', 500)
-        paidEvent = (pricedTypes ?? []).some(type => Number(type.base_price) > 0)
-      }
+      // One rule, the event's own setting (BK-014, owner decision D4). The website reads the same
+      // answer from /api/events and create_event_booking_v08 applies it to the same column.
+      const guestDetailsRequired = requiresGuestDetails(eventRow)
       const questions = bookingQuestionsSchema.safeParse(eventRow.booking_questions ?? [])
       if (!questions.success) return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
       const guestError = validateEventAttendees({
         attendees: parsed.data.attendees,
         questions: questions.data,
         seats: parsed.data.seats,
-        required: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
+        required: guestDetailsRequired,
         selections: parsed.data.ticket_selections,
       })
       if (guestError) return createErrorResponse(guestError, questions.data.length ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
@@ -413,7 +409,7 @@ export async function POST(request: NextRequest) {
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
         attendees: parsed.data.attendees,
         expectedTotal: parsed.data.expected_total,
-        requireGuestDetails: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
+        requireGuestDetails: guestDetailsRequired,
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
         attribution,
         ticketSelections,

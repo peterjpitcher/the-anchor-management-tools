@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alert, Card, CardHeader, CardBody, Button, Empty, FormFooter, Input, Select, Checkbox, SubHeading, toast } from '@/ds'
 import { saveEventTicketSettings } from '@/app/actions/event-ticket-settings'
-import type { BookingQuestion } from '@/lib/events/booking-questions'
+import { requiresGuestDetails, type BookingQuestion } from '@/lib/events/booking-questions'
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 
 export interface TicketSettingsEvent {
@@ -14,6 +14,7 @@ export interface TicketSettingsEvent {
   online_discount_value?: number | string | null
   online_discount_ends_at?: string | null
   booking_questions?: BookingQuestion[] | null
+  collect_guest_details?: boolean | null
 }
 
 interface Props { event: TicketSettingsEvent; canManage: boolean }
@@ -25,9 +26,12 @@ export function EventTicketSettings({ event, canManage }: Props) {
   const [discount, setDiscount] = useState(event.online_discount_value == null ? '' : String(event.online_discount_value))
   const [endsAt, setEndsAt] = useState(event.online_discount_ends_at ? utcIsoToLondonLocalInput(event.online_discount_ends_at) : '')
   const [questions, setQuestions] = useState<BookingQuestion[]>(event.booking_questions ?? [])
+  // Null until a manager chooses: the switch then follows the payment method (owner decision D4).
+  const [collectChoice, setCollectChoice] = useState<boolean | null>(event.collect_guest_details ?? null)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const paid = mode !== 'free'
+  const collectGuestDetails = paid && requiresGuestDetails({ collect_guest_details: collectChoice, payment_mode: mode })
   const addQuestion = (label = '') => setQuestions(current => [...current, { id: crypto.randomUUID(), label, type: 'text', required: false }])
   const changeQuestion = (id: string, patch: Partial<BookingQuestion>) => setQuestions(current => current.map(question => question.id === id ? { ...question, ...patch } : question))
   const moveQuestion = (index: number, direction: -1 | 1) => setQuestions(current => {
@@ -53,6 +57,7 @@ export function EventTicketSettings({ event, canManage }: Props) {
           online_discount_value: mode === 'prepaid' && discountType && discount.trim() ? Number(discount) : null,
           online_discount_ends_at: mode === 'prepaid' && discountType ? deadline : null,
           booking_questions: paid ? questions : [],
+          collect_guest_details: collectGuestDetails,
         })
         if (result.error) { setError(result.error); return }
         toast.success('Ticket settings saved')
@@ -69,9 +74,29 @@ export function EventTicketSettings({ event, canManage }: Props) {
       <Card>
         <CardHeader title="Payment and Guest Details" subtitle="Choose how guests pay and what each person needs to tell us" />
         <CardBody>
-          <Select label="Payment method" value={mode} onChange={event => setMode(event.target.value)} options={[
-            { value: 'free', label: 'Free entry' }, { value: 'cash_only', label: 'Pay on arrival' }, { value: 'prepaid', label: 'Pay online' },
-          ]} />
+          <div className="space-y-4">
+            <Select label="Payment method" value={mode} onChange={event => setMode(event.target.value)} options={[
+              { value: 'free', label: 'Free entry' }, { value: 'cash_only', label: 'Pay on arrival' }, { value: 'prepaid', label: 'Pay online' },
+            ]} />
+            {paid && <>
+              <Checkbox
+                label="Ask for each guest's name and answers"
+                checked={collectGuestDetails}
+                onChange={checked => setCollectChoice(checked)}
+              />
+              <p className="text-sm text-text-muted">
+                {collectGuestDetails
+                  ? 'Website bookings need a name for every ticket and answers to the questions below.'
+                  : 'Website bookings only need the booker\'s details. Switch this on to ask every guest for their name and answers.'}
+                {' '}Events paid online ask by default.
+              </p>
+              {!collectGuestDetails && questions.length > 0 && (
+                <Alert tone="warning" size="sm" role="status">
+                  This event has {questions.length === 1 ? 'a guest question' : `${questions.length} guest questions`}, and nobody is asked them while guest details are off. Switch guest details on, or remove the questions, before saving.
+                </Alert>
+              )}
+            </>}
+          </div>
         </CardBody>
       </Card>
       {mode === 'prepaid' && (
@@ -92,16 +117,16 @@ export function EventTicketSettings({ event, canManage }: Props) {
           </CardBody>
         </Card>
       )}
-      {paid && (
+      {paid && collectGuestDetails && (
         <Card>
           <CardHeader title="Questions for Every Guest" />
           <CardBody className="space-y-4">
-            <p className="text-sm text-text-muted">Online-paid tickets collect a name for each person. Adding questions also collects individual names for pay-on-arrival bookings. Leave this empty to keep ordinary reservations simple. Saved bookings keep their original answers.</p>
+            <p className="text-sm text-text-muted">Every guest answers these when they book. Leave this empty to ask for names only. Bookings already made keep the answers they gave.</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any allergies or dietary requirements?')}>Add Allergy Question</Button>
               <Button type="button" variant="secondary" size="sm" onClick={() => addQuestion('Do you have any accessibility needs we should be aware of?')}>Add Accessibility Question</Button>
             </div>
-            {questions.length === 0 && <Empty size="sm" title="No extra questions" description={mode === 'prepaid' ? 'Guests will only need to give each ticket holder’s name.' : 'Pay-on-arrival reservations keep the usual quick booking form.'} />}
+            {questions.length === 0 && <Empty size="sm" title="No extra questions" description="Guests will only need to give each ticket holder’s name." />}
             {questions.map((question, index) => <div key={question.id} className="space-y-3 rounded-default border border-border p-4">
               <div className="flex items-center justify-between gap-2"><SubHeading>Guest Question {index + 1}</SubHeading>
                 <div className="flex gap-1">
