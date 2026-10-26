@@ -128,14 +128,16 @@ const LEGACY_FULL_REFUND_TEXT = `The Anchor: Sarah, your booking on ${LEGACY_TEX
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => key === 'table_cancelled_email_first')
+  // Every messaging flag reads off, and the message still goes email first: since BK-129 no flag
+  // gates it (table_cancelled_email_first is gone).
+  vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
   vi.mocked(isEmailSuppressed).mockResolvedValue(false)
   vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true } as never)
   vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 're_1' } as never)
   vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM1' } as never)
 })
 
-describe('cancellation notice, email first (flag on)', () => {
+describe('cancellation notice, email first', () => {
   it('emails a guest with a usable address and sends no text', async () => {
     const db = buildDb(SARAH)
 
@@ -350,45 +352,8 @@ describe('one cancellation email key per cancellation', () => {
   })
 })
 
-describe('cancellation notice with the flag off: exactly today', () => {
-  beforeEach(() => {
-    vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
-  })
-
-  it('sends the same text with the same metadata and no email', async () => {
-    const db = buildDb(SARAH)
-
-    const outcome = await cancel(db)
-
-    expect(outcome).toBeNull()
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(sendSMS).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(sendSMS).mock.calls[0]).toEqual([
-      '+447700900123',
-      LEGACY_FULL_REFUND_TEXT,
-      { customerId: 'cust-1', metadata: { booking_reference: 'TB-A1B2', template_key: 'table_booking_cancelled' } },
-    ])
-    // Today's narrow customer read, and today's audit row.
-    const customerQuery = db.queries.find((query) => query.table === 'customers')!
-    expect(argsOf(customerQuery, 'select')[0]).toEqual(['id, first_name, mobile_number, sms_status'])
-    expect(auditCalls()).toEqual([
-      expect.objectContaining({
-        operation_type: 'table_booking.sms_sent',
-        additional_info: expect.objectContaining({ sms_type: 'table_booking_cancelled' }),
-      }),
-    ])
-    expect(db.queries.some((query) => query.table === 'notification_deliveries')).toBe(false)
-  })
-
-  it('still says nothing to a guest without an active mobile', async () => {
-    const db = buildDb({ ...SARAH, sms_status: 'opted_out' })
-
-    await cancel(db)
-
-    expect(sendSMS).not.toHaveBeenCalled()
-    expect(sendEmail).not.toHaveBeenCalled()
-  })
-})
+// The text-only path behind table_cancelled_email_first is gone (BK-129): the message always
+// goes email first, so there is no flag-off case left to pin.
 
 // ---------------------------------------------------------------------------
 // Fixture renders. Run in both the London and the UTC suite.

@@ -163,12 +163,11 @@ export async function GET(request: NextRequest) {
             bookingReference: booking.booking_reference,
             bookingDate: booking.booking_date,
             refundResult: { refunded: false, reason: 'no_deposit' },
-            // Lets the email-first path (flag table_cancelled_email_first) key its duplicate
-            // protection and the text's log row to this booking.
+            // Keys the email's duplicate protection and the text's log row to this booking.
             tableBookingId: booking.id,
           })
-          // Only the email-first path reports an outcome; its audit row names the booking.
-          if (notice && (notice.status === 'failed' || notice.status === 'no_channel')) {
+          // The audit row the notice writes names the booking.
+          if (notice.status === 'failed' || notice.status === 'no_channel') {
             guestsNotReached++
           }
         } catch (err) {

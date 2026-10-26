@@ -21,7 +21,6 @@ const SMS_ONLY: NotificationChannel[] = ['sms']
 
 const TEMPLATE_ROUTE_RULES: TemplateRouteRule[] = [
   { type: 'prefix', match: 'table_booking_', channels: EMAIL_THEN_MESSAGING },
-  { type: 'exact', match: 'sunday_preorder_request', channels: SMS_ONLY },
   { type: 'prefix', match: 'event_payment_', channels: EMAIL_THEN_MESSAGING },
   { type: 'prefix', match: 'event_booking_', channels: EMAIL_THEN_MESSAGING },
   { type: 'prefix', match: 'event_ticket_', channels: EMAIL_THEN_MESSAGING },

@@ -132,7 +132,9 @@ beforeEach(() => {
   claims.clear()
   loggedEmails = new Set()
   tokenCounter = 0
-  vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => key === 'table_deposit_confirmed_email_first')
+  // Every messaging flag reads off, and the message still goes email first: since BK-129 no flag
+  // gates it (table_deposit_confirmed_email_first is gone).
+  vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
   vi.mocked(isEmailSuppressed).mockResolvedValue(false)
   vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true } as never)
   vi.mocked(sendEmail).mockImplementation(async (options) => {
@@ -142,7 +144,7 @@ beforeEach(() => {
   vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM9' } as never)
 })
 
-describe('deposit confirmation, email first (flag on)', () => {
+describe('deposit confirmation, email first', () => {
   it('emails a guest with a usable address, with the shared short link, and sends no text', async () => {
     const db = buildDb()
 
@@ -258,27 +260,8 @@ describe('deposit confirmation, email first (flag on)', () => {
   })
 })
 
-describe('deposit confirmation with the flag off: exactly today', () => {
-  it('sends the text alone, with the long manage link, and takes no claim', async () => {
-    vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
-    const db = buildDb()
-
-    const result = await sendTableBookingConfirmedAfterDepositSmsIfAllowed(db.client as never, BOOKING.id)
-
-    expect(result).toEqual({ success: true, code: null, logFailure: false })
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(claims.size).toBe(0)
-    const [to, body, options] = vi.mocked(sendSMS).mock.calls[0]
-    expect(to).toBe('+447700900999')
-    expect(body).toMatch(/^The Anchor: Pat! Deposit sorted, your table for 16 people on .+ is locked in\. See you then! High chair reserved x1\. https:\/\/management\.example\.com\/g\/token-1\/table-manage$/)
-    expect(options).toEqual({
-      customerId: 'cust-9',
-      metadata: { table_booking_id: BOOKING.id, template_key: 'table_booking_deposit_confirmed' },
-    })
-    const customerQuery = db.queries.find((query) => query.table === 'customers')!
-    expect(argsOf(customerQuery, 'select')[0]).toEqual(['id, first_name, mobile_number, sms_status'])
-  })
-})
+// The text-only path behind table_deposit_confirmed_email_first is gone (BK-129): the message always
+// goes email first, so there is no flag-off case left to pin.
 
 describe('deposit confirmation email renders', () => {
   it('carries every fact of the text and the ones it leaves out', () => {
