@@ -397,4 +397,46 @@ describe('notifyCustomer email first, with SMS as the fallback', () => {
     }))
     expect(finalDeliveryUpdate()).toEqual(expect.objectContaining({ final_status: 'no_channel' }))
   })
+
+  // BK-085: the website asks for no text while a deposit payer is on the payment screen, which is
+  // the 'email_only' policy. The template rule used to replace the policy, so a guest whose email
+  // was unusable, or failed, was texted the payment link anyway.
+  function depositRequest(overrides: { customer?: Record<string, unknown> } = {}) {
+    return notifyCustomer({
+      policy: 'email_only',
+      urgency: 'standard',
+      category: 'transactional',
+      customer: { ...customer, ...overrides.customer },
+      email: {
+        to: (overrides.customer?.email as string | undefined) ?? customer.email,
+        subject: 'Pay your deposit',
+        text: 'Pay your deposit',
+        commType: 'table_booking_pending_payment',
+        tableBookingId: 'booking-1',
+      },
+      sms: {
+        body: 'The Anchor: please pay your deposit.',
+        options: { metadata: { template_key: 'table_booking_pending_payment' } },
+      },
+    })
+  }
+
+  it("keeps 'email only' to email when the template has a rule: an unusable address gets no channel and no text", async () => {
+    const result = await depositRequest({ customer: { email: 'not-an-address' } })
+
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sendWhatsApp).not.toHaveBeenCalled()
+    expect(result).toEqual(expect.objectContaining({ finalStatus: 'no_channel', sentChannel: null, noChannelReason: 'no_channel_available' }))
+  })
+
+  it("does not fall back to a text when an 'email only' email fails", async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Resend 503' })
+
+    const result = await depositRequest()
+
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(result).toEqual(expect.objectContaining({ finalStatus: 'failed', sentChannel: null }))
+  })
 })
