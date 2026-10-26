@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
+import { alertStaffToCaptureOnClosedBooking } from '@/lib/paypal-money-alerts'
 import {
   buildPayPalDepositCompletedUpdate,
   getPayPalDepositCaptureBlockReason,
@@ -74,7 +75,22 @@ export async function handleDepositCaptureCompleted(
         event_id: event.id,
         source: 'webhook',
         reason: blockReason,
+        amount: resource.amount?.value ?? null,
+        action_needed:
+          'PayPal took this deposit after the booking stopped taking payment. Refund it in PayPal, or record it on the booking if the guest is still coming',
       },
+    })
+    // The money is in PayPal with nothing on the booking, so the cancellation refund cannot find
+    // it. A log line and an audit row reached nobody (BK-010): tell staff.
+    await alertStaffToCaptureOnClosedBooking(supabase, {
+      domain: 'table_bookings',
+      key: booking.id,
+      eventId: event.id,
+      eventType: event.event_type,
+      captureId,
+      orderId,
+      amountGbp: parsePayPalAmountGbp(resource.amount?.value ?? null),
+      blockReason,
     })
     return
   }
