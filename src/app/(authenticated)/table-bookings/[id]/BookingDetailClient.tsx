@@ -1,6 +1,6 @@
 'use client'
 
-import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
+import { ChristmasCourseFields, type ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -429,7 +429,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
-  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
+  const [christmasPartyChange, setChristmasPartyChange] = useState<ChristmasPartyChange | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [partySizeMoveTableId, setPartySizeMoveTableId] = useState('')
@@ -767,7 +767,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
           body: {
             party_size: nextSize,
-            christmas_course_counts: christmasCourseCounts,
+            christmas_course_counts: christmasPartyChange?.courseCounts,
+            removed_seats: christmasPartyChange?.removedSeats,
             send_sms: partySizeEditSendSms,
             ...(selectedMoveTable
               ? {
@@ -1736,7 +1737,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
             />
-            <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
+            <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasPartyChange} />
             {partySizeNeedsLargerTable && (
               <>
                 <Alert tone="warning" role="status">
