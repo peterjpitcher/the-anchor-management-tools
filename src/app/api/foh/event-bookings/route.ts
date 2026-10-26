@@ -109,6 +109,8 @@ type FohEventBookingResponseData = {
   total_remaining: number | null
   table_booking_id: string | null
   table_name: string | null
+  /** False when a confirmation was due and none reached the guest (BK-162). */
+  notification_sent: boolean | null
 }
 
 // ─── FOH-specific helpers ─────────────────────────────────────────────────────
@@ -253,6 +255,8 @@ async function createFohEventBooking(
   const walkInNameParts = splitWalkInGuestName(payload.walk_in_guest_name)
   const fallbackFirstName = payload.first_name || walkInNameParts.firstName
   const fallbackLastName = payload.last_name || walkInNameParts.lastName
+  // The typed email when the matched customer's record holds a different one (BK-078).
+  let bookingContactEmail: string | null = null
 
   if (payload.customer_id) {
     const { data: selectedCustomer, error: selectedCustomerError } = await auth.supabase
@@ -352,8 +356,9 @@ async function createFohEventBooking(
       firstName: fallbackFirstName,
       lastName: fallbackLastName,
       email: payload.email
-    })
+    }, { trustedEntry: true })
     customerId = customerResolution.customerId
+    bookingContactEmail = customerResolution.bookingContactEmail ?? null
   } else if (payload.walk_in === true) {
     try {
       const walkInCustomer = await createWalkInCustomer(auth.supabase, {
@@ -399,7 +404,8 @@ async function createFohEventBooking(
     shouldSendSms: shouldSendBookingSms && Boolean(normalizedPhone),
     supabaseClient: auth.supabase,
     logTag: 'FOH event booking',  // lowercase; capitalised automatically in service log messages
-    firstName: fallbackFirstName || undefined
+    firstName: fallbackFirstName || undefined,
+    contactEmail: bookingContactEmail
   })
 
   if (result.rpcFailed) {
@@ -437,8 +443,15 @@ async function createFohEventBooking(
     tableBookingId,
     tableName,
     eventSeatingType,
-    rpcResult
+    rpcResult,
+    notificationChannel
   } = result
+
+  // Whether a confirmation is known to have reached the guest, so staff can tell them when none
+  // did (BK-162). Null when none was due: a walk-in, a blocked booking or no number.
+  const confirmationDue =
+    source !== 'walk-in' && shouldSendBookingSms && (resolvedState === 'confirmed' || resolvedState === 'pending_payment')
+  const notificationSent = confirmationDue ? Boolean(notificationChannel) : null
 
   // A booking exists only in these two states. Decided on the state, never on whether an id came
   // back (tasks/lessons.md, 2026-07-03). The failure returns above leave it unset, and the
@@ -572,7 +585,8 @@ async function createFohEventBooking(
         standing_remaining: rpcResult.standing_remaining ?? null,
         total_remaining: rpcResult.total_remaining ?? null,
         table_booking_id: tableBookingId,
-        table_name: tableName
+        table_name: tableName,
+        notification_sent: notificationSent
       } satisfies FohEventBookingResponseData,
       meta: {
         status_code: responseStatus,

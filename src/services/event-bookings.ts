@@ -10,6 +10,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 import { sendEventBookingConfirmedEmail, sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
+import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
 import type { TicketSelectionInput } from '@/lib/events/ticket-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -144,6 +145,12 @@ export type CreateBookingParams = {
   ticketSelections?: TicketSelectionInput[]
   diningRequest?: 'before_event' | 'during_event' | 'not_sure'
   earlyArrivalRequest?: boolean
+  /**
+   * The email typed for this booking when the customer record does not hold it
+   * (ensureCustomerForPhone's bookingContactEmail). Kept on the booking before any message is
+   * sent, so the confirmation and payment link go where the guest asked (BK-078).
+   */
+  contactEmail?: string | null
 }
 
 export type CreateBookingResult = {
@@ -559,7 +566,8 @@ export class EventBookingService {
       paymentHoldMinutes,
       ticketSelections,
       diningRequest,
-      earlyArrivalRequest
+      earlyArrivalRequest,
+      contactEmail
     } = params
 
     // A multi-type basket (more than one line, or any line whose ticket_type_id is
@@ -659,6 +667,11 @@ export class EventBookingService {
 
     const rpcResult = (rpcResultRaw ?? {}) as EventBookingRpcResult
     const state = rpcResult.state || 'blocked'
+
+    // Before any message is sent, so every one of them reads it.
+    if (contactEmail && rpcResult.booking_id) {
+      await recordBookingContactEmail('bookings', rpcResult.booking_id, contactEmail)
+    }
     let resolvedState: EventBookingRpcResult['state'] = state
     let resolvedReason: string | null = rpcResult.reason ?? null
     let nextStepUrl: string | null = null

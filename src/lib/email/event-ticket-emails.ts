@@ -21,6 +21,7 @@ import {
   resolveEventTicketPriceAmount,
 } from '@/lib/events/pricing'
 import { isEmailUsable } from '@/lib/notifications/channel'
+import { preferBookingContactEmail } from '@/lib/bookings/contact-email'
 import {
   buildTicketBreakdownLines,
   eventTicketTypesEnabled,
@@ -243,6 +244,7 @@ async function loadEventTicketEmailContext(
       status,
       event_seating_type,
       attendee_names,
+      contact_email,
       customers!inner(id, first_name, email, email_status, email_deactivated_at),
       events!inner(
         id,
@@ -276,7 +278,11 @@ async function loadEventTicketEmailContext(
 
   const customerRaw = (booking as any).customers
   const eventRaw = (booking as any).events
-  const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw
+  // The email the guest typed for this booking, when it differs from the customer's (BK-078).
+  const customer = preferBookingContactEmail(
+    (Array.isArray(customerRaw) ? customerRaw[0] : customerRaw) ?? {},
+    (booking as any).contact_email
+  )
   const event = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
   const email = typeof customer?.email === 'string' ? customer.email.trim() : ''
   // An address that bounced, was marked invalid or complained about us, or was deactivated, is

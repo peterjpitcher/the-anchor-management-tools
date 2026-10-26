@@ -89,6 +89,8 @@ export type FohCreateBookingResponse = {
   data?: {
     /** Sent only when Christmas courses were sent; false means the booking exists without them. */
     christmas_courses_saved?: boolean
+    /** False when a confirmation was due and none reached the guest (BK-162). */
+    notification_sent?: boolean | null
     state: 'confirmed' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null
@@ -140,6 +142,8 @@ export type FohCreateEventBookingResponse = {
     total_remaining: number | null
     table_booking_id: string | null
     table_name: string | null
+    /** False when a confirmation was due and none reached the guest (BK-162). */
+    notification_sent?: boolean | null
   }
   error?: string
   code?: string

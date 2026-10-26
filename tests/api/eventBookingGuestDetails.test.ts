@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), customer: vi.fn(), paid: true, mixed: false, question: false, arrival: false }))
+// The route asks for an email when the number cannot take texts (BK-162). These tests use made-up
+// numbers, so the rule is switched off here; tests/api/publicBookingNonMobile.test.ts covers it.
+vi.mock('@/lib/phone/uk-mobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phone/uk-mobile')>()),
+  isUkMobile: () => true,
+}))
+
 vi.mock('@/lib/api/auth', () => ({
   withApiAuth: (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) => handler(request),
   getApiKeyAuthState: async () => 'authenticated',

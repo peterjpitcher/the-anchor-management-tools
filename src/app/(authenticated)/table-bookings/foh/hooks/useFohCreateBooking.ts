@@ -582,7 +582,11 @@ export function useFohCreateBooking(input: {
 
         const paymentLinkText = payload.data.next_step_url ? ` Payment link: ${payload.data.next_step_url}` : ''
         const manageLinkText = payload.data.manage_booking_url ? ` Manage link: ${payload.data.manage_booking_url}` : ''
-        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
+        // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+        const notificationText = payload.data.notification_sent === false
+          ? ' No confirmation reached the guest, so give them the details now.'
+          : ''
+        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')
@@ -687,7 +691,11 @@ export function useFohCreateBooking(input: {
       const coursesText = payload.data.christmas_courses_saved === false
         ? ' The Christmas courses did not save: set them on the booking.'
         : ''
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${paymentLinkText}`)
+      // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+      const notificationText = payload.data.notification_sent === false
+        ? ' No confirmation reached the guest, so give them the details now.'
+        : ''
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${notificationText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

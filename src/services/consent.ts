@@ -27,6 +27,9 @@ type CustomerConsentState = {
   whatsapp_status?: string | null
   marketing_whatsapp_opt_in?: boolean | null
   marketing_email_opt_in?: boolean | null
+  marketing_sms_opted_out_at?: string | null
+  marketing_email_opted_out_at?: string | null
+  marketing_whatsapp_opted_out_at?: string | null
 }
 
 type RecordConsentInput = {
@@ -76,6 +79,28 @@ function isWhatsAppStopped(customer: CustomerConsentState | null): boolean {
   return customer?.whatsapp_status === 'opted_out'
 }
 
+/*
+ * Has this customer said no to marketing on the channel?
+ *
+ * A booking must never switch marketing back on for someone who opted out (BK-077, owner decision
+ * D31). record_customer_consent clears marketing_*_opted_out_at on any marketing opt-in, so a
+ * ticked box on a later booking (or someone else typing a regular's number and ticking it) used to
+ * undo an unsubscribe or a NOEVENTS. A STOP, or texts switched off on the record, counts as no to
+ * marketing texts too. The customer can still opt back in from a channel they control: START to
+ * Twilio, or staff changing the record at their request.
+ */
+function hasRefusedMarketingSms(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_sms_opted_out_at) || isSmsStopped(customer) || customer?.sms_opt_in === false
+}
+
+function hasRefusedMarketingEmail(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_email_opted_out_at)
+}
+
+function hasRefusedMarketingWhatsApp(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_whatsapp_opted_out_at) || isWhatsAppStopped(customer)
+}
+
 export class ConsentService {
   static async recordConsent(input: RecordConsentInput): Promise<string> {
     const admin = createAdminClient()
@@ -110,7 +135,7 @@ export class ConsentService {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('customers')
-      .select('id, sms_opt_in, sms_status, marketing_sms_opt_in, whatsapp_opt_in, whatsapp_status, marketing_whatsapp_opt_in, marketing_email_opt_in')
+      .select('id, sms_opt_in, sms_status, marketing_sms_opt_in, whatsapp_opt_in, whatsapp_status, marketing_whatsapp_opt_in, marketing_email_opt_in, marketing_sms_opted_out_at, marketing_email_opted_out_at, marketing_whatsapp_opted_out_at')
       .eq('id', customerId)
       .maybeSingle()
 
@@ -156,7 +181,7 @@ export class ConsentService {
       })
     }
 
-    if (consent.marketing_email_opt_in === true) {
+    if (consent.marketing_email_opt_in === true && !hasRefusedMarketingEmail(current)) {
       await this.recordConsent({
         ...base,
         channel: 'email',
@@ -167,7 +192,7 @@ export class ConsentService {
       })
     }
 
-    if (consent.marketing_sms_opt_in === true) {
+    if (consent.marketing_sms_opt_in === true && !hasRefusedMarketingSms(current)) {
       await this.recordConsent({
         ...base,
         channel: 'sms',
@@ -189,7 +214,7 @@ export class ConsentService {
       })
     }
 
-    if (consent.marketing_whatsapp_opt_in === true) {
+    if (consent.marketing_whatsapp_opt_in === true && !hasRefusedMarketingWhatsApp(current)) {
       await this.recordConsent({
         ...base,
         channel: 'whatsapp',

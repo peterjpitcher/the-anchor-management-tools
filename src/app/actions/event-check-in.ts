@@ -1063,11 +1063,12 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
   const lastName = cleanName(parsed.data.lastName ?? '')
   const email = parsed.data.email ? parsed.data.email.trim().toLowerCase() : null
   const admin = createAdminClient()
+  // Staff at the door, talking to the guest, so a blank email on their record may be filled.
   const customerResolution = await ensureCustomerForPhone(admin, normalizedPhone, {
     firstName,
     lastName,
     email,
-  })
+  }, { trustedEntry: true })
 
   if (!customerResolution.customerId) {
     logger.error('Failed to create or resolve check-in customer', {

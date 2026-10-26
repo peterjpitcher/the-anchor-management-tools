@@ -87,6 +87,8 @@ export type EventBookingRow = {
   ticket_breakdown?: string | null
   /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
   charge_total?: number | null
+  /** The email typed for this booking when the customer record holds a different one (BK-078). */
+  contact_email?: string | null
   customer?: {
     id: string
     first_name: string | null
@@ -736,7 +738,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, contact_email, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -942,7 +944,7 @@ export async function createEventManualBooking(input: {
     const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
       firstName: parsed.data.firstName,
       lastName: parsed.data.lastName
-    })
+    }, { trustedEntry: true })
 
     if (!customerResolution.customerId) {
       return { error: 'Could not create or find customer for this phone number.' }
