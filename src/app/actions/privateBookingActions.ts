@@ -41,6 +41,7 @@ import {
   updateDepositAmount,
   finalizeDepositPayment,
   deleteDeposit,
+  describeBlockedDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
 import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
@@ -1226,7 +1227,11 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    return result
+    // Review BK-005: the person recording the money is told when it did not confirm the booking,
+    // and why, rather than the modal simply closing.
+    return result.confirmationBlocked
+      ? { ...result, warning: describeBlockedDeposit(result.confirmationBlockedReasons ?? []) }
+      : result
   } catch (error: unknown) {
     logger.error('Error recording deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -2324,7 +2329,7 @@ export async function createDepositPaymentOrder(
 export async function captureDepositPayment(
   bookingId: string,
   orderId: string
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; warning?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -2457,7 +2462,7 @@ export async function captureDepositPayment(
       })
     }
 
-    await finalizeDepositPayment({
+    const finalizeResult = await finalizeDepositPayment({
       bookingId,
       amount: capturedAmount,
       method: 'paypal',
@@ -2491,7 +2496,10 @@ export async function captureDepositPayment(
     revalidatePath('/private-bookings')
     revalidatePath('/events')
     revalidateTag('dashboard')
-    return { success: true }
+    // Review BK-005: say so when the money is in but the booking did not confirm.
+    return finalizeResult.confirmationBlocked
+      ? { success: true, warning: describeBlockedDeposit(finalizeResult.confirmationBlockedReasons ?? []) }
+      : { success: true }
   } catch (error: unknown) {
     logger.error('Error capturing PayPal deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -2684,9 +2692,14 @@ export async function confirmPrivateBookingDeposit(
     }
   }
 
+  // Confirming the deposit sends the contract when it has not gone yet (owner decision D25,
+  // review BK-006), so it needs the same permission as Email Contract.
+  const canSendContract =
+    (await checkUserPermission('private_bookings', 'generate_contracts')) || canManage
+
   let outcome: ConfirmDepositOutcome
   try {
-    outcome = await confirmDeposit({ bookingId, amount, confirmedBy: user.id })
+    outcome = await confirmDeposit({ bookingId, amount, confirmedBy: user.id, canSendContract })
   } catch (error: unknown) {
     logPrivateBookingActionError('Error confirming private booking deposit', error, { bookingId })
     return {
@@ -2712,6 +2725,7 @@ export async function confirmPrivateBookingDeposit(
           ? { channel: outcome.channel, hold_expiry: outcome.holdExpiry, email_error: outcome.emailError }
           : {}),
         ...(outcome.status === 'not_sent' ? { reason: outcome.reason, restored: outcome.restored } : {}),
+        ...(outcome.contract ? { contract: outcome.contract } : {}),
       },
     })
   } catch (auditError) {
@@ -2831,7 +2845,8 @@ export async function sendDepositPaymentLink(
     .from('private_bookings')
     // date_tbd and internal_notes: a booking with no date yet must not be emailed the placeholder
     // date it was created with (review PB-1).
-    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email, date_tbd, internal_notes')
+    // contract_sent_at and contract_accepted_at decide the terms wording in the email (BK-006).
+    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email, date_tbd, internal_notes, contract_sent_at, contract_accepted_at')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -2944,7 +2959,7 @@ export async function sendDepositPaymentLink(
 
 export async function editPrivateBookingPayment(
   formData: FormData
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; warning?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
@@ -3035,6 +3050,7 @@ export async function editPrivateBookingPayment(
     const waived = formData.get('waived') === 'true'
     const waivedReason = (formData.get('waived_reason') as string | null)?.trim() || undefined
 
+    let confirmationBlockedReasons: string[] | undefined
     try {
       if (oldBooking?.deposit_paid_date) {
         // Paid deposit: update amount + method (existing behaviour)
@@ -3044,11 +3060,12 @@ export async function editPrivateBookingPayment(
         })
       } else {
         // Unpaid deposit: update amount only, clear PayPal order (CR-1, ID-1)
-        await updateDepositAmount(parsed.data.bookingId, newAmount, user.id, {
+        const outcome = await updateDepositAmount(parsed.data.bookingId, newAmount, user.id, {
           reductionReason,
           waived,
           waivedReason,
         })
+        confirmationBlockedReasons = outcome.confirmationBlockedReasons
       }
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
@@ -3070,11 +3087,19 @@ export async function editPrivateBookingPayment(
         no_deposit_required: !oldBooking?.deposit_paid_date && newAmount <= 0,
         ...(reductionReason ? { reduction_reason: reductionReason } : {}),
         ...(waived ? { deposit_waived: true, waived_reason: waivedReason } : {}),
+        ...(confirmationBlockedReasons ? { confirmation_blocked_reasons: confirmationBlockedReasons } : {}),
       },
     })
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
-    return { success: true }
+    // A waived deposit used to confirm the booking whatever state it was in. It now confirms only
+    // a booking that is ready, so staff are told when it stayed a draft and why (D24, BK-066).
+    return confirmationBlockedReasons && confirmationBlockedReasons.length > 0
+      ? {
+          success: true,
+          warning: `The deposit is waived, but the booking is still a draft. ${confirmationBlockedReasons.join(' ')}`,
+        }
+      : { success: true }
   }
 
   return { error: 'Invalid payment type' }
@@ -3329,9 +3354,9 @@ export async function sendPrivateBookingEmail(
 }
 
 // Send the contract + terms to the customer (SOP §11: the contract must be
-// provided before the deposit is paid, and the send must be recorded).
-// Generates a fresh version, stores the HTML + PDF snapshots, emails the PDF
-// and stamps contract_sent_at / contract_sent_to.
+// provided before the deposit is paid, and the send must be recorded). The work
+// is in sendPrivateBookingContractForSignature, which Confirm deposit also uses
+// (owner decision D25, review BK-006).
 export async function sendBookingContract(
   bookingId: string
 ): Promise<{ success?: boolean; version?: number; foodAgreementIncluded?: boolean; error?: string }> {
@@ -3344,122 +3369,17 @@ export async function sendBookingContract(
   if (!canSend) return { error: 'You do not have permission to send contracts' }
 
   try {
-    const { generateContractDocument, markWaiverSent, storeContractSnapshot } = await import('@/lib/private-bookings/contract-lifecycle')
-    const { sendContractEmailToCustomer } = await import('@/lib/email/private-booking-emails')
-    const { createBookingContractSigningRequests, prepareBookingContract } = await import('@/lib/signing/documents/booking-contract')
-    const { recordSigningLinkSent, voidSigningDocument } = await import('@/lib/signing/service')
-    const { getSigningStaffUser } = await import('@/lib/signing/staff')
-
-    const { signingHtml, version, booking } = await generateContractDocument(bookingId, { performedBy: user.id })
-
-    if (!booking.contact_email?.trim()) {
-      return { error: 'This booking has no contact email address. Add one before sending the contract.' }
-    }
-
-    // Signatures go through src/lib/signing (CLAUDE.md, Domain rules). The contract is rendered
-    // once, with a signature slot where each signature goes, and divided into the documents to
-    // sign: the contract, and separately the self-catering and outside food agreement where the
-    // booking has outside food. Whoever sends it signs for The Anchor as they send.
-    const staff = await getSigningStaffUser()
-    const sender = { name: staff?.name ?? user.email ?? 'A member of staff', position: staff?.position ?? null }
-    // A food agreement that is already signed is not sent for signature again.
-    const prepared = await prepareBookingContract({
-      signingHtml,
-      booking,
-      sender,
-      waiverAlreadySigned: booking.waiver_status === 'signed',
-    })
-
-    const admin = createAdminClient()
-    await storeContractSnapshot(admin, {
+    const { sendPrivateBookingContractForSignature } = await import('@/services/private-bookings/contract-send')
+    const sent = await sendPrivateBookingContractForSignature({
       bookingId,
-      version,
-      fileName: `contract-v${version}.pdf`,
-      content: prepared.fullPdf,
-      mimeType: 'application/pdf',
-      generatedBy: user.id,
-      metadata: { sent_to: booking.contact_email, includes_food_agreement: Boolean(prepared.waiver) },
-    })
-
-    // If a signing request cannot be created the contract is not sent, so nobody receives a
-    // contract they cannot sign.
-    const signing = await createBookingContractSigningRequests({
-      booking,
-      contractVersion: version,
-      prepared,
       userId: user.id,
-      sender,
-    })
-    const requests = [signing.contract, ...(signing.waiver ? [signing.waiver] : [])]
-
-    try {
-      await sendContractEmailToCustomer(booking, {
-        version,
-        pdf: prepared.contract.pdf,
-        signingUrl: signing.contract.signingUrl,
-        waiver: prepared.waiver && signing.waiver
-          ? { pdf: prepared.waiver.pdf, signingUrl: signing.waiver.signingUrl }
-          : undefined,
-      })
-    } catch (emailError) {
-      // Nobody has the links, so the requests must not sit there looking live.
-      for (const request of requests) {
-        try {
-          await voidSigningDocument({ documentId: request.documentId, userId: user.id, reason: 'The contract email could not be sent' })
-        } catch (voidError) {
-          logger.error('Could not withdraw a signing request after a failed contract email', {
-            error: voidError instanceof Error ? voidError : new Error(String(voidError)),
-            metadata: { bookingId, documentId: request.documentId },
-          })
-        }
-      }
-      throw emailError
-    }
-    for (const request of requests) {
-      await recordSigningLinkSent({
-        documentId: request.documentId,
-        partyId: request.partyId,
-        to: booking.contact_email,
-        userId: user.id,
-      })
-    }
-
-    // Only now has the food agreement gone to the customer, so only now does the booking say so.
-    if (signing.waiver) {
-      await markWaiverSent(admin, { bookingId, via: 'contract_sent', contractVersion: version, performedBy: user.id })
-    }
-
-    const nowIso = new Date().toISOString()
-    const { error: updateError } = await admin
-      .from('private_bookings')
-      .update({ contract_sent_at: nowIso, contract_sent_to: booking.contact_email, updated_at: nowIso })
-      .eq('id', bookingId)
-    if (updateError) {
-      logger.error('Failed to record contract send', {
-        error: new Error(updateError.message),
-        metadata: { bookingId },
-      })
-    }
-
-    await logAuditEvent({
-      user_id: user.id,
-      operation_type: 'update',
-      resource_type: 'private_booking',
-      resource_id: bookingId,
-      operation_status: 'success',
-      additional_info: {
-        action: 'contract_sent',
-        contract_version: version,
-        sent_to: booking.contact_email,
-        customer_notified: true,
-        signing_document_id: signing.contract.documentId,
-        food_agreement_signing_document_id: signing.waiver?.documentId ?? null,
-      },
+      userEmail: user.email ?? null,
+      via: 'email_contract',
     })
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
-    return { success: true, version, foodAgreementIncluded: Boolean(signing.waiver) }
+    return { success: true, version: sent.version, foodAgreementIncluded: sent.foodAgreementIncluded }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error sending booking contract:', error, { bookingId })
     return { error: getErrorMessage(error) }

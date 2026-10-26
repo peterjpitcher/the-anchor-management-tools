@@ -1,0 +1,192 @@
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
+import { formatDateInLondon } from '@/lib/dateUtils'
+import { sendEmail } from '@/lib/email/emailService'
+import { formatPrivateBookingReference } from '@/lib/email/private-booking-emails'
+import { PRIVATE_BOOKINGS_MANAGER_EMAIL } from '@/lib/private-bookings/manager-notifications'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import {
+  hireRoomProblems,
+  isPaidButNotConfirmed,
+  loadHireReadinessFacts,
+  type HireProblem,
+} from './readiness'
+
+/**
+ * The daily check on upcoming private hires (review BK-005 and BK-007, 24 October 2026). Run by
+ * the private-booking-monitor cron once a day, it emails the manager every upcoming live hire
+ * that has:
+ * - its deposit paid but is still a draft, with the reasons recorded when it did not confirm;
+ * - no room booked, no guest count, or more guests than its rooms hold.
+ *
+ * A live hire is a confirmed one, a draft with its deposit paid, or a draft whose hold has not
+ * run out: the hires that are holding a date. A fresh enquiry with no hold is not listed, and
+ * neither is a hire whose date is still to be confirmed.
+ *
+ * The email names each booking by its reference, date, guest count and event type, with a link.
+ * No customer name, phone number or email address goes in it.
+ */
+
+// `any` because the session client, the admin client and the test fakes share no exported type.
+type DbClient = ReturnType<typeof createAdminClient> | any
+
+export interface HireNeedingAttention {
+  bookingId: string
+  reference: string
+  eventDate: string
+  status: string
+  guestCount: number | null
+  eventType: string | null
+  issues: string[]
+}
+
+function roomIssue(problem: HireProblem): string {
+  if (problem.code === 'no_room') return 'No room booked.'
+  if (problem.code === 'no_guest_count') return 'No guest count set.'
+  return problem.message
+}
+
+function sentence(text: string): string {
+  const trimmed = text.trim()
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`
+}
+
+/**
+ * Every upcoming live hire with something wrong, soonest first. Throws when a read fails, so the
+ * caller can report it rather than send a list that looks clean.
+ */
+export async function findHiresNeedingAttention(input: {
+  todayIso: string
+  now: Date
+  db?: DbClient
+}): Promise<HireNeedingAttention[]> {
+  const db = input.db ?? createAdminClient()
+  const { data, error } = await db
+    .from('private_bookings')
+    .select('id, status, event_date, event_type, guest_count, hold_expiry, deposit_paid_date, date_tbd, internal_notes')
+    .in('status', ['draft', 'confirmed'])
+    .gte('event_date', input.todayIso)
+    .order('event_date', { ascending: true })
+  if (error) throw new Error(`Could not read the upcoming private hires: ${error.message}`)
+
+  const nowMs = input.now.getTime()
+  const live = ((data ?? []) as Array<Record<string, unknown>>).filter((booking) => {
+    if (isBookingDateTbd(booking as { date_tbd?: boolean | null; internal_notes?: string | null })) return false
+    if (booking.status === 'confirmed') return true
+    if (booking.deposit_paid_date) return true
+    const holdExpiry = typeof booking.hold_expiry === 'string' ? Date.parse(booking.hold_expiry) : NaN
+    return Number.isFinite(holdExpiry) && holdExpiry > nowMs
+  })
+  if (live.length === 0) return []
+
+  const { facts, rooms } = await loadHireReadinessFacts(live.map((booking) => String(booking.id)), { db })
+
+  const result: HireNeedingAttention[] = []
+  for (const booking of live) {
+    const id = String(booking.id)
+    const one = facts.get(id)
+    if (!one) continue
+    const issues: string[] = []
+    if (isPaidButNotConfirmed(one)) {
+      const reasons = one.lastConfirmationBlock?.reasons ?? []
+      issues.push(
+        reasons.length > 0
+          ? `Deposit paid, not confirmed: ${reasons.map(sentence).join(' ')}`
+          : 'Deposit paid, not confirmed. No reason was recorded.',
+      )
+    }
+    for (const problem of hireRoomProblems(one, rooms)) issues.push(roomIssue(problem))
+    if (issues.length === 0) continue
+    result.push({
+      bookingId: id,
+      reference: formatPrivateBookingReference(id),
+      eventDate: String(booking.event_date),
+      status: String(booking.status),
+      guestCount: one.guestCount,
+      eventType: typeof booking.event_type === 'string' && booking.event_type.trim() ? booking.event_type.trim() : null,
+      issues,
+    })
+  }
+  return result
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+/** The manager's email for these hires. */
+export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: string): {
+  subject: string
+  html: string
+  text: string
+} {
+  const count = items.length
+  const subject = `Private hires needing attention: ${count} ${count === 1 ? 'booking' : 'bookings'}`
+  const intro =
+    'These upcoming private hires need sorting out. Until they are, a paid hire stays a draft, and a hire with no room, or with more guests than its room holds, leaves the rest of the pub on sale.'
+
+  const describe = (item: HireNeedingAttention): string => {
+    const date = formatDateInLondon(item.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    const guests = item.guestCount !== null ? `${item.guestCount} guests` : 'guest count not set'
+    const what = item.eventType ? `, ${item.eventType}` : ''
+    const status = item.status === 'confirmed' ? 'confirmed' : 'draft'
+    return `${item.reference}: ${date}, ${guests}${what} (${status})`
+  }
+
+  const htmlItems = items.map((item) => {
+    const url = `${appUrl}/private-bookings/${item.bookingId}`
+    return [
+      '<li style="margin-bottom: 12px;">',
+      `<strong>${escapeHtml(describe(item))}</strong>`,
+      '<ul>',
+      ...item.issues.map((issue) => `<li>${escapeHtml(issue)}</li>`),
+      '</ul>',
+      `<a href="${escapeHtml(url)}">Open the booking</a>`,
+      '</li>',
+    ].join('')
+  })
+
+  const html = [`<p>${escapeHtml(intro)}</p>`, '<ul>', ...htmlItems, '</ul>'].join('')
+  const text = [
+    intro,
+    '',
+    ...items.flatMap((item) => [
+      describe(item),
+      ...item.issues.map((issue) => `- ${issue}`),
+      `Open the booking: ${appUrl}/private-bookings/${item.bookingId}`,
+      '',
+    ]),
+  ].join('\n')
+
+  return { subject, html, text }
+}
+
+/** Finds the hires and emails the manager when there are any. Never throws. */
+export async function runHireAttentionCheck(input: {
+  todayIso: string
+  now: Date
+  db?: DbClient
+}): Promise<{ listed: number; emailed: boolean; error?: string }> {
+  let items: HireNeedingAttention[]
+  try {
+    items = await findHiresNeedingAttention(input)
+  } catch (error) {
+    return { listed: 0, emailed: false, error: error instanceof Error ? error.message : String(error) }
+  }
+  if (items.length === 0) return { listed: 0, emailed: false }
+
+  try {
+    const email = buildHireAttentionEmail(items, getAppUrl())
+    const result = await sendEmail({ to: PRIVATE_BOOKINGS_MANAGER_EMAIL, ...email })
+    return result.success
+      ? { listed: items.length, emailed: true }
+      : { listed: items.length, emailed: false, error: result.error || 'The email was not sent' }
+  } catch (error) {
+    return { listed: items.length, emailed: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}

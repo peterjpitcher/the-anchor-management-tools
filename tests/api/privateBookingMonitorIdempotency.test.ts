@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
+// The daily check on private hires (review BK-005, BK-007) has its own tests
+// (tests/services/privateHireAttention.test.ts); these mocks only model the SMS passes.
+vi.mock('@/services/private-bookings/attention', () => ({
+  runHireAttentionCheck: vi.fn(async () => ({ listed: 0, emailed: false })),
+}))
+
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
 }))
@@ -136,7 +142,7 @@ describe('private booking monitor idempotency guard', () => {
                 if (columns.includes('start_time, guest_count')) {
                   // Pass 4 event reminder
                   return {
-                    eq: vi.fn(() => ({
+                    or: vi.fn(() => ({
                       eq: vi.fn().mockResolvedValue({ data: [], error: null }),
                     })),
                   }
@@ -145,7 +151,7 @@ describe('private booking monitor idempotency guard', () => {
                   // Pass 5a: outcome email eligibility
                   return {
                     eq: vi.fn(() => ({
-                      eq: vi.fn(() => ({
+                      or: vi.fn(() => ({
                         eq: vi.fn(() => ({
                           is: vi.fn().mockResolvedValue({ data: [], error: null }),
                         })),
@@ -202,11 +208,11 @@ describe('private booking monitor idempotency guard', () => {
           }
 
           if (table === 'private_bookings_with_details') {
-            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            // Pass 3: .or(confirmed, or a draft with its deposit paid).not('balance_due_date', 'is', null)
             //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
             return {
               select: vi.fn(() => ({
-                eq: vi.fn(() => ({
+                or: vi.fn(() => ({
                   not: vi.fn(() => ({
                     gte: vi.fn(() => ({
                       lte: vi.fn().mockResolvedValue({ data: [], error: null }),
@@ -324,7 +330,7 @@ describe('private booking monitor idempotency guard', () => {
                 }
                 if (columns.includes('start_time, guest_count')) {
                   return {
-                    eq: vi.fn(() => ({
+                    or: vi.fn(() => ({
                       eq: vi.fn().mockResolvedValue({ data: [], error: null }),
                     })),
                   }
@@ -332,7 +338,7 @@ describe('private booking monitor idempotency guard', () => {
                 if (columns.includes('outcome_email_sent_at')) {
                   return {
                     eq: vi.fn(() => ({
-                      eq: vi.fn(() => ({
+                      or: vi.fn(() => ({
                         eq: vi.fn(() => ({
                           is: vi.fn().mockResolvedValue({ data: [], error: null }),
                         })),
@@ -386,11 +392,11 @@ describe('private booking monitor idempotency guard', () => {
             }
           }
           if (table === 'private_bookings_with_details') {
-            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            // Pass 3: .or(confirmed, or a draft with its deposit paid).not('balance_due_date', 'is', null)
             //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
             return {
               select: vi.fn(() => ({
-                eq: vi.fn(() => ({
+                or: vi.fn(() => ({
                   not: vi.fn(() => ({
                     gte: vi.fn(() => ({
                       lte: vi.fn().mockResolvedValue({ data: [], error: null }),

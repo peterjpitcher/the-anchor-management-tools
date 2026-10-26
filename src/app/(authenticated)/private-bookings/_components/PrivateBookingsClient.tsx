@@ -129,6 +129,59 @@ type CancellationPreview = Awaited<ReturnType<typeof getCancellationPreview>>
 // by hand. Both live on the booking page, so send staff there.
 const OUTCOMES_NEEDING_THE_BOOKING_PAGE = new Set(['gm_review_required', 'manual_review'])
 
+const ROOM_PROBLEM_LABELS: Record<string, string> = {
+  no_room: 'No room booked',
+  no_guest_count: 'No guest count',
+  over_capacity: 'More guests than the room holds',
+}
+
+/**
+ * Red flags for a draft or confirmed hire (review BK-005 and BK-007): a paid deposit that did not
+ * confirm the booking, no room, no guest count, or more guests than the rooms hold. The booking
+ * page says why and what to do.
+ */
+function HireAttentionBadges({
+  attention,
+  className = 'mt-1',
+  includeContract = false,
+}: {
+  attention: PrivateBookingDashboardItem['hire_attention']
+  className?: string
+  /** On phones, where there is no Contract column, a missing contract shows here too. */
+  includeContract?: boolean
+}): React.ReactElement | null {
+  if (!attention) return null
+  const labels = [
+    ...(attention.paidNotConfirmed ? ['Deposit paid, not confirmed'] : []),
+    ...attention.roomProblems.map((code) => ROOM_PROBLEM_LABELS[code] ?? code),
+    ...(includeContract && attention.contractNotSentAfterDeposit ? ['Contract not sent'] : []),
+  ]
+  if (labels.length === 0) return null
+  return (
+    <div className={`${className} flex flex-wrap gap-1`}>
+      {labels.map((label) => (
+        <Badge key={label} tone="danger" size="sm">{label}</Badge>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * The Contract column (review BK-006, owner decision D25): accepted, sent, or not sent. Not sent is
+ * red once the deposit is confirmed, paid or waived, because the booking cannot be confirmed until
+ * the contract has been sent or recorded as accepted another way.
+ */
+function ContractStatus({ attention }: { attention: PrivateBookingDashboardItem['hire_attention'] }): React.ReactElement | null {
+  if (!attention) return null
+  if (attention.contract === 'accepted') return <Badge tone="success" size="sm">Accepted</Badge>
+  if (attention.contract === 'sent') return <Badge tone="info" size="sm">Sent</Badge>
+  return (
+    <Badge tone={attention.contractNotSentAfterDeposit ? 'danger' : 'neutral'} size="sm">
+      Not sent
+    </Badge>
+  )
+}
+
 /* ---------- Component ---------- */
 
 export default function PrivateBookingsClient({
@@ -668,6 +721,7 @@ export default function PrivateBookingsClient({
                     <TableHead>Customer</TableHead>
                     <TableHead>Details</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Contract</TableHead>
                     <TableHead>Financials</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -743,6 +797,11 @@ export default function PrivateBookingsClient({
                             </Badge>
                           </div>
                         )}
+                        <HireAttentionBadges attention={booking.hire_attention ?? null} />
+                      </TableCell>
+
+                      <TableCell>
+                        <ContractStatus attention={booking.hire_attention ?? null} />
                       </TableCell>
 
                       <TableCell>
@@ -894,6 +953,7 @@ export default function PrivateBookingsClient({
                       </Badge>
                     </div>
                   )}
+                  <HireAttentionBadges attention={booking.hire_attention ?? null} className="mb-3" includeContract />
 
                   <div className="flex justify-end items-center gap-2 pt-2 border-t border-border flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <Link

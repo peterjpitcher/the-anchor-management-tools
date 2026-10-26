@@ -46,8 +46,18 @@ import {
   reminderDedupDateFilter,
 } from '@/services/private-bookings/scheduled-sms'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { runHireAttentionCheck } from '@/services/private-bookings/attention'
 
 const JOB_NAME = 'private-booking-monitor'
+
+/**
+ * The bookings the balance, 1-day and outcome passes cover: confirmed ones, and drafts whose
+ * deposit is paid (review BK-005). A paid deposit that could not confirm the booking (no room,
+ * too many guests, a clash or a risk review) left it a draft, and a draft got no balance
+ * reminder, no reminder the day before and no outcome email, although the guest had paid and
+ * the event was going ahead.
+ */
+const LIVE_HIRE_STATUS_FILTER = 'status.eq.confirmed,and(status.eq.draft,deposit_paid_date.not.is.null)'
 const LONDON_TZ = 'Europe/London'
 const STALE_RUN_WINDOW_MINUTES = 30
 const MAX_PRIVATE_BOOKING_SMS_PER_RUN = parsePositiveIntEnv('MAX_PRIVATE_BOOKING_SMS_PER_RUN', 120)
@@ -454,6 +464,8 @@ export async function GET(request: Request) {
       outcomeEmailsSent: 0,
       reviewRequestsSent: 0,
       postEventInspectionsFlagged: 0,
+      hiresNeedingAttention: 0,
+      hireAttentionEmailSent: false,
       smsCapReached: false
     }
     const totalSmsSent = () =>
@@ -940,7 +952,7 @@ export async function GET(request: Request) {
         .select(
           withEmailColumns('id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes', emailFirst || balanceEmailAuto)
         )
-        .eq('status', 'confirmed')
+        .or(LIVE_HIRE_STATUS_FILTER)
         .not('balance_due_date', 'is', null)
         .gte('balance_due_date', todayLondonIso) // due today or later — never chase past-due
         .lte('balance_due_date', dueWindowEndIso)) as unknown as MonitorRowsResult // within 7 days of the deadline
@@ -1154,7 +1166,7 @@ export async function GET(request: Request) {
       const { data: tomorrowBookings } = (await supabase
         .from('private_bookings')
         .select(withEmailColumns('id, customer_first_name, customer_name, contact_phone, start_time, guest_count, event_date, customer_id, internal_notes', emailFirst))
-        .eq('status', 'confirmed')
+        .or(LIVE_HIRE_STATUS_FILTER)
         .eq('event_date', tomorrowLondon)) as unknown as MonitorRowsResult
 
       if (tomorrowBookings) {
@@ -1258,7 +1270,7 @@ export async function GET(request: Request) {
           'id, customer_name, customer_first_name, event_date, guest_count, status, post_event_outcome, outcome_email_sent_at, internal_notes'
         )
         .eq('event_date', yesterdayLondon)
-        .eq('status', 'confirmed')
+        .or(LIVE_HIRE_STATUS_FILTER)
         .eq('post_event_outcome', 'pending')
         .is('outcome_email_sent_at', null)
 
@@ -1577,6 +1589,28 @@ export async function GET(request: Request) {
           stats.postEventInspectionsFlagged++
         }
       }
+    }
+
+    // --- DAILY CHECK: PRIVATE HIRES NEEDING ATTENTION (manager email) ---
+    // Review BK-005 and BK-007: a paid hire left as a draft, or a live hire with no room, no guest
+    // count or more guests than its rooms hold, is emailed to the manager every morning until it
+    // is sorted out. Internal only, no customer message, so it runs whatever the SMS passes did.
+    // It never fails the run: a problem here is logged and the other passes stand.
+    try {
+      const attention = await runHireAttentionCheck({ todayIso: getLondonRunKey(now), now, db: supabase })
+      stats.hiresNeedingAttention = attention.listed
+      stats.hireAttentionEmailSent = attention.emailed
+      if (attention.error) {
+        logger.error('Private hire attention check failed', {
+          error: new Error(attention.error),
+          metadata: { runKey, listed: attention.listed },
+        })
+      }
+    } catch (attentionError) {
+      logger.error('Private hire attention check threw', {
+        error: attentionError instanceof Error ? attentionError : new Error(String(attentionError)),
+        metadata: { runKey },
+      })
     }
 
     logger.info('Private booking monitor completed', {

@@ -7,6 +7,12 @@ const state = vi.hoisted(() => ({
   depositConfirmation: true,
 }))
 
+// Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
+// D25). This file is about something else, so every booking here passes those checks; they are
+// tested in tests/services/privateHireReadiness.test.ts.
+vi.mock('@/services/private-bookings/readiness', async (importOriginal) =>
+  (await import('../helpers/readyHire')).readyHireReadiness(importOriginal))
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => state.db),
 }))
@@ -203,16 +209,41 @@ describe('creating a private booking', () => {
     expect(state.db.tables.private_bookings[0].hold_expiry).toBeNull()
   })
 
-  it('a waived deposit still confirms the booking with no deposit to pay, flag on', async () => {
+  // Until 24 October 2026 a waived deposit confirmed the booking as it was made, with no room on
+  // it, and told the guest so. Under D24 a hire is confirmed only with a room that fits its guests,
+  // so one made with no room is saved as a draft and the guest hears nothing until staff confirm it.
+  it('a waived deposit with no room yet is saved as a draft and nothing is sent, flag on', async () => {
     await PrivateBookingService.createBooking({
       ...createInput,
       deposit_amount: 0,
       deposit_waived: true,
       deposit_waived_reason: 'Venue-hosted event',
     })
-    await vi.waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
+    await flushBackgroundSends()
 
-    expect(mockedSend.mock.calls[0][0].sms.trigger_type).toBe('booking_confirmed')
+    expect(state.db.tables.private_bookings[0].status).toBe('draft')
+    expect(mockedSend).not.toHaveBeenCalled()
+  })
+
+  // Owner decision D25: no contract exists when a booking is made, so even a waived deposit on a
+  // hire with its room booked is a draft until the contract is sent and staff confirm it.
+  it('a waived deposit with a room booked is still a draft, because no contract has been sent', async () => {
+    // The room's clash check calls its own RPC: no clash.
+    const createRpc = state.db.rpc
+    state.db.rpc = vi.fn(async (name: string, args: { p_booking_data: Record<string, unknown> }) =>
+      name === 'get_private_booking_conflicts' ? { data: [], error: null } : createRpc(name, args)
+    )
+    await PrivateBookingService.createBooking({
+      ...createInput,
+      deposit_amount: 0,
+      deposit_waived: true,
+      deposit_waived_reason: 'Venue-hosted event',
+      items: [{ item_type: 'space', space_id: 'space-dining', description: 'The Dining Room', quantity: 4, unit_price: 50 }],
+    } as Parameters<typeof PrivateBookingService.createBooking>[0])
+    await flushBackgroundSends()
+
+    expect(state.db.tables.private_bookings[0].status).toBe('draft')
+    expect(mockedSend).not.toHaveBeenCalled()
   })
 })
 

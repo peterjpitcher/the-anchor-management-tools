@@ -7,6 +7,11 @@ import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation'
 import type { DepositRefundEntry, PaymentHistoryEntry } from '@/types/private-bookings'
+import {
+  buildHireReadinessView,
+  loadOneHireReadiness,
+  type HireReadinessView,
+} from '@/services/private-bookings/readiness'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
 export const dynamic = 'force-dynamic'
@@ -41,6 +46,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   let canManageVendors = false
   let canEditPayments = false
   let canRefund = false
+  let canOverrideCapacity = false
 
   const permissionsResult = await getCurrentUserModuleActions('private_bookings')
 
@@ -65,6 +71,8 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     canManageVendors = actions.has('manage_vendors') || actions.has('manage')
     canEditPayments = actions.has('manage')
     canRefund = actions.has('refund') || actions.has('manage')
+    // D24: a manager can allow more guests than the rooms hold (the action checks again).
+    canOverrideCapacity = actions.has('gm_override')
   }
 
   if (!canView && errors.length === 0) {
@@ -128,6 +136,20 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     depositConfirmation = { awaiting: true, holdExpiryPreview }
   }
 
+  // Rooms, guest count and a paid deposit that did not confirm the booking (review BK-005 and
+  // BK-007). If this cannot be read the page says so, rather than looking as if all is well.
+  let hireReadiness: HireReadinessView | null = null
+  let hireReadinessError = false
+  if (bookingData) {
+    try {
+      const { facts, rooms } = await loadOneHireReadiness(bookingData.id)
+      hireReadiness = buildHireReadinessView(facts, rooms)
+    } catch (error) {
+      console.error('Failed to load private hire readiness', error)
+      hireReadinessError = true
+    }
+  }
+
   // Invoicing is super_admin only. The server action re-checks this on every
   // call; asking here just avoids showing a manager a button that will refuse.
   let canInvoice = false
@@ -159,6 +181,9 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
       paymentHistory={paymentHistory}
       depositRefunds={depositRefunds}
       depositConfirmation={depositConfirmation}
+      hireReadiness={hireReadiness}
+      hireReadinessError={hireReadinessError}
+      canOverrideCapacity={canOverrideCapacity}
       initialError={initialError}
     />
   )

@@ -106,6 +106,38 @@ function formatTimeRange(booking: {
   return booking.end_time_next_day ? `${start} to ${end} (the next day)` : `${start} to ${end}`;
 }
 
+type ContractFacts = { contract_sent_at?: string | null; contract_accepted_at?: string | null };
+
+/**
+ * Review BK-006: deposit requests, holds and deposit receipts told the guest that paying accepts
+ * the terms "set out in your contract", when most guests had never been sent one. Until a
+ * contract has been sent (or accepted another way) they refer to the standard terms instead.
+ * A booking whose contract state was not read counts as having none: that wording is always true.
+ */
+function hasContract(booking: ContractFacts): boolean {
+  return Boolean(booking.contract_sent_at) || Boolean(booking.contract_accepted_at);
+}
+
+/** The sentence that says paying the deposit accepts the terms. */
+function depositAcceptsTermsNote(booking: ContractFacts, options: { withPolicy?: boolean } = {}): string {
+  const withPolicy = options.withPolicy !== false;
+  if (hasContract(booking)) {
+    return withPolicy
+      ? 'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.'
+      : 'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract.';
+  }
+  return withPolicy
+    ? "Paying the deposit confirms that you accept our standard booking terms and conditions, including the cancellation and refund policy. Just ask us if you'd like a copy before you pay."
+    : "Paying the deposit confirms that you accept our standard booking terms and conditions. Just ask us if you'd like a copy before you pay.";
+}
+
+/** Where the full cancellation, refund and date-change policy is. */
+function cancellationPolicyNote(booking: ContractFacts): string {
+  return hasContract(booking)
+    ? 'Our full cancellation, refund and date-change policy is set out in your contract.'
+    : "Our full cancellation, refund and date-change policy is in our standard booking terms and conditions. Just ask us if you'd like a copy.";
+}
+
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount);
 }
@@ -225,6 +257,8 @@ export async function sendBookingConfirmationEmail(booking: {
   deposit_waived?: boolean | null;
   date_tbd?: boolean | null;
   internal_notes?: string | null;
+  contract_sent_at?: string | null;
+  contract_accepted_at?: string | null;
 }): Promise<void> {
   if (!booking.contact_email) return;
 
@@ -290,7 +324,7 @@ export async function sendBookingConfirmationEmail(booking: {
       if (holdExpiryFormatted) {
         notes.push(`Unless we agree otherwise in writing, the hold may be released if the deposit is not received in cleared funds by ${holdExpiryFormatted}.`);
       }
-      notes.push('Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.');
+      notes.push(depositAcceptsTermsNote(booking));
     }
     if (depositState !== 'none') notes.push(DEPOSIT_TERMS_NOTE);
     if (totalAmount > 0) notes.push('Your event balance is separate from the deposit and payable nearer the time.');
@@ -375,6 +409,8 @@ export async function sendDepositReceivedEmail(booking: {
   balance_due_date?: string | null;
   total_amount?: number | null;
   bookingConfirmed?: boolean;
+  contract_sent_at?: string | null;
+  contract_accepted_at?: string | null;
 }): Promise<void> {
   if (!booking.contact_email) return;
 
@@ -421,7 +457,7 @@ export async function sendDepositReceivedEmail(booking: {
       DEPOSIT_TERMS_NOTE,
       'We refund it within 48 hours after the event, once all charges have been settled.',
       'Your event balance is separate from the deposit and cannot be paid with it. It is payable by the date above.',
-      'Our full cancellation, refund and date-change policy is set out in your contract. Date changes are subject to availability and must be requested at least 14 calendar days before the event, so please tell us as early as you can.',
+      `${cancellationPolicyNote(booking)} Date changes are subject to availability and must be requested at least 14 calendar days before the event, so please tell us as early as you can.`,
     ];
 
     const html = `
@@ -679,6 +715,8 @@ export async function sendDepositPaymentLinkEmail(booking: {
   deposit_amount?: number | null;
   date_tbd?: boolean | null;
   internal_notes?: string | null;
+  contract_sent_at?: string | null;
+  contract_accepted_at?: string | null;
 }, paypalApproveUrl: string, freshLinkUrl?: string): Promise<StaffEmailSendResult> {
   if (!booking.contact_email) return { sent: false, error: 'This booking has no contact email address' };
 
@@ -706,7 +744,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
         : `To secure ${forBooking}, please pay your deposit using the button below.`,
       "Your booking is confirmed once we've received your deposit, and the deposit is separate from your event balance, which is payable nearer the time.",
       'If you cancel 30 days or more before the event, your deposit is refunded less a 5% administration deduction and any costs already incurred. If you cancel less than 30 days before the event, we may retain up to the full deposit to cover reasonable losses and committed costs, and we will not retain more than is reasonable in the circumstances.',
-      'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract.',
+      depositAcceptsTermsNote(booking, { withPolicy: false }),
     ];
 
     const freshLinkHtml = freshLinkUrl
@@ -1359,6 +1397,9 @@ export type PrivateBookingMessageEmailBooking = {
   internal_notes?: string | null;
   setup_date?: string | null;
   setup_time?: string | null;
+  /** Whether the contract has reached the guest, for the terms wording (review BK-006). */
+  contract_sent_at?: string | null;
+  contract_accepted_at?: string | null;
 };
 
 /** The reference printed on the contract (src/lib/contract-template.ts), so the two always match. */
@@ -1582,7 +1623,7 @@ export function buildDepositRequestEmail(input: {
       ...(input.holdExpiry
         ? [`Unless we agree otherwise in writing, the hold may be released if the deposit isn't received in cleared funds by ${input.holdExpiry}.`]
         : []),
-      'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.',
+      depositAcceptsTermsNote(input.booking),
     ],
   });
 }
@@ -2097,7 +2138,7 @@ export function buildDepositReceivedMessageEmail(input: {
     notes: [
       DEPOSIT_TERMS_NOTE,
       ...(dueDate ? ['Your event balance is payable separately, by the balance due date shown above.'] : []),
-      'Our full cancellation, refund and date-change policy is set out in your contract.',
+      cancellationPolicyNote(input.booking),
     ],
   });
 }
@@ -2171,7 +2212,7 @@ export function buildBookingConfirmedMessageEmail(input: {
         ...(expiry
           ? [`Unless we agree otherwise in writing, the hold may be released if the deposit isn't received in cleared funds by ${expiry}.`]
           : []),
-        'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.',
+        depositAcceptsTermsNote(input.booking),
         DEPOSIT_TERMS_NOTE,
       ],
     });
