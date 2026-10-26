@@ -89,7 +89,8 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
     getUserPermissions()
   ])
 
-  if (!canViewReports) {
+  // The report lists guests and their bookings, so it needs table bookings access too (BK-120).
+  if (!canViewReports || !canViewTableBookings) {
     redirect('/unauthorized')
   }
 
