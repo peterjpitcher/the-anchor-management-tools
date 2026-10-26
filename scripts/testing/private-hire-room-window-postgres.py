@@ -196,6 +196,8 @@ def main():
             for name, expected in PRODUCTION_MD5.items():
                 check(f"(SELECT md5(prosrc) FROM pg_proc WHERE proname='{name}') = '{expected}'", f'{name} starts as production holds it')
             sql(RELEASE_3.read_text())
+            names = "','".join(FUNCTIONS)
+            print('INFO md5(prosrc) after release 3: ' + sql(f"SELECT string_agg(proname || '=' || md5(prosrc), ' ' ORDER BY proname) FROM pg_proc WHERE proname IN ('{names}');"))
             before = definitions()
 
             check(f"NOT {blocked(T1, '2036-07-01 23:45', '2036-07-02 00:15')}",
