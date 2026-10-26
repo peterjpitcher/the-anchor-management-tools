@@ -612,7 +612,7 @@ export default function EventDetailClient({
                 allowMultiple={allowMultipleTicketTypes}
                 event={event as TicketSettingsEvent}
               />
-              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
             </div>
           )}
 

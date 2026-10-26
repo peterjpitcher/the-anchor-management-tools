@@ -15,12 +15,19 @@ const settingsSchema = z.object({
   online_discount_value: z.number().finite().positive().nullable(),
   online_discount_ends_at: z.string().datetime({ offset: true }).nullable(),
   booking_questions: bookingQuestionsSchema,
+  // Ask for each ticket's name and answers (BK-014, owner decision D4).
+  collect_guest_details: z.boolean(),
 }).superRefine((value, ctx) => {
   if (value.online_discount_type && value.online_discount_value === null) {
     ctx.addIssue({ code: 'custom', path: ['online_discount_value'], message: 'Enter an online discount amount' })
   }
   if (value.online_discount_type === 'percent' && (value.online_discount_value ?? 0) >= 100) {
     ctx.addIssue({ code: 'custom', path: ['online_discount_value'], message: 'The discount must be less than 100%' })
+  }
+  // Questions are asked of each guest, so they only reach anyone when guest details are on.
+  // Without this, a question could be saved that no booking ever asks.
+  if (value.payment_mode !== 'free' && value.booking_questions.length > 0 && !value.collect_guest_details) {
+    ctx.addIssue({ code: 'custom', path: ['collect_guest_details'], message: 'Guest questions are asked of each guest. Switch on guest details, or remove the questions.' })
   }
 })
 
@@ -57,9 +64,11 @@ export async function saveEventTicketSettings(eventId: string, input: z.input<ty
       online_discount_value: discountActive ? values.online_discount_value : null,
       online_discount_ends_at: discountActive ? values.online_discount_ends_at : null,
       booking_questions: values.payment_mode === 'free' ? [] : values.booking_questions,
+      // Free entry asks for nothing; null puts the event back on the default if it is ever paid.
+      collect_guest_details: values.payment_mode === 'free' ? null : values.collect_guest_details,
     }).eq('id', eventId)
     if (error) return { error: 'Ticket settings could not be saved. Please try again.' }
-    await logAuditEvent({ user_id: user.id, user_email: user.email ?? undefined, operation_type: 'update', resource_type: 'event', resource_id: eventId, operation_status: 'success', additional_info: { changed: 'ticket_settings', questionCount: values.booking_questions.length } })
+    await logAuditEvent({ user_id: user.id, user_email: user.email ?? undefined, operation_type: 'update', resource_type: 'event', resource_id: eventId, operation_status: 'success', additional_info: { changed: 'ticket_settings', questionCount: values.booking_questions.length, collectGuestDetails: values.payment_mode === 'free' ? null : values.collect_guest_details } })
     revalidatePath(`/events/${eventId}`)
     revalidatePath('/events')
     return { success: true }
