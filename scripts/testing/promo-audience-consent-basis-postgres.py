@@ -22,6 +22,7 @@ MIGRATION = ROOT / 'supabase/migrations/20261026224114_promo_audience_consent_ba
 ROLLBACK = ROOT / 'tasks/promo-audience-consent-basis/rollback.sql'
 SIGNATURE = 'get_cross_promo_audience(uuid,uuid,integer,integer,integer,integer,integer)'
 PRODUCTION_MD5 = '2e7eb2740facd6397bea90194ae0c661'
+EXPECTED_MD5 = 'f70680df53506c3b4fe5db3e77e96ce2'
 
 SETUP = r"""
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
@@ -131,7 +132,7 @@ def main():
             print('PASS an opted-out guest stays out (8)')
 
             new_definition = definition()
-            check(f"split_part('{new_definition}', ' ', 1) <> '{PRODUCTION_MD5}'", 'the body changed')
+            check(f"split_part('{new_definition}', ' ', 1) = '{EXPECTED_MD5}'", 'the body is the reviewed one (md5 f70680df)')
             check(f"split_part('{new_definition}', ' ', 2) = 'true' AND split_part('{new_definition}', ' ', 3) = '{{search_path=public}}'",
                   'SECURITY DEFINER and its search_path are unchanged')
             check(f"'{new_definition}' LIKE '% falsefalsetrue'", 'grants unchanged: service_role only')
