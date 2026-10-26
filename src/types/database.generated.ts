@@ -21978,6 +21978,10 @@ export type Database = {
         }
         Returns: Json
       }
+      gdpr_scrub_audit_logs_v01: {
+        Args: { p_booking_ids?: string[]; p_customer_ids: string[] }
+        Returns: number
+      }
       generate_booking_reference: { Args: never; Returns: string }
       generate_invoice_reminder_digest: {
         Args: never
