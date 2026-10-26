@@ -152,7 +152,8 @@ describe('pre-order booker reminder, email first (flag on)', () => {
     const [to, body, options] = vi.mocked(sendSMS).mock.calls[0]
     expect(to).toBe('+447700900777')
     expect(body.startsWith(TODAYS_TEXT_START)).toBe(true)
-    expect(body).toContain('Saturday 12 December at 7pm. Every guest needs a main course. Choose here: https://l.the-anchor.pub/food1')
+    // Was 'Every guest needs a main course.', which told 2 and 3 course guests a main would do (BK-056).
+    expect(body).toContain('Saturday 12 December at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: https://l.the-anchor.pub/food1')
     assertCleanText(body)
     expect(options?.metadata).toEqual({ table_booking_id: 'xmas-1', template_key: 'table_booking_preorder_reminder' })
     const attempts = db.queries
@@ -202,7 +203,8 @@ describe('pre-order booker reminder with the flag off: exactly today', () => {
     expect(payload.result.bookerReminders).toBe(1)
     expect(jobQueue.enqueue).toHaveBeenCalledWith('send_sms', {
       to: '+447700900777',
-      message: `${TODAYS_TEXT_START}Saturday 12 December at 7pm. Every guest needs a main course. Choose here: https://l.the-anchor.pub/food1`,
+      // The tier rule, not 'Every guest needs a main course.' (BK-056).
+      message: `${TODAYS_TEXT_START}Saturday 12 December at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: https://l.the-anchor.pub/food1`,
       customer_id: 'cust-7',
       booking_id: 'xmas-1',
       metadata: { table_booking_id: 'xmas-1', template_key: 'table_booking_preorder_reminder' },

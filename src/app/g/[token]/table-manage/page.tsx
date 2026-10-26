@@ -150,7 +150,7 @@ export default async function TableManageBookingPage({
   searchParams
 }: {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ confirmCancel?: string; status?: string; preorder?: string; seat?: string }>
+  searchParams: Promise<{ confirmCancel?: string; status?: string; preorder?: string; seat?: string; reason?: string }>
 }) {
   const { token } = await params
   const query = await searchParams
@@ -337,6 +337,7 @@ export default async function TableManageBookingPage({
           {...preorderView}
           actionUrl={actionUrl}
           errorSeat={Number.isFinite(errorSeat) && errorSeat > 0 ? errorSeat : null}
+          errorReason={query.reason === 'courses' ? 'courses' : null}
         />
       )}
 
