@@ -769,6 +769,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             party_size: nextSize,
             christmas_course_counts: christmasPartyChange?.courseCounts,
             removed_seats: christmasPartyChange?.removedSeats,
+            expected_course_counts: christmasPartyChange?.expectedCourseCounts,
             send_sms: partySizeEditSendSms,
             ...(selectedMoveTable
               ? {

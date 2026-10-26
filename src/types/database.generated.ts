@@ -21202,6 +21202,7 @@ export type Database = {
         Args: {
           p_booking_id: string
           p_course_counts: number[]
+          p_expected_course_counts?: number[]
           p_removed_ordinals?: number[]
         }
         Returns: Json

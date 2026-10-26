@@ -275,7 +275,7 @@ describe('Christmas amendment preflight', () => {
       tableBookingId: 'tb-1', partySize: 4, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1]
     })
     expect(result.state).toBe('updated')
-    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [1, 1, 1, 1], p_removed_ordinals: [] }])
+    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [1, 1, 1, 1], p_removed_ordinals: [], p_expected_course_counts: [1, 1, 1, 1, 1, 1] }])
     expect(updateMock).not.toHaveBeenCalled()
   })
   it('refuses a Christmas booking below 4 guests with the real reason', async () => {
@@ -342,7 +342,7 @@ describe('Christmas party changes after the pre-order deadline', () => {
     })
     expect(result.state).toBe('updated')
     expect(result.late_change).toBe(true)
-    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 2, 3, 1, 1, 1, 1], p_removed_ordinals: [2] }])
+    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 2, 3, 1, 1, 1, 1], p_removed_ordinals: [2], p_expected_course_counts: [3, 2, 2, 3, 1, 1, 1, 1] }])
     expect(result.removed_covers).toEqual([{ id: 'cover-2', ordinal: 2, guestName: 'Dave', courses: [{ course: 'main', itemName: 'Turkey' }] }])
   })
 
@@ -423,6 +423,19 @@ describe('naming the Christmas guests who leave', () => {
     })).rejects.toThrow('Tick the guests who are not coming')
   })
 
+  it('refuses a change made against guests that have changed since, before anything is written', async () => {
+    bookingRow.christmas_course_counts = [3, 1, 1, 1, 1]
+    const { client, rpc, updateMock } = createSupabaseStub({ data: null, error: null })
+    // The dialog was opened when the party was six; another tab has since removed a guest.
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 4, autoMoveTable: true,
+      christmasCourseCounts: [3, 1, 1, 1], christmasRemovedSeats: [2], christmasExpectedCourses: [3, 2, 1, 1, 1, 1]
+    })).rejects.toThrow('Christmas booking changed while you were editing it. Reload it and try again.')
+    expect(christmasWrites(rpc)).toEqual([])
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+
   it('treats the same size with a guest swapped out as a change', async () => {
     bookingRow.christmas_course_counts = [3, 1, 1, 1]
     bookingRow.party_size = 4
@@ -431,7 +444,7 @@ describe('naming the Christmas guests who leave', () => {
       tableBookingId: 'tb-1', partySize: 4, autoMoveTable: true, christmasCourseCounts: [3, 1, 1, 1], christmasRemovedSeats: [2]
     })
     expect(result.state).toBe('updated')
-    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 1, 1, 1], p_removed_ordinals: [2] }])
+    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 1, 1, 1], p_removed_ordinals: [2], p_expected_course_counts: [3, 1, 1, 1] }])
   })
 
   it("passes on the database's own Christmas refusal in its words", async () => {
@@ -481,7 +494,7 @@ describe('recording Christmas courses on a booking that has none', () => {
     })
 
     expect(result.state).toBe('updated')
-    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 3, 2, 2, 1, 1], p_removed_ordinals: [] }])
+    expect(christmasWrites(rpc)).toEqual([{ p_booking_id: 'tb-1', p_course_counts: [3, 3, 2, 2, 1, 1], p_removed_ordinals: [], p_expected_course_counts: [] }])
   })
 
   it('clears earlier dishes that the new courses no longer allow, and keeps the rest', async () => {

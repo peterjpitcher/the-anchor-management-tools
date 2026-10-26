@@ -89,10 +89,13 @@ GRANT EXECUTE ON FUNCTION public.assert_christmas_course_snapshot_v01() TO servi
 
 -- p_course_counts is the whole new party in seat order: the guests who stay first, in their old
 -- order, then anyone added. p_removed_ordinals names the leaving guests by their current seat number.
+-- p_expected_course_counts is the course list the person saw when they chose who was leaving (an
+-- empty list when none was recorded): seat numbers only name the same guests while it still holds.
 CREATE FUNCTION public.change_christmas_party_v01(
   p_booking_id uuid,
   p_course_counts integer[],
-  p_removed_ordinals integer[] DEFAULT '{}'::integer[]
+  p_removed_ordinals integer[] DEFAULT '{}'::integer[],
+  p_expected_course_counts integer[] DEFAULT NULL
 )
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_catalog AS $$
 DECLARE
@@ -106,6 +109,15 @@ BEGIN
     FROM public.table_bookings b WHERE b.id = p_booking_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Booking was not found.' USING ERRCODE = 'P0002';
+  END IF;
+  -- Two tabs removing "seat 2" from the same party would otherwise remove two different guests: the
+  -- second request lands after the first has closed up the seat numbers. Refuse a change made against
+  -- guests that have changed since, before anyone is removed. NULL skips the check.
+  IF p_expected_course_counts IS NOT NULL AND (
+       CASE WHEN cardinality(p_expected_course_counts) = 0 THEN v_old IS NOT NULL
+            ELSE v_old IS DISTINCT FROM p_expected_course_counts END
+     ) THEN
+    RAISE EXCEPTION 'Christmas booking changed while you were editing it. Reload it and try again.' USING ERRCODE = '22023';
   END IF;
   IF p_course_counts IS NULL OR cardinality(p_course_counts) = 0 THEN
     RAISE EXCEPTION 'Christmas bookings need a course choice for every guest when changing the party size.' USING ERRCODE = '22023';
@@ -178,8 +190,8 @@ BEGIN
   );
 END;
 $$;
-REVOKE ALL ON FUNCTION public.change_christmas_party_v01(uuid, integer[], integer[]) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.change_christmas_party_v01(uuid, integer[], integer[]) TO service_role;
+REVOKE ALL ON FUNCTION public.change_christmas_party_v01(uuid, integer[], integer[], integer[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.change_christmas_party_v01(uuid, integer[], integer[], integer[]) TO service_role;
 
 DROP TRIGGER booking_preorder_covers_touch_updated_at ON public.booking_preorder_covers;
 CREATE TRIGGER booking_preorder_covers_touch_updated_at

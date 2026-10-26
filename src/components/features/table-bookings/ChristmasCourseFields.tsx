@@ -24,6 +24,8 @@ export type ChristmasPartyChange = {
   courseCounts: number[]
   /** Seat numbers, as numbered now, of the guests who are not coming. */
   removedSeats: number[]
+  /** The course list these seat numbers were read from (empty when none was recorded). */
+  expectedCourseCounts: number[]
 }
 
 interface ChristmasCourseFieldsProps {
@@ -113,7 +115,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
     const added = Array.from({ length: addedCount }, (_, index) => newSeatTier(index))
     // Recording tiers for the first time is all or nothing: half a list would be refused.
     if (loaded.firstTime) {
-      onChange(added.some((count) => count < 1 || count > 3) ? undefined : { courseCounts: added, removedSeats: [] })
+      onChange(added.some((count) => count < 1 || count > 3) ? undefined : { courseCounts: added, removedSeats: [], expectedCourseCounts: [] })
       return
     }
     if (shrinking) {
@@ -125,10 +127,11 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
       onChange({
         courseCounts: seatTiers.filter((_, index) => !removed.has(index + 1)),
         removedSeats: [...leaving].sort((a, b) => a - b),
+        expectedCourseCounts: loaded.recorded,
       })
       return
     }
-    onChange({ courseCounts: [...seatTiers, ...added], removedSeats: [] })
+    onChange({ courseCounts: [...seatTiers, ...added], removedSeats: [], expectedCourseCounts: loaded.recorded })
     // newSeatTier reads addedTiers and late, both listed.
   }, [loaded, seatTiers, addedTiers, leaving, shrinking, needLeaving, addedCount, late, onChange])
 

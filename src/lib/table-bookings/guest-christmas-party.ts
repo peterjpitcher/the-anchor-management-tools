@@ -33,6 +33,7 @@ export type GuestChristmasPartyBlockReason =
   | 'christmas_size'
   | 'christmas_no_change'
   | 'christmas_invalid'
+  | 'christmas_changed'
   | 'no_table'
 
 export type GuestChristmasPartyResult =
@@ -49,6 +50,8 @@ export type GuestChristmasPartyInput = {
   rawToken: string
   /** Seat numbers, as the page showed them, of the guests who are not coming. */
   removedSeats: number[]
+  /** The course list the page showed. Seat numbers only name the same guests while it still holds. */
+  expectedCourses?: number[]
   /** How many guests join on each tier. */
   added: { oneCourse: number; twoCourses: number; threeCourses: number }
   appBaseUrl: string
@@ -84,6 +87,10 @@ export async function changeChristmasPartyByRawToken(
   const recorded: number[] | null = Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null
   if (!recorded) return blocked('christmas_call_us', tableBookingId)
 
+  if (input.expectedCourses && JSON.stringify(input.expectedCourses) !== JSON.stringify(recorded)) {
+    return blocked('christmas_changed', tableBookingId)
+  }
+
   if ((await readChristmasDeadline(supabase, booking.booking_date)) !== 'open') {
     return blocked('christmas_closed', tableBookingId)
   }
@@ -113,6 +120,7 @@ export async function changeChristmasPartyByRawToken(
       partySize: nextCourses.length,
       christmasCourseCounts: nextCourses,
       christmasRemovedSeats: removedSeats,
+      christmasExpectedCourses: recorded,
       actor: 'guest',
       sendSms: false,
       appBaseUrl: input.appBaseUrl,
@@ -123,6 +131,7 @@ export async function changeChristmasPartyByRawToken(
     if (changeError instanceof ChristmasCourseValidationError) {
       if (/deadline/i.test(changeError.message)) return blocked('christmas_closed', tableBookingId)
       if (/are for \d+ to \d+ guests/.test(changeError.message)) return blocked('christmas_size', tableBookingId)
+      if (/changed while you were editing/.test(changeError.message)) return blocked('christmas_changed', tableBookingId)
       return blocked('christmas_invalid', tableBookingId)
     }
     throw changeError

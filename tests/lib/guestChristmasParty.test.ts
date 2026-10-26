@@ -121,6 +121,19 @@ describe('changeChristmasPartyByRawToken', () => {
     expect(await change()).toMatchObject({ reason: 'christmas_no_change' })
   })
 
+  it('refuses a change from a page left open after the numbers changed, before anything is written', async () => {
+    // The page showed seven guests; the booking now has six, so "seat 2" may be someone else.
+    expect(await change({ removedSeats: [2], expectedCourses: [3, 3, 2, 2, 1, 1, 1] })).toEqual({
+      state: 'blocked', reason: 'christmas_changed', tableBookingId: 'booking-1',
+    })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('passes the course list it read to the staff path, so a racing change is refused there', async () => {
+    await change({ removedSeats: [2], expectedCourses: [3, 2, 2, 1, 1, 1] })
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ christmasExpectedCourses: [3, 2, 2, 1, 1, 1] }))
+  })
+
   it('refuses a seat that is not on the booking', async () => {
     expect(await change({ removedSeats: [7] })).toMatchObject({ reason: 'christmas_invalid' })
   })

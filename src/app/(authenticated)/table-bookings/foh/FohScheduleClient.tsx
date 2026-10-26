@@ -640,7 +640,7 @@ export function FohScheduleClient({
           if (!bid) return
           setPartySizeEditOpen(false)
           void (async () => {
-            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats }), 'Party size updated', 'party_size')
+            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats, expected_course_counts: christmasPartyChange?.expectedCourseCounts }), 'Party size updated', 'party_size')
             if (ok) closeBookingDetails()
           })()
         }}

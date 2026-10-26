@@ -26,6 +26,8 @@ const UpdatePartySizeSchema = z.object({
   christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
   // The Christmas guests who are leaving, by their seat number now, so their own dishes go (BK-054).
   removed_seats: z.array(z.number().int().min(1).max(CHRISTMAS_MAX_PARTY_SIZE)).max(CHRISTMAS_MAX_PARTY_SIZE - 1).optional(),
+  // The course list the dialog showed, so a change made against guests that have since changed is refused.
+  expected_course_counts: z.array(z.number().int().min(1).max(3)).max(CHRISTMAS_MAX_PARTY_SIZE).nullable().optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
@@ -90,6 +92,7 @@ export async function POST(
       partySize: newPartySize,
       christmasCourseCounts: parsed.data.christmas_course_counts,
       christmasRemovedSeats: parsed.data.removed_seats,
+      christmasExpectedCourses: parsed.data.expected_course_counts,
       // After the Christmas pre-order deadline only a manager may change the numbers (D21).
       canMakeLateChristmasChange: tableBookingsManagerCheck(auth),
       actor: 'boh',
