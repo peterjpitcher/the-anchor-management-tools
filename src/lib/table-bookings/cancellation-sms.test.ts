@@ -105,6 +105,17 @@ describe('cancellation SMS', () => {
     expect(body).not.toMatch(/3 days/)
   })
 
+  // BK-113: a hold that ran out unpaid used to be cancelled with no word of why.
+  it('says the deposit was not paid in time when the payment hold ran out, with the pub number', async () => {
+    const body = await sendWith({ refunded: false, reason: 'hold_expired' })
+    expect(body).toMatch(/^The Anchor: Sarah, your booking on .+ has been cancelled\. /)
+    expect(body).toContain(
+      "has been cancelled. The deposit wasn't paid in time, so the table has been released. If you'd still like to come, call us on 01753 682707."
+    )
+    // Plain GSM-7 characters only: one curly apostrophe or dash halves what fits in a text.
+    expect(body).toMatch(/^[\x20-\x7E]+$/)
+  })
+
   it('uses the generic sentence only when there was genuinely no deposit', async () => {
     const body = await sendWith({ refunded: false, reason: 'no_deposit' })
     expect(body).toMatch(/has been cancelled\. Hope to see you again soon!/)
