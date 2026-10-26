@@ -29,6 +29,7 @@ import {
 import { handlePaymentCompleted as handleParkingCapture, handlePaymentDenied as handleParkingDenied } from '@/lib/paypal-domains/parking'
 import {
   handleEventBookingCapture,
+  handleEventBookingDenied,
   handleEventBookingRefund,
   type EventBookingOutcome,
 } from '@/lib/paypal-domains/event-bookings'
@@ -180,9 +181,13 @@ async function runDomainHandler(
     }
 
     case 'event_bookings': {
+      // A denied capture used to fall through to the capture handler and confirm the booking
+      // with no money behind it (BK-019).
       eventOutcome = isRefund || isReversal
         ? await handleEventBookingRefund(supabase, event, eventId, decision.key, moneyKind)
-        : await handleEventBookingCapture(supabase, event, eventId)
+        : eventType === 'PAYMENT.CAPTURE.DENIED'
+          ? await handleEventBookingDenied(supabase, event, eventId)
+          : await handleEventBookingCapture(supabase, event, eventId)
       money = eventOutcome.money ?? null
       break
     }

@@ -237,6 +237,8 @@ describe('portalPayPalActions', () => {
       amount: '250.00',
       currency: 'GBP',
       transactionId: 'CAPTURE-1',
+      // Only a COMPLETED capture records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
     })
     mockedFinalizeDepositPayment.mockResolvedValue({ alreadyRecorded: false })
 
@@ -305,4 +307,41 @@ describe('portalPayPalActions', () => {
       'capture-hash',
     )
   })
+
+  // BK-019: the deposit used to be recorded as paid whatever the capture's own status.
+  it('records no deposit while PayPal holds the capture for review', async () => {
+    mockedVerifyBookingToken.mockReturnValue('booking-1')
+    mockAdminForCapture()
+    mockedGetPayPalOrder.mockResolvedValue(payPalOrderForBooking())
+    mockedCapturePayPalPayment.mockResolvedValue({
+      amount: '250.00',
+      currency: 'GBP',
+      transactionId: 'CAPTURE-1',
+      captureStatus: 'PENDING',
+      captureStatusReason: 'PENDING_REVIEW',
+    })
+
+    const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
+
+    expect(result).toEqual({ error: 'Your payment has been received and is being confirmed. Please wait a moment before trying again.' })
+    expect(mockedFinalizeDepositPayment).not.toHaveBeenCalled()
+  })
+
+  it('records no deposit when PayPal declines the capture', async () => {
+    mockedVerifyBookingToken.mockReturnValue('booking-1')
+    mockAdminForCapture()
+    mockedGetPayPalOrder.mockResolvedValue(payPalOrderForBooking())
+    mockedCapturePayPalPayment.mockResolvedValue({
+      amount: '250.00',
+      currency: 'GBP',
+      transactionId: 'CAPTURE-1',
+      captureStatus: 'DECLINED',
+    })
+
+    const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
+
+    expect(result).toEqual({ error: 'We could not safely confirm this payment. Please contact us for assistance.' })
+    expect(mockedFinalizeDepositPayment).not.toHaveBeenCalled()
+  })
 })
+

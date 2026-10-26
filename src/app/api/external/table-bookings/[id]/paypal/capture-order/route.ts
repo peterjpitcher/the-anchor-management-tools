@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
@@ -134,7 +135,7 @@ export async function POST(
       }
 
       // Capture the PayPal payment
-      let captureResult: { transactionId: string; status: string; payerId?: string; amount?: string; currency?: string | null };
+      let captureResult: { transactionId: string; status: string; captureStatus?: string | null; captureStatusReason?: string | null; payerId?: string; amount?: string; currency?: string | null };
       try {
         captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY);
       } catch (err) {
@@ -155,6 +156,38 @@ export async function POST(
       }
 
       const transactionId = captureResult.transactionId;
+
+      // Only a COMPLETED capture is a paid deposit (BK-019). The booking is left as it is: a
+      // PENDING capture is settled by the PAYMENT.CAPTURE.COMPLETED webhook, which records the
+      // deposit then, and a refused one has taken no money.
+      const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus);
+      if (captureOutcome !== 'completed') {
+        logger.error('capture-order: PayPal did not complete the deposit capture', {
+          error: new Error(`table_deposit_capture_${captureOutcome}`),
+          metadata: { bookingId, orderId, transactionId, captureStatus: captureResult.captureStatus ?? null, reason: captureResult.captureStatusReason ?? null },
+        });
+        void logAuditEvent({
+          operation_type: captureOutcome === 'pending' ? 'payment.capture_pending' : 'payment.capture_declined',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId,
+            transactionId,
+            captureStatus: captureResult.captureStatus ?? null,
+            captureStatusReason: captureResult.captureStatusReason ?? null,
+            action_needed: captureOutcome === 'pending'
+              ? 'PayPal is holding this deposit for review. The booking is not marked paid; the PayPal webhook records it if PayPal completes it. Check the payment in PayPal if it does not clear.'
+              : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
+          },
+        });
+        return NextResponse.json(
+          captureOutcome === 'pending'
+            ? { success: false, error: 'PayPal is still processing this payment. Please contact support; do not retry.', code: 'CAPTURE_PENDING' }
+            : { success: false, error: 'PayPal did not take this payment. Please contact support.', code: 'CAPTURE_DECLINED' },
+          { status: 502 },
+        );
+      }
 
       // Lock the actually-captured GBP amount on the booking — authoritative
       // source for what the customer was charged. Fail closed if the capture

@@ -208,7 +208,7 @@ describe('capturing the PayPal order for an event booking', () => {
   it('captures and confirms through the confirm function with what PayPal captured', async () => {
     const db = database()
     paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
-    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
 
     const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
 
@@ -250,7 +250,7 @@ describe('capturing the PayPal order for an event booking', () => {
   it('refuses a capture whose amount does not match, without confirming the booking', async () => {
     const db = database()
     paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
-    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', amount: '8.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'COMPLETED', amount: '8.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
 
     const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
 
@@ -264,7 +264,7 @@ describe('capturing the PayPal order for an event booking', () => {
   it('keeps the guest out of "try again" and logs an error when PayPal took the money but the booking could not be confirmed', async () => {
     const db = database({ confirm: { data: null, error: { message: 'connection reset', code: '08006' } } })
     paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
-    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
 
     const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
 
@@ -278,7 +278,7 @@ describe('capturing the PayPal order for an event booking', () => {
   it('confirms a guest payment-link capture with the guest source', async () => {
     const db = database()
     paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
-    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'COMPLETED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
 
     const result = await captureEventPayPalOrderByRawToken(db.client, { rawToken: 'raw-token', orderId: ORDER })
 
@@ -288,3 +288,61 @@ describe('capturing the PayPal order for an event booking', () => {
     expect(db.rpcCalls[0]?.args.p_source).toBe('guest_capture')
   })
 })
+
+// BK-019: PayPal can hold a capture for review (PENDING) or refuse it (DECLINED). Both used to
+// confirm the booking and tell the guest it was paid.
+describe('a capture PayPal has not completed', () => {
+  function paymentUpdate(db: ReturnType<typeof database>) {
+    return db.calls.find((call) => call.table === 'payments' && call.action === 'update')
+  }
+
+  it('keeps the booking waiting, records the capture and confirms nothing when PayPal holds it as PENDING', async () => {
+    const db = database()
+    paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'PENDING', captureStatusReason: 'PENDING_REVIEW', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+
+    const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
+
+    expect(result).toMatchObject({ state: 'capture_pending', bookingId: BOOKING, paymentId: 'payment-1' })
+    expect(db.rpcCalls).toHaveLength(0)
+    const update = paymentUpdate(db)
+    expect(update?.payload).toMatchObject({ paypal_capture_id: 'CAPTURE-1', metadata: { capture_status: 'PENDING', capture_status_reason: 'PENDING_REVIEW' } })
+    expect(update?.payload).not.toHaveProperty('status')
+    expect(filterValue(update!, 'status')).toBe('pending')
+  })
+
+  it('marks the payment failed and confirms nothing when PayPal declines the capture', async () => {
+    const db = database()
+    paypal.getPayPalOrder.mockResolvedValueOnce(paypalOrder())
+    paypal.capturePayPalPayment.mockResolvedValueOnce({ transactionId: 'CAPTURE-1', status: 'COMPLETED', captureStatus: 'DECLINED', amount: '80.00', currency: 'GBP', customId: `event_booking:${BOOKING}` })
+
+    const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
+
+    expect(result).toEqual({ state: 'blocked', reason: 'capture_declined' })
+    expect(db.rpcCalls).toHaveLength(0)
+    expect(paymentUpdate(db)?.payload).toMatchObject({ status: 'failed', metadata: { capture_status: 'DECLINED' } })
+  })
+
+  it('never confirms on a stored capture PayPal is still holding', async () => {
+    const db = database({ payment: { id: 'payment-1', paypal_order_id: ORDER, paypal_capture_id: 'CAPTURE-1', amount: 80, currency: 'GBP', status: 'pending', metadata: { capture_status: 'PENDING' } } })
+
+    const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
+
+    expect(result).toMatchObject({ state: 'capture_pending' })
+    expect(paypal.capturePayPalPayment).not.toHaveBeenCalled()
+    expect(db.rpcCalls).toHaveLength(0)
+  })
+
+  it('does not tell a guest whose payment PayPal is holding that their time ran out', async () => {
+    const db = database({
+      booking: { hold_expires_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() },
+      payment: { id: 'payment-1', event_booking_id: BOOKING, paypal_order_id: ORDER, paypal_capture_id: 'CAPTURE-1', amount: 80, currency: 'GBP', status: 'pending', metadata: { capture_status: 'PENDING' } },
+    })
+
+    const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
+
+    expect(result).toMatchObject({ state: 'capture_pending', bookingId: BOOKING })
+    expect(paypal.capturePayPalPayment).not.toHaveBeenCalled()
+  })
+})
+

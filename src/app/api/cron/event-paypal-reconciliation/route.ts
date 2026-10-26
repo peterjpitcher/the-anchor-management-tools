@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPayPalOrder, getPayPalRefund, isPayPalOrderNotFoundError } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
 import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
+import { EVENT_CAPTURE_PENDING_STATUS } from '@/lib/events/payment-awaiting-decision'
 import {
   sendEventPaymentConfirmationEmail,
   sendEventPaymentManualReviewEmail,
@@ -72,7 +74,7 @@ async function writeOffAbandonedPayment(
   return true
 }
 
-function extractCapture(order: any): { id: string; amount: number; currency: string } | null {
+function extractCapture(order: any): { id: string; amount: number; currency: string; status: string | null; statusReason: string | null } | null {
   const capture = order?.purchase_units?.[0]?.payments?.captures?.[0]
   const id = typeof capture?.id === 'string' ? capture.id : ''
   const amount = Number(capture?.amount?.value)
@@ -80,7 +82,54 @@ function extractCapture(order: any): { id: string; amount: number; currency: str
     ? capture.amount.currency_code.toUpperCase()
     : 'GBP'
   if (!id || !Number.isFinite(amount)) return null
-  return { id, amount: Number(amount.toFixed(2)), currency }
+  return {
+    id,
+    amount: Number(amount.toFixed(2)),
+    currency,
+    // The capture's own status, not the order's: an order can be COMPLETED while PayPal still
+    // holds its capture as PENDING, and a DECLINED capture is no payment at all (BK-019).
+    status: typeof capture?.status === 'string' ? capture.status.toUpperCase() : null,
+    statusReason: typeof capture?.status_details?.reason === 'string' ? capture.status_details.reason : null,
+  }
+}
+
+/**
+ * Records on the payment row that PayPal has not completed its capture (BK-019). A PENDING one
+ * keeps the row pending with the capture id and a marker, which also tells the hold job to
+ * leave the booking alone; anything else marks the row failed so the sweep stops re-reading it.
+ * Guarded on `status = 'pending'` so a confirmation landing at the same moment is never undone.
+ */
+async function recordUnfinishedCapture(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: PendingEventPayment,
+  capture: { id: string; status: string | null; statusReason: string | null },
+  outcome: 'pending' | 'declined'
+): Promise<void> {
+  const metadata = row.metadata ?? {}
+  if (outcome === 'pending' && metadata.capture_status === EVENT_CAPTURE_PENDING_STATUS) return
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase
+    .from('payments')
+    .update({
+      ...(outcome === 'declined' ? { status: 'failed' } : {}),
+      paypal_capture_id: capture.id,
+      metadata: {
+        ...metadata,
+        capture_status: outcome === 'pending' ? EVENT_CAPTURE_PENDING_STATUS : (capture.status || 'DECLINED'),
+        capture_status_reason: capture.statusReason,
+        capture_status_at: nowIso,
+      },
+      updated_at: nowIso,
+    })
+    .eq('id', row.id)
+    .eq('status', 'pending')
+
+  if (error) {
+    logger.error('Failed to record an unfinished PayPal capture on an event payment', {
+      error: new Error(error.message),
+      metadata: { paymentId: row.id, bookingId: row.event_booking_id, orderId: row.paypal_order_id, captureId: capture.id, outcome },
+    })
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -94,6 +143,8 @@ export async function GET(request: NextRequest) {
     checked: 0,
     confirmed: 0,
     manualReview: 0,
+    capturePending: 0,
+    captureDeclined: 0,
     skipped: 0,
     abandoned: 0,
     abandonedWrittenOff: 0,
@@ -128,6 +179,15 @@ export async function GET(request: NextRequest) {
       const capture = extractCapture(order)
       if (!capture) {
         result.skipped++
+        continue
+      }
+
+      // Only a COMPLETED capture confirms the booking.
+      const outcome = payPalCaptureOutcome(capture.status)
+      if (outcome !== 'completed') {
+        await recordUnfinishedCapture(supabase, row, capture, outcome)
+        if (outcome === 'pending') result.capturePending++
+        else result.captureDeclined++
         continue
       }
 

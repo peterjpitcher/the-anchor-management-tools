@@ -115,6 +115,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     mockCapturePayPalPayment.mockResolvedValueOnce({
       transactionId: 'CAPTURE-ABC',
       status: 'COMPLETED',
+      // The capture's own status: only COMPLETED records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
       payerId: 'PAYER-1',
       amount: '40.00',
     });
@@ -189,6 +191,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     mockCapturePayPalPayment.mockResolvedValueOnce({
       transactionId: 'CAPTURE-XYZ',
       status: 'COMPLETED',
+      // The capture's own status: only COMPLETED records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
       payerId: 'PAYER-2',
       amount: '40.00',
     });
@@ -206,4 +210,29 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       expect.objectContaining({ operation_type: 'payment.capture_local_update_failed' }),
     );
   });
+
+  // BK-019: the deposit used to be recorded as paid whatever the capture's own status.
+  it.each([
+    ['PENDING', 'CAPTURE_PENDING', 'payment.capture_pending'],
+    ['DECLINED', 'CAPTURE_DECLINED', 'payment.capture_declined'],
+  ])('records nothing on the booking when PayPal leaves the capture %s', async (captureStatus, code, operation) => {
+    mockBookingFetch(makeBooking({ paypal_deposit_order_id: 'ORDER-123' }));
+    mockGetPayPalOrder.mockResolvedValueOnce(makePayPalOrder('40.00'));
+    mockCapturePayPalPayment.mockResolvedValueOnce({
+      transactionId: 'CAPTURE-ABC',
+      status: 'COMPLETED',
+      captureStatus,
+      amount: '40.00',
+    });
+
+    const res = await callRoute('booking-uuid-1', { orderId: 'ORDER-123' });
+    const body = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(body).toMatchObject({ success: false, code });
+    expect(mockUpdate).not.toHaveBeenCalled();
+    const { logAuditEvent } = await import('@/app/actions/audit');
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_type: operation, resource_id: 'booking-uuid-1' }));
+  });
 });
+

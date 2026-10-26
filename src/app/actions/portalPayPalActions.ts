@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
@@ -318,6 +319,44 @@ export async function captureDepositPaymentByToken(
         error: persistError instanceof Error ? persistError : new Error(String(persistError)),
         metadata: { bookingId, paypalOrderId },
       })
+    }
+
+    // BK-019: only a COMPLETED capture records the deposit. A PENDING one stays "being
+    // confirmed" (the claim above already replays that answer) until the PAYMENT.CAPTURE.COMPLETED
+    // webhook records it. A refused one took no money.
+    const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus)
+    if (captureOutcome !== 'completed') {
+      logger.error('Portal capture: PayPal did not complete the deposit capture', {
+        error: new Error(`private_deposit_capture_${captureOutcome}`),
+        metadata: { bookingId, paypalOrderId, captureId: captureResult.transactionId, captureStatus: captureResult.captureStatus, reason: captureResult.captureStatusReason },
+      })
+      const { error: auditError } = await writePrivateBookingAudit(admin, {
+        operationType: captureOutcome === 'pending' ? 'paypal_deposit_capture_pending_via_portal' : 'paypal_deposit_capture_declined_via_portal',
+        bookingId,
+        additionalInfo: {
+          capture_id: captureResult.transactionId,
+          order_id: paypalOrderId,
+          capture_status: captureResult.captureStatus,
+          capture_status_reason: captureResult.captureStatusReason,
+        },
+      })
+      if (auditError) {
+        logger.error('Portal capture: failed to write unfinished capture audit log', {
+          error: auditError,
+          metadata: { bookingId, captureId: captureResult.transactionId },
+        })
+      }
+      if (captureOutcome === 'pending') return pendingConfirmationResponse
+      const declined = { error: 'We could not safely confirm this payment. Please contact us for assistance.' }
+      try {
+        await persistIdempotencyResponse(admin, captureKey, captureHash, declined)
+      } catch (persistError) {
+        logger.error('Portal capture: failed to persist declined capture response', {
+          error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+          metadata: { bookingId, paypalOrderId },
+        })
+      }
+      return declined
     }
 
     // Validate captured amount matches expected deposit

@@ -81,6 +81,34 @@ export async function POST(
         })
       }
 
+      if (result.state === 'capture_pending') {
+        // PayPal is holding the money for review (BK-019). Nothing is confirmed and the guest is
+        // sent nothing yet: the webhook confirms the booking, and messages them, when PayPal does.
+        void logAuditEvent({
+          operation_type: 'event_payment.paypal_capture_pending',
+          resource_type: 'event_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            order_id: parsed.data.orderId,
+            payment_id: result.paymentId,
+            source: 'external',
+          },
+        })
+
+        // 202, as for manual review: a website built before this change shows its "staff need
+        // to check your booking" state for any 202, and offers no second payment.
+        return NextResponse.json(
+          {
+            success: false,
+            state: 'capture_pending',
+            booking_id: bookingId,
+            error: 'PayPal is still processing this payment. The booking will be confirmed when it clears.',
+          },
+          { status: 202 }
+        )
+      }
+
       if (result.state === 'manual_review') {
         await sendEventPaymentManualReviewSms(supabase, { bookingId })
         await sendEventPaymentManualReviewEmail(supabase, {

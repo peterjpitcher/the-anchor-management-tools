@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError, PayPalApiError } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 
@@ -297,7 +298,17 @@ export async function GET(request: NextRequest) {
       const orderStatus: string = order.status
 
       if (orderStatus === 'COMPLETED') {
-        // Already captured — record the deposit
+        // Already captured. The order can be COMPLETED while PayPal still holds the capture
+        // itself as PENDING, so only a COMPLETED capture is recorded as paid (BK-019).
+        const captureOutcome = payPalCaptureOutcome(order.purchase_units?.[0]?.payments?.captures?.[0]?.status ?? null)
+        if (captureOutcome !== 'completed') {
+          logger.error('PayPal reconciliation: order completed but its capture is not', {
+            error: new Error(`private_deposit_capture_${captureOutcome}`),
+            metadata: { bookingId, orderId, captureStatus: order.purchase_units?.[0]?.payments?.captures?.[0]?.status ?? null },
+          })
+          results.push({ bookingId, outcome: `capture_${captureOutcome}` })
+          continue
+        }
         const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null
         const capturedAmount = Number(order.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? 0)
         const capturedCurrency = getCaptureAmountCurrency(order)
@@ -344,6 +355,18 @@ export async function GET(request: NextRequest) {
           }
 
           const captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY)
+
+          // BK-019: a PENDING capture is recorded when PayPal completes it (by the webhook, or by
+          // this sweep's COMPLETED branch next run); a refused one took no money.
+          const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus)
+          if (captureOutcome !== 'completed') {
+            logger.error('PayPal reconciliation: PayPal did not complete the capture', {
+              error: new Error(`private_deposit_capture_${captureOutcome}`),
+              metadata: { bookingId, orderId, captureId: captureResult.transactionId, captureStatus: captureResult.captureStatus },
+            })
+            results.push({ bookingId, outcome: `capture_${captureOutcome}` })
+            continue
+          }
 
           const capturedAmount = parseFloat(captureResult.amount)
           const expectedAmount = Number(booking.deposit_amount ?? 0)

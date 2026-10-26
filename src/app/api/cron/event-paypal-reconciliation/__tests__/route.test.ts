@@ -71,8 +71,9 @@ const mockFrom = vi.fn((table: string) => {
   }
 })
 
+const mockRpc = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: mockFrom, rpc: vi.fn() }),
+  createAdminClient: () => ({ from: mockFrom, rpc: mockRpc }),
 }))
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -177,3 +178,65 @@ describe('event-paypal-reconciliation: abandoned PayPal orders', () => {
     )
   })
 })
+
+// BK-019: the sweep confirmed any order with a capture, including one PayPal was still holding
+// (PENDING) and one it had refused (DECLINED).
+describe('event-paypal-reconciliation: captures PayPal has not completed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    selectResults = []
+    updateResult = { error: null }
+    mockAuthorizeCronRequest.mockReturnValue({ authorized: true })
+    mockIsPayPalOrderNotFoundError.mockReturnValue(false)
+  })
+
+  function orderWithCapture(status: string) {
+    return {
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-1', status, status_details: { reason: 'PENDING_REVIEW' }, amount: { value: '80.00', currency_code: 'GBP' } }] } }],
+    }
+  }
+
+  it('confirms nothing and marks the payment as held when the capture is PENDING', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('PENDING'))
+
+    const body = await runRoute()
+
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(body.confirmed).toBe(0)
+    expect(body.capturePending).toBe(1)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      paypal_capture_id: 'CAPTURE-1',
+      metadata: expect.objectContaining({ capture_status: 'PENDING', source: 'booking_id' }),
+    }))
+    expect(mockUpdate.mock.calls[0][0]).not.toHaveProperty('status')
+  })
+
+  it('confirms nothing and marks the payment failed when the capture was DECLINED', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('DECLINED'))
+
+    const body = await runRoute()
+
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(body.captureDeclined).toBe(1)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      metadata: expect.objectContaining({ capture_status: 'DECLINED' }),
+    }))
+  })
+
+  it('still confirms a COMPLETED capture', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('COMPLETED'))
+    mockRpc.mockResolvedValue({ data: { state: 'confirmed' }, error: null })
+
+    const body = await runRoute()
+
+    expect(mockRpc).toHaveBeenCalledWith('confirm_event_paypal_payment_v01', expect.objectContaining({ p_paypal_capture_id: 'CAPTURE-1', p_amount: 80 }))
+    expect(body.confirmed).toBe(1)
+  })
+})
+
