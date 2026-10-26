@@ -163,7 +163,7 @@ def main():
             check(f"{change(party, [3, 1, 1, 1], '{2}', seen)} = 'Christmas booking changed while you were editing it. Reload it and try again.'",
                   'the same change from a second tab is refused, because the guests changed since it was made')
             check(f"(SELECT party_size FROM table_bookings WHERE id = '{party}') = 5", 'and nobody else was removed')
-            check(f"{change(party, [3, 3, 1, 1, 1, 1], '{{}}', '{{}}')} = 'Christmas booking changed while you were editing it. Reload it and try again.'",
+            check(f"{change(party, [3, 3, 1, 1, 1, 1], '{}', '{}')} = 'Christmas booking changed while you were editing it. Reload it and try again.'",
                   'a change that expected no courses recorded is refused once they are')
             check(f"{change(party, [3, 3, 1, 1, 1, 1, 1])} = 'ok'", 'after the deadline, guests join on 1 course (5 to 7)')
             check(f"(SELECT party_size FROM table_bookings WHERE id = '{party}') = 7", 'and the party is 7 again')
