@@ -54,6 +54,18 @@ const EVENT_PAYMENT_REASON_SENTENCES: Record<string, string> = {
   capture_declined: CALL_BEFORE_PAYING_AGAIN,
 }
 
+/**
+ * Sentences for reasons whose meaning depends on the step: the guest payment link's throttle
+ * (BK-029). Before a payment is approved nothing has been charged; after it, the guest is asked
+ * to ring rather than pay again.
+ */
+const STEP_SENTENCES: Record<string, { start: string; capture: string }> = {
+  rate_limited: {
+    start: `There have been too many attempts to pay for this booking online. Please ${CALL} and we will help.`,
+    capture: CALL_BEFORE_PAYING_AGAIN,
+  },
+}
+
 /** Reasons the routes are known to answer with. Used by the tests to keep the table complete. */
 export const KNOWN_EVENT_PAYMENT_REASONS = Object.keys(EVENT_PAYMENT_REASON_SENTENCES)
 
@@ -70,6 +82,8 @@ export function eventPaymentReasonSentence(
   reason: string | null | undefined,
   step: 'start' | 'capture'
 ): string {
+  const byStep = reason ? STEP_SENTENCES[reason]?.[step] : undefined
+  if (byStep) return byStep
   const known = reason ? EVENT_PAYMENT_REASON_SENTENCES[reason] : undefined
   if (known) return known
   return step === 'capture' ? EVENT_PAYMENT_CAPTURE_FALLBACK : EVENT_PAYMENT_START_FALLBACK
