@@ -42,7 +42,7 @@ describe('ChristmasCourseFields', () => {
     expect(group).toBeInTheDocument()
     expect(screen.getByLabelText('Guest 1')).toHaveValue('2')
     expect(screen.getByLabelText('Guest 2')).toHaveValue('3')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 3], removedSeats: [] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 3], removedSeats: [], expectedCourseCounts: [2, 3] }))
   })
 
   it('keeps the old compact rows for the FOH kiosk, each select still named by its guest', async () => {
@@ -59,7 +59,7 @@ describe('ChristmasCourseFields', () => {
     const select = screen.getByRole('combobox', { name: 'Guest 1' })
     expect(select).toHaveValue('1')
     await user.selectOptions(select, '3')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3], removedSeats: [] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3], removedSeats: [], expectedCourseCounts: [1] }))
   })
 
   it('says the courses could not be loaded in either look', async () => {
@@ -94,7 +94,7 @@ describe('ChristmasCourseFields on a Christmas booking with no courses recorded'
     expect(onChange).toHaveBeenLastCalledWith(undefined)
 
     await user.selectOptions(screen.getByLabelText('Guest 2'), '1')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1], removedSeats: [] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1], removedSeats: [], expectedCourseCounts: [] }))
   })
 
   it('shows nothing on a booking that may not take courses', async () => {
@@ -120,7 +120,7 @@ describe('ChristmasCourseFields when the party changes size', () => {
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(undefined))
 
     await user.click(screen.getByRole('checkbox', { name: 'Guest 2 (Dave), 2 courses' }))
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1, 1, 1], removedSeats: [2] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1, 1, 1], removedSeats: [2], expectedCourseCounts: [3, 2, 1, 1, 1] }))
     // The guest who is leaving has no course control any more.
     expect(screen.queryByLabelText('Guest 2 (Dave)')).not.toBeInTheDocument()
 
@@ -135,7 +135,7 @@ describe('ChristmasCourseFields when the party changes size', () => {
     render(<ChristmasCourseFields bookingId="b1" partySize={4} onChange={onChange} appearance="foh" />)
 
     await user.click(await screen.findByRole('checkbox', { name: 'Guest 5, 1 course' }))
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [1, 1, 1, 1], removedSeats: [5] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [1, 1, 1, 1], removedSeats: [5], expectedCourseCounts: [1, 1, 1, 1, 1] }))
   })
 
   it('after the deadline, puts a new guest on 1 course and lets nobody move up', async () => {
@@ -149,7 +149,7 @@ describe('ChristmasCourseFields when the party changes size', () => {
     expect(Array.from((newGuest as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
     expect(Array.from((screen.getByLabelText('Guest 1') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1', '2'])
     expect(Array.from((screen.getByLabelText('Guest 2') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 1, 1, 1, 1], removedSeats: [] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 1, 1, 1, 1], removedSeats: [], expectedCourseCounts: [2, 1, 1, 1] }))
   })
 
   it('after the deadline, tells staff who are not managers that a manager has to make the change', async () => {

@@ -214,6 +214,13 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
      */
     christmasRemovedSeats?: number[]
     /**
+     * The course list the person saw when they chose who was leaving (an empty list when none was
+     * recorded). Seat numbers only name the same guests while it still holds, so a change made against
+     * guests that have changed since (another tab, another member of staff) is refused before anyone
+     * is removed. Left out, the list read here is used, which still catches a change racing this one.
+     */
+    christmasExpectedCourses?: number[] | null
+    /**
      * Asked only when a Christmas change lands after the pre-order deadline: may this person make a
      * late change (owner decision D21: a manager, table_bookings 'manage')? Left out means no.
      */
@@ -268,6 +275,12 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const oldPartySize = Math.max(1, Number(tableBooking.party_size || 1))
   const newPartySize = Math.max(1, Number(input.partySize || 1))
   const recordedCourses: number[] | null = tableBooking.christmas_course_counts ?? null
+  if (
+    input.christmasExpectedCourses !== undefined &&
+    JSON.stringify(input.christmasExpectedCourses ?? []) !== JSON.stringify(recordedCourses ?? [])
+  ) {
+    throw new ChristmasCourseValidationError('Christmas booking changed while you were editing it. Reload it and try again.')
+  }
   const isChristmasBooking = String(tableBooking.booking_type || '') === 'christmas' || Boolean(recordedCourses)
   // A Christmas booking taken with no courses (a staff booking before BK-057) may have them set
   // ONCE, here, so its guests stop being chased for a main they may not owe. The same checks apply
@@ -442,6 +455,8 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
         p_booking_id: tableBooking.id,
         p_course_counts: nextCourses,
         p_removed_ordinals: removedSeats,
+        // What this change was worked out against; the function refuses it if the guests moved since.
+        p_expected_course_counts: recordedCourses ?? [],
       })
       tableUpdateError = error
       const row = (data ?? null) as ChangeChristmasPartyRow | null

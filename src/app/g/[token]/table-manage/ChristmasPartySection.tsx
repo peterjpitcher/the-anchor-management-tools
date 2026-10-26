@@ -72,6 +72,7 @@ export function ChristmasPartySection({ courseCounts, seatNames, canChangeOnline
     >
       <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
         <input type="hidden" name="action" value="christmas_party" />
+        <input type="hidden" name="expected_courses" value={courseCounts.join(',')} />
 
         <fieldset className="flex flex-col gap-guest-xs">
           <legend className={LEGEND_CLASS}>Anyone not coming?</legend>

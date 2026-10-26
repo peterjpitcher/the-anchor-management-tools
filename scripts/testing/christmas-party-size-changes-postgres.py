@@ -25,7 +25,7 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261026190515_christmas_party_size_changes.sql'
 ROLLBACK = ROOT / 'tasks/christmas-party-size-changes/rollback.sql'
 TRIGGER_FN = 'assert_christmas_course_snapshot_v01()'
-CHANGE_FN = 'change_christmas_party_v01(uuid,integer[],integer[])'
+CHANGE_FN = 'change_christmas_party_v01(uuid,integer[],integer[],integer[])'
 DEADLINE = "'Christmas pre-order deadline has passed for that date.'"
 
 SETUP = r"""
@@ -104,8 +104,9 @@ def main():
         def booking(counts): return sql(f"SELECT fixture_booking(ARRAY{counts});")
         def q(value): return "'" + value.replace("'", "''") + "'"
         def attempt(statement): return f"fixture_try({q(statement)})"
-        def change(booking_id, counts, removed='{}'):
-            return attempt(f"SELECT public.change_christmas_party_v01('{booking_id}', ARRAY{counts}::integer[], '{removed}'::integer[])")
+        def change(booking_id, counts, removed='{}', expected=None):
+            expected_sql = 'NULL' if expected is None else f"'{expected}'::integer[]"
+            return attempt(f"SELECT public.change_christmas_party_v01('{booking_id}', ARRAY{counts}::integer[], '{removed}'::integer[], {expected_sql})")
         def resize(booking_id, counts):
             return attempt(f"UPDATE public.table_bookings SET party_size = {len(counts)}, christmas_course_counts = ARRAY{counts} WHERE id = '{booking_id}'")
         def state():
@@ -156,7 +157,15 @@ def main():
                   'closing up seat numbers does not mark the guests who moved as changed')
             check(f"(SELECT public.change_christmas_party_v01('{party}', ARRAY[3,2,3,1,1,1]::integer[], '{{4}}')->'removed'->0->>'guest_name') = 'G5'",
                   'the function says who left, so staff can tell the booker')
-            check(f"{change(party, [3, 2, 3, 1, 1, 1, 1])} = 'ok'", 'after the deadline, a guest joins on 1 course (6 to 7)')
+            # Two tabs both remove "seat 2" from the same party: the second saw the old guests.
+            seen = sql(f"SELECT christmas_course_counts::text FROM table_bookings WHERE id = '{party}';")
+            check(f"{change(party, [3, 3, 1, 1, 1], '{2}', seen)} = 'ok'", 'a change made against the guests on the booking saves')
+            check(f"{change(party, [3, 1, 1, 1], '{2}', seen)} = 'Christmas booking changed while you were editing it. Reload it and try again.'",
+                  'the same change from a second tab is refused, because the guests changed since it was made')
+            check(f"(SELECT party_size FROM table_bookings WHERE id = '{party}') = 5", 'and nobody else was removed')
+            check(f"{change(party, [3, 3, 1, 1, 1, 1], '{{}}', '{{}}')} = 'Christmas booking changed while you were editing it. Reload it and try again.'",
+                  'a change that expected no courses recorded is refused once they are')
+            check(f"{change(party, [3, 3, 1, 1, 1, 1, 1])} = 'ok'", 'after the deadline, guests join on 1 course (5 to 7)')
             check(f"(SELECT party_size FROM table_bookings WHERE id = '{party}') = 7", 'and the party is 7 again')
             eight = booking([3, 2, 2, 3, 1, 1, 1])
             check(f"{change(eight, [3, 2, 2, 3, 1, 1, 1, 1])} = 'ok' AND fixture_seats('{eight}') = 'G1:3,G2:2,G3:2,G4:3,G5:0,G6:0,G7:0'",

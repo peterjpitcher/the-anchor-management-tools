@@ -47,7 +47,7 @@ $$;
 REVOKE ALL ON FUNCTION public.assert_christmas_course_snapshot_v01() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.assert_christmas_course_snapshot_v01() TO service_role;
 
-DROP FUNCTION IF EXISTS public.change_christmas_party_v01(uuid, integer[], integer[]);
+DROP FUNCTION IF EXISTS public.change_christmas_party_v01(uuid, integer[], integer[], integer[]);
 
 DROP TRIGGER IF EXISTS booking_preorder_covers_touch_updated_at ON public.booking_preorder_covers;
 CREATE TRIGGER booking_preorder_covers_touch_updated_at

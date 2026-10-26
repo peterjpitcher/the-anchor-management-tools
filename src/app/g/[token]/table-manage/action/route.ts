@@ -118,6 +118,8 @@ function blockedStatus(reason: string | undefined): string {
       return 'christmas_size'
     case 'christmas_no_change':
       return 'christmas_no_change'
+    case 'christmas_changed':
+      return 'christmas_changed'
     case 'christmas_call_us':
       return 'christmas_call'
     case 'rate_limited':
@@ -200,6 +202,14 @@ async function runGuestChristmasPartyChange(request: NextRequest, token: string,
     }
     removedSeats.push(Number.parseInt(value.trim(), 10))
   }
+  // The course list the page showed, so a change from a page left open after the numbers changed is
+  // refused rather than removing whoever now holds that seat number.
+  const expectedRaw = formData.get('expected_courses')
+  let expectedCourses: number[] | undefined
+  if (typeof expectedRaw === 'string' && expectedRaw.trim() !== '') {
+    if (!/^[1-3](,[1-3]){0,19}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
+    expectedCourses = expectedRaw.trim().split(',').map((value) => Number.parseInt(value, 10))
+  }
   const oneCourse = readJoinCount(formData, 'add_1')
   const twoCourses = readJoinCount(formData, 'add_2')
   const threeCourses = readJoinCount(formData, 'add_3')
@@ -211,6 +221,7 @@ async function runGuestChristmasPartyChange(request: NextRequest, token: string,
     const result = await changeChristmasPartyByRawToken(supabase, {
       rawToken: token,
       removedSeats,
+      expectedCourses,
       added: { oneCourse, twoCourses, threeCourses },
       appBaseUrl: getAppUrl()
     })

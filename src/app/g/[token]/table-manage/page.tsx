@@ -135,6 +135,8 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       }
     case 'christmas_no_change':
       return { tone: 'amber', text: 'Tick anyone not coming, or add guests, then press Update numbers.' }
+    case 'christmas_changed':
+      return { tone: 'amber', text: 'Your numbers changed while this page was open, so nothing was saved. Please check the list below and try again.' }
     case 'christmas_call':
       return { tone: 'red', text: `To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.` }
     case 'no_table':
