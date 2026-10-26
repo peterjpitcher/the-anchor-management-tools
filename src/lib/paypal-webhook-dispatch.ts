@@ -11,6 +11,7 @@ import {
 } from '@/lib/paypal-webhook-router'
 import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
 import { alertStaffToPayPalMoneyEvent } from '@/lib/paypal-money-alerts'
+import { readPayPalCaptureFee, recordPayPalCaptureFee } from '@/lib/payments/paypal-fees'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -372,6 +373,13 @@ export async function handlePayPalWebhook(
     })
 
     const outcome = await runDomainHandler(supabase, decision, event, eventId, eventType)
+
+    // PayPal's fee for the capture, for the online income report (BK-117). Every capture the app
+    // makes arrives here, whichever part of the app took it. Recording it never fails the delivery.
+    if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+      const fee = readPayPalCaptureFee(event?.resource)
+      if (fee) await recordPayPalCaptureFee(supabase, fee, `webhook:${decision.domain}`)
+    }
 
     try {
       await persistIdempotencyResponse(

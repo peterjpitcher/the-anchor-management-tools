@@ -11111,6 +11111,36 @@ export type Database = {
           },
         ]
       }
+      paypal_capture_fees: {
+        Row: {
+          capture_id: string
+          currency: string
+          fee_amount: number
+          gross_amount: number | null
+          net_amount: number | null
+          recorded_at: string
+          source: string
+        }
+        Insert: {
+          capture_id: string
+          currency?: string
+          fee_amount: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source: string
+        }
+        Update: {
+          capture_id?: string
+          currency?: string
+          fee_amount?: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source?: string
+        }
+        Relationships: []
+      }
       payroll_month_approvals: {
         Row: {
           approved_at: string
@@ -20608,6 +20638,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      online_income_movements: {
+        Row: {
+          booking_reference: string | null
+          capture_id: string | null
+          gross: number | null
+          is_booking_money: boolean | null
+          method: string | null
+          money_date: string | null
+          net: number | null
+          paypal_fee: number | null
+          refunded: number | null
+          source: string | null
+          source_id: string | null
+          status: string | null
+          visit_date: string | null
+        }
+        Relationships: []
       }
       private_booking_sms_reminders: {
         Row: {

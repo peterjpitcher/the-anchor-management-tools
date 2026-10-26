@@ -39,10 +39,13 @@ type ImportedSalesTestRow = {
   total_sales: number
 }
 
+type OnlineIncomeTestRow = { source_id: string; money_date: string; net: number; is_booking_money: boolean }
+
 function createFinancialDashboardClient(
   receiptPages: ReceiptExpenseRow[][],
   cashupRows: CashupSalesRow[] = [],
-  importedSalesRows: ImportedSalesTestRow[] = []
+  importedSalesRows: ImportedSalesTestRow[] = [],
+  onlineIncome: { rows?: OnlineIncomeTestRow[]; error?: { message: string } } = {}
 ) {
   const targetSelect = vi.fn().mockResolvedValue({ data: [], error: null })
   const manualSelect = vi.fn().mockResolvedValue({ data: [], error: null })
@@ -74,7 +77,20 @@ function createFinancialDashboardClient(
   const benchmarkEq = vi.fn().mockReturnValue({ order: benchmarkOrder })
   const benchmarkSelect = vi.fn().mockReturnValue({ eq: benchmarkEq })
 
+  // The online income view (BK-117): rows from the oldest start date, booking money only.
+  const onlineRange = vi.fn().mockResolvedValue(
+    onlineIncome.error ? { data: null, error: onlineIncome.error } : { data: onlineIncome.rows ?? [], error: null }
+  )
+  const onlineOrderById = vi.fn().mockReturnValue({ range: onlineRange })
+  const onlineOrderByDate = vi.fn().mockReturnValue({ order: onlineOrderById })
+  const onlineEq = vi.fn().mockReturnValue({ order: onlineOrderByDate })
+  const onlineGte = vi.fn().mockReturnValue({ eq: onlineEq })
+  const onlineSelect = vi.fn().mockReturnValue({ gte: onlineGte })
+
   const from = vi.fn((table: string) => {
+    if (table === 'online_income_movements') {
+      return { select: onlineSelect }
+    }
     if (table === 'pl_targets') {
       return { select: targetSelect }
     }
@@ -111,6 +127,7 @@ function createFinancialDashboardClient(
       importedSalesGte,
       importedSalesEqSource,
       importedSalesEqSection,
+      onlineEq,
     },
   }
 }
@@ -403,5 +420,35 @@ describe('FinancialService P&L aggregation correctness', () => {
     expect(result.cashupSales['1m'].missingSplitCount).toBe(0)
     expect(result.dataQuality.warnings.join(' ')).not.toContain('missing a matching drinks/food/other split')
     expect(result.dataQuality.warnings.join(' ')).toContain('sales splits exceed counted sales by £10.00')
+  })
+
+  it('shows online booking money as its own line, by the day taken, outside total sales (BK-117, D33)', async () => {
+    const { client, mocks } = createFinancialDashboardClient([[]], [], [], {
+      rows: [
+        { source_id: 'a', money_date: isoDateDaysAgo(3), net: 160, is_booking_money: true },
+        { source_id: 'b', money_date: isoDateDaysAgo(60), net: 29.75, is_booking_money: true },
+        { source_id: 'c', money_date: isoDateDaysAgo(200), net: 40, is_booking_money: true },
+      ],
+    })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(mocks.onlineEq).toHaveBeenCalledWith('is_booking_money', true)
+    expect(result.actuals['1m'].online_booking_income).toBe(160)
+    expect(result.actuals['3m'].online_booking_income).toBe(189.75)
+    expect(result.actuals['12m'].online_booking_income).toBe(229.75)
+    expect(result.cashupSales['1m'].totalRevenue).toBe(0)
+    expect(result.dataQuality.warnings.join(' ')).not.toContain('Online booking income')
+  })
+
+  it('warns, and shows the online line as £0, when online income cannot be read', async () => {
+    const { client } = createFinancialDashboardClient([[]], [], [], { error: { message: 'permission denied' } })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(result.actuals['1m'].online_booking_income).toBe(0)
+    expect(result.dataQuality.warnings).toContain('Online booking income could not be loaded, so its line shows £0.')
   })
 })
