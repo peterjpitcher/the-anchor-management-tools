@@ -93,6 +93,10 @@ function seed(booking: Record<string, unknown>, viewRow: Record<string, unknown>
   state.db = createFakeSupabase({
     private_bookings: [booking],
     private_bookings_with_details: [viewRow],
+    // The booking has a room that holds its guests (owner decision D24): with no room booked, a
+    // paid deposit leaves it a draft, so every booking here has one.
+    venue_spaces: [{ id: 'space-dining', name: 'The Dining Room', capacity_seated: 26, capacity_standing: 50, active: true, blocks_all_spaces: false, display_order: 1 }],
+    private_booking_items: [{ id: 'item-room', booking_id: 'booking-1', item_type: 'space', space_id: 'space-dining' }],
     customers: [{ id: 'customer-1', email: 'alex@example.com', email_status: null, email_deactivated_at: null }],
     email_suppressions: [],
     private_booking_sms_queue: [],

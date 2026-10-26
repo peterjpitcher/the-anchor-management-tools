@@ -129,6 +129,39 @@ type CancellationPreview = Awaited<ReturnType<typeof getCancellationPreview>>
 // by hand. Both live on the booking page, so send staff there.
 const OUTCOMES_NEEDING_THE_BOOKING_PAGE = new Set(['gm_review_required', 'manual_review'])
 
+const ROOM_PROBLEM_LABELS: Record<string, string> = {
+  no_room: 'No room booked',
+  no_guest_count: 'No guest count',
+  over_capacity: 'More guests than the room holds',
+}
+
+/**
+ * Red flags for a draft or confirmed hire (review BK-005 and BK-007): a paid deposit that did not
+ * confirm the booking, no room, no guest count, or more guests than the rooms hold. The booking
+ * page says why and what to do.
+ */
+function HireAttentionBadges({
+  attention,
+  className = 'mt-1',
+}: {
+  attention: PrivateBookingDashboardItem['hire_attention']
+  className?: string
+}): React.ReactElement | null {
+  if (!attention) return null
+  const labels = [
+    ...(attention.paidNotConfirmed ? ['Deposit paid, not confirmed'] : []),
+    ...attention.roomProblems.map((code) => ROOM_PROBLEM_LABELS[code] ?? code),
+  ]
+  if (labels.length === 0) return null
+  return (
+    <div className={`${className} flex flex-wrap gap-1`}>
+      {labels.map((label) => (
+        <Badge key={label} tone="danger" size="sm">{label}</Badge>
+      ))}
+    </div>
+  )
+}
+
 /* ---------- Component ---------- */
 
 export default function PrivateBookingsClient({
@@ -743,6 +776,7 @@ export default function PrivateBookingsClient({
                             </Badge>
                           </div>
                         )}
+                        <HireAttentionBadges attention={booking.hire_attention ?? null} />
                       </TableCell>
 
                       <TableCell>
@@ -894,6 +928,7 @@ export default function PrivateBookingsClient({
                       </Badge>
                     </div>
                   )}
+                  <HireAttentionBadges attention={booking.hire_attention ?? null} className="mb-3" />
 
                   <div className="flex justify-end items-center gap-2 pt-2 border-t border-border flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <Link

@@ -132,6 +132,7 @@ vi.mock('@/services/private-bookings', async () => {
     updateDepositAmount: vi.fn(),
     finalizeDepositPayment: vi.fn(),
     deleteDeposit: vi.fn(),
+    describeBlockedDeposit: actual.describeBlockedDeposit,
   }
 })
 
@@ -683,6 +684,26 @@ describe('privateBookingActions', () => {
       )
     })
 
+    // Review BK-005: the modal used to close as if all was well when the deposit was recorded but
+    // the booking stayed a draft. The person recording it is now told why.
+    it('tells the person recording the deposit when it did not confirm the booking, and why', async () => {
+      mockedRecordDeposit.mockResolvedValue({
+        success: true,
+        confirmationBlocked: true,
+        confirmationBlockedReasons: [
+          'Guest count 70 exceeds the maximum capacity of 50 for The Dining Room. Add The Main Area so the guests fit, or ask a manager to allow it.',
+        ],
+      })
+
+      const result = await recordDepositPayment('booking-1', buildDepositFormData())
+
+      expect(result).toMatchObject({
+        success: true,
+        warning:
+          'The deposit is recorded, but the booking is still a draft. Guest count 70 exceeds the maximum capacity of 50 for The Dining Room. Add The Main Area so the guests fit, or ask a manager to allow it.',
+      })
+    })
+
     it('should return error when permission denied', async () => {
       mockedPermission.mockResolvedValue(false)
 
@@ -1152,7 +1173,7 @@ describe('privateBookingActions', () => {
         }),
       }
       mockedCreateAdminClient.mockReturnValue(adminClient)
-      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+      mockedUpdateDepositAmount.mockResolvedValue({})
 
       const fd = new FormData()
       fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
@@ -1191,7 +1212,7 @@ describe('privateBookingActions', () => {
         }),
       }
       mockedCreateAdminClient.mockReturnValue(adminClient)
-      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+      mockedUpdateDepositAmount.mockResolvedValue({})
 
       const fd = new FormData()
       fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
@@ -1276,7 +1297,7 @@ describe('privateBookingActions', () => {
         }),
       }
       mockedCreateAdminClient.mockReturnValue(adminClient)
-      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+      mockedUpdateDepositAmount.mockResolvedValue({})
 
       const fd = new FormData()
       fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')

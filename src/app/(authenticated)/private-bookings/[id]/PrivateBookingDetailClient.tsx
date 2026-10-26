@@ -62,6 +62,8 @@ import type {
 } from "@/types/private-bookings";
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
+import { HireReadinessPanel } from './HireReadinessPanel'
+import type { HireReadinessView } from '@/services/private-bookings/readiness'
 // Design system components
 import {
   Alert,
@@ -197,6 +199,12 @@ interface PrivateBookingDetailClientProps {
    * to be confirmed, and the deadline confirming it would set.
    */
   depositConfirmation?: { awaiting: boolean; holdExpiryPreview: string | null };
+  /** Rooms, guest count and a paid deposit that did not confirm the booking (BK-005, BK-007). */
+  hireReadiness?: HireReadinessView | null;
+  /** True when the page could not check the rooms. */
+  hireReadinessError?: boolean;
+  /** Managers may allow more guests than the rooms hold (gm_override). */
+  canOverrideCapacity?: boolean;
   initialError?: string | null;
 }
 
@@ -342,6 +350,10 @@ function PaymentModal({
         : await recordFinalPayment(bookingId, formData);
 
     if (result.success) {
+      // The deposit is in but the booking did not confirm: say why, and keep it on screen long
+      // enough to read (review BK-005).
+      const warning = "warning" in result && typeof result.warning === "string" ? result.warning : null;
+      if (warning) toast.warning(warning, { duration: 15000 });
       onSuccess();
       onClose();
     } else {
@@ -1652,6 +1664,9 @@ export default function PrivateBookingDetailClient({
   paymentHistory,
   depositRefunds,
   depositConfirmation,
+  hireReadiness,
+  hireReadinessError,
+  canOverrideCapacity,
   initialError,
 }: PrivateBookingDetailClientProps) {
   const router = useRouter();
@@ -1827,7 +1842,11 @@ export default function PrivateBookingDetailClient({
       try {
         const result = await captureDepositPayment(bookingId, orderId);
         if (result.success) {
-          toast.success('Deposit payment received successfully.');
+          if (result.warning) {
+            toast.warning(result.warning, { duration: 15000 });
+          } else {
+            toast.success('Deposit payment received successfully.');
+          }
           refreshBooking();
         } else {
           toast.error(result.error || 'Failed to confirm deposit payment. Please contact support.');
@@ -1908,9 +1927,14 @@ export default function PrivateBookingDetailClient({
       }
       const result = await editPrivateBookingPayment(formData);
       if (result.success) {
-        toast.success(Number.isFinite(nextAmount) && nextAmount <= 0
-          ? 'Booking confirmed with no deposit required'
-          : 'Deposit amount updated');
+        if (result.warning) {
+          // Waived, but the booking stayed a draft: say why (D24, review BK-066).
+          toast.warning(result.warning, { duration: 15000 });
+        } else {
+          toast.success(Number.isFinite(nextAmount) && nextAmount <= 0
+            ? 'Booking confirmed with no deposit required'
+            : 'Deposit amount updated');
+        }
         setEditingDeposit(false);
         router.refresh();
       } else {
@@ -2545,6 +2569,15 @@ export default function PrivateBookingDetailClient({
           onConfirmed={() => router.refresh()}
         />
       )}
+
+      <HireReadinessPanel
+        bookingId={bookingId}
+        view={hireReadiness ?? null}
+        loadFailed={hireReadinessError === true}
+        guestCount={booking.guest_count === null || booking.guest_count === undefined ? null : toNumber(booking.guest_count)}
+        canOverrideCapacity={canOverrideCapacity === true}
+        onChanged={() => router.refresh()}
+      />
 
       {isDateTbd && (
         <Alert

@@ -323,19 +323,38 @@ describe('PayPalCaptureClient', () => {
   it('confirms a captured deposit and refreshes the server view', async () => {
     const location = stubLocation()
     mocks.searchParams = new URLSearchParams({ payment_pending: '1', token: 'PAYPAL-ORDER' })
-    mocks.captureDepositPaymentByToken.mockResolvedValue({ success: true })
+    mocks.captureDepositPaymentByToken.mockResolvedValue({ success: true, bookingConfirmed: true })
 
     render(<PayPalCaptureClient portalToken="portal-token" depositPaid={false} />)
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent('Payment confirmed, thank you!')
     )
+    expect(screen.getByRole('status')).toHaveTextContent('your booking is confirmed')
     // The component waits 1.5s before reloading the server view. That pause is
     // existing behaviour, so the test waits it out rather than changing it.
     await waitFor(
       () => expect(location.replace).toHaveBeenCalledWith('/booking-portal/portal-token'),
       { timeout: 3000 }
     )
+  })
+
+  // Review BK-005: a paid deposit can leave the booking a draft (no room, too many guests, a
+  // clash or a risk review). The page said "your booking is confirmed" whatever happened.
+  it('does not say the booking is confirmed when the deposit did not confirm it', async () => {
+    stubLocation()
+    mocks.searchParams = new URLSearchParams({ payment_pending: '1', token: 'PAYPAL-ORDER' })
+    mocks.captureDepositPaymentByToken.mockResolvedValue({ success: true, bookingConfirmed: false })
+
+    render(<PayPalCaptureClient portalToken="portal-token" depositPaid={false} />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Payment received, thank you!')
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Your deposit has been received. We're just finishing our checks on this booking, and we'll confirm it shortly."
+    )
+    expect(screen.getByRole('status')).not.toHaveTextContent(/is confirmed/)
   })
 
   it('reports a capture failure with the message the server gave', async () => {

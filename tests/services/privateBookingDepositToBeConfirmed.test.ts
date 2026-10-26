@@ -7,6 +7,12 @@ const state = vi.hoisted(() => ({
   depositConfirmation: true,
 }))
 
+// Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
+// D25). This file is about something else, so every booking here passes those checks; they are
+// tested in tests/services/privateHireReadiness.test.ts.
+vi.mock('@/services/private-bookings/readiness', async (importOriginal) =>
+  (await import('../helpers/readyHire')).readyHireReadiness(importOriginal))
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => state.db),
 }))
@@ -203,16 +209,20 @@ describe('creating a private booking', () => {
     expect(state.db.tables.private_bookings[0].hold_expiry).toBeNull()
   })
 
-  it('a waived deposit still confirms the booking with no deposit to pay, flag on', async () => {
+  // Until 24 October 2026 a waived deposit confirmed the booking as it was made, with no room on
+  // it, and told the guest so. Under D24 a hire is confirmed only with a room that fits its guests,
+  // so one made with no room is saved as a draft and the guest hears nothing until staff confirm it.
+  it('a waived deposit with no room yet is saved as a draft and nothing is sent, flag on', async () => {
     await PrivateBookingService.createBooking({
       ...createInput,
       deposit_amount: 0,
       deposit_waived: true,
       deposit_waived_reason: 'Venue-hosted event',
     })
-    await vi.waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
+    await flushBackgroundSends()
 
-    expect(mockedSend.mock.calls[0][0].sms.trigger_type).toBe('booking_confirmed')
+    expect(state.db.tables.private_bookings[0].status).toBe('draft')
+    expect(mockedSend).not.toHaveBeenCalled()
   })
 })
 

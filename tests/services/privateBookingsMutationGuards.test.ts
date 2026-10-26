@@ -242,7 +242,10 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     )
   })
 
-  it('createBooking auto-confirms zero-deposit bookings and sends confirmation SMS', async () => {
+  // Until 24 October 2026 this asserted that a £0 booking was confirmed as it was made, with no
+  // room on it. Under owner decision D24 a hire is confirmed only with a room that fits its
+  // guests, so a £0 booking made with no room is a draft and the guest is told nothing yet.
+  it('createBooking keeps a zero-deposit booking with no room a draft and sends no confirmation', async () => {
     const rpc = vi.fn().mockResolvedValue({
       data: {
         id: 'booking-zero',
@@ -285,24 +288,13 @@ describe('PrivateBookingService mutation row-effect guards', () => {
         p_booking_data: expect.objectContaining({
           deposit_amount: 0,
           hold_expiry: null,
-          status: 'confirmed',
+          status: 'draft',
         }),
       }),
     )
 
-    await vi.waitFor(() => {
-      expect(SmsQueueService.queueAndSend).toHaveBeenCalledWith(
-        expect.objectContaining({
-          trigger_type: 'booking_confirmed',
-          template_key: 'private_booking_confirmed',
-        }),
-      )
-    })
-    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        trigger_type: 'booking_created',
-      }),
-    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
   })
 
   it('createBooking rejects a £0 deposit without a GM waiver (SOP §12)', async () => {

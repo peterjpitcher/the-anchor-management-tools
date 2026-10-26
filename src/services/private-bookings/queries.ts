@@ -17,6 +17,7 @@ import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { loadPrivateBookingEmailTimeline } from '@/lib/private-bookings/email-timeline';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
+import { hireRoomProblems, isPaidButNotConfirmed, loadHireReadinessFacts } from './readiness';
 
 function normalizeDepositStatus(booking: {
   deposit_amount?: unknown
@@ -68,6 +69,37 @@ async function loadDepositAwaitingConfirmation(
         deposit_confirmed_at: row.deposit_confirmed_at,
       })
     );
+  }
+  return result;
+}
+
+/**
+ * For each draft or confirmed hire on the page: its room problems and whether its deposit is paid
+ * while it is still a draft (review BK-005 and BK-007). Read with the admin client because the
+ * capacity override lives on the booking's audit trail; the caller has already checked that the
+ * user may view private bookings. A read that fails is logged and leaves the field null, and the
+ * booking page, which checks for itself, says so.
+ */
+async function loadHireAttention(
+  bookings: Array<{ id: string; status?: string | null }>
+): Promise<Map<string, PrivateBookingWithDetails['hire_attention']>> {
+  const result = new Map<string, PrivateBookingWithDetails['hire_attention']>();
+  const live = bookings.filter((booking) => booking.status === 'draft' || booking.status === 'confirmed');
+  if (live.length === 0) return result;
+  try {
+    const { facts, rooms } = await loadHireReadinessFacts(live.map((booking) => booking.id));
+    for (const booking of live) {
+      const one = facts.get(booking.id);
+      if (!one) continue;
+      result.set(booking.id, {
+        roomProblems: hireRoomProblems(one, rooms).map((problem) => problem.code),
+        paidNotConfirmed: isPaidButNotConfirmed(one),
+      });
+    }
+  } catch (error) {
+    logger.error('Could not check rooms for the private bookings list', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
   }
   return result;
 }
@@ -292,6 +324,7 @@ export async function fetchPrivateBookings(options: {
   }
 
   const awaitingDepositById = await loadDepositAwaitingConfirmation(supabase, data || []);
+  const hireAttentionById = await loadHireAttention(data || []);
 
   const enriched = (data || []).map((booking) => {
     // Customer-payable total is VAT-inclusive (stored prices are net)
@@ -306,6 +339,7 @@ export async function fetchPrivateBookings(options: {
       balance_remaining: balanceRemaining,
       deposit_status: normalizeDepositStatus(booking),
       deposit_awaiting_confirmation: awaitingDepositById.get(booking.id) === true,
+      hire_attention: hireAttentionById.get(booking.id) ?? null,
     };
   });
 

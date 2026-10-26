@@ -40,6 +40,7 @@ import {
   updateDepositAmount,
   finalizeDepositPayment,
   deleteDeposit,
+  describeBlockedDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
 import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
@@ -1225,7 +1226,11 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    return result
+    // Review BK-005: the person recording the money is told when it did not confirm the booking,
+    // and why, rather than the modal simply closing.
+    return result.confirmationBlocked
+      ? { ...result, warning: describeBlockedDeposit(result.confirmationBlockedReasons ?? []) }
+      : result
   } catch (error: unknown) {
     logger.error('Error recording deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -2323,7 +2328,7 @@ export async function createDepositPaymentOrder(
 export async function captureDepositPayment(
   bookingId: string,
   orderId: string
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; warning?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -2420,7 +2425,7 @@ export async function captureDepositPayment(
       })
     }
 
-    await finalizeDepositPayment({
+    const finalizeResult = await finalizeDepositPayment({
       bookingId,
       amount: capturedAmount,
       method: 'paypal',
@@ -2454,7 +2459,10 @@ export async function captureDepositPayment(
     revalidatePath('/private-bookings')
     revalidatePath('/events')
     revalidateTag('dashboard')
-    return { success: true }
+    // Review BK-005: say so when the money is in but the booking did not confirm.
+    return finalizeResult.confirmationBlocked
+      ? { success: true, warning: describeBlockedDeposit(finalizeResult.confirmationBlockedReasons ?? []) }
+      : { success: true }
   } catch (error: unknown) {
     logger.error('Error capturing PayPal deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -2907,7 +2915,7 @@ export async function sendDepositPaymentLink(
 
 export async function editPrivateBookingPayment(
   formData: FormData
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; warning?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
@@ -2998,6 +3006,7 @@ export async function editPrivateBookingPayment(
     const waived = formData.get('waived') === 'true'
     const waivedReason = (formData.get('waived_reason') as string | null)?.trim() || undefined
 
+    let confirmationBlockedReasons: string[] | undefined
     try {
       if (oldBooking?.deposit_paid_date) {
         // Paid deposit: update amount + method (existing behaviour)
@@ -3007,11 +3016,12 @@ export async function editPrivateBookingPayment(
         })
       } else {
         // Unpaid deposit: update amount only, clear PayPal order (CR-1, ID-1)
-        await updateDepositAmount(parsed.data.bookingId, newAmount, user.id, {
+        const outcome = await updateDepositAmount(parsed.data.bookingId, newAmount, user.id, {
           reductionReason,
           waived,
           waivedReason,
         })
+        confirmationBlockedReasons = outcome.confirmationBlockedReasons
       }
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
@@ -3033,11 +3043,19 @@ export async function editPrivateBookingPayment(
         no_deposit_required: !oldBooking?.deposit_paid_date && newAmount <= 0,
         ...(reductionReason ? { reduction_reason: reductionReason } : {}),
         ...(waived ? { deposit_waived: true, waived_reason: waivedReason } : {}),
+        ...(confirmationBlockedReasons ? { confirmation_blocked_reasons: confirmationBlockedReasons } : {}),
       },
     })
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
-    return { success: true }
+    // A waived deposit used to confirm the booking whatever state it was in. It now confirms only
+    // a booking that is ready, so staff are told when it stayed a draft and why (D24, BK-066).
+    return confirmationBlockedReasons && confirmationBlockedReasons.length > 0
+      ? {
+          success: true,
+          warning: `The deposit is waived, but the booking is still a draft. ${confirmationBlockedReasons.join(' ')}`,
+        }
+      : { success: true }
   }
 
   return { error: 'Invalid payment type' }
