@@ -200,6 +200,12 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
               ? `We have you down for ${seats} ticket${seats === 1 ? '' : 's'}.`
               : 'We could not see an active booking, so we will add one now.'}
           </p>
+          {knownGuest.booking?.answersOnFile && (
+            // BK-015: tells the door to look at the guest list. The answers stay off this screen.
+            <p className="mt-2 text-sm">
+              The team has the answers you gave for your party. Let them know if anything has changed.
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-3">
           <Button type="button" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base" onClick={handleKnownCheckIn}>

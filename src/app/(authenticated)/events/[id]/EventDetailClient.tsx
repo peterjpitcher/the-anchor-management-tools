@@ -47,6 +47,8 @@ import {
 import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
+import { EventGuestAnswersCard } from './EventGuestAnswersCard'
+import { isOnDoorList } from '@/lib/events/door-list'
 import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
@@ -228,12 +230,9 @@ export default function EventDetailClient({
 
   /* ---- Derived data ---- */
 
-  // Expired payment holds are dead bookings too: counting them inflates the
-  // Overview tab count and "Active Bookings" card relative to totalSeats.
-  const activeBookings = useMemo(
-    () => bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'expired' && b.is_reminder_only !== true),
-    [bookings],
-  )
+  // The door list rule the booking sheets and guest list use too (BK-030): cancelled bookings
+  // and lapsed payment holds are not coming.
+  const activeBookings = useMemo(() => bookings.filter(isOnDoorList), [bookings])
 
   const visibleBookings = useMemo(
     () => (showCancelled ? bookings : activeBookings),
@@ -598,6 +597,12 @@ export default function EventDetailClient({
                   setTransferTargetEventId('')
                 }}
                 isPending={isPending}
+              />
+              <EventGuestAnswersCard
+                eventId={event.id}
+                questions={event.booking_questions ?? []}
+                bookings={activeBookings}
+                canManage={permissions.canManage}
               />
               <MarketingMessagesCard messages={marketingMessages} />
             </div>
@@ -1078,6 +1083,19 @@ function AttendeesTab({
     )
   }
 
+  // The booking's notes, where online meal and early-arrival requests land as "UNCONFIRMED
+  // REQUEST" (BK-015). They were only seen if someone printed the booking sheets.
+  const renderBookingNotes = (booking: EventBookingRow) => {
+    const note = booking.notes?.trim()
+    if (!note || booking.is_reminder_only) return null
+    return (
+      <div className="mt-1 flex flex-wrap items-start gap-1 text-xs text-text-muted">
+        {/^UNCONFIRMED REQUEST/i.test(note) && <Badge tone="warning" size="sm">Unconfirmed request</Badge>}
+        <span>{note}</span>
+      </div>
+    )
+  }
+
   // Per-booking action cluster (mark-paid/comp/edit/edit-names/transfer/refund/
   // cancel plus the inline seats and transfer editors). Extracted so the desktop
   // table and the mobile card render the exact same controls and handlers.
@@ -1312,6 +1330,7 @@ function AttendeesTab({
                             fallback="-"
                           />
                           {renderAttendeeNames(booking)}
+                          {renderBookingNotes(booking)}
                         </TableCell>
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
@@ -1431,6 +1450,7 @@ function AttendeesTab({
                     </dl>
 
                     {renderAttendeeNames(booking)}
+                    {renderBookingNotes(booking)}
 
                     {canManage && (
                       <div className="mt-3 flex flex-wrap gap-2">
