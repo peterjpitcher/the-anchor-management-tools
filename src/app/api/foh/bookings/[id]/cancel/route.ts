@@ -125,6 +125,7 @@ export async function POST(
       customerId: booking.customer_id,
       source: 'foh_cancel',
       terms: cancellation.terms,
+      staffCancel: true,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)

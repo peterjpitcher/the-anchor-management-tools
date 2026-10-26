@@ -2,6 +2,7 @@
 
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { StaffCancelChoice } from '@/components/features/table-bookings/StaffCancelChoice'
+import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -410,6 +411,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // Who is cancelling, for the cancel and delete dialogs (BK-046). Reset each time one opens.
   const [cancelForm, setCancelForm] = useState<StaffCancelFormState>(() => initialStaffCancelForm(0))
   const [cancelFormProblem, setCancelFormProblem] = useState<string | null>(null)
+  // Bumped after a cancellation so the "guest not told" warning looks again (BK-177).
+  const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
@@ -595,6 +598,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           body: { ...extra, action },
         })
         warnIfCancellationNotReached(payload)
+        if (action === 'cancelled') setGuestNotToldRefresh((count) => count + 1)
       },
       'Booking updated'
     )
@@ -979,6 +983,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       {/* data-touch-targets: reached from BOH on a tablet. The wrapper carries that attribute and
           keeps the page's own 24px rhythm between blocks. */}
       <div className="space-y-6" data-touch-targets>
+        {/* A guest staff cancelled on who was not told stays here until someone rings (BK-177). */}
+        <GuestNotToldPanel bookingId={booking.id} refreshKey={guestNotToldRefresh} canEdit={canEdit} />
+
         {/* The guest's name is the page title, so this card carries the status and the when. */}
         <Card>
           <CardBody className="space-y-2">
