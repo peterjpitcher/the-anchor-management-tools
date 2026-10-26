@@ -1,4 +1,4 @@
--- Rollback for 20261026150301_christmas_booking_minimum_four.sql: restores create_table_booking_christmas_v01 exactly as production
+-- Rollback for 20261026172410_christmas_booking_minimum_four.sql: restores create_table_booking_christmas_v01 exactly as production
 -- held it before (body from 20260905124506_christmas_course_snapshot).
 
 CREATE OR REPLACE FUNCTION public.create_table_booking_christmas_v01(p_request jsonb, p_course_counts integer[])
