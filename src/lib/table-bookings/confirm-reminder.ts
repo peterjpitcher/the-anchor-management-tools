@@ -21,8 +21,9 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
  *
  * `pending_payment` is the case that matters. That guest has not paid a deposit, their
  * hold can still expire, and the booking may never exist. Asking them to confirm a table
- * they have not secured is the wrong conversation; the deposit chase is the right one.
- * They join this sweep the moment payment lands and they become confirmed.
+ * they have not secured is the wrong conversation; the deposit is the right one (the request,
+ * then the one reminder before the hold ends, BK-088). They join this sweep the moment payment
+ * lands and they become confirmed.
  */
 export const CONFIRMABLE_BOOKING_STATUSES = ['confirmed'] as const
 

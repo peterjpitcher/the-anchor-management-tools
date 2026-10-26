@@ -102,6 +102,7 @@ import {
   type TableBookingCancellationRefundResult,
 } from '@/lib/table-bookings/bookings'
 import { applyPartySizeDepositTransition } from '@/lib/table-bookings/staff-deposit-transitions'
+import { sendDepositHoldReminder } from '@/lib/table-bookings/deposit-hold-reminder'
 import { GET as sweepConfirmReminders } from '@/app/api/cron/table-booking-confirm/route'
 import { GET as sweepPreorderReminders } from '@/app/api/cron/preorder-reminders/route'
 import { tableBookingFallbackRenderer } from '@/lib/table-bookings/fallback-renderer'
@@ -112,6 +113,7 @@ import {
   confirmReminderFacts,
   depositConfirmedFacts,
   partySizeDepositRequestFacts,
+  depositHoldReminderFacts,
   preorderReminderFacts,
   TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS,
   type TableBookingFallbackLink,
@@ -366,6 +368,40 @@ describe('each email-first table booking message is rebuilt as the text its send
     expect(evaluateFallbackSkip(render, lastDelivery().metadata.booking_facts, new Date())).toBeNull()
   })
 
+  // BK-088: the one reminder before an unpaid deposit hold runs out.
+  it('table_booking_deposit_reminder: the same reminder with the same payment short link', async () => {
+    const reminded = bookingRow({
+      party_size: 16,
+      status: 'pending_payment',
+      payment_status: 'pending',
+      deposit_amount: 160,
+      hold_expires_at: '2026-10-21T10:00:00+00:00',
+    })
+    seedDb({ table_bookings: [reminded], customers: [GUEST] })
+
+    await sendDepositHoldReminder(state.db, { ...reminded, created_at: '2026-10-20T04:00:00+00:00', deposit_amount_locked: null, deposit_waived: false, deposit_refund_cutoff_days: null, paypal_deposit_capture_id: null } as never, GUEST as never)
+    const sent = onlyTextSent()
+    const shortUrl = buildShortLinkUrl('sl1')
+    expect(sent.body).toBe(
+      `The Anchor: Sarah, we're still holding your table for 16 on Sat 24 Oct, 7:00 pm. Pay the £160.00 deposit by Wed 21 Oct, 11:00 am to keep it: ${shortUrl}`
+    )
+
+    const render = ready(await rebuild())
+
+    expect(render.sms.body).toBe(sent.body)
+    expect(render.sms.to).toBe(sent.to)
+    expect(render.sms.to).toBe('+447700900123')
+    expect(render.sms.metadata).toEqual({ trigger: 'deposit_hold_reminder', table_booking_id: 'tb-1' })
+    expect(render.booking.facts).toEqual({
+      party_size: 16,
+      deposit_amount: 160,
+      hold_expires_at: '2026-10-21T10:00:00.000Z',
+      awaiting_payment: 'yes',
+    })
+    expect(evaluateFallbackSkip(render, lastDelivery().metadata.booking_facts, new Date())).toBeNull()
+    expectCleanText(render.sms.body)
+  })
+
   it('table_booking_confirm_reminder: the same question with the same confirm short link', async () => {
     state.flags = { table_confirm_reminder_email_first: true }
     // Friday 23 October 2026, 11:00 BST: the sweep asks everyone booked for tomorrow.
@@ -476,6 +512,7 @@ const LINKS: Partial<Record<TableBookingFallbackMessage, { kind: string; action:
   party_size_deposit_request: { kind: 'table_payment', action: 'payment', path: 'table-payment' },
   confirm_reminder: { kind: 'booking_confirm', action: 'booking_confirm', path: 'confirm-booking' },
   preorder_reminder: { kind: 'table_manage', action: 'manage', path: 'table-manage' },
+  deposit_hold_reminder: { kind: 'table_payment', action: 'payment', path: 'table-payment' },
 }
 
 const CANCELLED_WITH_REFUND: TableBookingCancellationRefundResult = { refunded: true, amountPence: 16000, tier: 'full' }
@@ -494,6 +531,13 @@ function scenario(message: TableBookingFallbackMessage, overrides: Record<string
     },
     confirm_reminder: {},
     preorder_reminder: {},
+    deposit_hold_reminder: {
+      party_size: 16,
+      status: 'pending_payment',
+      payment_status: 'pending',
+      deposit_amount: 160,
+      hold_expires_at: '2026-10-21T10:00:00+00:00',
+    },
   }
   const booking = bookingRow({ ...base[message], ...overrides })
   const facts: Record<TableBookingFallbackMessage, () => FallbackBookingFacts> = {
@@ -504,6 +548,8 @@ function scenario(message: TableBookingFallbackMessage, overrides: Record<string
     confirm_reminder: () => confirmReminderFacts(booking as never),
     preorder_reminder: () =>
       preorderReminderFacts({ bookingDate: booking.booking_date, bookingTime: booking.booking_time, choicesOutstanding: true }),
+    deposit_hold_reminder: () =>
+      depositHoldReminderFacts({ partySize: 16, depositAmount: 160, holdExpiresAt: booking.hold_expires_at, awaitingPayment: true }),
   }
   return { booking, facts: facts[message]() }
 }

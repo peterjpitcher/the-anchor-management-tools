@@ -18076,6 +18076,39 @@ export type Database = {
           },
         ]
       }
+      table_booking_deposit_reminders: {
+        Row: {
+          hold_expires_at: string
+          sent_at: string
+          table_booking_id: string
+        }
+        Insert: {
+          hold_expires_at: string
+          sent_at?: string
+          table_booking_id: string
+        }
+        Update: {
+          hold_expires_at?: string
+          sent_at?: string
+          table_booking_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_booking_deposit_reminders_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_deposit_reminders_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings_awaiting_confirmation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_booking_items: {
         Row: {
           booking_id: string

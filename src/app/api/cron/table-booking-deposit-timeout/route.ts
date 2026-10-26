@@ -11,6 +11,8 @@ import {
   TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS,
   type TableDepositOrderBooking,
 } from '@/lib/table-bookings/paypal-deposit-reconcile'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { runDepositHoldReminders, type DepositReminderRunResult } from '@/lib/table-bookings/deposit-hold-reminder'
 
 /**
  * Cancels table bookings whose deposit hold ran out unpaid: the one place this happens (BK-113,
@@ -25,6 +27,10 @@ import {
  *
  * A booking with a PayPal order is checked with PayPal first (reconcileTableDepositOrder): a guest
  * who paid is recorded as paid and confirmed, never cancelled.
+ *
+ * Before any of that, while the messaging flag table_deposit_hold_reminder is on, each unpaid hold
+ * gets its one reminder about six hours before it ends (BK-088, deposit-hold-reminder.ts). A failed
+ * reminder sweep is reported and never stops the cancellations.
  */
 
 export const maxDuration = 60
@@ -82,6 +88,19 @@ export async function GET(request: NextRequest) {
       logger.error('[deposit-timeout] could not load lapsed holds', { error: new Error(error.message) })
       await reportCronFailure('table-booking-deposit-timeout', error, { stage: 'fetch_candidates' })
       return NextResponse.json({ error: 'DB error' }, { status: 500 })
+    }
+
+    // The one reminder per hold, before the cancellations, behind its flag (off by default).
+    let reminders: DepositReminderRunResult | null = null
+    if (await isMessagingFlagOn('table_deposit_hold_reminder')) {
+      try {
+        reminders = await runDepositHoldReminders(supabase, now)
+      } catch (reminderError) {
+        logger.error('[deposit-timeout] the reminder sweep failed', {
+          error: reminderError instanceof Error ? reminderError : new Error(String(reminderError)),
+        })
+        await reportCronFailure('table-booking-deposit-timeout', reminderError, { stage: 'reminders' })
+      }
     }
 
     let cancelled = 0
@@ -260,10 +279,11 @@ export async function GET(request: NextRequest) {
     }
 
     logger.info('[deposit-timeout] completed', {
-      metadata: { cancelled, guestsNotReached, paidAfterAll, deferred }
+      metadata: { cancelled, guestsNotReached, paidAfterAll, deferred, reminders }
     })
     return NextResponse.json({
       cancelled,
+      ...(reminders ? { reminders } : {}),
       ...(guestsNotReached > 0 ? { guestsNotReached } : {}),
       ...(paidAfterAll > 0 ? { paidAfterAll } : {}),
       ...(deferred > 0 ? { deferred } : {}),

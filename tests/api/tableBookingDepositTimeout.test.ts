@@ -29,6 +29,14 @@ vi.mock('@/lib/table-bookings/paypal-deposit-reconcile', async (importOriginal) 
   reconcileTableDepositOrder: vi.fn(),
 }))
 
+vi.mock('@/lib/messaging/flags', () => ({
+  isMessagingFlagOn: vi.fn().mockResolvedValue(false),
+}))
+
+vi.mock('@/lib/table-bookings/deposit-hold-reminder', () => ({
+  runDepositHoldReminders: vi.fn().mockResolvedValue({ considered: 1, sent: 1, failed: 0, skipped: {} }),
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -42,6 +50,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
 import { reconcileTableDepositOrder } from '@/lib/table-bookings/paypal-deposit-reconcile'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { runDepositHoldReminders } from '@/lib/table-bookings/deposit-hold-reminder'
 import { GET } from '@/app/api/cron/table-booking-deposit-timeout/route'
 
 /**
@@ -206,5 +216,29 @@ describe('table booking deposit timeout cron', () => {
 
     wireDb(lapsedBooking({ paypal_deposit_order_id: 'ORDER-1', hold_expires_at: '2026-07-24T09:30:00.000Z' }))
     expect((await run()).payload).toEqual({ cancelled: 1 })
+  })
+
+  // BK-088 (D16): the one reminder per hold is a new guest message, so it waits for its flag.
+  it('runs the reminder sweep only while table_deposit_hold_reminder is on', async () => {
+    wireDb(lapsedBooking({ hold_expires_at: '2026-07-24T11:55:00.000Z' }))
+    await run()
+    expect(isMessagingFlagOn).toHaveBeenCalledWith('table_deposit_hold_reminder')
+    expect(runDepositHoldReminders).not.toHaveBeenCalled()
+
+    vi.mocked(isMessagingFlagOn).mockResolvedValueOnce(true)
+    wireDb(lapsedBooking({ hold_expires_at: '2026-07-24T11:55:00.000Z' }))
+    const { payload } = await run()
+    expect(runDepositHoldReminders).toHaveBeenCalledTimes(1)
+    expect(payload).toEqual({ cancelled: 0, reminders: { considered: 1, sent: 1, failed: 0, skipped: {} } })
+  })
+
+  it('still cancels lapsed holds when the reminder sweep fails', async () => {
+    vi.mocked(isMessagingFlagOn).mockResolvedValueOnce(true)
+    vi.mocked(runDepositHoldReminders).mockRejectedValueOnce(new Error('ledger missing'))
+    wireDb(lapsedBooking())
+
+    const { payload } = await run()
+
+    expect(payload).toEqual({ cancelled: 1 })
   })
 })
