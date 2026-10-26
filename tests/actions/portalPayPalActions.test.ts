@@ -244,7 +244,8 @@ describe('portalPayPalActions', () => {
 
     const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
 
-    expect(result).toEqual({ success: true })
+    // The page says "confirmed" only when the booking is (review BK-005); this draft confirmed.
+    expect(result).toEqual({ success: true, bookingConfirmed: true })
     expect(mockedClaimIdempotencyKey).toHaveBeenCalledWith(
       admin,
       'private-booking-deposit-capture:booking-1',
@@ -264,7 +265,36 @@ describe('portalPayPalActions', () => {
       admin,
       'private-booking-deposit-capture:booking-1',
       'capture-hash',
-      { success: true },
+      { success: true, bookingConfirmed: true },
+    )
+  })
+
+  // Review BK-005: the portal said "your booking is confirmed" after every payment, including one
+  // that left the booking a draft because its room, guest count or risk review stopped it.
+  it('says the booking is not confirmed when the deposit did not confirm it', async () => {
+    mockedVerifyBookingToken.mockReturnValue('booking-1')
+    const { admin } = mockAdminForCapture()
+    mockedGetPayPalOrder.mockResolvedValue(payPalOrderForBooking())
+    mockedCapturePayPalPayment.mockResolvedValue({
+      amount: '250.00',
+      currency: 'GBP',
+      transactionId: 'CAPTURE-1',
+    })
+    mockedFinalizeDepositPayment.mockResolvedValue({
+      success: true,
+      confirmationBlocked: true,
+      confirmationBlockedReasons: ['No room booked. Add the room the party will use, then confirm the booking.'],
+    })
+
+    const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
+
+    expect(result).toEqual({ success: true, bookingConfirmed: false })
+    // A retry of the same capture replays what was said the first time.
+    expect(mockedPersistIdempotencyResponse).toHaveBeenLastCalledWith(
+      admin,
+      'private-booking-deposit-capture:booking-1',
+      'capture-hash',
+      { success: true, bookingConfirmed: false },
     )
   })
 

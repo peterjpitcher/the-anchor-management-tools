@@ -12,6 +12,12 @@ type Row = Record<string, unknown>
 
 const state = vi.hoisted(() => ({ client: null as unknown }))
 
+// Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
+// D25). This file is about something else, so every booking here passes those checks; they are
+// tested in tests/services/privateHireReadiness.test.ts.
+vi.mock('@/services/private-bookings/readiness', async (importOriginal) =>
+  (await import('../helpers/readyHire')).readyHireReadiness(importOriginal))
+
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => state.client }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => state.client }))
 vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))

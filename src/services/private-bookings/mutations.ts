@@ -54,6 +54,13 @@ import {
   getBookingSpaceIds,
   type BookingConflict,
 } from './conflicts';
+import {
+  describeConfirmationBlockers,
+  hireConfirmationProblems,
+  hireRoomProblems,
+  loadOneHireReadiness,
+  type HireProblem,
+} from './readiness';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 import {
@@ -76,7 +83,6 @@ import {
   getPrivateBookingCancellationOutcome,
   type CancellationFinancialOutcome,
 } from '@/services/private-bookings/financial';
-import { sendBookingConfirmedSideEffects } from './payments';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -610,6 +616,104 @@ async function assertSpaceAvailabilityAndCapacity(input: {
 }
 
 /**
+ * Owner decisions D24 and D25 (24 October 2026, reviews BK-007 and BK-006): a private hire is
+ * confirmed only when it has a room, a guest count, and room for its guests in the layout booked
+ * (or a manager's override for the capacity), and once its contract has been sent or recorded as
+ * accepted another way. A hire with no room took nothing off sale, so diners could book the Main
+ * Bar on a night the pub was full of a party; and hires were confirmed with no contract ever sent.
+ * Checked on the state about to be saved, so a guest count changed in the same edit counts.
+ *
+ * Fails closed: if the booking cannot be read, it is not confirmed.
+ */
+async function assertHireReadyToConfirm(
+  id: string,
+  pending: { guestCount?: unknown; layout?: unknown },
+): Promise<void> {
+  let problems: HireProblem[]
+  try {
+    const { facts, rooms } = await loadOneHireReadiness(id)
+    problems = hireConfirmationProblems(facts, rooms, pending)
+  } catch (error) {
+    logger.error('Could not check a private hire before confirming it', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId: id },
+    })
+    throw new Error("Could not check the booking's rooms, guest count and contract, so it was not confirmed. Please try again.")
+  }
+  if (problems.length > 0) {
+    throw new Error(describeConfirmationBlockers(problems))
+  }
+}
+
+/**
+ * Review BK-007 and BK-066: the guest count was only ever checked against the rooms when a booking
+ * was made or a deposit landed, so one booking went from 50 to 70 guests in a room for 50 with no
+ * warning. Whenever the guest count, layout, date, times or rooms change, the guests must still
+ * fit, and staff are told which room to add when they do not. A manager's override covers the
+ * rooms and layout it was given for.
+ *
+ * Only "more guests than the rooms hold" refuses the change: a hire with no room or no guest count
+ * yet is shown on the booking page and list, and cannot be confirmed, but can still be edited.
+ * A read that fails is logged and lets the change through, as the clash check does; confirming
+ * the booking checks again and fails closed.
+ */
+async function assertGuestsStillFit(
+  id: string,
+  pending: { guestCount?: unknown; layout?: unknown; removedSpaceId?: string | null },
+): Promise<void> {
+  let problems: HireProblem[]
+  try {
+    const { facts, rooms } = await loadOneHireReadiness(id)
+    const roomsAfter = pending.removedSpaceId
+      ? facts.rooms.filter((room) => room.id !== pending.removedSpaceId)
+      : facts.rooms
+    problems = hireRoomProblems({ ...facts, rooms: roomsAfter }, rooms, pending)
+  } catch (error) {
+    logger.error('Capacity re-check skipped: could not read the booking rooms', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId: id },
+    })
+    return
+  }
+  const overCapacity = problems.find((problem) => problem.code === 'over_capacity')
+  if (overCapacity) {
+    throw new Error(overCapacity.message)
+  }
+}
+
+/**
+ * Removing a room line (BK-007). When another line still books the same room nothing changes. When
+ * it is the last line for that room, the hire must keep a room if it is confirmed, and the guests
+ * must still fit in what is left.
+ */
+async function assertRoomCanBeRemoved(bookingId: string, itemId: string, spaceId: string): Promise<void> {
+  const admin = createAdminClient()
+  const [{ data: others, error: othersError }, { data: booking, error: bookingError }] = await Promise.all([
+    admin
+      .from('private_booking_items')
+      .select('id, space_id')
+      .eq('booking_id', bookingId)
+      .eq('item_type', 'space')
+      .neq('id', itemId),
+    admin.from('private_bookings').select('status').eq('id', bookingId).maybeSingle(),
+  ])
+  if (othersError || bookingError) {
+    // The same as the other capacity re-checks: a read that fails does not block the edit.
+    logger.error('Room removal check skipped: could not read the booking', {
+      error: new Error(othersError?.message ?? bookingError?.message ?? 'read failed'),
+      metadata: { bookingId, itemId },
+    })
+    return
+  }
+  const remaining = ((others ?? []) as Array<{ space_id: string | null }>).filter((row) => Boolean(row.space_id))
+  if (remaining.some((row) => row.space_id === spaceId)) return
+  if (remaining.length === 0 && (booking as { status?: string } | null)?.status === 'confirmed') {
+    throw new Error('A confirmed booking must keep a room booked. Add the new room first, then remove this one.')
+  }
+  await assertGuestsStillFit(bookingId, { removedSpaceId: spaceId })
+}
+
+/**
  * SOP §17: ensure exactly one £25 electricity line exists for approved
  * high-power or amplified equipment. Never duplicates; never removes.
  */
@@ -954,9 +1058,14 @@ export async function createBooking(
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name,
     deposit_amount: depositAmount,
-    // An enquiry stays a draft even where the deposit was waived: confirming a
-    // booking nobody has read would be worse than losing it.
-    status: input.is_web_enquiry ? 'draft' : (requiresDeposit ? 'draft' : 'confirmed'),
+    // Every booking starts as a draft. A waived (£0) deposit used to confirm the
+    // booking as it was made, with no room checked and no contract. A hire is now
+    // confirmed only with a room that fits its guests (D24) and its contract sent
+    // or accepted another way (D25), and no contract exists yet when a booking is
+    // made, so staff confirm it once both are in place (reviews BK-006, BK-007).
+    // An enquiry was always a draft: confirming a booking nobody has read would
+    // be worse than losing it.
+    status: 'draft',
     date_tbd: input.date_tbd ? true : false,
   };
   delete (bookingPayload as Record<string, unknown>).is_web_enquiry;
@@ -1020,19 +1129,9 @@ export async function createBooking(
           metadata: { bookingId: booking.id }
         })
       })
-    } else {
-      void sendBookingConfirmedSideEffects({
-        booking: bookingForSideEffects,
-        performedByUserId: (booking as any).created_by ?? (bookingPayload as any).created_by,
-        analyticsVia: 'private_booking_no_deposit_create',
-        syncCalendar: false,
-      }).catch((smsError) => {
-        logger.error('Private booking no-deposit confirmation side effects failed', {
-          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
-          metadata: { bookingId: booking.id }
-        })
-      })
     }
+    // A waived (£0) deposit is a draft with nothing to pay, so nothing goes now: the guest is told
+    // the booking is confirmed when staff confirm it (updateBooking sends that).
   }
 
   // Google Calendar Sync
@@ -1122,6 +1221,8 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   if (input.status === 'confirmed' && currentBooking.status !== 'confirmed') {
     await assertDepositConfirmedBeforeBookingConfirmation(id, currentBooking, input)
+    // D24 and D25: a room that fits the guests, judged on what this edit will save, and a contract.
+    await assertHireReadyToConfirm(id, { guestCount: input.guest_count, layout: input.layout })
   }
 
   // SOP §12: bar tab rules on the edit path — merge partial input with the
@@ -1426,9 +1527,21 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
           ? (input.cleardown_time || null)
           : ((currentBooking as any).cleardown_time ?? null),
         excludeBookingId: id,
+        // Capacity is checked just below, with the manager's override taken into account.
         skipCapacity: true,
       })
     }
+  }
+
+  // BK-007 / BK-066: the guests must still fit whenever the guest count, layout, date or times
+  // change. The edit form sends every field back, so only a value that actually moved counts.
+  const guestCountChanged = input.guest_count !== undefined &&
+    String(input.guest_count ?? '') !== String(currentBooking.guest_count ?? '')
+  const layoutChanged = input.layout !== undefined &&
+    String(input.layout ?? '') !== String((currentBooking as any).layout ?? '')
+  const willBeLive = (input.status ?? currentBooking.status) === 'draft' || (input.status ?? currentBooking.status) === 'confirmed'
+  if (willBeLive && (guestCountChanged || layoutChanged || timingChanged)) {
+    await assertGuestsStillFit(id, { guestCount: input.guest_count, layout: input.layout })
   }
 
   // 3. Perform Update
@@ -3012,11 +3125,22 @@ export async function addBookingItem(data: {
   }
 
   // Reconcile payment status: item changes can affect whether booking is still fully paid
-  const warning = await reconcileBalancePaymentStatus(
+  let warning = await reconcileBalancePaymentStatus(
     data.booking_id,
     'The item was saved',
     'after item add',
   );
+
+  // BK-007: a new room only ever adds space, so it is never refused for capacity. When the guests
+  // still do not fit, the room is saved and staff are told which room would make them fit.
+  if (data.item_type === 'space' && data.space_id) {
+    try {
+      await assertGuestsStillFit(data.booking_id, {})
+    } catch (capacityError) {
+      const capacityWarning = `The room was added, but the guests still do not fit. ${capacityError instanceof Error ? capacityError.message : String(capacityError)}`
+      warning = warning ? `${warning} ${capacityWarning}` : capacityWarning
+    }
+  }
 
   // SOP §21: catering changes can flip the waiver requirement.
   if (data.item_type === 'catering') {
@@ -3111,12 +3235,18 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
 
   const { data: item, error: fetchError } = await supabase
     .from('private_booking_items')
-    .select('booking_id, item_type')
+    .select('booking_id, item_type, space_id')
     .eq('id', itemId)
     .single();
 
   if (fetchError || !item) {
     throw new Error('Item not found');
+  }
+
+  // BK-007: removing a room must leave a confirmed hire with a room, and must leave room for the
+  // guests. Another line for the same room keeps the room booked, so only the last one counts.
+  if (item.item_type === 'space' && item.space_id) {
+    await assertRoomCanBeRemoved(item.booking_id as string, itemId, item.space_id as string)
   }
 
   const { data: deletedItem, error } = await supabase

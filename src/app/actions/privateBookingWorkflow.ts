@@ -18,6 +18,11 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { logger } from '@/lib/logger'
 import { getErrorMessage } from '@/lib/errors'
+import {
+  CAPACITY_OVERRIDE_ACTION,
+  loadOneHireReadiness,
+  roomCapacity,
+} from '@/services/private-bookings/readiness'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { ActionType } from '@/types/rbac'
@@ -1130,6 +1135,115 @@ export async function listComplaints(input?: {
     logger.error('Failed to list complaints', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId: input?.bookingId, status: input?.status },
+    })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Capacity override (owner decision D24, review BK-007)
+// ---------------------------------------------------------------------------
+
+const CapacityOverrideSchema = z.object({
+  bookingId: z.string().uuid('Unknown booking.'),
+  maxGuests: z.coerce
+    .number({ invalid_type_error: 'Enter the number of guests to allow.' })
+    .int('Enter a whole number of guests.')
+    .min(1, 'Enter the number of guests to allow.')
+    .max(1000, 'Enter 1,000 guests or fewer.'),
+  reason: z
+    .string()
+    .trim()
+    .min(10, 'Say why the guests fit (at least 10 characters).')
+    .max(500, 'Keep the reason to 500 characters or fewer.'),
+})
+
+/**
+ * A manager allows more guests than the booked rooms hold (owner decision D24, 24 October 2026).
+ *
+ * The rooms' capacity otherwise stops the booking being confirmed, and stops its guest count,
+ * layout, times or rooms being changed while the guests do not fit. This records, on the
+ * booking's audit trail, the number allowed, for the rooms and layout booked now, with the
+ * manager's reason. It covers exactly those rooms and that layout: change either and the check
+ * applies again. The audit row is the override, so if it cannot be written nothing is allowed.
+ *
+ * General Manager override permission only (gm_override: the manager and super_admin roles).
+ */
+export async function allowPrivateBookingOverCapacity(input: {
+  bookingId: string
+  maxGuests: number | string
+  reason: string
+}): Promise<{ success?: boolean; error?: string }> {
+  const auth = await requireUser()
+  if ('error' in auth) return { error: auth.error }
+
+  const parsed = CapacityOverrideSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the details and try again.' }
+  const { bookingId, maxGuests, reason } = parsed.data
+
+  if (!(await pbPermission('gm_override', auth.user.id))) {
+    return { error: 'Only a manager can allow more guests than the rooms hold.' }
+  }
+
+  try {
+    const admin = createAdminClient()
+    const { facts } = await loadOneHireReadiness(bookingId, admin)
+
+    if (facts.status !== 'draft' && facts.status !== 'confirmed') {
+      return { error: 'Only a draft or confirmed booking can have more guests allowed.' }
+    }
+    if (facts.rooms.length === 0) {
+      return { error: 'Add the room the party will use first. The override is given for the rooms booked.' }
+    }
+
+    const roomTotal = facts.rooms.reduce((sum, room) => sum + (roomCapacity(room, facts.layout) ?? 0), 0)
+    if (roomTotal > 0 && maxGuests <= roomTotal) {
+      return { error: `The rooms already hold ${roomTotal} guests, so there is nothing to allow. Enter a number above ${roomTotal}.` }
+    }
+
+    const spaceIds = facts.rooms.map((room) => room.id).sort()
+    const { error: insertError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: CAPACITY_OVERRIDE_ACTION,
+      field_name: 'guest_count',
+      new_value: String(maxGuests),
+      performed_by: auth.user.id,
+      metadata: {
+        max_guests: maxGuests,
+        layout: facts.layout,
+        space_ids: spaceIds,
+        room_names: facts.rooms.map((room) => room.name),
+        room_capacity: roomTotal || null,
+        guest_count_at_override: facts.guestCount,
+        reason,
+        description: `A manager allowed up to ${maxGuests} guests in ${facts.rooms.map((room) => room.name).join(', ')}: ${reason}`,
+      },
+    })
+    if (insertError) throw new Error(`Could not record the override: ${insertError.message}`)
+
+    await audit({
+      userId: auth.user.id,
+      operationType: 'update',
+      resourceType: 'private_booking',
+      resourceId: bookingId,
+      newValues: { capacity_override_max_guests: maxGuests },
+      additionalInfo: {
+        action: 'capacity_override',
+        max_guests: maxGuests,
+        layout: facts.layout,
+        space_ids: spaceIds,
+        room_capacity: roomTotal || null,
+        reason,
+      },
+    })
+
+    revalidateBooking(bookingId)
+    revalidatePath('/private-bookings')
+    return { success: true }
+  } catch (error) {
+    logger.error('Failed to record a private booking capacity override', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
     })
     return { error: getErrorMessage(error) }
   }
