@@ -6,6 +6,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
 import { settleWrite } from '@/lib/supabase/settle-write'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 // Vercel Cron: 0 4,5 * * * (UTC). Re-gates on a 04:00-06:00 Europe/London window to absorb
 // DST, then enqueues the day's checklist jobs into the existing every-minute job queue.
 // All logic lives in the job handlers; this route only knocks on the door.

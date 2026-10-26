@@ -324,6 +324,10 @@
     {
       "path": "/api/cron/signing-reminders",
       "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-jobs-check",
+      "schedule": "40 7 * * *"
     }
   ]
 }
