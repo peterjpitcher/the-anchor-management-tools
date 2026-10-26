@@ -376,3 +376,46 @@ describe('BookingDetailClient party size changes', () => {
     )
   })
 })
+
+// BK-041: a cancelled booking still holding a cash deposit says so on the page until the refund is
+// recorded, because nothing can send it back automatically.
+describe('BookingDetailClient cash deposit prompt', () => {
+  const cashCancelled = (): Booking => ({
+    ...makeBooking(),
+    status: 'cancelled',
+    payment_method: 'cash',
+    payment_status: 'completed',
+    deposit_amount: 160,
+    deposit_amount_locked: 160,
+    party_size: 16,
+    committed_party_size: 16,
+  })
+
+  it('asks for the cash to be handed back', () => {
+    render(<BookingDetailClient booking={cashCancelled()} canEdit canManage canRefund depositRefunds={[]} />)
+    expect(screen.getByText('Return the cash deposit')).toBeInTheDocument()
+  })
+
+  it('goes once the cash refund is recorded', () => {
+    render(
+      <BookingDetailClient
+        booking={cashCancelled()}
+        canEdit
+        canManage
+        canRefund
+        depositRefunds={[{ id: 'r-1', amount: 160, status: 'completed' }]}
+      />
+    )
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+  })
+
+  it('is not shown for a live booking or a PayPal deposit', () => {
+    const { unmount } = render(
+      <BookingDetailClient booking={{ ...cashCancelled(), status: 'confirmed' }} canEdit canManage canRefund depositRefunds={[]} />
+    )
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+    unmount()
+    render(<BookingDetailClient booking={{ ...cashCancelled(), payment_method: 'paypal' }} canEdit canManage canRefund depositRefunds={[]} />)
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+  })
+})

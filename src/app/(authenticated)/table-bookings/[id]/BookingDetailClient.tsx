@@ -1347,6 +1347,20 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </Alert>
                 )}
 
+                {/* A cancelled booking still holding a cash deposit (BK-041): it goes back across
+                    the bar, so it stays on screen until the refund is recorded. */}
+                {booking.status === 'cancelled' &&
+                  booking.payment_method === 'cash' &&
+                  depositCanBeRefunded &&
+                  depositRefunds !== null &&
+                  refundTotals.totalRefunded + refundTotals.totalPending < refundableDepositAmount && (
+                  <Alert tone="warning" title="Return the cash deposit">
+                    This booking was cancelled while its deposit, paid in cash, is still held. Hand back
+                    what is owed at the bar (the cancellation email to the manager has the amount), then
+                    record it here with Process Refund, method cash.
+                  </Alert>
+                )}
+
                 {canRefund && depositRefunds !== null && depositCanBeRefunded && refundTotals.totalRefunded < refundableDepositAmount && (
                   <Button
                     variant="secondary"
