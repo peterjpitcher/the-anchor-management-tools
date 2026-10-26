@@ -147,6 +147,7 @@ export function cancellationFacts(input: {
       refund.refunded && typeof refund.alreadyReturnedPence === 'number' ? refund.alreadyReturnedPence : null,
     deposit_owed: refund.refunded ? null : yesNo(refund.depositOwed === true),
     amount_owed_pence: !refund.refunded && typeof refund.amountOwedPence === 'number' ? refund.amountOwedPence : null,
+    refund_cutoff_days: !refund.refunded && typeof refund.cutoffDays === 'number' ? refund.cutoffDays : null,
   }
 }
 
@@ -176,11 +177,14 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
 
   const owed = facts?.amount_owed_pence
   const owedPence = owed === null || owed === undefined || owed === '' ? Number.NaN : Number(owed)
+  const cutoff = facts?.refund_cutoff_days
+  const cutoffDays = cutoff === null || cutoff === undefined || cutoff === '' ? Number.NaN : Number(cutoff)
   return {
     refunded: false,
     reason: outcome,
     ...(facts?.deposit_owed === 'yes' ? { depositOwed: true } : {}),
     ...(Number.isFinite(owedPence) && owedPence > 0 ? { amountOwedPence: owedPence } : {}),
+    ...(Number.isInteger(cutoffDays) && cutoffDays >= 0 ? { cutoffDays } : {}),
   }
 }
 

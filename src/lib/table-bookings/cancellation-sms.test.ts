@@ -113,6 +113,25 @@ describe('cancellation SMS', () => {
     expect(body).toMatch(/can't be refunded/i)
   })
 
+  it('names the Christmas 7-day rule, not the 3-day one, inside a seasonal cutoff', async () => {
+    // BK-003: a Christmas cancellation 5 days out was told "within 3 days".
+    const body = await sendWith({ refunded: false, reason: 'seasonal_cutoff', cutoffDays: 7 })
+    expect(body).toMatch(/fewer than 7 days before your booking, the deposit can't be refunded/i)
+    expect(body).not.toMatch(/3 days/)
+  })
+
+  it('says a deposit with no refund window was never refundable', async () => {
+    const body = await sendWith({ refunded: false, reason: 'seasonal_cutoff', cutoffDays: 0 })
+    expect(body).toMatch(/wasn't refundable/i)
+    expect(body).not.toMatch(/\d+ days/)
+  })
+
+  it('still names no rule it cannot see when the cutoff is unknown', async () => {
+    const body = await sendWith({ refunded: false, reason: 'seasonal_cutoff' })
+    expect(body).toMatch(/inside the cancellation deadline/i)
+    expect(body).not.toMatch(/3 days/)
+  })
+
   it('uses the generic sentence only when there was genuinely no deposit', async () => {
     const body = await sendWith({ refunded: false, reason: 'no_deposit' })
     expect(body).toMatch(/has been cancelled\. Hope to see you again soon!/)
