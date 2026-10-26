@@ -65,7 +65,7 @@ function buildMoveTableSupabase() {
   const overlapIn = vi.fn().mockReturnValue({ neq: overlapNeq })
 
   const assignmentSelect = vi.fn((columns: string) => {
-    if (columns === 'table_id') {
+    if (columns === 'table_id, end_datetime') {
       return { eq: existingAssignmentEq }
     }
     if (columns === 'table_booking_id, table_id') {

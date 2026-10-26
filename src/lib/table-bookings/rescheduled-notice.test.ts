@@ -211,6 +211,56 @@ describe('the booking amended notice', () => {
     expect(notice.email?.text).not.toContain('Invalid Date')
   })
 
+  // BK-174: a visit already over, or the retired card-capture state, is never messaged. They used to
+  // be told they were unconfirmed and owed "your deposit of the deposit".
+  it.each(['visited_waiting_for_review', 'review_clicked', 'pending_card_capture', 'no_show', 'completed'])(
+    'never messages a %s booking',
+    async (status) => {
+      const outcome = await sendTableBookingRescheduledNotificationIfAllowed(
+        supabase({ ...CONFIRMED_BOOKING, status }),
+        { tableBookingId: 'tb-1', previous: { startDateTime: '2026-12-05T17:00:00.000Z' } },
+      )
+
+      expect(notifyCustomerMock).not.toHaveBeenCalled()
+      expect(outcome).toBeNull()
+    },
+  )
+
+  it('never says "the deposit of the deposit" when the amount is unknown', async () => {
+    // A pending_payment booking whose deposit cannot be read: no stored amount, and a party the
+    // group rule does not charge.
+    await sendTableBookingRescheduledNotificationIfAllowed(
+      supabase({ ...CONFIRMED_BOOKING, status: 'pending_payment', payment_status: null, party_size: 4 }),
+      { tableBookingId: 'tb-1', previous: { startDateTime: '2026-12-05T17:00:00.000Z' } },
+    )
+
+    const notice = captureNotice()
+    expect(notice.email?.text).toContain('is not confirmed yet: we still need your deposit.')
+    expect(notice.email?.text).not.toContain('the deposit of the deposit')
+    expect(notice.email?.text).not.toContain('deposit of the deposit')
+    expect(notice.sms?.body).toContain('It is not confirmed yet: we still need your deposit.')
+  })
+
+  it('reports which channel reached the guest, and when none did (BK-091)', async () => {
+    const sent = await sendTableBookingRescheduledNotificationIfAllowed(supabase(CONFIRMED_BOOKING), {
+      tableBookingId: 'tb-1',
+      previous: { partySize: 4 },
+    })
+    expect(sent).toMatchObject({ status: 'sent', channel: 'email' })
+
+    notifyCustomerMock.mockResolvedValueOnce({
+      selectedChannels: [],
+      attempts: [],
+      finalStatus: 'no_channel',
+      noChannelReason: 'no_email_or_mobile',
+    })
+    const unreached = await sendTableBookingRescheduledNotificationIfAllowed(supabase(CONFIRMED_BOOKING), {
+      tableBookingId: 'tb-1',
+      previous: { partySize: 4 },
+    })
+    expect(unreached).toMatchObject({ status: 'no_channel' })
+  })
+
   it('still refuses to message a cancelled booking', async () => {
     await sendTableBookingRescheduledNotificationIfAllowed(
       supabase({ ...CONFIRMED_BOOKING, status: 'cancelled' }),

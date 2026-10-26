@@ -542,6 +542,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       }),
     [booking.audit_trail],
   )
+  // The latest party-size change, and whether the guest made it through their manage link (BK-091).
+  const latestPartySizeChange = auditTrail.find(
+    (entry) => entry.event === 'table_booking.party_size_changed' || entry.event === 'table_booking.party_size_changed_by_guest'
+  )
+  const partySizeChangedByGuest = latestPartySizeChange?.event === 'table_booking.party_size_changed_by_guest'
   const preorderItems = booking.table_booking_items ?? []
   const canEditPreorder =
     canEdit &&
@@ -734,6 +739,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           smsSent?: boolean
           warning?: string | null
           depositNotification?: unknown
+          partySizeNotification?: unknown
           data?: { auto_moved_table_name?: string | null }
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
           body: {
@@ -758,6 +764,14 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         )
         if (depositProblem) {
           toast.error(`${depositProblem} Copy the deposit link from this booking to send it.`, { duration: 10000 })
+        }
+        // The new party size, when the guest could not be told about it (BK-091).
+        const noticeProblem = describeGuestNotificationProblem(
+          readGuestNotificationOutcome(payload.partySizeNotification),
+          'about the new party size'
+        )
+        if (noticeProblem) {
+          toast.error(noticeProblem, { duration: 10000 })
         }
         return payload
       },
@@ -1008,7 +1022,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     { key: 'date', label: 'Date', value: formatBookingDate(booking.booking_date) },
                     { key: 'time', label: 'Time', value: booking.booking_time ? booking.booking_time.slice(0, 5) : '-' },
                     { key: 'duration', label: 'Duration', value: formatDuration(booking.duration_minutes) },
-                    { key: 'party-size', label: 'Party size', value: orDash(booking.party_size) },
+                    {
+                      key: 'party-size',
+                      label: 'Party size',
+                      value: partySizeChangedByGuest ? (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {orDash(booking.party_size)}
+                          <Badge tone="info">Changed by guest</Badge>
+                        </span>
+                      ) : orDash(booking.party_size),
+                    },
                     { key: 'committed-size', label: 'Committed size', value: orDash(booking.committed_party_size) },
                     {
                       key: 'assigned-tables',

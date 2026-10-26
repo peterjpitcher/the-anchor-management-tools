@@ -61,7 +61,10 @@ function describeGuestNotReached(result: unknown): string | null {
     ? (payload.depositTransition as Record<string, unknown>)
     : null
   const deposit = describeGuestNotificationProblem(readGuestNotificationOutcome(transition?.notification), 'about the deposit')
-  return deposit ? `${deposit} Copy the deposit link from the booking to send it.` : null
+  if (deposit) return `${deposit} Copy the deposit link from the booking to send it.`
+
+  // The new party size, when staff changed it and the guest could not be told (BK-091).
+  return describeGuestNotificationProblem(readGuestNotificationOutcome(payload.partySizeNotification), 'about the new party size')
 }
 
 export function FohScheduleClient({
@@ -332,6 +335,12 @@ export function FohScheduleClient({
 
     if (transition?.state === 'deposit_cleared') {
       return `${successMessage}. Pending deposit cleared.`
+    }
+
+    // The guest was told about the new party size (BK-091).
+    const toldBy = describeGuestNotificationChannel(readGuestNotificationOutcome(payload?.partySizeNotification))
+    if (toldBy) {
+      return `${successMessage}. The guest was told ${toldBy}.`
     }
 
     return successMessage

@@ -156,6 +156,22 @@ describe('table-manage page', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Booking updated.')
   })
 
+  // BK-040, BK-091: a bigger party we cannot fit online is told why, that nothing changed, and the
+  // number to ring, instead of "We could not process that request".
+  it.each([
+    ['no_table', "We don't have a table free for that many people at your time"],
+    ['slot_full', 'The kitchen is full at your time'],
+    ['too_large', "That's more people than we can book online"],
+  ])('explains a refused %s change and gives the phone number', async (status, opening) => {
+    await renderPage({ status })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(opening)
+    expect(alert).toHaveTextContent("your booking hasn't changed")
+    expect(alert).toHaveTextContent(GUEST_CONTACT.phoneDisplay)
+    expect(alert).not.toHaveTextContent('We could not process that request')
+  })
+
   it('falls back to the shared blocked screen when the link cannot be used', async () => {
     getTableManagePreviewByRawToken.mockResolvedValue({ state: 'blocked', reason: 'invalid_token' })
 

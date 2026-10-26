@@ -4,6 +4,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { whenLondonClockReaches } from '@/lib/dateUtils'
 import { privateBookingOccupiesSpace } from '@/lib/private-bookings/occupies-space'
+import { logger } from '@/lib/logger'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -374,7 +375,7 @@ export async function GET(request: NextRequest) {
   const scheduleEndIso = fromZonedTime(`${shiftIsoDate(date, 1)}T06:00:00`, 'Europe/London').toISOString()
 
   // Run follow-up queries in parallel (they only depend on the initial results, not each other)
-  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult] = await Promise.all([
+  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult, guestChangesResult] = await Promise.all([
     eventIds.length > 0
       ? supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null },
@@ -426,8 +427,39 @@ export async function GET(request: NextRequest) {
       `)
       .eq('event_seating_type', 'standing')
       .eq('event.date', date)
-      .in('status', ['confirmed', 'pending_payment'])
+      .in('status', ['confirmed', 'pending_payment']),
+    // A guest's own party-size change through their manage link, so the floor sees the guest made
+    // it (BK-091). Newest first: the first row per booking is the latest change.
+    bookingIds.length > 0
+      ? supabase.from('audit_logs')
+          .select('resource_id, created_at, additional_info')
+          .eq('resource_type', 'table_booking')
+          .eq('operation_type', 'table_booking.party_size_changed_by_guest')
+          .in('resource_id', bookingIds)
+          .order('created_at', { ascending: false })
+      : { data: [], error: null },
   ])
+
+  // A marker that cannot be read is left off rather than failing the floor plan.
+  const guestPartySizeChangeByBooking = new Map<string, { at: string; from: number | null; to: number | null }>()
+  if (guestChangesResult.error) {
+    logger.error('FOH schedule could not read guest party-size changes', {
+      error: new Error(String((guestChangesResult.error as { message?: unknown })?.message ?? guestChangesResult.error)),
+      metadata: { date },
+    })
+  } else {
+    for (const row of (guestChangesResult.data || []) as Array<{ resource_id: string | null; created_at: string; additional_info: Record<string, unknown> | null }>) {
+      if (!row.resource_id || guestPartySizeChangeByBooking.has(row.resource_id)) continue
+      const info = row.additional_info ?? {}
+      const from = Number(info.previousPartySize)
+      const to = Number(info.newPartySize)
+      guestPartySizeChangeByBooking.set(row.resource_id, {
+        at: row.created_at,
+        from: Number.isFinite(from) ? from : null,
+        to: Number.isFinite(to) ? to : null,
+      })
+    }
+  }
 
   const eventNameById = new Map<string, string>()
   if (!eventsResult.error) {
@@ -735,6 +767,7 @@ export async function GET(request: NextRequest) {
           is_outside_seating: booking.is_outside_seating ?? false,
           requires_accessible_table: booking.requires_accessible_table ?? false,
           christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null,
+          guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null,
           // Guest requirements the floor needs before they walk to the table.
           // These are columns the booking forms already write to, but nothing on
           // the FOH screen read them, so an allergy could only be discovered by
@@ -810,7 +843,8 @@ export async function GET(request: NextRequest) {
       high_chair_count: booking.high_chair_count ?? 0,
       is_outside_seating: booking.is_outside_seating ?? false,
       requires_accessible_table: booking.requires_accessible_table ?? false,
-      christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null
+      christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null,
+      guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null
     }))
 
   // Outside bookings hold no table assignment, so they land in the untabled bucket.
