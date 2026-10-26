@@ -126,6 +126,7 @@ describe('a deposit paid after the booking closed', () => {
       amount: 160,
       context: { subject: 'table_booking', bookingDate: '2026-11-20', reference: 'TB-1', bookingCancelled: true },
       tableBookingId: BOOKING_ID,
+      refundId: 'REF-1',
     })
   })
 

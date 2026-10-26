@@ -183,6 +183,7 @@ export async function settleDepositOnClosedBooking(
       bookingDate: (recorded.booking_date as string | null) ?? null,
       reference,
       amountGbp,
+      refundId: refund.refundId,
     })
 
     return { outcome: 'refunded', amountGbp }
@@ -201,7 +202,14 @@ export async function settleDepositOnClosedBooking(
  */
 async function sendLateDepositRefundNotice(
   supabase: SupabaseClient<any, 'public', any>,
-  input: { bookingId: string; customerId: string | null; bookingDate: string | null; reference: string | null; amountGbp: number },
+  input: {
+    bookingId: string
+    customerId: string | null
+    bookingDate: string | null
+    reference: string | null
+    amountGbp: number
+    refundId: string
+  },
 ): Promise<void> {
   try {
     if (!input.customerId) return
@@ -228,6 +236,7 @@ async function sendLateDepositRefundNotice(
         bookingCancelled: true,
       },
       tableBookingId: input.bookingId,
+      refundId: input.refundId,
     })
   } catch (error) {
     logger.error('The refund notice for a deposit paid after cancellation failed', {
