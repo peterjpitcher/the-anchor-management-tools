@@ -13,6 +13,8 @@ import {
 } from '@/lib/email/event-ticket-emails'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
+import { eventPaymentRefusal } from '@/lib/events/event-payment-reasons'
+import { logger } from '@/lib/logger'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -37,14 +39,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
   })
 
   if (!throttle.allowed) {
-    return NextResponse.json({ success: false, error: 'rate_limited' }, { status: 429 })
+    // The guest has approved a payment by now, so they are asked to ring rather than pay again.
+    return NextResponse.json(eventPaymentRefusal('rate_limited', 'capture'), { status: 429 })
   }
 
   const supabase = createAdminClient()
-  const result = await captureEventPayPalOrderByRawToken(supabase, {
-    rawToken: token,
-    orderId: parsed.data.orderId,
-  })
+  let result: Awaited<ReturnType<typeof captureEventPayPalOrderByRawToken>>
+  try {
+    result = await captureEventPayPalOrderByRawToken(supabase, {
+      rawToken: token,
+      orderId: parsed.data.orderId,
+    })
+  } catch (error) {
+    // PayPal may already have the money (BK-029): never a crash, never "try again".
+    logger.error('Guest event payment link capture failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { orderId: parsed.data.orderId },
+    })
+    return NextResponse.json(eventPaymentRefusal(null, 'capture'), { status: 502 })
+  }
 
   if (result.state === 'confirmed' || result.state === 'already_confirmed') {
     const appBaseUrl = getAppUrl()
@@ -121,7 +134,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   return NextResponse.json(
-    { success: false, error: result.reason },
+    eventPaymentRefusal(result.reason, 'capture'),
     { status: result.reason === 'hold_expired' ? 410 : 409 }
   )
 }
