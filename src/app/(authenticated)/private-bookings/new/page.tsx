@@ -98,7 +98,9 @@ export default function NewPrivateBookingPage() {
         setError(result.error)
         setIsSubmitting(false)
       } else if (result.success && result.data) {
-        toast.success('Private booking created successfully')
+        // Diners, event seats or events already in the rooms that night (D24: warned, not refused).
+        if ('warning' in result && result.warning) toast.warning(result.warning, { duration: 12000 })
+        else toast.success('Private booking created successfully')
         router.push(`/private-bookings/${result.data.id}`)
       }
     } catch {

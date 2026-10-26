@@ -63,7 +63,9 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 import { HireReadinessPanel } from './HireReadinessPanel'
+import { HireNightPanel } from './HireNightPanel'
 import type { HireReadinessView } from '@/services/private-bookings/readiness'
+import type { HireNightView } from '@/services/private-bookings/night-clashes'
 // Design system components
 import {
   Alert,
@@ -203,6 +205,10 @@ interface PrivateBookingDetailClientProps {
   hireReadiness?: HireReadinessView | null;
   /** True when the page could not check the rooms. */
   hireReadinessError?: boolean;
+  /** Diners, event seats and events in the hire's rooms that night (BK-070, BK-071, D24). */
+  hireNight?: HireNightView | null;
+  /** True when the page could not check the night. */
+  hireNightError?: boolean;
   /** Managers may allow more guests than the rooms hold (gm_override). */
   canOverrideCapacity?: boolean;
   initialError?: string | null;
@@ -716,6 +722,8 @@ function StatusModal({
         ? await cancelPrivateBooking(bookingId, undefined, retention, capture)
         : await updateBookingStatus(bookingId, newStatus);
     if ('success' in result && result.success) {
+      // Diners, event seats or events already in the rooms that night (D24: warned, not refused).
+      if ('warning' in result && result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     } else if ('error' in result && result.error) {
@@ -1666,6 +1674,8 @@ export default function PrivateBookingDetailClient({
   depositConfirmation,
   hireReadiness,
   hireReadinessError,
+  hireNight,
+  hireNightError,
   canOverrideCapacity,
   initialError,
 }: PrivateBookingDetailClientProps) {
@@ -2578,6 +2588,8 @@ export default function PrivateBookingDetailClient({
         canOverrideCapacity={canOverrideCapacity === true}
         onChanged={() => router.refresh()}
       />
+
+      <HireNightPanel view={hireNight ?? null} loadFailed={hireNightError === true} />
 
       {isDateTbd && (
         <Alert
