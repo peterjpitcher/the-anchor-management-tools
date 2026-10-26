@@ -17,6 +17,7 @@ import {
 import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
@@ -160,6 +161,12 @@ export async function POST(request: NextRequest) {
       })
     } catch {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
+    }
+
+    // A landline or non-UK number cannot take our texts, so without an email the guest would get
+    // no confirmation or payment link (BK-162). Ask for an email instead.
+    if (!parsed.data.email && !isUkMobile(normalizedPhone)) {
+      return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
     }
 
     // Per-ticket attendee names are optional here (the website enforces them for
@@ -395,6 +402,7 @@ export async function POST(request: NextRequest) {
         attribution,
         ticketSelections,
         diningRequest: parsed.data.dining_request,
+        contactEmail: customerResolution.bookingContactEmail,
         earlyArrivalRequest: parsed.data.early_arrival_request
       })
 

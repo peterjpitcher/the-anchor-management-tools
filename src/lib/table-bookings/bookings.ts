@@ -51,6 +51,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
+import { withBookingContactEmail } from '@/lib/bookings/contact-email'
 
 // The texts' words now live in guest-texts.ts, shared with the bounce fallback. Re-exported so
 // existing importers keep working.
@@ -502,15 +503,18 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   sms: SmsSafetyMeta
   email?: { success: boolean; error?: string | null } | null
 }> {
-  const { data: customer, error } = await supabase
+  const { data: customerRow, error } = await supabase
     .from('customers')
     .select('id, first_name, last_name, mobile_e164, mobile_number, email, sms_status, sms_opt_in, marketing_sms_opt_in, email_status, email_deactivated_at, marketing_email_opt_in')
     .eq('id', input.customerId)
     .maybeSingle()
 
-  if (error || !customer) {
+  if (error || !customerRow) {
     return { sms: null }
   }
+
+  // The email the guest typed for this booking, when it differs from the customer's (BK-078).
+  const customer = await withBookingContactEmail(supabase, 'table_bookings', input.bookingResult.table_booking_id, customerRow)
 
   const firstName = getSmartFirstName(customer.first_name)
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
@@ -1311,15 +1315,18 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       return
     }
 
-    const { data: customer } = await supabase
+    const { data: customerRow } = await supabase
       .from('customers')
       .select('id, first_name, last_name, mobile_e164, mobile_number, email, sms_status, sms_opt_in, marketing_sms_opt_in, email_status, email_deactivated_at, marketing_email_opt_in')
       .eq('id', booking.customer_id)
       .maybeSingle()
 
-    if (!customer) {
+    if (!customerRow) {
       return
     }
+
+    // The email the guest typed for this booking, when it differs from the customer's (BK-078).
+    const customer = await withBookingContactEmail(supabase, 'table_bookings', booking.id, customerRow)
 
     const firstName = getSmartFirstName(customer.first_name)
     const bookingMoment = formatLondonDateTime(booking.start_datetime)

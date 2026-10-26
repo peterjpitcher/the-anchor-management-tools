@@ -739,8 +739,10 @@ export class GdprService {
       }, 'id, attachments'),
       fetchUnmatchedCommunicationRows(adminClient, identity, 'id, attachments'),
       fetchWebhookLogRows(adminClient, identity, 'id'),
-      fetchRowsByIdentity(adminClient, 'bookings', identity, { idColumn: 'customer_id' }),
-      fetchRowsByIdentity(adminClient, 'table_bookings', identity, { idColumn: 'customer_id' }),
+      // contact_email: a booking made under another customer can carry this person's typed
+      // email (BK-078), so it is found by the address as well as by customer.
+      fetchRowsByIdentity(adminClient, 'bookings', identity, { idColumn: 'customer_id', emailColumns: ['contact_email'] }),
+      fetchRowsByIdentity(adminClient, 'table_bookings', identity, { idColumn: 'customer_id', emailColumns: ['contact_email'] }),
       fetchRowsByIdentity(adminClient, 'private_bookings', identity, {
         idColumn: 'customer_id',
         emailColumns: ['contact_email'],
@@ -963,6 +965,8 @@ export class GdprService {
 
       await scrub('eventBookings', 'bookings', {
         attendee_names: null,
+        // The email typed for the booking (BK-078).
+        contact_email: null,
         // 1147 rows carry free-text notes, which is where staff record what a
         // guest told them. Scrubbing attendee_names while leaving this behind
         // defeated the point of the erasure.
@@ -979,6 +983,8 @@ export class GdprService {
         cancellation_reason: null,
         allergies: null,
         dietary_requirements: null,
+        // The email typed for the booking (BK-078).
+        contact_email: null,
       }, 'id', tableBookingIds)
 
       await scrub('tableBookingItems', 'table_booking_items', {

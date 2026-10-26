@@ -15,6 +15,25 @@ type ResolvedCustomerResult = {
   standardizedPhone?: string | null
   resolutionError?: string
   resolvedFirstName?: string
+  /**
+   * The email typed for this booking when the customer record does not hold it: the number
+   * belongs to a customer with another address (or none that we may fill in), or the address
+   * belongs to a different customer. Callers keep it on the booking (`contact_email`), so this
+   * booking's messages go where the guest asked, and the customer record is left alone (BK-078).
+   * Null when the record already holds the typed address or none was typed.
+   */
+  bookingContactEmail?: string | null
+}
+
+type EnsureCustomerOptions = {
+  /**
+   * True only when a member of staff typed the details while dealing with the guest (front of
+   * house, the door, a staff booking form). Staff entries may fill a blank email on the matched
+   * customer. A website caller has no proof the person typing owns the number, so it never
+   * writes an email onto someone else's record (BK-077); its typed address stays on the booking.
+   * Off by default, so a new caller is safe until it says otherwise.
+   */
+  trustedEntry?: boolean
 }
 
 type CustomerLookupRow = {
@@ -79,7 +98,7 @@ async function enrichMatchedCustomer(
     fallbackLastName?: string
     fallbackEmail?: string | null
   }
-): Promise<void> {
+): Promise<{ emailWritten: boolean }> {
   const updatePayload: Record<string, string> = {}
 
   if (!input.existingCustomer.mobile_e164) {
@@ -99,7 +118,7 @@ async function enrichMatchedCustomer(
   }
 
   if (Object.keys(updatePayload).length === 0) {
-    return
+    return { emailWritten: false }
   }
 
   const { data: updatedCustomer, error } = await client
@@ -110,12 +129,42 @@ async function enrichMatchedCustomer(
     .maybeSingle()
 
   if (error) {
-    console.error('Failed to enrich existing customer profile:', error)
-  } else if (!updatedCustomer) {
+    // Ids and codes only: the payload carries the guest's name and email.
+    console.error('Failed to enrich existing customer profile:', JSON.stringify({
+      customerId: input.existingCustomer.id,
+      code: error.code ?? null,
+      message: error.message ?? null,
+    }))
+    return { emailWritten: false }
+  }
+
+  if (!updatedCustomer) {
     console.warn('Customer enrichment update affected no rows', {
       customerId: input.existingCustomer.id
     })
+    return { emailWritten: false }
   }
+
+  return { emailWritten: Boolean(updatePayload.email) }
+}
+
+function sameEmail(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = a?.trim().toLowerCase() || null
+  const right = b?.trim().toLowerCase() || null
+  return left !== null && left === right
+}
+
+/**
+ * The typed email to keep on the booking, or null when the customer record already holds it.
+ */
+function contactEmailForBooking(
+  typedEmail: string | null,
+  storedEmail: string | null | undefined,
+  emailWritten: boolean
+): string | null {
+  if (!typedEmail) return null
+  if (emailWritten || sameEmail(typedEmail, storedEmail)) return null
+  return typedEmail
 }
 
 function deriveNameParts(fullName?: string | null): CustomerFallback {
@@ -186,40 +235,15 @@ async function findCustomerByPhone(
   }
 }
 
-async function findCustomerByEmail(
-  client: SupabaseClient<Database, 'public'>,
-  normalizedEmail: string
-): Promise<{ customer: CustomerLookupRow | null; lookupError: boolean }> {
-  // Match case-insensitively against the `idx_customers_email_unique` index,
-  // which is defined on `lower(email)`. `ilike` can over-match because `_` and
-  // `%` are valid in an email local part, so we re-filter for an exact
-  // lower-cased match in JS. The unique index guarantees at most one true row.
-  const { data, error } = await client
-    .from('customers')
-    .select('id, mobile_e164, first_name, last_name, email')
-    .ilike('email', normalizedEmail)
-    .order('created_at', { ascending: true })
-    .limit(10)
-
-  if (error) {
-    console.error('Failed to look up customer by email:', error)
-    return { customer: null, lookupError: true }
-  }
-
-  const exact = (data ?? []).find(
-    row => (row.email ?? '').trim().toLowerCase() === normalizedEmail
-  )
-
-  return {
-    customer: (exact as CustomerLookupRow | undefined) ?? null,
-    lookupError: false
-  }
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === '23505'
 }
 
 export async function ensureCustomerForPhone(
   supabase: SupabaseClient<Database, 'public'> | undefined,
   phone: string | null | undefined,
-  fallback: CustomerFallback = {}
+  fallback: CustomerFallback = {},
+  options: EnsureCustomerOptions = {}
 ): Promise<ResolvedCustomerResult> {
   if (!phone) {
     return { customerId: null, standardizedPhone: null }
@@ -247,22 +271,32 @@ export async function ensureCustomerForPhone(
       ? normalizedName.lastName
       : undefined
 
-    const lookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
-    const existingMatch = lookup.customer
-    if (existingMatch) {
-      await enrichMatchedCustomer(client, {
-        existingCustomer: existingMatch,
+    // A matched customer only ever has placeholders filled. A typed email is written onto their
+    // record only by a staff entry and only when the record has none; anything else stays on the
+    // booking as its contact email.
+    const attachToMatchedCustomer = async (
+      match: CustomerLookupRow
+    ): Promise<ResolvedCustomerResult> => {
+      const enrichment = await enrichMatchedCustomer(client, {
+        existingCustomer: match,
         standardizedPhone,
         fallbackFirstName: providedFirstName,
         fallbackLastName: providedLastName,
-        fallbackEmail: sanitizedEmail
+        fallbackEmail: options.trustedEntry === true ? sanitizedEmail : null
       })
 
       return {
-        customerId: existingMatch.id,
+        customerId: match.id,
         standardizedPhone,
-        resolvedFirstName: providedFirstName || existingMatch.first_name || undefined
+        resolvedFirstName: providedFirstName || match.first_name || undefined,
+        bookingContactEmail: contactEmailForBooking(sanitizedEmail, match.email, enrichment.emailWritten)
       }
+    }
+
+    const lookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
+    const existingMatch = lookup.customer
+    if (existingMatch) {
+      return attachToMatchedCustomer(existingMatch)
     }
 
     if (lookup.lookupError) {
@@ -295,76 +329,71 @@ export async function ensureCustomerForPhone(
       marketing_email_opt_in: false
     }
 
-    const { data: inserted, error: insertError } = await client
-      .from('customers')
-      .insert(insertPayload)
-      .select('id')
-      .single()
+    const insertCustomer = (payload: typeof insertPayload) =>
+      client
+        .from('customers')
+        .insert(payload)
+        .select('id')
+        .single()
 
-    if (insertError) {
-      if ((insertError as { code?: string })?.code === '23505') {
-        // A unique violation here can be a phone collision (idx_customers_mobile_e164)
-        // or an email collision (idx_customers_email_unique). Try the phone owner first.
-        const conflictLookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
-        const conflictMatch = conflictLookup.customer
-        if (conflictMatch) {
-          await enrichMatchedCustomer(client, {
-            existingCustomer: conflictMatch,
-            standardizedPhone,
-            fallbackFirstName: providedFirstName,
-            fallbackLastName: providedLastName,
-            fallbackEmail: sanitizedEmail
-          })
+    let { data: inserted, error: insertError } = await insertCustomer(insertPayload)
+    let typedEmailLeftOff = false
 
-          return {
-            customerId: conflictMatch.id,
-            standardizedPhone,
-            resolvedFirstName: providedFirstName || conflictMatch.first_name || undefined
+    if (isUniqueViolation(insertError)) {
+      // A unique violation here can be a phone collision (idx_customers_mobile_e164), when
+      // another request created this number's customer a moment ago, or an email collision
+      // (idx_customers_email_unique). Try the phone owner first.
+      const conflictLookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
+      if (conflictLookup.customer) {
+        return attachToMatchedCustomer(conflictLookup.customer)
+      }
+
+      if (conflictLookup.lookupError) {
+        return { customerId: null, standardizedPhone, resolutionError: 'lookup_failed' }
+      }
+
+      // Nobody has this number, so the clash is on the email: the typed address is on another
+      // customer's record. Until October 2026 the booking was put on THAT customer, so their
+      // stored mobile got this guest's texts and payment links and the real booker heard
+      // nothing (BK-077). The number gets a customer of its own without the email, the other
+      // record is left as it is, and the booking keeps the typed address as its contact email.
+      // Parking made the same change on 19 October 2026 (src/lib/parking/customers.ts).
+      if (sanitizedEmail) {
+        ;({ data: inserted, error: insertError } = await insertCustomer({ ...insertPayload, email: null }))
+        typedEmailLeftOff = !insertError
+
+        if (isUniqueViolation(insertError)) {
+          const racedLookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
+          if (racedLookup.customer) {
+            return attachToMatchedCustomer(racedLookup.customer)
           }
-        }
-
-        if (conflictLookup.lookupError) {
-          return { customerId: null, standardizedPhone, resolutionError: 'lookup_failed' }
-        }
-
-        // No phone match, so the violation was on the email: this email already
-        // belongs to an existing customer whose phone differs from what was
-        // entered (a returning customer using a different number). Link the
-        // booking to that customer instead of failing outright. We do not
-        // overwrite their phone/email here — enrichment only fills placeholders.
-        if (sanitizedEmail) {
-          const emailLookup = await findCustomerByEmail(client, sanitizedEmail)
-          const emailMatch = emailLookup.customer
-          if (emailMatch) {
-            await enrichMatchedCustomer(client, {
-              existingCustomer: emailMatch,
-              standardizedPhone,
-              fallbackFirstName: providedFirstName,
-              fallbackLastName: providedLastName,
-              fallbackEmail: sanitizedEmail
-            })
-
-            return {
-              customerId: emailMatch.id,
-              standardizedPhone,
-              resolvedFirstName: providedFirstName || emailMatch.first_name || undefined
-            }
-          }
-
-          if (emailLookup.lookupError) {
+          if (racedLookup.lookupError) {
             return { customerId: null, standardizedPhone, resolutionError: 'lookup_failed' }
           }
         }
       }
+    }
 
-      console.error('Failed to create customer for SMS logging:', insertError)
+    if (insertError) {
+      console.error('Failed to create customer for SMS logging:', JSON.stringify({
+        code: insertError.code ?? null,
+        message: insertError.message ?? null,
+      }))
       return { customerId: null, standardizedPhone, resolutionError: 'insert_failed' }
+    }
+
+    if (typedEmailLeftOff) {
+      // console.error, not logger.warn, which is silent in production. Ids only.
+      console.error('Customer created without the typed email, which is on another customer', JSON.stringify({
+        customerId: inserted?.id ?? null
+      }))
     }
 
     return {
       customerId: inserted?.id ?? null,
       standardizedPhone,
-      resolvedFirstName: providedFirstName || undefined
+      resolvedFirstName: providedFirstName || undefined,
+      bookingContactEmail: typedEmailLeftOff ? sanitizedEmail : null
     }
   } catch (error) {
     console.error('Failed to resolve customer for phone:', error)

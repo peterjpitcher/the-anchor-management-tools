@@ -19,6 +19,8 @@ import { attributionLabel } from '@/lib/api/attribution-labels'
 import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
+import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   alignTablePaymentHoldToScheduledSend,
@@ -443,6 +445,12 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
     }
 
+    // A landline or non-UK number cannot take our texts, so without an email the guest would get
+    // no confirmation, reminder or payment link (BK-162). Ask for an email instead.
+    if (!payload.email && !isUkMobile(normalizedPhone)) {
+      return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
+    }
+
     // Per-guest cap, applied to every caller including the website proxy. The normalised phone
     // is the only guest identity available here, and it is a better one than an IP anyway: it
     // survives a changed network and it is the thing a flood would have to vary to do damage.
@@ -625,6 +633,10 @@ export async function POST(request: NextRequest) {
         bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
       }
       mutationCommitted = Boolean(bookingResult.table_booking_id)
+
+      // The email typed for this booking when the customer record does not hold it, kept before
+      // any message goes so the confirmation and payment link reach it (BK-078).
+      await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, customerResolution.bookingContactEmail)
 
       if (customerResolution.customerId && bookingResult.table_booking_id) {
         await ConsentService.applyBookingContactConsent(

@@ -21,6 +21,7 @@ import {
   type BookingAuditTrailEntry,
   type LegacyBookingAuditRow,
 } from '@/lib/table-bookings/audit-trail'
+import { BookingContactEmailNotice } from '@/components/features/bookings/BookingContactEmailNotice'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -29,12 +30,13 @@ interface Props {
 export default async function BookingDetailPage({ params }: Props) {
   const { id } = await params
 
-  const [canView, canEdit, canManage, canRefund, permissionsResult] = await Promise.all([
+  const [canView, canEdit, canManage, canRefund, permissionsResult, canManageCustomers] = await Promise.all([
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('table_bookings', 'refund'),
     getUserPermissions(),
+    checkUserPermission('customers', 'manage'),
   ])
 
   if (!canView) redirect('/unauthorized')
@@ -58,8 +60,9 @@ export default async function BookingDetailPage({ params }: Props) {
       deposit_waived, is_venue_event, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
+      contact_email,
       customer:customers!table_bookings_customer_id_fkey(
-        id, first_name, last_name, mobile_number
+        id, first_name, last_name, mobile_number, email
       ),
       table_booking_tables:booking_table_assignments(
         id, start_datetime, end_datetime,
@@ -139,6 +142,15 @@ export default async function BookingDetailPage({ params }: Props) {
       depositRefunds={depositRefunds}
       seasonalPreorder={seasonalPreorder}
       emailOption={emailOption}
+      contactEmailNotice={rawBooking.contact_email ? (
+        <BookingContactEmailNotice
+          bookingType="table"
+          bookingId={rawBooking.id}
+          contactEmail={rawBooking.contact_email}
+          customerEmail={customer?.email ?? null}
+          canUpdateCustomer={canManageCustomers}
+        />
+      ) : null}
     />
   )
 }

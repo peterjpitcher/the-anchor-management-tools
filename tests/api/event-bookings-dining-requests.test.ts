@@ -1,3 +1,10 @@
+// The route asks for an email when the number cannot take texts (BK-162). These tests use made-up
+// numbers, so the rule is switched off here; tests/api/publicBookingNonMobile.test.ts covers it.
+vi.mock('@/lib/phone/uk-mobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phone/uk-mobile')>()),
+  isUkMobile: () => true,
+}))
+
 vi.mock('@/services/event-bookings', () => ({ EventBookingService: { createBooking: vi.fn(), normalizeBookingMode: () => 'general' } }))
 import { EventBookingService } from '@/services/event-bookings'
 import { consentHashPayload } from '@/lib/consent/validation'

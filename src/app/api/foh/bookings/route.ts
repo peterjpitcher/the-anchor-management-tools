@@ -6,6 +6,7 @@ import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib/business-hours/trading-day'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
 import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
@@ -823,6 +824,11 @@ async function markWalkInBookingAsSeated(
 type FohCreateBookingResponseData = {
   /** Present when staff sent Christmas courses: false means the booking exists without them. */
   christmas_courses_saved?: boolean
+  /**
+   * True when a confirmation is known to have reached the guest, false when one was due and none
+   * did (a landline with no email, say), null when none was due. Staff are told on false (BK-162).
+   */
+  notification_sent?: boolean | null
   state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
@@ -1149,6 +1155,8 @@ async function createFohTableBooking(
   const walkInNameParts = splitWalkInGuestName(payload.walk_in_guest_name)
   const fallbackFirstName = payload.first_name || walkInNameParts.firstName
   const fallbackLastName = payload.last_name || walkInNameParts.lastName
+  // The typed email when the matched customer's record holds a different one (BK-078).
+  let bookingContactEmail: string | null = null
 
   if (payload.customer_id) {
     const { data: selectedCustomer, error: selectedCustomerError } = await auth.supabase
@@ -1248,8 +1256,9 @@ async function createFohTableBooking(
       firstName: fallbackFirstName,
       lastName: fallbackLastName,
       email: payload.email
-    })
+    }, { trustedEntry: true })
     customerId = customerResolution.customerId
+    bookingContactEmail = customerResolution.bookingContactEmail ?? null
   } else if (payload.walk_in === true) {
     try {
       const walkInCustomer = await createWalkInCustomer(auth.supabase, {
@@ -1901,6 +1910,15 @@ async function createFohTableBooking(
     }
   }
 
+  // Kept before the confirmation goes, so it reaches the address the guest gave (BK-078).
+  if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
+    await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, bookingContactEmail)
+  }
+
+  // Whether a confirmation is known to have reached the guest, so staff can tell them when none
+  // did (BK-162). Null when none was due: a walk-in, a blocked booking or no number.
+  let notificationSent: boolean | null = null
+
   if (
     shouldSendBookingSms &&
     normalizedPhone &&
@@ -1925,6 +1943,10 @@ async function createFohTableBooking(
           nextStepUrl
         })
       : null
+
+    if (smsSendResult) {
+      notificationSent = smsSendResult.notificationSent === true
+    }
 
     if (!guestNoticeApplies) {
       logger.info('Walk-in booking created, so no guest booking confirmation was sent', {
@@ -2026,6 +2048,7 @@ async function createFohTableBooking(
         sunday_preorder_reason: sundayPreorderReason,
         high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
         is_outside_seating: bookingResult.is_outside_seating ?? false,
+        notification_sent: notificationSent,
         ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved })
       } satisfies FohCreateBookingResponseData
     },

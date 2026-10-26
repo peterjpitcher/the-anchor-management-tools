@@ -101,7 +101,7 @@ function makeDb(seed: Partial<Row>[] = []) {
 }
 
 describe('ensureCustomerForPhone – email unique-index handling', () => {
-  it('links to the existing customer when the email already exists under a different phone (regression: booking blocked by 23505)', async () => {
+  it('gives an unknown number its own customer when the typed email is on another customer, and leaves that customer alone (BK-077)', async () => {
     const db = makeDb([
       {
         id: 'c1',
@@ -113,17 +113,78 @@ describe('ensureCustomerForPhone – email unique-index handling', () => {
       },
     ])
 
-    // Returning customer books with a DIFFERENT phone but the SAME email.
+    // Someone books with a number we do not know and an email that is already on c1. Until
+    // October 2026 the booking was put on c1, so c1's mobile got this guest's texts.
     const result = await ensureCustomerForPhone(db as never, '+447700900999', {
-      firstName: 'Repeat',
-      lastName: 'Customer',
-      email: 'Repeat@Example.com', // different casing – must still match lower(email)
+      firstName: 'Someone',
+      lastName: 'Else',
+      email: 'Repeat@Example.com',
     })
 
     expect(result.resolutionError).toBeUndefined()
+    expect(result.customerId).not.toBe('c1')
+    expect(db.__rows).toHaveLength(2)
+    const created = db.__rows.find((row) => row.id === result.customerId)
+    expect(created).toMatchObject({ mobile_e164: '+447700900999', email: null, first_name: 'Someone' })
+    // The other customer's record is untouched.
+    expect(db.__rows.find((row) => row.id === 'c1')).toMatchObject({
+      mobile_e164: '+447700900001',
+      first_name: 'Repeat',
+      last_name: 'Customer',
+      email: 'repeat@example.com',
+    })
+    // The typed address stays with this booking.
+    expect(result.bookingContactEmail).toBe('repeat@example.com')
+  })
+
+  it('never writes a website-typed email onto a known number whose record has none (BK-077)', async () => {
+    const db = makeDb([
+      { id: 'c1', mobile_e164: '+447700900001', first_name: 'Regular', last_name: 'Guest', email: null },
+    ])
+
+    const result = await ensureCustomerForPhone(db as never, '+447700900001', {
+      firstName: 'Regular',
+      lastName: 'Guest',
+      email: 'someone.typed@example.com',
+    })
+
     expect(result.customerId).toBe('c1')
-    // No duplicate row was created.
-    expect(db.__rows).toHaveLength(1)
+    expect(db.__rows[0].email).toBeNull()
+    expect(result.bookingContactEmail).toBe('someone.typed@example.com')
+  })
+
+  it('lets a staff entry fill a blank email on the matched customer', async () => {
+    const db = makeDb([
+      { id: 'c1', mobile_e164: '+447700900001', first_name: 'Regular', last_name: 'Guest', email: null },
+    ])
+
+    const result = await ensureCustomerForPhone(
+      db as never,
+      '+447700900001',
+      { firstName: 'Regular', lastName: 'Guest', email: 'regular@example.com' },
+      { trustedEntry: true }
+    )
+
+    expect(result.customerId).toBe('c1')
+    expect(db.__rows[0].email).toBe('regular@example.com')
+    expect(result.bookingContactEmail).toBeNull()
+  })
+
+  it('keeps a different typed email on the booking and never replaces the stored one (BK-078)', async () => {
+    const db = makeDb([
+      { id: 'c1', mobile_e164: '+447700900001', first_name: 'Regular', last_name: 'Guest', email: 'old@example.com' },
+    ])
+
+    const result = await ensureCustomerForPhone(
+      db as never,
+      '+447700900001',
+      { firstName: 'Regular', lastName: 'Guest', email: 'New@Example.com' },
+      { trustedEntry: true }
+    )
+
+    expect(result.customerId).toBe('c1')
+    expect(db.__rows[0].email).toBe('old@example.com')
+    expect(result.bookingContactEmail).toBe('new@example.com')
   })
 
   it('matches an existing customer by phone without inserting (happy path unchanged)', async () => {
@@ -147,6 +208,8 @@ describe('ensureCustomerForPhone – email unique-index handling', () => {
     expect(result.resolutionError).toBeUndefined()
     expect(result.customerId).toBe('c1')
     expect(db.__rows).toHaveLength(1)
+    // The record already holds the typed address, so the booking needs no copy of it.
+    expect(result.bookingContactEmail).toBeNull()
   })
 
   it('creates a new customer when neither phone nor email exist (happy path unchanged)', async () => {
