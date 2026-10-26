@@ -515,6 +515,39 @@ export function buildTableBookingDepositRequestEmail(
 }
 
 /**
+ * The one reminder before an unpaid deposit hold runs out (BK-088, owner decision D16). It says
+ * what is being held, the amount, the exact deadline and what happens if it passes, then the same
+ * deposit facts the request gave.
+ */
+export function buildTableBookingDepositReminderEmail(
+  input: BookingFacts &
+    DepositTermsFacts & {
+      /** "£160.00", as the deposit request said it. */
+      depositLabel: string
+      paymentLink: string
+      /** When the hold runs out, as an ISO instant. Required: the deadline is the point of it. */
+      payByIso: string
+      isOutsideSeating?: boolean | null
+    }
+): TableBookingEmail {
+  const isOutside = Boolean(input.isOutsideSeating)
+  const noun = isOutside ? 'outside booking' : 'table'
+  const party = partySizeLabel(input.partySize)
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const payBy = formatBookingMomentForEmail(null, null, input.payByIso)
+
+  return renderDepositRequestEmail({
+    ...input,
+    subject: payBy ? `Your deposit is due by ${payBy}` : 'Your deposit is still due',
+    heading: 'A reminder about your deposit',
+    lead:
+      `Hi ${input.firstName}, we're still holding your ${noun}${party ? ` for ${party}` : ''}` +
+      `${moment ? ` on ${moment}` : ''}. Pay your deposit of ${input.depositLabel}` +
+      `${payBy ? ` by ${payBy}` : ''} to keep it. If it isn't paid by then, the booking is cancelled.`,
+  })
+}
+
+/**
  * The booking-amended notice, after staff change the date, the time or the party size.
  *
  * It says what the booking was and what it is now, because an email that shows only the new time
