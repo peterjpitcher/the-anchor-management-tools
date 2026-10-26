@@ -3247,6 +3247,7 @@ export type Database = {
           first_name: string
           id: string
           internal_notes: string | null
+          is_placeholder: boolean
           last_email_failure_reason: string | null
           last_failure_type: string | null
           last_name: string
@@ -3306,6 +3307,7 @@ export type Database = {
           first_name: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name: string
@@ -3365,6 +3367,7 @@ export type Database = {
           first_name?: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name?: string

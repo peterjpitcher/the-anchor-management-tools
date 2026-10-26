@@ -3,6 +3,8 @@ import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
 import { ConsentService } from '@/services/consent'
+import { logger } from '@/lib/logger'
+import { maskPhone, maskPhones } from '@/lib/phone/mask'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.generated'
 
@@ -536,10 +538,13 @@ async function validateCustomerIdMatchesPhone(
 
     const matches = input.toNumbersToMatch.some(value => customerVariants.has(value))
     if (!matches) {
-      console.error('Provided customerId does not match destination phone for SMS send', {
-        customerId: input.customerId,
-        to: input.standardizedTo,
-        customerPhones: rawPhones
+      // Masked: these are guests' numbers, and logs are read by more people than the records (BK-206).
+      logger.error('Provided customerId does not match destination phone for SMS send', {
+        metadata: {
+          customerId: input.customerId,
+          to: maskPhone(input.standardizedTo),
+          customerPhones: maskPhones(rawPhones)
+        }
       })
       return { ok: false, reason: 'customer_phone_mismatch' }
     }
@@ -595,18 +600,22 @@ export async function resolveCustomerIdForSms(
       try {
         const standardizedContactPhone = formatPhoneForStorage(privateBooking.contact_phone)
         if (standardizedContactPhone !== standardizedTo) {
-          console.error('SMS recipient phone does not match private booking contact phone', {
-            bookingId: privateBooking.id,
-            to: standardizedTo,
-            contactPhone: standardizedContactPhone
+          logger.error('SMS recipient phone does not match private booking contact phone', {
+            metadata: {
+              bookingId: privateBooking.id,
+              to: maskPhone(standardizedTo),
+              contactPhone: maskPhone(standardizedContactPhone)
+            }
           })
           return { customerId: null, resolutionError: 'booking_phone_mismatch' }
         }
       } catch (error) {
-        console.error('Failed to standardize private booking contact phone while resolving SMS recipient', {
-          bookingId: privateBooking.id,
-          contactPhone: privateBooking.contact_phone,
-          error
+        logger.error('Failed to standardize private booking contact phone while resolving SMS recipient', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: {
+            bookingId: privateBooking.id,
+            contactPhone: maskPhone(privateBooking.contact_phone)
+          }
         })
         return { customerId: null, resolutionError: 'booking_phone_mismatch' }
       }

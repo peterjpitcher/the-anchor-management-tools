@@ -33,6 +33,7 @@ async function firstRecordDate(ctx: SectionContext): Promise<string | null> {
   const { data, error } = await ctx.db
     .from('customers')
     .select('created_at')
+    .eq('is_placeholder', false)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(1)
@@ -49,6 +50,8 @@ async function recentRecords(ctx: SectionContext, span: DateRange): Promise<Cust
       ctx.db
         .from('customers')
         .select('id, created_at')
+        // Made-up walk-in and anonymised records are not new customers (BK-082).
+        .eq('is_placeholder', false)
         .gte('created_at', from)
         .lt('created_at', toExclusive)
         .order('id')

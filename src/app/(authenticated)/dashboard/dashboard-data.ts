@@ -1013,18 +1013,22 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       customers.permitted ? (async () => {
         try {
           const [totalResult, newWeekResult, newMonthResult, lastMonthResult] = await Promise.all([
-            supabase.from('customers').select('id', { count: 'exact', head: true }),
+            // Walk-in and anonymised placeholders are not customers to count (BK-082).
+            supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_placeholder', false),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', sevenDaysAgo),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfThisMonth),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfLastMonth)
               .lt('created_at', startOfThisMonth),
           ])
