@@ -49,6 +49,21 @@ export function isChristmasBookingType(bookingType: string | null | undefined): 
 }
 
 /**
+ * "2 x 3 courses, 1 x 1 course": how many guests are on each Christmas tier, for staff screens and
+ * the kitchen sheet. Empty when the booking recorded no tiers.
+ */
+export function formatChristmasCourseTally(counts?: readonly number[] | null): string {
+  if (!counts?.length) return ''
+  return [3, 2, 1]
+    .map((course) => {
+      const guests = counts.filter((count) => Number(count) === course).length
+      return guests ? `${guests} x ${course} course${course === 1 ? '' : 's'}` : null
+    })
+    .filter(Boolean)
+    .join(', ')
+}
+
+/**
  * True when a create-booking request purpose asks for a Christmas booking.
  * The public and FOH APIs both accept `'christmas'` as a booking purpose.
  */

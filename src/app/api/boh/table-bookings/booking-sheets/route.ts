@@ -23,7 +23,9 @@ import {
   type TableBookingSheetPreorderCover,
 } from '@/lib/table-booking-sheet-template'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
+  describeCourseCount,
   formatPreorderAddonPrice,
   formatPreorderMoney,
   isPreorderAddon,
@@ -32,11 +34,13 @@ import {
   mapPreorderSelectionRow,
   summariseCoverAddons,
   summariseOrderAddons,
+  toPreorderCourseCount,
 } from '@/lib/table-bookings/preorder'
 import {
   PREORDER_SELECTION_COURSES,
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderAddonSummary,
+  type PreorderCourseCount,
   type PreorderCover,
   type PreorderCoverRow,
   type PreorderSelectionRow,
@@ -79,6 +83,9 @@ type BookingRow = {
   is_outside_seating: boolean | null
   high_chair_count: number | null
   requires_accessible_table: boolean | null
+  booking_type: string | null
+  /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. The tier source, not the cover rows. */
+  christmas_course_counts: number[] | null
   /** Booking-level allergy list the pub already records. Printed on the food page, never elsewhere. */
   allergies: string[] | null
   customer: CustomerRow | CustomerRow[] | null
@@ -180,6 +187,9 @@ function toSheetData(
     requirements: requirementsField(row),
     generatedAt,
     ...(preorder ? { preorder } : {}),
+    ...(row.booking_type === 'christmas'
+      ? { christmasCourses: formatChristmasCourseTally(row.christmas_course_counts) || 'Not recorded' }
+      : {}),
   }
 }
 
@@ -199,18 +209,26 @@ function toSheetAddonTotal(summary: PreorderAddonSummary): TableBookingSheetPreo
  * point of the feature is that the cheeseboard is an extra, not a pudding, and a kitchen sheet that
  * listed it beside the courses would reproduce exactly the mistake this fixes.
  */
-function toSheetCover(cover: PreorderCover): TableBookingSheetPreorderCover {
+function toSheetCover(
+  cover: PreorderCover,
+  courseCount: PreorderCourseCount | null
+): TableBookingSheetPreorderCover {
   const addons = summariseCoverAddons(cover)
 
   return {
     seatLabel: cover.guestName
       ? `Seat ${cover.ordinal} · ${cover.guestName}`
       : `Seat ${cover.ordinal}`,
+    // The tier is what the guest pays for, so it is printed per seat; a 1 course guest chooses on
+    // the day and must not read as a missing order (BK-058).
+    ...(courseCount ? { tierLabel: describeCourseCount(courseCount) } : {}),
+    ...(courseCount === 1 ? { choosesOnTheDay: true } : {}),
     courses: cover.selections
       .filter((selection) => !isPreorderAddon(selection))
       .map((selection) => ({
         courseLabel: PREORDER_SELECTION_COURSE_LABELS[selection.course],
         itemName: selection.itemName,
+        ...(selection.itemWithdrawn ? { withdrawn: true } : {}),
       })),
     ...(addons.count > 0
       ? {
@@ -239,7 +257,8 @@ function toSheetCover(cover: PreorderCover): TableBookingSheetPreorderCover {
  * reminder cron's business (spec section 7), not the kitchen's.
  */
 async function loadPreordersForSheets(
-  bookingIds: string[]
+  bookingIds: string[],
+  courseCountsByBooking: Map<string, number[] | null> = new Map()
 ): Promise<Map<string, TableBookingSheetPreorder>> {
   const byBooking = new Map<string, TableBookingSheetPreorder>()
   if (bookingIds.length === 0) return byBooking
@@ -268,8 +287,25 @@ async function loadPreordersForSheets(
 
   if (selectionError) throw selectionError
 
+  const selectionRows = (selectionData ?? []) as unknown as PreorderSelectionRow[]
+
+  // Which chosen dishes have since come off the menu, so the sheet flags them instead of printing
+  // them as a plate to cook (BK-058).
+  const menuItemIds = Array.from(new Set(selectionRows.map((row) => row.menu_item_id)))
+  const withdrawnIds = new Set<string>()
+  if (menuItemIds.length > 0) {
+    const { data: itemData, error: itemError } = await admin
+      .from('booking_period_menu_items')
+      .select('id, is_active')
+      .in('id', menuItemIds)
+    if (itemError) throw itemError
+    for (const item of (itemData ?? []) as Array<{ id: string; is_active: boolean }>) {
+      if (item.is_active === false) withdrawnIds.add(item.id)
+    }
+  }
+
   const selectionsByCover = new Map<string, PreorderSelectionRow[]>()
-  for (const row of (selectionData ?? []) as unknown as PreorderSelectionRow[]) {
+  for (const row of selectionRows) {
     const list = selectionsByCover.get(row.cover_id)
     if (list) list.push(row)
     else selectionsByCover.set(row.cover_id, [row])
@@ -280,7 +316,7 @@ async function loadPreordersForSheets(
   const coversByBooking = new Map<string, PreorderCover[]>()
   for (const coverRow of coverRows) {
     const selections = (selectionsByCover.get(coverRow.id) ?? [])
-      .map((row) => mapPreorderSelectionRow(row))
+      .map((row) => mapPreorderSelectionRow(row, { itemWithdrawn: withdrawnIds.has(row.menu_item_id) }))
       // PREORDER_SELECTION_COURSES, not PREORDER_COURSES: indexOf on the three-course list returns
       // -1 for an add-on, which would sort the cheeseboard ABOVE the starter. Name breaks the tie so
       // a seat with several add-ons prints in a stable order.
@@ -300,7 +336,12 @@ async function loadPreordersForSheets(
     const addons = summariseOrderAddons({ covers })
     byBooking.set(tableBookingId, {
       allergies: [],
-      covers: covers.map((cover) => toSheetCover(cover)),
+      covers: covers.map((cover) =>
+        toSheetCover(
+          cover,
+          toPreorderCourseCount(courseCountsByBooking.get(tableBookingId)?.[cover.ordinal - 1] ?? null)
+        )
+      ),
       ...(addons.count > 0 ? { addonTotal: toSheetAddonTotal(addons) } : {}),
     })
   }
@@ -330,6 +371,7 @@ export async function GET(request: NextRequest) {
         status, payment_status, no_show_at, left_at, seated_at,
         deposit_waived, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked,
         booking_type,
+        christmas_course_counts,
         is_outside_seating,
         high_chair_count,
         requires_accessible_table,
@@ -377,7 +419,10 @@ export async function GET(request: NextRequest) {
       `${formatDateDdMmmmYyyy(now)} at ${formatTime12Hour(toLondonDateTimeLocalValue(now).slice(11))}`
     const bookingDate = formatDateFull(date)
 
-    const preorders = await loadPreordersForSheets(ordered.map((row) => row.id))
+    const preorders = await loadPreordersForSheets(
+      ordered.map((row) => row.id),
+      new Map(ordered.map((row) => [row.id, row.christmas_course_counts ?? null]))
+    )
 
     const sheets = ordered.map((row) => {
       const preorder = preorders.get(row.id)

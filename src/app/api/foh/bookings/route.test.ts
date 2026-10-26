@@ -3,7 +3,12 @@ import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
-import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import {
+  getChristmasCourseAvailability,
+  recordChristmasCourseCounts,
+  recordOneCourseInsideCutoff,
+} from '@/lib/table-bookings/christmas-one-course'
+import { syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
@@ -60,6 +65,11 @@ vi.mock('@/lib/table-bookings/period-lookup', () => ({
 vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
   recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
   oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
+  getChristmasCourseAvailability: vi.fn().mockResolvedValue('available'),
+  recordChristmasCourseCounts: vi.fn().mockResolvedValue('recorded'),
+}))
+vi.mock('@/lib/table-bookings/preorder', () => ({
+  syncPreorderCovers: vi.fn().mockResolvedValue({ partySize: 0, coverCount: 0, added: 0, removed: [] }),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
@@ -636,6 +646,95 @@ describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline
 
     expect(res.status).toBe(201)
     expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/foh/bookings: Christmas courses chosen by staff (BK-057)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const christmasRequest = (courses: number[] | undefined, partySize = 4) =>
+    makeRequest({
+      customer_id: CUSTOMER_ID,
+      date: '2026-12-12',
+      time: '19:00',
+      party_size: partySize,
+      purpose: 'christmas',
+      sunday_deposit_method: 'cash',
+      ...(courses ? { christmas_course_counts: courses } : {}),
+    })
+
+  it('records the courses on the new booking and sets up its pre-order seats', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(christmasRequest([3, 2, 1, 1]))
+
+    expect(res.status).toBe(201)
+    expect(recordChristmasCourseCounts).toHaveBeenCalledWith(
+      db,
+      { id: 'booking-1', bookingDate: '2026-12-12' },
+      [3, 2, 1, 1],
+    )
+    expect(syncPreorderCovers).toHaveBeenCalledWith(db, 'booking-1')
+    // The older one-course fallback is for requests that send no courses.
+    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({
+          christmas_course_counts: [3, 2, 1, 1],
+          booking_period_requires_preorder: true,
+        }),
+      }),
+    )
+    expect((await res.json()).data.christmas_courses_saved).toBe(true)
+  })
+
+  it('refuses 2 or 3 courses after the pre-order deadline, before any booking is made', async () => {
+    vi.mocked(getChristmasCourseAvailability).mockResolvedValueOnce('closed')
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(christmasRequest([3, 3, 1, 1]))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/deadline has passed/)
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('needs one course choice per guest', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(christmasRequest([3, 3, 3], 4))
+
+    expect(res.status).toBe(400)
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('tells staff when the courses did not save, and keeps the booking', async () => {
+    vi.mocked(recordChristmasCourseCounts).mockResolvedValueOnce('failed')
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(christmasRequest([2, 2, 2, 2]))
+
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.data.state).toBe('confirmed')
+    expect(body.data.christmas_courses_saved).toBe(false)
+  })
+
+  it('keeps the one-course fallback for an older screen that sends no courses', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    await POST(christmasRequest(undefined))
+
+    expect(recordChristmasCourseCounts).not.toHaveBeenCalled()
+    expect(recordOneCourseInsideCutoff).toHaveBeenCalled()
   })
 })
 

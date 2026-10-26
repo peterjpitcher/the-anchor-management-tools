@@ -3,6 +3,7 @@
 import React from 'react'
 import { Badge, Button, Modal } from '@/ds'
 import { cn } from '@/lib/utils'
+import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -129,6 +130,13 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
             {selectedBookingContext?.laneTableName ? ` · table ${selectedBookingContext.laneTableName}` : ''}
           </p>
+          {selectedBooking.booking_type === 'christmas' && (
+            // BK-057: who is on 1, 2 or 3 courses, so the floor can price the bill.
+            <p className="mt-1 text-xs text-text">
+              Christmas courses:{' '}
+              {formatChristmasCourseTally(selectedBooking.christmas_course_counts) || 'not recorded yet'}
+            </p>
+          )}
           {(selectedBookingIsOutside || selectedBookingHighChairs > 0 || selectedBookingNeedsStepFree) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {selectedBookingIsOutside ? <Badge tone="info">Outside</Badge> : null}
