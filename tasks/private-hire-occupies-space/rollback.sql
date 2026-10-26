@@ -192,4 +192,9 @@ $function$;
 REVOKE ALL ON FUNCTION public.outside_private_hire_windows(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.outside_private_hire_windows(uuid) TO service_role;
 
+DROP TRIGGER outside_private_hire_booking_guard ON public.private_bookings;
+CREATE TRIGGER outside_private_hire_booking_guard AFTER UPDATE OF
+status, event_date, start_time, end_time, end_time_next_day, setup_date, setup_time ON public.private_bookings
+FOR EACH ROW EXECUTE FUNCTION public.enforce_private_hire_outside_bookings();
+
 DROP FUNCTION public.private_booking_occupies_space(text, timestamp with time zone, timestamp with time zone, boolean);
