@@ -15,6 +15,7 @@ import {
 } from '@/lib/pnl/greene-king-benchmark';
 import type { PLManualActual, PLTarget, PLTimeframe, ReceiptExpenseCategory } from '@/types/database';
 import type { CashupSalesCategory, CashupStatus } from '@/types/cashing-up';
+import { sumOnlineBookingIncomeSince } from '@/lib/finance/online-income';
 
 const INCLUDED_STATUSES = ['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'] as const;
 const RECEIPT_PAGE_SIZE = 1000;
@@ -594,10 +595,19 @@ export class FinancialService {
     };
 
     let cashupSales = createEmptyCashupSummary();
-    const [importedSalesResult, cashupRowsResult] = await Promise.allSettled([
+    const [importedSalesResult, cashupRowsResult, onlineIncomeResult] = await Promise.allSettled([
       fetchImportedSalesRows(supabase, oldestStartDate),
       fetchCashupSalesRows(supabase, oldestStartDate),
+      // Online booking money, its own line (BK-117, D33).
+      sumOnlineBookingIncomeSince(supabase, timeframeStartMap),
     ]);
+    const onlineIncomeByTimeframe: Record<string, number> = onlineIncomeResult.status === 'fulfilled'
+      ? onlineIncomeResult.value
+      : {};
+    if (onlineIncomeResult.status === 'rejected') {
+      warnings.push('Online booking income could not be loaded, so its line shows £0.');
+      console.error('Failed to aggregate online booking income for P&L dashboard:', onlineIncomeResult.reason);
+    }
 
     const importedSalesRows = importedSalesResult.status === 'fulfilled'
       ? importedSalesResult.value
@@ -667,6 +677,8 @@ export class FinancialService {
           actuals[timeframe.key][metric.key] = metric.key === 'drinks_sales'
             ? sales.drinksSales
             : sales.foodPlusOtherSales;
+        } else if (metric.type === 'online') {
+          actuals[timeframe.key][metric.key] = roundCurrency(onlineIncomeByTimeframe[timeframe.key] ?? 0);
         } else {
           const manualValue = manualMap[metric.key]?.[timeframe.key as PLTimeframe];
           actuals[timeframe.key][metric.key] = roundCurrency(manualValue ?? 0);
