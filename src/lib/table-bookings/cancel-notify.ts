@@ -6,6 +6,7 @@ import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-aler
 
 import { sendTableBookingCancelledSmsIfAllowed } from './bookings'
 import type { GuestNotificationOutcome } from './guest-notification-outcome'
+import { recordGuestNotTold } from './guest-not-told'
 import { refundTableBookingDeposit, type DepositRefundTerms, type RefundResult } from './refunds'
 
 /**
@@ -35,6 +36,11 @@ export async function refundAndNotifyOnCancel(
      * guest's own terms apply, as they always have for the guest's own cancellation.
      */
     terms?: DepositRefundTerms
+    /**
+     * Staff cancelled (BK-177). A guest the notice did not reach is then kept on the FOH screen and
+     * the booking page until someone rings them; a walk-in, who is in the building, is not shown.
+     */
+    staffCancel?: boolean
   },
 ): Promise<{
   refundResult: RefundResult
@@ -100,6 +106,16 @@ export async function refundAndNotifyOnCancel(
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId: params.bookingId, source: params.source },
     })
+  }
+
+  if (params.staffCancel && notification) {
+    const followUp = await recordGuestNotTold(supabase, {
+      bookingId: params.bookingId,
+      outcome: notification,
+      source: params.source,
+    })
+    // A walk-in is in the building: no warning to ring them.
+    if (followUp === 'walk_in') notification = null
   }
 
   return { refundResult, notified, notification }

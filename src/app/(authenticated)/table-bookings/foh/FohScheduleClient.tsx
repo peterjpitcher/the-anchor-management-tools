@@ -45,6 +45,7 @@ import {
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
+import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -83,6 +84,8 @@ export function FohScheduleClient({
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const [date, setDate] = useState(initialDate)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  // Bumped after each action so the "guest not told" list looks again (BK-177).
+  const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
   const [bookingActionInFlight, setBookingActionInFlight] = useState<string | null>(null)
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({})
   const [selectedMoveOptions, setSelectedMoveOptions] = useState<FohMoveTableOption[]>([])
@@ -359,6 +362,7 @@ export function FohScheduleClient({
       if (depositProblem && guestNotReached) setErrorMessage(`${depositProblem} ${guestNotReached}`)
       else if (depositProblem) setErrorMessage(depositProblem)
       else if (guestNotReached) setErrorMessage(guestNotReached)
+      setGuestNotToldRefresh((count) => count + 1)
       return true
     } catch (error) {
       if (error instanceof BookingActionError && error.payload) {
@@ -518,6 +522,8 @@ export function FohScheduleClient({
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}
       />
+
+      <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
 
       {viewMode === 'inside' ? (
         <>

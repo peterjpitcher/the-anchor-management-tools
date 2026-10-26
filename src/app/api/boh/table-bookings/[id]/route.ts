@@ -590,6 +590,7 @@ export async function DELETE(
       customerId: existing.customer_id,
       source: 'boh_soft_delete',
       terms: cancellation.terms,
+      staffCancel: true,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
