@@ -193,6 +193,37 @@ describe('POST /api/table-bookings — structured persistence', () => {
     }))
   })
 
+  for (const partySize of [4, 5]) {
+    it(`accepts Christmas dinner for ${partySize}, the minimum the website promises`, async () => {
+      // A party of 4 or 5 choosing Christmas dinner was refused by the schema (BK-004).
+      const supabase = buildSupabase()
+      vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+      const courses = Array.from({ length: partySize }, () => 1)
+      const response = await POST(buildRequest({
+        phone: '+447000000000', first_name: 'Fixture', last_name: 'Guest', date: '2026-12-05', time: '18:00',
+        party_size: partySize, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+        christmas_course_counts: courses,
+      }) as Parameters<typeof POST>[0])
+      expect(response.status).toBeLessThan(400)
+      expect(supabase.rpc).toHaveBeenCalledWith('create_table_booking_christmas_v01', expect.objectContaining({
+        p_course_counts: courses,
+        p_request: expect.objectContaining({ party_size: partySize }),
+      }))
+    })
+  }
+
+  it('refuses Christmas dinner for 3 before anything is booked', async () => {
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', last_name: 'Guest', date: '2026-12-05', time: '18:00',
+      party_size: 3, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(response.status).toBe(400)
+    expect(supabase.rpc).not.toHaveBeenCalledWith('create_table_booking_christmas_v01', expect.anything())
+  })
+
   it('fails visibly if the course RPC cannot run, without silently using the legacy create path', async () => {
     const supabase = buildSupabase()
     supabase.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Course capability unavailable' } })
