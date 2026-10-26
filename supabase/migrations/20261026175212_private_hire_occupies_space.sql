@@ -15,7 +15,8 @@
 -- rule in code: a confirmed hire, a draft whose deposit is paid, or a draft with a live hold, and
 -- never a hire whose date is still to be confirmed. On 26 October 2026 this changes no table block in
 -- production (the one paid draft already blocked its tables; the other two drafts have no room); it
--- adds the paid draft to the clash check.
+-- adds the paid draft to the clash check. The garden guard trigger now also runs when a hold is
+-- extended or an undated hire is given its date (see the end of this file).
 --
 -- Function bodies are production's exact text (md5 checked 26 October) with only the status test
 -- replaced. Headers, SECURITY DEFINER or INVOKER, search_path and grants are restated as production
@@ -233,3 +234,16 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.outside_private_hire_windows(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.outside_private_hire_windows(uuid) TO service_role;
+
+-- The garden guard on private_bookings also runs when a hire can start occupying its space again.
+-- Before the shared rule every draft held the garden, so only status, date and time changes
+-- mattered. Now a lapsed unpaid draft releases it, so a staff member extending that hold
+-- (hold_expiry) or giving an undated hire its date (date_tbd) must be refused when an outside
+-- table booking has taken the garden meanwhile. A deposit arriving (deposit_paid_date) is
+-- deliberately not watched: refusing to record money PayPal has already taken would leave it
+-- unrecorded, so a paid hire that clashes with diners is left to the diner clash check (BK-070).
+-- The trigger function is unchanged.
+DROP TRIGGER outside_private_hire_booking_guard ON public.private_bookings;
+CREATE TRIGGER outside_private_hire_booking_guard AFTER UPDATE OF
+status, event_date, start_time, end_time, end_time_next_day, setup_date, setup_time, hold_expiry, date_tbd
+ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION public.enforce_private_hire_outside_bookings();

@@ -22929,6 +22929,15 @@ export type Database = {
           unsubscribed_count: number
         }[]
       }
+      private_booking_occupies_space: {
+        Args: {
+          p_date_tbd: boolean
+          p_deposit_paid_date: string
+          p_hold_expiry: string
+          p_status: string
+        }
+        Returns: boolean
+      }
       private_booking_settlement_rows: {
         Args: { p_booking_id: string }
         Returns: {

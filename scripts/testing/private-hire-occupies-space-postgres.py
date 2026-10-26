@@ -6,8 +6,10 @@ defects: a draft hire whose deposit is paid (its hold cleared when confirmation 
 missing from the hire-against-hire clash check, and a hire whose date is still to be confirmed takes
 tables and the garden off sale. Then the migration runs and the clash check, the table block and the
 garden block all follow private_booking_occupies_space: confirmed, a paid draft or a draft with a
-live hold, never an undated hire or a lapsed unpaid draft. It also checks that a rolled-back run
-changes nothing, that grants and settings are restated as production holds them, and that the
+live hold, never an undated hire or a lapsed unpaid draft. The garden guard trigger (production's
+function, loaded from its migration) now refuses extending a lapsed hold or dating an undated hire
+over an outside table booking, and still never refuses a deposit arriving. It also checks that a
+rolled-back run changes nothing, that grants and settings are restated as production holds them, and that the
 rollback restores the old definitions exactly.
 """
 import os
@@ -20,6 +22,7 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261026175212_private_hire_occupies_space.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-occupies-space/rollback.sql'
 FUNCTIONS = ('get_private_booking_conflicts', 'is_table_blocked_by_private_booking_v05', 'outside_private_hire_windows')
+GUARD_SOURCE = ROOT / 'supabase/migrations/20260906155336_outside_private_hire_blocking.sql'
 GARDEN = '6869774b-cfa5-4aff-a663-a14b2fb5633b'
 
 SETUP = f"""
@@ -36,6 +39,14 @@ INSERT INTO venue_spaces VALUES ('a0000000-0000-0000-0000-000000000001','The Din
  ('{GARDEN}','The Garden',false);
 INSERT INTO tables VALUES ('b0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001');
 INSERT INTO venue_space_table_areas VALUES ('a0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-000000000001');
+CREATE TABLE public.table_bookings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), is_outside_seating boolean,
+ status text, left_at timestamptz, hold_expires_at timestamptz, payment_status text,
+ start_datetime timestamptz, end_datetime timestamptz);
+CREATE TABLE public.outside_reservations(table_booking_id uuid, ends_at timestamptz);
+CREATE FUNCTION public.is_booking_live(text, timestamptz, timestamptz, text, timestamptz) RETURNS boolean
+ LANGUAGE sql AS $$ SELECT $1 = 'confirmed' $$;
+CREATE FUNCTION public.get_setting_bool(text, boolean) RETURNS boolean LANGUAGE sql AS $$ SELECT $2 $$;
+CREATE FUNCTION public.get_setting_int(text, integer) RETURNS integer LANGUAGE sql AS $$ SELECT $2 $$;
 CREATE FUNCTION fixture_assert(boolean,text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN
  IF $1 IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL %',$2; END IF; RAISE NOTICE 'PASS %',$2; END $$;
 """
@@ -69,9 +80,28 @@ def main():
 
         def check(expression, label): sql("SELECT fixture_assert(" + expression + ",'" + label + "');")
 
+        def sql_error(value):
+            result = subprocess.run(cmd, input=value, text=True, capture_output=True)
+            return result.stderr if result.returncode else ''
+
+        def guard_trigger():
+            return sql("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='outside_private_hire_booking_guard';")
+
         def definitions():
             names = "','".join(FUNCTIONS)
-            return sql(f"SELECT string_agg(p.proname||':'||md5(pg_get_functiondef(p.oid))||':'||coalesce(p.proacl::text,''),'|' ORDER BY p.proname) FROM pg_proc p WHERE p.proname IN ('{names}');")
+            return sql(f"SELECT string_agg(p.proname||':'||md5(pg_get_functiondef(p.oid))||':'||coalesce(p.proacl::text,''),'|' ORDER BY p.proname) FROM pg_proc p WHERE p.proname IN ('{names}');") + guard_trigger()
+
+        # Garden guard cases, each on its own June night with a garden item; 'diners' adds a live
+        # outside table booking that night.
+        GARDEN_CASES = [
+            # (label, status, hold, date_tbd, diners)
+            ('lapsed_extend', 'draft', "now() - interval '3 days'", False, True),
+            ('undated_dated', 'confirmed', None, True, True),
+            ('lapsed_paid', 'draft', "now() - interval '3 days'", False, True),
+            ('lapsed_extend_free', 'draft', "now() - interval '3 days'", False, False),
+        ]
+
+        def garden_id(i): return f'e0000000-0000-0000-0000-{i:012d}'
 
         def booking_id(i): return f'd0000000-0000-0000-0000-{i:012d}'
         def event_date(i): return f'2036-05-{i + 1:02d}'
@@ -84,6 +114,20 @@ def main():
                     f"{'now()' if paid else 'NULL'},{hold or 'NULL'});")
                 for space in ('a0000000-0000-0000-0000-000000000001', GARDEN):
                     sql(f"INSERT INTO private_booking_items VALUES ('{booking_id(i)}','space','{space}');")
+            guard = GUARD_SOURCE.read_text()
+            start = guard.index('CREATE OR REPLACE FUNCTION public.enforce_private_hire_outside_bookings()')
+            sql(guard[start:guard.index('$function$;', start) + len('$function$;')])
+            sql("CREATE TRIGGER outside_private_hire_booking_guard AFTER UPDATE OF status, event_date, start_time, end_time, "
+                "end_time_next_day, setup_date, setup_time ON public.private_bookings FOR EACH ROW "
+                "EXECUTE FUNCTION public.enforce_private_hire_outside_bookings();")
+            for i, (label, status, hold, tbd, diners) in enumerate(GARDEN_CASES):
+                night = f'2036-06-{i + 1:02d}'
+                sql(f"INSERT INTO private_bookings(id,customer_name,status,event_date,start_time,end_time,date_tbd,hold_expiry) "
+                    f"VALUES ('{garden_id(i)}','{label}','{status}','{night}','18:00','23:00',{str(tbd).lower()},{hold or 'NULL'});"
+                    f"INSERT INTO private_booking_items VALUES ('{garden_id(i)}','space','{GARDEN}');")
+                if diners:
+                    sql(f"INSERT INTO table_bookings(is_outside_seating,status,start_datetime,end_datetime) VALUES (true,'confirmed',"
+                        f"'{night} 19:00'::timestamp AT TIME ZONE 'Europe/London','{night} 21:00'::timestamp AT TIME ZONE 'Europe/London');")
             sql(ROLLBACK.read_text().split('DROP FUNCTION')[0])
             before = definitions()
 
@@ -112,6 +156,22 @@ def main():
                 check(f"{verb}{in_conflicts(i)}", f'{label}: {"in" if occupies else "out of"} the clash check')
                 check(f"{verb}{blocks_table(i)}", f'{label}: {"blocks" if occupies else "does not block"} its tables')
                 check(f"{verb}{in_garden(i)}", f'{label}: {"blocks" if occupies else "does not block"} the garden')
+
+            refused = 'The garden already has an outside table booking'
+            for i, change, label, expect_refused in (
+                (0, "hold_expiry = now() + interval '3 days'", 'extending a lapsed hold over diners in the garden is refused', True),
+                (1, 'date_tbd = false', 'dating an undated hire over diners in the garden is refused', True),
+                (2, 'deposit_paid_date = now()', 'a deposit arriving on a lapsed hold is still recorded', False),
+                (3, "hold_expiry = now() + interval '3 days'", 'extending a lapsed hold with the garden free is allowed', False),
+            ):
+                error = sql_error(f"BEGIN; UPDATE private_bookings SET {change} WHERE id='{garden_id(i)}'; ROLLBACK;")
+                if (refused in error) != expect_refused or (not expect_refused and error):
+                    raise RuntimeError(f'FAIL {label}: {error!r}')
+                print(f'PASS {label}')
+            trigger = guard_trigger()
+            if 'hold_expiry' not in trigger or 'date_tbd' not in trigger or 'deposit_paid_date' in trigger:
+                raise RuntimeError(f'FAIL the garden guard watches the wrong columns: {trigger}')
+            print('PASS the garden guard watches hold_expiry and date_tbd, not deposit_paid_date')
 
             check("(SELECT has_function_privilege('authenticated','get_private_booking_conflicts(date,time,time,date,time,time,uuid[],uuid)','EXECUTE') "
                   "AND has_function_privilege('authenticated','private_booking_occupies_space(text,timestamptz,timestamptz,boolean)','EXECUTE') "
