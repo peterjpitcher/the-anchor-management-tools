@@ -6,7 +6,7 @@
  *   1. If deposit_amount_locked is set, use it (authoritative).
  *   2. Else if deposit_amount is set on the row, use it (e.g. an unpaid
  *      pending booking holding a stored amount).
- *   3. Else compute the standard 10+ rule * £10 per person.
+ *   3. Else compute the standard rule: £10 per person for 15 or more (Christmas at any size).
  *   4. Waivers always result in 0 (covered by getCanonicalDeposit).
  *
  * Critically, the create-order path must NEVER overwrite a locked amount —
@@ -178,7 +178,7 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
   })
 
   it('rejects with 400 when canonical resolves to 0 (no deposit required)', async () => {
-    // party_size=4 is below 10+ threshold; locked/stored both null;
+    // party_size=4 is below the 15-guest threshold; locked/stored both null;
     // canonical compute = 0 → no order should be created.
     mockFetchAndUpdate(
       buildBookingRow({
