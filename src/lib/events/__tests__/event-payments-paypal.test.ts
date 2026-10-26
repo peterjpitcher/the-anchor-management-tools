@@ -323,6 +323,16 @@ describe('a capture PayPal has not completed', () => {
     expect(paymentUpdate(db)?.payload).toMatchObject({ status: 'failed', metadata: { capture_status: 'DECLINED' } })
   })
 
+  it('never confirms on a stored capture PayPal declined, when the capture is called again', async () => {
+    const db = database({ payment: { id: 'payment-1', paypal_order_id: ORDER, paypal_capture_id: 'CAPTURE-1', amount: 80, currency: 'GBP', status: 'failed', metadata: { capture_status: 'DECLINED' } } })
+
+    const result = await captureEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING, orderId: ORDER })
+
+    expect(result).toEqual({ state: 'blocked', reason: 'capture_declined' })
+    expect(paypal.capturePayPalPayment).not.toHaveBeenCalled()
+    expect(db.rpcCalls).toHaveLength(0)
+  })
+
   it('never confirms on a stored capture PayPal is still holding', async () => {
     const db = database({ payment: { id: 'payment-1', paypal_order_id: ORDER, paypal_capture_id: 'CAPTURE-1', amount: 80, currency: 'GBP', status: 'pending', metadata: { capture_status: 'PENDING' } } })
 

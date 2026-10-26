@@ -639,6 +639,9 @@ async function captureEventPayPalOrderFromPreview(
   if (paymentError) throw paymentError
   if (!payment?.paypal_order_id) return { state: 'blocked', reason: 'payment_order_not_found' }
   if (payment.paypal_order_id !== input.orderId) return { state: 'blocked', reason: 'order_mismatch' }
+  // PayPal declined this capture and no money moved. The row keeps the capture id, so without this
+  // a second call would skip the capture and confirm the booking on the stored id.
+  if (payment.status === 'failed') return { state: 'blocked', reason: 'capture_declined' }
   if (isEventCapturePendingPayment(payment)) {
     // Captured earlier but still PENDING at PayPal: never confirm on the stored capture id.
     return {
