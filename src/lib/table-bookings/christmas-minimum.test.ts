@@ -88,8 +88,8 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
   it('the API schemas that carry course choices take the same minimum', () => {
     const schemaFiles = [
       'src/app/api/table-bookings/route.ts',
-      'src/app/api/foh/bookings/[id]/party-size/route.ts',
-      'src/app/api/boh/table-bookings/[id]/party-size/route.ts',
+      // The FOH and BOH party-size routes share this handler (BK-129).
+      'src/lib/table-bookings/party-size-change.ts',
     ]
     for (const path of schemaFiles) {
       const source = readFileSync(join(process.cwd(), path), 'utf8')

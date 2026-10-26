@@ -15,6 +15,12 @@ import SeasonalPreorderSection, {
 import { PREORDER_SELECTION_COURSES } from '@/types/preorders'
 import BookingDetailClient, { type Booking, type BookingDepositRefund } from './BookingDetailClient'
 import { resolveCustomerStaffEmailOption } from '@/lib/messaging/staff-email-option'
+import {
+  buildBookingAuditTrail,
+  type AuditLogRow,
+  type BookingAuditTrailEntry,
+  type LegacyBookingAuditRow,
+} from '@/lib/table-bookings/audit-trail'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -49,7 +55,7 @@ export default async function BookingDetailPage({ params }: Props) {
       high_chair_count, is_outside_seating, requires_accessible_table, table_pinned,
       booking_period_id, booking_period_name, booking_period_answer, booking_period_requires_preorder,
       christmas_course_counts,
-      deposit_waived, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
+      deposit_waived, is_venue_event, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
       customer:customers!table_bookings_customer_id_fkey(
@@ -60,12 +66,8 @@ export default async function BookingDetailPage({ params }: Props) {
         table:tables!booking_table_assignments_table_id_fkey(
           id, name, table_number, capacity
         )
-      ),
-      audit_trail:booking_audit(
-        id, event, old_status, new_status, meta, created_at, created_by
       )
     `)
-    .order('created_at', { ascending: false, foreignTable: 'booking_audit' })
     .eq('id', id)
     .single()
 
@@ -104,11 +106,7 @@ export default async function BookingDetailPage({ params }: Props) {
         }
       })
     : []
-  const auditTrail = Array.isArray(rawBooking.audit_trail)
-    ? rawBooking.audit_trail.slice().sort((a: { created_at?: string }, b: { created_at?: string }) =>
-        new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime()
-      )
-    : []
+  const auditTrail = await loadAuditTrail(supabase, rawBooking.id)
   const tableBookingItems = Array.isArray(itemRows)
     ? itemRows.map((item: any) => ({
         ...item,
@@ -155,6 +153,39 @@ export default async function BookingDetailPage({ params }: Props) {
  * payment_refunds is service-role only under RLS, so the read goes through the admin client.
  * Permission was proven at the top of the page, and the booking was read as the user.
  */
+/**
+ * The booking's audit trail: audit_logs, where every change has been recorded since June, and the
+ * legacy booking_audit rows written before then (BK-038). audit_logs is read with the admin
+ * client, as the refunds below are: the page has already checked table_bookings view, and the rows
+ * are filtered to this one booking. A failed read shows an empty card and is logged.
+ */
+async function loadAuditTrail(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  bookingId: string,
+): Promise<BookingAuditTrailEntry[]> {
+  const admin = createAdminClient()
+  const [logs, legacy] = await Promise.all([
+    admin
+      .from('audit_logs')
+      .select('id, operation_type, user_id, user_email, additional_info, new_values, old_values, created_at')
+      .eq('resource_type', 'table_booking')
+      .eq('resource_id', bookingId)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('booking_audit')
+      .select('id, event, old_status, new_status, meta, created_at, created_by')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: false }),
+  ])
+  if (logs.error) console.error('Error loading booking audit logs:', logs.error)
+  if (legacy.error) console.error('Error loading legacy booking audit rows:', legacy.error)
+  return buildBookingAuditTrail(
+    (logs.data ?? []) as AuditLogRow[],
+    (legacy.data ?? []) as LegacyBookingAuditRow[],
+  )
+}
+
 async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefund[] | null> {
   const admin = createAdminClient()
   const { data, error } = await admin

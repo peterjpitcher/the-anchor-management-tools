@@ -41,7 +41,8 @@ const PUBLIC_PATH_PREFIXES = [
   // (src/lib/signing/tokens.ts); an unknown token gets the same neutral page as a dead one.
   // Staff signing pages live under /portal/documents and /settings, never under this prefix.
   '/sign',
-  '/m',
+  // '/m' went with BK-129: nothing is served under it since the manager charge-approval page was
+  // deleted on 10 August 2026, and an allowlisted prefix with no route is attack surface for free.
   '/g',
   '/r',
   // Retirement interstitial for legacy vip-club.uk short links. Anonymous customers reach
@@ -59,7 +60,7 @@ function isPublicPath(pathname: string) {
 
   // Check for specific public prefixes. Matching is segment-bounded (exact
   // match or prefix followed by '/') so e.g. '/feedback' does not also
-  // whitelist '/feedback-inbox', and '/m' does not whitelist '/messages'.
+  // whitelist '/feedback-inbox', and '/g' does not whitelist '/guest-preview'.
   if (PUBLIC_PATH_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return true;
   }

@@ -320,8 +320,8 @@ export function FohScheduleClient({
 
     if (transition?.state === 'deposit_required') {
       const depositUrl = typeof transition.depositUrl === 'string' ? transition.depositUrl : null
-      // The email-first path (flag table_party_size_deposit_email_first) says which channel
-      // reached the guest; without it, the old SMS wording.
+      // The request goes email first and says which channel reached the guest; with no outcome
+      // (staff chose not to notify), the plain wording.
       const notification = readGuestNotificationOutcome(transition.notification)
       const sentBy = notification
         ? describeGuestNotificationChannel(notification)

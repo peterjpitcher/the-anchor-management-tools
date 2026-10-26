@@ -6,21 +6,15 @@ import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { createInlinePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
-import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
-import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
+import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
 import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
-import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
+import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit'
 import {
-  buildPayPalDepositCompletedUpdate,
   extractPayPalOrderAmountGbp,
-  getPayPalDepositCaptureBlockReason,
-  parsePayPalAmountGbp,
   payPalAmountsMatch,
   payPalDepositCaptureBlockMessage,
-  sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit'
 
 type TablePaymentPageProps = {
@@ -90,6 +84,37 @@ function PaymentSetupFailedScreen({ lead }: { lead: string }): React.JSX.Element
   )
 }
 
+/** What the guest reads when the deposit capture stops, for each reason it can stop. */
+function guestCaptureMessage(result: Exclude<CaptureTableDepositResult, { ok: true }>): string {
+  switch (result.code) {
+    case 'BOOKING_NOT_FOUND':
+      return 'Booking could not be verified. Please contact us.'
+    case 'ORDER_MISMATCH':
+      return 'Payment verification failed. Please contact us.'
+    case 'NOT_PAYABLE':
+      return payPalDepositCaptureBlockMessage(result.blockReason)
+    case 'PAYPAL_ORDER_LOOKUP_FAILED':
+      return 'We could not reach PayPal to check your payment. Please try again.'
+    case 'AMOUNT_MISMATCH':
+      return 'Payment amount no longer matches this booking. Please refresh the page.'
+    case 'CAPTURE_PENDING':
+      return 'PayPal is still processing this payment. Please contact us; do not retry.'
+    case 'CAPTURE_DECLINED':
+      return 'PayPal did not take this payment. Please contact us.'
+    case 'CAPTURE_BOOKING_MISMATCH':
+      return 'Payment verification failed. Please contact us; do not retry.'
+    case 'CAPTURED_AMOUNT_UNVERIFIED':
+      return 'Payment captured but amount could not be verified. Please contact us; do not retry.'
+    case 'CAPTURED_AMOUNT_MISMATCH':
+      return 'Payment captured but amount did not match the booking. Please contact us; do not retry.'
+    case 'CAPTURED_BOOKING_UPDATE_FAILED':
+      return 'Payment captured but booking update failed. Our team has been notified.'
+    case 'CAPTURE_FAILED':
+    default:
+      return 'Payment capture failed. Please call us to confirm.'
+  }
+}
+
 export default async function TablePaymentPage({ params, searchParams }: TablePaymentPageProps) {
   const { token } = await params
   const resolvedSearchParams = searchParams ? await searchParams : {}
@@ -119,7 +144,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     return <BlockedScreen reason={preview.reason} />
   }
 
-  // preview.state === 'ready' from here — all fields are available
+  // preview.state === 'ready' from here: all fields are available
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const { data: booking } = await supabase
     .from('table_bookings')
@@ -157,7 +182,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         needsNewOrder = false
       }
     } catch {
-      // Order expired or invalid on PayPal's side — create a fresh one
+      // Order expired or invalid on PayPal's side, so create a fresh one
     }
   }
 
@@ -189,7 +214,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
 
     paypalOrderId = paypalOrder.orderId
 
-    // Persist the order ID only. Deliberately not writing deposit_amount —
+    // Persist the order ID only. Deliberately not writing deposit_amount:
     // the canonical reader (preview.totalAmount derives from
     // getCanonicalDeposit) is the source of truth, and capture-time is when
     // we lock the actually-charged amount via deposit_amount_locked.
@@ -236,260 +261,21 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     })
   }
 
-  // Capture server action — 'use server' inside the function body
+  // Capture server action, 'use server' inside the function body. The steps are the shared table
+  // deposit capture (captureTableDeposit, BK-129); only the guest's wording is decided here.
   const bookingIdForCapture = preview.tableBookingId
   const expectedCurrencyForCapture = preview.currency
   async function captureDeposit(captureOrderId: string): Promise<{ success: boolean; error?: string }> {
     'use server'
-    const db = createAdminClient()
-    try {
-      const { data: currentBooking, error: currentBookingError } = await db
-        .from('table_bookings')
-        .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
-        .eq('id', bookingIdForCapture)
-        .maybeSingle()
-
-      if (currentBookingError || !currentBooking) {
-        return { success: false, error: 'Booking could not be verified. Please contact us.' }
-      }
-
-      if (
-        currentBooking.payment_status === 'completed' &&
-        currentBooking.paypal_deposit_capture_id
-      ) {
-        return { success: true }
-      }
-
-      if (currentBooking.paypal_deposit_order_id !== captureOrderId) {
-        return { success: false, error: 'Payment verification failed — please contact us.' }
-      }
-
-      const blockReason = getPayPalDepositCaptureBlockReason(currentBooking)
-      if (blockReason) {
-        return { success: false, error: payPalDepositCaptureBlockMessage(blockReason) }
-      }
-
-      const expectedAmount = Number(
-        getCanonicalDeposit({
-          party_size: Math.max(1, Number(currentBooking.party_size || 1)),
-          deposit_amount: currentBooking.deposit_amount ?? null,
-          deposit_amount_locked: currentBooking.deposit_amount_locked ?? null,
-          status: currentBooking.status ?? null,
-          payment_status: currentBooking.payment_status ?? null,
-          deposit_waived: currentBooking.deposit_waived ?? null,
-          // Christmas bookings owe a deposit at any party size.
-          booking_type: currentBooking.booking_type ?? null,
-        }).toFixed(2),
-      )
-
-      const orderDetails = await getPayPalOrder(captureOrderId)
-      const orderAmount = extractPayPalOrderAmountGbp(orderDetails)
-      if (orderAmount === null || !payPalAmountsMatch(orderAmount, expectedAmount)) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_mismatch',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            orderAmount,
-            expectedAmount,
-            action_needed: 'PayPal order amount did not match current booking deposit before capture',
-          },
-        })
-        return { success: false, error: 'Payment amount no longer matches this booking. Please refresh the page.' }
-      }
-
-      const capture = await capturePayPalPayment(captureOrderId, expectedCurrencyForCapture)
-
-      // Validate that the captured order belongs to this booking
-      if (capture.customId && capture.customId !== bookingIdForCapture) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_booking_mismatch',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            expectedBookingId: bookingIdForCapture,
-            actualCustomId: capture.customId,
-            action_needed: 'Manual investigation — PayPal order custom_id does not match booking',
-          },
-        })
-        return { success: false, error: 'Payment verification failed — please contact us.' }
-      }
-
-      // Only a COMPLETED capture is a paid deposit (BK-019). A PENDING one is
-      // recorded by the PAYMENT.CAPTURE.COMPLETED webhook if PayPal releases it;
-      // a refused one took no money. Either way the booking is left as it is.
-      const captureOutcome = payPalCaptureOutcome(capture.captureStatus)
-      if (captureOutcome !== 'completed') {
-        void logAuditEvent({
-          operation_type: captureOutcome === 'pending' ? 'payment.capture_pending' : 'payment.capture_declined',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            transactionId: capture.transactionId,
-            captureStatus: capture.captureStatus ?? null,
-            captureStatusReason: capture.captureStatusReason ?? null,
-            action_needed: captureOutcome === 'pending'
-              ? 'PayPal is holding this deposit for review. The booking is not marked paid; the PayPal webhook records it if PayPal completes it. Check the payment in PayPal if it does not clear.'
-              : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
-          },
-        })
-        if (captureOutcome === 'pending') {
-          await alertTableDepositNeedsAPerson(db, {
-            bookingId: bookingIdForCapture,
-            kind: 'capture_pending',
-            amountGbp: parsePayPalAmountGbp(capture.amount),
-            orderId: captureOrderId,
-            captureId: capture.transactionId,
-            detail: capture.captureStatusReason ?? null,
-            source: 'guest payment link',
-          })
-        }
-        return captureOutcome === 'pending'
-          ? { success: false, error: 'PayPal is still processing this payment. Please contact us; do not retry.' }
-          : { success: false, error: 'PayPal did not take this payment. Please contact us.' }
-      }
-
-      // Parse the actually-captured GBP amount from PayPal's response. This
-      // is the authoritative figure. Fail closed if missing/unparseable —
-      // do NOT silently fall back to preview.totalAmount or
-      // booking.deposit_amount; that would let stale amounts get locked.
-      // Spec §6, §7.4, §8.3.
-      const rawAmount = capture.amount
-      const lockedAmountGbp = parsePayPalAmountGbp(rawAmount)
-
-      if (lockedAmountGbp === null) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_unparseable',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            transactionId: capture.transactionId,
-            rawAmount: String(rawAmount ?? 'null'),
-            action_needed:
-              'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required',
-          },
-        })
-        await alertTableDepositNeedsAPerson(db, {
-          bookingId: bookingIdForCapture,
-          kind: 'captured_amount_problem',
-          orderId: captureOrderId,
-          captureId: capture.transactionId,
-          detail: 'the captured amount could not be read',
-          source: 'guest payment link',
-        })
-        return { success: false, error: 'Payment captured but amount could not be verified. Please contact us; do not retry.' }
-      }
-
-      if (!payPalAmountsMatch(lockedAmountGbp, expectedAmount)) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_mismatch',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            transactionId: capture.transactionId,
-            capturedAmount: lockedAmountGbp,
-            expectedAmount,
-            action_needed:
-              'PayPal capture succeeded for an amount that no longer matches the booking — manual reconciliation required',
-          },
-        })
-        await alertTableDepositNeedsAPerson(db, {
-          bookingId: bookingIdForCapture,
-          kind: 'captured_amount_problem',
-          amountGbp: lockedAmountGbp,
-          orderId: captureOrderId,
-          captureId: capture.transactionId,
-          detail: `the booking owes £${expectedAmount.toFixed(2)}`,
-          source: 'guest payment link',
-        })
-        return { success: false, error: 'Payment captured but amount did not match the booking. Please contact us; do not retry.' }
-      }
-
-      const { data: updatedBooking, error: updateError } = await db
-        .from('table_bookings')
-        .update(buildPayPalDepositCompletedUpdate({
-          captureId: capture.transactionId,
-          lockedAmountGbp,
-        }))
-        .eq('id', bookingIdForCapture)
-        .eq('paypal_deposit_order_id', captureOrderId)
-        .is('paypal_deposit_capture_id', null)
-        .neq('status', 'cancelled')
-        .neq('status', 'no_show')
-        .neq('status', 'completed')
-        .select('id')
-        .maybeSingle()
-
-      if (updateError || !updatedBooking) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_local_update_failed',
-          resource_type: 'table_booking',
-          resource_id: bookingIdForCapture,
-          operation_status: 'failure',
-          additional_info: {
-            orderId: captureOrderId,
-            transactionId: capture.transactionId,
-            dbError: updateError?.message || 'Booking was no longer payable at update time',
-            action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
-          },
-        })
-        // The guest is told the team was notified: make that true (BK-114).
-        await alertTableDepositNeedsAPerson(db, {
-          bookingId: bookingIdForCapture,
-          kind: 'capture_not_recorded',
-          amountGbp: lockedAmountGbp,
-          orderId: captureOrderId,
-          captureId: capture.transactionId,
-          detail: updateError?.message || 'the booking was no longer payable at update time',
-          source: 'guest payment link',
-        })
-        return { success: false, error: 'Payment captured but booking update failed — team notified' }
-      }
-
-      await sendTableBookingDepositCapturedNotifications(db, {
-        tableBookingId: bookingIdForCapture,
-        customerId: currentBooking.customer_id,
-        createdVia: 'guest_table_payment',
-      })
-
-      void logAuditEvent({
-        operation_type: 'payment.captured',
-        resource_type: 'table_booking',
-        resource_id: bookingIdForCapture,
-        operation_status: 'success',
-        additional_info: {
-          transactionId: capture.transactionId,
-          amount: capture.amount,
-          lockedAmountGbp,
-          bookingId: bookingIdForCapture,
-        },
-      })
-
-      return { success: true }
-    } catch (err) {
-      void logAuditEvent({
-        operation_type: 'payment.capture_failed',
-        resource_type: 'table_booking',
-        resource_id: bookingIdForCapture,
-        operation_status: 'failure',
-        additional_info: {
-          orderId: captureOrderId,
-          error: err instanceof Error ? err.message : String(err),
-          bookingId: bookingIdForCapture,
-        },
-      })
-      return { success: false, error: 'Payment capture failed. Please call us to confirm.' }
-    }
+    const result = await captureTableDeposit(createAdminClient(), {
+      bookingId: bookingIdForCapture,
+      orderId: captureOrderId,
+      source: 'guest payment link',
+      createdVia: 'guest_table_payment',
+      currency: expectedCurrencyForCapture,
+    })
+    if (result.ok) return { success: true }
+    return { success: false, error: guestCaptureMessage(result) }
   }
 
   const paypalClientId = process.env.PAYPAL_CLIENT_ID ?? ''

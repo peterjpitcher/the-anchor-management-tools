@@ -228,3 +228,17 @@ describe('BookingDetailClient after a deposit refund', () => {
     expect(screen.queryByRole('button', { name: 'Process Refund' })).not.toBeInTheDocument()
   })
 })
+
+// BK-106: the booking says who took the deposit off, and why.
+describe('BookingDetailClient on a booking with no deposit taken', () => {
+  it('names a pub event', () => {
+    render(page(makeBooking({ deposit_waived: true, is_venue_event: true, payment_status: null }), []))
+    expect(screen.getByText('No deposit: pub event')).toBeInTheDocument()
+    expect(screen.queryByText('Deposit waived by a manager')).not.toBeInTheDocument()
+  })
+
+  it("names a manager's waiver", () => {
+    render(page(makeBooking({ deposit_waived: true, is_venue_event: false, payment_status: null }), []))
+    expect(screen.getByText('Deposit waived by a manager')).toBeInTheDocument()
+  })
+})

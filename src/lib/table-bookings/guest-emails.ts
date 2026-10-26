@@ -225,6 +225,11 @@ export type DepositTermsFacts = {
   refundCutoffDays?: number | null
   /** When the hold on the table runs out, as an ISO instant. */
   payByIso?: string | null
+  /**
+   * Which rule the booking function charged by ('group', 'period'). Only the group rule is
+   * described as "Groups of 15 or more" (BK-049); left out, the group wording stays as it was.
+   */
+  depositRule?: string | null
 }
 
 function depositTerms(facts: DepositTermsFacts): string[] {
@@ -233,6 +238,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
     perPersonGbp: facts.perPersonGbp ?? null,
     refundCutoffDays: facts.refundCutoffDays ?? null,
     payByLabel: facts.payByIso ? formatBookingMomentForEmail(null, null, facts.payByIso) : null,
+    depositRule: facts.depositRule ?? null,
   })
 }
 
@@ -511,6 +517,39 @@ export function buildTableBookingDepositRequestEmail(
       `Hi ${input.firstName}, your party size has been updated to ${partySize} ${seatWord}. ` +
       `A ${input.depositKindLabel} of ${input.depositLabel}${input.breakdownNote} is now required ` +
       'to secure your booking.',
+  })
+}
+
+/**
+ * The one reminder before an unpaid deposit hold runs out (BK-088, owner decision D16). It says
+ * what is being held, the amount, the exact deadline and what happens if it passes, then the same
+ * deposit facts the request gave.
+ */
+export function buildTableBookingDepositReminderEmail(
+  input: BookingFacts &
+    DepositTermsFacts & {
+      /** "£160.00", as the deposit request said it. */
+      depositLabel: string
+      paymentLink: string
+      /** When the hold runs out, as an ISO instant. Required: the deadline is the point of it. */
+      payByIso: string
+      isOutsideSeating?: boolean | null
+    }
+): TableBookingEmail {
+  const isOutside = Boolean(input.isOutsideSeating)
+  const noun = isOutside ? 'outside booking' : 'table'
+  const party = partySizeLabel(input.partySize)
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const payBy = formatBookingMomentForEmail(null, null, input.payByIso)
+
+  return renderDepositRequestEmail({
+    ...input,
+    subject: payBy ? `Your deposit is due by ${payBy}` : 'Your deposit is still due',
+    heading: 'A reminder about your deposit',
+    lead:
+      `Hi ${input.firstName}, we're still holding your ${noun}${party ? ` for ${party}` : ''}` +
+      `${moment ? ` on ${moment}` : ''}. Pay your deposit of ${input.depositLabel}` +
+      `${payBy ? ` by ${payBy}` : ''} to keep it. If it isn't paid by then, the booking is cancelled.`,
   })
 }
 

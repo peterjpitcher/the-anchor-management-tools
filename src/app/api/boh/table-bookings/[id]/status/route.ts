@@ -135,7 +135,7 @@ export async function POST(
   }
 
   // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)
-  // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
+  // guestNotification says what reached the guest; null only when the notice could not be attempted.
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   // What happened to the deposit, for the person who cancelled (BK-114).
   let depositRefund: DepositRefundOutcome | null = null

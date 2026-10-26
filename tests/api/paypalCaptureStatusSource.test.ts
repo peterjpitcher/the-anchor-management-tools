@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest'
  * BK-019, customer bookings review of 24 October 2026: two capture paths recorded a deposit as
  * paid without reading the capture's own status, so a capture PayPal was holding for review
  * (PENDING) or had refused (DECLINED) counted as money taken. Both are server actions wired
- * into a page or a large actions file, so this checks their source: between the capture and
+ * into a page or a large actions file, so this checks their source (the table one now lives in the
+ * shared capture service, src/lib/table-bookings/capture-deposit.ts): between the capture and
  * the step that records the deposit, the capture's outcome must be read and anything but
  * `completed` must return.
  *
@@ -32,9 +33,21 @@ function expectOutcomeCheckedBeforeRecording(body: string, recordStep: string) {
 }
 
 describe('deposit capture paths read the capture status before recording the deposit', () => {
-  it('the guest table deposit page', () => {
-    const page = readFileSync(resolve(process.cwd(), 'src/app/g/[token]/table-payment/page.tsx'), 'utf8')
-    expectOutcomeCheckedBeforeRecording(page, 'buildPayPalDepositCompletedUpdate(')
+  it('the table deposit capture shared by the guest page and the website route', () => {
+    const service = readFileSync(resolve(process.cwd(), 'src/lib/table-bookings/capture-deposit.ts'), 'utf8')
+    expectOutcomeCheckedBeforeRecording(service, 'buildPayPalDepositCompletedUpdate(')
+  })
+
+  // BK-129: the two table deposit capture paths had drifted. Both must run the one service and
+  // neither may capture on its own again.
+  it.each([
+    'src/app/g/[token]/table-payment/page.tsx',
+    'src/app/api/external/table-bookings/[id]/paypal/capture-order/route.ts',
+  ])('%s captures only through captureTableDeposit', (file) => {
+    const source = readFileSync(resolve(process.cwd(), file), 'utf8')
+    expect(source).toContain('captureTableDeposit(')
+    expect(source).not.toContain('capturePayPalPayment(')
+    expect(source).not.toContain('buildPayPalDepositCompletedUpdate(')
   })
 
   it('the staff private hire deposit capture', () => {

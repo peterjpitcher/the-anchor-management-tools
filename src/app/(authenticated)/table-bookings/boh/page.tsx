@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { BohBookingsClient, type BohViewMode } from './BohBookingsClient'
 import { isValidIsoDate } from '@/lib/dateUtils'
 
@@ -45,19 +44,9 @@ export default async function TableBookingsBohPage({ searchParams }: TableBookin
     redirect('/table-bookings/foh')
   }
 
-  const userId = authResult.data.user?.id
-  let canWaiveDeposit = false
-  if (userId) {
-    const admin = createAdminClient()
-    const { data: roleRows } = await admin
-      .from('user_roles')
-      .select('roles(name)')
-      .eq('user_id', userId)
-    const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
-    canWaiveDeposit = roles.some(
-      (role) => role.roles?.name === 'manager' || role.roles?.name === 'super_admin'
-    )
-  }
+  // Waiving a deposit needs table_bookings manage (D18, BK-106), which the Deputy role holds too;
+  // the role-name check this replaced refused it.
+  const canWaiveDeposit = Boolean(authResult.data.user?.id) && canManage
 
   // The client renders PageLayout itself: its header actions (view switch, Refresh, Download PDF,
   // Book Table) drive the client's own state.

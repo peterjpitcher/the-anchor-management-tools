@@ -12,17 +12,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { createStripeTableDepositCheckoutSessionMock } = vi.hoisted(() => ({
-  createStripeTableDepositCheckoutSessionMock: vi.fn(),
-}))
-
-vi.mock('@/lib/payments/stripe', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/payments/stripe')>('@/lib/payments/stripe')
-  return {
-    ...actual,
-    createStripeTableDepositCheckoutSession: createStripeTableDepositCheckoutSessionMock,
-  }
-})
+// The link is paid through PayPal on the guest payment page, which prices it from this preview.
+// The old Stripe checkout builder had no caller and is gone (BK-129), so these cases now hold the
+// preview to the same contract.
 
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -36,11 +28,7 @@ vi.mock('@/lib/sms/support', () => ({
 vi.mock('@/lib/table-bookings/manage-booking', () => ({
   createTableManageToken: vi.fn(),
 }))
-vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
-  createSundayPreorderToken: vi.fn(),
-}))
-
-import { createTableCheckoutSessionByRawToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
+import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 
 function buildSupabase(bookingOverrides: Record<string, unknown> = {}) {
   const guestTokenMaybeSingle = vi.fn().mockResolvedValue({
@@ -109,11 +97,6 @@ describe('Legacy payment link — canonical deposit charging (walk-in launch)', 
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-27T07:14:00.000Z'))
-    createStripeTableDepositCheckoutSessionMock.mockResolvedValue({
-      id: 'cs_legacy_1',
-      url: 'https://stripe.test/checkout/cs_legacy_1',
-      payment_intent: 'pi_legacy_1',
-    })
   })
 
   afterEach(() => {
@@ -121,34 +104,27 @@ describe('Legacy payment link — canonical deposit charging (walk-in launch)', 
   })
 
   it('charges the locked amount when deposit_amount_locked is set (legacy paid booking)', async () => {
-    const result = await createTableCheckoutSessionByRawToken(
+    const result = await getTablePaymentPreviewByRawToken(
       buildSupabase({
         deposit_amount_locked: 60,
         deposit_amount: 100,
       }) as any,
-      { rawToken: 'raw-legacy-token', appBaseUrl: 'https://example.invalid' }
+      'raw-legacy-token'
     )
 
-    expect(result).toMatchObject({ state: 'created' })
-
-    const stripeArgs = createStripeTableDepositCheckoutSessionMock.mock.calls[0]?.[0]
-    // formatPence converts £60 → 6000p
-    expect(stripeArgs.unitAmountMinor).toBe(6000)
+    expect(result).toMatchObject({ state: 'ready', totalAmount: 60 })
   })
 
   it('charges deposit_amount when locked is null (existing pending booking)', async () => {
-    const result = await createTableCheckoutSessionByRawToken(
+    const result = await getTablePaymentPreviewByRawToken(
       buildSupabase({
         deposit_amount_locked: null,
         deposit_amount: 80,
       }) as any,
-      { rawToken: 'raw-legacy-token', appBaseUrl: 'https://example.invalid' }
+      'raw-legacy-token'
     )
 
-    expect(result).toMatchObject({ state: 'created' })
-
-    const stripeArgs = createStripeTableDepositCheckoutSessionMock.mock.calls[0]?.[0]
-    expect(stripeArgs.unitAmountMinor).toBe(8000)
+    expect(result).toMatchObject({ state: 'ready', totalAmount: 80 })
   })
 
   it('uses London end-of-day for confirmed-booking fallback hold expiry', async () => {
@@ -167,32 +143,28 @@ describe('Legacy payment link — canonical deposit charging (walk-in launch)', 
 
   it('fails with state: blocked + reason: invalid_amount when no canonical deposit resolves', async () => {
     // party_size below threshold and no stored/locked deposit → 0
-    const result = await createTableCheckoutSessionByRawToken(
+    const result = await getTablePaymentPreviewByRawToken(
       buildSupabase({
         party_size: 4,
         committed_party_size: 4,
         deposit_amount_locked: null,
         deposit_amount: null,
       }) as any,
-      { rawToken: 'raw-legacy-token', appBaseUrl: 'https://example.invalid' }
+      'raw-legacy-token'
     )
 
     expect(result).toMatchObject({ state: 'blocked', reason: 'invalid_amount' })
-
-    // Must NOT call Stripe with a zero/invalid amount.
-    expect(createStripeTableDepositCheckoutSessionMock).not.toHaveBeenCalled()
   })
 
   it('fails with state: blocked + reason: hold_expired when the hold window has lapsed', async () => {
-    const result = await createTableCheckoutSessionByRawToken(
+    const result = await getTablePaymentPreviewByRawToken(
       buildSupabase({
         hold_expires_at: '2026-06-26T09:00:00.000Z', // already past per fake clock
         deposit_amount_locked: 60,
       }) as any,
-      { rawToken: 'raw-legacy-token', appBaseUrl: 'https://example.invalid' }
+      'raw-legacy-token'
     )
 
     expect(result).toMatchObject({ state: 'blocked', reason: 'hold_expired' })
-    expect(createStripeTableDepositCheckoutSessionMock).not.toHaveBeenCalled()
   })
 })
