@@ -590,8 +590,9 @@ export class EventService {
       gallery_image_urls: input.gallery_image_urls || []
     };
 
-    // Execute RPC
-    const { data: event, error } = await supabase.rpc('create_event_transaction', {
+    // Execute RPC. The function is server-only (BK-105), so it runs through the service-role client; the createEvent
+    // action has already checked events manage.
+    const { data: event, error } = await createAdminClient().rpc('create_event_transaction', {
       p_event_data: eventData,
       p_faqs: input.faqs || []
     });
@@ -792,8 +793,9 @@ export class EventService {
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
 
-    // Execute RPC
-    const { data: event, error } = await supabase.rpc('update_event_transaction', {
+    // Execute RPC. The function is server-only (BK-105), so it runs through the service-role client; the updateEvent
+    // action has already checked events manage.
+    const { data: event, error } = await createAdminClient().rpc('update_event_transaction', {
       p_event_id: id,
       p_event_data: eventData,
       p_faqs: input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace

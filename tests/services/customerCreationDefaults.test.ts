@@ -4,11 +4,16 @@ import type { Mock } from 'vitest'
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(),
+}))
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { CustomerService } from '@/services/customers'
 
 const mockedCreateClient = createClient as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
 describe('CustomerService creation contact defaults', () => {
   beforeEach(() => {
@@ -79,7 +84,8 @@ describe('CustomerService creation contact defaults', () => {
   it('passes service contact defaults through customer bulk import RPC', async () => {
     let rpcPayload: Record<string, unknown>[] | null = null
 
-    mockedCreateClient.mockResolvedValue({
+    // The import function is server-only (BK-105), so it runs through the admin client.
+    mockedCreateAdminClient.mockReturnValue({
       rpc: vi.fn((_name: string, args: { p_customers: Record<string, unknown>[] }) => {
         rpcPayload = args.p_customers
         return Promise.resolve({
