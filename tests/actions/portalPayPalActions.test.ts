@@ -279,6 +279,8 @@ describe('portalPayPalActions', () => {
       amount: '250.00',
       currency: 'GBP',
       transactionId: 'CAPTURE-1',
+      // Only a COMPLETED capture records the deposit (BK-019).
+      captureStatus: 'COMPLETED',
     })
     mockedFinalizeDepositPayment.mockResolvedValue({
       success: true,
