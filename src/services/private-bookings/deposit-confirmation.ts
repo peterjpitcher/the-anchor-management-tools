@@ -21,7 +21,7 @@ type ConfirmationBooking = CatalogueBooking & { deposit_confirmed_at: string | n
  * - already_sent: it had already been sent, or accepted, so nothing more went;
  * - not_sent_no_email: the booking has no contact email address, so it could not be emailed.
  */
-export type ContractStep = 'sent' | 'already_sent' | 'not_sent_no_email'
+export type ContractStep = 'sent' | 'already_sent' | 'not_sent_no_email' | 'failed'
 
 const CONTRACT_SENT_SENTENCE = 'The contract was emailed for signature.'
 const NO_EMAIL_FOR_CONTRACT =
@@ -255,37 +255,21 @@ export async function confirmDeposit(input: {
   // Owner decision D25 (review BK-006): the contract goes in the same action, through the shared
   // signing feature, and before the deposit request, so the request can truthfully say that paying
   // accepts the terms set out in the contract. Every deposit request said so, and most guests had
-  // never been sent one. If the contract cannot be sent nothing is confirmed, so staff can fix it
-  // and try again. A booking with no email address cannot be emailed a contract: the deposit is
-  // still confirmed, and staff are told the contract must be sent or recorded another way.
-  let contract: ContractStep = contractSentOrAccepted(booking) ? 'already_sent' : 'not_sent_no_email'
-  if (contract !== 'already_sent' && booking.contact_email?.trim()) {
-    if (input.canSendContract === false) {
-      throw new DepositConfirmationError(
-        'Confirming the deposit also sends the contract, and you do not have permission to send contracts, so nothing was confirmed or sent. Ask a manager to confirm it.'
-      )
-    }
-    const sendContract = input.sendContract ?? (async (bookingId: string) => {
-      const { sendPrivateBookingContractForSignature } = await import('./contract-send')
-      return sendPrivateBookingContractForSignature({ bookingId, userId: input.confirmedBy, via: 'confirm_deposit' })
-    })
-    try {
-      await sendContract(booking.id)
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      logger.error('Confirm deposit: the contract could not be sent', {
-        error: error instanceof Error ? error : new Error(reason),
-        metadata: { bookingId: booking.id },
-      })
-      throw new DepositConfirmationError(
-        `The contract could not be sent (${reason}), so the deposit was not confirmed and no deposit request was sent. Fix that, then confirm the deposit again.`
-      )
-    }
-    contract = 'sent'
+  // never been sent one. A booking with no email address cannot be emailed a contract: the deposit
+  // is still confirmed, and staff are told the contract must be sent or recorded another way.
+  const needsContract = !contractSentOrAccepted(booking) && Boolean(booking.contact_email?.trim())
+  if (needsContract && input.canSendContract === false) {
+    throw new DepositConfirmationError(
+      'Confirming the deposit also sends the contract, and you do not have permission to send contracts, so nothing was confirmed or sent. Ask a manager to confirm it.'
+    )
   }
-  const contractPrefix = contract === 'sent' ? `${CONTRACT_SENT_SENTENCE} ` : ''
-  const contractSuffix = contract === 'not_sent_no_email' ? ` ${NO_EMAIL_FOR_CONTRACT}` : ''
 
+  // The booking is claimed BEFORE the contract goes, for two reasons. The contract is generated from
+  // the stored booking, so it must already hold the amount being confirmed (a reduced deposit would
+  // otherwise go out as the old figure in the contract, then the new one in the request). And a
+  // second member of staff confirming at the same moment must get already_confirmed before sending
+  // anything: each send makes a new signing request and voids the earlier one, so two sends would
+  // leave the guest a dead signing link.
   const previousAmount = roundMoney(Number(booking.deposit_amount ?? 0))
   const confirmedAt = now.toISOString()
   const { data: claimed, error: claimError } = await (db.from('private_bookings') as any)
@@ -309,25 +293,51 @@ export async function confirmDeposit(input: {
     logger.error('Confirm deposit: the confirmation could not be saved', {
       metadata: { bookingId: booking.id, code: claimError.code ?? null, message: claimError.message ?? null },
     })
-    throw new DepositConfirmationError(
-      contract === 'sent'
-        ? `${CONTRACT_SENT_SENTENCE} The deposit could not be confirmed (${claimError.message ?? 'database error'}), so no deposit request was sent.`
-        : `The deposit could not be confirmed (${claimError.message ?? 'database error'}), so nothing was sent.`
-    )
+    throw new DepositConfirmationError(`The deposit could not be confirmed (${claimError.message ?? 'database error'}), so nothing was sent.`)
   }
   if (!claimed) {
     const latest = await loadBooking(db, booking.id)
-    if (latest.deposit_confirmed_at) {
-      return contract === 'sent'
-        ? { status: 'already_confirmed', contract, message: `${CONTRACT_SENT_SENTENCE} The deposit was already confirmed, so no deposit request was sent.` }
-        : ALREADY_CONFIRMED
-    }
-    throw new DepositConfirmationError(
-      contract === 'sent'
-        ? `${CONTRACT_SENT_SENTENCE} The booking changed while you were confirming the deposit, so no deposit request was sent. Refresh the page and try again.`
-        : 'The booking changed while you were confirming it, so nothing was sent. Refresh the page and try again.'
-    )
+    if (latest.deposit_confirmed_at) return ALREADY_CONFIRMED
+    throw new DepositConfirmationError('The booking changed while you were confirming it, so nothing was sent. Refresh the page and try again.')
   }
+
+  let contract: ContractStep = contractSentOrAccepted(booking) ? 'already_sent' : 'not_sent_no_email'
+  if (needsContract) {
+    const sendContract = input.sendContract ?? (async (bookingId: string) => {
+      const { sendPrivateBookingContractForSignature } = await import('./contract-send')
+      return sendPrivateBookingContractForSignature({ bookingId, userId: input.confirmedBy, via: 'confirm_deposit' })
+    })
+    try {
+      await sendContract(booking.id)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      logger.error('Confirm deposit: the contract could not be sent', {
+        error: error instanceof Error ? error : new Error(reason),
+        metadata: { bookingId: booking.id },
+      })
+      if (await restoreUnconfirmed(db, booking, confirmedAt)) {
+        throw new DepositConfirmationError(
+          `The contract could not be sent (${reason}), so the deposit was not confirmed and no deposit request was sent. Fix that, then confirm the deposit again.`
+        )
+      }
+      const staffMessage =
+        `The contract could not be sent (${reason}), and the booking could not be put back to "deposit to be confirmed", ` +
+        'so it now shows the deposit as confirmed with no deposit request sent. Send the contract from the Signatures panel, then contact the guest about the deposit.'
+      await writeTimelineRow(db, {
+        bookingId: booking.id,
+        action: 'deposit_confirmation_failed',
+        previousAmount,
+        amount,
+        description: staffMessage,
+        metadata: { reason: `contract not sent: ${reason}`, restored: false, contract: 'failed' },
+        performedBy: input.confirmedBy,
+      })
+      return { status: 'not_sent', reason: `the contract could not be sent (${reason})`, restored: false, contract: 'failed', message: staffMessage }
+    }
+    contract = 'sent'
+  }
+  const contractPrefix = contract === 'sent' ? `${CONTRACT_SENT_SENTENCE} ` : ''
+  const contractSuffix = contract === 'not_sent_no_email' ? ` ${NO_EMAIL_FOR_CONTRACT}` : ''
 
   const confirmed = claimed as ConfirmationBooking
   const message = renderPrivateBookingMessage('deposit_request', { booking: confirmed, now, paymentLink })
