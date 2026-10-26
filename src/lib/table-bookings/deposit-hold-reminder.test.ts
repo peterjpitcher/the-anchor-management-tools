@@ -191,6 +191,46 @@ describe('the reminder sweep', () => {
     expect(email.text).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
   })
 
+  it('describes a seasonal per-head deposit as the request did, never as the group rule', async () => {
+    buildDb({
+      rows: [booking({
+        booking_type: 'regular',
+        party_size: 2,
+        deposit_amount: 30,
+        deposit_refund_cutoff_days: 3,
+        deposit_rule: 'period',
+        deposit_basis: 'per_head',
+        deposit_rate: 15,
+      })],
+    })
+
+    await runDepositHoldReminders(createAdminClient() as never, NOW)
+
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(email.text).toContain("There's a £15 per person deposit, which comes off your bill.")
+    expect(email.text).not.toContain('Groups of 15 or more')
+  })
+
+  it('never turns a flat per-booking deposit into a per-person rate', async () => {
+    buildDb({
+      rows: [booking({
+        booking_type: 'regular',
+        party_size: 2,
+        deposit_amount: 30,
+        deposit_refund_cutoff_days: 3,
+        deposit_rule: 'period',
+        deposit_basis: 'per_booking',
+        deposit_rate: 30,
+      })],
+    })
+
+    await runDepositHoldReminders(createAdminClient() as never, NOW)
+
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(email.text).toContain('The deposit comes off your bill.')
+    expect(email.text).not.toContain('per person')
+  })
+
   it('texts the same reminder when the email fails', async () => {
     vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Resend 500' } as never)
     const db = buildDb()
