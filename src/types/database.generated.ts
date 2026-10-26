@@ -18527,7 +18527,7 @@ export type Database = {
           source?: string | null
           special_requirements?: string | null
           start_datetime?: string | null
-          status?: Database["public"]["Enums"]["table_booking_status"]
+          status: Database["public"]["Enums"]["table_booking_status"]
           sunday_preorder_completed_at?: string | null
           sunday_preorder_cutoff_at?: string | null
           table_pinned?: boolean

@@ -45,7 +45,7 @@ END $$;
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='deposit-reminders-pg-') as folder:
+    with tempfile.TemporaryDirectory(prefix='tbrem-pg-') as folder:
         work = Path(folder); socket = work / 'socket'; socket.mkdir(); cluster = work / 'db'
         subprocess.run([str(PG / 'initdb'), '-D', str(cluster), '-A', 'trust', '--no-locale'], check=True, capture_output=True)
         subprocess.run([str(PG / 'pg_ctl'), '-D', str(cluster), '-l', str(work / 'log'), '-o', f"-k {socket} -c listen_addresses=''", '-w', 'start'], check=True, capture_output=True)
