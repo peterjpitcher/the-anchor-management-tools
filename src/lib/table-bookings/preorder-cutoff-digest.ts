@@ -73,26 +73,32 @@ type DigestBooking = {
 
 type IncompleteBooking = { reference: string; partySize: number; gaps: string }
 
+export type LockedPreorderDate = { date: string; cutoffDays: number }
+
 /**
- * The booking dates whose form locked today or yesterday, for the periods' cutoffs. Yesterday is
- * the one-run catch-up: a cron that missed a day still sends that date's kitchen order once.
+ * The booking dates whose form locked today or yesterday, each with the cutoff that locked it.
+ * Yesterday is the one-run catch-up: a cron that missed a day still sends that date's kitchen
+ * order once. The cutoff travels with the date because a date can hold bookings from periods with
+ * different cutoffs, and each booking is only final at its own.
  */
 export function datesLockedRecently(input: {
   todayIso: string
   cutoffDays: Iterable<number>
   now?: Date
-}): string[] {
-  const dates = new Set<string>()
+}): LockedPreorderDate[] {
+  const locked = new Map<string, LockedPreorderDate>()
   for (const days of input.cutoffDays) {
     if (!Number.isInteger(days) || days < 1) continue
     for (const offset of [days, days - 1]) {
       if (offset < 1) continue
       const date = shiftIsoDate(input.todayIso, offset)
       if (!date) continue
-      if (getPreorderCutoff({ bookingDate: date, preorderCutoffDays: days, now: input.now }).closed) dates.add(date)
+      if (getPreorderCutoff({ bookingDate: date, preorderCutoffDays: days, now: input.now }).closed) {
+        locked.set(`${date}:${days}`, { date, cutoffDays: days })
+      }
     }
   }
-  return Array.from(dates).sort()
+  return Array.from(locked.values()).sort((a, b) => a.date.localeCompare(b.date) || a.cutoffDays - b.cutoffDays)
 }
 
 function dishLines(totals: PreorderDishTotals): string[] {
@@ -231,13 +237,13 @@ async function loadDigestBookings(supabase: Db, date: string): Promise<DigestBoo
 
 async function sendKitchenOrder(
   supabase: Db,
-  date: string,
+  { date, cutoffDays }: LockedPreorderDate,
   orders: Array<{ booking: DigestBooking; order: PreorderOrder }>,
 ): Promise<'sent' | 'skipped' | 'failed'> {
-  const totals = await loadPreorderDishTotals(supabase, date)
+  const totals = await loadPreorderDishTotals(supabase, date, { cutoffDays })
   if (totals.coverCount === 0 && totals.christmasTiers.guests === 0) return 'skipped'
 
-  const key = `preorder:kitchen-order:${date}`
+  const key = `preorder:kitchen-order:${date}:${cutoffDays}d`
   // A failed claim still sends: a duplicate kitchen email costs less than no order at all.
   const claim = await claimOnce(supabase, key)
   if (claim === 'taken') return 'skipped'
@@ -334,16 +340,18 @@ export async function sendPreorderCutoffDigests(
 ): Promise<CutoffDigestResult> {
   const result: CutoffDigestResult = { kitchenEmails: 0, choiceCopies: 0, failed: 0 }
 
-  for (const date of datesLockedRecently(input)) {
+  for (const locked of datesLockedRecently(input)) {
+    const { date, cutoffDays } = locked
     try {
       const bookings = await loadDigestBookings(supabase, date)
       const orders: Array<{ booking: DigestBooking; order: PreorderOrder }> = []
       for (const booking of bookings) {
         const order = await loadPreorderOrder(supabase, booking.id)
-        if (order?.requiresPreorder) orders.push({ booking, order })
+        // Only bookings whose own form locked at this cutoff are final.
+        if (order?.requiresPreorder && order.preorderCutoffDays === cutoffDays) orders.push({ booking, order })
       }
 
-      const kitchen = await sendKitchenOrder(supabase, date, orders)
+      const kitchen = await sendKitchenOrder(supabase, locked, orders)
       if (kitchen === 'sent') result.kitchenEmails += 1
       if (kitchen === 'failed') result.failed += 1
 
@@ -365,7 +373,7 @@ export async function sendPreorderCutoffDigests(
       result.failed += 1
       logger.error('Pre-order cutoff digest failed for a date', {
         error: error instanceof Error ? error : new Error(String(error)),
-        metadata: { date },
+        metadata: { date, cutoffDays },
       })
     }
   }

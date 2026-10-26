@@ -1415,7 +1415,11 @@ export function summarisePreorderDishTotals(input: {
  * quietly returns nothing is worse than one that costs two extra round trips. Volumes are a day of
  * bookings, not a year.
  */
-export async function loadPreorderDishTotals(supabase: Db, date: string): Promise<PreorderDishTotals> {
+export async function loadPreorderDishTotals(
+  supabase: Db,
+  date: string,
+  options: { cutoffDays?: number } = {},
+): Promise<PreorderDishTotals> {
   const empty = emptyPreorderDishTotals(date)
 
   const { data: bookingRows, error: bookingError } = await supabase
@@ -1426,7 +1430,7 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
 
   if (bookingError) throw bookingError
 
-  const bookings = (bookingRows ?? []) as Array<{
+  const dateBookings = (bookingRows ?? []) as Array<{
     id: string
     status: string | null
     booking_type: string | null
@@ -1434,6 +1438,27 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
     christmas_course_counts: number[] | null
     booking_period_id: string | null
   }>
+  if (dateBookings.length === 0) return empty
+
+  // When each booking's form locks: used to count a choice a manager recorded after it, and to
+  // scope the noon kitchen order to the bookings whose own form has just locked.
+  const periodIds = Array.from(
+    new Set(dateBookings.map((row) => row.booking_period_id).filter((id): id is string => Boolean(id))),
+  )
+  const cutoffDaysByPeriod = new Map<string, number | null>()
+  await Promise.all(
+    periodIds.map(async (periodId) => {
+      cutoffDaysByPeriod.set(periodId, await loadPreorderCutoffDays(supabase, periodId))
+    }),
+  )
+  // A date can hold bookings from periods with different cutoffs; the later one is still being
+  // edited, so its choices must not reach a kitchen order sent at the earlier cutoff.
+  const bookings =
+    options.cutoffDays === undefined
+      ? dateBookings
+      : dateBookings.filter(
+          (row) => row.booking_period_id !== null && cutoffDaysByPeriod.get(row.booking_period_id) === options.cutoffDays,
+        )
   if (bookings.length === 0) return empty
 
   const christmasTiers = summariseChristmasTiers(
@@ -1475,16 +1500,6 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
     created_at: string | null
   }>
 
-  // When each booking's form locked, so a choice a manager recorded after it can be counted.
-  const periodIds = Array.from(
-    new Set(bookings.map((row) => row.booking_period_id).filter((id): id is string => Boolean(id))),
-  )
-  const cutoffDaysByPeriod = new Map<string, number | null>()
-  await Promise.all(
-    periodIds.map(async (periodId) => {
-      cutoffDaysByPeriod.set(periodId, await loadPreorderCutoffDays(supabase, periodId))
-    }),
-  )
   const bookingIdByCover = new Map(covers.map((cover) => [cover.id, cover.table_booking_id]))
   const periodByBooking = new Map(bookings.map((row) => [row.id, row.booking_period_id]))
   const closesAtFor = (coverId: string): Date | null => {
