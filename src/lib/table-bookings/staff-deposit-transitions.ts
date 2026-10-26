@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createTablePaymentToken } from '@/lib/table-bookings/bookings'
 import {
@@ -16,7 +15,6 @@ import {
 import { partySizeDepositRequestFacts } from '@/lib/table-bookings/fallback-details'
 import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { logger } from '@/lib/logger'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import {
   GUEST_CHANNEL_COLUMNS,
@@ -55,9 +53,8 @@ export type PartySizeDepositTransitionResult =
       /** True only when a text actually went. */
       smsSent: boolean
       /**
-       * Which channel reached the guest, or why none did. Present only on the email-first path
-       * (messaging flag table_party_size_deposit_email_first), so the staff screens can say
-       * "sent by email" or ask staff to send the link themselves.
+       * Which channel reached the guest, or why none did, so the staff screens can say "sent by
+       * email" or ask staff to send the link themselves. Absent when staff chose not to notify.
        */
       notification?: GuestNotificationOutcome
     }
@@ -99,8 +96,7 @@ function computeStaffPaymentHoldExpiry(
 }
 
 /**
- * The deposit request by email first (messaging flag table_party_size_deposit_email_first). The
- * text is the fallback, with the same words. One shortened payment link serves both channels.
+ * The deposit request by email first. The text is the fallback, with the same words. One shortened payment link serves both channels.
  * Returns what reached the guest so staff can be told, instead of the old unconditional
  * "sent by SMS".
  */
@@ -335,7 +331,9 @@ export async function applyPartySizeDepositTransition(
       isChristmas,
       bookingType: input.booking.booking_type,
     })
-    if (input.sendSms && (await isMessagingFlagOn('table_party_size_deposit_email_first'))) {
+    // Email first, the text as the fallback (BK-129: the text-only path behind the messaging flag
+    // table_party_size_deposit_email_first, on since 15 September 2026, is gone).
+    if (input.sendSms) {
       notification = await sendPartySizeDepositRequestEmailFirst(supabase, {
         booking: input.booking,
         customerId: input.booking.customer_id,
@@ -346,41 +344,6 @@ export async function applyPartySizeDepositTransition(
         wording: depositWording,
       })
       smsSent = notification.status === 'sent' && notification.channel === 'sms'
-    } else if (input.sendSms) {
-      try {
-        const { data: customer, error: customerError } = await supabase
-          .from('customers')
-          .select('id, first_name, mobile_number, mobile_e164, sms_status')
-          .eq('id', input.booking.customer_id)
-          .maybeSingle()
-
-        if (customerError) {
-          throw new Error(`Failed to load customer for deposit SMS: ${customerError.message}`)
-        }
-
-        const phone = customer?.mobile_e164 || customer?.mobile_number || null
-        if (customer && customer.sms_status === 'active' && phone) {
-          const firstName = getSmartFirstName(customer.first_name)
-          const smsBody = buildPartySizeDepositText({ firstName, wording: depositWording, paymentUrl: token.url })
-          await sendSMS(phone, smsBody, {
-            customerId: input.booking.customer_id,
-            metadata: {
-              table_booking_id: input.booking.id,
-              template_key: 'table_booking_pending_payment',
-              trigger: 'party_size_threshold_crossed',
-            },
-          })
-          smsSent = true
-        }
-      } catch (smsError) {
-        logger.warn('Failed to send party-size deposit SMS after creating payment link', {
-          metadata: {
-            tableBookingId: input.booking.id,
-            customerId: input.booking.customer_id,
-            error: smsError instanceof Error ? smsError.message : String(smsError),
-          },
-        })
-      }
     }
 
     return {

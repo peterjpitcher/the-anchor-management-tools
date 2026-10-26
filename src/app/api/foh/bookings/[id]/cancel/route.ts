@@ -102,8 +102,8 @@ export async function POST(
     )
   }
 
-  // Set only on the email-first path (flag table_cancelled_email_first), so the screen can say
-  // when the guest was not reached. The text-only path returns nothing, as before.
+  // What reached the guest, so the screen can say when the guest was not reached. Null only when
+  // the notice itself could not be attempted.
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   // What happened to the deposit, for the person who cancelled (BK-114).
   let depositRefund: DepositRefundOutcome | null = null

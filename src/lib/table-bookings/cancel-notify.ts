@@ -35,8 +35,7 @@ export async function refundAndNotifyOnCancel(
   refundResult: RefundResult
   notified: boolean
   /**
-   * What reached the guest, when the email-first path (flag `table_cancelled_email_first`) sent
-   * the notice. Null on the text-only path, which reports nothing, as before.
+   * What reached the guest. Null only when the notice threw before it could report.
    */
   notification: GuestNotificationOutcome | null
 }> {

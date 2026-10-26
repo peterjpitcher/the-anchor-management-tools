@@ -3,21 +3,10 @@ import { z } from 'zod';
 
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
-import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome';
-import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts';
-import { logAuditEvent } from '@/app/actions/audit';
-import { logger } from '@/lib/logger';
-import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
+import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit';
 import {
-  buildPayPalDepositCompletedUpdate,
-  extractPayPalOrderAmountGbp,
-  getPayPalDepositCaptureBlockReason,
-  parsePayPalAmountGbp,
-  payPalAmountsMatch,
   payPalDepositCaptureBlockCode,
   payPalDepositCaptureBlockMessage,
-  sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit';
 
 export const dynamic = 'force-dynamic';
@@ -27,12 +16,69 @@ const CaptureOrderSchema = z.object({
 });
 
 /**
- * Parse the captured GBP amount from a PayPal v2 capture response.
- * Returns the GBP value as a finite number, or null when missing/unparseable.
- *
- * Caller MUST fail closed on null — silently falling back to
- * `booking.deposit_amount` would let stale amounts get locked. Spec §6, §7.4, §8.3.
+ * The website's answer for each way a capture can stop. The steps themselves live in
+ * captureTableDeposit, shared with the guest payment page (BK-129).
  */
+function refusal(result: Exclude<CaptureTableDepositResult, { ok: true }>): NextResponse {
+  switch (result.code) {
+    case 'BOOKING_NOT_FOUND':
+      return NextResponse.json({ success: false, error: 'Booking not found', code: 'BOOKING_NOT_FOUND' }, { status: 404 });
+    case 'ORDER_MISMATCH':
+      return NextResponse.json({ success: false, error: 'Order ID mismatch', code: 'ORDER_MISMATCH' }, { status: 400 });
+    case 'NOT_PAYABLE':
+      return NextResponse.json(
+        { success: false, error: payPalDepositCaptureBlockMessage(result.blockReason), code: payPalDepositCaptureBlockCode(result.blockReason) },
+        { status: result.blockReason === 'hold_expired' ? 410 : 409 },
+      );
+    case 'PAYPAL_ORDER_LOOKUP_FAILED':
+      return NextResponse.json(
+        { success: false, error: 'Failed to verify PayPal order amount. Please try again.', code: 'PAYPAL_ORDER_LOOKUP_FAILED' },
+        { status: 502 },
+      );
+    case 'AMOUNT_MISMATCH':
+      return NextResponse.json(
+        { success: false, error: 'Payment amount no longer matches this booking. Please refresh and try again.', code: 'AMOUNT_MISMATCH' },
+        { status: 409 },
+      );
+    case 'CAPTURE_FAILED':
+      return NextResponse.json(
+        { success: false, error: 'Failed to capture PayPal payment. Please try again.', code: 'CAPTURE_FAILED' },
+        { status: 502 },
+      );
+    case 'CAPTURE_PENDING':
+      return NextResponse.json(
+        { success: false, error: 'PayPal is still processing this payment. Please contact support; do not retry.', code: 'CAPTURE_PENDING' },
+        { status: 502 },
+      );
+    case 'CAPTURE_DECLINED':
+      return NextResponse.json(
+        { success: false, error: 'PayPal did not take this payment. Please contact support.', code: 'CAPTURE_DECLINED' },
+        { status: 502 },
+      );
+    case 'CAPTURE_BOOKING_MISMATCH':
+      return NextResponse.json(
+        { success: false, error: 'Payment could not be matched to this booking. Please contact support; do not retry.', code: 'CAPTURE_BOOKING_MISMATCH' },
+        { status: 502 },
+      );
+    case 'CAPTURED_AMOUNT_UNVERIFIED':
+      return NextResponse.json(
+        { success: false, error: 'Payment captured but amount could not be verified. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_UNVERIFIED' },
+        { status: 502 },
+      );
+    case 'CAPTURED_AMOUNT_MISMATCH':
+      return NextResponse.json(
+        { success: false, error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_MISMATCH' },
+        { status: 502 },
+      );
+    case 'CAPTURED_BOOKING_UPDATE_FAILED':
+    default:
+      return NextResponse.json(
+        { success: false, error: 'Payment captured but booking update failed. Our team has been notified.', code: 'CAPTURED_BOOKING_UPDATE_FAILED' },
+        { status: 502 },
+      );
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -41,7 +87,6 @@ export async function POST(
 
   return withApiAuth(
     async () => {
-      // Parse and validate request body
       let orderId: string;
       try {
         const body = await request.json();
@@ -51,303 +96,14 @@ export async function POST(
         return NextResponse.json({ success: false, error: 'Invalid request body. orderId is required.', code: 'VALIDATION_ERROR' }, { status: 400 });
       }
 
-      const supabase = createAdminClient();
-
-      // Fetch the booking
-      const { data: booking, error: fetchError } = await supabase
-        .from('table_bookings')
-        .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, booking_type, source, deposit_amount, deposit_amount_locked, deposit_waived')
-        .eq('id', bookingId)
-        .single();
-
-      if (fetchError || !booking) {
-        if (fetchError) {
-          logger.error('capture-order: booking fetch failed', {
-            error: new Error(fetchError.message),
-            metadata: { bookingId, code: fetchError.code, details: fetchError.details },
-          });
-        }
-        return NextResponse.json({ success: false, error: 'Booking not found', code: 'BOOKING_NOT_FOUND' }, { status: 404 });
-      }
-
-      // Idempotent: if already captured, return success without reprocessing
-      if (booking.payment_status === 'completed' && booking.paypal_deposit_capture_id !== null) {
-        return NextResponse.json({ success: true });
-      }
-
-      // Validate orderId matches what we stored
-      if (booking.paypal_deposit_order_id !== orderId) {
-        return NextResponse.json({ success: false, error: 'Order ID mismatch', code: 'ORDER_MISMATCH' }, { status: 400 });
-      }
-
-      const blockReason = getPayPalDepositCaptureBlockReason(booking);
-      if (blockReason) {
-        return NextResponse.json(
-          { success: false, error: payPalDepositCaptureBlockMessage(blockReason), code: payPalDepositCaptureBlockCode(blockReason) },
-          { status: blockReason === 'hold_expired' ? 410 : 409 },
-        );
-      }
-
-      const expectedAmount = Number(
-        getCanonicalDeposit({
-          party_size: Math.max(1, Number(booking.party_size || 1)),
-          deposit_amount: booking.deposit_amount ?? null,
-          deposit_amount_locked: booking.deposit_amount_locked ?? null,
-          status: booking.status ?? null,
-          payment_status: booking.payment_status ?? null,
-          deposit_waived: booking.deposit_waived ?? null,
-          // Christmas bookings owe a deposit at any party size. The expected
-          // amount must match what create-order charged.
-          booking_type: booking.booking_type ?? null,
-        }).toFixed(2),
-      );
-
-      let orderAmount: number | null = null;
-      try {
-        orderAmount = extractPayPalOrderAmountGbp(await getPayPalOrder(orderId));
-      } catch (err) {
-        logger.error('capture-order: failed to verify PayPal order amount before capture', {
-          error: err instanceof Error ? err : new Error(String(err)),
-          metadata: { bookingId, orderId },
-        });
-        return NextResponse.json(
-          { success: false, error: 'Failed to verify PayPal order amount. Please try again.', code: 'PAYPAL_ORDER_LOOKUP_FAILED' },
-          { status: 502 },
-        );
-      }
-
-      if (orderAmount === null || !payPalAmountsMatch(orderAmount, expectedAmount)) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_mismatch',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            orderAmount,
-            expectedAmount,
-            action_needed: 'PayPal order amount did not match current booking deposit before capture',
-          },
-        });
-        return NextResponse.json(
-          { success: false, error: 'Payment amount no longer matches this booking. Please refresh and try again.', code: 'AMOUNT_MISMATCH' },
-          { status: 409 },
-        );
-      }
-
-      // Capture the PayPal payment
-      let captureResult: { transactionId: string; status: string; captureStatus?: string | null; captureStatusReason?: string | null; payerId?: string; amount?: string; currency?: string | null };
-      try {
-        captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY);
-      } catch (err) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_failed',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            error: err instanceof Error ? err.message : 'Unknown error',
-          },
-        });
-        return NextResponse.json(
-          { success: false, error: 'Failed to capture PayPal payment. Please try again.', code: 'CAPTURE_FAILED' },
-          { status: 502 },
-        );
-      }
-
-      const transactionId = captureResult.transactionId;
-
-      // Only a COMPLETED capture is a paid deposit (BK-019). The booking is left as it is: a
-      // PENDING capture is settled by the PAYMENT.CAPTURE.COMPLETED webhook, which records the
-      // deposit then, and a refused one has taken no money.
-      const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus);
-      if (captureOutcome !== 'completed') {
-        logger.error('capture-order: PayPal did not complete the deposit capture', {
-          error: new Error(`table_deposit_capture_${captureOutcome}`),
-          metadata: { bookingId, orderId, transactionId, captureStatus: captureResult.captureStatus ?? null, reason: captureResult.captureStatusReason ?? null },
-        });
-        void logAuditEvent({
-          operation_type: captureOutcome === 'pending' ? 'payment.capture_pending' : 'payment.capture_declined',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            transactionId,
-            captureStatus: captureResult.captureStatus ?? null,
-            captureStatusReason: captureResult.captureStatusReason ?? null,
-            action_needed: captureOutcome === 'pending'
-              ? 'PayPal is holding this deposit for review. The booking is not marked paid; the PayPal webhook records it if PayPal completes it. Check the payment in PayPal if it does not clear.'
-              : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
-          },
-        });
-        if (captureOutcome === 'pending') {
-          await alertTableDepositNeedsAPerson(supabase, {
-            bookingId,
-            kind: 'capture_pending',
-            amountGbp: parsePayPalAmountGbp(captureResult.amount),
-            orderId,
-            captureId: transactionId,
-            detail: captureResult.captureStatusReason ?? null,
-            source: 'website capture',
-          });
-        }
-        return NextResponse.json(
-          captureOutcome === 'pending'
-            ? { success: false, error: 'PayPal is still processing this payment. Please contact support; do not retry.', code: 'CAPTURE_PENDING' }
-            : { success: false, error: 'PayPal did not take this payment. Please contact support.', code: 'CAPTURE_DECLINED' },
-          { status: 502 },
-        );
-      }
-
-      // Lock the actually-captured GBP amount on the booking — authoritative
-      // source for what the customer was charged. Fail closed if the capture
-      // response is missing/malformed: do NOT update payment_status, log a
-      // high-severity error, and return 502 so the customer sees an explicit
-      // "we couldn't confirm your payment" state. We deliberately do NOT
-      // fall back to booking.deposit_amount — that's how stale amounts get
-      // locked. Spec §6, §7.4, §8.3.
-      const lockedAmountGbp = parsePayPalAmountGbp(captureResult?.amount);
-      if (lockedAmountGbp === null) {
-        logger.error('paypal-capture: capture succeeded but no parseable GBP amount in response', {
-          metadata: {
-            bookingId,
-            orderId,
-            transactionId,
-            // Capture the raw amount value so on-call can investigate.
-            rawAmount: captureResult?.amount ?? null,
-            captureStatus: captureResult?.status ?? null,
-          },
-        });
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_unparseable',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            transactionId,
-            rawAmount: String(captureResult?.amount ?? 'null'),
-            action_needed:
-              'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required before unlocking the booking',
-          },
-        });
-        await alertTableDepositNeedsAPerson(supabase, {
-          bookingId,
-          kind: 'captured_amount_problem',
-          orderId,
-          captureId: transactionId,
-          detail: 'the captured amount could not be read',
-          source: 'website capture',
-        });
-        return NextResponse.json(
-          {
-            success: false, error: 'Payment captured but amount could not be verified. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_UNVERIFIED',
-          },
-          { status: 502 },
-        );
-      }
-
-      if (!payPalAmountsMatch(lockedAmountGbp, expectedAmount)) {
-        void logAuditEvent({
-          operation_type: 'payment.capture_amount_mismatch',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            transactionId,
-            capturedAmount: lockedAmountGbp,
-            expectedAmount,
-            action_needed:
-              'PayPal capture succeeded for an amount that no longer matches the booking — manual reconciliation required',
-          },
-        });
-        await alertTableDepositNeedsAPerson(supabase, {
-          bookingId,
-          kind: 'captured_amount_problem',
-          amountGbp: lockedAmountGbp,
-          orderId,
-          captureId: transactionId,
-          detail: `the booking owes £${expectedAmount.toFixed(2)}`,
-          source: 'website capture',
-        });
-        return NextResponse.json(
-          { success: false, error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_MISMATCH' },
-          { status: 502 },
-        );
-      }
-
-      // Update the booking atomically — including deposit_amount_locked so
-      // any future recompute (party-size change, blind compute, etc.) honours
-      // the actually-captured amount.
-      const { data: updatedBooking, error: updateError } = await supabase
-        .from('table_bookings')
-        .update(buildPayPalDepositCompletedUpdate({
-          captureId: transactionId,
-          lockedAmountGbp,
-        }))
-        .eq('id', bookingId)
-        .eq('paypal_deposit_order_id', orderId)
-        .is('paypal_deposit_capture_id', null)
-        .neq('status', 'cancelled')
-        .neq('status', 'no_show')
-        .neq('status', 'completed')
-        .select('id')
-        .maybeSingle();
-
-      if (updateError || !updatedBooking) {
-        // PayPal captured but DB update failed — log for manual reconciliation
-        void logAuditEvent({
-          operation_type: 'payment.capture_local_update_failed',
-          resource_type: 'table_booking',
-          resource_id: bookingId,
-          operation_status: 'failure',
-          additional_info: {
-            orderId,
-            transactionId,
-            dbError: updateError?.message || 'Booking was no longer payable at update time',
-            action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
-          },
-        });
-        // The guest is told the team has been notified: make that true (BK-114).
-        await alertTableDepositNeedsAPerson(supabase, {
-          bookingId,
-          kind: 'capture_not_recorded',
-          amountGbp: lockedAmountGbp,
-          orderId,
-          captureId: transactionId,
-          detail: updateError?.message || 'the booking was no longer payable at update time',
-          source: 'website capture',
-        });
-        return NextResponse.json(
-          { success: false, error: 'Payment captured but booking update failed. Our team has been notified.', code: 'CAPTURED_BOOKING_UPDATE_FAILED' },
-          { status: 502 },
-        );
-      }
-
-      // Audit log success
-      void logAuditEvent({
-        operation_type: 'payment.captured',
-        resource_type: 'table_booking',
-        resource_id: bookingId,
-        operation_status: 'success',
-        additional_info: {
-          orderId,
-          transactionId,
-          bookingId,
-          lockedAmountGbp,
-        },
-      });
-
-      await sendTableBookingDepositCapturedNotifications(supabase, {
-        tableBookingId: bookingId,
-        customerId: booking.customer_id,
+      const result = await captureTableDeposit(createAdminClient(), {
+        bookingId,
+        orderId,
+        source: 'website capture',
         createdVia: 'api',
       });
 
-      return NextResponse.json({ success: true });
+      return result.ok ? NextResponse.json({ success: true }) : refusal(result);
     },
     ['payments:capture'],
     request,

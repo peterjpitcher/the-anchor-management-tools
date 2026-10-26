@@ -21,7 +21,6 @@ const SMS_ONLY: NotificationChannel[] = ['sms']
 
 const TEMPLATE_ROUTE_RULES: TemplateRouteRule[] = [
   { type: 'prefix', match: 'table_booking_', channels: EMAIL_THEN_MESSAGING },
-  { type: 'exact', match: 'sunday_preorder_request', channels: SMS_ONLY },
   { type: 'prefix', match: 'event_payment_', channels: EMAIL_THEN_MESSAGING },
   { type: 'prefix', match: 'event_booking_', channels: EMAIL_THEN_MESSAGING },
   { type: 'prefix', match: 'event_ticket_', channels: EMAIL_THEN_MESSAGING },
@@ -55,6 +54,21 @@ function findRouteRule(templateKey: string): TemplateRouteRule | null {
   }) ?? null
 }
 
+/**
+ * The channels a message may use, in order: the template's rule, narrowed by the caller's policy.
+ *
+ * The policy is a limit the caller sets, so it can only take channels away (BK-085). The rule used
+ * to replace it whenever one matched: the website asks AMS not to text a guest who is paying a
+ * deposit on screen, which becomes 'email_only', and the table_booking_ rule's email, WhatsApp,
+ * SMS order then texted that guest the payment link whenever their email was missing or failed.
+ * 'email_only' keeps only email, 'sms_only' only SMS, and the other policies keep the rule's order.
+ */
+function narrowByPolicy(channels: NotificationChannel[], policy: NotificationPolicy): NotificationChannel[] {
+  if (policy === 'email_only') return channels.filter((channel) => channel === 'email')
+  if (policy === 'sms_only') return channels.filter((channel) => channel === 'sms')
+  return channels
+}
+
 export function resolveNotificationRoute(input: {
   templateKey: string | null | undefined
   policy: NotificationPolicy
@@ -64,7 +78,7 @@ export function resolveNotificationRoute(input: {
   const rule = findRouteRule(templateKey)
 
   return {
-    channels: rule?.channels ?? legacyPolicyChannels(input.policy),
+    channels: rule ? narrowByPolicy(rule.channels, input.policy) : legacyPolicyChannels(input.policy),
     delayedFallbackAllowed: input.delayedFallbackAllowed === true || rule?.delayedFallbackAllowed === true,
   }
 }

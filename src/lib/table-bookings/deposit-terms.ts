@@ -47,12 +47,39 @@ export function depositPerPerson(depositAmount: number | null | undefined, party
 }
 
 /**
- * What the deposit is and where it goes. SSOT section 16, "Group deposit" and "Christmas 2026".
+ * What a booking's deposit works out at per person, from the basis and rate the booking function
+ * recorded on it.
+ *
+ * `per_booking` is not a per-person rate, so it answers null and the copy drops the sentence
+ * rather than dividing a flat fee by the party and inventing a rate nobody charges. The deposit
+ * request and the hold reminder both use this, so the reminder never contradicts the request.
  */
-export function depositPurposeLine(input: { isChristmas: boolean; perPersonGbp: number | null }): string {
+export function depositPerPersonForBooking(
+  booking: { deposit_basis?: string | null; deposit_rate?: number | string | null },
+  depositAmount: number,
+  partySize: number
+): number | null {
+  if (booking.deposit_basis === 'per_booking') return null
+  const rate = Number(booking.deposit_rate)
+  if (Number.isFinite(rate) && rate > 0) return rate
+  return depositPerPerson(depositAmount, partySize)
+}
+
+/**
+ * What the deposit is and where it goes. SSOT section 16, "Group deposit" and "Christmas 2026".
+ *
+ * `depositRule` is the rule the booking function charged by. A seasonal ('period') deposit is not
+ * the group deposit, so it is never described as "Groups of 15 or more" (BK-049): a GBP 15 a head
+ * Mother's Day booking for two would otherwise be told a rule that does not apply to it.
+ */
+export function depositPurposeLine(input: {
+  isChristmas: boolean
+  perPersonGbp: number | null
+  depositRule?: string | null
+}): string {
   const rate = formatWholePounds(input.perPersonGbp)
 
-  if (input.isChristmas) {
+  if (input.isChristmas || input.depositRule === 'period') {
     return rate
       ? `There's a ${rate} per person deposit, which comes off your bill.`
       : 'The deposit comes off your bill.'
@@ -116,6 +143,7 @@ export function depositTermsLines(input: {
   perPersonGbp: number | null
   refundCutoffDays: number | null
   payByLabel: string | null
+  depositRule?: string | null
 }): string[] {
   const refund = depositRefundLine(input)
   return [

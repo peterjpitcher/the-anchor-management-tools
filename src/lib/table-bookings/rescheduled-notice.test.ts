@@ -68,6 +68,7 @@ const CONFIRMED_BOOKING = {
   deposit_amount: null,
   deposit_amount_locked: null,
   deposit_waived: false,
+  deposit_rule: null,
   deposit_rate: null,
   deposit_basis: null,
   deposit_refund_cutoff_days: null,
@@ -159,6 +160,31 @@ describe('the booking amended notice', () => {
     expect(notice.email?.text).toContain('which is when the hold on your table runs out')
     expect(notice.email?.text).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
     expect(notice.sms?.body).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
+  })
+
+  it('restates a seasonal deposit as the request did, never as the group rule', async () => {
+    await sendTableBookingRescheduledNotificationIfAllowed(
+      supabase({
+        ...CONFIRMED_BOOKING,
+        status: 'pending_payment',
+        payment_status: 'pending',
+        party_size: 2,
+        deposit_amount: 30,
+        deposit_rule: 'period',
+        deposit_rate: 15,
+        deposit_basis: 'per_head',
+        deposit_refund_cutoff_days: 3,
+        hold_expires_at: '2026-11-02T10:00:00.000Z',
+      }),
+      {
+        tableBookingId: 'tb-1',
+        previous: { startDateTime: '2026-12-05T17:00:00.000Z' },
+      },
+    )
+
+    const notice = captureNotice()
+    expect(notice.email?.text).toContain("There's a £15 per person deposit, which comes off your bill.")
+    expect(notice.email?.text).not.toContain('Groups of 15 or more')
   })
 
   it('offers no payment link once the hold has already run out', async () => {
