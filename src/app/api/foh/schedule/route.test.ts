@@ -113,6 +113,68 @@ const OUTSIDE_BOOKING_B = {
   customer: { first_name: 'Grace', last_name: 'Outside' },
 }
 
+describe('GET /api/foh/schedule: private hire blocks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const AREA_TABLE = { ...INDOOR_TABLE, area_id: 'area-1' }
+  const hire = (id: string, overrides: Record<string, unknown>) => ({
+    id,
+    customer_name: 'Fixture Hire',
+    customer_first_name: 'Fixture',
+    customer_last_name: 'Hire',
+    event_type: 'Birthday',
+    status: 'confirmed',
+    event_date: SERVICE_DATE,
+    start_time: '18:00:00',
+    end_time: '23:00:00',
+    setup_date: null,
+    setup_time: null,
+    guest_count: 30,
+    deposit_paid_date: null,
+    hold_expiry: null,
+    date_tbd: false,
+    ...overrides,
+  })
+
+  it('blocks only hires that hold their room, and shows the party size (BK-005, BK-007, BK-160)', async () => {
+    const db = createSupabaseMock({
+      tables: { data: [AREA_TABLE], error: null },
+      private_bookings: {
+        data: [
+          hire('pb-confirmed', {}),
+          hire('pb-paid-draft', { status: 'draft', deposit_paid_date: '2026-07-01T10:00:00Z', guest_count: 70 }),
+          hire('pb-lapsed-draft', { status: 'draft', hold_expiry: '2020-01-01T00:00:00Z' }),
+          hire('pb-date-tbd', { date_tbd: true }),
+        ],
+        error: null,
+      },
+      private_booking_items: {
+        data: ['pb-confirmed', 'pb-paid-draft', 'pb-lapsed-draft', 'pb-date-tbd'].map((booking_id) => ({
+          booking_id,
+          space_id: 'space-1',
+          item_type: 'space',
+        })),
+        error: null,
+      },
+      venue_space_table_areas: { data: [{ venue_space_id: 'space-1', table_area_id: 'area-1' }], error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await GET(makeRequest())
+    const payload = await res.json()
+
+    expect(res.status).toBe(200)
+    const lane = (payload.data.lanes as Array<{ table_id: string; bookings: Array<Record<string, unknown>> }>)
+      .find((l) => l.table_id === 'table-1')!
+    const blocks = lane.bookings.filter((b) => b.is_private_block)
+    expect(blocks.map((b) => b.private_booking_id).sort()).toEqual(['pb-confirmed', 'pb-paid-draft'])
+    expect(blocks.find((b) => b.private_booking_id === 'pb-confirmed')!.party_size).toBe(30)
+    expect(blocks.find((b) => b.private_booking_id === 'pb-paid-draft')!.party_size).toBe(70)
+  })
+})
+
 describe('GET /api/foh/schedule — outside bookings', () => {
   beforeEach(() => {
     vi.clearAllMocks()

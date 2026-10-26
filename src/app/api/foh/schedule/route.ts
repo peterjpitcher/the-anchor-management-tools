@@ -3,6 +3,7 @@ import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { whenLondonClockReaches } from '@/lib/dateUtils'
+import { privateBookingOccupiesSpace } from '@/lib/private-bookings/occupies-space'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -384,7 +385,7 @@ export async function GET(request: NextRequest) {
       : { data: [], error: null },
     supabase.from('private_bookings')
       .select(
-        'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time'
+        'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time, guest_count, deposit_paid_date, hold_expiry, date_tbd'
       )
       .in('status', ['draft', 'confirmed'])
       .gte('event_date', privateRangeStart)
@@ -462,7 +463,11 @@ export async function GET(request: NextRequest) {
   }
 
   const privateBlocksByTableId = new Map<string, PrivateBlockForTable['block'][]>()
-  const privateBookingsRows = privateBookingsResult.data as unknown[] | null
+  // Only hires that hold their room block tables: the database rule (BK-005, BK-160), so an
+  // undated enquiry or a lapsed unpaid draft no longer shows as a block.
+  const privateBookingsRows = (privateBookingsResult.data as any[] | null)?.filter((row) =>
+    privateBookingOccupiesSpace(row)
+  ) ?? null
   const privateBookingsError = privateBookingsResult.error
 
   if (!privateBookingsError && Array.isArray(privateBookingsRows) && privateBookingsRows.length > 0) {
@@ -542,7 +547,8 @@ export async function GET(request: NextRequest) {
               booking_reference: bookingReference,
               guest_name: guestName,
               booking_time: normalizeClock(privateBooking.start_time) || '00:00',
-              party_size: null,
+              // The hire's own guest count, so FOH can see the size of the party (BK-007).
+              party_size: typeof privateBooking.guest_count === 'number' ? privateBooking.guest_count : null,
               booking_type: 'private' as const,
               booking_purpose: 'private_hire' as const,
               status: 'private_block' as const,
