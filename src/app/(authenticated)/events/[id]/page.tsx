@@ -11,6 +11,8 @@ import type { EventMarketingMessage } from '@/app/actions/event-marketing-messag
 import type { EventBookingRow } from '@/app/actions/events'
 import type { Event } from '@/types/database'
 import EventDetailClient from './EventDetailClient'
+import { loadKitchenLoadFor } from '@/services/kitchen-load'
+import type { KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -156,6 +158,24 @@ export default async function EventDetailPage({ params }: PageProps) {
     }
   }
 
+  // The covers the kitchen counts for this event against online food bookings (D29, BK-072).
+  let kitchen: KitchenLoadSummary | null = null
+  let kitchenError = false
+  if (eventData && canView) {
+    try {
+      const load = await loadKitchenLoadFor('event', eventData.id, eventData.date)
+      kitchen = {
+        load: load ? { covers: load.covers, foodTime: load.foodTime } : null,
+        covers: eventData.kitchen_covers ?? null,
+        foodTime: eventData.kitchen_food_time ? String(eventData.kitchen_food_time).slice(0, 5) : null,
+        foodServed: eventData.food_served === true,
+      }
+    } catch (error) {
+      console.error('Failed to load the kitchen covers for an event', error)
+      kitchenError = true
+    }
+  }
+
   const initialError = errors.length > 0 ? errors.join(' ') : null
 
   return (
@@ -169,6 +189,8 @@ export default async function EventDetailPage({ params }: PageProps) {
       permissions={{ canEdit, canDelete, canManage }}
       ticketTypesEnabled={ticketTypesEnabled}
       initialTicketTypes={ticketTypes}
+      kitchen={kitchen}
+      kitchenError={kitchenError}
       initialError={initialError}
     />
   )

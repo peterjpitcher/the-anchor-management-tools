@@ -64,6 +64,8 @@ import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 import { HireReadinessPanel } from './HireReadinessPanel'
 import { HireNightPanel } from './HireNightPanel'
+import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
+import { setPrivateBookingKitchenLoad } from '@/app/actions/kitchen-load'
 import type { HireReadinessView } from '@/services/private-bookings/readiness'
 import type { HireNightView } from '@/services/private-bookings/night-clashes'
 // Design system components
@@ -209,6 +211,10 @@ interface PrivateBookingDetailClientProps {
   hireNight?: HireNightView | null;
   /** True when the page could not check the night. */
   hireNightError?: boolean;
+  /** The covers the kitchen counts for this hire (D29, BK-072). */
+  kitchen?: KitchenLoadSummary | null;
+  /** True when the page could not read the kitchen covers. */
+  kitchenError?: boolean;
   /** Managers may allow more guests than the rooms hold (gm_override). */
   canOverrideCapacity?: boolean;
   initialError?: string | null;
@@ -1676,6 +1682,8 @@ export default function PrivateBookingDetailClient({
   hireReadinessError,
   hireNight,
   hireNightError,
+  kitchen,
+  kitchenError,
   canOverrideCapacity,
   initialError,
 }: PrivateBookingDetailClientProps) {
@@ -2590,6 +2598,17 @@ export default function PrivateBookingDetailClient({
       />
 
       <HireNightPanel view={hireNight ?? null} loadFailed={hireNightError === true} />
+
+      <KitchenLoadEditor
+        title="Kitchen"
+        summary={kitchen ?? null}
+        loadFailed={kitchenError === true}
+        automaticRule="Left blank, a hire with kitchen catering booked counts each guest as one cover, at its start time, once it holds its room."
+        emptyReason="No kitchen covers are counted: no kitchen catering is booked, or the hire does not hold its room yet."
+        canEdit={permissions.canEdit}
+        save={(input) => setPrivateBookingKitchenLoad(bookingId, { covers: input.covers, foodTime: input.foodTime })}
+        onSaved={() => router.refresh()}
+      />
 
       {isDateTbd && (
         <Alert

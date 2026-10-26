@@ -11,6 +11,10 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({ rpc: adminRpc, from: adminFrom })),
 }))
 
+// Who is in that day, from the shared day load (BK-075), which has its own tests.
+const dayLoadMock = vi.fn()
+vi.mock('@/services/day-load', () => ({ loadDayLoads: (...args: unknown[]) => dayLoadMock(...args) }))
+
 vi.mock('@/lib/foh/api-auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/foh/api-auth')>('@/lib/foh/api-auth')
   return {
@@ -126,6 +130,7 @@ describe('GET /api/foh/schedule: private hire blocks', () => {
     vi.clearAllMocks()
     adminRpc.mockResolvedValue({ data: [], error: null })
     adminFrom.mockImplementation(() => makeBuilder({ data: [], error: null }))
+    dayLoadMock.mockResolvedValue(new Map())
   })
 
   const AREA_TABLE = { ...INDOOR_TABLE, area_id: 'area-1' }
@@ -180,6 +185,22 @@ describe('GET /api/foh/schedule: private hire blocks', () => {
     })
     expect(blocks.find((b) => b.private_booking_id === 'pb-2')!.party_size).toBeNull()
     expect(payload.data.private_hires_unavailable).toBe(false)
+  })
+
+  // BK-075: the header counts covers as every other screen does, and lists the day's hires.
+  it('returns the day load, or null when it cannot be read', async () => {
+    const load = { date: SERVICE_DATE, covers: 46, privateHireGuests: 120, privateHires: [{ id: 'pb-1' }] }
+    dayLoadMock.mockResolvedValueOnce(new Map([[SERVICE_DATE, load]]))
+    mockAuthSuccess(createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } }))
+
+    const payload = await (await GET(makeRequest())).json()
+
+    expect(payload.data.day_load).toEqual(load)
+    expect(dayLoadMock).toHaveBeenCalledWith(SERVICE_DATE, SERVICE_DATE, expect.objectContaining({ withHours: false }))
+
+    dayLoadMock.mockRejectedValueOnce(new Error('timeout'))
+    mockAuthSuccess(createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } }))
+    expect((await (await GET(makeRequest())).json()).data.day_load).toBeNull()
   })
 
   it('says so, and draws no blocks, when the hires cannot be read', async () => {
