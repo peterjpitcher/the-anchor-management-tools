@@ -1,4 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
+
+const recordOptOut = vi.hoisted(() => vi.fn())
+vi.mock('@/services/consent', () => ({ ConsentService: { recordOptOut } }))
+
 import { ensureCustomerForPhone } from '../customers'
 
 // ---------------------------------------------------------------------------
@@ -18,11 +22,28 @@ type Row = {
   last_name: string | null
   email: string | null
   created_at: string
+  sms_opt_in?: boolean
+  sms_status?: string
+  marketing_sms_opted_out_at?: string | null
 }
+
+type HeldRow = { id: string; from_address: string; body_text: string; linked_customer_id: string | null }
 
 const lower = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
 
-function makeDb(seed: Partial<Row>[] = []) {
+function heldQuery(held: HeldRow[]) {
+  const filters: Array<(row: HeldRow) => boolean> = []
+  const builder: Record<string, unknown> = {}
+  builder.select = vi.fn(() => builder)
+  builder.eq = vi.fn(() => builder)
+  builder.in = vi.fn((col: keyof HeldRow, values: unknown[]) => { filters.push((row) => values.includes(row[col])); return builder })
+  builder.is = vi.fn((col: keyof HeldRow, value: unknown) => { filters.push((row) => row[col] === value); return builder })
+  builder.order = vi.fn(() => builder)
+  builder.limit = vi.fn(() => Promise.resolve({ data: held.filter((row) => filters.every((keep) => keep(row))), error: null }))
+  return builder
+}
+
+function makeDb(seed: Partial<Row>[] = [], held: HeldRow[] = []) {
   let seq = 0
   const rows: Row[] = seed.map((r, i) => ({
     id: r.id ?? `seed-${i}`,
@@ -47,7 +68,7 @@ function makeDb(seed: Partial<Row>[] = []) {
       for (const [type, col, val] of state.filters) {
         if (type === 'eq') out = out.filter(r => (r as Record<string, unknown>)[col] === val)
         else if (type === 'in') out = out.filter(r => (val as unknown[]).includes((r as Record<string, unknown>)[col]))
-        else if (type === 'ilike') out = out.filter(r => lower((r as Record<string, string | null>)[col]) === lower(val as string))
+        else if (type === 'ilike') out = out.filter(r => lower((r as unknown as Record<string, string | null>)[col]) === lower(val as string))
       }
       return out.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))
     }
@@ -68,6 +89,9 @@ function makeDb(seed: Partial<Row>[] = []) {
         last_name: p.last_name ?? null,
         email: p.email ?? null,
         created_at: `2026-07-05T00:00:0${seq}Z`,
+        sms_opt_in: p.sms_opt_in,
+        sms_status: p.sms_status,
+        marketing_sms_opted_out_at: p.marketing_sms_opted_out_at ?? null,
       }
       rows.push(row)
       return { data: { id: row.id }, error: null }
@@ -95,7 +119,7 @@ function makeDb(seed: Partial<Row>[] = []) {
   }
 
   return {
-    from: vi.fn(() => query()),
+    from: vi.fn((table: string) => (table === 'unmatched_communications' ? heldQuery(held) : query())),
     __rows: rows,
   }
 }
@@ -225,5 +249,47 @@ describe('ensureCustomerForPhone – email unique-index handling', () => {
     expect(result.customerId).toBeTruthy()
     expect(db.__rows).toHaveLength(1)
     expect(db.__rows[0].email).toBe('brand.new@example.com')
+  })
+})
+
+describe('ensureCustomerForPhone – a STOP waiting in the holding queue (BK-080)', () => {
+  const held = (body: string, from = '+447700900555'): HeldRow => ({ id: `held-${body}`, from_address: from, body_text: body, linked_customer_id: null })
+
+  it('creates the customer opted out of all texts when the number sent STOP before it had one', async () => {
+    recordOptOut.mockClear()
+    const db = makeDb([], [held('hi is this the pub'), held('STOP')])
+
+    const result = await ensureCustomerForPhone(db as never, '+447700900555', { firstName: 'Sam' })
+
+    expect(db.__rows[0]).toMatchObject({ sms_opt_in: false, sms_status: 'opted_out' })
+    expect(db.__rows[0].marketing_sms_opted_out_at).toEqual(expect.any(String))
+    expect(recordOptOut).toHaveBeenCalledWith(
+      result.customerId,
+      'sms',
+      'twilio_inbound_sms',
+      expect.objectContaining({ captureMethod: 'inbound_keyword' }),
+      ['service', 'marketing']
+    )
+  })
+
+  it('keeps booking texts but stops marketing after a held NOEVENTS', async () => {
+    recordOptOut.mockClear()
+    const db = makeDb([], [held('No events please')])
+
+    await ensureCustomerForPhone(db as never, '+447700900555', { firstName: 'Sam' })
+
+    expect(db.__rows[0]).toMatchObject({ sms_opt_in: true, sms_status: 'active' })
+    expect(db.__rows[0].marketing_sms_opted_out_at).toEqual(expect.any(String))
+    expect(recordOptOut).toHaveBeenCalledWith(expect.any(String), 'sms', 'twilio_inbound_sms', expect.anything(), ['marketing'])
+  })
+
+  it('creates an ordinary SMS-active customer when nothing is held for the number', async () => {
+    recordOptOut.mockClear()
+    const db = makeDb([], [held('STOP', '+447700900999')])
+
+    await ensureCustomerForPhone(db as never, '+447700900555', { firstName: 'Sam' })
+
+    expect(db.__rows[0]).toMatchObject({ sms_opt_in: true, sms_status: 'active', marketing_sms_opted_out_at: null })
+    expect(recordOptOut).not.toHaveBeenCalled()
   })
 })

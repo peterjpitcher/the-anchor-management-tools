@@ -100,6 +100,7 @@ vi.mock('@/lib/logger', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { POST } from '@/app/api/event-bookings/route'
+import { ConsentService } from '@/services/consent'
 
 const EVENT_ID = '11111111-1111-4111-8111-111111111111'
 const CUSTOMER_ID = '22222222-2222-4222-8222-222222222222'
@@ -237,6 +238,32 @@ describe('event dining requests at the authoritative API', () => {
     const response = await POST(buildRequest({ dining_request: 'not_sure' }))
     expect(response.status).toBe(500)
     expect((await response.json()).success).toBe(false)
+  })
+  it('records the guest consent once the booking exists, naming the booking (BK-080)', async () => {
+    const order: string[] = []
+    vi.mocked(EventBookingService.createBooking).mockImplementation(async () => {
+      order.push('booking')
+      return { resolvedState: 'confirmed', bookingId: 'booking-fixture', rpcResult: { state: 'confirmed', booking_id: 'booking-fixture' } } as Awaited<ReturnType<typeof EventBookingService.createBooking>>
+    })
+    const consentSpy = vi.spyOn(ConsentService, 'applyBookingContactConsent').mockImplementation(async () => { order.push('consent') })
+
+    const consent = { service_contact_notice_shown: true, consent_text_version: 'guest-comms-consent-v6', notice_key: 'event_compact_v6' }
+    expect((await POST(buildRequest({ communication_consent: consent }))).status).toBe(201)
+
+    expect(order).toEqual(['booking', 'consent'])
+    expect(consentSpy).toHaveBeenCalledWith(
+      CUSTOMER_ID,
+      expect.objectContaining({ notice_key: 'event_compact_v6' }),
+      expect.objectContaining({ source: 'public_event_booking', relatedEntityType: 'event_booking', relatedEntityId: 'booking-fixture' })
+    )
+    consentSpy.mockRestore()
+  })
+  it('records no consent when no booking was made', async () => {
+    vi.mocked(EventBookingService.createBooking).mockResolvedValue({ resolvedState: 'blocked', bookingId: null, rpcResult: { state: 'blocked', reason: 'sold_out' } } as Awaited<ReturnType<typeof EventBookingService.createBooking>>)
+    const consentSpy = vi.spyOn(ConsentService, 'applyBookingContactConsent').mockResolvedValue()
+    await POST(buildRequest({ communication_consent: { service_contact_notice_shown: true } }))
+    expect(consentSpy).not.toHaveBeenCalled()
+    consentSpy.mockRestore()
   })
   it('replays recorded acknowledgement without creating or appending again', async () => {
     vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'replay', response: { success: true, data: { state: 'confirmed', booking_id: 'booking-fixture', requests_recorded: true }, meta: { status_code: 201 } } } as Awaited<ReturnType<typeof claimIdempotencyKey>>)

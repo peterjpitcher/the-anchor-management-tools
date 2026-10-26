@@ -465,7 +465,7 @@ export function useFohCreateBooking(input: {
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
         notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-        christmas_course_counts: []
+        christmas_course_counts: [], marketing_texts_yes: false
       }
     })
     if (walkInMode) {
@@ -532,7 +532,8 @@ export function useFohCreateBooking(input: {
             seating_preference:
               selectedEventOption?.booking_mode === 'communal'
                 ? createForm.seating_preference
-                : undefined
+                : undefined,
+            marketing_texts_yes: createForm.marketing_texts_yes === true || undefined
           })
         })
         const payload = (await response.json()) as FohCreateEventBookingResponse
@@ -651,6 +652,7 @@ export function useFohCreateBooking(input: {
           requires_accessible_table:
             (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
           christmas_course_counts: christmasCourseCounts,
+          marketing_texts_yes: (!isManagement && createForm.marketing_texts_yes === true) || undefined,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
           // never the truthiness. Absent for Christmas, which travels as a
