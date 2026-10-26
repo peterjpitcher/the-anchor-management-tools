@@ -213,6 +213,11 @@ async function createManualWalkInBookingOverride(params: {
   customerId: string
   source?: string   // default: 'walk-in'
   seatNow?: boolean // default: true
+  /**
+   * Recorded as deposit_waived. Set for a super admin override of a party that would owe a deposit
+   * (BK-050), so the booking says why nothing is owed and can be seated. Never for a walk-in.
+   */
+  depositWaived?: boolean
   payload: {
     date: string
     time: string
@@ -547,6 +552,11 @@ async function createManualWalkInBookingOverride(params: {
         booking_time: bookingTime,
         booking_type: bookingType,
         status: 'confirmed',
+        // Named, never left to a column default: the default of 'pending' made every walk-in and
+        // override read as owing a deposit, and an override of 15 or more could not be seated
+        // (BK-050). Nothing is owed on a booking made this way.
+        payment_status: null,
+        deposit_waived: params.depositWaived === true,
         party_size: params.payload.party_size,
         special_requirements: params.payload.notes || null,
         duration_minutes: durationMinutes,
@@ -965,6 +975,11 @@ async function createFohTableBooking(
         customerId: mgmtCustomerId,
         source: 'management',
         seatNow: false,
+        // An override takes no deposit. For a party that would owe one, say so on the booking
+        // rather than leave it reading as unpaid (BK-050).
+        depositWaived: requiresDepositForParty(payload.party_size, {
+          isChristmas: isChristmasPurpose(payload.purpose),
+        }),
         payload: {
           date: payload.date,
           time: bookingTime,
