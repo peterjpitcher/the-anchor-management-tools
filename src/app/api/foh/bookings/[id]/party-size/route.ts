@@ -3,7 +3,7 @@ import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireFohPermission, tableBookingsManagerCheck } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
   PartySizeUpdateFailedAfterMoveError,
@@ -22,6 +22,8 @@ import {
 
 const UpdatePartySizeSchema = z.object({
   christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
+  // The Christmas guests who are leaving, by their seat number now, so their own dishes go (BK-054).
+  removed_seats: z.array(z.number().int().min(1).max(CHRISTMAS_MAX_PARTY_SIZE)).max(CHRISTMAS_MAX_PARTY_SIZE - 1).optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
@@ -80,6 +82,9 @@ export async function POST(
       tableBookingId: id,
       partySize: newPartySize,
       christmasCourseCounts: parsed.data.christmas_course_counts,
+      christmasRemovedSeats: parsed.data.removed_seats,
+      // After the Christmas pre-order deadline only a manager may change the numbers (D21).
+      canMakeLateChristmasChange: tableBookingsManagerCheck(auth),
       actor: 'foh',
       sendSms: parsed.data.send_sms,
       appBaseUrl: getAppUrl(),
@@ -164,11 +169,12 @@ export async function POST(
     //
     // Like the deposit above, a failure here must not be reported as a failed amendment. The size is
     // already saved, a stale cover list is recoverable, and the nightly drift check reports it.
-    let preorderRemoved: PreorderRemovedCover[] = []
+    // Guests removed by seat are reported by the write itself; anything trimmed from the end, by the sync.
+    let preorderRemoved: PreorderRemovedCover[] = result.removed_covers ?? []
     if (result.state === 'updated' && currentBooking.booking_period_id) {
       try {
         const sync = await syncPreorderCovers(auth.supabase, id)
-        preorderRemoved = sync.removed
+        preorderRemoved = [...preorderRemoved, ...sync.removed]
       } catch (preorderError) {
         logger.error('FOH party-size pre-order cover sync failed after party size saved', {
           error: preorderError instanceof Error ? preorderError : new Error(String(preorderError)),
@@ -183,7 +189,14 @@ export async function POST(
       resource_type: 'table_booking',
       resource_id: id,
       operation_status: 'success',
-      additional_info: { source: 'foh', previousPartySize, newPartySize },
+      additional_info: {
+        source: 'foh',
+        previousPartySize,
+        newPartySize,
+        ...(parsed.data.removed_seats?.length ? { seats_removed: parsed.data.removed_seats } : {}),
+        // A manager changing a Christmas party after the pre-order deadline (D21).
+        ...(result.late_change ? { late_change: true } : {}),
+      },
     }).catch(() => {})
 
     return NextResponse.json({
@@ -193,6 +206,7 @@ export async function POST(
       depositTransition,
       warning: depositWarning,
       preorderRemoved,
+      lateChange: result.late_change === true,
     })
   } catch (error) {
     if (error instanceof ChristmasCourseValidationError) return NextResponse.json({ error: error.message }, { status: 409 })

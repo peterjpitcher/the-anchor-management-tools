@@ -21198,6 +21198,14 @@ export type Database = {
         Returns: Json
       }
       categorize_historical_events: { Args: never; Returns: number }
+      change_christmas_party_v01: {
+        Args: {
+          p_booking_id: string
+          p_course_counts: number[]
+          p_removed_ordinals?: number[]
+        }
+        Returns: Json
+      }
       check_and_reserve_capacity: {
         Args: {
           p_booking_time: string

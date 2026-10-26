@@ -5,6 +5,7 @@ const mockTableBookingPermission = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: mockTableBookingPermission,
   requireBohTableBookingPermission: mockTableBookingPermission,
+  tableBookingsManagerCheck: vi.fn(() => async () => false),
 }))
 
 vi.mock('@/lib/foh/bookings', () => ({
