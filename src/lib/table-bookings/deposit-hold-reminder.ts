@@ -6,7 +6,7 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { createTablePaymentToken } from '@/lib/table-bookings/bookings'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
-import { depositPerPerson } from '@/lib/table-bookings/deposit-terms'
+import { depositPerPersonForBooking } from '@/lib/table-bookings/deposit-terms'
 import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { depositHoldReminderFacts } from '@/lib/table-bookings/fallback-details'
 import { buildTableBookingDepositReminderEmail } from '@/lib/table-bookings/guest-emails'
@@ -110,10 +110,14 @@ export type DepositReminderBooking = {
   deposit_waived: boolean | null
   deposit_refund_cutoff_days: number | null
   paypal_deposit_capture_id: string | null
+  /** The rule, basis and rate the booking function charged by, so the terms match the request. */
+  deposit_rule?: string | null
+  deposit_basis?: string | null
+  deposit_rate?: number | string | null
 }
 
 const BOOKING_COLUMNS =
-  'id, customer_id, booking_reference, booking_date, booking_time, start_datetime, created_at, party_size, booking_type, is_outside_seating, status, payment_status, hold_expires_at, deposit_amount, deposit_amount_locked, deposit_waived, deposit_refund_cutoff_days, paypal_deposit_capture_id'
+  'id, customer_id, booking_reference, booking_date, booking_time, start_datetime, created_at, party_size, booking_type, is_outside_seating, status, payment_status, hold_expires_at, deposit_amount, deposit_amount_locked, deposit_waived, deposit_refund_cutoff_days, paypal_deposit_capture_id, deposit_rule, deposit_basis, deposit_rate'
 
 const TEMPLATE_KEY = 'table_booking_deposit_reminder'
 
@@ -176,7 +180,10 @@ export async function sendDepositHoldReminder(
         payByIso: booking.hold_expires_at,
         isOutsideSeating: isOutside,
         isChristmas: isChristmasBookingType(booking.booking_type),
-        perPersonGbp: depositPerPerson(depositAmount, partySize),
+        // The same terms the deposit request gave: a seasonal deposit is never the group rule, and
+        // a flat per-booking deposit is never divided into a per-person rate.
+        depositRule: booking.deposit_rule ?? null,
+        perPersonGbp: depositPerPersonForBooking(booking, depositAmount, partySize),
         refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
       }),
       sms: {

@@ -47,6 +47,25 @@ export function depositPerPerson(depositAmount: number | null | undefined, party
 }
 
 /**
+ * What a booking's deposit works out at per person, from the basis and rate the booking function
+ * recorded on it.
+ *
+ * `per_booking` is not a per-person rate, so it answers null and the copy drops the sentence
+ * rather than dividing a flat fee by the party and inventing a rate nobody charges. The deposit
+ * request and the hold reminder both use this, so the reminder never contradicts the request.
+ */
+export function depositPerPersonForBooking(
+  booking: { deposit_basis?: string | null; deposit_rate?: number | string | null },
+  depositAmount: number,
+  partySize: number
+): number | null {
+  if (booking.deposit_basis === 'per_booking') return null
+  const rate = Number(booking.deposit_rate)
+  if (Number.isFinite(rate) && rate > 0) return rate
+  return depositPerPerson(depositAmount, partySize)
+}
+
+/**
  * What the deposit is and where it goes. SSOT section 16, "Group deposit" and "Christmas 2026".
  *
  * `depositRule` is the rule the booking function charged by. A seasonal ('period') deposit is not

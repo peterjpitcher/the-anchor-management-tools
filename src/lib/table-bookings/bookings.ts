@@ -29,7 +29,7 @@ import {
   buildTableBookingDepositConfirmedEmail,
   buildTableBookingRescheduledEmail,
 } from '@/lib/table-bookings/guest-emails'
-import { depositPerPerson } from '@/lib/table-bookings/deposit-terms'
+import { depositPerPersonForBooking } from '@/lib/table-bookings/deposit-terms'
 import { getPreorderCutoff } from '@/lib/table-bookings/preorder'
 import {
   buildDepositConfirmedText,
@@ -430,23 +430,6 @@ export function describeCreatedDeposit(
     Math.abs(input.partySize * rate - input.depositAmount) < 0.005
   const rateLabel = Number.isInteger(rate) ? String(rate) : rate.toFixed(2)
   return { kindLabel, breakdownNote: sumMatches ? ` (${input.partySize} x GBP ${rateLabel})` : '' }
-}
-
-/**
- * What the deposit works out at per person, for the wording that says what it is.
- *
- * `per_booking` is not a per-person rate, so it answers null and the copy drops the sentence
- * rather than dividing a flat fee by the party and inventing a rate nobody charges.
- */
-function depositPerPersonForBooking(
-  bookingResult: TableBookingRpcResult,
-  depositAmount: number,
-  partySize: number
-): number | null {
-  if (bookingResult.deposit_basis === 'per_booking') return null
-  const rate = Number(bookingResult.deposit_rate)
-  if (Number.isFinite(rate) && rate > 0) return rate
-  return depositPerPerson(depositAmount, partySize)
 }
 
 /**
@@ -1274,7 +1257,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
   try {
     const { data: bookingRaw } = await supabase
       .from('table_bookings')
-      .select('id, customer_id, booking_reference, booking_date, booking_time, start_datetime, party_size, status, payment_status, booking_type, high_chair_count, is_outside_seating, deposit_amount, deposit_amount_locked, deposit_waived, deposit_rate, deposit_basis, deposit_refund_cutoff_days, hold_expires_at')
+      .select('id, customer_id, booking_reference, booking_date, booking_time, start_datetime, party_size, status, payment_status, booking_type, high_chair_count, is_outside_seating, deposit_amount, deposit_amount_locked, deposit_waived, deposit_rule, deposit_rate, deposit_basis, deposit_refund_cutoff_days, hold_expires_at')
       .eq('id', params.tableBookingId)
       .maybeSingle()
 
@@ -1298,6 +1281,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       deposit_amount: number | string | null
       deposit_amount_locked: number | string | null
       deposit_waived: boolean | null
+      deposit_rule: string | null
       deposit_rate: number | null
       deposit_basis: string | null
       deposit_refund_cutoff_days: number | null
@@ -1419,12 +1403,8 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
             depositLabel,
             paymentLink: depositPaymentLink,
             isChristmas: isChristmasBookingType(booking.booking_type),
-            perPersonGbp:
-              booking.deposit_basis === 'per_booking'
-                ? null
-                : Number.isFinite(Number(booking.deposit_rate)) && Number(booking.deposit_rate) > 0
-                  ? Number(booking.deposit_rate)
-                  : depositPerPerson(depositAmount, partySize),
+            depositRule: booking.deposit_rule ?? null,
+            perPersonGbp: depositPerPersonForBooking(booking, depositAmount, partySize),
             refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
             payByIso: holdIsLive ? booking.hold_expires_at : null,
           }
