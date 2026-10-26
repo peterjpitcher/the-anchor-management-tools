@@ -82,6 +82,11 @@ export type ResolveDepositInput = {
   periodAccepted?: boolean
   depositWaived?: boolean
   /**
+   * Why the deposit is waived, for the reason staff read: a pub event or a manager's waiver
+   * (BK-106). Only read when depositWaived is true; a manager's waiver when left out.
+   */
+  waivedFor?: 'manager' | 'pub_event'
+  /**
    * The `booking_period_deposits_enabled` kill switch, as read from the database by the caller.
    * `false` means no SEASONAL deposit is asked for. The party-size rule is deliberately untouched
    * by it: switching seasonal collection off must not stop a party at or above the group threshold
@@ -194,7 +199,11 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
         rule: 'waived',
         basis: null,
         rate: null,
-        reason: 'A manager waived the deposit for this booking.',
+        // The database's resolve_table_booking_deposit cannot tell the two apart and always says
+        // the manager wording; the booking itself records a pub event as is_venue_event.
+        reason: input.waivedFor === 'pub_event'
+          ? 'No deposit: this booking is a pub event.'
+          : 'A manager waived the deposit for this booking.',
         periodId: null,
         periodCode: null,
         periodName: null,

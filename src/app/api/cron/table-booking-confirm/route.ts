@@ -26,7 +26,6 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { reportCronFailure } from '@/lib/cron/alerting'
-import { jobQueue } from '@/lib/unified-job-queue'
 import { createBookingConfirmToken } from '@/lib/table-bookings/manage-booking'
 import { getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import {
@@ -34,7 +33,6 @@ import {
   decideConfirmReminder,
   type ConfirmCandidate,
 } from '@/lib/table-bookings/confirm-reminder'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isEmailUsable } from '@/lib/notifications/channel'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { notifyTableBookingGuestEmailFirst } from '@/lib/table-bookings/guest-notify'
@@ -65,7 +63,6 @@ type BookingRow = {
     mobile_e164: string | null
     mobile_number: string | null
     sms_status: string | null
-    // Read only on the email-first path.
     sms_opt_in?: boolean | null
     email?: string | null
     email_status?: string | null
@@ -74,8 +71,8 @@ type BookingRow = {
 }
 
 /**
- * The reminder by email first (flag table_confirm_reminder_email_first). The email and a
- * fallback text share one short link to the existing confirm page, which only asks the question:
+ * The reminder by email first. The email and a fallback text share one short link to the existing
+ * confirm page, which only asks the question:
  * the answer is a POST from that page, so a mail scanner that opens the link answers nothing.
  */
 async function sendConfirmReminderEmailFirst(
@@ -152,16 +149,13 @@ export async function GET(request: NextRequest) {
 
   try {
     // Owner decision, 11 September 2026: the reminder goes by email first, with a text as the
-    // fallback, and guests with only an email address are asked too. Off (and any failure to
-    // read the flag) is today's text-only sweep.
-    const emailFirst = await isMessagingFlagOn('table_confirm_reminder_email_first')
-
+    // fallback, and guests with only an email address are asked too. The text-only sweep behind
+    // the messaging flag table_confirm_reminder_email_first is gone (BK-129): a failed read of the
+    // flag used to bring it back and text guests who are not regulars.
     const { data: bookings, error: bookingsError } = await supabase
       .from('table_bookings')
       .select(
-        emailFirst
-          ? 'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status, sms_opt_in, email, email_status, email_deactivated_at)'
-          : 'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status)',
+        'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status, sms_opt_in, email, email_status, email_deactivated_at)',
       )
       .in('status', CONFIRMABLE_BOOKING_STATUSES as unknown as string[])
       .is('guest_confirmed_at', null)
@@ -202,12 +196,12 @@ export async function GET(request: NextRequest) {
               firstName: row.customers.first_name,
               phone: row.customers.mobile_e164 || row.customers.mobile_number || null,
               smsActive: row.customers.sms_status === 'active',
-              ...(emailFirst ? { emailUsable: isEmailUsable(row.customers) } : {}),
+              emailUsable: isEmailUsable(row.customers),
             }
           : null,
       }
 
-      const decision = decideConfirmReminder(candidate, todayIsoDate, { emailFirst })
+      const decision = decideConfirmReminder(candidate, todayIsoDate, { emailFirst: true })
       if (!decision.send) {
         counts.skipped += 1
         skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1
@@ -234,47 +228,17 @@ export async function GET(request: NextRequest) {
           appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
         })
 
-        if (emailFirst && row.customers) {
-          const outcome = await sendConfirmReminderEmailFirst(supabase, row, row.customers, token.url)
-          if (outcome.status === 'sent') {
-            counts.sent += 1
-          } else {
-            // The ledger row stays, as for every failure here; the audit row names the booking
-            // and the pub rings anyone this sweep could not reach.
-            counts.failed += 1
-            logger.error('Table booking confirm reminder reached nobody', {
-              metadata: { tableBookingId: row.id, bookingReference: row.booking_reference, outcome: outcome.status, error: outcome.error },
-            })
-          }
-          continue
+        const outcome = await sendConfirmReminderEmailFirst(supabase, row, row.customers!, token.url)
+        if (outcome.status === 'sent') {
+          counts.sent += 1
+        } else {
+          // The ledger row stays, as for every failure here; the audit row names the booking
+          // and the pub rings anyone this sweep could not reach.
+          counts.failed += 1
+          logger.error('Table booking confirm reminder reached nobody', {
+            metadata: { tableBookingId: row.id, bookingReference: row.booking_reference, outcome: outcome.status, error: outcome.error },
+          })
         }
-
-        const message = buildConfirmReminderText({
-          firstName: candidate.customer!.firstName,
-          bookingDate: row.booking_date,
-          bookingTime: row.booking_time,
-          partySize: row.party_size,
-          confirmUrl: token.url,
-        })
-
-        // No `unique` key on the enqueue: the ledger row above is the idempotency, and a
-        // second mechanism would only add a lock round trip and another way to disagree.
-        const enqueued = await jobQueue.enqueue('send_sms', {
-          to: candidate.customer!.phone,
-          message,
-          customer_id: candidate.customer!.id,
-          booking_id: row.id,
-          metadata: {
-            table_booking_id: row.id,
-            template_key: 'table_booking_confirm_reminder',
-          },
-        })
-
-        if (!enqueued.success) {
-          throw new Error(enqueued.error || 'Failed to queue the confirmation SMS')
-        }
-
-        counts.sent += 1
       } catch (sendError) {
         // The ledger row STAYS. See the header: retrying an ambiguous failure is how a
         // guest gets texted twice, and the pub rings anyone this sweep could not reach.

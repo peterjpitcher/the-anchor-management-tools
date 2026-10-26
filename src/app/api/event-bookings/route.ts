@@ -4,8 +4,7 @@ import { z } from 'zod'
 import {
   withApiAuth,
   createApiResponse,
-  createErrorResponse,
-  getApiKeyAuthState
+  createErrorResponse
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -19,7 +18,6 @@ import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUr
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
-import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 import {
@@ -127,31 +125,10 @@ function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>)
 }
 
 export async function POST(request: NextRequest) {
-  // Turnstile CAPTCHA verification, only for genuinely anonymous browser requests.
-  // API-key-authenticated requests (the website proxy) skip Turnstile here: the
-  // website uses its own Turnstile widget with a *different* secret key, so its
-  // single-use token cannot be validated with this app's secret (attempting to
-  // always fails with "Turnstile verification failed"). The website verifies the
-  // token itself before proxying. Mirrors the established table-bookings route.
-  //
-  // This used to test for the mere presence of an x-api-key or authorization
-  // header, which nobody authenticates, so `x-api-key: anything` walked straight
-  // past the bot check. It now validates the key properly, and distinguishes a
-  // key we could not check (an outage) from one that is simply absent, so our
-  // own downtime is never reported to a guest as a failed bot check.
-  const authState = await getApiKeyAuthState(request.headers)
-  if (authState === 'anonymous') {
-    const turnstileToken = request.headers.get('x-turnstile-token')
-    const turnstile = await verifyTurnstileToken(turnstileToken, getClientIp(request))
-    if (!turnstile.success) {
-      return createErrorResponse(
-        turnstile.error || 'Bot verification failed',
-        'TURNSTILE_FAILED',
-        403
-      )
-    }
-  }
-
+  // No Turnstile check here (BK-129). The website verifies its own Turnstile token, with its own
+  // widget and secret, before it proxies a booking, and this route takes only API-key callers:
+  // withApiAuth refuses an anonymous one, and answers a key it could not check with 503, so our
+  // own outage is never reported to a guest as a failed bot check.
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)
 

@@ -25,6 +25,8 @@ vi.mock('@/services/audit', () => ({ AuditService: { logAuditEvent: vi.fn(async 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({ from: vi.fn() })) }))
 
 import { sendTableBookingCreatedSmsIfAllowed, type TableBookingRpcResult } from './bookings'
+import { resolveNotificationRoute } from '@/lib/notifications/routing-matrix'
+import { selectChannel } from '@/lib/notifications/channel'
 
 /**
  * Which channels the booking notice goes on, and what a seasonal booking is told.
@@ -111,6 +113,18 @@ describe('the booking notice channels', () => {
 
     const notice = captureNotice()
     expect(notice.policy).toBe('email_only')
+    // And the real router (notifyCustomer is stood in for here) holds that policy for this
+    // template: email or nothing, never the text the guest asked not to get (BK-085).
+    const route = resolveNotificationRoute({ templateKey: 'table_booking_pending_payment', policy: 'email_only' })
+    expect(route.channels).toEqual(['email'])
+    expect(
+      selectChannel({
+        policy: 'email_only',
+        urgency: 'standard',
+        eligibility: { email: false, whatsapp: true, sms: true },
+        orderedChannels: route.channels,
+      })
+    ).toEqual({ channels: [], reason: 'no_channel_available' })
     expect(notice.email?.subject).toBe('Pay your deposit to secure your table at The Anchor')
     // The four facts the old email left out: what the money is, that it comes off the bill, the
     // deadline, and what comes back on a cancellation.
@@ -182,5 +196,107 @@ describe('the booking notice channels', () => {
     expect(notice.email?.text).toContain('Choose your food')
     expect(notice.email?.text).not.toContain('days before your booking')
     expect(notice.email?.text).not.toContain('undefined')
+  })
+})
+
+// BK-049: the deposit request recomputed the amount from party size and always printed
+// "(N x GBP 10)", so the first season charged at another rate, or per booking, would have asked
+// the guest for a wrong amount (often GBP 0) while PayPal asked for the real one.
+describe('the deposit request quotes what the booking function charged', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    notifyCustomerMock.mockResolvedValue({
+      selectedChannels: ['email'],
+      attempts: [{ channel: 'email', success: true }],
+    })
+  })
+
+  const base: TableBookingRpcResult = {
+    state: 'pending_payment',
+    table_booking_id: 'tb-2',
+    booking_reference: 'TB-0002',
+    start_datetime: '2027-03-07T13:00:00.000Z',
+    hold_expires_at: '2027-03-06T13:00:00.000Z',
+    deposit_refund_cutoff_days: 3,
+    high_chair_count: 0,
+    is_outside_seating: false,
+    booking_type: 'regular',
+  }
+
+  async function send(result: TableBookingRpcResult) {
+    await sendTableBookingCreatedSmsIfAllowed(supabase(), {
+      customerId: 'cust-1',
+      normalizedPhone: '+447700900123',
+      bookingResult: result,
+      nextStepUrl: 'https://example.test/g/raw/table-payment',
+    })
+    return captureNotice()
+  }
+
+  it("a party of 2 at GBP 15 a head is asked for GBP 30, named for the season", async () => {
+    const notice = await send({
+      ...base,
+      party_size: 2,
+      deposit_amount: 30,
+      deposit_rule: 'period',
+      deposit_basis: 'per_head',
+      deposit_rate: 15,
+      booking_period_name: "Mother's Day",
+    })
+
+    expect(notice.sms?.body).toContain("please pay your Mother's Day deposit of £30.00 (2 x GBP 15) to secure your table for 2 people")
+    expect(notice.email?.text).toContain("please pay your Mother's Day deposit of £30.00 (2 x GBP 15)")
+    expect(notice.email?.text).toContain("There's a £15 per person deposit, which comes off your bill.")
+    expect(notice.email?.text).not.toContain('Groups of 15 or more')
+    expect(notice.email?.text).not.toMatch(/£0\.00|GBP 10\)/)
+  })
+
+  it('a per-booking period shows its flat amount and no sum', async () => {
+    const notice = await send({
+      ...base,
+      party_size: 6,
+      deposit_amount: 50,
+      deposit_rule: 'period',
+      deposit_basis: 'per_booking',
+      deposit_rate: 50,
+      booking_period_name: "New Year's Eve",
+    })
+
+    expect(notice.sms?.body).toContain("please pay your New Year's Eve deposit of £50.00 to secure your table for 6 people")
+    expect(notice.email?.text).toContain('The deposit comes off your bill.')
+    expect(notice.email?.text).not.toContain(' x GBP ')
+    expect(notice.email?.text).not.toContain('Groups of 15 or more')
+  })
+
+  it('the group deposit keeps its wording', async () => {
+    const notice = await send({
+      ...base,
+      party_size: 16,
+      deposit_amount: 160,
+      deposit_rule: 'group',
+      deposit_basis: 'per_head',
+      deposit_rate: 10,
+      deposit_refund_cutoff_days: null,
+    })
+
+    expect(notice.sms?.body).toContain('please pay your table deposit of £160.00 (16 x GBP 10)')
+    expect(notice.email?.text).toContain('Groups of 15 or more: a £10 per person deposit, fully deducted from your bill.')
+  })
+
+  it('a Christmas deposit is called one', async () => {
+    const notice = await send({
+      ...base,
+      party_size: 6,
+      deposit_amount: 60,
+      deposit_rule: 'period',
+      deposit_basis: 'per_head',
+      deposit_rate: 10,
+      booking_type: 'christmas',
+      booking_period_name: 'Christmas 2026',
+      deposit_refund_cutoff_days: 7,
+    })
+
+    expect(notice.sms?.body).toContain('please pay your Christmas deposit of £60.00 (6 x GBP 10)')
+    expect(notice.email?.text).toContain("There's a £10 per person deposit, which comes off your bill.")
   })
 })

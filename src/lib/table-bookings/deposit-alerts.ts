@@ -17,6 +17,7 @@ export type TableDepositAlertKind =
   | 'capture_not_recorded'
   | 'captured_amount_problem'
   | 'capture_pending'
+  | 'capture_booking_mismatch'
 
 const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; summary: string }> = {
   refund_failed: (amount) => ({
@@ -38,6 +39,10 @@ const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; s
   captured_amount_problem: (amount) => ({
     title: 'A table deposit was taken for the wrong amount',
     summary: `PayPal took ${amount} for this booking but the amount could not be read or does not match what the booking owes, so it was not recorded. The guest was told not to retry. Refund it or record it by hand.`,
+  }),
+  capture_booking_mismatch: (amount) => ({
+    title: `A table deposit (${amount}) was taken on an order that names another booking`,
+    summary: `PayPal took ${amount} on the order stored for this booking, but the order names a different booking, so nothing was recorded. The guest was told not to retry. Check the order in PayPal, then record the deposit on the right booking or refund it.`,
   }),
   capture_pending: (amount) => ({
     title: `PayPal is holding a table deposit (${amount})`,

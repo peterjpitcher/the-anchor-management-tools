@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
@@ -34,6 +35,10 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
+// Waivers, pub events and the pacing override need table_bookings manage, not a role name (BK-106).
+vi.mock('@/app/actions/rbac', () => ({
+  checkUserPermission: vi.fn().mockResolvedValue(false),
+}))
 vi.mock('@/lib/sms/customers', () => ({
   // Literal must be inline: vi.mock factories are hoisted above const declarations.
   ensureCustomerForPhone: vi.fn().mockResolvedValue({ customerId: '11111111-1111-4111-8111-111111111111' }),
@@ -47,15 +52,19 @@ vi.mock('@/lib/analytics/events', () => ({
 vi.mock('@/lib/table-bookings/move-table', () => ({
   isAssignmentConflictError: vi.fn(() => false),
 }))
-vi.mock('@/lib/table-bookings/deposit', () => ({
-  // party_size 2 never requires a deposit in these tests.
-  requiresDeposit: vi.fn(() => false),
-  computeDepositAmount: vi.fn(() => 0),
-  // The route now reaches the seasonal resolver, which reads the live party-size rule from this
-  // module. Leaving these out made the whole suite fail to import.
-  LARGE_GROUP_DEPOSIT_THRESHOLD: 10,
-  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP: 10,
-}))
+vi.mock('@/lib/table-bookings/deposit', async (importActual) => {
+  // The real threshold and rate (15 guests, GBP 10 a head), never a copy: a hard-coded 10 here
+  // outlived the move to 15 and could let a test pass on the wrong rule (BK-125).
+  const actual = await importActual<typeof import('@/lib/table-bookings/deposit')>()
+  return {
+    // party_size 2 never requires a deposit in these tests.
+    requiresDeposit: vi.fn(() => false),
+    computeDepositAmount: vi.fn(() => 0),
+    // The route reaches the seasonal resolver, which reads the live party-size rule from this module.
+    LARGE_GROUP_DEPOSIT_THRESHOLD: actual.LARGE_GROUP_DEPOSIT_THRESHOLD,
+    LARGE_GROUP_DEPOSIT_PER_PERSON_GBP: actual.LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+  }
+})
 // No seasonal period covers the dates these tests use, so the route falls through to the
 // party-size rule exactly as it did before seasonal periods existed.
 vi.mock('@/lib/table-bookings/period-lookup', () => ({
@@ -322,6 +331,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
   it('returns 403 when a non-manager sets bypass_pacing and never calls the RPC', async () => {
     const db = createSupabaseMock({ roleRows: [{ roles: { name: 'staff' } }] })
     mockAuthSuccess(db)
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
 
     const res = await POST(
       makeRequest({
@@ -340,9 +350,11 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
     expect(db.rpc).not.toHaveBeenCalled()
   })
 
-  it('allows a manager to override pacing and passes p_bypass_pacing: true', async () => {
-    const db = createSupabaseMock({ roleRows: [{ roles: { name: 'manager' } }] })
+  it('allows anyone with table_bookings manage to override pacing and passes p_bypass_pacing: true', async () => {
+    // A role named neither manager nor super_admin, as the live Deputy role is: the permission decides.
+    const db = createSupabaseMock({ roleRows: [{ roles: { name: 'deputy' } }] })
     mockAuthSuccess(db)
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(true)
 
     const res = await POST(
       makeRequest({
@@ -356,6 +368,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
     )
 
     expect(res.status).toBe(201)
+    expect(checkUserPermission).toHaveBeenCalledWith('table_bookings', 'manage', 'user-1')
     expect(db.rpc).toHaveBeenCalledWith(
       'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: true }),

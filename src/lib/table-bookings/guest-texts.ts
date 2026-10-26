@@ -15,6 +15,7 @@ import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 /** The number the reply instruction names, read exactly as the table booking texts always have. */
 function supportPhone(): string | undefined {
@@ -130,6 +131,12 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
     return "We'll check your deposit and be in touch about it shortly."
   }
 
+  // The payment hold ran out before the deposit was paid (BK-113). Without this the guest was told
+  // only "Hope to see you again soon!" and never why their table had gone.
+  if (refundResult.reason === 'hold_expired') {
+    return `The deposit wasn't paid in time, so the table has been released. If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay}.`
+  }
+
   return 'Hope to see you again soon!'
 }
 
@@ -243,6 +250,33 @@ export function buildPartySizeDepositText(input: {
 }): string {
   const { wording } = input
   const body = `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${input.paymentUrl}`
+  return ensureReplyInstruction(body, supportPhone())
+}
+
+// ---------------------------------------------------------------------------
+// The one reminder before an unpaid deposit hold runs out (table_booking_deposit_reminder, BK-088)
+// ---------------------------------------------------------------------------
+
+/**
+ * The deposit hold reminder text. Straight apostrophes and no dashes, so it stays in the cheap
+ * GSM-7 alphabet. The booking moment and the deadline are both London times.
+ */
+export function buildDepositHoldReminderText(input: {
+  /** As the text shows it (getSmartFirstName). */
+  firstName: string
+  partySize: number
+  startDateTime: string | null
+  holdExpiresAt: string
+  /** "£160.00", as the deposit request said it. */
+  depositLabel: string
+  isOutsideSeating: boolean
+  paymentUrl: string
+}): string {
+  const noun = input.isOutsideSeating ? 'outside booking' : 'table'
+  const body =
+    `The Anchor: ${input.firstName}, we're still holding your ${noun} for ${input.partySize} on ` +
+    `${formatLondonDateTime(input.startDateTime)}. Pay the ${input.depositLabel} deposit by ` +
+    `${formatLondonDateTime(input.holdExpiresAt)} to keep it: ${input.paymentUrl}`
   return ensureReplyInstruction(body, supportPhone())
 }
 

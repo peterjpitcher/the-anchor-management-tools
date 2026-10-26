@@ -26,6 +26,7 @@ export type TableBookingFallbackMessage =
   | 'party_size_deposit_request'
   | 'confirm_reminder'
   | 'preorder_reminder'
+  | 'deposit_hold_reminder'
 
 /** The template key each message is sent under. */
 export const TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS: Record<TableBookingFallbackMessage, string> = {
@@ -34,6 +35,7 @@ export const TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS: Record<TableBookingFallbackMe
   party_size_deposit_request: 'table_booking_pending_payment',
   confirm_reminder: 'table_booking_confirm_reminder',
   preorder_reminder: 'table_booking_preorder_reminder',
+  deposit_hold_reminder: 'table_booking_deposit_reminder',
 }
 
 /**
@@ -217,6 +219,19 @@ export function partySizeDepositRequestFacts(input: {
     hold_expires_at: isoInstant(input.holdExpiresAt),
     awaiting_payment: yesNo(input.awaitingPayment),
   }
+}
+
+/**
+ * The deposit hold reminder (BK-088) states the same facts as the deposit request: the party size,
+ * the amount, when the hold runs out, and that it is still owed.
+ */
+export function depositHoldReminderFacts(input: {
+  partySize: number | null
+  depositAmount: number | string | null
+  holdExpiresAt: string | null
+  awaitingPayment: boolean
+}): FallbackBookingFacts {
+  return partySizeDepositRequestFacts(input)
 }
 
 /** Whether a booking is still waiting for its deposit, as the payment page itself decides it. */
