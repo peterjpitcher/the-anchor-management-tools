@@ -30,6 +30,11 @@ export type TableCancelledBy = 'guest' | 'venue'
 export type DepositRefundTerms = {
   cancelledBy?: TableCancelledBy
   managerAmountGbp?: number | null
+  /**
+   * PayPal took the deposit after the booking was cancelled (BK-047, owner decision D19). The
+   * guest paid for a table that was no longer theirs, so all of it goes back.
+   */
+  paidAfterCancellation?: boolean
 }
 
 export type RefundResult =
@@ -383,7 +388,7 @@ async function refundPayPalDeposit(
 
   const entitlement = resolveEntitlement(tableBookingId, bookingDate, booking, depositGbp, terms)
   if ('refused' in entitlement) return entitlement.refused
-  const { entitledGbp, tier, requestKey } = entitlement
+  const { entitledGbp, tier, requestKey, ledgerReason } = entitlement
 
   /*
    * What the guest is due now is their entitlement LESS what has already gone back.
@@ -469,7 +474,7 @@ async function refundPayPalDeposit(
     }
   }
 
-  await recordPayPalDepositRefund({ tableBookingId, captureId, refund, refundGbp, depositGbp, tier })
+  await recordPayPalDepositRefund({ tableBookingId, captureId, refund, refundGbp, depositGbp, tier, reason: ledgerReason })
 
   // Over everything that has gone back, not this refund alone: the rest of a part-refunded
   // deposit completes it.
@@ -547,7 +552,7 @@ async function refundPayPalDeposit(
 }
 
 type Entitlement =
-  | { entitledGbp: number; tier: RefundTier; requestKey: string }
+  | { entitledGbp: number; tier: RefundTier; requestKey: string; ledgerReason?: string }
   | { refused: RefundResult }
 
 /**
@@ -561,6 +566,15 @@ function resolveEntitlement(
   depositGbp: number,
   terms: DepositRefundTerms,
 ): Entitlement {
+  if (terms.paidAfterCancellation) {
+    return {
+      entitledGbp: depositGbp,
+      tier: 'full',
+      requestKey: `tbl-paypal-refund-${tableBookingId}-late`,
+      ledgerReason: 'Paid after the booking was cancelled: refunded in full',
+    }
+  }
+
   const managerGbp = terms.managerAmountGbp
   if (typeof managerGbp === 'number' && Number.isFinite(managerGbp) && managerGbp > 0) {
     const entitledGbp = Math.min(Math.round(managerGbp * 100) / 100, depositGbp)
@@ -767,9 +781,11 @@ async function recordPayPalDepositRefund(args: {
   refundGbp: number
   depositGbp: number
   tier: RefundTier
+  /** Overrides the reason the tier gives, for a refund the tier does not describe. */
+  reason?: string
 }): Promise<void> {
   const { tableBookingId, captureId, refund, refundGbp, depositGbp, tier } = args
-  const reason = CANCELLATION_REFUND_REASON[tier === 'none' ? 'full' : tier]
+  const reason = args.reason ?? CANCELLATION_REFUND_REASON[tier === 'none' ? 'full' : tier]
 
   const paypalStatus = PAYPAL_REFUND_STATUSES.find((status) => status === String(refund.status ?? '').toUpperCase()) ?? null
   // The same reading of PayPal's status as the refund webhook: only COMPLETED is money returned.

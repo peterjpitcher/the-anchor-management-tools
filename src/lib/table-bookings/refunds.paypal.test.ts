@@ -736,3 +736,28 @@ describe('refundTableBookingDeposit, cash deposits', () => {
     expect(alertTableDepositNeedsAPerson).not.toHaveBeenCalled()
   })
 })
+
+// BK-047 (owner decision D19): a deposit PayPal took after the booking was cancelled goes back in
+// full, whatever the guest's own terms would have said.
+describe('refundTableBookingDeposit, paid after cancellation', () => {
+  it('refunds the whole capture inside 3 days and labels the refund', async () => {
+    bookingRow = {
+      paypal_deposit_capture_id: 'CAP-LATE',
+      payment_method: 'paypal',
+      deposit_amount_locked: 60,
+      deposit_amount: 60,
+      payment_status: 'completed',
+      deposit_refund_status: null,
+      booking_date: null,
+      deposit_refund_cutoff_days: 7,
+      booking_period_code: 'christmas-2026',
+    }
+
+    const result = await refundTableBookingDeposit('booking-1', new Date(), { paidAfterCancellation: true })
+
+    expect(result).toMatchObject({ refunded: true, amountPence: 6000, tier: 'full' })
+    expect(refundPayPalPayment).toHaveBeenCalledWith('CAP-LATE', 60, 'tbl-paypal-refund-booking-1-late', 'GBP')
+    expect(refundRowInserts[0]).toMatchObject({ reason: 'Paid after the booking was cancelled: refunded in full', amount: 60 })
+    expect(bookingUpdates[0]).toMatchObject({ deposit_refund_status: 'refunded', payment_status: 'refunded' })
+  })
+})

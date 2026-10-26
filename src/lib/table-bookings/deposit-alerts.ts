@@ -19,6 +19,8 @@ export type TableDepositAlertKind =
   | 'capture_pending'
   | 'capture_booking_mismatch'
   | 'cash_refund_due'
+  | 'paid_after_cancel_refunded'
+  | 'paid_after_close'
 
 const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; summary: string }> = {
   refund_failed: (amount) => ({
@@ -49,6 +51,16 @@ const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; s
   cash_refund_due: (amount) => ({
     title: `A cancelled table booking is owed ${amount} in cash`,
     summary: `The booking was cancelled and its deposit was paid in cash, so nothing could be refunded automatically. Hand back ${amount} at the bar (or arrange it with the guest), offer to rebook them, and record it on the booking with Process Refund, method cash.`,
+  }),
+  // BK-047, owner decision D19: money that lands after the booking was cancelled goes back on its
+  // own, and a person is told so they can offer the guest a table.
+  paid_after_cancel_refunded: (amount) => ({
+    title: `A guest paid ${amount} for a cancelled table booking: refunded`,
+    summary: `PayPal took ${amount} for this table booking after it had been cancelled. The booking stays cancelled and the deposit has been refunded in full automatically. The guest may still want to come: offer to rebook them if a table is free.`,
+  }),
+  paid_after_close: (amount) => ({
+    title: `A guest paid ${amount} for a table booking that had already finished`,
+    summary: `PayPal took ${amount} for this table booking after it was marked no-show or completed. It is recorded on the booking but has not been refunded. Decide whether to keep it or refund it with Process Refund.`,
   }),
   capture_pending: (amount) => ({
     title: `PayPal is holding a table deposit (${amount})`,

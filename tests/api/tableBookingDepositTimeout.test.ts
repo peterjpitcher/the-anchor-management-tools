@@ -176,7 +176,7 @@ describe('table booking deposit timeout cron', () => {
   })
 
   it('records a deposit PayPal took instead of cancelling the booking', async () => {
-    vi.mocked(reconcileTableDepositOrder).mockResolvedValueOnce({ outcome: 'recorded', amountGbp: 160, wasCancelled: false })
+    vi.mocked(reconcileTableDepositOrder).mockResolvedValueOnce({ outcome: 'recorded', amountGbp: 160 })
     const { bookingUpdateBuilder } = wireDb(lapsedBooking({ paypal_deposit_order_id: 'ORDER-1' }))
 
     const { payload } = await run()
