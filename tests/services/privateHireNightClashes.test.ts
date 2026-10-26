@@ -141,7 +141,7 @@ function seed(options: {
 }
 
 function view(overrides: Partial<HireNightView> = {}): HireNightView {
-  return { date: '2026-11-27', wholePub: false, holdsRoom: true, dinerClashes: [], events: [], ...overrides }
+  return { date: '2026-11-27', wholePub: false, holdsRoom: true, dinerClashes: [], events: [], hours: null, hasCatering: false, ...overrides }
 }
 
 beforeEach(() => {
@@ -175,6 +175,17 @@ describe('the warning after a save (D24: warned, never refused)', () => {
     )
     // One room: events are listed on the page, not warned about.
     expect(describeHireNightWarning(view({ events: [{ ...quiz, closedByThisHire: false, salesStopped: false }] }))).toBeNull()
+  })
+
+  // BK-076, D24: a closed day is warned about, not refused.
+  it('says when the pub is closed that day, or the kitchen is and catering is booked', () => {
+    expect(describeHireNightWarning(view({ hours: { closed: true, kitchenClosed: true } }))).toBe(
+      'The pub is closed on this date. Check the opening hours before going ahead.',
+    )
+    expect(describeHireNightWarning(view({ hours: { closed: false, kitchenClosed: true }, hasCatering: true }))).toBe(
+      'The kitchen is closed on this date, but catering is booked on this hire.',
+    )
+    expect(describeHireNightWarning(view({ hours: { closed: false, kitchenClosed: true }, hasCatering: false }))).toBeNull()
   })
 
   it('says the night was not checked when a read fails, and never throws', async () => {

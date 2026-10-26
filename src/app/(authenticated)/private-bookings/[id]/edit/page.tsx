@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, use } from 'react'
+import { HireDateHoursNotice } from '@/components/private-bookings/HireDateHoursNotice'
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
@@ -486,6 +487,9 @@ export default function EditPrivateBookingPage({
                     value={eventDate}
                     onChange={(e) => setEventDate(e.target.value)}
                   />
+                  <div className="mt-2">
+                    <HireDateHoursNotice date={dateTbd ? null : eventDate} />
+                  </div>
                 </Field>
 
                 <Field label="Expected Guests">

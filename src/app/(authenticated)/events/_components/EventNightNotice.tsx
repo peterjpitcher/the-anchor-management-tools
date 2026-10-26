@@ -57,10 +57,27 @@ export function EventNightNotice({ date, eventId }: EventNightNoticeProps): Reac
   if (!notice) return null
 
   const wholePub = notice.hires.filter((hire) => hire.wholePub)
-  if (notice.hires.length === 0 && !notice.ticketSalesStopped) return null
+  // BK-076, D24: an event on a day the pub or kitchen is shut is warned about, not refused. A
+  // closed pub is a warning; a closed kitchen (every Monday, for one) is said, not shouted.
+  const pubClosed = notice.hours?.closed === true
+  const closedNotice = pubClosed
+    ? 'The pub is closed on this date. Check the opening hours before putting an event on.'
+    : notice.hours?.kitchenClosed
+      ? 'The kitchen is closed on this date, so no food can be served at this event.'
+      : null
+  if (notice.hires.length === 0 && !notice.ticketSalesStopped && !closedNotice) return null
+
+  if (notice.hires.length === 0 && !notice.ticketSalesStopped) {
+    return (
+      <Alert tone={pubClosed ? 'warning' : 'info'} title={pubClosed ? 'Closed on this date' : 'Kitchen closed on this date'}>
+        {closedNotice}
+      </Alert>
+    )
+  }
 
   return (
-    <Alert tone={wholePub.length > 0 || notice.ticketSalesStopped ? 'warning' : 'info'} title="Private hire on this date">
+    <Alert tone={wholePub.length > 0 || notice.ticketSalesStopped || pubClosed ? 'warning' : 'info'} title="Private hire on this date">
+      {closedNotice && <p className="mb-1 font-medium">{closedNotice}</p>}
       {notice.ticketSalesStopped && (
         <p className="mb-1 font-medium">
           Ticket sales for this event have stopped: a whole-pub private hire takes the night.

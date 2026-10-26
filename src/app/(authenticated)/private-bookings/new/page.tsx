@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { HireDateHoursNotice } from '@/components/private-bookings/HireDateHoursNotice'
 import { useRouter } from 'next/navigation'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
@@ -41,6 +42,8 @@ export default function NewPrivateBookingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [dateTbd, setDateTbd] = useState(false)
+  // The date being typed, for the closed-day notice (BK-076); the form still submits the input itself.
+  const [chosenDate, setChosenDate] = useState<string | null>(null)
   // SOP §12: the £250 standard deposit may only be reduced with a recorded
   // GM reason; £0 requires an explicit GM waiver plus reason.
   const [depositAmountInput, setDepositAmountInput] = useState('250')
@@ -243,6 +246,7 @@ export default function NewPrivateBookingPage() {
                   min={today}
                   max={maxDate}
                   disabled={dateTbd}
+                  onChange={(e) => setChosenDate(e.target.value)}
                 />
               </Field>
               <Field
@@ -275,6 +279,8 @@ export default function NewPrivateBookingPage() {
                 />
               </Field>
             </div>
+
+            <HireDateHoursNotice date={dateTbd ? null : (chosenDate ?? defaultDate)} />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field

@@ -4,6 +4,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { isValidIsoDate } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayHours } from '@/lib/business-hours/day-hours'
 import {
   loadEventsClosedByWholePubHire,
   loadPrivateHiresOnDate,
@@ -21,11 +22,46 @@ interface EventNightHire {
   holdsRoom: boolean
 }
 
+/** Whether the pub or the kitchen is shut on a date (review BK-076). */
+export interface DateHoursNotice {
+  /** False when no hours apply to the date: unknown, not closed. */
+  known: boolean
+  closed: boolean
+  kitchenClosed: boolean
+}
+
 export interface EventNightNotice {
   date: string
   hires: EventNightHire[]
   /** The saved event's ticket sales are stopped by a whole-pub hire (owner decision D24). */
   ticketSalesStopped: boolean
+  /** null when the hours could not be read. */
+  hours: DateHoursNotice | null
+}
+
+async function readDateHours(date: string, admin: ReturnType<typeof createAdminClient>): Promise<DateHoursNotice | null> {
+  try {
+    const day = (await loadDayHours(date, date, admin)).get(date)
+    return day ? { known: day.known, closed: day.closed, kitchenClosed: day.kitchenClosed } : null
+  } catch (error) {
+    logger.error('Could not read the hours for a date', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { date },
+    })
+    return null
+  }
+}
+
+/**
+ * Whether the pub or kitchen is shut on a date, for the private booking forms (review BK-076, owner
+ * decision D24): a hire on a closed day is warned about, not refused.
+ */
+export async function getDateHoursNotice(date: string): Promise<{ success?: boolean; error?: string; data?: DateHoursNotice | null }> {
+  const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('events', 'view')
+  if (!canView) return { error: 'Insufficient permissions' }
+  if (!isValidIsoDate(date)) return { error: 'Choose a date' }
+  return { success: true, data: await readDateHours(date, createAdminClient()) }
 }
 
 /**
@@ -44,7 +80,7 @@ export async function getEventNightNotice(
 
   try {
     const admin = createAdminClient()
-    const hires = await loadPrivateHiresOnDate(date, admin)
+    const [hires, hours] = await Promise.all([loadPrivateHiresOnDate(date, admin), readDateHours(date, admin)])
     let ticketSalesStopped = false
     if (eventId) {
       const closed = await loadEventsClosedByWholePubHire([eventId], admin)
@@ -65,6 +101,7 @@ export async function getEventNightNotice(
           holdsRoom: hire.holdsRoom,
         })),
         ticketSalesStopped,
+        hours,
       },
     }
   } catch (error) {
