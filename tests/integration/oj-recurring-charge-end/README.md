@@ -10,7 +10,7 @@ pg_ctl -D /tmp/oj-charge-pg-20261004 -l /tmp/oj-charge-pg.log -o '-p 55439 -k /t
 createdb -h /tmp -p 55439 oj_charge_verification
 psql -h /tmp -p 55439 -d oj_charge_verification -v ON_ERROR_STOP=1 \
   -f tests/integration/oj-recurring-charge-end/schema.sql \
-  -f supabase/migrations/20261004105351_oj_recurring_charge_end_date.sql \
+  -f supabase/migrations/20261004111703_oj_recurring_charge_end_date.sql \
   -f tests/integration/oj-recurring-charge-end/assertions.sql
 python3 tests/integration/oj-recurring-charge-end/concurrency.py
 psql -h /tmp -p 55439 -d oj_charge_verification -v ON_ERROR_STOP=1 \
