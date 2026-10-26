@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
+import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
+import { ConsentService } from '@/services/consent'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.generated'
 
@@ -235,6 +237,57 @@ async function findCustomerByPhone(
   }
 }
 
+type HeldSmsOptOut = { scope: OptOutScope; keyword: string; unmatchedId: string }
+
+/**
+ * A STOP or NOEVENTS this number sent before we had a customer for it (BK-080).
+ *
+ * An inbound text from a number we do not know waits in the holding queue
+ * (unmatched_communications) until staff link it, and only then is its opt-out applied
+ * (src/services/communications.ts). A booking made in the meantime created the customer
+ * SMS-active, so the guest who had said STOP was texted again. The strongest keyword wins: a
+ * full STOP over a marketing-only NOEVENTS.
+ *
+ * A failed read returns null and is logged: Twilio still refuses texts to a number that sent STOP
+ * (and that refusal is recorded, src/lib/sms/provider-opt-out.ts), so the booking goes ahead.
+ */
+async function findHeldSmsOptOut(
+  client: SupabaseClient<Database, 'public'>,
+  numbersToMatch: string[]
+): Promise<HeldSmsOptOut | null> {
+  try {
+    const { data, error } = await client
+      .from('unmatched_communications')
+      .select('id, body_text')
+      .eq('channel', 'sms')
+      .eq('direction', 'inbound')
+      .in('from_address', numbersToMatch)
+      .is('linked_customer_id', null)
+      .order('received_at', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error('Could not check the holding queue for an opt-out before creating a customer', JSON.stringify({
+        code: error.code ?? null,
+        message: error.message ?? null,
+      }))
+      return null
+    }
+
+    let held: HeldSmsOptOut | null = null
+    for (const row of (data ?? []) as Array<{ id: string; body_text: string | null }>) {
+      const detection = detectOptOut(row.body_text)
+      if (!detection) continue
+      if (detection.scope === 'all') return { ...detection, unmatchedId: row.id }
+      held = held ?? { ...detection, unmatchedId: row.id }
+    }
+    return held
+  } catch (error) {
+    console.error('Could not check the holding queue for an opt-out before creating a customer', error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === '23505'
 }
@@ -314,15 +367,21 @@ export async function ensureCustomerForPhone(
       ? providedLastName
       : ''
 
+    // A STOP or NOEVENTS this number sent before it had a customer starts the customer opted out.
+    const heldOptOut = await findHeldSmsOptOut(client, numbersToMatch)
+    const optedOutAt = new Date().toISOString()
+
     const insertPayload = {
       first_name: fallbackFirstName,
       last_name: fallbackLastName,
       mobile_number: standardizedPhone,
       mobile_e164: standardizedPhone,
       email: sanitizedEmail,
-      sms_opt_in: true,
-      sms_status: 'active',
+      sms_opt_in: heldOptOut?.scope !== 'all',
+      sms_status: heldOptOut?.scope === 'all' ? 'opted_out' : 'active',
+      sms_opted_out_at: heldOptOut?.scope === 'all' ? optedOutAt : null,
       marketing_sms_opt_in: false,
+      marketing_sms_opted_out_at: heldOptOut ? optedOutAt : null,
       whatsapp_opt_in: true,
       whatsapp_status: 'active',
       marketing_whatsapp_opt_in: false,
@@ -387,6 +446,28 @@ export async function ensureCustomerForPhone(
       console.error('Customer created without the typed email, which is on another customer', JSON.stringify({
         customerId: inserted?.id ?? null
       }))
+    }
+
+    if (heldOptOut && inserted?.id) {
+      // The record already starts opted out; this writes the consent history to match. Best
+      // effort: the columns above are what every send reads.
+      try {
+        await ConsentService.recordOptOut(
+          inserted.id,
+          'sms',
+          'twilio_inbound_sms',
+          {
+            captureMethod: 'inbound_keyword',
+            metadata: { unmatched_communication_id: heldOptOut.unmatchedId, keyword: heldOptOut.keyword },
+          },
+          heldOptOut.scope === 'all' ? ['service', 'marketing'] : ['marketing']
+        )
+      } catch (error) {
+        console.error('Customer created opted out, but the opt-out history was not written', JSON.stringify({
+          customerId: inserted.id,
+          message: error instanceof Error ? error.message : String(error),
+        }))
+      }
     }
 
     return {

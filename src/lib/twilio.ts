@@ -4,6 +4,7 @@ import { retry, RetryConfigs } from './retry';
 import { logger } from './logger';
 import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
+import { recordProviderSmsOptOut } from '@/lib/sms/provider-opt-out';
 import { recordOutboundMessage, recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { resolveSmsSuspensionReason, SMS_SUSPENSION_SWITCHES } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -784,6 +785,8 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       const refusedCustomerId = resolvedCustomerId ?? options.customerId;
       if (errCode !== undefined && refusedCustomerId && supabase) {
         await markCustomerNumberUndeliverable(supabase, refusedCustomerId, errCode);
+        // A refusal because the number replied STOP is an opt-out to record, not a dead number.
+        await recordProviderSmsOptOut(supabase, refusedCustomerId, errCode);
       }
 
       // Provide user-friendly error messages

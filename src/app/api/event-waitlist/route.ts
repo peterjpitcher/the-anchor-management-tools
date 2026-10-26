@@ -255,19 +255,6 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
-      await ConsentService.applyBookingContactConsent(
-        customerResolution.customerId,
-        parsed.data.communication_consent,
-        {
-          source: 'public_event_waitlist',
-          captureMethod: 'checkbox',
-          sourceUrl: req.headers.get('referer'),
-          userAgent: req.headers.get('user-agent'),
-          relatedEntityType: 'event_waitlist',
-          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-        }
-      )
-
       const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_event_waitlist_entry_v05', {
         p_event_id: parsed.data.event_id,
         p_customer_id: customerResolution.customerId,
@@ -286,6 +273,24 @@ export async function POST(request: NextRequest) {
       const state = waitlistResult.state || 'blocked'
       mutationCommitted = state === 'queued' || Boolean(waitlistResult.waitlist_entry_id)
       let smsMeta: SmsSafetyMeta = null
+
+      // Recorded once the entry exists, so the consent names it (BK-080), and before the waitlist
+      // text so that text's channel choice sees it.
+      if (state === 'queued' && waitlistResult.waitlist_entry_id) {
+        await ConsentService.applyBookingContactConsent(
+          customerResolution.customerId,
+          parsed.data.communication_consent,
+          {
+            source: 'public_event_waitlist',
+            captureMethod: 'checkbox',
+            sourceUrl: req.headers.get('referer'),
+            userAgent: req.headers.get('user-agent'),
+            relatedEntityType: 'event_waitlist',
+            relatedEntityId: waitlistResult.waitlist_entry_id,
+            metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+          }
+        )
+      }
 
       if (state === 'queued') {
         const [, smsOutcome] = await Promise.allSettled([

@@ -7,6 +7,7 @@ import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
@@ -107,7 +108,9 @@ const CreateFohTableBookingSchema = z.object({
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
   bypass_pacing: z.boolean().optional(),
-  is_venue_event: z.boolean().optional().default(false)
+  is_venue_event: z.boolean().optional().default(false),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketing_texts_yes: z.boolean().optional()
 }).superRefine((value, context) => {
   if (value.customer_mode === 'selected' && !value.customer_id) {
     context.addIssue({
@@ -1913,6 +1916,15 @@ async function createFohTableBooking(
   // Kept before the confirmation goes, so it reaches the address the guest gave (BK-078).
   if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
     await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, bookingContactEmail)
+    // A made-up walk-in customer has no number to text, so there is nothing to consent to.
+    await recordStaffReadOutConsent({
+      saidYes: payload.marketing_texts_yes === true && !walkInTrail.customer,
+      customerId,
+      actorUserId: auth.userId,
+      source: 'staff_table_booking',
+      relatedEntityType: 'table_booking',
+      relatedEntityId: bookingResult.table_booking_id,
+    })
   }
 
   // Whether a confirmation is known to have reached the guest, so staff can tell them when none

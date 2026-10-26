@@ -6,6 +6,7 @@ import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import {
@@ -46,7 +47,9 @@ const CreateFohEventBookingSchema = z.object({
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
   ),
-  seating_preference: z.enum(['seated', 'standing']).optional()
+  seating_preference: z.enum(['seated', 'standing']).optional(),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketing_texts_yes: z.boolean().optional()
 }).superRefine((value, context) => {
   if (value.customer_mode === 'selected' && !value.customer_id) {
     context.addIssue({
@@ -458,6 +461,15 @@ async function createFohEventBooking(
   // tidy-up then keeps any customer a cancelled event booking still refers to.
   if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
     walkInTrail.bookingPersisted = true
+    // A made-up walk-in customer has no number to text, so there is nothing to consent to.
+    await recordStaffReadOutConsent({
+      saidYes: payload.marketing_texts_yes === true && !walkInTrail.customer,
+      customerId,
+      actorUserId: auth.userId,
+      source: 'staff_event_booking',
+      relatedEntityType: 'event_booking',
+      relatedEntityId: bookingId,
+    })
   }
 
   // ── Walk-in: auto-mark table booking as seated ──────────────────────────────

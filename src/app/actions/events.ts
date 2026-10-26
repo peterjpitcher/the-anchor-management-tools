@@ -13,6 +13,7 @@ import { getAppUrl } from '@/lib/env'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import {
   createEventManageToken,
   getEventRefundPolicy,
@@ -884,7 +885,9 @@ const createEventManualBookingSchema = z.object({
   ticketSelections: z.array(z.object({
     ticketTypeId: z.string().uuid(),
     quantity: z.number().int().min(1).max(20)
-  })).min(1).max(20).optional()
+  })).min(1).max(20).optional(),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketingTextsYes: z.boolean().optional()
 })
 
 type EventManualBookingResult =
@@ -918,6 +921,8 @@ export async function createEventManualBooking(input: {
   lastName?: string
   attendeeNames?: string[]
   ticketSelections?: Array<{ ticketTypeId: string; quantity: number }>
+  /** Staff read the guest the marketing notice and they said yes (owner decision D32). */
+  marketingTextsYes?: boolean
 }): Promise<EventManualBookingResult> {
   try {
     // ── Admin-specific pre-checks ────────────────────────────────────────────
@@ -1119,6 +1124,14 @@ export async function createEventManualBooking(input: {
             quantity: line.quantity
           })) ?? null
         }
+      })
+      await recordStaffReadOutConsent({
+        saidYes: parsed.data.marketingTextsYes,
+        customerId,
+        actorUserId: user.id,
+        source: 'staff_event_booking',
+        relatedEntityType: 'event_booking',
+        relatedEntityId: bookingId,
       })
     }
 
