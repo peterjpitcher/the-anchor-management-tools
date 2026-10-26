@@ -149,6 +149,52 @@ describe('Confirm deposit sends the contract', () => {
     expect(mockedQueueAndSend).not.toHaveBeenCalled()
   })
 
+  it('generates the contract from the amount being confirmed, not the one stored before', async () => {
+    seed(bookingRow({ deposit_amount: 250 }))
+    mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
+    const amountsSeen: number[] = []
+    const sendContract = vi.fn(async (bookingId: string) => {
+      amountsSeen.push(Number(state.db.tables.private_bookings.find((candidate: any) => candidate.id === bookingId).deposit_amount))
+      row().contract_sent_at = NOW.toISOString()
+    })
+
+    const outcome = await confirmDeposit({ bookingId: 'booking-1', amount: 100, confirmedBy: 'user-1', now: NOW, sendContract })
+
+    expect(amountsSeen).toEqual([100])
+    expect(outcome).toMatchObject({ status: 'sent', contract: 'sent' })
+  })
+
+  it('sends one contract when two people confirm the same booking at once', async () => {
+    seed(bookingRow())
+    mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
+    const sendContract = fakeContractSender([])
+
+    const outcomes = await Promise.all([
+      confirmDeposit({ bookingId: 'booking-1', amount: 250, confirmedBy: 'user-1', now: NOW, sendContract }),
+      confirmDeposit({ bookingId: 'booking-1', amount: 250, confirmedBy: 'user-2', now: NOW, sendContract }),
+    ])
+
+    expect(sendContract).toHaveBeenCalledTimes(1)
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['already_confirmed', 'sent'])
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so when the contract fails and the booking cannot be put back', async () => {
+    seed(bookingRow())
+    const sendContract = vi.fn(async () => {
+      // Someone else changed the confirmation meanwhile, so the undo no longer matches.
+      row().deposit_confirmed_at = '2026-09-11T09:00:05.000Z'
+      throw new Error('signing service unavailable')
+    })
+
+    const outcome = await confirmDeposit({ bookingId: 'booking-1', amount: 250, confirmedBy: 'user-1', now: NOW, sendContract })
+
+    expect(outcome).toMatchObject({ status: 'not_sent', restored: false, contract: 'failed' })
+    expect(outcome.message).toContain('could not be put back to "deposit to be confirmed"')
+    expect(mockedSendEmail).not.toHaveBeenCalled()
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
+  })
+
   it('is refused for someone who cannot send contracts, before anything happens', async () => {
     seed(bookingRow())
     const sendContract = vi.fn()
