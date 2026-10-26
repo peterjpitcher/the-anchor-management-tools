@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Dedicated temporary cluster, no connection to the linked Supabase project.
+# CI runs the same suite through scripts/testing/event-physical-capacity-postgres.py (npm run test:pg),
+# which also books named guests through the live booking functions. This script is kept for the
+# production approval record that names it.
 set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 pg_bin="${EVENT_CAPACITY_PG_BIN:-/opt/homebrew/opt/postgresql@17/bin}"

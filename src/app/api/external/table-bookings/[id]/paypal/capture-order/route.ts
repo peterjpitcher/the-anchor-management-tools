@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome';
+import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
@@ -134,7 +136,7 @@ export async function POST(
       }
 
       // Capture the PayPal payment
-      let captureResult: { transactionId: string; status: string; payerId?: string; amount?: string; currency?: string | null };
+      let captureResult: { transactionId: string; status: string; captureStatus?: string | null; captureStatusReason?: string | null; payerId?: string; amount?: string; currency?: string | null };
       try {
         captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY);
       } catch (err) {
@@ -155,6 +157,49 @@ export async function POST(
       }
 
       const transactionId = captureResult.transactionId;
+
+      // Only a COMPLETED capture is a paid deposit (BK-019). The booking is left as it is: a
+      // PENDING capture is settled by the PAYMENT.CAPTURE.COMPLETED webhook, which records the
+      // deposit then, and a refused one has taken no money.
+      const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus);
+      if (captureOutcome !== 'completed') {
+        logger.error('capture-order: PayPal did not complete the deposit capture', {
+          error: new Error(`table_deposit_capture_${captureOutcome}`),
+          metadata: { bookingId, orderId, transactionId, captureStatus: captureResult.captureStatus ?? null, reason: captureResult.captureStatusReason ?? null },
+        });
+        void logAuditEvent({
+          operation_type: captureOutcome === 'pending' ? 'payment.capture_pending' : 'payment.capture_declined',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId,
+            transactionId,
+            captureStatus: captureResult.captureStatus ?? null,
+            captureStatusReason: captureResult.captureStatusReason ?? null,
+            action_needed: captureOutcome === 'pending'
+              ? 'PayPal is holding this deposit for review. The booking is not marked paid; the PayPal webhook records it if PayPal completes it. Check the payment in PayPal if it does not clear.'
+              : 'PayPal refused this deposit capture. No money was taken and the booking is not marked paid.',
+          },
+        });
+        if (captureOutcome === 'pending') {
+          await alertTableDepositNeedsAPerson(supabase, {
+            bookingId,
+            kind: 'capture_pending',
+            amountGbp: parsePayPalAmountGbp(captureResult.amount),
+            orderId,
+            captureId: transactionId,
+            detail: captureResult.captureStatusReason ?? null,
+            source: 'website capture',
+          });
+        }
+        return NextResponse.json(
+          captureOutcome === 'pending'
+            ? { success: false, error: 'PayPal is still processing this payment. Please contact support; do not retry.', code: 'CAPTURE_PENDING' }
+            : { success: false, error: 'PayPal did not take this payment. Please contact support.', code: 'CAPTURE_DECLINED' },
+          { status: 502 },
+        );
+      }
 
       // Lock the actually-captured GBP amount on the booking — authoritative
       // source for what the customer was charged. Fail closed if the capture
@@ -188,6 +233,14 @@ export async function POST(
               'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required before unlocking the booking',
           },
         });
+        await alertTableDepositNeedsAPerson(supabase, {
+          bookingId,
+          kind: 'captured_amount_problem',
+          orderId,
+          captureId: transactionId,
+          detail: 'the captured amount could not be read',
+          source: 'website capture',
+        });
         return NextResponse.json(
           {
             success: false, error: 'Payment captured but amount could not be verified. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_UNVERIFIED',
@@ -210,6 +263,15 @@ export async function POST(
             action_needed:
               'PayPal capture succeeded for an amount that no longer matches the booking — manual reconciliation required',
           },
+        });
+        await alertTableDepositNeedsAPerson(supabase, {
+          bookingId,
+          kind: 'captured_amount_problem',
+          amountGbp: lockedAmountGbp,
+          orderId,
+          captureId: transactionId,
+          detail: `the booking owes £${expectedAmount.toFixed(2)}`,
+          source: 'website capture',
         });
         return NextResponse.json(
           { success: false, error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.', code: 'CAPTURED_AMOUNT_MISMATCH' },
@@ -248,6 +310,16 @@ export async function POST(
             dbError: updateError?.message || 'Booking was no longer payable at update time',
             action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
           },
+        });
+        // The guest is told the team has been notified: make that true (BK-114).
+        await alertTableDepositNeedsAPerson(supabase, {
+          bookingId,
+          kind: 'capture_not_recorded',
+          amountGbp: lockedAmountGbp,
+          orderId,
+          captureId: transactionId,
+          detail: updateError?.message || 'the booking was no longer payable at update time',
+          source: 'website capture',
         });
         return NextResponse.json(
           { success: false, error: 'Payment captured but booking update failed. Our team has been notified.', code: 'CAPTURED_BOOKING_UPDATE_FAILED' },

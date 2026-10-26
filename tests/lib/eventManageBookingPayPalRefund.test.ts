@@ -55,11 +55,6 @@ describe('processEventRefund', () => {
       ['select', 'eq', 'in', 'not', 'order']
     )
 
-    const existingRefundLookup = chain(
-      { data: [], error: null },
-      ['select', 'eq', 'contains', 'in', 'order']
-    )
-
     const allRefundsLookup = chain(
       { data: [], error: null },
       ['select', 'eq', 'contains', 'in']
@@ -81,7 +76,8 @@ describe('processEventRefund', () => {
       from: vi
         .fn()
         .mockReturnValueOnce(paymentLookup)
-        .mockReturnValueOnce(existingRefundLookup)
+        // No same-reason lookup any more: earlier refunds with the same reason no longer count
+        // as this one done (BK-024).
         .mockReturnValueOnce(allRefundsLookup)
         .mockReturnValueOnce(webhookRowLookup)
         .mockReturnValueOnce({ insert })
@@ -145,7 +141,6 @@ describe('processEventRefund', () => {
         { data: [{ id: 'payment-1', amount: 20, currency: 'GBP', paypal_capture_id: 'CAPTURE-123' }], error: null },
         ['select', 'eq', 'in', 'not', 'order']
       )
-      const existingRefundLookup = chain({ data: [], error: null }, ['select', 'eq', 'contains', 'in', 'order'])
       const allRefundsLookup = chain({ data: [], error: null }, ['select', 'eq', 'contains', 'in'])
       const webhookRowLookup = chain({ data: null, error: null }, ['select', 'eq', 'contains', 'limit'])
       const updatePayment = chain({ data: null, error: updateError }, ['update', 'eq'])
@@ -154,7 +149,7 @@ describe('processEventRefund', () => {
         from: vi
           .fn()
           .mockReturnValueOnce(paymentLookup)
-          .mockReturnValueOnce(existingRefundLookup)
+          // No same-reason lookup any more (BK-024).
           .mockReturnValueOnce(allRefundsLookup)
           .mockReturnValueOnce(webhookRowLookup)
           .mockReturnValueOnce({ insert })
@@ -316,4 +311,116 @@ describe('processEventRefund', () => {
     })
     expect(recordAnalyticsEvent).not.toHaveBeenCalled()
   })
+
+  // BK-024: a second refund with the same reason on the same booking counted the first as itself
+  // already done, so it replayed without calling PayPal and still reported success.
+  describe('more than one refund on a booking', () => {
+    function paidBooking() {
+      return createFakeSupabase({
+        payments: [{
+          id: 'payment-1',
+          event_booking_id: 'booking-1',
+          charge_type: 'prepaid_event',
+          payment_provider: 'paypal',
+          amount: 160,
+          currency: 'GBP',
+          status: 'succeeded',
+          paypal_capture_id: 'CAPTURE-160',
+          metadata: {},
+          created_at: '2026-09-01T10:00:00.000Z',
+        }],
+      })
+    }
+
+    function refundsTo(db: ReturnType<typeof createFakeSupabase>) {
+      let n = 0
+      ;(refundPayPalPayment as unknown as Mock).mockImplementation(async (_capture: string, amount: number) => {
+        n++
+        return { refundId: `RFD-${n}`, status: 'COMPLETED', amount: amount.toFixed(2) }
+      })
+      ;(recordAnalyticsEvent as unknown as Mock).mockResolvedValue(undefined)
+      return () => db.tables.payments.filter((row) => row.charge_type === 'refund')
+    }
+
+    it('makes two PayPal refunds totalling £80 for two £40 manual refunds on a £160 capture', async () => {
+      const db = paidBooking()
+      const refundRows = refundsTo(db)
+
+      for (const requestId of ['request-a', 'request-b']) {
+        const result = await processEventRefund(db as any, {
+          bookingId: 'booking-1',
+          customerId: 'customer-1',
+          eventId: 'event-1',
+          amount: 40,
+          reason: 'staff_manual_refund',
+          metadata: { idempotency_key: `staff-manual-refund:booking-1:${requestId}` },
+        })
+        expect(result).toMatchObject({ status: 'succeeded', amount: 40 })
+      }
+
+      expect(refundPayPalPayment).toHaveBeenCalledTimes(2)
+      // Two different PayPal request ids, or PayPal would answer the second with the first.
+      const requestIds = (refundPayPalPayment as unknown as Mock).mock.calls.map((call) => call[2])
+      expect(new Set(requestIds).size).toBe(2)
+      expect(refundRows().reduce((sum, row) => sum + Number(row.amount), 0)).toBe(80)
+      expect(db.tables.payments.find((row) => row.id === 'payment-1')?.status).toBe('partially_refunded')
+    })
+
+    it('replays, without calling PayPal again, a repeat of the same refund request', async () => {
+      const db = paidBooking()
+      const refundRows = refundsTo(db)
+      const input = {
+        bookingId: 'booking-1',
+        customerId: 'customer-1',
+        eventId: 'event-1',
+        amount: 40,
+        reason: 'staff_manual_refund',
+        metadata: { idempotency_key: 'staff-manual-refund:booking-1:request-a' },
+      }
+
+      await processEventRefund(db as any, input)
+      const repeat = await processEventRefund(db as any, input)
+
+      expect(repeat).toMatchObject({ status: 'succeeded', amount: 40, reason: 'idempotent_replay' })
+      expect(refundPayPalPayment).toHaveBeenCalledTimes(1)
+      expect(refundRows()).toHaveLength(1)
+    })
+
+    it('refunds both of two seat reductions in the same refund band', async () => {
+      const db = paidBooking()
+      const refundRows = refundsTo(db)
+
+      for (const change of ['4-3', '3-2']) {
+        await processEventRefund(db as any, {
+          bookingId: 'booking-1',
+          customerId: 'customer-1',
+          eventId: 'event-1',
+          amount: 40,
+          reason: 'seat_reduction_full',
+          metadata: { idempotency_key: `guest-seat-reduction:booking-1:${change}:${change}-request` },
+        })
+      }
+
+      expect(refundPayPalPayment).toHaveBeenCalledTimes(2)
+      expect(refundRows()).toHaveLength(2)
+    })
+
+    it('never refunds more than is left on the capture', async () => {
+      const db = paidBooking()
+      refundsTo(db)
+
+      await processEventRefund(db as any, {
+        bookingId: 'booking-1', customerId: 'customer-1', eventId: 'event-1', amount: 150,
+        reason: 'staff_manual_refund', metadata: { idempotency_key: 'k-1' },
+      })
+      const second = await processEventRefund(db as any, {
+        bookingId: 'booking-1', customerId: 'customer-1', eventId: 'event-1', amount: 40,
+        reason: 'staff_manual_refund', metadata: { idempotency_key: 'k-2' },
+      })
+
+      expect((refundPayPalPayment as unknown as Mock).mock.calls[1][1]).toBe(10)
+      expect(second).toMatchObject({ status: 'manual_required', amount: 10, reason: 'partial_refund_only' })
+    })
+  })
 })
+

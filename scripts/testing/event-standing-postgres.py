@@ -4,6 +4,11 @@
 The real booking function runs against synthetic records. Capacity and table
 allocation are fixture functions; this checks the policy and its event-row lock,
 not the production allocator or external confirmations.
+
+The booking body here is the 6 September one (20260906143610), which
+20260921074304_event_physical_capacity replaced; standing places against the live functions
+are tested by event-physical-capacity-postgres.py and event-communal-payment-confirm-postgres.py
+(BK-126, review of 24 October 2026).
 """
 import os
 from pathlib import Path

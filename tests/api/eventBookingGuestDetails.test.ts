@@ -74,4 +74,16 @@ describe('public paid guest boundary', () => {
     expect(response.status).toBe(400)
     expect(mocks.customer).not.toHaveBeenCalled()
   })
+  // BK-098: the website added a pence price up in floating point, and the exact comparison in the
+  // booking function refused it as "price changed" on every retry.
+  it.each([
+    ['12.95 x 3', 12.95 * 3, 38.85],
+    ['4.95 x 3', 4.95 * 3, 14.85],
+    ['19.99 x 5', 19.99 * 5, 99.95],
+    ['13.00 less 10% x 3', 11.7 * 3, 35.1],
+  ])('passes a pence total of %s to the booking function rounded to pence', async (_label, sent, expected) => {
+    await POST(request({ ...payload, seats: 1, attendees: [attendee], expected_total: sent }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ expectedTotal: expected }))
+  })
 })
+

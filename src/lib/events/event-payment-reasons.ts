@@ -45,6 +45,25 @@ const EVENT_PAYMENT_REASON_SENTENCES: Record<string, string> = {
   capture_reference_mismatch: CALL_BEFORE_PAYING_AGAIN,
   confirmation_blocked: CALL_BEFORE_PAYING_AGAIN,
   capture_already_captured_pending_confirmation: CALL_BEFORE_PAYING_AGAIN,
+  // PayPal took the money but the booking could not be confirmed (BK-124). Answered as manual
+  // review, never as a refusal, but named here so the guest is never shown the code.
+  confirmation_failed_after_capture: CALL_BEFORE_PAYING_AGAIN,
+  // PayPal is holding the payment for review, or refused it (BK-019). Either way the guest must
+  // ring rather than pay again: a held payment may still go through.
+  capture_pending: CALL_BEFORE_PAYING_AGAIN,
+  capture_declined: CALL_BEFORE_PAYING_AGAIN,
+}
+
+/**
+ * Sentences for reasons whose meaning depends on the step: the guest payment link's throttle
+ * (BK-029). Before a payment is approved nothing has been charged; after it, the guest is asked
+ * to ring rather than pay again.
+ */
+const STEP_SENTENCES: Record<string, { start: string; capture: string }> = {
+  rate_limited: {
+    start: `There have been too many attempts to pay for this booking online. Please ${CALL} and we will help.`,
+    capture: CALL_BEFORE_PAYING_AGAIN,
+  },
 }
 
 /** Reasons the routes are known to answer with. Used by the tests to keep the table complete. */
@@ -63,6 +82,8 @@ export function eventPaymentReasonSentence(
   reason: string | null | undefined,
   step: 'start' | 'capture'
 ): string {
+  const byStep = reason ? STEP_SENTENCES[reason]?.[step] : undefined
+  if (byStep) return byStep
   const known = reason ? EVENT_PAYMENT_REASON_SENTENCES[reason] : undefined
   if (known) return known
   return step === 'capture' ? EVENT_PAYMENT_CAPTURE_FALLBACK : EVENT_PAYMENT_START_FALLBACK

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { sendEventRefundStatusUpdateEmail } from '@/lib/email/event-ticket-emails'
 
 export type RefundOutcome = 'refunded' | 'pending' | 'failed' | 'unknown'
@@ -184,6 +185,15 @@ export async function reconcileEventRefund(
         metadata: { bookingId, paymentId: row.id, error: exceptionError.message }
       })
     }
+    // The guest is owed money and nothing read the exception row (BK-018, BK-114).
+    await alertEventPaymentNeedsAPerson(supabase, {
+      bookingId,
+      kind: 'refund_failed',
+      reason: 'PayPal reported the refund as failed',
+      amount,
+      currency,
+      source: 'refund reconciliation',
+    })
     if (!recordedFromPayPal) {
       await sendEventRefundStatusUpdateEmail(supabase, { bookingId, outcome: 'failed', amount, currency })
         .catch((e) => logger.warn('Failed to send refund failed email', {

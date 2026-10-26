@@ -4,6 +4,7 @@ import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
+import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
 
@@ -104,6 +105,8 @@ export async function POST(
   // Set only on the email-first path (flag table_cancelled_email_first), so the screen can say
   // when the guest was not reached. The text-only path returns nothing, as before.
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
+  // What happened to the deposit, for the person who cancelled (BK-114).
+  let depositRefund: DepositRefundOutcome | null = null
   if (booking.booking_date && booking.customer_id) {
     const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: booking.id,
@@ -113,6 +116,7 @@ export async function POST(
       source: 'foh_cancel',
     })
     guestNotification = cancelOutcome?.notification ?? null
+    depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
   }
 
   // Staff status changes are auditable mutations. These FOH routes cancel bookings,
@@ -131,5 +135,6 @@ export async function POST(
     booking: data,
     data,
     ...(guestNotification ? { guest_notification: guestNotification } : {}),
+    ...(depositRefund ? { deposit_refund: depositRefund } : {}),
   })
 }

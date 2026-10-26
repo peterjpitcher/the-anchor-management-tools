@@ -1,5 +1,7 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
+import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import {
@@ -146,6 +148,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
           amount: candidateRefundAmount,
           reason: `seat_reduction_${policy.policyBand}`,
           metadata: {
+            // One key per seat change (BK-024): old seats, new seats and this request. A second
+            // reduction in the same refund band used to count as already refunded. A repeat of
+            // this request cannot refund twice either way: the seats are already reduced, so it
+            // finds no change to refund.
+            idempotency_key: `guest-seat-reduction:${updateResult.booking_id}:${updateResult.old_seats ?? 'x'}-${updateResult.new_seats ?? 'x'}:${randomUUID()}`,
             reduced_seats: reducedSeats,
             old_seats: updateResult.old_seats ?? null,
             new_seats: updateResult.new_seats ?? null
@@ -153,6 +160,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
         refundStatus = refundResult.status
         refundAmount = refundResult.amount
+        if (refundResult.status === 'failed' || refundResult.status === 'manual_required') {
+          // The guest is owed money for the seats they gave up (BK-114).
+          await alertEventPaymentNeedsAPerson(supabase, {
+            bookingId: updateResult.booking_id,
+            kind: 'refund_failed',
+            reason: refundResult.reason ?? refundResult.status,
+            amount: candidateRefundAmount,
+            source: 'guest seat reduction',
+          })
+        }
       }
 
       if (

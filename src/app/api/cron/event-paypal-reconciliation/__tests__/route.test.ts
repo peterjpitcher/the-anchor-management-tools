@@ -29,6 +29,11 @@ vi.mock('@/lib/events/refund-reconciliation', () => ({
   reconcileEventRefund: vi.fn(),
 }))
 
+const mockAlert = vi.fn()
+vi.mock('@/lib/events/payment-alerts', () => ({
+  alertEventPaymentNeedsAPerson: mockAlert,
+}))
+
 const mockLoggerError = vi.fn()
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -71,8 +76,9 @@ const mockFrom = vi.fn((table: string) => {
   }
 })
 
+const mockRpc = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: mockFrom, rpc: vi.fn() }),
+  createAdminClient: () => ({ from: mockFrom, rpc: mockRpc }),
 }))
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -177,3 +183,92 @@ describe('event-paypal-reconciliation: abandoned PayPal orders', () => {
     )
   })
 })
+
+// BK-019: the sweep confirmed any order with a capture, including one PayPal was still holding
+// (PENDING) and one it had refused (DECLINED).
+describe('event-paypal-reconciliation: captures PayPal has not completed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    selectResults = []
+    updateResult = { error: null }
+    mockAuthorizeCronRequest.mockReturnValue({ authorized: true })
+    mockIsPayPalOrderNotFoundError.mockReturnValue(false)
+  })
+
+  function orderWithCapture(status: string) {
+    return {
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-1', status, status_details: { reason: 'PENDING_REVIEW' }, amount: { value: '80.00', currency_code: 'GBP' } }] } }],
+    }
+  }
+
+  it('confirms nothing and marks the payment as held when the capture is PENDING', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('PENDING'))
+
+    const body = await runRoute()
+
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(body.confirmed).toBe(0)
+    expect(body.capturePending).toBe(1)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      paypal_capture_id: 'CAPTURE-1',
+      metadata: expect.objectContaining({ capture_status: 'PENDING', source: 'booking_id' }),
+    }))
+    expect(mockUpdate.mock.calls[0][0]).not.toHaveProperty('status')
+    expect(mockAlert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: 'booking-1', kind: 'capture_pending' }))
+  })
+
+  it('confirms nothing and marks the payment failed when the capture was DECLINED', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('DECLINED'))
+
+    const body = await runRoute()
+
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(body.captureDeclined).toBe(1)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      metadata: expect.objectContaining({ capture_status: 'DECLINED' }),
+    }))
+  })
+
+  it('still confirms a COMPLETED capture', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('COMPLETED'))
+    mockRpc.mockResolvedValue({ data: { state: 'confirmed' }, error: null })
+
+    const body = await runRoute()
+
+    expect(mockRpc).toHaveBeenCalledWith('confirm_event_paypal_payment_v01', expect.objectContaining({ p_paypal_capture_id: 'CAPTURE-1', p_amount: 80 }))
+    expect(body.confirmed).toBe(1)
+  })
+
+  // BK-114: a confirm that came back blocked after PayPal took the money was counted as skipped
+  // and nothing else.
+  it('raises a payment exception and tells a manager when PayPal took money for a booking that cannot take it', async () => {
+    selectResults = [{ data: [pendingRow()], error: null }, { data: [], error: null }]
+    mockGetPayPalOrder.mockResolvedValue(orderWithCapture('COMPLETED'))
+    mockRpc.mockResolvedValue({ data: { state: 'blocked', reason: 'booking_not_pending_payment', payment_id: 'pay-1' }, error: null })
+    const inserts: unknown[] = []
+    mockFrom.mockImplementation(((table: string) => {
+      if (table === 'event_payment_exceptions') {
+        return { insert: vi.fn((row: unknown) => { inserts.push(row); return Promise.resolve({ error: null }) }) }
+      }
+      if (table !== 'payments') throw new Error(`Unexpected table: ${table}`)
+      return { select: vi.fn(() => makeSelectChain()), update: vi.fn((payload: unknown) => { mockUpdate(payload); return makeUpdateChain() }) }
+    }) as never)
+
+    const body = await runRoute()
+
+    expect(body.paidButBlocked).toBe(1)
+    expect(inserts).toEqual([expect.objectContaining({ event_booking_id: 'booking-1', payment_id: 'pay-1', reason: 'manual_refund_required' })])
+    expect(mockAlert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      bookingId: 'booking-1',
+      kind: 'paid_booking_not_payable',
+      reason: 'booking_not_pending_payment',
+    }))
+  })
+})
+

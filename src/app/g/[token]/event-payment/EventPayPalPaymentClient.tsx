@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 // Imported file by file rather than through '@/components/features/guest': the
@@ -11,8 +11,26 @@ import { GuestButton } from '@/components/features/guest/GuestButton'
 import { GuestLink } from '@/components/features/guest/GuestLink'
 import { TrustLine } from '@/components/features/guest/TrustLine'
 import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { EVENT_PAYMENT_CAPTURE_FALLBACK, EVENT_PAYMENT_START_FALLBACK } from '@/lib/events/event-payment-reasons'
 
 type PaymentState = 'idle' | 'creating' | 'paying' | 'success' | 'manual_review' | 'error'
+
+/*
+ * Where a failure happened decides what the guest is told (BK-029, customer bookings review of
+ * 24 October 2026). Before PayPal approves the payment nothing has been charged, so "Try again"
+ * is right. After approval PayPal may already have the money, so the page offers the phone
+ * number instead of a second payment. It used to show the routes' bare reason codes
+ * ("hold_expired") and "Try again" after any failure.
+ */
+type FailureStep = 'start' | 'capture'
+
+/** The sentence a route sent for the guest, or the cautious one for the step. */
+function guestSentence(body: unknown, step: FailureStep): string {
+  const message = body && typeof body === 'object' ? (body as { message?: unknown }).message : null
+  if (typeof message === 'string' && message.trim()) return message
+  return step === 'capture' ? EVENT_PAYMENT_CAPTURE_FALLBACK : EVENT_PAYMENT_START_FALLBACK
+}
 
 type EventPayPalPaymentClientProps = {
   token: string
@@ -31,7 +49,19 @@ export function EventPayPalPaymentClient({
 }: EventPayPalPaymentClientProps) {
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [failureStep, setFailureStep] = useState<FailureStep>('start')
   const [orderId, setOrderId] = useState<string | null>(null)
+
+  // PayPal's own onError also fires when createOrder throws; it must not replace the sentence
+  // the route sent with its generic one.
+  const failed = useRef(false)
+
+  function fail(step: FailureStep, message: string) {
+    failed.current = true
+    setFailureStep(step)
+    setErrorMessage(message)
+    setPaymentState('error')
+  }
 
   if (!paypalClientId) {
     return (
@@ -71,19 +101,24 @@ export function EventPayPalPaymentClient({
           tone="problem"
           role="alert"
           action={
-            <GuestButton
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setErrorMessage(null)
-                setPaymentState('idle')
-              }}
-            >
-              Try again
-            </GuestButton>
+            failureStep === 'capture' ? (
+              <GuestLink href={GUEST_CONTACT.telHref}>Call {GUEST_CONTACT.phoneDisplay}</GuestLink>
+            ) : (
+              <GuestButton
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  failed.current = false
+                  setErrorMessage(null)
+                  setPaymentState('idle')
+                }}
+              >
+                Try again
+              </GuestButton>
+            )
           }
         >
-          {errorMessage || 'Payment failed. Please try again.'}
+          {errorMessage || (failureStep === 'capture' ? EVENT_PAYMENT_CAPTURE_FALLBACK : EVENT_PAYMENT_START_FALLBACK)}
         </GuestAlert>
       )}
 
@@ -103,6 +138,7 @@ export function EventPayPalPaymentClient({
           style={{ layout: 'vertical', shape: 'rect' }}
           disabled={paymentState === 'creating' || paymentState === 'paying'}
           createOrder={async () => {
+            failed.current = false
             setPaymentState('creating')
             setErrorMessage(null)
             const response = await fetch(`/g/${encodeURIComponent(token)}/event-payment/paypal/create-order`, {
@@ -112,9 +148,9 @@ export function EventPayPalPaymentClient({
             })
             const data = await response.json().catch(() => null)
             if (!response.ok || !data?.orderId) {
-              setPaymentState('error')
-              setErrorMessage(data?.error || 'Could not start PayPal payment.')
-              throw new Error(data?.error || 'Could not start PayPal payment.')
+              const message = guestSentence(data, 'start')
+              fail('start', message)
+              throw new Error(message)
             }
             setOrderId(data.orderId)
             setPaymentState('paying')
@@ -123,17 +159,23 @@ export function EventPayPalPaymentClient({
           onApprove={async (data) => {
             const approvedOrderId = data.orderID || orderId
             if (!approvedOrderId) {
-              setPaymentState('error')
-              setErrorMessage('PayPal did not return an order ID.')
+              fail('capture', EVENT_PAYMENT_CAPTURE_FALLBACK)
               return
             }
 
-            const response = await fetch(`/g/${encodeURIComponent(token)}/event-payment/paypal/capture-order`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              cache: 'no-store',
-              body: JSON.stringify({ orderId: approvedOrderId }),
-            })
+            let response: Response
+            try {
+              response = await fetch(`/g/${encodeURIComponent(token)}/event-payment/paypal/capture-order`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                cache: 'no-store',
+                body: JSON.stringify({ orderId: approvedOrderId }),
+              })
+            } catch {
+              // No answer at all: the payment may still have gone through.
+              fail('capture', EVENT_PAYMENT_CAPTURE_FALLBACK)
+              return
+            }
             const result = await response.json().catch(() => null)
 
             if (response.ok && result?.success === true) {
@@ -146,15 +188,14 @@ export function EventPayPalPaymentClient({
               return
             }
 
-            setPaymentState('error')
-            setErrorMessage(result?.error || 'Payment could not be confirmed. Please call us.')
+            fail('capture', guestSentence(result, 'capture'))
           }}
           onCancel={() => {
             setPaymentState('idle')
           }}
           onError={() => {
-            setErrorMessage('PayPal encountered an error. Please try again.')
-            setPaymentState('error')
+            if (failed.current) return
+            fail('start', 'PayPal encountered an error. Please try again.')
           }}
         />
       </PayPalScriptProvider>

@@ -5,6 +5,7 @@ import { loadTradingHours, serviceInstantFor } from '@/lib/business-hours/tradin
 import type { TradingHours } from '@/lib/business-hours/open-now'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
+import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
@@ -570,6 +571,8 @@ export async function DELETE(
   // Tiered deposit refund + cancellation SMS (never fail the delete)
   // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
+  // What happened to the deposit, for the person who cancelled (BK-114).
+  let depositRefund: DepositRefundOutcome | null = null
   if (existing.booking_date && existing.customer_id) {
     const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: existing.id,
@@ -579,6 +582,7 @@ export async function DELETE(
       source: 'boh_soft_delete',
     })
     guestNotification = cancelOutcome?.notification ?? null
+    depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
   }
 
   return NextResponse.json({
@@ -593,5 +597,6 @@ export async function DELETE(
       soft_deleted: true
     },
     ...(guestNotification ? { guest_notification: guestNotification } : {}),
+    ...(depositRefund ? { deposit_refund: depositRefund } : {}),
   })
 }

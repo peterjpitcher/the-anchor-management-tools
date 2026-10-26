@@ -1,6 +1,7 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
@@ -374,6 +375,13 @@ async function refundPayPalDeposit(
           'The booking was cancelled but no deposit refund was issued, because the refunds already made could not be read. Check the Refund History and refund what is due by hand',
       },
     })
+    await alertTableDepositNeedsAPerson(supabase, {
+      bookingId: tableBookingId,
+      kind: 'refund_ledger_unreadable',
+      amountGbp: entitledGbp,
+      captureId,
+      source: 'table booking cancellation',
+    })
     return { refunded: false, reason: 'terms_unreadable' }
   }
 
@@ -409,6 +417,14 @@ async function refundPayPalDeposit(
         tier,
         action_needed: 'Refund this guest manually: the booking was cancelled but the deposit was not returned',
       },
+    })
+    await alertTableDepositNeedsAPerson(supabase, {
+      bookingId: tableBookingId,
+      kind: 'refund_failed',
+      amountGbp: refundGbp,
+      captureId,
+      detail: error instanceof Error ? error.message.slice(0, 200) : null,
+      source: 'table booking cancellation',
     })
     return {
       refunded: false,
@@ -460,6 +476,15 @@ async function refundPayPalDeposit(
         tier,
         action_needed: 'PayPal refund succeeded but the booking row was not updated',
       },
+    })
+    await alertTableDepositNeedsAPerson(supabase, {
+      bookingId: tableBookingId,
+      kind: 'refund_not_recorded',
+      amountGbp: refundGbp,
+      captureId,
+      refundId: refund.refundId,
+      detail: 'the booking row was not updated',
+      source: 'table booking cancellation',
     })
   }
 
@@ -627,5 +652,14 @@ async function recordPayPalDepositRefund(args: {
           'PayPal refund succeeded but is missing from the Refund History. The PayPal webhook normally records it; check before refunding this booking again',
       },
     }).catch(() => undefined)
+    await alertTableDepositNeedsAPerson(createAdminClient(), {
+      bookingId: tableBookingId,
+      kind: 'refund_not_recorded',
+      amountGbp: refundGbp,
+      captureId,
+      refundId: refund.refundId,
+      detail: 'missing from the Refund History',
+      source: 'table booking cancellation',
+    })
   }
 }
