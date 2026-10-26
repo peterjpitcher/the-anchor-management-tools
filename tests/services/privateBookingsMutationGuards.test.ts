@@ -136,6 +136,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     mockedCreateClient.mockResolvedValue({
       rpc,
     })
+    mockedCreateAdminClient.mockReturnValue({ rpc })
 
     await expect(
       PrivateBookingService.createBooking({
@@ -177,6 +178,8 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     })
     const from = vi.fn()
     mockedCreateClient.mockResolvedValue({ rpc, from })
+    // The transaction function is server-only (BK-105), so it is called through the admin client.
+    mockedCreateAdminClient.mockReturnValue({ rpc })
 
     await expect(PrivateBookingService.createBooking({
       customer_id: 'customer-1',
@@ -212,6 +215,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     mockedCreateClient.mockResolvedValue({
       rpc,
     })
+    mockedCreateAdminClient.mockReturnValue({ rpc })
 
     const result = await PrivateBookingService.createBooking({
       customer_first_name: 'Jean',
@@ -255,6 +259,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     mockedCreateClient.mockResolvedValue({
       rpc,
     })
+    mockedCreateAdminClient.mockReturnValue({ rpc })
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({ success: true })
 
     const result = await PrivateBookingService.createBooking({
