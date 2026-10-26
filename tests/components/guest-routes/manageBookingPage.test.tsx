@@ -14,15 +14,20 @@ vi.mock('next/headers', () => ({
   headers: async () => new Headers(),
 }))
 
+const adminData = vi.hoisted(() => ({ tables: {} as Record<string, unknown[]> }))
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: { first_name: 'Sam' } }),
-        }),
-      }),
-    }),
+    from: (table: string) => {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        in: () => builder,
+        maybeSingle: async () => ({ data: { first_name: 'Sam' } }),
+        then: (resolve: (value: unknown) => unknown) => resolve({ data: adminData.tables[table] ?? [], error: null }),
+      }
+      return builder
+    },
   }),
 }))
 
@@ -71,6 +76,7 @@ async function renderPage(searchParams: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  adminData.tables = {}
   vi.mocked(checkGuestTokenThrottle).mockResolvedValue({ allowed: true } as never)
   vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue(readyPreview as never)
 })
@@ -141,18 +147,69 @@ describe('manage-booking page', () => {
     expect(screen.queryByRole('button', { name: 'Update seats' })).not.toBeInTheDocument()
   })
 
-  it('shows the refund policy for a prepaid booking', async () => {
+  // BK-021 and owner decision D7: a paid booking is changed by a manager, who decides any refund
+  // starting from what the guest paid. The link asks; it no longer cuts seats and refunds at once.
+  it('asks a manager to change a paid booking instead of offering an instant seat change', async () => {
     vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue({
       ...readyPreview,
       payment_mode: 'prepaid',
-      price_per_seat: 12.5,
+      price_per_seat: 45,
+      event_start_datetime: '2099-11-20T19:00:00.000Z',
     } as never)
 
-    await renderPage()
+    const { container } = await renderPage()
 
-    expect(screen.getByText(/Refund policy for cancellations or seat reductions/)).toHaveTextContent(
-      'Price per seat: £12.50.'
+    expect(container.querySelector('input[name="intent"][value="request_change"]')).not.toBeNull()
+    expect(container.querySelector('input[name="intent"][value="update_seats"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ask us to change it' })).toBeInTheDocument()
+    expect(screen.getByText(/A manager confirms the amount, starting from what you paid./)).toHaveTextContent(
+      'Giving up places: 7 or more days before the event, refunded in full. 3 to 6 days before, half refunded. Fewer than 3 days before, not refunded.'
     )
+  })
+
+  // BK-022: the page printed the event's list price, not what the guest paid.
+  it('shows what the guest paid, not the list price', async () => {
+    adminData.tables = {
+      booking_items: [{ id: 'item', booking_id: 'booking-1', ticket_type_id: 't', quantity: 2, unit_price: 40, attendee_names: [] }],
+      payments: [{ event_booking_id: 'booking-1', charge_type: 'prepaid_event', status: 'succeeded', payment_method: 'paypal', amount: 80 }],
+    }
+    vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue({
+      ...readyPreview,
+      payment_mode: 'prepaid',
+      price_per_seat: 45,
+      seats: 2,
+      event_start_datetime: '2099-11-20T19:00:00.000Z',
+    } as never)
+
+    const { container } = await renderPage()
+
+    expect(container.textContent).toContain('£80.00')
+    expect(container.textContent).toContain('£40.00')
+    expect(container.textContent).not.toContain('£45.00')
+  })
+
+  it('tells a guest with named tickets to call, with no seat form that would fail', async () => {
+    vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue({
+      ...readyPreview,
+      payment_mode: 'cash_only',
+      can_change_seats: false,
+      has_named_guests: true,
+      seat_change_blocked_reason: 'guest_details_locked',
+    } as never)
+
+    const { container } = await renderPage()
+
+    expect(screen.getByText(/To change named tickets, please call us on/)).toBeInTheDocument()
+    expect(container.querySelector('input[name="intent"][value="update_seats"]')).toBeNull()
+    expect(screen.queryByText('This booking can no longer be changed online.')).not.toBeInTheDocument()
+  })
+
+  it('confirms a change request without claiming anything changed', async () => {
+    vi.mocked(getEventManagePreviewByRawToken).mockResolvedValue({
+      ...readyPreview, payment_mode: 'prepaid', event_start_datetime: '2099-11-20T19:00:00.000Z',
+    } as never)
+    await renderPage({ state: 'change_requested', seats: '1' })
+    expect(screen.getByText(/we have passed your request for 1 place to the team/)).toHaveTextContent('Your booking stays as it is until then.')
   })
 
   it('uses the shared blocked pattern when the token is throttled', async () => {

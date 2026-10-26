@@ -134,6 +134,8 @@ export function mapSeatUpdateBlockedReason(reason: string | null | undefined): s
       return 'This booking has already been paid, so its size cannot be changed here. Cancel it with a refund or take payment for the extra seats from the event page.'
     case 'multi_ticket_type_booking':
       return 'This booking has multiple ticket options, so its size cannot be edited here. Edit the ticket lines from the event page.'
+    case 'guest_details_locked':
+      return 'Each ticket on this booking has a named guest, so its size cannot be changed here. Cancel and rebook it from the event page, or ask a manager.'
     default:
       return reason ? reason.replace(/_/g, ' ') : 'Booking could not be updated.'
   }
