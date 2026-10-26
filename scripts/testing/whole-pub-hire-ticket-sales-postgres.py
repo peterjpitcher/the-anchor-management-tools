@@ -163,6 +163,18 @@ def main():
                   f"AND EXISTS (SELECT 1 FROM events_closed_by_whole_pub_hire(ARRAY['{lapsed_event}']::uuid[], '{lapsed_hire}'))",
                   'the booking page can ask which events a hire would close once it holds its room')
 
+            # A whole-pub hire dated two nights later that sets up on this night holds the pub from
+            # its setup onwards, so it closes this night's sales too (review on PR 261).
+            early = night()
+            early_date = sql(f"SELECT date FROM events WHERE id='{early}';")
+            next(days); next(days)  # the hire holds the pub through the next two nights; keep later fixtures clear
+            early_hire = 'd1000000-0000-0000-0000-000000000001'
+            sql(f"INSERT INTO private_bookings(id,status,event_date,start_time,end_time,setup_date,setup_time) "
+                f"VALUES ('{early_hire}','confirmed',date '{early_date}' + 2,'18:00','23:00',date '{early_date}','10:00');"
+                f"INSERT INTO private_booking_items VALUES ('{early_hire}','space','{ENTIRE}');")
+            book('early_setup', early)
+            check(f"{state('early_setup')} = 'blocked' AND {bookings_for(early)} = 0",
+                  'a whole-pub hire that sets up two days before its date closes sales on the setup night')
             after = definition()
             sql(MIGRATION.read_text())
             if definition() != after: raise RuntimeError('FAIL a second run changed the function')

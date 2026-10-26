@@ -78,6 +78,28 @@ describe('the day load (one count for every screen)', () => {
     expect(describeCovers(day)).toBe('30 covers (6 diners, 24 event tickets)')
   })
 
+  it("keeps an event table's high chairs and outside seats, which its tickets do not carry", () => {
+    // The rota grid read both figures from this count; dropping event tables lost them (PR 261 review).
+    const loads = buildDayLoads({
+      startIso: '2026-11-21',
+      endIso: '2026-11-21',
+      tableBookings: [
+        { booking_date: '2026-11-21', party_size: 6, booking_purpose: 'food', event_id: 'event-table', high_chair_count: 2, is_outside_seating: true },
+      ],
+      events: [{ id: 'event-table', date: '2026-11-21', booking_mode: 'table' }],
+      tickets: [{ event_id: 'event-table', seats: 6, status: 'confirmed', hold_expires_at: null }],
+      hires: [],
+      hireItems: [],
+      kitchen: [],
+      now: NOW,
+    })
+
+    const day = loads.get('2026-11-21')!
+    // Still counted once, as tickets, never again as diners.
+    expect(day.diners).toEqual({ food: 0, drinks: 0, highChairs: 2, outside: 6 })
+    expect(day.covers).toBe(6)
+  })
+
   it('says the kitchen covers are unknown rather than 0 when they could not be read', () => {
     const loads = buildDayLoads({
       startIso: '2026-11-21', endIso: '2026-11-21', tableBookings: [], events: [], tickets: [], hires: [hire()], hireItems: [],

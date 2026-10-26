@@ -134,12 +134,15 @@ export function buildDayLoads(input: {
 
   for (const row of input.tableBookings) {
     const load = loads.get(row.booking_date)
-    if (!load || row.event_id) continue
+    if (!load) continue
     const guests = count(row.party_size)
-    if ((row.booking_purpose ?? 'food') === 'drinks') load.diners.drinks += guests
-    else load.diners.food += guests
+    // High chairs and outside seats belong to the table, and an event ticket carries neither, so
+    // they count for event tables too. The guests of an event table are its tickets, counted below.
     load.diners.highChairs += count(row.high_chair_count)
     if (row.is_outside_seating) load.diners.outside += guests
+    if (row.event_id) continue
+    if ((row.booking_purpose ?? 'food') === 'drinks') load.diners.drinks += guests
+    else load.diners.food += guests
   }
 
   const eventById = new Map(input.events.map((event) => [event.id, event]))

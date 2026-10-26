@@ -79,9 +79,11 @@ AS $function$
   )
   SELECT DISTINCT ew.id, pb.id
   FROM event_windows ew
+  -- Narrowed by the hire's whole occupied window, setup day included: a whole-pub hire set up
+  -- two days before its date holds the pub from then, and the overlap test below decides.
   JOIN public.private_bookings pb
-    ON pb.event_date BETWEEN (ew.starts_at AT TIME ZONE 'Europe/London')::date - 2
-                         AND (ew.ends_at AT TIME ZONE 'Europe/London')::date + 1
+    ON pb.event_date >= (ew.starts_at AT TIME ZONE 'Europe/London')::date - 2
+   AND COALESCE(pb.setup_date, pb.event_date) <= (ew.ends_at AT TIME ZONE 'Europe/London')::date + 1
   CROSS JOIN LATERAL public.private_booking_occupied_window(
     pb.event_date, pb.start_time, pb.end_time, pb.end_time_next_day,
     pb.setup_date, pb.setup_time, pb.cleardown_time) hw

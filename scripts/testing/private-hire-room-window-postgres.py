@@ -109,6 +109,10 @@ HIRES = [
     ('afternoon', 'confirmed', '2036-07-07', '12:00', '16:00', None, None, [DINING], {}),
     ('lapsed', 'draft', '2036-07-08', '18:00', '23:00', None, None, [DINING], {'hold_expiry': "now() - interval '1 day'"}),
     ('paid_draft', 'draft', '2036-07-09', '18:00', '23:00', None, None, [DINING], {'deposit_paid_date': 'now()'}),
+    # Sets up three days before its own date, so it holds the Dining Room from 11 July (PR 261 review).
+    ('early_setup', 'confirmed', '2036-07-14', '18:00', '23:00', '10:00', None, [DINING], {'setup_date': "'2036-07-11'"}),
+    # An ordinary evening, two days before a candidate that sets up on this night.
+    ('setup_night', 'confirmed', '2036-07-20', '18:00', '23:00', None, None, [DINING], {}),
 ]
 
 
@@ -236,6 +240,11 @@ def main():
                   'two hires in one room need an hour between them')
             check(f"EXISTS (SELECT 1 FROM {conflicts('2036-07-02', '19:00', '21:00', MAIN)} c WHERE c.booking_id='{hire_id('whole_pub')}')",
                   'a whole-pub hire still clashes with a hire of any room')
+            check(f"EXISTS (SELECT 1 FROM {conflicts('2036-07-11', '19:00', '21:00')} c WHERE c.booking_id='{hire_id('early_setup')}')",
+                  'a hire set up days before its own date clashes with a hire on its setup night')
+            check(f"EXISTS (SELECT 1 FROM get_private_booking_conflicts('2036-07-23','18:00','23:00','2036-07-20','10:00',NULL,ARRAY['{DINING}']::uuid[],NULL) c "
+                  f"WHERE c.booking_id='{hire_id('setup_night')}')",
+                  'a hire that sets up days early clashes with a hire on its setup night')
 
             # The window on the clock-change nights, read off the London clock on the date each time
             # falls on (ported from the FOH screen's own test, now that the screen reads this).
