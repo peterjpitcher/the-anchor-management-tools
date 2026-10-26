@@ -47,7 +47,7 @@ export const dynamic = 'force-dynamic'
 const KICKER = 'Event booking'
 
 /** Under the request form for a paid booking (BK-021). */
-const REQUEST_HINT = 'We will look at it and be in touch. Nothing changes until we do.'
+const REQUEST_HINT = "We'll look at it and be in touch. Nothing changes until we do."
 
 /** Where a guest goes when this link cannot help them any more. */
 const WHATS_ON_URL = 'https://www.the-anchor.pub/whats-on'
@@ -103,15 +103,15 @@ function blockedReasonMessage(reason: string | undefined): string {
     case 'multi_ticket_type_booking':
       return `This booking has more than one type of ticket, so please call us on ${GUEST_CONTACT.phoneDisplay} to change it.`
     case 'request_not_sent':
-      return `We could not pass your request on just now. Please call us on ${GUEST_CONTACT.phoneDisplay} and we will sort it out.`
+      return `We couldn't pass your request on just now. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll sort it out.`
     case 'invalid_seats':
       return 'Please choose a number of places different from your booking now.'
     case 'rate_limited':
       return 'Too many attempts were made with this link. Please wait a few minutes and try again.'
     case 'guest_details_closed':
-      return 'Online changes to guest details have closed. Please call us to change them.'
+      return "Online changes to guest details have closed. Please call us and we'll change them."
     case 'guest_details_unconfirmed':
-      return 'Please confirm everyone you have added is happy to share their details.'
+      return "Please confirm everyone you've added is happy to share their details."
     case 'guest_details_invalid':
       return 'Please give a name for every ticket, and choose from the answers shown.'
     case 'guest_details_changed':
@@ -124,7 +124,7 @@ function blockedReasonMessage(reason: string | undefined): string {
 function actionStatusMessage(state: string | undefined, delta: number, refundStatus: string, refundAmount: number, requestedSeats: number | null): string | null {
   if (state === 'change_requested') {
     // BK-021 and D7: the request is with a manager. Nothing has changed yet.
-    return `Thanks, we have passed your request${requestedSeats ? ` for ${requestedSeats} ${requestedSeats === 1 ? 'place' : 'places'}` : ''} to the team. A manager will look at it, and at any refund, and be in touch. Your booking stays as it is until then.`
+    return `Thanks, we've passed your request${requestedSeats ? ` for ${requestedSeats} ${requestedSeats === 1 ? 'place' : 'places'}` : ''} to the team. A manager will look at it, and at any refund, and be in touch. Your booking stays as it is until then.`
   }
 
   if (state === 'updated') {
