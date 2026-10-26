@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { privateBookingOccupiesSpace } from '@/lib/private-bookings/occupies-space'
+import { loadDayHours } from '@/lib/business-hours/day-hours'
 
 /**
  * What else is happening in a private hire's rooms that night (review BK-070 and BK-071, owner
@@ -61,6 +62,10 @@ export interface HireNightView {
   holdsRoom: boolean
   dinerClashes: HireDinerClash[]
   events: HireNightEvent[]
+  /** Whether the pub or kitchen is shut that day (BK-076); null when the hours could not be read. */
+  hours: { closed: boolean; kitchenClosed: boolean } | null
+  /** The hire has catering lines booked. */
+  hasCatering: boolean
 }
 
 export interface PrivateHireOnDate {
@@ -256,10 +261,29 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
   const rooms = await loadBookedRooms([bookingId], db)
   const wholePub = (rooms.get(bookingId) ?? []).some((room) => room.wholePub)
 
+  const { count: cateringCount, error: cateringError } = await db
+    .from('private_booking_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('booking_id', bookingId)
+    .eq('item_type', 'catering')
+  if (cateringError) throw new Error(`Could not read the catering: ${cateringError.message}`)
+
   const holdsRoom = privateBookingOccupiesSpace(row)
-  const [dinerClashes, events] = await Promise.all([
+  const [dinerClashes, events, hours] = await Promise.all([
     loadHireDinerClashes(bookingId, db),
     loadEventsOnDate(row.event_date, { db, hireId: bookingId, hireHoldsRoom: holdsRoom }),
+    loadDayHours(row.event_date, row.event_date, db)
+      .then((days) => {
+        const day = days.get(row.event_date as string)
+        return day?.known ? { closed: day.closed, kitchenClosed: day.kitchenClosed } : null
+      })
+      .catch((error: unknown) => {
+        logger.error('Could not read the hours for a private hire night', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { bookingId },
+        })
+        return null
+      }),
   ])
 
   return {
@@ -268,6 +292,8 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
     holdsRoom,
     dinerClashes,
     events,
+    hours,
+    hasCatering: (cateringCount ?? 0) > 0,
   }
 }
 
@@ -279,6 +305,13 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
 export function describeHireNightWarning(view: HireNightView | null): string | null {
   if (!view) return null
   const sentences: string[] = []
+
+  // BK-076, D24: a hire on a day the pub or kitchen is shut is warned about, not refused.
+  if (view.hours?.closed) {
+    sentences.push('The pub is closed on this date. Check the opening hours before going ahead.')
+  } else if (view.hours?.kitchenClosed && view.hasCatering) {
+    sentences.push('The kitchen is closed on this date, but catering is booked on this hire.')
+  }
 
   const tables = view.dinerClashes.filter((clash) => clash.kind === 'table_booking')
   const seats = view.dinerClashes.filter((clash) => clash.kind === 'event_seats')

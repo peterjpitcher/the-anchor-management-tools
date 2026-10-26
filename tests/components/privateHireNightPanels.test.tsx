@@ -9,14 +9,15 @@ import type { HireNightView } from '@/services/private-bookings/night-clashes'
  * stopped ticket sales. Nothing is refused; staff decide.
  */
 
-vi.mock('@/app/actions/venue-night', () => ({ getEventNightNotice: vi.fn() }))
+vi.mock('@/app/actions/venue-night', () => ({ getEventNightNotice: vi.fn(), getDateHoursNotice: vi.fn() }))
 
-import { getEventNightNotice } from '@/app/actions/venue-night'
+import { getDateHoursNotice, getEventNightNotice } from '@/app/actions/venue-night'
+import { HireDateHoursNotice } from '@/components/private-bookings/HireDateHoursNotice'
 import { HireNightPanel } from '@/app/(authenticated)/private-bookings/[id]/HireNightPanel'
 import { EventNightNotice } from '@/app/(authenticated)/events/_components/EventNightNotice'
 
 function night(overrides: Partial<HireNightView> = {}): HireNightView {
-  return { date: '2026-11-27', wholePub: false, holdsRoom: true, dinerClashes: [], events: [], ...overrides }
+  return { date: '2026-11-27', wholePub: false, holdsRoom: true, dinerClashes: [], events: [], hours: null, hasCatering: false, ...overrides }
 }
 
 const QUIZ = { id: 'event-1', name: 'Quiz Night', time: '19:00', bookingMode: 'general', status: 'scheduled', ticketsSold: 12, salesStopped: true, closedByThisHire: true }
@@ -63,6 +64,14 @@ describe('the clashes on this night panel (private booking page)', () => {
     expect(screen.getByText(/Ticket sales will stop once this whole-pub hire is confirmed or its deposit is paid\./)).toBeInTheDocument()
   })
 
+  it('says when the pub is closed on the hire date, or the kitchen is with catering booked', () => {
+    const { rerender } = render(<HireNightPanel view={night({ hours: { closed: true, kitchenClosed: true } })} />)
+    expect(screen.getByText('Closed on this date')).toBeInTheDocument()
+
+    rerender(<HireNightPanel view={night({ hours: { closed: false, kitchenClosed: true }, hasCatering: true })} />)
+    expect(screen.getByText('Kitchen closed on this date')).toBeInTheDocument()
+  })
+
   it('shows nothing on a clear night, and says so plainly when the night could not be checked', () => {
     const { container } = render(<HireNightPanel view={night()} />)
     expect(container).toBeEmptyDOMElement()
@@ -79,6 +88,7 @@ describe('the private hire notice on the event form and page', () => {
       data: {
         date: '2026-11-27',
         ticketSalesStopped: true,
+        hours: null,
         hires: [{ id: 'hire-1', status: 'confirmed', startTime: '18:00', endTime: '23:00', guestCount: 120, roomNames: ['Entire Pub'], wholePub: true, holdsRoom: true }],
       },
     })
@@ -97,6 +107,7 @@ describe('the private hire notice on the event form and page', () => {
       data: {
         date: '2026-11-28',
         ticketSalesStopped: false,
+        hours: null,
         hires: [{ id: 'hire-2', status: 'draft', startTime: '19:00', endTime: null, guestCount: null, roomNames: ['Entire Pub'], wholePub: true, holdsRoom: false }],
       },
     })
@@ -104,15 +115,55 @@ describe('the private hire notice on the event form and page', () => {
     await waitFor(() => expect(screen.getByText(/stops ticket sales for any event it overlaps/)).toBeInTheDocument())
     expect(screen.getByRole('link', { name: 'Entire Pub, 19:00 (enquiry)' })).toBeInTheDocument()
 
-    vi.mocked(getEventNightNotice).mockResolvedValueOnce({ success: true, data: { date: '2026-11-29', ticketSalesStopped: false, hires: [] } })
+    vi.mocked(getEventNightNotice).mockResolvedValueOnce({ success: true, data: { date: '2026-11-29', ticketSalesStopped: false, hours: { known: true, closed: false, kitchenClosed: false }, hires: [] } })
     const { container } = render(<EventNightNotice date="2026-11-29" />)
     await waitFor(() => expect(getEventNightNotice).toHaveBeenCalledWith('2026-11-29', null))
     expect(container).toBeEmptyDOMElement()
+  })
+
+  // BK-076, D24: an event on a closed day is warned about, not refused; a closed kitchen is said.
+  it('warns when the pub is closed on the date, and notes a closed kitchen', async () => {
+    vi.mocked(getEventNightNotice).mockResolvedValueOnce({
+      success: true,
+      data: { date: '2026-12-25', ticketSalesStopped: false, hours: { known: true, closed: true, kitchenClosed: true }, hires: [] },
+    })
+    render(<EventNightNotice date="2026-12-25" />)
+    await waitFor(() => expect(screen.getByText('Closed on this date')).toBeInTheDocument())
+    expect(screen.getByText('The pub is closed on this date. Check the opening hours before putting an event on.')).toBeInTheDocument()
+
+    vi.mocked(getEventNightNotice).mockResolvedValueOnce({
+      success: true,
+      data: { date: '2026-12-28', ticketSalesStopped: false, hours: { known: true, closed: false, kitchenClosed: true }, hires: [] },
+    })
+    render(<EventNightNotice date="2026-12-28" />)
+    await waitFor(() => expect(screen.getByText('Kitchen closed on this date')).toBeInTheDocument())
   })
 
   it('says the date was not checked when the lookup fails', async () => {
     vi.mocked(getEventNightNotice).mockResolvedValueOnce({ error: 'Could not check private hires on this date.' })
     render(<EventNightNotice date="2026-11-30" />)
     await waitFor(() => expect(screen.getByText('Private hires not checked')).toBeInTheDocument())
+  })
+})
+
+describe('the closed-day notice on the private booking forms', () => {
+  it('warns on a closed day, notes a closed kitchen, and says nothing on an open day or without a date', async () => {
+    vi.mocked(getDateHoursNotice).mockResolvedValueOnce({ success: true, data: { known: true, closed: true, kitchenClosed: true } })
+    const { rerender, container } = render(<HireDateHoursNotice date="2026-12-25" />)
+    await waitFor(() => expect(screen.getByText('Closed on this date')).toBeInTheDocument())
+    expect(getDateHoursNotice).toHaveBeenCalledWith('2026-12-25')
+
+    vi.mocked(getDateHoursNotice).mockResolvedValueOnce({ success: true, data: { known: true, closed: false, kitchenClosed: true } })
+    rerender(<HireDateHoursNotice date="2026-12-28" />)
+    await waitFor(() => expect(screen.getByText('Kitchen closed on this date')).toBeInTheDocument())
+
+    vi.mocked(getDateHoursNotice).mockResolvedValueOnce({ success: true, data: { known: true, closed: false, kitchenClosed: false } })
+    rerender(<HireDateHoursNotice date="2026-12-29" />)
+    await waitFor(() => expect(getDateHoursNotice).toHaveBeenCalledWith('2026-12-29'))
+    expect(container).toBeEmptyDOMElement()
+
+    vi.mocked(getDateHoursNotice).mockClear()
+    rerender(<HireDateHoursNotice date={null} />)
+    expect(getDateHoursNotice).not.toHaveBeenCalled()
   })
 })

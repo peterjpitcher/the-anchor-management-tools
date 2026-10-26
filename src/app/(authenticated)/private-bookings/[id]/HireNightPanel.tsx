@@ -52,10 +52,24 @@ export function HireNightPanel({ view, loadFailed }: HireNightPanelProps): React
 
   const hasClashes = view.dinerClashes.length > 0
   const hasEvents = view.events.length > 0
-  if (!hasClashes && !hasEvents) return null
+  // BK-076, D24: the pub or the kitchen shut on the hire's date is said, not refused.
+  const closedDay = view.hours?.closed === true
+  const kitchenClosedForCatering = !closedDay && view.hours?.kitchenClosed === true && view.hasCatering
+  if (!hasClashes && !hasEvents && !closedDay && !kitchenClosedForCatering) return null
 
   return (
     <>
+      {closedDay && (
+        <Alert tone="warning" title="Closed on this date">
+          The pub is closed on this hire&apos;s date. Check the opening hours, or the date, before going ahead.
+        </Alert>
+      )}
+      {kitchenClosedForCatering && (
+        <Alert tone="warning" title="Kitchen closed on this date">
+          The kitchen is closed on this hire&apos;s date, but catering is booked on it.
+        </Alert>
+      )}
+
       {hasClashes && (
         <Alert tone="warning" title="Clashes on this night">
           <p>
