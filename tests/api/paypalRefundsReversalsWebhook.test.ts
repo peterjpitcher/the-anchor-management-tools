@@ -501,8 +501,9 @@ describe('event ticket refund made inside PayPal', () => {
     expect(webhookStatuses('WH-E8a')).toEqual(['received', 'manual_review'])
     expect(reportPaymentAlert).toHaveBeenCalledTimes(1)
     expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].title).toContain('needs recording')
-    // Everything that is not an invoice keeps going to the general staff alert inbox.
-    expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].to).toBeUndefined()
+    // D17 (24 October 2026): every money alert now goes to the manager inbox. This test used to
+    // pin the general staff alert inbox (CRON_ALERT_EMAIL), which now keeps failed cron jobs only.
+    expect(vi.mocked(reportPaymentAlert).mock.calls[0][0].to).toBe('manager@the-anchor.pub')
     expectNoCustomerMessage()
   })
 

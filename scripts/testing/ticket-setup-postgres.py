@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run real booking wrappers and migration in an isolated socket-only PostgreSQL.
 Capacity and allocation use synthetic fixture helpers, never production services.
+
+This checks the ticket-type setup migration (20260910075712): default ticket types, the last
+active type guard and guest validation. Its create_event_booking_v08 is the 10 September body,
+which 20260921074304_event_physical_capacity replaced; the live v08 and the attendees wrapper are
+tested by event-physical-capacity-postgres.py (BK-126, review of 24 October 2026).
 """
 from pathlib import Path
 import subprocess

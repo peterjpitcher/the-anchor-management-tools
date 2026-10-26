@@ -7,6 +7,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendEventPaymentExpiredEmail } from '@/lib/email/event-ticket-emails'
+import { findEventBookingsAwaitingPaymentDecision } from '@/lib/events/payment-awaiting-decision'
 
 function formatLondonDateTime(dateStr: string): string {
   try {
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
   try {
     const result = {
       expiredPendingBookings: 0,
+      keptAwaitingPaymentDecision: 0,
       expiredPaymentHolds: 0,
       cancelledEventTableBookings: 0,
       expiredPendingTablePaymentBookings: 0,
@@ -67,7 +69,12 @@ export async function GET(request: NextRequest) {
       throw pendingError
     }
 
-    const pendingIds = (pendingRows || []).map((row: any) => row.id)
+    const lapsedIds = (pendingRows || []).map((row: any) => row.id)
+    // A booking whose payment PayPal is still deciding is not "unpaid": leave it, and send the
+    // guest no expiry message (BK-019).
+    const awaitingDecision = await findEventBookingsAwaitingPaymentDecision(supabase, lapsedIds)
+    result.keptAwaitingPaymentDecision = awaitingDecision.size
+    const pendingIds = lapsedIds.filter((id: string) => !awaitingDecision.has(id))
 
     for (const ids of chunkIds(pendingIds)) {
       const { data: expiredBookings, error: expireBookingsError } = await supabase

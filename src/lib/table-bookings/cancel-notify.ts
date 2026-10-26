@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
+import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 
 import { sendTableBookingCancelledSmsIfAllowed } from './bookings'
 import type { GuestNotificationOutcome } from './guest-notification-outcome'
@@ -62,6 +63,12 @@ export async function refundAndNotifyOnCancel(
           'Refund this guest manually: the booking was cancelled but the deposit refund threw',
       },
     }).catch(() => undefined)
+    await alertTableDepositNeedsAPerson(supabase, {
+      bookingId: params.bookingId,
+      kind: 'refund_failed',
+      detail: error instanceof Error ? error.message.slice(0, 200) : 'the refund threw',
+      source: params.source,
+    })
 
     // Carry on to the message. A guest whose refund failed is the one who most needs telling.
     refundResult = { refunded: false, reason: 'refund_failed', depositOwed: true }

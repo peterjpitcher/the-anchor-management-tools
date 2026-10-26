@@ -51,6 +51,7 @@ import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
+import { PaidNeedsActionCard } from './PaidNeedsActionCard'
 import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
@@ -547,6 +548,11 @@ export default function EventDetailClient({
                     ) : null}
                   </>
                 }
+              />
+              <PaidNeedsActionCard
+                eventId={event.id}
+                canManage={permissions.canManage}
+                onResolved={refreshBookings}
               />
               <AttendeesTab
                 event={event}

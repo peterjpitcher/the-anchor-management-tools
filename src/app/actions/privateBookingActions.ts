@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
+import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
@@ -2385,6 +2386,42 @@ export async function captureDepositPayment(
     }
 
     const captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY)
+
+    // BK-019: only a COMPLETED capture records the deposit. A PENDING one is recorded by the
+    // PAYMENT.CAPTURE.COMPLETED webhook when PayPal releases it; a refused one took no money.
+    const captureOutcome = payPalCaptureOutcome(captureResult.captureStatus)
+    if (captureOutcome !== 'completed') {
+      logger.error('PayPal did not complete a private booking deposit capture', {
+        error: new Error(`private_deposit_capture_${captureOutcome}`),
+        metadata: { bookingId, orderId, captureId: captureResult.transactionId, captureStatus: captureResult.captureStatus, reason: captureResult.captureStatusReason },
+      })
+      try {
+        await logAuditEvent({
+          user_id: user.id,
+          operation_type: 'paypal_capture',
+          resource_type: 'private_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            action: captureOutcome === 'pending' ? 'paypal_deposit_capture_pending' : 'paypal_deposit_capture_declined',
+            order_id: orderId,
+            capture_id: captureResult.transactionId,
+            capture_status: captureResult.captureStatus,
+            capture_status_reason: captureResult.captureStatusReason,
+          },
+        })
+      } catch (auditError) {
+        logger.error('Failed to log unfinished PayPal deposit capture', {
+          error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+          metadata: { bookingId },
+        })
+      }
+      return {
+        error: captureOutcome === 'pending'
+          ? 'PayPal is holding this payment for review, so the deposit has not been recorded yet. It will be recorded automatically when PayPal completes it. Do not take the deposit again.'
+          : 'PayPal did not take this payment, so no deposit has been recorded.',
+      }
+    }
 
     // SEC-3: Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)

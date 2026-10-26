@@ -13,6 +13,7 @@ import {
   sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
+import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts'
 
 /**
  * Settles table-booking deposits that PayPal took but this app never recorded.
@@ -83,6 +84,29 @@ export async function GET(request: NextRequest) {
   let recovered = 0
   const needsAttention: string[] = []
 
+  /*
+   * A booking that needs a person: tell the manager once (BK-114), and write its audit row only
+   * the first time. Every case below except a recorded capture leaves the booking a candidate,
+   * so this used to add a fresh audit row for the same booking every hour and tell nobody.
+   */
+  async function flag(
+    booking: Candidate,
+    alert: { kind: string; title: string; summary: string; context: Record<string, unknown> },
+    audit: Parameters<typeof logAuditEvent>[0],
+  ): Promise<void> {
+    needsAttention.push(booking.booking_reference ?? booking.id)
+    const outcome = await alertMoneyNeedsAPerson(supabase, {
+      domain: 'table_bookings',
+      bookingId: booking.id,
+      kind: alert.kind,
+      title: alert.title,
+      summary: alert.summary,
+      context: { Booking: booking.booking_reference ?? booking.id, ...alert.context },
+    })
+    if (outcome.duplicate) return
+    await logAuditEvent(audit).catch(() => undefined)
+  }
+
   try {
     // Any booking that started a PayPal payment and has no capture recorded. Cancelled ones
     // are included deliberately: those are exactly the cases where the guest paid and the
@@ -136,8 +160,12 @@ export async function GET(request: NextRequest) {
        */
       const orderCustomId = order?.purchase_units?.[0]?.custom_id
       if (typeof orderCustomId !== 'string' || orderCustomId !== booking.id) {
-        needsAttention.push(booking.booking_reference ?? booking.id)
-        await logAuditEvent({
+        await flag(booking, {
+          kind: 'capture_booking_mismatch',
+          title: 'A PayPal deposit names a different booking',
+          summary: 'PayPal shows a completed deposit on the order stored for this table booking, but the order names a different booking, so nothing was recorded. Check the order in PayPal.',
+          context: { 'PayPal order': orderId, 'PayPal capture': capture.id },
+        }, {
           operation_type: 'payment.capture_booking_mismatch',
           resource_type: 'table_booking',
           resource_id: booking.id,
@@ -150,7 +178,7 @@ export async function GET(request: NextRequest) {
             action_needed:
               'PayPal order custom_id does not match this booking. Manual investigation required.',
           },
-        }).catch(() => undefined)
+        })
         continue
       }
 
@@ -160,8 +188,12 @@ export async function GET(request: NextRequest) {
         ? capture.amount.currency_code.toUpperCase()
         : null
       if (captureCurrency !== 'GBP') {
-        needsAttention.push(booking.booking_reference ?? booking.id)
-        await logAuditEvent({
+        await flag(booking, {
+          kind: 'capture_currency_mismatch',
+          title: 'A PayPal deposit was taken in the wrong currency',
+          summary: `PayPal took this table deposit in ${captureCurrency ?? 'an unknown currency'}, not pounds, so it was not recorded on the booking. Refund it, or record it by hand.`,
+          context: { 'PayPal order': orderId, 'PayPal capture': capture.id },
+        }, {
           operation_type: 'payment.capture_currency_mismatch',
           resource_type: 'table_booking',
           resource_id: booking.id,
@@ -174,15 +206,19 @@ export async function GET(request: NextRequest) {
             action_needed:
               'PayPal captured in a currency other than GBP, so it was not recorded.',
           },
-        }).catch(() => undefined)
+        })
         continue
       }
 
       // PayPal took the money and we never recorded it.
       const lockedAmountGbp = parsePayPalAmountGbp(capture?.amount?.value ?? null)
       if (lockedAmountGbp === null) {
-        needsAttention.push(booking.booking_reference ?? booking.id)
-        await logAuditEvent({
+        await flag(booking, {
+          kind: 'capture_amount_unreadable',
+          title: 'A PayPal deposit could not be read',
+          summary: 'PayPal shows a completed deposit for this table booking but its amount could not be read, so it was not recorded. Check it in PayPal and record it by hand.',
+          context: { 'PayPal order': orderId, 'PayPal capture': capture.id },
+        }, {
           operation_type: 'payment.capture_amount_unparseable',
           resource_type: 'table_booking',
           resource_id: booking.id,
@@ -195,7 +231,7 @@ export async function GET(request: NextRequest) {
             action_needed:
               'PayPal shows a completed capture but the amount was unreadable, so it was not recorded',
           },
-        }).catch(() => undefined)
+        })
         continue
       }
 
@@ -221,8 +257,12 @@ export async function GET(request: NextRequest) {
       )
 
       if (!payPalAmountsMatch(lockedAmountGbp, expectedAmount)) {
-        needsAttention.push(booking.booking_reference ?? booking.id)
-        await logAuditEvent({
+        await flag(booking, {
+          kind: 'capture_amount_mismatch',
+          title: `A PayPal deposit of ${formatPounds(lockedAmountGbp)} does not match its booking`,
+          summary: `PayPal took ${formatPounds(lockedAmountGbp)} for this table booking, which owes ${formatPounds(expectedAmount)}, so it was not recorded. Refund the difference, or correct the booking and record it by hand.`,
+          context: { 'PayPal order': orderId, 'PayPal capture': capture.id, Captured: formatPounds(lockedAmountGbp), Owed: formatPounds(expectedAmount) },
+        }, {
           operation_type: 'payment.capture_amount_mismatch',
           resource_type: 'table_booking',
           resource_id: booking.id,
@@ -236,7 +276,7 @@ export async function GET(request: NextRequest) {
             action_needed:
               'PayPal captured an amount that does not match this booking. Manual reconciliation required.',
           },
-        }).catch(() => undefined)
+        })
         continue
       }
 
@@ -260,7 +300,24 @@ export async function GET(request: NextRequest) {
           error: new Error(updateError.message),
           metadata: { bookingId: booking.id, orderId, captureId: capture.id },
         })
-        needsAttention.push(booking.booking_reference ?? booking.id)
+        await flag(booking, {
+          kind: 'capture_not_recorded',
+          title: `A PayPal deposit of ${formatPounds(lockedAmountGbp)} could not be recorded`,
+          summary: `PayPal took ${formatPounds(lockedAmountGbp)} for this table booking but the booking could not be updated. It is retried every hour; record it by hand if this repeats.`,
+          context: { 'PayPal order': orderId, 'PayPal capture': capture.id },
+        }, {
+          operation_type: 'payment.capture_local_update_failed',
+          resource_type: 'table_booking',
+          resource_id: booking.id,
+          operation_status: 'failure',
+          additional_info: {
+            source: 'reconciliation_cron',
+            order_id: orderId,
+            capture_id: capture.id,
+            db_error: updateError.message,
+            action_needed: 'PayPal took this deposit but it could not be recorded on the booking.',
+          },
+        })
         continue
       }
 
@@ -274,7 +331,18 @@ export async function GET(request: NextRequest) {
        * human checks the table is still actually available for them.
        */
       const wasCancelled = booking.status === 'cancelled'
-      if (wasCancelled) needsAttention.push(booking.booking_reference ?? booking.id)
+      if (wasCancelled) {
+        needsAttention.push(booking.booking_reference ?? booking.id)
+        // The guest paid for a booking the deposit timeout had cancelled (BK-114).
+        await alertMoneyNeedsAPerson(supabase, {
+          domain: 'table_bookings',
+          bookingId: booking.id,
+          kind: 'paid_after_cancel',
+          title: `A guest paid ${formatPounds(lockedAmountGbp)} for a cancelled table booking`,
+          summary: `PayPal took ${formatPounds(lockedAmountGbp)} for this table booking after it had been cancelled for non-payment. It is now recorded as paid and confirmed. Check the table is still free for them, or refund the deposit.`,
+          context: { Booking: booking.booking_reference ?? booking.id, 'PayPal order': orderId, 'PayPal capture': capture.id },
+        })
+      }
 
       await logAuditEvent({
         operation_type: 'payment.captured',
@@ -298,7 +366,8 @@ export async function GET(request: NextRequest) {
         customerId: booking.customer_id,
         createdVia: 'reconciliation_cron',
       }).catch((err) => {
-        logger.warn('Reconciled a table booking deposit but the confirmation failed to send', {
+        // Error, not warn: production drops warn, and this guest has paid without being told.
+        logger.error('Reconciled a table booking deposit but the confirmation failed to send', {
           error: err instanceof Error ? err : new Error(String(err)),
           metadata: { bookingId: booking.id },
         })

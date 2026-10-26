@@ -34,6 +34,10 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [amountError, setAmountError] = useState<string | null>(null)
+  // One id per opening of the dialog (BK-024). The server keys the refund on it, so a double
+  // click replays this refund, while the next refund on the same booking is a new one. Every
+  // manual refund used to share one key, so the second replayed the first and moved no money.
+  const [requestId, setRequestId] = useState<string | null>(null)
 
   // getEventBookingRefundInfo only computes a refundable amount for confirmed
   // prepaid bookings; for cancelled (or door-paid) bookings fall back to the
@@ -49,8 +53,10 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
       setAmount('')
       setReason('')
       setAmountError(null)
+      setRequestId(null)
       return
     }
+    setRequestId(crypto.randomUUID())
     let cancelled = false
     setInfoLoading(true)
     setInfo(null)
@@ -92,8 +98,13 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
       throw new Error(`Refund cannot exceed ${formatCurrency(maxRefundable)}.`)
     }
 
+    if (!requestId) {
+      throw new Error('Please close this window and open the refund again.')
+    }
+
     const result = await refundEventBookingManual({
       bookingId: booking.id,
+      requestId,
       amount: Number(parsedAmount.toFixed(2)),
       ...(reason.trim() ? { reason: reason.trim() } : {}),
     })

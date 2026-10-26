@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
+import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -136,6 +137,8 @@ export async function POST(
   // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)
   // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
+  // What happened to the deposit, for the person who cancelled (BK-114).
+  let depositRefund: DepositRefundOutcome | null = null
   if (action === 'cancelled' && booking.booking_date && booking.customer_id) {
     const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: booking.id,
@@ -145,6 +148,7 @@ export async function POST(
       source: 'boh_status_cancel',
     })
     guestNotification = cancelOutcome?.notification ?? null
+    depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
   }
 
   // Audit log the status transition (fire-and-forget)
@@ -166,6 +170,7 @@ export async function POST(
       success: true,
       data: updatedRow,
       ...(guestNotification ? { guest_notification: guestNotification } : {}),
+      ...(depositRefund ? { deposit_refund: depositRefund } : {}),
     })
   }
 

@@ -74,7 +74,11 @@ const CreateEventBookingSchema = z.object({
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
   attendees: eventAttendeesInputSchema.optional(),
-  expected_total: z.number().finite().min(0).optional(),
+  // Rounded to pence before it is hashed or reaches create_event_booking_v08, which compares it
+  // exactly with the booked price. A total added up in floating point (12.95 x 3 is
+  // 38.849999999999994 in JavaScript) was refused as "price changed" on every retry (BK-098).
+  // Rounding here also covers a website build that still sends the unrounded figure.
+  expected_total: z.number().finite().min(0).transform((value) => Math.round(value * 100) / 100).optional(),
   attendee_names: z.array(z.string().max(200)).max(20).optional(),
   // Multiple ticket options basket (feature-flagged). Each line has its own
   // attendee_names (length must equal quantity for paid events). Shape guard only;
