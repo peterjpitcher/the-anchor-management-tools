@@ -79,13 +79,16 @@ function sentEmails() {
 
 describe('datesLockedRecently', () => {
   it('names the date whose form locked today, and yesterday as a catch-up', () => {
-    expect(datesLockedRecently({ todayIso: '2026-11-03', cutoffDays: [7], now: NOW })).toEqual(['2026-11-09', '2026-11-10'])
+    expect(datesLockedRecently({ todayIso: '2026-11-03', cutoffDays: [7], now: NOW })).toEqual([
+      { date: '2026-11-09', cutoffDays: 7 },
+      { date: '2026-11-10', cutoffDays: 7 },
+    ])
   })
 
   it('leaves out a date whose form has not locked yet', () => {
     // An hour before noon on 3 November, 10 November is still open.
     const before = new Date('2026-11-03T11:00:00.000Z')
-    expect(datesLockedRecently({ todayIso: '2026-11-03', cutoffDays: [7], now: before })).toEqual(['2026-11-09'])
+    expect(datesLockedRecently({ todayIso: '2026-11-03', cutoffDays: [7], now: before })).toEqual([{ date: '2026-11-09', cutoffDays: 7 }])
   })
 })
 
@@ -145,6 +148,44 @@ describe('sendPreorderCutoffDigests', () => {
     await sendPreorderCutoffDigests(day() as never, { todayIso: '2026-11-03', cutoffDays: [7], choicesCopyEnabled: false, now: NOW })
 
     expect(sentEmails().some((email) => email.to === 'alex@example.com')).toBe(false)
+  })
+
+  it('sends each booking only at its own cutoff when a date holds periods with different cutoffs', async () => {
+    const db = day()
+    // A second period on the same night locks 14 days ahead; its booking is final on 27 October,
+    // while the Christmas bookings stay editable until 3 November.
+    db.tables.booking_periods.push({ id: 'p-2', preorder_cutoff_days: 14 })
+    db.tables.table_bookings.push({
+      id: 'b-3', booking_reference: 'TB-FIX3', booking_date: '2026-11-10', booking_time: '18:00:00',
+      start_datetime: '2026-11-10T18:00:00.000Z', party_size: 1, status: 'confirmed', customer_id: 'cust-1',
+      booking_type: 'regular', booking_period_id: 'p-2', booking_period_name: 'Tasting night',
+      booking_period_answer: true, booking_period_requires_preorder: true, christmas_course_counts: null,
+      allergies: [],
+    })
+    db.tables.booking_preorder_covers.push({ id: 'c-5', table_booking_id: 'b-3', ordinal: 1, guest_name: null, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' })
+    db.tables.booking_preorder_selections.push({ id: 's-5', cover_id: 'c-5', course: 'main', menu_item_id: 'i-main', item_name: 'Tasting main', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' })
+
+    const early = await sendPreorderCutoffDigests(db as never, {
+      todayIso: '2026-10-27', cutoffDays: [7, 14], choicesCopyEnabled: true, now: new Date('2026-10-27T12:00:30.000Z'),
+    })
+
+    expect(early.kitchenEmails).toBe(1)
+    const [kitchen] = sentEmails().filter((email) => email.to === PREORDER_MANAGER_EMAIL)
+    expect(kitchen.text).toContain('Main: Tasting main x1')
+    expect(kitchen.text).not.toContain('Fixture main')
+    expect(kitchen.text).not.toContain('Christmas guests')
+    // The Christmas booker's copy waits for their own cutoff.
+    expect(mocks.sendEmail).not.toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'preorder:choices-copy:b-1' }))
+
+    vi.clearAllMocks()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    const late = await sendPreorderCutoffDigests(db as never, { todayIso: '2026-11-03', cutoffDays: [7, 14], choicesCopyEnabled: true, now: NOW })
+
+    expect(late.kitchenEmails).toBe(1)
+    const [christmasKitchen] = sentEmails().filter((email) => email.to === PREORDER_MANAGER_EMAIL)
+    expect(christmasKitchen.text).toContain('Main: Fixture main x2')
+    expect(christmasKitchen.text).not.toContain('Tasting main')
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'preorder:choices-copy:b-1' }))
   })
 
   it('lets the next run try again when the kitchen email fails', async () => {
