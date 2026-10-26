@@ -3,6 +3,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh, hasUnpaidRequiredDeposit } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkNoShowCanComeBack } from '@/lib/table-bookings/reinstate-check'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -37,6 +38,14 @@ export async function POST(
       },
       { status: 409 }
     )
+  }
+
+  // Seating a no-show puts it back: its table must still be free and its deposit held (BK-048).
+  if (booking.status === 'no_show') {
+    const problem = await checkNoShowCanComeBack(auth.supabase, booking)
+    if (problem) {
+      return NextResponse.json({ error: problem }, { status: 409 })
+    }
   }
 
   const nowIso = new Date().toISOString()
