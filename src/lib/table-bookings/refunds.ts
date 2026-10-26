@@ -1,6 +1,5 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
@@ -19,8 +18,14 @@ export type RefundResult =
        * `refund_failed` means a deposit WAS paid and we tried to return it and could not. It is the
        * one reason that means money is owed, so it must never be reported to the guest as if no
        * deposit existed.
+       *
+       * `seasonal_cutoff` is a seasonal booking cancelled inside the cutoff it was sold on (for
+       * Christmas, fewer than 7 days before). It is kept apart from `zero_tier`, the sliding rule's
+       * "inside 3 days", so the guest is told the rule that actually applied.
        */
-      reason: 'no_deposit' | 'zero_tier' | 'already_refunded' | 'terms_unreadable' | 'refund_failed'
+      reason: 'no_deposit' | 'zero_tier' | 'seasonal_cutoff' | 'already_refunded' | 'terms_unreadable' | 'refund_failed'
+      /** The booking's own refund cutoff in days, with `seasonal_cutoff`. */
+      cutoffDays?: number
       /** True when the guest has money with us that this call did not return. */
       depositOwed?: boolean
       /** Pence still held, when known, so the caller can say so. */
@@ -81,7 +86,12 @@ export async function refundTableBookingDeposit(
   tableBookingId: string,
   bookingDate: Date
 ): Promise<RefundResult> {
-  const supabase = await createClient()
+  // The service-role client, not the caller's session. A guest cancelling through their manage
+  // link, or answering "no" to the confirm text, has no session, and RLS hides table_bookings and
+  // payments from anon: the reads came back empty, so a paid PayPal deposit read as no deposit and
+  // was never refunded (BK-002, 24 October review). Every caller authorises before getting here:
+  // the staff routes check permissions and the guest routes check the hashed token.
+  const supabase = createAdminClient()
 
   const { data: payment } = await supabase
     .from('payments')
@@ -138,7 +148,7 @@ export async function refundTableBookingDeposit(
           cutoffDays: decision.cutoffDays,
         },
       })
-      return { refunded: false, reason: 'zero_tier' }
+      return { refunded: false, reason: 'seasonal_cutoff', cutoffDays: decision.cutoffDays }
     }
 
     // The seasonal promise is all or nothing, so an entitled refund is the whole deposit.
@@ -173,7 +183,7 @@ type DepositPaymentRow = {
  * one place that handles the dangerous state: money returned to the guest, our own row not updated.
  */
 async function issueStripeRefund(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createAdminClient>,
   args: {
     tableBookingId: string
     payment: DepositPaymentRow
@@ -269,7 +279,7 @@ function toGbp(value: number | string | null | undefined): number | null {
  * and could not send it", because those two produce very different messages to a customer.
  */
 async function refundPayPalDeposit(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createAdminClient>,
   tableBookingId: string,
   bookingDate: Date,
 ): Promise<RefundResult> {
@@ -326,7 +336,7 @@ async function refundPayPalDeposit(
           cutoffDays: decision.cutoffDays,
         },
       })
-      return { refunded: false, reason: 'zero_tier' }
+      return { refunded: false, reason: 'seasonal_cutoff', cutoffDays: decision.cutoffDays }
     }
     entitledGbp = decision.amount
     tier = 'full'

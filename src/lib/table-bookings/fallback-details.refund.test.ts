@@ -12,6 +12,8 @@ describe('cancellation facts carry what had already gone back', () => {
     ['rest of a full refund', { refunded: true, amountPence: 10000, tier: 'full', alreadyReturnedPence: 5000 }],
     ['rest of a half refund', { refunded: true, amountPence: 2500, tier: 'half', alreadyReturnedPence: 5000 }],
     ['plain full refund', { refunded: true, amountPence: 15000, tier: 'full' }],
+    ['Christmas, inside its 7-day cutoff', { refunded: false, reason: 'seasonal_cutoff', cutoffDays: 7 }],
+    ['a deposit that was never refundable', { refunded: false, reason: 'seasonal_cutoff', cutoffDays: 0 }],
   ]
 
   it.each(variants)('%s: the rebuilt sentence is the sentence first sent', (_label, refundResult) => {
