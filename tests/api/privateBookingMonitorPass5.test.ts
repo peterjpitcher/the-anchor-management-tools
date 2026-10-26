@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
+// The daily check on private hires (review BK-005, BK-007) has its own tests
+// (tests/services/privateHireAttention.test.ts); these mocks only model the SMS passes.
+vi.mock('@/services/private-bookings/attention', () => ({
+  runHireAttentionCheck: vi.fn(async () => ({ listed: 0, emailed: false })),
+}))
+
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn().mockReturnValue({ authorized: true })
 }))
@@ -107,11 +113,11 @@ function buildBaseSupabase(options: {
         }
       }
       if (table === 'private_bookings_with_details') {
-        // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+        // Pass 3: .or(confirmed, or a draft with its deposit paid).not('balance_due_date', 'is', null)
         //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
         return {
           select: () => ({
-            eq: () => ({
+            or: () => ({
               not: () => ({
                 gte: () => ({
                   lte: vi.fn().mockResolvedValue({ data: [], error: null })
@@ -169,7 +175,7 @@ function buildBaseSupabase(options: {
             if (columns.includes('outcome_email_sent_at')) {
               return {
                 eq: () => ({
-                  eq: () => ({
+                  or: () => ({
                     eq: () => ({
                       is: vi
                         .fn()
@@ -217,7 +223,7 @@ function buildBaseSupabase(options: {
             }
             if (columns.includes('start_time, guest_count')) {
               return {
-                eq: () => ({
+                or: () => ({
                   eq: vi.fn().mockResolvedValue({ data: [], error: null })
                 })
               }

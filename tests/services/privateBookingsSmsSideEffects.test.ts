@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
+// Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
+// D25). This file is about something else, so every booking here passes those checks; they are
+// tested in tests/services/privateHireReadiness.test.ts.
+vi.mock('@/services/private-bookings/readiness', async (importOriginal) =>
+  (await import('../helpers/readyHire')).readyHireReadiness(importOriginal))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))

@@ -338,6 +338,17 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   deposit_status?: 'Paid' | 'Required' | 'Not Required'
   /** Set by the list query while private_booking_deposit_confirmation is on. */
   deposit_awaiting_confirmation?: boolean
+  /**
+   * Set by the list query for draft and confirmed hires (review BK-005, BK-006, BK-007): what is
+   * stopping the hire being confirmed, or is wrong with a confirmed one. Null when it could not
+   * be read.
+   */
+  hire_attention?: {
+    /** no_room, no_guest_count, over_capacity. */
+    roomProblems: string[]
+    /** The deposit is paid and the booking is still a draft. */
+    paidNotConfirmed: boolean
+  } | null
   days_until_event?: number
   sms_queue?: PrivateBookingSmsQueue[]
   documents?: PrivateBookingDocument[]

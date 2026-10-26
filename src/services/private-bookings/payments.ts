@@ -31,11 +31,12 @@ import {
   normalizeSmsSafetyMeta,
   toNumber,
 } from './types';
+import { getBookingConflictSummary } from './conflicts'
 import {
-  checkCapacity,
-  getBookingConflictSummary,
-  getBookingSpaceIds,
-} from './conflicts';
+  hireRoomProblems,
+  loadOneHireReadiness,
+  type HireProblem,
+} from './readiness';
 import {
   bookingConfirmedMessage,
   depositReceivedMessage,
@@ -58,6 +59,30 @@ type FinalizeDepositPaymentResult = {
   success: true
   alreadyRecorded?: boolean
   smsSideEffects?: PrivateBookingSmsSideEffectSummary[]
+  /**
+   * True when the deposit was recorded but the booking stayed a draft. The staff member who
+   * recorded it, and a guest paying online, are told so rather than "confirmed" (review BK-005).
+   */
+  confirmationBlocked?: boolean
+  /** Why it stayed a draft, in words staff can act on. */
+  confirmationBlockedReasons?: string[]
+}
+
+/** Why a paid deposit left the booking a draft, when the confirmation checks themselves failed. */
+export const GATE_CHECK_FAILED_REASON =
+  'The checks before confirming could not run, so the booking was left as a draft. Check its rooms and guest count, then confirm it by hand.'
+
+/** A room problem as the reason a paid deposit did not confirm the booking. */
+function depositGateReason(problem: HireProblem): string {
+  if (problem.code === 'no_room') return 'No room booked. Add the room the party will use, then confirm the booking.'
+  if (problem.code === 'no_guest_count') return 'No guest count set. Add the number of guests, then confirm the booking.'
+  return problem.message
+}
+
+/** What to tell the staff member who recorded a deposit that did not confirm the booking. */
+export function describeBlockedDeposit(reasons: string[]): string {
+  const sentences = reasons.map((reason) => (/[.!?]$/.test(reason.trim()) ? reason.trim() : `${reason.trim()}.`))
+  return `The deposit is recorded, but the booking is still a draft. ${sentences.join(' ')}`
 }
 
 function formatEventDate(eventDate: string | null | undefined, booking?: { date_tbd?: boolean | null; internal_notes?: string | null }): string {
@@ -470,12 +495,17 @@ async function finalizeDepositPaymentWithClient(
     return { success: true, alreadyRecorded: true }
   }
 
-  // SOP §6/§18/§28: gate the draft→confirmed flip on space conflicts,
-  // capacity and an outstanding risk review. The payment is ALWAYS recorded —
-  // the money has already been taken (especially PayPal); when gated the
-  // booking stays 'draft' and staff resolve then confirm via a status change.
-  // Fail-open rule: if the checks themselves throw (infrastructure), log and
-  // proceed as if clear — never block money flows on a broken check.
+  // SOP §6/§18/§28 and owner decision D24: gate the draft→confirmed flip on
+  // space conflicts, a room being booked, a guest count, the capacity (or a
+  // manager's override) and an outstanding risk review. The payment is ALWAYS
+  // recorded, because the money has already been taken (especially PayPal);
+  // when gated the booking stays 'draft', the reasons go on its audit trail,
+  // the booking page and list show "Deposit paid, not confirmed" with them,
+  // and staff resolve them, then confirm by a status change.
+  //
+  // A check that cannot run keeps the booking a draft too (review BK-005 and
+  // BK-007). It used to confirm as if clear, which is how a paid hire with no
+  // room confirmed itself. The money is never held up: only the status is.
   let confirmationBlockedReasons: string[] = []
   if (booking.status === 'draft') {
     try {
@@ -487,24 +517,9 @@ async function finalizeDepositPaymentWithClient(
         )
       }
 
-      const spaceIds = await getBookingSpaceIds(bookingId)
-      if (spaceIds.length > 0) {
-        const { data: spaces, error: spacesError } = await db
-          .from('venue_spaces')
-          .select('name, capacity_seated, capacity_standing')
-          .in('id', spaceIds)
-        if (!spacesError) {
-          const capacityResult = checkCapacity({
-            spaces: spaces || [],
-            guestCount: booking.guest_count,
-            layout: (booking as { layout?: 'seated' | 'standing' | 'mixed' | null }).layout ?? null,
-          })
-          if (!capacityResult.ok) {
-            confirmationBlockedReasons.push(
-              capacityResult.reason || 'Guest count exceeds the capacity for the selected space'
-            )
-          }
-        }
+      const { facts, rooms } = await loadOneHireReadiness(bookingId)
+      for (const problem of hireRoomProblems(facts, rooms)) {
+        confirmationBlockedReasons.push(depositGateReason(problem))
       }
 
       const riskStatus = (booking as { risk_status?: string | null }).risk_status
@@ -516,11 +531,11 @@ async function finalizeDepositPaymentWithClient(
         )
       }
     } catch (gateError) {
-      logger.error('Deposit confirmation gate check failed — proceeding (fail open)', {
+      logger.error('Deposit confirmation gate check failed: the booking stays a draft', {
         error: gateError instanceof Error ? gateError : new Error(String(gateError)),
         metadata: { bookingId },
       })
-      confirmationBlockedReasons = []
+      confirmationBlockedReasons = [GATE_CHECK_FAILED_REASON]
     }
   }
   const confirmationBlocked = confirmationBlockedReasons.length > 0
@@ -624,9 +639,11 @@ async function finalizeDepositPaymentWithClient(
     confirmationBlocked,
   })
 
-  return smsSideEffects.length > 0
-    ? { success: true, smsSideEffects }
-    : { success: true }
+  return {
+    success: true,
+    ...(smsSideEffects.length > 0 ? { smsSideEffects } : {}),
+    ...(confirmationBlocked ? { confirmationBlocked: true, confirmationBlockedReasons } : {}),
+  }
 }
 
 export async function finalizeDepositPayment(
@@ -640,7 +657,7 @@ export async function finalizeDepositPayment(
 // Record deposit — caller handles auth check
 // ---------------------------------------------------------------------------
 
-export async function recordDeposit(bookingId: string, amount: number, method: string, performedByUserId?: string): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
+export async function recordDeposit(bookingId: string, amount: number, method: string, performedByUserId?: string): Promise<FinalizeDepositPaymentResult> {
   const supabase = await createClient();
   return finalizeDepositPaymentWithClient(supabase, {
     bookingId,
@@ -996,7 +1013,7 @@ export async function updateDepositAmount(
   amount: number,
   performedByUserId?: string,
   options?: { reductionReason?: string; waived?: boolean; waivedReason?: string }
-): Promise<void> {
+): Promise<{ confirmationBlockedReasons?: string[] }> {
   const db = createAdminClient()
 
   if (amount <= 0) {
@@ -1012,7 +1029,25 @@ export async function updateDepositAmount(
 
     if (fetchError || !booking) throw new Error('Booking not found')
 
-    const shouldConfirm = booking.status === 'draft'
+    // Waiving the deposit confirms a draft only when nothing else stops it (owner decision D24,
+    // review BK-066: this path confirmed a hire with no capacity check at all). Otherwise the
+    // waiver is saved, the booking stays a draft and staff are told why. A check that cannot
+    // run keeps it a draft too.
+    let confirmationBlockedReasons: string[] = []
+    if (booking.status === 'draft') {
+      try {
+        const { facts, rooms } = await loadOneHireReadiness(bookingId, db)
+        confirmationBlockedReasons = hireRoomProblems(facts, rooms).map(depositGateReason)
+      } catch (gateError) {
+        logger.error('Deposit waiver confirmation check failed: the booking stays a draft', {
+          error: gateError instanceof Error ? gateError : new Error(String(gateError)),
+          metadata: { bookingId },
+        })
+        confirmationBlockedReasons = [GATE_CHECK_FAILED_REASON]
+      }
+    }
+
+    const shouldConfirm = booking.status === 'draft' && confirmationBlockedReasons.length === 0
     const { error } = await db
       .from('private_bookings')
       .update({
@@ -1043,7 +1078,7 @@ export async function updateDepositAmount(
       })
     }
 
-    return
+    return confirmationBlockedReasons.length > 0 ? { confirmationBlockedReasons } : {}
   }
 
   if (amount < 250 && !(options?.reductionReason || '').trim()) {
@@ -1061,6 +1096,7 @@ export async function updateDepositAmount(
     })
     .eq('id', bookingId)
   if (error) throw new Error(`Failed to update deposit amount: ${error.message}`)
+  return {}
 }
 
 // Returns statusReverted so the calling server action can include it in the audit log.

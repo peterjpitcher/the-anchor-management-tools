@@ -210,7 +210,15 @@ export async function createDepositPaymentOrderByToken(
 export async function captureDepositPaymentByToken(
   portalToken: string,
   paypalOrderId: string
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{
+  success?: boolean
+  error?: string
+  /**
+   * True only when the booking is confirmed now. A paid deposit can leave it a draft while staff
+   * finish their checks, and the page must not tell the guest it is confirmed then (review BK-005).
+   */
+  bookingConfirmed?: boolean
+}> {
   // Verify the portal token — this IS the authorisation
   const bookingId = verifyBookingToken(portalToken)
   if (!bookingId) {
@@ -243,7 +251,7 @@ export async function captureDepositPaymentByToken(
 
   // Already paid — idempotent success
   if (booking.deposit_paid_date) {
-    return { success: true }
+    return { success: true, bookingConfirmed: booking.status === 'confirmed' }
   }
 
   const expectedAmount = Number(booking.deposit_amount ?? 0)
@@ -293,9 +301,9 @@ export async function captureDepositPaymentByToken(
       return { error: 'We could not safely confirm this payment. Please contact us for assistance.' }
     }
     if (claim.state === 'replay') {
-      const replay = claim.response as { success?: boolean; error?: string } | null
+      const replay = claim.response as { success?: boolean; error?: string; bookingConfirmed?: boolean } | null
       return replay?.success
-        ? { success: true }
+        ? { success: true, bookingConfirmed: replay.bookingConfirmed === true }
         : { error: replay?.error || pendingConfirmationResponse.error }
     }
     captureClaimed = true
@@ -361,15 +369,21 @@ export async function captureDepositPaymentByToken(
       metadata: { bookingId, captureId: captureResult.transactionId }
     })
 
+    // Confirmed now only if it already was, or this payment confirmed it. When the payment was
+    // recorded by someone else first the booking's state is not known here, so it is not claimed.
+    const bookingConfirmed = finalizeResult.alreadyRecorded
+      ? booking.status === 'confirmed'
+      : booking.status === 'confirmed' || finalizeResult.confirmationBlocked !== true
+
     try {
-      await persistIdempotencyResponse(admin, captureKey, captureHash, { success: true })
+      await persistIdempotencyResponse(admin, captureKey, captureHash, { success: true, bookingConfirmed })
     } catch (persistError) {
       logger.error('Portal capture: failed to persist successful capture response', {
         error: persistError instanceof Error ? persistError : new Error(String(persistError)),
         metadata: { bookingId, paypalOrderId },
       })
     }
-    return { success: true }
+    return { success: true, bookingConfirmed }
   } catch (error) {
     if (captureClaimed && !paymentCaptured) {
       try {

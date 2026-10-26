@@ -15,6 +15,9 @@ interface PayPalCaptureClientProps {
 export function PayPalCaptureClient({ portalToken, depositPaid }: PayPalCaptureClientProps) {
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<'idle' | 'capturing' | 'success' | 'error'>('idle')
+  // Whether the booking is confirmed now. A paid deposit can leave it a draft while staff finish
+  // their checks, so "confirmed" is said only when the server says so (review BK-005).
+  const [bookingConfirmed, setBookingConfirmed] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [captureAttempted, setCaptureAttempted] = useState(false)
 
@@ -31,6 +34,7 @@ export function PayPalCaptureClient({ portalToken, depositPaid }: PayPalCaptureC
     captureDepositPaymentByToken(portalToken, paypalOrderId)
       .then((result) => {
         if (result.success) {
+          setBookingConfirmed(result.bookingConfirmed === true)
           setStatus('success')
           // Reload to show updated booking state from the server component
           setTimeout(() => window.location.replace(window.location.pathname), 1500)
@@ -56,9 +60,14 @@ export function PayPalCaptureClient({ portalToken, depositPaid }: PayPalCaptureC
   }
 
   if (status === 'success') {
-    return (
+    return bookingConfirmed ? (
       <GuestAlert tone="success" title="Payment confirmed, thank you!">
         Your deposit has been received and your booking is confirmed.
+      </GuestAlert>
+    ) : (
+      <GuestAlert tone="success" title="Payment received, thank you!">
+        Your deposit has been received. We&apos;re just finishing our checks on this booking, and
+        we&apos;ll confirm it shortly.
       </GuestAlert>
     )
   }
