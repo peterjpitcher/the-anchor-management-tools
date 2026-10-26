@@ -1593,10 +1593,11 @@ async function computeEventBookingRefundable(
   bookingId: string
 ): Promise<{ amountPaid: number; alreadyRefunded: number; maxRefundable: number }> {
   const [paidResult, refundResult] = await Promise.all([
+    // Fully refunded charges count as taken: their refund rows are subtracted below, once.
     supabase.from('payments').select('amount')
       .eq('event_booking_id', bookingId)
       .in('charge_type', ['prepaid_event', 'seat_increase'])
-      .in('status', ['succeeded', 'partially_refunded']),
+      .in('status', ['succeeded', 'partially_refunded', 'refunded']),
     supabase.from('payments').select('amount')
       .eq('event_booking_id', bookingId)
       .eq('charge_type', 'refund')
