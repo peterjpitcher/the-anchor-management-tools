@@ -17,7 +17,13 @@ import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { loadPrivateBookingEmailTimeline } from '@/lib/private-bookings/email-timeline';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
-import { hireRoomProblems, isPaidButNotConfirmed, loadHireReadinessFacts } from './readiness';
+import {
+  contractProblem,
+  depositStageReached,
+  hireRoomProblems,
+  isPaidButNotConfirmed,
+  loadHireReadinessFacts,
+} from './readiness';
 
 function normalizeDepositStatus(booking: {
   deposit_amount?: unknown
@@ -74,8 +80,8 @@ async function loadDepositAwaitingConfirmation(
 }
 
 /**
- * For each draft or confirmed hire on the page: its room problems and whether its deposit is paid
- * while it is still a draft (review BK-005 and BK-007). Read with the admin client because the
+ * For each draft or confirmed hire on the page: its room problems, whether its deposit is paid
+ * while it is still a draft, and where its contract is (reviews BK-005, BK-006 and BK-007). Read with the admin client because the
  * capacity override lives on the booking's audit trail; the caller has already checked that the
  * user may view private bookings. A read that fails is logged and leaves the field null, and the
  * booking page, which checks for itself, says so.
@@ -91,9 +97,12 @@ async function loadHireAttention(
     for (const booking of live) {
       const one = facts.get(booking.id);
       if (!one) continue;
+      const contractMissing = contractProblem(one) !== null;
       result.set(booking.id, {
         roomProblems: hireRoomProblems(one, rooms).map((problem) => problem.code),
         paidNotConfirmed: isPaidButNotConfirmed(one),
+        contract: one.contractAcceptedAt ? 'accepted' : contractMissing ? 'not_sent' : 'sent',
+        contractNotSentAfterDeposit: contractMissing && depositStageReached(one),
       });
     }
   } catch (error) {

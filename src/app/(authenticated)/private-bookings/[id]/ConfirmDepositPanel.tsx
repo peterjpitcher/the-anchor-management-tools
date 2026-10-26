@@ -146,8 +146,10 @@ export function ConfirmDepositPanel({
           <div className="space-y-2 text-sm text-text">
             {deadline && <p>{deadline}</p>}
             <p>
-              We will email the guest that the deposit can be paid in cash at the bar or by PayPal,
-              with a PayPal link. If they have no usable email address, we will text them instead.
+              If the contract has not been sent yet, we will email it for signature first, then email
+              the guest that the deposit can be paid in cash at the bar or by PayPal, with a PayPal
+              link. If they have no usable email address, we will text them about the deposit instead,
+              and the contract will still need sending.
             </p>
           </div>
           {error && <Alert tone="danger">{error}</Alert>}

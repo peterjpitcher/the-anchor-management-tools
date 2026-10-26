@@ -56,6 +56,7 @@ import {
 } from './conflicts';
 import {
   describeConfirmationBlockers,
+  hireConfirmationProblems,
   hireRoomProblems,
   loadOneHireReadiness,
   type HireProblem,
@@ -82,7 +83,6 @@ import {
   getPrivateBookingCancellationOutcome,
   type CancellationFinancialOutcome,
 } from '@/services/private-bookings/financial';
-import { sendBookingConfirmedSideEffects } from './payments';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -616,13 +616,14 @@ async function assertSpaceAvailabilityAndCapacity(input: {
 }
 
 /**
- * Owner decision D24 (24 October 2026, review BK-007): a private hire is confirmed only when it has
- * a room, a guest count, and room for its guests in the layout booked, or a manager's override for
- * the capacity. A hire with no room took nothing off sale, so diners could book the Main Bar on a
- * night the pub was full of a party. Checked on the state about to be saved, so a guest count
- * changed in the same edit counts.
+ * Owner decisions D24 and D25 (24 October 2026, reviews BK-007 and BK-006): a private hire is
+ * confirmed only when it has a room, a guest count, and room for its guests in the layout booked
+ * (or a manager's override for the capacity), and once its contract has been sent or recorded as
+ * accepted another way. A hire with no room took nothing off sale, so diners could book the Main
+ * Bar on a night the pub was full of a party; and hires were confirmed with no contract ever sent.
+ * Checked on the state about to be saved, so a guest count changed in the same edit counts.
  *
- * Fails closed: if the rooms cannot be read, the booking is not confirmed.
+ * Fails closed: if the booking cannot be read, it is not confirmed.
  */
 async function assertHireReadyToConfirm(
   id: string,
@@ -631,13 +632,13 @@ async function assertHireReadyToConfirm(
   let problems: HireProblem[]
   try {
     const { facts, rooms } = await loadOneHireReadiness(id)
-    problems = hireRoomProblems(facts, rooms, pending)
+    problems = hireConfirmationProblems(facts, rooms, pending)
   } catch (error) {
     logger.error('Could not check a private hire before confirming it', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId: id },
     })
-    throw new Error("Could not check the booking's rooms and guest count, so it was not confirmed. Please try again.")
+    throw new Error("Could not check the booking's rooms, guest count and contract, so it was not confirmed. Please try again.")
   }
   if (problems.length > 0) {
     throw new Error(describeConfirmationBlockers(problems))
@@ -1043,12 +1044,6 @@ export async function createBooking(
     throw new Error('Private booking must include a linked customer (customer_id or contact_phone)');
   }
 
-  // A waived (£0) deposit used to confirm the booking as it was made. Under D24 it is confirmed
-  // only with a room and a guest count; the capacity was checked above. Otherwise it is saved as a
-  // draft and staff confirm it once the rooms are set (review BK-007, BK-066).
-  const readyToConfirmAtCreation =
-    requestedSpaceIds.length > 0 && input.guest_count !== null && input.guest_count !== undefined && Number(input.guest_count) > 0;
-
   const bookingPayload = {
     ...input,
     contact_phone: normalizedContactPhone,
@@ -1063,9 +1058,14 @@ export async function createBooking(
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name,
     deposit_amount: depositAmount,
-    // An enquiry stays a draft even where the deposit was waived: confirming a
-    // booking nobody has read would be worse than losing it.
-    status: input.is_web_enquiry ? 'draft' : (requiresDeposit || !readyToConfirmAtCreation ? 'draft' : 'confirmed'),
+    // Every booking starts as a draft. A waived (£0) deposit used to confirm the
+    // booking as it was made, with no room checked and no contract. A hire is now
+    // confirmed only with a room that fits its guests (D24) and its contract sent
+    // or accepted another way (D25), and no contract exists yet when a booking is
+    // made, so staff confirm it once both are in place (reviews BK-006, BK-007).
+    // An enquiry was always a draft: confirming a booking nobody has read would
+    // be worse than losing it.
+    status: 'draft',
     date_tbd: input.date_tbd ? true : false,
   };
   delete (bookingPayload as Record<string, unknown>).is_web_enquiry;
@@ -1129,21 +1129,9 @@ export async function createBooking(
           metadata: { bookingId: booking.id }
         })
       })
-    } else if (bookingPayload.status === 'confirmed') {
-      // A waived deposit held back as a draft (no room or guest count yet) is told nothing now:
-      // the confirmation goes when staff confirm it, from updateBooking.
-      void sendBookingConfirmedSideEffects({
-        booking: bookingForSideEffects,
-        performedByUserId: (booking as any).created_by ?? (bookingPayload as any).created_by,
-        analyticsVia: 'private_booking_no_deposit_create',
-        syncCalendar: false,
-      }).catch((smsError) => {
-        logger.error('Private booking no-deposit confirmation side effects failed', {
-          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
-          metadata: { bookingId: booking.id }
-        })
-      })
     }
+    // A waived (£0) deposit is a draft with nothing to pay, so nothing goes now: the guest is told
+    // the booking is confirmed when staff confirm it (updateBooking sends that).
   }
 
   // Google Calendar Sync
@@ -1233,7 +1221,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   if (input.status === 'confirmed' && currentBooking.status !== 'confirmed') {
     await assertDepositConfirmedBeforeBookingConfirmation(id, currentBooking, input)
-    // D24: a room, a guest count and room for the guests, judged on what this edit will save.
+    // D24 and D25: a room that fits the guests, judged on what this edit will save, and a contract.
     await assertHireReadyToConfirm(id, { guestCount: input.guest_count, layout: input.layout })
   }
 

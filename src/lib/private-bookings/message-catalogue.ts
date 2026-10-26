@@ -58,7 +58,7 @@ import type { PrivateBookingPaymentStatement } from '@/lib/private-bookings/paym
 
 /** The private_bookings columns the catalogue reads. */
 export const PRIVATE_BOOKING_MESSAGE_COLUMNS =
-  'id, status, customer_id, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, event_type, event_date, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes, hold_expiry, deposit_amount, deposit_paid_date, deposit_waived, balance_due_date, final_payment_date, setup_date, setup_time'
+  'id, status, customer_id, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, event_type, event_date, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes, hold_expiry, deposit_amount, deposit_paid_date, deposit_waived, balance_due_date, final_payment_date, setup_date, setup_time, contract_sent_at, contract_accepted_at'
 
 export type CatalogueBooking = {
   id: string
@@ -85,6 +85,13 @@ export type CatalogueBooking = {
   final_payment_date: string | null
   setup_date: string | null
   setup_time: string | null
+  /**
+   * Whether the contract has reached the guest (review BK-006): the deposit request says paying
+   * accepts the terms "set out in your contract" only when it has. Optional so a row read before
+   * these were selected still builds; missing reads as no contract, the wording that is always true.
+   */
+  contract_sent_at?: string | null
+  contract_accepted_at?: string | null
 }
 
 export type CancellationAmounts = {

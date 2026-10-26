@@ -74,6 +74,11 @@ function bookingRow(overrides: Record<string, unknown> = {}) {
     final_payment_date: null,
     setup_date: null,
     setup_time: null,
+    // The contract has already gone, so Confirm deposit sends only the deposit request here. Sending
+    // the contract in the same action (owner decision D25) is tested in
+    // privateBookingConfirmDepositContract.test.ts.
+    contract_sent_at: '2026-09-01T10:00:00.000Z',
+    contract_accepted_at: null,
     ...overrides,
   }
 }

@@ -219,6 +219,37 @@ export function hireRoomProblems(
   })
 }
 
+/**
+ * Owner decision D25 (review BK-006): a hire is not confirmed until its contract has been sent, or
+ * recorded as accepted another way. Every deposit request told the guest that paying accepts the
+ * terms "set out in your contract", and most hires were confirmed with none ever sent.
+ */
+export function contractProblem(facts: Pick<HireReadinessFacts, 'contractSentAt' | 'contractAcceptedAt'>): HireProblem | null {
+  return contractSentOrAccepted({ contract_sent_at: facts.contractSentAt, contract_accepted_at: facts.contractAcceptedAt })
+    ? null
+    : { code: 'contract_not_sent', message: CONTRACT_NOT_SENT_MESSAGE }
+}
+
+/** Everything that stops a hire being confirmed: its rooms (D24) and its contract (D25). */
+export function hireConfirmationProblems(
+  facts: HireReadinessFacts,
+  candidates: HireRoom[],
+  pending?: { guestCount?: unknown; layout?: unknown },
+): HireProblem[] {
+  const contract = contractProblem(facts)
+  return [...hireRoomProblems(facts, candidates, pending), ...(contract ? [contract] : [])]
+}
+
+/**
+ * Has the booking reached the deposit stage: deposit confirmed, paid or waived, or the booking
+ * confirmed? From then on a missing contract is shown on the booking and in the list (BK-006).
+ */
+export function depositStageReached(
+  facts: Pick<HireReadinessFacts, 'status' | 'depositConfirmedAt' | 'depositPaidDate' | 'depositWaived'>,
+): boolean {
+  return Boolean(facts.depositConfirmedAt) || Boolean(facts.depositPaidDate) || facts.depositWaived || facts.status === 'confirmed'
+}
+
 /** Is this booking a draft with its deposit paid: money in, booking not confirmed? */
 export function isPaidButNotConfirmed(facts: Pick<HireReadinessFacts, 'status' | 'depositPaidDate'>): boolean {
   return facts.status === 'draft' && Boolean(facts.depositPaidDate)
@@ -242,6 +273,8 @@ export interface HireReadinessView {
   roomCapacity: number | null
   /** A manager's override that still applies to the rooms and layout booked now. */
   capacityOverride: { maxGuests: number; reason: string; grantedAt: string } | null
+  /** The deposit stage is reached and the contract has not been sent or accepted (D25). */
+  contractNotSent: boolean
 }
 
 export function buildHireReadinessView(facts: HireReadinessFacts, candidates: HireRoom[]): HireReadinessView {
@@ -267,6 +300,7 @@ export function buildHireReadinessView(facts: HireReadinessFacts, candidates: Hi
     capacityOverride: overrideApplies && facts.override
       ? { maxGuests: facts.override.maxGuests, reason: facts.override.reason, grantedAt: facts.override.grantedAt }
       : null,
+    contractNotSent: live && depositStageReached(facts) && contractProblem(facts) !== null,
   }
 }
 

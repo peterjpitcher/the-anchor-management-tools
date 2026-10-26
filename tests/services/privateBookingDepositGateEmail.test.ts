@@ -82,7 +82,9 @@ function bookingRow(overrides: Record<string, unknown> = {}) {
     balance_due_date: '2026-09-19',
     total_amount: 1200,
     calendar_event_id: null,
-    contract_sent_at: null,
+    // The contract has been sent (owner decision D25): without it a paid deposit leaves the
+    // booking a draft, so every booking here has one.
+    contract_sent_at: '2026-09-01T10:00:00.000Z',
     layout: null,
     risk_status: 'normal',
     ...overrides,

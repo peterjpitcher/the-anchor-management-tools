@@ -143,14 +143,18 @@ const ROOM_PROBLEM_LABELS: Record<string, string> = {
 function HireAttentionBadges({
   attention,
   className = 'mt-1',
+  includeContract = false,
 }: {
   attention: PrivateBookingDashboardItem['hire_attention']
   className?: string
+  /** On phones, where there is no Contract column, a missing contract shows here too. */
+  includeContract?: boolean
 }): React.ReactElement | null {
   if (!attention) return null
   const labels = [
     ...(attention.paidNotConfirmed ? ['Deposit paid, not confirmed'] : []),
     ...attention.roomProblems.map((code) => ROOM_PROBLEM_LABELS[code] ?? code),
+    ...(includeContract && attention.contractNotSentAfterDeposit ? ['Contract not sent'] : []),
   ]
   if (labels.length === 0) return null
   return (
@@ -159,6 +163,22 @@ function HireAttentionBadges({
         <Badge key={label} tone="danger" size="sm">{label}</Badge>
       ))}
     </div>
+  )
+}
+
+/**
+ * The Contract column (review BK-006, owner decision D25): accepted, sent, or not sent. Not sent is
+ * red once the deposit is confirmed, paid or waived, because the booking cannot be confirmed until
+ * the contract has been sent or recorded as accepted another way.
+ */
+function ContractStatus({ attention }: { attention: PrivateBookingDashboardItem['hire_attention'] }): React.ReactElement | null {
+  if (!attention) return null
+  if (attention.contract === 'accepted') return <Badge tone="success" size="sm">Accepted</Badge>
+  if (attention.contract === 'sent') return <Badge tone="info" size="sm">Sent</Badge>
+  return (
+    <Badge tone={attention.contractNotSentAfterDeposit ? 'danger' : 'neutral'} size="sm">
+      Not sent
+    </Badge>
   )
 }
 
@@ -701,6 +721,7 @@ export default function PrivateBookingsClient({
                     <TableHead>Customer</TableHead>
                     <TableHead>Details</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Contract</TableHead>
                     <TableHead>Financials</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -777,6 +798,10 @@ export default function PrivateBookingsClient({
                           </div>
                         )}
                         <HireAttentionBadges attention={booking.hire_attention ?? null} />
+                      </TableCell>
+
+                      <TableCell>
+                        <ContractStatus attention={booking.hire_attention ?? null} />
                       </TableCell>
 
                       <TableCell>
@@ -928,7 +953,7 @@ export default function PrivateBookingsClient({
                       </Badge>
                     </div>
                   )}
-                  <HireAttentionBadges attention={booking.hire_attention ?? null} className="mb-3" />
+                  <HireAttentionBadges attention={booking.hire_attention ?? null} className="mb-3" includeContract />
 
                   <div className="flex justify-end items-center gap-2 pt-2 border-t border-border flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <Link

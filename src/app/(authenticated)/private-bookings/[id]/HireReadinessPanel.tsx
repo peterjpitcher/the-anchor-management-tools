@@ -22,7 +22,9 @@ interface HireReadinessPanelProps {
  * BK-007, owner decision D24):
  * - "Deposit paid, not confirmed", with the reasons recorded when the deposit came in;
  * - no room booked, no guest count, or more guests than the rooms hold, with the room to add;
- * - for managers, a way to allow more guests than the rooms hold, recorded with a reason.
+ * - for managers, a way to allow more guests than the rooms hold, recorded with a reason;
+ * - "Contract not sent" once the deposit is confirmed, paid or waived (owner decision D25, review
+ *   BK-006): until it is sent, or accepted another way, the booking cannot be confirmed.
  */
 export function HireReadinessPanel({
   bookingId,
@@ -122,6 +124,14 @@ export function HireReadinessPanel({
             ))}
           </ul>
           {overCapacity && overrideButton && <div className="mt-3">{overrideButton}</div>}
+        </Alert>
+      )}
+
+      {view.contractNotSent && (
+        <Alert tone="warning" title="Contract not sent">
+          {view.status === 'confirmed'
+            ? 'This booking was confirmed without its contract being sent. Send it from the Signatures panel, or record that the customer accepted it another way.'
+            : 'The contract has not been sent, so this booking cannot be confirmed. Send it from the Signatures panel, or record that the customer accepted it another way.'}
         </Alert>
       )}
 
