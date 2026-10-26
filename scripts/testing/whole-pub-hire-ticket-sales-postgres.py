@@ -125,6 +125,8 @@ def main():
 
             sql(MIGRATION.read_text())
             after_source = source()
+            print('INFO md5(prosrc) after: create_event_booking_v05=' + sql("SELECT md5(prosrc) FROM pg_proc WHERE proname='create_event_booking_v05';")
+                  + ' events_closed_by_whole_pub_hire=' + sql("SELECT md5(prosrc) FROM pg_proc WHERE proname='events_closed_by_whole_pub_hire';"))
             if after_source == before_source: raise RuntimeError('FAIL the migration changed nothing')
             if after_source.replace(
                     "\n  -- Owner decision D24 (customer bookings review, 24 October 2026): a whole-pub private hire\n"

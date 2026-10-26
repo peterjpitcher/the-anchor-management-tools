@@ -330,7 +330,8 @@ def main():
                 raise RuntimeError('FAIL a negative number of covers was accepted')
 
             patched = {name: sql(f'SELECT md5({body(name)});') for name in SOURCES}
-            print('INFO md5(prosrc) after: ' + ' '.join(f'{name}={value}' for name, value in patched.items()))
+            print('INFO md5(prosrc) after: ' + ' '.join(f'{name}={value}' for name, value in patched.items())
+                  + ' ' + sql("SELECT string_agg(proname || '=' || md5(prosrc), ' ' ORDER BY proname) FROM pg_proc WHERE proname IN ('kitchen_food_loads','kitchen_food_load_covers');"))
             # The columns and functions cannot be added twice; the patch itself must be safe to re-run.
             sql('DO $patch$' + MIGRATION.read_text().split('DO $patch$', 1)[1])
             for name in SOURCES:
