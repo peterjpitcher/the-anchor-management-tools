@@ -80,7 +80,8 @@ describe('jobs the daily scheduled jobs check watches', () => {
       expect(source).toContain(`const JOB_NAME = '${job.jobName}'`)
       expect(source).toContain("from('cron_job_runs')")
     } else {
-      const wrapped = new RegExp(`withCronRun\\(\\s*'${job.jobName}'[\\s\\S]{0,200}?recording: '${job.recording}'`)
+      const named = source.includes(`const JOB_NAME = '${job.jobName}'`) ? `(?:'${job.jobName}'|JOB_NAME)` : `'${job.jobName}'`
+      const wrapped = new RegExp(`withCronRun\\(\\s*${named}[\\s\\S]{0,200}?recording: '${job.recording}'`)
       expect(source).toMatch(wrapped)
     }
   })

@@ -535,6 +535,66 @@ export type Database = {
           },
         ]
       }
+      booking_funnel_events: {
+        Row: {
+          api_key_id: string | null
+          booking_date: string | null
+          calculation_state: string | null
+          days_ahead: number | null
+          http_status: number | null
+          id: string
+          occurred_at: string
+          page_path: string | null
+          party_size: number | null
+          public_reason: string | null
+          purpose: string | null
+          reason_code: string | null
+          route: string
+          slots_offered: number | null
+          source: string
+          stage: string
+          upstream_code: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          booking_date?: string | null
+          calculation_state?: string | null
+          days_ahead?: number | null
+          http_status?: number | null
+          id?: string
+          occurred_at?: string
+          page_path?: string | null
+          party_size?: number | null
+          public_reason?: string | null
+          purpose?: string | null
+          reason_code?: string | null
+          route: string
+          slots_offered?: number | null
+          source: string
+          stage: string
+          upstream_code?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          booking_date?: string | null
+          calculation_state?: string | null
+          days_ahead?: number | null
+          http_status?: number | null
+          id?: string
+          occurred_at?: string
+          page_path?: string | null
+          party_size?: number | null
+          public_reason?: string | null
+          purpose?: string | null
+          reason_code?: string | null
+          route?: string
+          slots_offered?: number | null
+          source?: string
+          stage?: string
+          upstream_code?: string | null
+        }
+        Relationships: []
+      }
       booking_holds: {
         Row: {
           consumed_at: string | null
@@ -23941,6 +24001,19 @@ export type Database = {
           p_voucher_number: string
         }
         Returns: Json
+      }
+      website_booking_funnel: {
+        Args: { p_weeks?: number }
+        Returns: {
+          bookings: number
+          could_not_check: number
+          date_checks: number
+          failed: number
+          no_tables: number
+          refused: number
+          searches: number
+          week_start: string
+        }[]
       }
       windows_overlap: {
         Args: {
