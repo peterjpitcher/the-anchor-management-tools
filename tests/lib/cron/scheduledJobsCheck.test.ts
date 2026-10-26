@@ -118,10 +118,26 @@ describe('checkScheduledJobs', () => {
     expect(findMissedRun(points, QUARTER_HOURLY, nowMs, windowStart)).toBeNull()
   })
 
-  it('reports a job with no completed run at all', async () => {
+  it('reports a job with no completed run at all, once recording has been on long enough', async () => {
+    // Another watched job has recorded for four days, so the daily job has had two chances.
+    const db = createFakeDb({ cron_job_runs: [run('quarter-job', 4 * 24 * 60, 'completed'), ...steady('quarter-job', 15, 2, 26 * 60)] })
+    const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, DAILY])
+    expect(report.jobs).toHaveLength(1)
+    expect(report.jobs[0]).toMatchObject({ jobName: 'daily-job', missedRun: { from: null, until: null } })
+  })
+
+  it('does not report a newly watched job before it could have run', async () => {
+    // Recording began 20 hours ago: a daily job may simply not have had its first run.
+    const db = createFakeDb({ cron_job_runs: steady('quarter-job', 15, 2, 20 * 60) })
+    const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, DAILY])
+    expect(report.problemCount).toBe(0)
+  })
+
+  it('still reports a job that keeps its own run record and has none', async () => {
+    const own: MonitoredCronJob = { ...DAILY, jobName: 'own-job', recording: 'own' }
     const db = createFakeDb({ cron_job_runs: [] })
-    const report = await checkScheduledJobs(db.client as never, NOW, [DAILY])
-    expect(report.jobs[0].missedRun).toMatchObject({ from: null, until: null })
+    const report = await checkScheduledJobs(db.client as never, NOW, [own])
+    expect(report.jobs[0].missedRun).toMatchObject({ from: null })
   })
 
   it('counts failed runs, the last error and the items jobs could not handle', async () => {
@@ -185,7 +201,8 @@ describe('checkScheduledJobs', () => {
 
   it('reports a job whose records cannot be read rather than passing it', async () => {
     const db = createFakeDb({ cron_job_runs: [] })
-    db.failNext({ table: 'cron_job_runs', operation: 'select', message: 'permission denied', times: 1 })
+    // The first read (when recording began) and the job's own read both fail.
+    db.failNext({ table: 'cron_job_runs', operation: 'select', message: 'permission denied', times: 2 })
     const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY])
     expect(report.jobs[0].readError).toBe('permission denied')
   })

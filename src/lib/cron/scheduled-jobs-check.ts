@@ -96,17 +96,25 @@ function toMs(value: string | null | undefined): number | null {
 /**
  * The longest silence between completed runs that is longer than the job allows and touches the
  * window. A silence that ended before the window opened was reported the day before.
+ *
+ * A job that records through withCronRun and has no completed run at all is only called missing
+ * once run recording has been on for longer than the job allows (`watchedSinceMs`, the first run
+ * any such job recorded). Without that, the first morning after this went live would report every
+ * daily job that had not yet had its first run.
  */
 export function findMissedRun(
   completedAtMs: number[],
   job: Pick<MonitoredCronJob, 'intervalMinutes' | 'recording'>,
   nowMs: number,
   windowStartMs: number,
+  watchedSinceMs: number | null = null,
 ): MissedRun | null {
   const allowedMs = allowedGapMinutes(job) * 60_000
   const points = [...completedAtMs].sort((a, b) => a - b)
 
   if (points.length === 0) {
+    const tooSoonToTell = job.recording !== 'own' && (watchedSinceMs === null || nowMs - watchedSinceMs <= allowedMs)
+    if (tooSoonToTell) return null
     return { from: null, until: null, minutes: Math.round((nowMs - windowStartMs) / 60_000) }
   }
 
@@ -125,7 +133,7 @@ export function findMissedRun(
   return worst
 }
 
-async function checkJob(supabase: AdminClient, job: MonitoredCronJob, now: Date): Promise<JobFinding> {
+async function checkJob(supabase: AdminClient, job: MonitoredCronJob, now: Date, watchedSinceMs: number | null): Promise<JobFinding> {
   const nowMs = now.getTime()
   const windowStartMs = nowMs - CHECK_WINDOW_HOURS * 3_600_000
   const lookbackStartMs = windowStartMs - allowedGapMinutes(job) * 60_000
@@ -189,8 +197,22 @@ async function checkJob(supabase: AdminClient, job: MonitoredCronJob, now: Date)
     }
   }
 
-  finding.missedRun = findMissedRun(completedAt, job, nowMs, windowStartMs)
+  finding.missedRun = findMissedRun(completedAt, job, nowMs, windowStartMs, watchedSinceMs)
   return finding
+}
+
+/** When run recording through withCronRun began: the first run any wrapped job recorded. */
+async function wrappedRecordingSince(supabase: AdminClient, jobs: readonly MonitoredCronJob[]): Promise<number | null> {
+  const names = jobs.filter((job) => job.recording !== 'own').map((job) => job.jobName)
+  if (names.length === 0) return null
+  const { data, error } = await supabase
+    .from('cron_job_runs')
+    .select('started_at')
+    .in('job_name', names)
+    .order('started_at', { ascending: true })
+    .limit(1)
+  if (error) return null
+  return toMs((data as Array<{ started_at: string }> | null)?.[0]?.started_at)
 }
 
 async function checkQueue(supabase: AdminClient, now: Date): Promise<QueueFinding> {
@@ -243,9 +265,10 @@ export async function checkScheduledJobs(
   jobs: readonly MonitoredCronJob[] = MONITORED_CRON_JOBS,
 ): Promise<ScheduledJobsReport> {
   const findings: JobFinding[] = []
+  const watchedSinceMs = await wrappedRecordingSince(supabase, jobs).catch(() => null)
   for (const job of jobs) {
     try {
-      findings.push(await checkJob(supabase, job, now))
+      findings.push(await checkJob(supabase, job, now, watchedSinceMs))
     } catch (error) {
       findings.push({
         jobName: job.jobName,
