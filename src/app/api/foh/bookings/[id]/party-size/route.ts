@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
@@ -20,7 +21,7 @@ import {
 } from '@/lib/table-bookings/preorder'
 
 const UpdatePartySizeSchema = z.object({
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)

@@ -30,7 +30,12 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
-import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_MAX_PARTY_SIZE,
+  CHRISTMAS_MIN_PARTY_SIZE,
+  extractChristmasRuleErrorMessage,
+  isChristmasPurpose,
+} from '@/lib/table-bookings/christmas'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
@@ -102,8 +107,8 @@ const CreateTableBookingSchema = z.object({
   ),
   // `christmas` creates a `booking_type = 'christmas'` booking. The RPC maps it
   // to a food purpose internally, so kitchen hours, duration and pacing behave
-  // exactly as for `food`, but a deposit is always taken and the 6-guest
-  // minimum and 24-hour notice are enforced in the database. Note the service
+  // exactly as for `food`, but a deposit is always taken and the 4-guest
+  // minimum (CHRISTMAS_MIN_PARTY_SIZE) and 24-hour notice are enforced in the database. Note the service
   // window (10 Nov to 20 Dec 2026) is NOT enforced here or in the database, so
   // the calling site must restrict the dates it offers.
   purpose: z.enum(['food', 'drinks', 'christmas']),
@@ -114,7 +119,7 @@ const CreateTableBookingSchema = z.object({
   // normal terms. See GET /api/table-bookings/periods for what to show the guest.
   booking_period_id: z.string().uuid().optional(),
   booking_period_answer: z.boolean().optional(),
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
