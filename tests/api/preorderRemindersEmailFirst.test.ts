@@ -27,6 +27,11 @@ vi.mock('@/lib/table-bookings/manage-booking', () => ({
 vi.mock('@/lib/guest/guest-short-link', () => ({
   buildGuestShortLink: vi.fn(async () => ({ url: 'https://l.the-anchor.pub/food1', shortened: true })),
 }))
+// The cutoff kitchen order and booker copies (BK-149) have their own tests; here they would only
+// add emails to the ones these tests count.
+vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
+  sendPreorderCutoffDigests: vi.fn(async () => ({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })),
+}))
 vi.mock('@/lib/table-bookings/preorder', () => ({
   PREORDER_BOOKER_REMINDER_DAYS: 10,
   isPreorderEnabled: vi.fn(async () => true),
@@ -270,5 +275,23 @@ describe('pre-order manager escalation', () => {
     expect(email.subject).toBe('Pre-order still incomplete: TB-XMAS1')
     expect(email.html).toContain('record them on the booking')
     expect(email.html).toContain('A manager can still save them after the cutoff')
+  })
+})
+
+// BK-149: the noon sweep is when a date's form locks, so it sends that date's kitchen order and,
+// while the flag is on, the bookers' copies.
+describe('pre-order cutoff digests from the noon sweep', () => {
+  it('runs them with the period cutoffs, the booker copy following its own flag', async () => {
+    const { sendPreorderCutoffDigests } = await import('@/lib/table-bookings/preorder-cutoff-digest')
+    buildDb()
+
+    const payload = await runSweep()
+
+    expect(sendPreorderCutoffDigests).toHaveBeenCalledTimes(1)
+    const [, input] = vi.mocked(sendPreorderCutoffDigests).mock.calls[0]
+    expect(input.todayIso).toBe('2026-12-05')
+    expect(Array.from(input.cutoffDays)).toEqual([7])
+    expect(input.choicesCopyEnabled).toBe(false)
+    expect(payload.result.cutoffDigests).toEqual({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })
   })
 })

@@ -24,6 +24,11 @@ vi.mock('@/lib/messaging/flags', () => ({ isMessagingFlagOn: vi.fn(async (key: s
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined) }))
 vi.mock('@/lib/cron-auth', () => ({ authorizeCronRequest: vi.fn(() => ({ authorized: true })) }))
+// The cutoff kitchen order and booker copies (BK-149) have their own tests; here they would only
+// add emails to the ones these tests count.
+vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
+  sendPreorderCutoffDigests: vi.fn(async () => ({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })),
+}))
 vi.mock('@/lib/email/emailService', () => ({ sendEmail: vi.fn() }))
 vi.mock('@/lib/email/logging', () => ({ isEmailSuppressed: vi.fn(async () => false) }))
 vi.mock('@/lib/twilio', () => ({
