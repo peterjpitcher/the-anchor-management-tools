@@ -5550,6 +5550,7 @@ export type Database = {
           event_type: string | null
           facebook_event_description: string | null
           facebook_event_name: string | null
+          food_served: boolean
           gallery_image_urls: Json | null
           gbp_event_description: string | null
           gbp_event_title: string | null
@@ -5560,6 +5561,8 @@ export type Database = {
           image_alt_text: string | null
           is_free: boolean | null
           keywords: Json | null
+          kitchen_covers: number | null
+          kitchen_food_time: string | null
           landscape_image_url: string | null
           last_entry_time: string | null
           local_seo_keywords: Json | null
@@ -5618,6 +5621,7 @@ export type Database = {
           event_type?: string | null
           facebook_event_description?: string | null
           facebook_event_name?: string | null
+          food_served?: boolean
           gallery_image_urls?: Json | null
           gbp_event_description?: string | null
           gbp_event_title?: string | null
@@ -5628,6 +5632,8 @@ export type Database = {
           image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           landscape_image_url?: string | null
           last_entry_time?: string | null
           local_seo_keywords?: Json | null
@@ -5686,6 +5692,7 @@ export type Database = {
           event_type?: string | null
           facebook_event_description?: string | null
           facebook_event_name?: string | null
+          food_served?: boolean
           gallery_image_urls?: Json | null
           gbp_event_description?: string | null
           gbp_event_title?: string | null
@@ -5696,6 +5703,8 @@ export type Database = {
           image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           landscape_image_url?: string | null
           last_entry_time?: string | null
           local_seo_keywords?: Json | null
@@ -12478,6 +12487,8 @@ export type Database = {
           invoice_deposit_treatment: string | null
           invoice_id: string | null
           invoice_sent_at: string | null
+          kitchen_covers: number | null
+          kitchen_food_time: string | null
           layout: string | null
           locked_at: string | null
           locked_by: string | null
@@ -12575,6 +12586,8 @@ export type Database = {
           invoice_deposit_treatment?: string | null
           invoice_id?: string | null
           invoice_sent_at?: string | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           layout?: string | null
           locked_at?: string | null
           locked_by?: string | null
@@ -12672,6 +12685,8 @@ export type Database = {
           invoice_deposit_treatment?: string | null
           invoice_id?: string | null
           invoice_sent_at?: string | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           layout?: string | null
           locked_at?: string | null
           locked_by?: string | null
@@ -22633,6 +22648,20 @@ export type Database = {
           p_expected_revision: number
         }
         Returns: Json
+      }
+      kitchen_food_load_covers: {
+        Args: { p_date: string; p_from_minutes: number; p_to_minutes: number }
+        Returns: number
+      }
+      kitchen_food_loads: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          covers: number
+          food_date: string
+          food_time: string
+          source_id: string
+          source_kind: string
+        }[]
       }
       link_employee_invite_account: {
         Args: { p_auth_user_id: string; p_token: string }

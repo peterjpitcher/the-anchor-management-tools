@@ -4,6 +4,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { whenLondonClockReaches } from '@/lib/dateUtils'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads, type DayLoad } from '@/services/day-load'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -83,6 +84,17 @@ function toLondonIso(dateIso: string | null, clock: string | null, fallbackClock
   if (!dateIso || !isIsoDate(dateIso)) return null
   const normalizedClock = normalizeClock(clock) || fallbackClock
   return whenLondonClockReaches(dateIso, normalizedClock)?.toISOString() ?? null
+}
+
+/** The day's load, or null when it cannot be read (the screen then says the figures are missing). */
+async function loadFohDayLoad(date: string): Promise<DayLoad | null> {
+  try {
+    const loads = await loadDayLoads(date, date, { db: createAdminClient(), withHours: false })
+    return loads.get(date) ?? null
+  } catch (error) {
+    console.error('Failed to load the day load for FOH', error)
+    return null
+  }
 }
 
 type PrivateHireBlockRow = {
@@ -375,7 +387,7 @@ export async function GET(request: NextRequest) {
   const scheduleEndIso = fromZonedTime(`${shiftIsoDate(date, 1)}T06:00:00`, 'Europe/London').toISOString()
 
   // Run follow-up queries in parallel (they only depend on the initial results, not each other)
-  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult] = await Promise.all([
+  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult, dayLoadResult] = await Promise.all([
     eventIds.length > 0
       ? supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null },
@@ -424,7 +436,9 @@ export async function GET(request: NextRequest) {
       `)
       .eq('event_seating_type', 'standing')
       .eq('event.date', date)
-      .in('status', ['confirmed', 'pending_payment'])
+      .in('status', ['confirmed', 'pending_payment']),
+    // Who is in tonight, counted the same way as the dashboard, calendar and rota (BK-075).
+    loadFohDayLoad(date),
   ])
 
   const eventNameById = new Map<string, string>()
@@ -833,7 +847,8 @@ export async function GET(request: NextRequest) {
       lanes,
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
       outside_bookings: outsideBookings,
-      private_hires_unavailable: privateHiresUnavailable
+      private_hires_unavailable: privateHiresUnavailable,
+      day_load: dayLoadResult
     }
   })
 }
