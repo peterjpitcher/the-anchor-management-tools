@@ -61,9 +61,8 @@ import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/t
 import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_shared/status-ui'
 
 /**
- * Staff must know when a guest was not told their booking was cancelled. Only the email-first
- * path (messaging flag table_cancelled_email_first) reports this; without it there is nothing to
- * show, as before.
+ * Staff must know when a guest was not told their booking was cancelled. The cancellation notice
+ * reports what reached the guest; with no outcome there is nothing to show.
  */
 function warnIfCancellationNotReached(payload: unknown): void {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
@@ -780,8 +779,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         })
         setPartySizeEditOpen(false)
         setPartySizeMoveTableId('')
-        // Email-first path only (flag table_party_size_deposit_email_first): if the link reached
-        // nobody, staff must send it themselves.
+        // If the deposit link reached nobody, staff must send it themselves.
         const depositProblem = describeGuestNotificationProblem(
           readGuestNotificationOutcome(payload.depositNotification),
           'about the deposit'
@@ -1767,7 +1765,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </Select>
               </>
             )}
-            {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
+            {/* The request goes by email first, with a text as the fallback. */}
             <Checkbox
               label="Notify guest"
               checked={partySizeEditSendSms}

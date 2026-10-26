@@ -1,56 +1,57 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 /**
- * Two rules hold every public endpoint that skips Turnstile for API-key callers.
+ * The two booking routes the website proxies take API-key callers only (BK-129, customer bookings
+ * review of 24 October 2026).
  *
- * 1. The skip must depend on a key that actually validates. These routes used to
- *    skip whenever an x-api-key or authorization header was merely present, and
- *    neither header is authenticated by anything on its own, so any anonymous
- *    caller could defeat the bot check with "x-api-key: anything".
- *
- * 2. The gate must fire on `anonymous` specifically, never on "not
- *    authenticated". Those differ when a key is presented that we could not
- *    check, which is our outage rather than a bot. Such a caller has no widget
- *    to solve, and the website's token is minted from a different Turnstile
- *    widget whose secret this app does not hold, so gating them rejects a real
- *    guest 100% of the time and calls our downtime a failed bot check.
+ * They used to run a Turnstile check for anonymous callers before withApiAuth, which refuses
+ * every anonymous caller anyway, so the check could never let one through and only cost a call to
+ * Cloudflare. The website verifies its own Turnstile token, with its own widget and secret, before
+ * it proxies. An earlier version of these routes also let `x-api-key: anything` skip the check.
  */
-//
-// The two private hire enquiry routes used to be listed here. They no longer
-// have a keyless branch at all: /api/private-booking-enquiry requires a key
-// holding create:bookings and /api/public/private-booking is retired. Both are
-// covered by calling the handlers in privateBookingEnquiryAuth.test.ts.
-const PUBLIC_ROUTES = [
+const PROXIED_BOOKING_ROUTES = [
   'src/app/api/table-bookings/route.ts',
   'src/app/api/event-bookings/route.ts'
 ]
 
-describe('public endpoint Turnstile gate', () => {
-  it.each(PUBLIC_ROUTES)('%s validates the API key before skipping Turnstile', (route) => {
+describe('the booking routes the website proxies', () => {
+  it.each(PROXIED_BOOKING_ROUTES)('%s runs no Turnstile check of its own', (route) => {
     const source = readFileSync(join(process.cwd(), route), 'utf8')
+    expect(source).not.toContain('verifyTurnstileToken')
+    expect(source).not.toContain('TURNSTILE_FAILED')
+  })
 
-    expect(source).toContain('getApiKeyAuthState')
-
-    // The header-presence test that made the bypass free.
+  it.each(PROXIED_BOOKING_ROUTES)('%s answers every caller through withApiAuth', (route) => {
+    const source = readFileSync(join(process.cwd(), route), 'utf8')
+    expect(source).toMatch(/return withApiAuth\(/)
+    // The header-presence test that once made a bypass free.
     expect(source).not.toMatch(/Boolean\(\s*request\.headers\.get\('x-api-key'\)/)
   })
+})
 
-  it.each(PUBLIC_ROUTES)('%s gates on anonymous, not on "not authenticated"', (route) => {
-    const source = readFileSync(join(process.cwd(), route), 'utf8')
-
-    expect(source).toMatch(/authState === 'anonymous'/)
-
-    // The negated forms are what swept an unverifiable key into the bot gate.
-    expect(source).not.toMatch(/if \(!authenticated\)\s*\{[\s\S]{0,400}?verifyTurnstileToken/)
-    expect(source).not.toMatch(/if \(!apiKeyAuthenticated\)\s*\{[\s\S]{0,400}?verifyTurnstileToken/)
+describe('verifyTurnstileToken without a secret', () => {
+  const env = process.env as Record<string, string | undefined>
+  const saved = { secret: env.TURNSTILE_SECRET_KEY, nodeEnv: env.NODE_ENV }
+  afterEach(() => {
+    env.TURNSTILE_SECRET_KEY = saved.secret
+    env.NODE_ENV = saved.nodeEnv
   })
 
-  it.each(PUBLIC_ROUTES)('%s still runs verifyTurnstileToken', (route) => {
-    const source = readFileSync(join(process.cwd(), route), 'utf8')
-    expect(source).toContain('verifyTurnstileToken')
+  it('refuses in production, where a missing secret used to wave every bot through', async () => {
+    delete env.TURNSTILE_SECRET_KEY
+    env.NODE_ENV = 'production'
+    const { verifyTurnstileToken } = await import('@/lib/turnstile')
+    expect(await verifyTurnstileToken('any-token')).toEqual({ success: false, error: 'Turnstile verification is not configured' })
+  })
+
+  it('still skips outside production, so development and tests run without one', async () => {
+    delete env.TURNSTILE_SECRET_KEY
+    env.NODE_ENV = 'test'
+    const { verifyTurnstileToken } = await import('@/lib/turnstile')
+    expect(await verifyTurnstileToken('any-token')).toEqual({ success: true })
   })
 })
 

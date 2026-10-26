@@ -62,9 +62,9 @@ export type ConfirmCandidate = {
 
 export type ConfirmReminderOptions = {
   /**
-   * Messaging flag table_confirm_reminder_email_first (owner decision, 11 September 2026): the
-   * reminder goes by email first, so a guest with a usable email address is eligible even with
-   * no mobile or with texts switched off.
+   * The reminder goes by email first (owner decision, 11 September 2026), so a guest with a usable
+   * email address is eligible even with no mobile or with texts switched off. The sweep always
+   * passes true since the messaging flag that switched it went (BK-129).
    */
   emailFirst?: boolean
 }

@@ -13,45 +13,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
  *     number they could check looked wrong.
  */
 
-const sendSMS = vi.fn().mockResolvedValue({ success: true })
-
-vi.mock('@/lib/twilio', () => ({ sendSMS: (...args: unknown[]) => sendSMS(...args) }))
-vi.mock('@/lib/sms/bulk', () => ({ getSmartFirstName: (n: string) => n }))
 vi.mock('@/lib/sms/support', () => ({ ensureReplyInstruction: (body: string) => body }))
-vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({})) }))
 
-const { sendTableBookingCancelledSmsIfAllowed } = await import('./bookings')
-
-function fakeSupabase() {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: {
-              id: 'cust-1',
-              first_name: 'Sarah',
-              mobile_number: '+447700900123',
-              sms_status: 'active',
-            },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as never
-}
+// The words themselves. Since BK-129 the notice always goes email first, and this text is what the
+// fallback and the bounce fallback send, built by the one function both use.
+const { buildTableBookingCancelledText } = await import('./guest-texts')
 
 async function sendWith(refundResult: Record<string, unknown>): Promise<string> {
-  await sendTableBookingCancelledSmsIfAllowed(fakeSupabase(), {
-    customerId: 'cust-1',
-    bookingReference: 'TB-TEST',
+  return buildTableBookingCancelledText({
+    firstName: 'Sarah',
     bookingDate: '2026-09-12',
     refundResult: refundResult as never,
   })
-  expect(sendSMS).toHaveBeenCalled()
-  return String(sendSMS.mock.calls.at(-1)?.[1] ?? '')
 }
 
 beforeEach(() => vi.clearAllMocks())

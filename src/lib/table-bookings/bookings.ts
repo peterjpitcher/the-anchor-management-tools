@@ -5,17 +5,9 @@ import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { notifyCustomer } from '@/lib/notifications/notify'
-import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
-import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
-import {
-  computeStripeCheckoutExpiresAtUnix,
-  createStripeTableDepositCheckoutSession,
-  expireStripeCheckoutSession,
-  type StripeCheckoutSession,
-} from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
 import { AuditService } from '@/services/audit'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
@@ -25,7 +17,6 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
 } from './deposit'
 import { isChristmasBookingType } from './christmas'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import {
   GUEST_CHANNEL_COLUMNS,
   notifyTableBookingGuestEmailFirst,
@@ -221,10 +212,6 @@ function resolveBaseUrl(appBaseUrl?: string | null): string {
   return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
-function formatPence(amount: number): number {
-  return Math.round(amount * 100)
-}
-
 export function mapTableBookingBlockedReason(reason?: string | null):
   | 'outside_hours'
   | 'cut_off'
@@ -258,32 +245,6 @@ export function mapTableBookingBlockedReason(reason?: string | null):
     default:
       return 'blocked'
   }
-}
-
-function resolveSundayPreorderTemplateKey(startDateTime?: string | null): string {
-  if (!startDateTime) {
-    return 'sunday_preorder_request'
-  }
-
-  const startMs = Date.parse(startDateTime)
-  if (!Number.isFinite(startMs)) {
-    return 'sunday_preorder_request'
-  }
-
-  const msUntilStart = startMs - Date.now()
-  if (msUntilStart <= 0) {
-    return 'sunday_preorder_request'
-  }
-
-  const hoursUntilStart = msUntilStart / (60 * 60 * 1000)
-  if (hoursUntilStart > 24 && hoursUntilStart <= 26) {
-    return 'sunday_preorder_reminder_26h'
-  }
-  if (hoursUntilStart > 26 && hoursUntilStart <= 48) {
-    return 'sunday_preorder_reminder_48h'
-  }
-
-  return 'sunday_preorder_request'
 }
 
 export async function createTablePaymentToken(
@@ -435,178 +396,6 @@ export async function getTablePaymentPreviewByRawToken(
     startDateTime: booking.start_datetime || null,
     bookingType: booking.booking_type || null,
     tokenHash,
-  }
-}
-
-export async function createTableCheckoutSessionByRawToken(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    rawToken: string
-    appBaseUrl?: string | null
-  }
-): Promise<
-  | {
-    state: 'created'
-    checkoutUrl: string
-    session: StripeCheckoutSession
-    tableBookingId: string
-  }
-  | {
-    state: 'blocked'
-    reason: TablePaymentPreviewResult extends { state: 'blocked'; reason: infer R } ? R : string
-  }
-  | {
-    state: 'error'
-    reason: string
-  }
-> {
-  const preview = await getTablePaymentPreviewByRawToken(supabase, input.rawToken)
-  if (preview.state !== 'ready') {
-    return preview
-  }
-
-  const baseUrl = resolveBaseUrl(input.appBaseUrl)
-  const tokenEncoded = encodeURIComponent(input.rawToken)
-  const successUrl = `${baseUrl}/g/${tokenEncoded}/table-payment?state=success&session_id={CHECKOUT_SESSION_ID}`
-  const cancelUrl = `${baseUrl}/g/${tokenEncoded}/table-payment?state=cancelled`
-
-  const session = await createStripeTableDepositCheckoutSession({
-    idempotencyKey: `table_booking_deposit_${preview.tableBookingId}_${preview.tokenHash.slice(0, 24)}`,
-    successUrl,
-    cancelUrl,
-    tableBookingId: preview.tableBookingId,
-    customerId: preview.customerId,
-    quantity: 1,
-    unitAmountMinor: formatPence(preview.totalAmount),
-    currency: preview.currency,
-    productName: `${preview.bookingType === 'sunday_lunch' ? 'Sunday lunch deposit' : 'Table deposit'} (${preview.partySize} ${preview.partySize === 1 ? 'person' : 'people'})`,
-    tokenHash: preview.tokenHash,
-    expiresAtUnix: computeStripeCheckoutExpiresAtUnix(preview.holdExpiresAt),
-    metadata: {
-      booking_reference: preview.bookingReference,
-      deposit_per_person_gbp: String(DEPOSIT_PER_PERSON_GBP),
-      party_size: String(preview.partySize),
-    },
-  })
-
-  if (!session.url) {
-    throw new Error('Stripe checkout session did not return a URL')
-  }
-
-  try {
-    const nowIso = new Date().toISOString()
-
-    const { data: existingSessionRow, error: existingSessionLookupError } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('stripe_checkout_session_id', session.id)
-      .limit(1)
-      .maybeSingle()
-
-    if (existingSessionLookupError) {
-      throw new Error(
-        `Failed to verify existing table-deposit payment row before checkout persistence: ${existingSessionLookupError.message}`
-      )
-    }
-
-    if (!existingSessionRow) {
-      const { data: pendingRow, error: pendingLookupError } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('table_booking_id', preview.tableBookingId)
-        .eq('charge_type', 'table_deposit')
-        .eq('status', 'pending')
-        .is('stripe_checkout_session_id', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (pendingLookupError) {
-        throw new Error(`Failed to locate pending table-deposit row: ${pendingLookupError.message}`)
-      }
-
-      if (pendingRow?.id) {
-        const { error: pendingUpdateError } = await supabase
-          .from('payments')
-          .update({
-            stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent ?? null,
-            amount: preview.totalAmount,
-            currency: preview.currency,
-            metadata: {
-              source: 'guest_token',
-              token_hash: preview.tokenHash,
-              checkout_url: session.url,
-              party_size: preview.partySize,
-              deposit_per_person: DEPOSIT_PER_PERSON_GBP,
-              updated_at: nowIso,
-            },
-          })
-          .eq('id', pendingRow.id)
-
-        if (pendingUpdateError) {
-          throw new Error(`Failed to update pending table-deposit payment row: ${pendingUpdateError.message}`)
-        }
-      } else {
-        const { error: insertError } = await supabase.from('payments').insert({
-          table_booking_id: preview.tableBookingId,
-          charge_type: 'table_deposit',
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent ?? null,
-          amount: preview.totalAmount,
-          currency: preview.currency,
-          status: 'pending',
-          metadata: {
-            source: 'guest_token',
-            token_hash: preview.tokenHash,
-            checkout_url: session.url,
-            party_size: preview.partySize,
-            deposit_per_person: DEPOSIT_PER_PERSON_GBP,
-            created_at: nowIso,
-          },
-        })
-
-        if (insertError) {
-          throw new Error(`Failed to insert pending table-deposit payment row: ${insertError.message}`)
-        }
-      }
-    }
-  } catch (persistenceError) {
-    // DB persistence failed after Stripe session was created. If the guest were given
-    // the checkout URL and paid, the webhook would have no matching payment row to
-    // update. Attempt to expire the Stripe session so no payment can be taken, then
-    // return an error state so the caller can surface a recoverable error to the guest.
-    logger.error('Failed to persist pending table-deposit payment row after Stripe checkout session creation — expiring Stripe session', {
-      error: persistenceError instanceof Error ? persistenceError : new Error(String(persistenceError)),
-      metadata: {
-        tableBookingId: preview.tableBookingId,
-        checkoutSessionId: session.id,
-      },
-    })
-
-    try {
-      await expireStripeCheckoutSession(session.id)
-    } catch (expireError) {
-      logger.error('Failed to expire Stripe checkout session after DB persistence failure — manual action required', {
-        error: expireError instanceof Error ? expireError : new Error(String(expireError)),
-        metadata: {
-          tableBookingId: preview.tableBookingId,
-          checkoutSessionId: session.id,
-        },
-      })
-    }
-
-    return {
-      state: 'error',
-      reason: persistenceError instanceof Error ? persistenceError.message : String(persistenceError),
-    }
-  }
-
-  return {
-    state: 'created',
-    checkoutUrl: session.url,
-    session,
-    tableBookingId: preview.tableBookingId,
   }
 }
 
@@ -1071,7 +860,7 @@ async function hasDeliverableTableBookingEmail(
 }
 
 /**
- * The deposit confirmation, email first (flag table_deposit_confirmed_email_first).
+ * The deposit confirmation, email first, with the text as the fallback.
  *
  * Up to five triggers fire for one payment, often within the same second (the PayPal capture
  * route and its webhook). Three layers keep that to one message:
@@ -1264,266 +1053,14 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     return null
   }
 
-  if (await isMessagingFlagOn('table_deposit_confirmed_email_first')) {
-    const outcome = await sendTableBookingDepositConfirmedEmailFirst(supabase, booking as DepositConfirmedBooking)
-    const delivered = outcome.status === 'sent' || outcome.status === 'already_sent'
-    return {
-      success: delivered,
-      code: outcome.status === 'sent' ? null : outcome.status,
-      logFailure: false,
-    }
-  }
-
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .select('id, first_name, mobile_number, sms_status')
-    .eq('id', booking.customer_id)
-    .maybeSingle()
-
-  if (customerError) {
-    throw new Error(`Failed to load customer for post-deposit SMS: ${customerError.message}`)
-  }
-
-  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return null
-  }
-
-  const firstName = getSmartFirstName(customer.first_name)
-  let manageLink: string | null = null
-
-  try {
-    const token = await createTableManageToken(supabase, {
-      customerId: customer.id,
-      tableBookingId,
-      bookingStartIso: booking.start_datetime || null,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
-    })
-    manageLink = token.url
-  } catch {
-    manageLink = null
-  }
-
-  const templateKey = DEPOSIT_CONFIRMED_TEMPLATE_KEY
-  const body = buildDepositConfirmedText({ booking: booking as DepositConfirmedBooking, firstName, manageLink })
-
-  try {
-    const smsResult = await sendSMS(customer.mobile_number, body, {
-      customerId: customer.id,
-      metadata: {
-        table_booking_id: tableBookingId,
-        template_key: templateKey,
-      },
-    })
-
-    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
-
-    if (smsLogFailure) {
-      logger.error('Table booking post-deposit SMS sent but outbound message logging failed', {
-        metadata: {
-          tableBookingId,
-          customerId: customer.id,
-          code: smsCode,
-          logFailure: smsLogFailure,
-        },
-      })
-    }
-
-    if (!smsResult.success) {
-      logger.warn('Table booking post-deposit SMS send returned non-success', {
-        metadata: {
-          tableBookingId,
-          customerId: customer.id,
-          error: smsResult.error,
-          code: smsCode,
-        },
-      })
-    }
-
-    await AuditService.logAuditEvent({
-      operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
-      resource_type: 'table_booking',
-      resource_id: tableBookingId,
-      operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
-      error_message: smsDeliveredOrUnknown ? undefined : (smsResult.error ?? smsCode ?? undefined),
-      additional_info: {
-        sms_type: templateKey,
-        customer_id: customer.id,
-        code: smsCode,
-      },
-    })
-
-    return {
-      success: smsDeliveredOrUnknown,
-      code: smsCode,
-      logFailure: smsLogFailure,
-    }
-  } catch (smsError) {
-    const thrownSafety = normalizeThrownSmsSafety(smsError)
-    logger.warn('Table booking post-deposit SMS threw unexpectedly', {
-      metadata: {
-        tableBookingId,
-        customerId: customer.id,
-        error: smsError instanceof Error ? smsError.message : String(smsError),
-        code: thrownSafety.code,
-        logFailure: thrownSafety.logFailure,
-      },
-    })
-
-    await AuditService.logAuditEvent({
-      operation_type: 'table_booking.sms_failed',
-      resource_type: 'table_booking',
-      resource_id: tableBookingId,
-      operation_status: 'failure',
-      error_message: smsError instanceof Error ? smsError.message : String(smsError),
-      additional_info: {
-        sms_type: templateKey,
-        customer_id: customer.id,
-        code: thrownSafety.code,
-      },
-    })
-
-    return {
-      success: false,
-      code: thrownSafety.code,
-      logFailure: thrownSafety.logFailure,
-    }
-  }
-}
-
-export async function sendSundayPreorderLinkSmsIfAllowed(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    customerId: string
-    tableBookingId: string
-    bookingStartIso?: string | null
-    bookingReference?: string | null
-    appBaseUrl?: string | null
-  }
-): Promise<{ sent: boolean; scheduledFor?: string; url?: string; sms: SmsSafetyMeta }> {
-  const { data: customer } = await supabase
-    .from('customers')
-    .select('id, first_name, mobile_number, sms_status')
-    .eq('id', input.customerId)
-    .maybeSingle()
-
-  if (!customer || !customer.mobile_number) {
-    return { sent: false, sms: null }
-  }
-
-  let tokenUrl: string
-  try {
-    const token = await createSundayPreorderToken(supabase, {
-      customerId: input.customerId,
-      tableBookingId: input.tableBookingId,
-      bookingStartIso: input.bookingStartIso || null,
-      appBaseUrl: input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL
-    })
-    tokenUrl = token.url
-  } catch {
-    return { sent: false, sms: null }
-  }
-
-  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const firstName = getSmartFirstName(customer.first_name)
-  const message = ensureReplyInstruction(
-    `The Anchor: ${firstName}! Time to pick what you're having for Sunday lunch. Get your pre-order in here: ${tokenUrl}`,
-    supportPhone
-  )
-
-  let result: Awaited<ReturnType<typeof sendSMS>>
-  try {
-    result = await sendSMS(customer.mobile_number, message, {
-      customerId: customer.id,
-      allowTransactionalOverride: true,
-      metadata: {
-        table_booking_id: input.tableBookingId,
-        template_key: 'sunday_preorder_request'
-      }
-    })
-  } catch (smsError) {
-    const thrownSafety = normalizeThrownSmsSafety(smsError)
-    logger.warn('Sunday pre-order link SMS threw unexpectedly', {
-      metadata: {
-        tableBookingId: input.tableBookingId,
-        customerId: customer.id,
-        error: smsError instanceof Error ? smsError.message : String(smsError),
-        code: thrownSafety.code,
-        logFailure: thrownSafety.logFailure,
-      }
-    })
-    await AuditService.logAuditEvent({
-      operation_type: 'table_booking.sms_failed',
-      resource_type: 'table_booking',
-      resource_id: input.tableBookingId,
-      operation_status: 'failure',
-      error_message: smsError instanceof Error ? smsError.message : String(smsError),
-      additional_info: {
-        sms_type: 'sunday_preorder_request',
-        customer_id: customer.id,
-        code: thrownSafety.code,
-      },
-    })
-    return {
-      sent: false,
-      url: tokenUrl,
-      sms: {
-        success: false,
-        code: thrownSafety.code,
-        logFailure: thrownSafety.logFailure,
-      },
-    }
-  }
-
-  const smsCode = typeof result.code === 'string' ? result.code : null
-  const smsLogFailure = result.logFailure === true || smsCode === 'logging_failed'
-  const smsDeliveredOrUnknown = result.success === true || smsLogFailure
-
-  if (smsLogFailure) {
-    logger.error('Sunday pre-order link SMS sent but outbound message logging failed', {
-      metadata: {
-        tableBookingId: input.tableBookingId,
-        customerId: customer.id,
-        code: smsCode,
-        logFailure: smsLogFailure,
-      },
-    })
-  }
-
-  if (!result.success) {
-    logger.warn('Sunday pre-order link SMS send returned non-success', {
-      metadata: {
-        tableBookingId: input.tableBookingId,
-        customerId: customer.id,
-        error: result.error,
-        code: smsCode,
-      }
-    })
-  }
-
-  await AuditService.logAuditEvent({
-    operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
-    resource_type: 'table_booking',
-    resource_id: input.tableBookingId,
-    operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
-    error_message: smsDeliveredOrUnknown ? undefined : (result.error ?? smsCode ?? undefined),
-    additional_info: {
-      sms_type: 'sunday_preorder_request',
-      customer_id: customer.id,
-      code: smsCode,
-    },
-  })
-
+  // Email first, the text as the fallback (BK-129: the text-only path behind the messaging flag
+  // table_deposit_confirmed_email_first, on since 15 September 2026, is gone).
+  const outcome = await sendTableBookingDepositConfirmedEmailFirst(supabase, booking as DepositConfirmedBooking)
+  const delivered = outcome.status === 'sent' || outcome.status === 'already_sent'
   return {
-    sent: smsDeliveredOrUnknown,
-    scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
-    url: tokenUrl,
-    sms: {
-      success: smsDeliveredOrUnknown,
-      code: smsCode,
-      logFailure: smsLogFailure,
-    },
+    success: delivered,
+    code: outcome.status === 'sent' ? null : outcome.status,
+    logFailure: false,
   }
 }
 
@@ -1532,29 +1069,23 @@ type TableBookingCancellationNoticeParams = {
   bookingReference: string
   bookingDate: string // YYYY-MM-DD format
   refundResult: TableBookingCancellationRefundResult
-  tableBookingId?: string
+  tableBookingId: string
 }
 
 /**
- * Tell the guest their table booking has been cancelled.
+ * Tell the guest their table booking has been cancelled: email first, the text as the fallback,
+ * guests with only an email address told too, and the outcome back so staff can see a guest who was
+ * not reached. Never throws.
  *
- * With the messaging flag `table_cancelled_email_first` off (today), a text goes to guests with
- * an active mobile, exactly as before, and this returns null. With it on, the email goes first
- * and the text is the fallback, guests with only an email address are told too, and the outcome
- * comes back so staff can see a guest who was not reached.
+ * BK-129: the text-only path behind the messaging flag table_cancelled_email_first (on since
+ * 15 September 2026) is gone. It came back whenever one read of the flags failed, and then texted
+ * guests who are not regulars.
  */
 export async function sendTableBookingCancelledSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   params: TableBookingCancellationNoticeParams
-): Promise<GuestNotificationOutcome | null> {
-  // Every caller passes the booking id. Without one the email-first path could not key its
-  // duplicate protection to the booking, so it stays on the text path.
-  if (params.tableBookingId && (await isMessagingFlagOn('table_cancelled_email_first'))) {
-    return sendTableBookingCancelledEmailFirst(supabase, { ...params, tableBookingId: params.tableBookingId })
-  }
-
-  await sendTableBookingCancelledTextOnly(supabase, params)
-  return null
+): Promise<GuestNotificationOutcome> {
+  return sendTableBookingCancelledEmailFirst(supabase, params)
 }
 
 /**
@@ -1574,7 +1105,7 @@ export function tableBookingCancelledEmailKey(tableBookingId: string, cancelledA
 
 async function sendTableBookingCancelledEmailFirst(
   supabase: SupabaseClient<any, 'public', any>,
-  params: TableBookingCancellationNoticeParams & { tableBookingId: string }
+  params: TableBookingCancellationNoticeParams
 ): Promise<GuestNotificationOutcome> {
   const templateKey = 'table_booking_cancelled'
 
@@ -1670,86 +1201,6 @@ async function sendTableBookingCancelledEmailFirst(
       additional_info: { comm_type: templateKey, customer_id: params.customerId, outcome: 'failed', threw: true },
     })
     return { status: 'failed', channel: null, fallbackUsed: false, error: message }
-  }
-}
-
-async function sendTableBookingCancelledTextOnly(
-  supabase: SupabaseClient<any, 'public', any>,
-  params: TableBookingCancellationNoticeParams
-): Promise<void> {
-  try {
-    const { data: customer } = await supabase
-      .from('customers')
-      .select('id, first_name, mobile_number, sms_status')
-      .eq('id', params.customerId)
-      .maybeSingle()
-
-    if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-      return
-    }
-
-    const firstName = getSmartFirstName(customer.first_name)
-
-    const smsResult = await sendSMS(
-      customer.mobile_number,
-      buildTableBookingCancelledText({ firstName, bookingDate: params.bookingDate, refundResult: params.refundResult }),
-      {
-        customerId: customer.id,
-        metadata: {
-          booking_reference: params.bookingReference,
-          template_key: 'table_booking_cancelled',
-        },
-      }
-    )
-
-    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
-
-    if (smsLogFailure) {
-      logger.error('Table booking cancelled SMS sent but outbound message logging failed', {
-        metadata: {
-          bookingReference: params.bookingReference,
-          customerId: customer.id,
-          code: smsCode,
-          logFailure: smsLogFailure,
-        },
-      })
-    }
-
-    if (!smsResult.success) {
-      logger.warn('Table booking cancelled SMS send returned non-success', {
-        metadata: {
-          bookingReference: params.bookingReference,
-          customerId: customer.id,
-          error: smsResult.error,
-          code: smsCode,
-        },
-      })
-    }
-
-    await AuditService.logAuditEvent({
-      operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
-      resource_type: 'table_booking',
-      resource_id: params.tableBookingId,
-      operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
-      error_message: smsDeliveredOrUnknown ? undefined : (smsResult.error ?? smsCode ?? undefined),
-      additional_info: {
-        sms_type: 'table_booking_cancelled',
-        customer_id: customer.id,
-        booking_reference: params.bookingReference,
-        code: smsCode,
-      },
-    })
-  } catch (smsError) {
-    logger.warn('Table booking cancelled SMS threw unexpectedly', {
-      metadata: {
-        bookingReference: params.bookingReference,
-        customerId: params.customerId,
-        error: smsError instanceof Error ? smsError.message : String(smsError),
-      },
-    })
-    // Do not rethrow — SMS failure must not affect the cancel/delete operation
   }
 }
 

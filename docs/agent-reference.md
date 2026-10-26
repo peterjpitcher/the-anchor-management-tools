@@ -21,7 +21,7 @@ Root `src/app/layout.tsx` holds global providers, the PWA manifest, robots block
 
 ### Public path prefixes (`PUBLIC_PATH_PREFIXES` in `src/middleware.ts`)
 
-`/_next`, `/static`, `/api` (every handler does its own auth), `/auth`, `/error`, `/privacy`, `/booking-confirmation`, `/booking-portal`, `/booking-success`, `/invoice-portal` (HMAC token in the path, `src/lib/invoices/invoice-token.ts`), `/feedback`, `/table-booking`, `/parking/guest`, `/parking/payment-error`, `/onboarding`, `/recruitment/book` (token-gated slot picker), `/sign` (document signing; one-time token stored only as a hash, `src/lib/signing/tokens.ts`), `/timeclock`, `/m`, `/g`, `/r`, `/legacy-link`. Matching is segment-bounded, so `/invoices` stays protected while `/invoice-portal` is open. The matcher excludes `_next/static`, `_next/image` and `favicon.ico`.
+`/_next`, `/static`, `/api` (every handler does its own auth), `/auth`, `/error`, `/privacy`, `/booking-confirmation`, `/booking-portal`, `/booking-success`, `/invoice-portal` (HMAC token in the path, `src/lib/invoices/invoice-token.ts`), `/feedback`, `/table-booking`, `/parking/guest`, `/parking/payment-error`, `/onboarding`, `/recruitment/book` (token-gated slot picker), `/sign` (document signing; one-time token stored only as a hash, `src/lib/signing/tokens.ts`), `/timeclock`, `/g`, `/r`, `/legacy-link`. (`/m` was removed on 26 October 2026, BK-129: nothing is served under it.) Matching is segment-bounded, so `/invoices` stays protected while `/invoice-portal` is open. The matcher excludes `_next/static`, `_next/image` and `favicon.ico`.
 
 ### API surface (`src/app/api/`)
 
@@ -29,14 +29,14 @@ Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hou
 
 Webhooks: `webhooks/paypal` (root plus `event-bookings`, `table-bookings`, `invoices`, `private-bookings`, `parking`), `webhooks/resend`, `webhooks/twilio`, `stripe/webhook`.
 
-Turnstile-checked endpoints: `event-bookings`, `table-bookings`, `feedback`, `recruitment/applications`, `recruitment/booking/[token]` (plus `cancel` and `reschedule`).
+Turnstile-checked endpoints: `feedback`, `recruitment/applications`, `recruitment/booking/[token]` (plus `cancel` and `reschedule`). `event-bookings` and `table-bookings` take API-key callers only and the website verifies its own Turnstile token before it proxies (BK-129). `verifyTurnstileToken` skips the check without `TURNSTILE_SECRET_KEY` in development and tests, and refuses in production.
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
 
 ## 2. Scheduled jobs inventory (2026-09-18)
 
 - `vercel.json` has 51 schedules: 50 under `/api/cron/*` plus `/api/jobs/process?process=true&batch=30`, which drains the job queue.
-- `src/app/api/cron/` has 53 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
+- `src/app/api/cron/` has 53 route folders (26 October 2026). One has no schedule: `backfill-marketing-links` (`sunday-lunch-prep` and `sunday-preorder` were deleted on 26 October 2026, BK-129).
 - `manager-weekly-report` (`0 * * * 5`, hourly on Fridays) sends the weekly insights report from 06:00 London: one report per Friday, held back until 09:00 while any section cannot be read, operator alert on failure. It first finishes any frozen old-format report. See `docs/manager-weekly-report.md`.
 - Retired by the insights report build of 18 September 2026 (routes and schedules removed): `leave-approval-reminders`, `rota-manager-alert`, `private-bookings-weekly-summary`, `checklists-weekly-summary`, `maintenance-weekly-snapshot`, and `checklists-closing-alert` (it only fed the report after 5 September 2026).
 - `signing-reminders` (`30 9 * * *`, added 12 October 2026) is the daily document signing run (`src/lib/signing/reminders.ts`): a reminder at 3 and at 7 days, expiry at 30 days with a note to the sender, and a sweep that finishes any signed document whose signed PDF or record update did not complete. Email only.

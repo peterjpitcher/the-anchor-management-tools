@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger'
  * src/app/api/website/ui-flags/route.ts:
  *
  *   key   'messaging_flags'
- *   value a JSON object of booleans, e.g. {"table_cancelled_email_first": true}
+ *   value a JSON object of booleans, e.g. {"table_preorder_email_first": true}
  *
  * The row does not exist until the owner switches a path on (no migration, no seed), and
  * switching one off again is a rollback that needs no deploy. A flag is on only when its stored
@@ -18,12 +18,20 @@ import { logger } from '@/lib/logger'
  *
  * The two readers differ only when the row cannot be read or is malformed:
  *
- *  - `isMessagingFlagOn` answers off. That is safe for every path whose off state is today's
- *    behaviour and sends no more than its on state.
+ *  - `isMessagingFlagOn` answers with the last value it read successfully. Before any read has
+ *    succeeded it answers on for the flags in ON_WHEN_UNREADABLE and off for the rest (BK-129,
+ *    customer bookings review of 24 October 2026). It used to answer off for every flag, so one
+ *    timed-out read sent private booking messages back down paths the owner retired on
+ *    15 September (a texted-only booker, a queue nobody approves).
  *  - `readMessagingFlagState` answers unknown. Event promotion needs it: there, off runs the
  *    7-day intro and the 24-hour follow-up, the noisier texts the owner switched away from, so a
  *    flag that has been on for weeks must not fall back to them because one read timed out, or
  *    because someone saved the text "true" instead of the boolean.
+ *
+ * Four table booking flags (table_cancelled_email_first, table_deposit_confirmed_email_first,
+ * table_party_size_deposit_email_first, table_confirm_reminder_email_first) were on from
+ * 15 September and are gone: those messages always go email first now (BK-129), so a lost read
+ * can no longer text a guest who is not a regular.
  */
 export const MESSAGING_FLAG_KEYS = [
   // Regulars week-ahead invites (owner, 15 September 2026). While on, the only event promotion
@@ -35,14 +43,10 @@ export const MESSAGING_FLAG_KEYS = [
   // Only read while event_promo_last_push or event_promo_regulars_week_ahead is on: guests with no
   // usable email address are the only ones texted, because the guest campaigns reach the rest.
   'event_promo_intro_sms_no_email',
-  'table_cancelled_email_first',
-  'table_deposit_confirmed_email_first',
-  'table_party_size_deposit_email_first',
   'table_preorder_email_first',
   // The booker's copy of their food choices, emailed once when the pre-order closes (BK-149, 26
   // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
   'table_preorder_choices_copy',
-  'table_confirm_reminder_email_first',
   'private_booking_email_first',
   'bounce_sms_fallback',
   'staff_message_email_option',
@@ -58,6 +62,21 @@ export const MESSAGING_FLAG_KEYS = [
 ] as const
 
 export type MessagingFlagKey = (typeof MESSAGING_FLAG_KEYS)[number]
+
+/**
+ * What isMessagingFlagOn answers for a flag when the row cannot be read and no read has succeeded
+ * since this server started: on for a table booking flag production has run ON since
+ * 15 September 2026 whose off state is a text the owner retired, off for everything else (a
+ * runtime switch such as bounce_sms_fallback, or a new message still waiting for the owner to read
+ * its wording), which sends less.
+ *
+ * The private booking flags are left to the last-value rule only: their off paths are still
+ * exercised by the private hire code and its tests, which other release work owns. Deleting those
+ * off branches, as BK-129 did for the table ones, is the lasting fix.
+ */
+const ON_WHEN_UNREADABLE: ReadonlySet<MessagingFlagKey> = new Set<MessagingFlagKey>([
+  'table_preorder_email_first',
+])
 
 const MESSAGING_FLAGS_SETTING_KEY = 'messaging_flags'
 
@@ -145,8 +164,18 @@ async function readFlags(): Promise<FlagsRead> {
 export async function isMessagingFlagOn(key: MessagingFlagKey): Promise<boolean> {
   const read = await readFlags()
   if (!read.ok) {
-    logger.error('Failed to read messaging flags; treating every flag as off', { metadata: read.failure })
-    return false
+    // The cache entry outlives its minute for exactly this: the last value read successfully.
+    if (cache) {
+      logger.error('Failed to read messaging flags; using the last value read', {
+        metadata: { ...read.failure, flag: key, lastReadAt: new Date(cache.readAt).toISOString() },
+      })
+      return cache.flags[key] === true
+    }
+    const fallback = ON_WHEN_UNREADABLE.has(key)
+    logger.error('Failed to read messaging flags and none has been read yet; using the fallback', {
+      metadata: { ...read.failure, flag: key, fallback: fallback ? 'on' : 'off' },
+    })
+    return fallback
   }
 
   return read.flags[key] === true

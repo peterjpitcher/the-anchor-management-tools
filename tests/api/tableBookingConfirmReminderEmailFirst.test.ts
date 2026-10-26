@@ -100,7 +100,9 @@ beforeEach(() => {
   // Friday 11 September 2026, 11:00 BST, when the sweep runs; the bookings are for tomorrow.
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-09-11T10:00:00Z'))
-  vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => key === 'table_confirm_reminder_email_first')
+  // Every messaging flag reads off, and the message still goes email first: since BK-129 no flag
+  // gates it (table_confirm_reminder_email_first is gone).
+  vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
   vi.mocked(isEmailSuppressed).mockResolvedValue(false)
   vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true } as never)
   vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 're_conf' } as never)
@@ -109,7 +111,7 @@ beforeEach(() => {
   createShortLinkInternal.mockResolvedValue({ short_code: 'cf1', full_url: SHORT, already_exists: false })
 })
 
-describe('tap-to-confirm reminder, email first (flag on)', () => {
+describe('tap-to-confirm reminder, email first', () => {
   it('emails a guest with a usable address, with the short link to the page that only asks', async () => {
     buildDb()
 
@@ -196,39 +198,8 @@ describe('tap-to-confirm reminder, email first (flag on)', () => {
   })
 })
 
-describe('tap-to-confirm reminder with the flag off: exactly today', () => {
-  beforeEach(() => {
-    vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
-  })
-
-  it('queues the text with the long link, reads no email fields and sends no email', async () => {
-    const db = buildDb()
-
-    const payload = await sweep()
-
-    expect(payload).toEqual(expect.objectContaining({ sent: 1 }))
-    expect(jobQueue.enqueue).toHaveBeenCalledWith('send_sms', {
-      to: '+447700900001',
-      message: `${TEXT}${CONFIRM_PAGE_URL}`,
-      customer_id: 'cust-1',
-      booking_id: 'tb-1',
-      metadata: { table_booking_id: 'tb-1', template_key: 'table_booking_confirm_reminder' },
-    })
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(createShortLinkInternal).not.toHaveBeenCalled()
-    const bookingsQuery = db.queries.find((query) => query.table === 'table_bookings')!
-    expect(String(argsOf(bookingsQuery, 'select')[0][0])).toContain('customers(id, first_name, mobile_e164, mobile_number, sms_status)')
-  })
-
-  it('still skips a guest with no mobile', async () => {
-    buildDb({ ...JANE, mobile_e164: null, mobile_number: null })
-
-    const payload = await sweep()
-
-    expect(payload).toEqual(expect.objectContaining({ sent: 0, skipped: 1, skipReasons: { no_mobile: 1 } }))
-    expect(sendEmail).not.toHaveBeenCalled()
-  })
-})
+// The text-only path behind table_confirm_reminder_email_first is gone (BK-129): the message always
+// goes email first, so there is no flag-off case left to pin.
 
 describe('tap-to-confirm email renders', () => {
   it.each([

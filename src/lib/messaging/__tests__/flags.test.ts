@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The contract under test: every flag reads OFF unless the messaging_flags row holds the
-// boolean true for it, in every failure mode (missing row, malformed value, query error,
-// thrown error), and one successful read is trusted for 60 seconds.
+// boolean true for it (missing row, malformed value), one successful read is trusted for 60
+// seconds, and a failed read answers with the last value read, or before any read with the
+// flag's own fallback (BK-129).
 
 const settingRowResult = { data: null as unknown, error: null as unknown }
 const maybeSingleMock = vi.fn(() => Promise.resolve(settingRowResult))
@@ -56,14 +57,14 @@ describe('isMessagingFlagOn', () => {
   it('reads a flag as on only when it is stored as the boolean true', async () => {
     settingRowResult.data = {
       value: {
-        table_cancelled_email_first: true,
+        table_preorder_choices_copy: true,
         private_booking_email_first: false,
         event_promo_last_push: 'true',
         bounce_sms_fallback: 1,
       },
     }
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(true)
     expect(await isMessagingFlagOn('private_booking_email_first')).toBe(false)
     expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
     expect(await isMessagingFlagOn('bounce_sms_fallback')).toBe(false)
@@ -74,24 +75,24 @@ describe('isMessagingFlagOn', () => {
     ['a string', 'on'],
     ['a number', 1],
     ['a boolean', true],
-    ['an array', ['table_cancelled_email_first']],
+    ['an array', ['table_preorder_choices_copy']],
     ['null', null],
   ])('reads every flag as off when the stored value is malformed (%s)', async (_label, value) => {
     settingRowResult.data = { value }
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
   })
 
   it('reads off when the query returns an error, and tries again on the next call', async () => {
     settingRowResult.error = { code: '57014', message: 'canceling statement', details: null, hint: null }
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
     expect(logger.error).toHaveBeenCalledTimes(1)
 
     settingRowResult.error = null
-    settingRowResult.data = { value: { table_cancelled_email_first: true } }
+    settingRowResult.data = { value: { table_preorder_choices_copy: true } }
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(true)
     expect(maybeSingleMock).toHaveBeenCalledTimes(2)
   })
 
@@ -100,37 +101,65 @@ describe('isMessagingFlagOn', () => {
       throw new Error('Missing Supabase environment variables')
     })
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
     expect(logger.error).toHaveBeenCalledTimes(1)
   })
 
   it('reads off when the query itself rejects', async () => {
     maybeSingleMock.mockImplementationOnce(() => Promise.reject(new Error('fetch failed')))
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
   })
 
   it('trusts one read for 60 seconds, then reads the row again', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-11T10:00:00Z'))
-    settingRowResult.data = { value: { table_cancelled_email_first: true } }
+    settingRowResult.data = { value: { table_preorder_choices_copy: true } }
 
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(true)
 
     // The owner switches the path off. Inside the minute the cached read still answers.
-    settingRowResult.data = { value: { table_cancelled_email_first: false } }
+    settingRowResult.data = { value: { table_preorder_choices_copy: false } }
     vi.setSystemTime(new Date('2026-09-11T10:00:59Z'))
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(true)
     expect(maybeSingleMock).toHaveBeenCalledTimes(1)
 
     // At 60 seconds the cache has expired and the change is seen.
     vi.setSystemTime(new Date('2026-09-11T10:01:00Z'))
-    expect(await isMessagingFlagOn('table_cancelled_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
     expect(maybeSingleMock).toHaveBeenCalledTimes(2)
   })
 
+  // BK-129: a failed read used to answer off for every flag, which sent retired private booking
+  // and pre-order paths back into use whenever one read timed out.
+  it('answers a failed read with the last value read, even after its minute', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-26T10:00:00Z'))
+    settingRowResult.data = { value: { private_booking_email_first: true, table_preorder_choices_copy: false } }
+    expect(await isMessagingFlagOn('private_booking_email_first')).toBe(true)
+
+    vi.setSystemTime(new Date('2026-10-26T10:05:00Z'))
+    settingRowResult.error = { code: '57014', message: 'canceling statement', details: null, hint: null }
+    expect(await isMessagingFlagOn('private_booking_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
+    expect(maybeSingleMock).toHaveBeenCalledTimes(3)
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to read messaging flags; using the last value read',
+      expect.objectContaining({ metadata: expect.objectContaining({ flag: 'private_booking_email_first' }) }),
+    )
+  })
+
+  it('before any read succeeds, keeps the table path the owner switched on and leaves new messages off', async () => {
+    settingRowResult.error = { code: '57014', message: 'canceling statement', details: null, hint: null }
+
+    expect(await isMessagingFlagOn('table_preorder_email_first')).toBe(true)
+    for (const key of ['table_preorder_choices_copy', 'bounce_sms_fallback', 'private_booking_email_first'] as const) {
+      expect(await isMessagingFlagOn(key), key).toBe(false)
+    }
+  })
+
   it('caches a missing row too, so an absent row costs one read a minute', async () => {
-    await isMessagingFlagOn('table_cancelled_email_first')
+    await isMessagingFlagOn('table_preorder_choices_copy')
     await isMessagingFlagOn('private_booking_email_first')
 
     expect(maybeSingleMock).toHaveBeenCalledTimes(1)
@@ -145,13 +174,13 @@ describe('readMessagingFlagState', () => {
       value: {
         event_promo_last_push: true,
         event_promo_intro_sms_no_email: false,
-        table_cancelled_email_first: null,
+        table_preorder_choices_copy: null,
       },
     }
 
     expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'on' })
     expect(await readMessagingFlagState('event_promo_intro_sms_no_email')).toEqual({ state: 'off' })
-    expect(await readMessagingFlagState('table_cancelled_email_first')).toEqual({ state: 'off' })
+    expect(await readMessagingFlagState('table_preorder_choices_copy')).toEqual({ state: 'off' })
     expect(await readMessagingFlagState('bounce_sms_fallback')).toEqual({ state: 'off' })
   })
 
@@ -236,7 +265,7 @@ describe('readMessagingFlagState', () => {
     // Once the minute is up the row is read again, and the failure is unknown, not off.
     vi.setSystemTime(new Date('2026-09-11T10:01:00Z'))
     expect((await readMessagingFlagState('event_promo_last_push')).state).toBe('unknown')
-    // isMessagingFlagOn keeps its contract for its other callers: a failed read is off.
-    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
+    // isMessagingFlagOn answers a failed read with the last value it read (BK-129).
+    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(true)
   })
 })
