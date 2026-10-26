@@ -151,6 +151,8 @@ export type TablePaymentPreviewResult =
     bookingTime: string | null
     startDateTime: string | null
     bookingType: string | null
+    /** The booking is confirmed and the deposit is owed (D20): no hold runs out on the table. */
+    stillBooked: boolean
     tokenHash: string
   }
   | {
@@ -396,6 +398,7 @@ export async function getTablePaymentPreviewByRawToken(
     bookingTime: booking.booking_time || null,
     startDateTime: booking.start_datetime || null,
     bookingType: booking.booking_type || null,
+    stillBooked: booking.status === 'confirmed',
     tokenHash,
   }
 }
@@ -1372,9 +1375,15 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       booking_type: booking.booking_type,
     })
     const holdIsLive = booking.hold_expires_at ? Date.parse(booking.hold_expires_at) > Date.now() : false
+    // Only a booking waiting for its deposit is told it is not confirmed (BK-174). A confirmed
+    // booking that grew into owing one stays confirmed with it owed (owner decision D20), and is
+    // told so with the link.
+    const awaitingDeposit = status === 'pending_payment'
+    const owedWhileConfirmed =
+      isConfirmed && booking.payment_status === 'pending' && booking.deposit_waived !== true && depositAmount > 0
 
     let depositPaymentLink: string | null = null
-    if (!isConfirmed && depositAmount > 0 && holdIsLive && booking.hold_expires_at) {
+    if ((awaitingDeposit || owedWhileConfirmed) && depositAmount > 0 && holdIsLive && booking.hold_expires_at) {
       try {
         const paymentToken = await createTablePaymentToken(supabase, {
           customerId: customer.id,
@@ -1405,11 +1414,9 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       depositAmount > 0
         ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount)
         : null
-    // Only a booking waiting for its deposit is told it is not confirmed, and only with the amount
-    // when the amount is known (BK-174).
-    const awaitingDeposit = status === 'pending_payment'
+    // The amount is named only when it is known (BK-174).
     const depositFacts =
-      awaitingDeposit && depositLabel
+      (awaitingDeposit || owedWhileConfirmed) && depositLabel
         ? {
             depositLabel,
             paymentLink: depositPaymentLink,
@@ -1417,7 +1424,9 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
             depositRule: booking.deposit_rule ?? null,
             perPersonGbp: depositPerPersonForBooking(booking, depositAmount, partySize),
             refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
-            payByIso: holdIsLive ? booking.hold_expires_at : null,
+            // A confirmed booking has no hold to run out, so no deadline is stated (D20).
+            payByIso: holdIsLive && !owedWhileConfirmed ? booking.hold_expires_at : null,
+            stillBooked: owedWhileConfirmed,
           }
         : null
 
@@ -1428,11 +1437,13 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
     const wasSuffix =
       previousMomentForSms && previousMomentForSms !== bookingMoment ? ` It was ${previousMomentForSms}.` : ''
     const statusSuffix = isConfirmed
-      ? " It's still confirmed."
+      ? owedWhileConfirmed && depositFacts
+        ? ` It's still confirmed. Your deposit of ${depositFacts.depositLabel} is still to pay.`
+        : " It's still confirmed."
       : depositFacts
         ? ` It is not confirmed yet: we still need your deposit of ${depositFacts.depositLabel}.`
         : ' It is not confirmed yet: we still need your deposit.'
-    const linkSuffix = !isConfirmed && depositPaymentLink
+    const linkSuffix = (!isConfirmed || owedWhileConfirmed) && depositPaymentLink
       ? ` Pay your deposit: ${depositPaymentLink}`
       : manageLink
         ? ` Manage booking: ${manageLink}`

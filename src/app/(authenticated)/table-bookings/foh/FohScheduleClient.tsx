@@ -45,6 +45,7 @@ import {
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
+import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -86,6 +87,9 @@ export function FohScheduleClient({
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const [date, setDate] = useState(initialDate)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  // What staff must read after a party-size change (a deposit left for a manager, food choices
+  // dropped). Kept on screen until dismissed, never cleared by the next action (BK-043).
+  const [staffNotice, setStaffNotice] = useState<string[] | null>(null)
   const [bookingActionInFlight, setBookingActionInFlight] = useState<string | null>(null)
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({})
   const [selectedMoveOptions, setSelectedMoveOptions] = useState<FohMoveTableOption[]>([])
@@ -330,11 +334,18 @@ export function FohScheduleClient({
         : transition.smsSent === true
           ? 'by SMS'
           : null
-      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}`
+      // A confirmed booking stays confirmed with the deposit owed (D20).
+      const staysConfirmed = transition.stillConfirmed === true ? ' The booking stays confirmed.' : ''
+      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}${staysConfirmed}`
     }
 
     if (transition?.state === 'deposit_cleared') {
       return `${successMessage}. Pending deposit cleared.`
+    }
+
+    // An unpaid deposit that followed the new party size (D20).
+    if (transition?.state === 'deposit_repriced' && typeof payload?.depositNote === 'string') {
+      return `${successMessage}. ${payload.depositNote}`
     }
 
     // The guest was told about the new party size (BK-091).
@@ -360,6 +371,8 @@ export function FohScheduleClient({
       // What happened to the deposit on a cancellation, said to the person who cancelled (BK-114).
       const depositRefund = describeDepositRefundForStaff(readDepositRefundOutcome(rp?.deposit_refund))
       const successText = buildActionSuccessMessage(successMessage, result)
+      const notice = describePartySizeStaffNotice(result)
+      if (notice.length > 0) setStaffNotice(notice)
       setStatusMessage(depositRefund?.tone === 'success' ? `${successText} ${depositRefund.message}` : successText)
       // The change stands, but staff must know when the guest was not told about it. Only the
       // email-first paths report this, so without their flags nothing new shows.
@@ -523,6 +536,8 @@ export function FohScheduleClient({
         submittingFoodOrderAlert={submittingFoodOrderAlert}
         statusMessage={statusMessage}
         errorMessage={errorMessage}
+        staffNotice={staffNotice}
+        onDismissStaffNotice={() => setStaffNotice(null)}
         lastInteractionAtMsRef={lastInteractionAtMsRef}
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}

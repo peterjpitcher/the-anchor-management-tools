@@ -261,6 +261,33 @@ describe('the booking amended notice', () => {
     expect(unreached).toMatchObject({ status: 'no_channel' })
   })
 
+  // Owner decision D20: a confirmed party that grew into owing a deposit stays confirmed, and the
+  // amended notice says the deposit is still to pay, with the link, and no hold deadline.
+  it('tells a confirmed booking that owes a deposit it is still confirmed, with the deposit to pay', async () => {
+    await sendTableBookingRescheduledNotificationIfAllowed(
+      supabase({
+        ...CONFIRMED_BOOKING,
+        status: 'confirmed',
+        payment_status: 'pending',
+        party_size: 16,
+        deposit_amount: 160,
+        deposit_rule: 'group',
+        deposit_rate: 10,
+        deposit_basis: 'per_head',
+        hold_expires_at: '2026-12-05T19:00:00.000Z',
+      }),
+      { tableBookingId: 'tb-1', previous: { partySize: 12 } },
+    )
+
+    const notice = captureNotice()
+    expect(notice.email?.text).toContain('is still confirmed')
+    expect(notice.email?.text).toContain('Your deposit of £160.00 is still to pay.')
+    expect(notice.email?.text).toContain('Your table stays booked. Please pay the deposit before your visit.')
+    expect(notice.email?.text).not.toContain('hold on your table runs out')
+    expect(notice.sms?.body).toContain("It's still confirmed. Your deposit of £160.00 is still to pay.")
+    expect(notice.sms?.body).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
+  })
+
   it('still refuses to message a cancelled booking', async () => {
     await sendTableBookingRescheduledNotificationIfAllowed(
       supabase({ ...CONFIRMED_BOOKING, status: 'cancelled' }),

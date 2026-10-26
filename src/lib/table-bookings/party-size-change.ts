@@ -13,6 +13,7 @@ import {
 } from '@/lib/events/staff-seat-updates'
 import {
   applyPartySizeDepositTransition,
+  PARTY_SIZE_DEPOSIT_COLUMNS,
   type PartySizeDepositTransitionResult
 } from '@/lib/table-bookings/staff-deposit-transitions'
 import {
@@ -91,9 +92,10 @@ export async function changeTableBookingPartySize(
 
   // Read current booking state before the update so we can detect threshold crossings
   const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
-    // booking_period_id and booking_period_name are load-bearing here: their presence is what stops
-    // the deposit transition re-pricing a seasonal booking with the party-size rule, which zeroed it.
-    .select('id, party_size, committed_party_size, status, payment_status, customer_id, booking_date, booking_reference, booking_type, start_datetime, updated_at, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name')
+    // The deposit transition's columns, read BEFORE the change: its status and payment state decide
+    // whether the deposit follows the new size or is flagged (D20). booking_period_answer, not the
+    // period id, says whether a seasonal offer was taken (BK-042).
+    .select(`committed_party_size, booking_reference, updated_at, ${PARTY_SIZE_DEPOSIT_COLUMNS}`)
     .eq('id', id)
     .maybeSingle()
 
@@ -172,11 +174,11 @@ export async function changeTableBookingPartySize(
         error: depositError instanceof Error ? depositError : new Error(String(depositError)),
         metadata: { tableBookingId: id, previousPartySize, newPartySize },
       })
-      depositWarning = 'Party size saved, but the deposit link could not be updated. Please retry from the booking page.'
+      depositWarning = 'Party size saved, but the deposit could not be brought in line with it. Check the deposit on the booking page.'
     }
 
-    // A seasonal booking is never re-priced automatically, so say so plainly rather than letting
-    // staff assume the deposit followed the new party size.
+    // A deposit left for a manager (paid, so settled on the bill, or not workable out) is said plainly,
+    // and the booking carries the flag until a manager clears it (BK-043).
     if (depositTransition?.state === 'manual_review') {
       depositWarning = depositTransition.message
     }
@@ -239,6 +241,8 @@ export async function changeTableBookingPartySize(
       booking: updatedBooking,
       depositTransition,
       warning: depositWarning,
+      // An unpaid deposit that followed the new size (D20), for the success message.
+      depositNote: depositTransition?.state === 'deposit_repriced' ? depositTransition.message : null,
       // What the shrink dropped, so staff can tell the booker whose food choice has gone.
       preorderRemoved,
       // Whether the guest was told about the new size, so the screens can say when nobody was.

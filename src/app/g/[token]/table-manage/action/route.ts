@@ -149,6 +149,13 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
 
     const sync = await syncCoversAfterPartySizeChange(supabase, result.table_booking_id)
 
+    // The bigger party now owes a deposit and the booking stays confirmed (D20, BK-044). Take the
+    // guest straight to the payment page, which shows the amount, rather than a bare "Booking
+    // updated" with no link. The same link is in the email.
+    if (result.deposit_payment_url) {
+      return NextResponse.redirect(result.deposit_payment_url, 303)
+    }
+
     if (sync.removed > 0) {
       return redirectWithPreorderStatus(request, token, 'seats_removed')
     }

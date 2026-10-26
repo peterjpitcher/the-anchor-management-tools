@@ -230,6 +230,11 @@ export type DepositTermsFacts = {
    * described as "Groups of 15 or more" (BK-049); left out, the group wording stays as it was.
    */
   depositRule?: string | null
+  /**
+   * The booking stays confirmed while the deposit is owed (owner decision D20): a confirmed party
+   * that grew to 15 or more. There is no hold to run out, so no deadline is stated.
+   */
+  stillBooked?: boolean | null
 }
 
 function depositTerms(facts: DepositTermsFacts): string[] {
@@ -239,6 +244,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
     refundCutoffDays: facts.refundCutoffDays ?? null,
     payByLabel: facts.payByIso ? formatBookingMomentForEmail(null, null, facts.payByIso) : null,
     depositRule: facts.depositRule ?? null,
+    stillBooked: facts.stillBooked === true,
   })
 }
 
@@ -508,6 +514,21 @@ export function buildTableBookingDepositRequestEmail(
   const partySize = Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1)
   const seatWord = partySize === 1 ? 'person' : 'people'
 
+  // A confirmed booking that grew to owe a deposit stays booked (D20, BK-044). It is never told the
+  // deposit "secures" a table it already has, or that a hold is running out.
+  if (input.stillBooked) {
+    return renderDepositRequestEmail({
+      ...input,
+      partySize,
+      subject: 'Your booking at The Anchor now has a deposit to pay',
+      heading: 'A deposit to pay',
+      lead:
+        `Hi ${input.firstName}, your party size has been updated to ${partySize} ${seatWord}. ` +
+        `Your table is still booked. There's now a ${input.depositKindLabel} of ${input.depositLabel}` +
+        `${input.breakdownNote} to pay.`,
+    })
+  }
+
   return renderDepositRequestEmail({
     ...input,
     partySize,
@@ -572,7 +593,10 @@ export function buildTableBookingRescheduledEmail(
     /** What the booking said before this change. Left out when it is not known. */
     previousStartDateTime?: string | null
     previousPartySize?: number | null
-    /** Set when a deposit is still owed, which is what makes this booking not confirmed. */
+    /**
+     * Set when a deposit is still owed: on a pending_payment booking, which makes it not confirmed,
+     * or on a confirmed booking that grew into owing one (D20), which stays confirmed.
+     */
     deposit?:
       | (DepositTermsFacts & {
           /** "£160.00", as the deposit request stated it. */
@@ -620,7 +644,11 @@ export function buildTableBookingRescheduledEmail(
     // only when it is known. It used to say "your deposit of the deposit" when it was not, and to
     // say it to bookings whose visit was already over (BK-174).
     closing: isConfirmed
-      ? [`Your ${bookingNoun} is still confirmed.`]
+      ? [
+          `Your ${bookingNoun} is still confirmed.`,
+          // A confirmed booking that grew into owing a deposit keeps it owed (D20).
+          ...(deposit ? [`Your deposit of ${deposit.depositLabel} is still to pay.`, ...depositTerms(deposit)] : []),
+        ]
       : input.status === 'pending_payment'
         ? [
             deposit
@@ -629,7 +657,7 @@ export function buildTableBookingRescheduledEmail(
             ...(deposit ? depositTerms(deposit) : []),
           ]
         : [],
-    cta: !isConfirmed && deposit?.paymentLink
+    cta: deposit?.paymentLink
       ? { label: 'Pay your deposit', url: deposit.paymentLink }
       : input.manageLink
         ? { label: 'Manage your booking', url: input.manageLink }

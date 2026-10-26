@@ -52,6 +52,7 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
+import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
 import {
   describeGuestNotificationChannel,
   describeGuestNotificationProblem,
@@ -326,6 +327,9 @@ export interface Booking {
   deposit_amount: number | null
   deposit_amount_locked: number | null
   card_capture_completed_at: string | null
+  /** Set while a party-size change has left the deposit for a manager to settle (BK-043, D20). */
+  deposit_review_needed_at?: string | null
+  deposit_review_note?: string | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
   table_booking_items: BookingItem[]
@@ -392,6 +396,9 @@ type PreorderEditState = Record<string, { quantity: string; special_requests: st
 export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
+  // What staff must read after a party-size change, kept until dismissed rather than a toast that
+  // vanishes in seconds (BK-043).
+  const [partySizeNotice, setPartySizeNotice] = useState<string[] | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
   const [availableMoveTables, setAvailableMoveTables] = useState<MoveTableOption[]>([])
   const [loadingMoveTables, setLoadingMoveTables] = useState(false)
@@ -529,7 +536,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     notes.some((note) => note.label === 'Allergies' || note.label === 'Dietary requirements')
       ? 'Dietary or allergy notes present'
       : null,
-    booking.hold_expires_at ? `Payment hold expires ${formatLondonDateTime(booking.hold_expires_at)}` : null,
+    booking.hold_expires_at
+      ? booking.status === 'confirmed'
+        // A confirmed booking that owes a deposit holds nothing that runs out (D20).
+        ? `Deposit to pay by ${formatLondonDateTime(booking.hold_expires_at)}`
+        : `Payment hold expires ${formatLondonDateTime(booking.hold_expires_at)}`
+      : null,
     booking.sunday_preorder_cutoff_at ? `Sunday pre-order cutoff ${formatLondonDateTime(booking.sunday_preorder_cutoff_at)}` : null,
   ].filter((flag): flag is string => Boolean(flag))
 
@@ -738,6 +750,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           depositUrl?: string | null
           smsSent?: boolean
           warning?: string | null
+          depositNote?: string | null
+          preorderRemoved?: unknown
           depositNotification?: unknown
           partySizeNotification?: unknown
           data?: { auto_moved_table_name?: string | null }
@@ -757,6 +771,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         })
         setPartySizeEditOpen(false)
         setPartySizeMoveTableId('')
+        const notice = describePartySizeStaffNotice(payload)
+        setPartySizeNotice(notice.length > 0 ? notice : null)
         // If the deposit link reached nobody, staff must send it themselves.
         const depositProblem = describeGuestNotificationProblem(
           readGuestNotificationOutcome(payload.depositNotification),
@@ -778,8 +794,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       (payload) => {
         const movedTableName = payload.data?.auto_moved_table_name
         const prefix = movedTableName ? `Moved to ${movedTableName}. ` : ''
+        // A deposit left for a manager is in the notice that stays on screen.
         if (payload.warning) {
-          return `${prefix}${payload.warning}`
+          return `${prefix}Party size updated. Check the note on this booking.`
+        }
+        if (payload.depositNote) {
+          return `${prefix}Party size updated. ${payload.depositNote}`
         }
         if (payload.depositRequired) {
           const notification = readGuestNotificationOutcome(payload.depositNotification)
@@ -795,6 +815,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         }
         return `${prefix}Party size updated`
       }
+    )
+  }
+
+  /** A manager has checked a deposit a party-size change left to settle on the bill (BK-043). */
+  async function handleClearDepositReview() {
+    await runAction(
+      'deposit-review',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/deposit-review`, { body: {} })
+      },
+      'Marked as checked'
     )
   }
 
@@ -996,6 +1027,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           <Stat label="Capacity" value={booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'} />
           <Stat label="Audit" value={auditTrail.length} />
         </StatGrid>
+
+        {partySizeNotice && (
+          <Alert tone="warning" title="Check this booking" closable onClose={() => setPartySizeNotice(null)}>
+            <ul className="list-disc space-y-1 pl-4">
+              {partySizeNotice.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
@@ -1305,6 +1346,27 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   )}
                   {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
                 </div>
+
+                {booking.deposit_review_needed_at && (
+                  // BK-043: a party-size change left the deposit for a manager to settle on the bill.
+                  <Alert tone="warning" title="Deposit to check">
+                    <p>{booking.deposit_review_note || 'The party size changed after the deposit was set.'}</p>
+                    {canManage ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="mt-2"
+                        loading={actionLoadingKey === 'deposit-review'}
+                        disabled={Boolean(actionLoadingKey)}
+                        onClick={() => void handleClearDepositReview()}
+                      >
+                        Mark as checked
+                      </Button>
+                    ) : (
+                      <p className="mt-1 text-xs">A manager marks this as checked.</p>
+                    )}
+                  </Alert>
+                )}
 
                 {/* One column at xl, where this card sits in the 420px side column. */}
                 <DescriptionList
