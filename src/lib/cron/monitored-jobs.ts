@@ -99,6 +99,14 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     recording: 'own',
     label: 'Private hire reminders and chasers',
   },
+  {
+    jobName: 'website-refusals-summary',
+    path: '/api/cron/website-refusals-summary',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 60,
+    recording: 'every_run',
+    label: 'Daily summary of website bookings turned away',
+  },
 ]
 
 /** Slack on top of twice the interval, for Vercel starting a run a little late. */

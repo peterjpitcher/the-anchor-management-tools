@@ -43,7 +43,8 @@ const SCOPE_DEFINITIONS = [
   { value: 'parking:create', label: 'Parking: Create Bookings and Take Payment', usedByRoutes: true },
   { value: 'write:recruitment', label: 'Write Job Applications', usedByRoutes: true },
   { value: 'write:marketing_conversions', label: 'Write Marketing Conversions', usedByRoutes: true },
-  // POST /api/website/payment-failure-alert, which texts the pub's alert number.
+  // POST /api/website/payment-failure-alert, which texts the pub's alert number, and
+  // POST /api/website/booking-funnel, which records refused website bookings and form signals.
   { value: 'write:ops_alerts', label: 'Send Operations Alerts', usedByRoutes: true },
   { value: 'write:events', label: 'Write Events', usedByRoutes: false },
   { value: 'write:performers', label: 'Write Performers', usedByRoutes: false },
