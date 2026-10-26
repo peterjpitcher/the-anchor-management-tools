@@ -8,6 +8,10 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendEventPaymentExpiredEmail } from '@/lib/email/event-ticket-emails'
 import { findEventBookingsAwaitingPaymentDecision } from '@/lib/events/payment-awaiting-decision'
+import { withCronRun } from '@/lib/cron/run-recorder'
+
+// The 15-second project default is too tight for a run that expires a backlog (BK-212).
+export const maxDuration = 60
 
 function formatLondonDateTime(dateStr: string): string {
   try {
@@ -33,7 +37,7 @@ function chunkIds(ids: string[], size = 200): string[][] {
   return chunks
 }
 
-export async function GET(request: NextRequest) {
+async function expireEventBookingHolds(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -457,3 +461,6 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+// Runs every five minutes, so one run record an hour plus one per failed run (BK-116).
+export const GET = withCronRun('event-booking-holds', expireEventBookingHolds, { recording: 'hourly' })

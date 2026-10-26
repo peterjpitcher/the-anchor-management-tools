@@ -17,6 +17,9 @@ import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 import { settleWrite } from '@/lib/supabase/settle-write'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 

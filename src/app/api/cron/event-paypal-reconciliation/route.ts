@@ -15,6 +15,10 @@ import {
 } from '@/lib/email/event-ticket-emails'
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
+import { withCronRun } from '@/lib/cron/run-recorder'
+
+// Up to 100 PayPal reads a run; the 15-second project default is too tight (BK-212).
+export const maxDuration = 60
 
 /*
  * PayPal purges an order the customer never completed, so a 404 on one is the
@@ -133,7 +137,7 @@ async function recordUnfinishedCapture(
   }
 }
 
-export async function GET(request: NextRequest) {
+async function reconcileEventPayPalPayments(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -409,3 +413,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(result)
 }
+
+// A run record per run, a failure email when the run fails, and the payments and refunds it
+// could not reconcile counted on the record for the daily check (BK-116).
+export const GET = withCronRun('event-paypal-reconciliation', reconcileEventPayPalPayments, {
+  recording: 'every_run',
+  itemFailures: (body) => Number(body.failed ?? 0) + Number(body.refundsFailed ?? 0),
+})

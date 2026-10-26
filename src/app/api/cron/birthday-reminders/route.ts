@@ -3,6 +3,9 @@ import { sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays'
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logger } from '@/lib/logger';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   try {
     // Verify this is coming from Vercel Cron (in production)
