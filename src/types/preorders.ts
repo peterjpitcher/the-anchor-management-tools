@@ -131,8 +131,16 @@ export type PreorderSelection = {
   updatedAt: string
 }
 
+/**
+ * How many courses a Christmas guest is having, recorded per seat on
+ * `table_bookings.christmas_course_counts`. 1 course needs no pre-order; 2 courses is a main and one
+ * other (a starter or a dessert); 3 courses is a starter, a main and a dessert. Null means the
+ * booking recorded no tier, an older booking that keeps its original rule: a main is required.
+ */
+export type PreorderCourseCount = 1 | 2 | 3
+
 export type PreorderCover = {
-  courseCount?: 1 | 2 | 3 | null
+  courseCount?: PreorderCourseCount | null
   id: string
   tableBookingId: string
   /** Seat number, 1-based. Stable, and the number staff and the kitchen see. */
@@ -179,6 +187,12 @@ export type PreorderOrder = {
    * the form goes read-only, and the day the manager escalation fires, are both derived from this.
    */
   preorderCutoffDays: number | null
+  /**
+   * The course tier of every seat, seat 1 first, exactly as the booking recorded it. Carried on the
+   * order as well as on each cover because a seat may have no cover row yet, and the screens still
+   * have to say what that seat owes. Null when the booking recorded no tiers.
+   */
+  courseCounts?: PreorderCourseCount[] | null
   covers: PreorderCover[]
 }
 

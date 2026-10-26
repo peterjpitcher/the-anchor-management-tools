@@ -864,4 +864,90 @@ describe('generateTableBookingSheetsHTML', () => {
       expect(rule).toContain('overflow-wrap:anywhere')
     })
   })
+
+  // BK-058: the sheet follows each guest's Christmas tier.
+  describe('Christmas course tiers', () => {
+    it('prints each seat tier and a 1 course seat as choosing on the day, not as missing', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            christmasCourses: '1 x 3 courses, 1 x 1 course',
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  tierLabel: '3 courses',
+                  courses: [{ courseLabel: 'Main', itemName: 'Fixture main' }],
+                  dietaryNote: null,
+                },
+                { seatLabel: 'Seat 2', tierLabel: '1 course', choosesOnTheDay: true, courses: [], dietaryNote: null },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Seat 1 · 3 courses')
+      expect(html).toContain('Seat 2 · 1 course')
+      expect(html).toContain('1 course, choosing on the day')
+      expect(html).not.toContain('Nothing chosen yet')
+      // On the booking page, so front of house can price the bill, and on the kitchen page.
+      expect(countOccurrences(html, '1 x 3 courses, 1 x 1 course')).toBe(2)
+      expect(html).toContain('Christmas courses')
+    })
+
+    it('flags a withdrawn dish so the kitchen does not cook it as chosen', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  courses: [{ courseLabel: 'Main', itemName: 'Withdrawn main', withdrawn: true }],
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Withdrawn main<span class="seat-withdrawn">OFF THE MENU, ring the guest</span>')
+    })
+
+    // BK-051: a seat a manager changed after the cutoff is marked, because the kitchen ordered first.
+    it('marks a seat changed after the cutoff', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  tierLabel: '2 courses',
+                  lateChange: true,
+                  courses: [{ courseLabel: 'Main', itemName: 'Fixture main' }],
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('<p class="seat-head">Seat 1 · 2 courses · CHANGED AFTER THE CUTOFF</p>')
+    })
+
+    it('leaves a booking with no tiers exactly as before', () => {
+      const html = generateTableBookingSheetsHTML([makeSheet({ preorder: makePreorder() })], { logoDataUrl: LOGO })
+
+      expect(html).not.toContain('Christmas courses')
+      expect(html).not.toContain('choosing on the day')
+      expect(html).toContain('<p class="seat-head">Seat 1 · Jo Bloggs</p>')
+    })
+  })
 })

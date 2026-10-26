@@ -166,7 +166,8 @@ export function useFohCreateBooking(input: {
     bypass_pacing: false,
     high_chair_count: '0',
     outside_seating: false,
-    requires_accessible_table: false
+    requires_accessible_table: false,
+    christmas_course_counts: []
   })
 
   // --- Customer search ---
@@ -400,7 +401,8 @@ export function useFohCreateBooking(input: {
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
       notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
-      high_chair_count: '0', outside_seating: false, requires_accessible_table: false
+      high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
+      christmas_course_counts: []
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
     setSelectedCustomer(null); setEventOptions([]); setEventOptionsError(null)
@@ -459,7 +461,8 @@ export function useFohCreateBooking(input: {
         phone: walkInMode ? '' : current.phone, email: walkInMode ? '' : current.email, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
         notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false,
-        high_chair_count: '0', outside_seating: false, requires_accessible_table: false
+        high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
+        christmas_course_counts: []
       }
     })
     if (walkInMode) {
@@ -606,6 +609,16 @@ export function useFohCreateBooking(input: {
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
     }
+    // Christmas bookings taken here record each guest's 1, 2 or 3 courses (BK-057), so the guest's
+    // pre-order form, the chase and the kitchen sheet know what each guest is having. Walk-ins are on
+    // the day, inside the pre-order deadline, so the server records them as 1 course itself.
+    const christmasCourseCounts =
+      isChristmasBooking && createMode === 'booking'
+        ? Array.from({ length: partySize }, (_, index) => createForm.christmas_course_counts?.[index] ?? 0)
+        : undefined
+    if (christmasCourseCounts?.some((count) => count < 1 || count > 3)) {
+      setErrorMessage('Choose 1, 2 or 3 courses for every Christmas guest.'); return
+    }
     const requestedHighChairs = Math.max(0, Math.min(2, Number.parseInt(createForm.high_chair_count, 10) || 0))
     setSubmittingBooking(true)
     try {
@@ -630,6 +643,7 @@ export function useFohCreateBooking(input: {
           // Indoor only: an outside booking holds no indoor table to make step-free.
           requires_accessible_table:
             (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
+          christmas_course_counts: christmasCourseCounts,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
           // never the truthiness. Absent for Christmas, which travels as a
@@ -666,7 +680,11 @@ export function useFohCreateBooking(input: {
       const highChairText = describeHighChairs(requestedHighChairs, payload.data.high_chairs_granted)
       await reloadSchedule()
       const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${paymentLinkText}`)
+      // The booking exists either way; staff are told to set the courses on the booking itself.
+      const coursesText = payload.data.christmas_courses_saved === false
+        ? ' The Christmas courses did not save: set them on the booking.'
+        : ''
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

@@ -30,6 +30,8 @@ export type FohBooking = {
   high_chair_count?: number
   is_outside_seating?: boolean
   requires_accessible_table?: boolean
+  /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first; null when none were recorded. */
+  christmas_course_counts?: number[] | null
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]
@@ -85,6 +87,8 @@ export type FohViewMode = 'inside' | 'outside'
 export type FohCreateBookingResponse = {
   success: boolean
   data?: {
+    /** Sent only when Christmas courses were sent; false means the booking exists without them. */
+    christmas_courses_saved?: boolean
     state: 'confirmed' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null

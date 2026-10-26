@@ -48,6 +48,7 @@ export default async function BookingDetailPage({ params }: Props) {
       start_datetime, end_datetime, duration_minutes,
       high_chair_count, is_outside_seating, requires_accessible_table, table_pinned,
       booking_period_id, booking_period_name, booking_period_answer, booking_period_requires_preorder,
+      christmas_course_counts,
       deposit_waived, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
@@ -123,7 +124,7 @@ export default async function BookingDetailPage({ params }: Props) {
   } as unknown as Booking
 
   const [seasonalPreorder, depositRefunds] = await Promise.all([
-    loadSeasonalPreorder(rawBooking, canEdit),
+    loadSeasonalPreorder(rawBooking, canEdit, canManage),
     loadDepositRefunds(rawBooking.id),
   ])
   // P7: the guest message card offers email when the option is on (and defaults to it for a
@@ -181,7 +182,7 @@ async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefu
  * The pre-order tables are service-role only under RLS, so the read goes through the admin client.
  * Permission was proven at the top of the page before we got here.
  */
-async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
+async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage: boolean) {
   // The booking's own snapshot answers this, not the live period row: a guest who said "no, this
   // is not a Christmas dinner" gets the normal menu and owes nobody a choice.
   if (rawBooking.booking_period_requires_preorder !== true || rawBooking.booking_period_answer !== true) {
@@ -213,6 +214,7 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
       preorderEnabled={preorderEnabled}
       closed={cutoff.closed}
       closesAtIso={cutoff.closesAt?.toISOString() ?? null}
+      canRecordLate={canManage}
     />
   )
 }

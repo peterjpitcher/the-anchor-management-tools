@@ -273,8 +273,15 @@ export function buildConfirmReminderText(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * The pre-order reminder text, word for word as it has always read. Straight apostrophes and no
- * dashes: one curly character drops the segment limit from 160 to 70.
+ * The pre-order reminder text. Straight apostrophes and no dashes: one curly character drops the
+ * segment limit from 160 to 70.
+ *
+ * It used to say "Every guest needs a main course.", the rule from before Christmas tiers, which told
+ * a 2 or 3 course guest that a main alone would do. The email had already been corrected
+ * (describePreorderCourseRequirement); this is the same rule in one line that is true whatever mix of
+ * tiers the booking has, so the text needs no per-guest detail. The deadline is left to the email,
+ * which carries the exact date and time: the bounce fallback (fallback-renderer.ts) rebuilds this
+ * text from the booking alone and must produce the same words the sweep sent.
  */
 export function buildPreorderReminderText(input: {
   /** As the text shows it (getSmartFirstName). */
@@ -287,6 +294,6 @@ export function buildPreorderReminderText(input: {
   const bookingMoment = formatDateWithTimeForSms(input.bookingDate, input.bookingTime)
   return (
     `The Anchor: ${input.firstName}, we still need the food choices for your booking on ` +
-    `${bookingMoment}. Every guest needs a main course. Choose here: ${input.manageLink}`
+    `${bookingMoment}. Guests on 2 or 3 courses need every course chosen. Choose here: ${input.manageLink}`
   )
 }

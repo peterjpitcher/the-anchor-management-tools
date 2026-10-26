@@ -24,6 +24,11 @@ vi.mock('@/lib/messaging/flags', () => ({ isMessagingFlagOn: vi.fn(async (key: s
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined) }))
 vi.mock('@/lib/cron-auth', () => ({ authorizeCronRequest: vi.fn(() => ({ authorized: true })) }))
+// The cutoff kitchen order and booker copies (BK-149) have their own tests; here they would only
+// add emails to the ones these tests count.
+vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
+  sendPreorderCutoffDigests: vi.fn(async () => ({ kitchenEmails: 0, choiceCopies: 0, failed: 0 })),
+}))
 vi.mock('@/lib/email/emailService', () => ({ sendEmail: vi.fn() }))
 vi.mock('@/lib/email/logging', () => ({ isEmailSuppressed: vi.fn(async () => false) }))
 vi.mock('@/lib/twilio', () => ({
@@ -414,8 +419,9 @@ describe('each email-first table booking message is rebuilt as the text its send
     expect((await response.json()).result).toEqual(expect.objectContaining({ bookerReminders: 1, failed: 0 }))
     const sent = onlyTextSent()
     const shortUrl = buildShortLinkUrl('sl1')
+    // The tier rule, not 'Every guest needs a main course.' (BK-056). The rebuild below must match it.
     expect(sent.body).toBe(
-      `The Anchor: Sarah, we still need the food choices for your booking on Saturday 24 October at 7pm. Every guest needs a main course. Choose here: ${shortUrl}`
+      `The Anchor: Sarah, we still need the food choices for your booking on Saturday 24 October at 7pm. Guests on 2 or 3 courses need every course chosen. Choose here: ${shortUrl}`
     )
 
     const render = ready(await rebuild())

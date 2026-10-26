@@ -42,6 +42,7 @@ import CustomerSearchInput from '@/components/features/customers/CustomerSearchI
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
+import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -308,6 +309,8 @@ export interface Booking {
   party_size: number | null
   committed_party_size: number | null
   booking_type: string | null
+  /** Christmas only: the 1, 2 or 3 courses each guest is on, seat 1 first. Null when not recorded. */
+  christmas_course_counts?: number[] | null
   booking_purpose: string | null
   status: string
   source: string | null
@@ -1045,6 +1048,19 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     },
                     { key: 'high-chairs', label: 'High chairs', value: String(booking.high_chair_count ?? 0) },
                     { key: 'booking-type', label: 'Booking type', value: formatLabel(booking.booking_type) },
+                    ...(booking.booking_type === 'christmas'
+                      ? [
+                          {
+                            key: 'christmas-courses',
+                            label: 'Christmas courses',
+                            // BK-057: staff need to see who is paying for what, and a booking with
+                            // none recorded is told where to set them.
+                            value:
+                              formatChristmasCourseTally(booking.christmas_course_counts) ||
+                              'Not recorded. Set them with Change party size.',
+                          },
+                        ]
+                      : []),
                     { key: 'purpose', label: 'Purpose', value: formatLabel(booking.booking_purpose) },
                     { key: 'source', label: 'Source', value: formatLabel(booking.source) },
                   ]}

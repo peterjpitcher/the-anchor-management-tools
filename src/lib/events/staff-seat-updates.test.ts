@@ -42,12 +42,20 @@ const bookingRow = {
   start_datetime: '2026-07-10T17:00:00.000Z',
   end_datetime: '2026-07-10T19:00:00.000Z',
   duration_minutes: 120,
-  christmas_course_counts: undefined as number[] | undefined
+  christmas_course_counts: undefined as number[] | undefined,
+  booking_type: 'regular' as string,
+  booking_period_answer: null as boolean | null
 }
 
 type UpdateResult = { data: Record<string, unknown> | null; error: { message: string } | null }
 
-function createSupabaseStub(updateResult: UpdateResult) {
+type PreorderFixture = {
+  covers: Array<{ id: string; ordinal: number }>
+  selections: Array<{ id: string; cover_id: string; course: string }>
+}
+
+function createSupabaseStub(updateResult: UpdateResult, preorder: PreorderFixture = { covers: [], selections: [] }) {
+  const deleteIn = vi.fn(async (_column: string, _ids: string[]) => ({ error: null }))
   const updateMock = vi.fn(() => ({
     eq: vi.fn(() => ({
       select: vi.fn(() => ({
@@ -77,10 +85,21 @@ function createSupabaseStub(updateResult: UpdateResult) {
         }))
       }
     }
+    if (table === 'booking_preorder_covers') {
+      return {
+        select: vi.fn(() => ({ eq: vi.fn(async () => ({ data: preorder.covers, error: null })) }))
+      }
+    }
+    if (table === 'booking_preorder_selections') {
+      return {
+        select: vi.fn(() => ({ in: vi.fn(async () => ({ data: preorder.selections, error: null })) })),
+        delete: vi.fn(() => ({ in: deleteIn }))
+      }
+    }
     throw new Error(`Unexpected table in stub: ${table}`)
   })
 
-  return { client: { from } as never, updateMock }
+  return { client: { from } as never, updateMock, deleteIn }
 }
 
 const availability = {
@@ -96,6 +115,8 @@ const availability = {
 beforeEach(() => {
   vi.clearAllMocks()
   bookingRow.christmas_course_counts = undefined
+  bookingRow.booking_type = 'regular'
+  bookingRow.booking_period_answer = null
   mockedGetAvailability.mockResolvedValue(availability)
   mockedMoveToTables.mockResolvedValue({ ok: true })
 })
@@ -244,5 +265,80 @@ describe('Christmas amendment preflight', () => {
     await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 7, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1, 1, 1, 2] }))
       .rejects.toThrow('deadline has passed')
     expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+})
+
+// BK-057: a Christmas booking taken by staff with no courses can have them recorded once, before
+// the deadline, so its guests stop being chased for a main they may not owe.
+describe('recording Christmas courses on a booking that has none', () => {
+  it('records the courses at the same party size', async () => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    const { client, updateMock } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 6, committed_party_size: 6, updated_at: '2026-10-26T10:00:00.000Z' },
+      error: null
+    })
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: true }, error: null })) })
+
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [3, 3, 2, 2, 1, 1]
+    })
+
+    expect(result.state).toBe('updated')
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ christmas_course_counts: [3, 3, 2, 2, 1, 1] }))
+  })
+
+  it('clears earlier dishes that the new courses no longer allow, and keeps the rest', async () => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    const { client, deleteIn } = createSupabaseStub(
+      { data: { id: 'tb-1', party_size: 6, committed_party_size: 6, updated_at: '2026-10-26T10:00:00.000Z' }, error: null },
+      {
+        covers: [
+          { id: 'seat-1', ordinal: 1 }, { id: 'seat-3', ordinal: 3 }, { id: 'seat-4', ordinal: 4 }, { id: 'seat-5', ordinal: 5 }
+        ],
+        selections: [
+          // Seat 1 is on 3 courses: keeps everything.
+          { id: 's1-starter', cover_id: 'seat-1', course: 'starter' }, { id: 's1-main', cover_id: 'seat-1', course: 'main' },
+          { id: 's1-dessert', cover_id: 'seat-1', course: 'dessert' },
+          // Seat 3 is on 2 courses with a main and a dessert: that fits, so it stays.
+          { id: 's3-main', cover_id: 'seat-3', course: 'main' }, { id: 's3-dessert', cover_id: 'seat-3', course: 'dessert' },
+          // Seat 4 is on 2 courses but holds a starter and a dessert: it chooses again.
+          { id: 's4-starter', cover_id: 'seat-4', course: 'starter' }, { id: 's4-main', cover_id: 'seat-4', course: 'main' },
+          { id: 's4-dessert', cover_id: 'seat-4', course: 'dessert' },
+          // Seat 5 is on 1 course: chooses on the day, so nothing stays.
+          { id: 's5-main', cover_id: 'seat-5', course: 'main' }
+        ]
+      }
+    )
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: true }, error: null })) })
+
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [3, 3, 2, 2, 1, 1]
+    })
+
+    expect(result.state).toBe('updated')
+    expect(deleteIn).toHaveBeenCalledTimes(1)
+    expect(deleteIn).toHaveBeenCalledWith('id', ['s4-starter', 's4-main', 's4-dessert', 's5-main'])
+  })
+
+  it('refuses 2 or 3 courses once the deadline has passed', async () => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    const { client, updateMock } = createSupabaseStub({ data: null, error: null })
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: false }, error: null })) })
+
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [3, 3, 2, 2, 1, 1]
+    })).rejects.toThrow('deadline has passed')
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('still refuses courses on a booking that is not a Christmas dinner', async () => {
+    const { client } = createSupabaseStub({ data: null, error: null })
+
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 6, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1, 1, 1]
+    })).rejects.toThrow('retains its original course policy')
   })
 })

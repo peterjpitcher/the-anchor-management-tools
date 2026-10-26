@@ -195,9 +195,21 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const oldPartySize = Math.max(1, Number(tableBooking.party_size || 1))
   const newPartySize = Math.max(1, Number(input.partySize || 1))
   const recordedCourses: number[] | null = tableBooking.christmas_course_counts ?? null
-  const nextCourses = recordedCourses ? (input.christmasCourseCounts ?? recordedCourses) : null
+  // A Christmas booking taken with no courses (a staff booking before BK-057) may have them set
+  // ONCE, here, so its guests stop being chased for a main they may not owe. The same checks apply
+  // as to a change, and the database trigger repeats them on the write.
+  const recordingFirstCourses =
+    !recordedCourses &&
+    Boolean(input.christmasCourseCounts) &&
+    String(tableBooking.booking_type || '') === 'christmas' &&
+    tableBooking.booking_period_answer === true
+  const nextCourses = recordedCourses
+    ? (input.christmasCourseCounts ?? recordedCourses)
+    : recordingFirstCourses
+      ? input.christmasCourseCounts ?? null
+      : null
   const coursesChanged = JSON.stringify(recordedCourses) !== JSON.stringify(nextCourses)
-  if (recordedCourses) {
+  if (nextCourses) {
     // Before looking for or moving tables. The database repeats these checks on the final update.
     if (newPartySize < CHRISTMAS_MIN_PARTY_SIZE || newPartySize > CHRISTMAS_MAX_PARTY_SIZE) {
       throw new ChristmasCourseValidationError(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)
@@ -390,6 +402,18 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       }
     }
 
+    if (recordingFirstCourses && nextCourses) {
+      // The courses are saved by now, so a failure here must not report the change as failed.
+      try {
+        await clearChoicesThatNoLongerFit(supabase, tableBooking.id, nextCourses)
+      } catch (error) {
+        logger.error('Christmas courses were recorded but earlier food choices that no longer fit were not cleared', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { tableBookingId: tableBooking.id }
+        })
+      }
+    }
+
     return {
       state: 'updated',
       table_booking_id: tableBooking.id,
@@ -519,4 +543,47 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     event_id: bookingUpdate.event_id || tableBooking.event_id || null,
     updated_booking: syncedBookingRow
   }
+}
+
+/**
+ * Recording a booking's Christmas courses for the first time is a NULL-to-array change, which the
+ * database snapshot trigger does not reconcile: it clears a seat's dishes only when an existing
+ * tier changes. So dishes chosen before the tiers existed that a seat's tier no longer allows go
+ * here, the way the trigger treats a changed seat: every dish on a 1-course seat, and all of a
+ * 2-course seat's dishes when it holds both a starter and a dessert (that guest chooses again).
+ * A 3-course seat keeps its dishes.
+ */
+async function clearChoicesThatNoLongerFit(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string,
+  courses: number[]
+): Promise<void> {
+  const { data: coverRows, error: coverError } = await supabase.from('booking_preorder_covers')
+    .select('id, ordinal')
+    .eq('table_booking_id', tableBookingId)
+  if (coverError) throw coverError
+  const covers = (coverRows ?? []) as Array<{ id: string; ordinal: number }>
+  if (covers.length === 0) return
+
+  const { data: selectionRows, error: selectionError } = await supabase.from('booking_preorder_selections')
+    .select('id, cover_id, course')
+    .in('cover_id', covers.map((cover) => cover.id))
+  if (selectionError) throw selectionError
+  const selections = (selectionRows ?? []) as Array<{ id: string; cover_id: string; course: string }>
+
+  const staleIds: string[] = []
+  for (const cover of covers) {
+    const seatSelections = selections.filter((selection) => selection.cover_id === cover.id)
+    const tier = courses[cover.ordinal - 1]
+    const holdsStarterAndDessert =
+      seatSelections.some((selection) => selection.course === 'starter') &&
+      seatSelections.some((selection) => selection.course === 'dessert')
+    if (tier === 1 || (tier === 2 && holdsStarterAndDessert)) {
+      staleIds.push(...seatSelections.map((selection) => selection.id))
+    }
+  }
+  if (staleIds.length === 0) return
+
+  const { error: deleteError } = await supabase.from('booking_preorder_selections').delete().in('id', staleIds)
+  if (deleteError) throw deleteError
 }

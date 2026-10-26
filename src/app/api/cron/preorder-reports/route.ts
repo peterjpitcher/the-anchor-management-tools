@@ -228,7 +228,7 @@ async function sendReport(drift: SeatDrift[], withdrawn: WithdrawnGroup[]): Prom
   if (withdrawn.length > 0) {
     sections.push(
       '<h3>Guests who have chosen a dish that is no longer on the menu</h3>',
-      '<p>Ring these guests and take a new choice. Nothing has been changed for them automatically.</p>',
+      '<p>Ring these guests, take a new choice and record it on the booking. A manager can still save it after the cutoff. Nothing has been changed for them automatically.</p>',
       '<ul>',
       ...withdrawn.map((group) => {
         const lines = group.choices

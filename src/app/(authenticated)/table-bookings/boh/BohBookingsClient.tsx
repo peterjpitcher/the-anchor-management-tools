@@ -52,6 +52,7 @@ import {
   PREORDER_ADDON_STAFF_NOTE,
   PREORDER_COURSES,
   PREORDER_COURSE_LABELS,
+  PREORDER_SELECTION_COURSE_LABELS,
   type PreorderCourse,
 } from '@/types/preorders'
 
@@ -83,7 +84,32 @@ type PreorderDishTotalsResponse = {
     addonTotalGbp: number
     /** True when any add-on that day is unpriced, so the total above is not the whole of it. */
     addonHasUnpricedSelection: boolean
+    /** Bookings in these totals still waiting for a deposit. Optional for an older server. */
+    pendingPaymentBookingCount?: number
+    /** Choices a manager recorded after the cutoff (D21). In the counts, but ordered before. */
+    lateChangeCount?: number
+    /** Christmas guests that day by tier, from the bookings rather than the seats (BK-058). */
+    christmasTiers?: {
+      oneCourse: number
+      twoCourses: number
+      threeCourses: number
+      notRecorded: number
+      guests: number
+    }
+    /** Chosen dishes since taken off the menu. Never in `byCourse`; each is a guest to ring. */
+    withdrawn?: Array<{ course: PreorderCourse | 'addon'; menuItemId: string; itemName: string; count: number }>
   }
+}
+
+/** "4 on 3 courses, 5 on 2 courses, 3 on 1 course", leaving out any tier nobody is on. */
+function describeTierTotals(tiers: NonNullable<NonNullable<PreorderDishTotalsResponse['data']>['christmasTiers']>): string {
+  const parts = [
+    tiers.threeCourses ? `${tiers.threeCourses} on 3 courses` : null,
+    tiers.twoCourses ? `${tiers.twoCourses} on 2 courses` : null,
+    tiers.oneCourse ? `${tiers.oneCourse} on 1 course, choosing on the day` : null,
+    tiers.notRecorded ? `${tiers.notRecorded} with no courses recorded` : null,
+  ].filter(Boolean)
+  return parts.join(', ')
 }
 
 /**
@@ -1054,13 +1080,34 @@ export function BohBookingsClient({
           </StatGrid>
         )}
 
-        {isDayView && dishTotals && dishTotals.coverCount > 0 && (
+        {isDayView &&
+          dishTotals &&
+          (dishTotals.coverCount > 0 || (dishTotals.christmasTiers?.guests ?? 0) > 0) && (
           <Card>
             <CardHeader
               title="Kitchen Pre-Orders"
               // CardHeader wraps its subtitle, so the sentence sits under the counts as it did before.
-              subtitle={`${dishTotals.coverCount} cover${dishTotals.coverCount === 1 ? '' : 's'} across ${dishTotals.bookingCount} booking${dishTotals.bookingCount === 1 ? '' : 's'}. Dietary notes and allergies are on the booking sheet.`}
+              subtitle={`${dishTotals.coverCount} cover${dishTotals.coverCount === 1 ? '' : 's'} across ${dishTotals.bookingCount} booking${dishTotals.bookingCount === 1 ? '' : 's'}${
+                dishTotals.pendingPaymentBookingCount
+                  ? `, including ${dishTotals.pendingPaymentBookingCount} still waiting for a deposit`
+                  : ''
+              }. Dietary notes and allergies are on the booking sheet.`}
             />
+            {(dishTotals.lateChangeCount ?? 0) > 0 && (
+              <CardBody className="border-b border-border">
+                <Alert tone="warning" title="Changed after the cutoff">
+                  {dishTotals.lateChangeCount === 1 ? '1 choice was' : `${dishTotals.lateChangeCount} choices were`}{' '}
+                  recorded by a manager after the pre-order cutoff, so the kitchen order may not include{' '}
+                  {dishTotals.lateChangeCount === 1 ? 'it' : 'them'}. They are counted below and marked on the booking sheet.
+                </Alert>
+              </CardBody>
+            )}
+            {dishTotals.christmasTiers && dishTotals.christmasTiers.guests > 0 && (
+              <CardBody className="border-b border-border">
+                <SubHeading>Christmas Guests: {dishTotals.christmasTiers.guests}</SubHeading>
+                <p className="mt-1 text-sm text-text">{describeTierTotals(dishTotals.christmasTiers)}</p>
+              </CardBody>
+            )}
             <CardBody>
               <div className="grid gap-4 sm:grid-cols-3">
                 {PREORDER_COURSES.map((course) => {
@@ -1126,6 +1173,28 @@ export function BohBookingsClient({
                 {/* Verbatim from the shared constant: four surfaces wording this four ways is how one
                     of them ends up implying the guest has already paid. */}
                 <p className="mt-3 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
+              </CardBody>
+            )}
+
+            {(dishTotals.withdrawn ?? []).length > 0 && (
+              <CardBody className="border-t border-border">
+                <SubHeading>Off the Menu, Not Counted Above</SubHeading>
+                <ul className="mt-2 space-y-1">
+                  {(dishTotals.withdrawn ?? []).map((dish) => (
+                    <li
+                      key={`${dish.course}:${dish.menuItemId}`}
+                      className="flex items-baseline justify-between gap-3 text-sm text-text"
+                    >
+                      <span className="min-w-0 break-words">
+                        {PREORDER_SELECTION_COURSE_LABELS[dish.course]}: {dish.itemName}
+                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums">{dish.count}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-text-muted">
+                  These guests need a new choice. Ring them and record it on the booking.
+                </p>
               </CardBody>
             )}
           </Card>
