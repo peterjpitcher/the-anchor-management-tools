@@ -312,6 +312,8 @@ export interface Booking {
   /** Staff have committed this booking to its tables; nothing automatic may move it. */
   table_pinned?: boolean | null
   deposit_waived: boolean | null
+  /** Set when the deposit was taken off because the booking is a pub event (BK-106). */
+  is_venue_event?: boolean | null
   hold_expires_at: string | null
   reminder_sent: boolean | null
   review_sms_sent_at: string | null
@@ -520,7 +522,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     depositState.kind === 'pending'
       ? `Deposit still pending${depositState.amount != null ? ` (${formatGbp(depositState.amount)})` : ''}`
       : null,
-    booking.deposit_waived ? 'Deposit waived' : null,
+    // Who and why (BK-106): a pub event, or a manager's waiver.
+    booking.is_venue_event ? 'No deposit: pub event' : booking.deposit_waived ? 'Deposit waived by a manager' : null,
     assignedTables.length === 0 ? 'No table assigned' : null,
     !booking.customer?.mobile_number ? 'No mobile number on this customer' : null,
     notes.some((note) => note.label === 'Allergies' || note.label === 'Dietary requirements')

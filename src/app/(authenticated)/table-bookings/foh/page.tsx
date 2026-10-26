@@ -38,9 +38,9 @@ export default async function TableBookingsFohPage() {
       .eq('user_id', userId)
     const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
     isSuperAdmin = roles.some((r) => r.roles?.name === 'super_admin')
-    canWaiveDeposit = roles.some(
-      (r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
-    )
+    // Waiving a deposit, or marking a pub event, needs table_bookings manage (D18, BK-106), which
+    // the Deputy role holds too; a role-name check refused it.
+    canWaiveDeposit = await checkUserPermission('table_bookings', 'manage', userId)
   }
 
   if (!canView) {
