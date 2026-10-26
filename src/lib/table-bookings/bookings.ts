@@ -400,6 +400,39 @@ export async function getTablePaymentPreviewByRawToken(
 }
 
 /**
+ * What a new booking's deposit request calls the deposit, and how it shows the sum (BK-049).
+ *
+ * Both used to be fixed: every deposit was "table deposit of £X (N x GBP 10)", whatever the booking
+ * function had charged. The breakdown now comes from the basis and rate the function recorded, so a
+ * GBP 15 a head period says "(2 x GBP 15)", a per-booking period shows no sum at all, and the label
+ * names the season that charged it.
+ */
+export function describeCreatedDeposit(
+  bookingResult: Pick<TableBookingRpcResult, 'deposit_basis' | 'deposit_rate' | 'deposit_rule' | 'booking_period_name' | 'booking_type' | 'sunday_lunch'>,
+  input: { depositAmount: number; partySize: number; isOutside: boolean },
+): { kindLabel: string; breakdownNote: string } {
+  const kindLabel = isChristmasBookingType(bookingResult.booking_type)
+    ? 'Christmas deposit'
+    : bookingResult.deposit_rule === 'period' && bookingResult.booking_period_name
+      ? `${bookingResult.booking_period_name} deposit`
+      : bookingResult.sunday_lunch
+        ? 'Sunday lunch deposit'
+        : input.isOutside ? 'deposit' : 'table deposit'
+
+  // A result from before the function returned its basis is assumed per head at the group rate,
+  // but only shown when that rate actually produces the amount charged.
+  const basis = bookingResult.deposit_basis ?? 'per_head'
+  const rate = Number(bookingResult.deposit_rate ?? DEPOSIT_PER_PERSON_GBP)
+  const sumMatches =
+    basis === 'per_head' &&
+    Number.isFinite(rate) &&
+    rate > 0 &&
+    Math.abs(input.partySize * rate - input.depositAmount) < 0.005
+  const rateLabel = Number.isInteger(rate) ? String(rate) : rate.toFixed(2)
+  return { kindLabel, breakdownNote: sumMatches ? ` (${input.partySize} x GBP ${rateLabel})` : '' }
+}
+
+/**
  * What the deposit works out at per person, for the wording that says what it is.
  *
  * `per_booking` is not a per-person rate, so it answers null and the copy drops the sentence
@@ -500,17 +533,24 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
   const partySize = Math.max(1, Number(input.bookingResult.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
-  // Centralised compute. Booking is fresh from the RPC so no prior locked
-  // amount can exist here. Spec §3 step 9, §8.3.
-  const depositAmount = Number(
+  // The amount the booking function charged, never a recomputation from party size (BK-049): a
+  // GBP 15 a head Mother's Day booking for two would otherwise be asked for GBP 0 while PayPal
+  // asked for GBP 30. The party-size rule is only the fallback for a result from before the
+  // function returned its amount.
+  const depositAmount = chargedDepositAmount(input.bookingResult, () =>
     computeDepositAmount(partySize, {
       isChristmas: isChristmasBookingType(input.bookingResult.booking_type),
-    }).toFixed(2),
+    }),
   )
   const depositLabel = new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency: 'GBP',
   }).format(depositAmount)
+  const depositWording = describeCreatedDeposit(input.bookingResult, {
+    depositAmount,
+    partySize,
+    isOutside: Boolean(input.bookingResult.is_outside_seating),
+  })
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   let manageLink: string | null = null
   // True when a link went out at full length because shortening failed. Recorded on
@@ -578,11 +618,8 @@ export async function sendTableBookingCreatedSmsIfAllowed(
 
   let smsBody: string
   if (input.bookingResult.state === 'pending_payment') {
-    const depositKindLabel = input.bookingResult.sunday_lunch
-      ? 'Sunday lunch deposit'
-      : isOutside ? 'deposit' : 'table deposit'
     const secureNoun = isOutside ? 'outside booking' : 'table'
-    const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your ${secureNoun} for ${partySize} ${seatWord} on ${bookingMoment}.`
+    const base = `The Anchor: Hi ${firstName}, please pay your ${depositWording.kindLabel} of ${depositLabel}${depositWording.breakdownNote} to secure your ${secureNoun} for ${partySize} ${seatWord} on ${bookingMoment}.`
     const cta = paymentLink ? `Pay now: ${paymentLink}` : 'We will text your payment link shortly.'
     smsBody = `${base}${highChairSuffix}${outsideSuffix} ${cta}`
   } else {
@@ -617,11 +654,10 @@ export async function sendTableBookingCreatedSmsIfAllowed(
           bookingDate: null,
           startDateTime: input.bookingResult.start_datetime || null,
           partySize,
-          depositKindLabel: input.bookingResult.sunday_lunch
-            ? 'Sunday lunch deposit'
-            : isOutside ? 'deposit' : 'table deposit',
+          depositKindLabel: depositWording.kindLabel,
           depositLabel,
-          breakdownNote: ` (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP})`,
+          breakdownNote: depositWording.breakdownNote,
+          depositRule: input.bookingResult.deposit_rule ?? null,
           paymentLink,
           isOutsideSeating: isOutside,
           highChairCount: grantedHighChairs,

@@ -225,6 +225,11 @@ export type DepositTermsFacts = {
   refundCutoffDays?: number | null
   /** When the hold on the table runs out, as an ISO instant. */
   payByIso?: string | null
+  /**
+   * Which rule the booking function charged by ('group', 'period'). Only the group rule is
+   * described as "Groups of 15 or more" (BK-049); left out, the group wording stays as it was.
+   */
+  depositRule?: string | null
 }
 
 function depositTerms(facts: DepositTermsFacts): string[] {
@@ -233,6 +238,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
     perPersonGbp: facts.perPersonGbp ?? null,
     refundCutoffDays: facts.refundCutoffDays ?? null,
     payByLabel: facts.payByIso ? formatBookingMomentForEmail(null, null, facts.payByIso) : null,
+    depositRule: facts.depositRule ?? null,
   })
 }
 
