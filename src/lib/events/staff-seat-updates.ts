@@ -4,6 +4,7 @@ import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { logger } from '@/lib/logger'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import {
   getMoveTableAvailability,
   moveBookingAssignmentToTables,
@@ -198,7 +199,10 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const coursesChanged = JSON.stringify(recordedCourses) !== JSON.stringify(nextCourses)
   if (recordedCourses) {
     // Before looking for or moving tables. The database repeats these checks on the final update.
-    if (newPartySize < 6 || newPartySize > 20 || nextCourses?.length !== newPartySize
+    if (newPartySize < CHRISTMAS_MIN_PARTY_SIZE || newPartySize > CHRISTMAS_MAX_PARTY_SIZE) {
+      throw new ChristmasCourseValidationError(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)
+    }
+    if (nextCourses?.length !== newPartySize
         || nextCourses.some(course => !Number.isInteger(course) || course < 1 || course > 3)) {
       throw new ChristmasCourseValidationError('Choose one, two or three courses for every Christmas guest before changing the party size.')
     }

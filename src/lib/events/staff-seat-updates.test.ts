@@ -217,6 +217,26 @@ describe('Christmas amendment preflight', () => {
     expect(mockedGetAvailability).not.toHaveBeenCalled()
     expect(mockedMoveToTables).not.toHaveBeenCalled()
   })
+  it('lets staff take a Christmas booking down to the 4-guest minimum', async () => {
+    bookingRow.christmas_course_counts = [1, 1, 1, 1, 1, 1]
+    const { client, updateMock } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 4, committed_party_size: 4, updated_at: '2026-10-26T10:00:00.000Z' },
+      error: null
+    })
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 4, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1]
+    })
+    expect(result.state).toBe('updated')
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ party_size: 4, christmas_course_counts: [1, 1, 1, 1] }))
+  })
+  it('refuses a Christmas booking below 4 guests with the real reason', async () => {
+    bookingRow.christmas_course_counts = [1, 1, 1, 1, 1, 1]
+    const { client } = createSupabaseStub({ data: null, error: null })
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 3, autoMoveTable: true, christmasCourseCounts: [1, 1, 1]
+    })).rejects.toThrow('Christmas bookings are for 4 to 20 guests.')
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
   it('rejects a course change after the deadline before moving tables', async () => {
     bookingRow.christmas_course_counts = [1, 1, 1, 1, 1, 1]
     const { client } = createSupabaseStub({ data: null, error: null })
