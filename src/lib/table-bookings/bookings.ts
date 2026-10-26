@@ -20,6 +20,7 @@ import { isChristmasBookingType } from './christmas'
 import {
   GUEST_CHANNEL_COLUMNS,
   notifyTableBookingGuestEmailFirst,
+  summariseGuestNotification,
   type GuestChannelCustomer,
 } from '@/lib/table-bookings/guest-notify'
 import {
@@ -1223,6 +1224,9 @@ async function sendTableBookingCancelledEmailFirst(
   }
 }
 
+/** The statuses an amended-booking notice may go to: a booking still ahead of the guest (BK-174). */
+const NOTIFIABLE_AMENDED_STATUSES: ReadonlySet<string> = new Set(['confirmed', 'pending_payment'])
+
 /**
  * Confirm an amended booking to the guest, after a change to the date, the time or the party size.
  *
@@ -1253,7 +1257,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       partySize?: number | null
     }
   }
-): Promise<void> {
+): Promise<GuestNotificationOutcome | null> {
   try {
     const { data: bookingRaw } = await supabase
       .from('table_bookings')
@@ -1262,7 +1266,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       .maybeSingle()
 
     if (!bookingRaw || !bookingRaw.customer_id) {
-      return
+      return null
     }
 
     const booking = bookingRaw as {
@@ -1288,10 +1292,14 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       hold_expires_at: string | null
     }
 
-    // Only confirm changes for live bookings. Never message cancelled or closed ones.
+    // Only a booking still ahead of the guest is told about a change: one that is confirmed or
+    // waiting for its deposit. A finished visit ('visited_waiting_for_review', 'review_clicked'),
+    // the retired card-capture state, and cancelled or closed bookings are never messaged. The
+    // review states used to get through and were told they were unconfirmed and owed "the deposit
+    // of the deposit" (BK-174).
     const status = (booking.status || '').toLowerCase()
-    if (['cancelled', 'no_show', 'completed'].includes(status)) {
-      return
+    if (!NOTIFIABLE_AMENDED_STATUSES.has(status)) {
+      return null
     }
 
     // Nothing the guest can see has moved, so there is nothing to tell them. A duration change
@@ -1308,7 +1316,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       logger.info('Table booking amendment changed nothing the guest can see, so no notice was sent', {
         metadata: { tableBookingId: booking.id },
       })
-      return
+      return null
     }
 
     const { data: customer } = await supabase
@@ -1318,7 +1326,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       .maybeSingle()
 
     if (!customer) {
-      return
+      return { status: 'no_channel', channel: null, fallbackUsed: false, error: 'Customer not found' }
     }
 
     const firstName = getSmartFirstName(customer.first_name)
@@ -1397,8 +1405,11 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       depositAmount > 0
         ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount)
         : null
+    // Only a booking waiting for its deposit is told it is not confirmed, and only with the amount
+    // when the amount is known (BK-174).
+    const awaitingDeposit = status === 'pending_payment'
     const depositFacts =
-      !isConfirmed && depositLabel
+      awaitingDeposit && depositLabel
         ? {
             depositLabel,
             paymentLink: depositPaymentLink,
@@ -1420,7 +1431,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       ? " It's still confirmed."
       : depositFacts
         ? ` It is not confirmed yet: we still need your deposit of ${depositFacts.depositLabel}.`
-        : ' It is not confirmed yet.'
+        : ' It is not confirmed yet: we still need your deposit.'
     const linkSuffix = !isConfirmed && depositPaymentLink
       ? ` Pay your deposit: ${depositPaymentLink}`
       : manageLink
@@ -1499,7 +1510,12 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
           customer_id: customer.id,
         },
       })
-      return
+      return {
+        status: 'failed',
+        channel: null,
+        fallbackUsed: false,
+        error: notifyError instanceof Error ? notifyError.message : String(notifyError),
+      }
     }
 
     const smsAttempt = notificationResult.attempts.find((attempt) => attempt.channel === 'sms')
@@ -1526,6 +1542,9 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
         short_link_fallback: shortLinkFallback,
       },
     })
+
+    // What reached the guest, so the staff screens can say when nobody was told (BK-091).
+    return summariseGuestNotification(notificationResult).outcome
   } catch (error) {
     logger.warn('Table booking rescheduled notification threw unexpectedly', {
       metadata: {
@@ -1533,7 +1552,13 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
         error: error instanceof Error ? error.message : String(error),
       },
     })
-    // Do not rethrow — notification failure must not affect the edit/move operation.
+    // Never rethrown: a notification failure must not affect the edit or move that called this.
+    return {
+      status: 'failed',
+      channel: null,
+      fallbackUsed: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 

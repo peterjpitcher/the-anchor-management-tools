@@ -4,6 +4,7 @@ import React from 'react'
 import { Badge, Button, Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
+import { formatDateTime12Hour } from '@/lib/dateUtils'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -135,6 +136,18 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             <p className="mt-1 text-xs text-text">
               Christmas courses:{' '}
               {formatChristmasCourseTally(selectedBooking.christmas_course_counts) || 'not recorded yet'}
+            </p>
+          )}
+          {selectedBooking.guest_party_size_change && (
+            // BK-091: the guest changed the party size themselves, so staff know who did it.
+            <p className="mt-1 text-xs text-text">
+              <Badge tone="info">Changed by guest</Badge>{' '}
+              {selectedBooking.guest_party_size_change.from != null && selectedBooking.guest_party_size_change.to != null
+                ? `Party size ${selectedBooking.guest_party_size_change.from} to ${selectedBooking.guest_party_size_change.to}`
+                : 'Party size changed'}
+              {Number.isFinite(Date.parse(selectedBooking.guest_party_size_change.at))
+                ? `, ${formatDateTime12Hour(selectedBooking.guest_party_size_change.at)}`
+                : ''}
             </p>
           )}
           {(selectedBookingIsOutside || selectedBookingHighChairs > 0 || selectedBookingNeedsStepFree) && (

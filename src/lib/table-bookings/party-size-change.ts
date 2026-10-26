@@ -19,6 +19,9 @@ import {
   syncPreorderCovers,
   type PreorderRemovedCover
 } from '@/lib/table-bookings/preorder'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 /**
  * A staff party-size change, for both staff screens (BK-129, customer bookings review of
@@ -199,6 +202,28 @@ export async function changeTableBookingPartySize(
       }
     }
 
+    // Tell the guest their booking now has a different party size (BK-091). Staff changes used to
+    // reach the guest only when they crossed the deposit threshold. The amended-booking notice goes
+    // email first and says where the deposit stands. Not sent when staff chose not to notify, when
+    // the deposit request already went on this request (it states the new size), or for an event
+    // booking, whose own seat-change text has gone. New guest wording, so it is behind the messaging
+    // flag table_party_size_change_notice, off until the owner switches it on.
+    let partySizeNotification: GuestNotificationOutcome | null = null
+    const depositRequestWent = depositTransition?.state === 'deposit_required' && Boolean(depositTransition.notification)
+    if (
+      result.state === 'updated'
+      && result.new_party_size !== previousPartySize
+      && parsed.data.send_sms
+      && !depositRequestWent
+      && !result.event_booking_id
+      && await isMessagingFlagOn('table_party_size_change_notice')
+    ) {
+      partySizeNotification = await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
+        tableBookingId: id,
+        previous: { startDateTime: currentBooking.start_datetime ?? null, partySize: previousPartySize },
+      })
+    }
+
     await logAuditEvent({
       user_id: auth.userId,
       operation_type: 'table_booking.party_size_changed',
@@ -216,6 +241,8 @@ export async function changeTableBookingPartySize(
       warning: depositWarning,
       // What the shrink dropped, so staff can tell the booker whose food choice has gone.
       preorderRemoved,
+      // Whether the guest was told about the new size, so the screens can say when nobody was.
+      partySizeNotification,
       depositRequired: depositTransition?.state === 'deposit_required',
       depositUrl: depositTransition?.state === 'deposit_required' ? depositTransition.depositUrl : null,
       depositAmount: depositTransition?.state === 'deposit_required' ? depositTransition.depositAmount : null,

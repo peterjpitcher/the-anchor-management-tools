@@ -119,6 +119,22 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':
       return { tone: 'red', text: 'Too many attempts were made. Please wait a few minutes and try again.' }
+    // A bigger party we cannot fit online. Your booking is unchanged, and the phone is the way on.
+    case 'no_table':
+      return {
+        tone: 'amber',
+        text: `We don't have a table free for that many people at your time, so your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll see what we can do.`
+      }
+    case 'slot_full':
+      return {
+        tone: 'amber',
+        text: `The kitchen is full at your time, so we can't add more people online and your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll see what we can do.`
+      }
+    case 'too_large':
+      return {
+        tone: 'amber',
+        text: `That's more people than we can book online, so your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
     default:
       return null
   }

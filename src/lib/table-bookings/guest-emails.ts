@@ -616,14 +616,19 @@ export function buildTableBookingRescheduledEmail(
       { label: 'Seating', value: isOutside ? 'Outside (weather permitting)' : null },
       ...(deposit ? [{ label: 'Deposit', value: deposit.depositLabel }] : []),
     ],
+    // Only a booking waiting for its deposit is told it is not confirmed, and the amount is named
+    // only when it is known. It used to say "your deposit of the deposit" when it was not, and to
+    // say it to bookings whose visit was already over (BK-174).
     closing: isConfirmed
       ? [`Your ${bookingNoun} is still confirmed.`]
-      : [
-          `Your ${bookingNoun} is not confirmed yet: we still need your deposit of ${
-            deposit?.depositLabel ?? 'the deposit'
-          }.`,
-          ...(deposit ? depositTerms(deposit) : []),
-        ],
+      : input.status === 'pending_payment'
+        ? [
+            deposit
+              ? `Your ${bookingNoun} is not confirmed yet: we still need your deposit of ${deposit.depositLabel}.`
+              : `Your ${bookingNoun} is not confirmed yet: we still need your deposit.`,
+            ...(deposit ? depositTerms(deposit) : []),
+          ]
+        : [],
     cta: !isConfirmed && deposit?.paymentLink
       ? { label: 'Pay your deposit', url: deposit.paymentLink }
       : input.manageLink

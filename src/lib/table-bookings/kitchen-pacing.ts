@@ -364,3 +364,60 @@ export async function getKitchenPacingOverrideForDate(
   if (pace === null && reserve === null) return null
   return { paceCovers: pace, walkInReserve: reserve }
 }
+
+/**
+ * Whether a guest's own party-size increase would push their kitchen arrival window over the
+ * pacing limit (BK-091, customer bookings review of 24 October 2026).
+ *
+ * A new booking is held to the limit inside create_table_booking_core_v06, but a guest growing an
+ * existing booking through their manage link was never checked, so a Sunday table could go from
+ * two to six and take a slot past the limit with nobody told. This is the same rule the booking
+ * engine and the slot list apply (20261016180511_kitchen_pacing_lone_party.sql): refuse only when
+ * the window already holds other covers AND adding this party takes it over the ceiling, so a
+ * party alone in its window always fits. The booking's own covers are left out of the count, and
+ * the whole new party size is added back, which is what the window will hold after the change.
+ *
+ * Off while pacing is switched off, and for drinks bookings, as for a new booking.
+ */
+export async function guestIncreaseOverfillsKitchen(
+  supabase: SupabaseClient,
+  input: {
+    bookingId: string
+    bookingDate: string
+    bookingTime: string
+    bookingPurpose: string | null
+    newPartySize: number
+    now?: Date
+  }
+): Promise<boolean> {
+  if ((input.bookingPurpose ?? 'food') !== 'food') return false
+
+  const settings = await getKitchenPacingSettings(supabase)
+  if (!settings.enabled) return false
+
+  const centre = timeToMinutes(input.bookingTime)
+  if (centre === null) return false
+
+  const [override, rowsResult] = await Promise.all([
+    getKitchenPacingOverrideForDate(input.bookingDate, supabase),
+    supabase
+      .from('table_bookings')
+      .select('id, booking_time, booking_purpose, party_size, committed_party_size, status, left_at, hold_expires_at, payment_status')
+      .eq('booking_date', input.bookingDate)
+      .neq('id', input.bookingId),
+  ])
+  if (rowsResult.error) {
+    // Unknown is not "fits": refuse the increase and let the guest ring rather than overfill the
+    // kitchen on a guess.
+    throw new Error(`Could not read the day's bookings for the kitchen limit: ${rowsResult.error.message}`)
+  }
+
+  const ceiling = resolveKitchenCeiling(settings, input.bookingDate, override)
+  const others = sumKitchenCoversInWindow(
+    (rowsResult.data ?? []) as KitchenBookingRow[],
+    centre,
+    settings.windowMinutes,
+    input.now ?? new Date()
+  )
+  return others > 0 && others + Math.max(1, input.newPartySize) > ceiling
+}

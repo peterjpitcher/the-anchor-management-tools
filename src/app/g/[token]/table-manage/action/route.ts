@@ -102,6 +102,20 @@ async function syncCoversAfterPartySizeChange(
   }
 }
 
+/** The page status for a refused change. Only the reasons a guest can act on get their own wording. */
+function guestBlockedStatus(reason: string | undefined): string {
+  switch (reason) {
+    case 'no_table':
+      return 'no_table'
+    case 'slot_full':
+      return 'slot_full'
+    case 'too_large_party':
+      return 'too_large'
+    default:
+      return 'error'
+  }
+}
+
 async function runGuestTableManageAction(request: NextRequest, token: string, payload: ParsedAction) {
   const supabase = createAdminClient()
 
@@ -124,7 +138,9 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
           tableBookingId: result.table_booking_id || null
         }
       })
-      return redirectWithStatus(request, token, 'error')
+      // A bigger party that cannot be seated is told why, with the number to ring (BK-040, BK-091),
+      // rather than "we could not process that request", which reads as a fault on our side.
+      return redirectWithStatus(request, token, guestBlockedStatus(result.reason))
     }
 
     if (result.state === 'cancelled') {
