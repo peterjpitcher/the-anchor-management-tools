@@ -381,7 +381,6 @@ export class CustomerService {
   }
 
   static async importCustomers(customers: CreateCustomerInput[]): Promise<CustomerImportResult> {
-    const supabase = await createClient();
     
     // Validate and Format
     const validCustomers: Array<CreateCustomerInput & { mobile_number: string }> = [];
@@ -448,7 +447,9 @@ export class CustomerService {
       marketing_email_opt_in: false
     }));
 
-    const { data: importResult, error: importError } = await supabase
+    // The function is server-only (BK-105), so it runs through the service-role client; the importCustomers
+    // action has already checked customers manage.
+    const { data: importResult, error: importError } = await createAdminClient()
       .rpc('import_customers_atomic', { p_customers: importPayload });
 
     if (importError) {

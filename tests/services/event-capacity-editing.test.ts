@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { EventService, eventSchema, type CreateEventInput } from '@/services/events'
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 
 const base: CreateEventInput = { name: 'Fixture event', date: '2099-09-25', time: '19:00', event_status: 'draft', is_free: true, payment_mode: 'free' }
@@ -19,6 +21,8 @@ function clientFor(current: Record<string, unknown> | null, activeBookings = 0) 
   }
   const from = vi.fn(() => chain)
   vi.mocked(createClient).mockResolvedValue({ from, rpc } as unknown as SupabaseClient)
+  // The event transaction functions are server-only (BK-105), so they go through the admin client.
+  vi.mocked(createAdminClient).mockReturnValue({ from, rpc } as unknown as ReturnType<typeof createAdminClient>)
   return { rpc, from }
 }
 
