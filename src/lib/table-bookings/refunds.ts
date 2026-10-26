@@ -1,5 +1,6 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
+import { formatPounds } from '@/lib/money-alerts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 import { AuditService } from '@/services/audit'
@@ -7,7 +8,29 @@ import { logger } from '@/lib/logger'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { resolveSeasonalDepositRefund } from './deposit-refund'
 
-type RefundTier = 'full' | 'half' | 'none'
+/**
+ * `chosen` is an amount a manager picked (owner decision D7), which is neither tier: the message
+ * then states the amount without naming a rule.
+ */
+type RefundTier = 'full' | 'half' | 'none' | 'chosen'
+
+/** Who cancelled the booking, which decides the rule the refund follows (BK-046). */
+export type TableCancelledBy = 'guest' | 'venue'
+
+/**
+ * The terms a cancellation refund is worked out on (BK-046 and BK-041, owner decision D7).
+ *
+ *  - A guest's cancellation (the default) follows the booking's own terms: the seasonal cutoff
+ *    it was sold on, or the sliding 100/50/0 tier.
+ *  - A cancellation by the pub refunds the whole deposit. The guest did nothing wrong; applying
+ *    their own terms told them they had lost money and left staff to refund by hand.
+ *  - A manager may choose the amount instead, starting from what the guest actually paid. It is
+ *    capped at what is still held. The route checks the manager's permission before passing it.
+ */
+export type DepositRefundTerms = {
+  cancelledBy?: TableCancelledBy
+  managerAmountGbp?: number | null
+}
 
 export type RefundResult =
   | {
@@ -20,11 +43,24 @@ export type RefundResult =
        * one reason that means money is owed, so it must never be reported to the guest as if no
        * deposit existed.
        *
+       * `cash_refund_due` is a deposit taken in cash at the bar (BK-041). There is nothing to send
+       * back automatically, so the amount owed is returned for a person to hand back at the bar,
+       * and a manager has been told (owner decision D19).
+       *
        * `seasonal_cutoff` is a seasonal booking cancelled inside the cutoff it was sold on (for
        * Christmas, fewer than 7 days before). It is kept apart from `zero_tier`, the sliding rule's
        * "inside 3 days", so the guest is told the rule that actually applied.
        */
-      reason: 'no_deposit' | 'zero_tier' | 'seasonal_cutoff' | 'already_refunded' | 'terms_unreadable' | 'refund_failed'
+      reason:
+        | 'no_deposit'
+        | 'zero_tier'
+        | 'seasonal_cutoff'
+        | 'already_refunded'
+        | 'terms_unreadable'
+        | 'refund_failed'
+        | 'cash_refund_due'
+      /** Who cancelled, when the pub did, so the message can say so. */
+      cancelledBy?: TableCancelledBy
       /** The booking's own refund cutoff in days, with `seasonal_cutoff`. */
       cutoffDays?: number
       /** True when the guest has money with us that this call did not return. */
@@ -37,6 +73,8 @@ export type RefundResult =
       amountPence: number
       refundId: string
       tier: RefundTier
+      /** Who cancelled, when the pub did, so the message can say so. */
+      cancelledBy?: TableCancelledBy
       /**
        * Pence that had already gone back before this refund (a staff part refund), when any had.
        * `amountPence` is then only the rest of what the guest was due, and the message says so.
@@ -85,7 +123,18 @@ function calculateRefundTier(bookingDate: Date): { percent: number; tier: Refund
  */
 export async function refundTableBookingDeposit(
   tableBookingId: string,
-  bookingDate: Date
+  bookingDate: Date,
+  terms: DepositRefundTerms = {},
+): Promise<RefundResult> {
+  const result = await refundTableBookingDepositOnTerms(tableBookingId, bookingDate, terms)
+  // The pub cancelled: the message apologises and says so, whatever happened to the money.
+  return terms.cancelledBy === 'venue' ? { ...result, cancelledBy: 'venue' } : result
+}
+
+async function refundTableBookingDepositOnTerms(
+  tableBookingId: string,
+  bookingDate: Date,
+  terms: DepositRefundTerms,
 ): Promise<RefundResult> {
   // The service-role client, not the caller's session. A guest cancelling through their manage
   // link, or answering "no" to the confirm text, has no session, and RLS hides table_bookings and
@@ -104,9 +153,14 @@ export async function refundTableBookingDeposit(
 
   if (!payment?.stripe_payment_intent_id) {
     // No Stripe deposit. Before concluding there is no deposit at all, check the
-    // ledger the money actually lives in now.
-    return await refundPayPalDeposit(supabase, tableBookingId, bookingDate)
+    // ledger the money actually lives in now, and for a deposit taken in cash.
+    return await refundPayPalDeposit(supabase, tableBookingId, bookingDate, terms, {
+      cashLedgerAmountGbp: payment ? toGbp(payment.amount) : null,
+    })
   }
+
+  // Stripe is historical (the last deposit was 2026-03-14 and no Stripe-paid booking is still to
+  // come), so its path keeps the guest's own terms and nothing new is built on it.
   if (payment.status === 'refunded') return { refunded: false, reason: 'already_refunded' }
 
   // A booking that snapshotted a seasonal refund cutoff is governed by the promise the guest was
@@ -256,6 +310,7 @@ async function issueStripeRefund(
 
 type PayPalDepositBooking = {
   paypal_deposit_capture_id: string | null
+  payment_method: string | null
   deposit_amount_locked: number | string | null
   deposit_amount: number | string | null
   payment_status: string | null
@@ -283,11 +338,13 @@ async function refundPayPalDeposit(
   supabase: ReturnType<typeof createAdminClient>,
   tableBookingId: string,
   bookingDate: Date,
+  terms: DepositRefundTerms,
+  ledger: { cashLedgerAmountGbp: number | null },
 ): Promise<RefundResult> {
   const { data: booking, error: bookingError } = await supabase
     .from('table_bookings')
     .select(
-      'paypal_deposit_capture_id, deposit_amount_locked, deposit_amount, payment_status, deposit_refund_status, booking_date, deposit_refund_cutoff_days, booking_period_code',
+      'paypal_deposit_capture_id, payment_method, deposit_amount_locked, deposit_amount, payment_status, deposit_refund_status, booking_date, deposit_refund_cutoff_days, booking_period_code',
     )
     .eq('id', tableBookingId)
     .maybeSingle<PayPalDepositBooking>()
@@ -302,7 +359,15 @@ async function refundPayPalDeposit(
   }
 
   const captureId = booking?.paypal_deposit_capture_id
-  if (!captureId) return { refunded: false, reason: 'no_deposit' }
+  if (!captureId) {
+    // A deposit taken in cash at the bar has no capture to refund (BK-041). It used to read as
+    // no deposit at all: nothing was worked out, nobody was told, and the guest heard nothing
+    // about their money.
+    if (booking && isCashDeposit(booking, ledger.cashLedgerAmountGbp)) {
+      return await cashDepositOwed(supabase, tableBookingId, bookingDate, booking, terms, ledger.cashLedgerAmountGbp)
+    }
+    return { refunded: false, reason: 'no_deposit' }
+  }
 
   const depositGbp = toGbp(booking?.deposit_amount_locked) ?? toGbp(booking?.deposit_amount)
   if (depositGbp === null || depositGbp <= 0) {
@@ -316,39 +381,9 @@ async function refundPayPalDeposit(
   const alreadyRefunded = booking?.deposit_refund_status === 'refunded'
   if (alreadyRefunded) return { refunded: false, reason: 'already_refunded' }
 
-  // Entitlement: the seasonal promise the guest was shown wins over the sliding tier,
-  // exactly as on the Stripe path.
-  let entitledGbp: number
-  let tier: RefundTier
-  const seasonalCutoff = booking?.deposit_refund_cutoff_days
-
-  if (seasonalCutoff !== null && seasonalCutoff !== undefined) {
-    const decision = resolveSeasonalDepositRefund({
-      bookingDate: booking?.booking_date ?? toLocalIsoDate(bookingDate),
-      refundCutoffDays: Number(seasonalCutoff),
-      depositAmount: depositGbp,
-    })
-    if (!decision.entitled) {
-      logger.info('Seasonal PayPal deposit not refunded: inside the window the guest was told about', {
-        metadata: {
-          tableBookingId,
-          bookingPeriodCode: booking?.booking_period_code ?? null,
-          daysBefore: decision.daysBefore,
-          cutoffDays: decision.cutoffDays,
-        },
-      })
-      return { refunded: false, reason: 'seasonal_cutoff', cutoffDays: decision.cutoffDays }
-    }
-    entitledGbp = decision.amount
-    tier = 'full'
-  } else {
-    const { percent, tier: sliding } = calculateRefundTier(bookingDate)
-    if (percent === 0) return { refunded: false, reason: 'zero_tier' }
-    entitledGbp = Math.round(depositGbp * percent) / 100
-    tier = sliding
-  }
-
-  if (entitledGbp <= 0) return { refunded: false, reason: 'zero_tier' }
+  const entitlement = resolveEntitlement(tableBookingId, bookingDate, booking, depositGbp, terms)
+  if ('refused' in entitlement) return entitlement.refused
+  const { entitledGbp, tier, requestKey } = entitlement
 
   /*
    * What the guest is due now is their entitlement LESS what has already gone back.
@@ -395,7 +430,7 @@ async function refundPayPalDeposit(
       captureId,
       refundGbp,
       // Deterministic, so a retry of the same cancellation cannot refund twice.
-      `tbl-paypal-refund-${tableBookingId}-${tier}`,
+      requestKey,
       PAYPAL_DEFAULT_CURRENCY,
     )
   } catch (error) {
@@ -511,6 +546,158 @@ async function refundPayPalDeposit(
   }
 }
 
+type Entitlement =
+  | { entitledGbp: number; tier: RefundTier; requestKey: string }
+  | { refused: RefundResult }
+
+/**
+ * What the guest is due before anything already returned is taken off: a manager's chosen amount,
+ * the whole deposit when the pub cancelled, or the booking's own terms when the guest did.
+ */
+function resolveEntitlement(
+  tableBookingId: string,
+  bookingDate: Date,
+  booking: Pick<PayPalDepositBooking, 'booking_date' | 'deposit_refund_cutoff_days' | 'booking_period_code'> | null,
+  depositGbp: number,
+  terms: DepositRefundTerms,
+): Entitlement {
+  const managerGbp = terms.managerAmountGbp
+  if (typeof managerGbp === 'number' && Number.isFinite(managerGbp) && managerGbp > 0) {
+    const entitledGbp = Math.min(Math.round(managerGbp * 100) / 100, depositGbp)
+    const tier: RefundTier = entitledGbp >= depositGbp - 0.005 ? 'full' : 'chosen'
+    return {
+      entitledGbp,
+      tier,
+      requestKey: `tbl-paypal-refund-${tableBookingId}-chosen-${Math.round(entitledGbp * 100)}`,
+    }
+  }
+
+  if (terms.cancelledBy === 'venue') {
+    return { entitledGbp: depositGbp, tier: 'full', requestKey: `tbl-paypal-refund-${tableBookingId}-venue` }
+  }
+
+  // Entitlement: the seasonal promise the guest was shown wins over the sliding tier,
+  // exactly as on the Stripe path.
+  const seasonalCutoff = booking?.deposit_refund_cutoff_days
+  if (seasonalCutoff !== null && seasonalCutoff !== undefined) {
+    const decision = resolveSeasonalDepositRefund({
+      bookingDate: booking?.booking_date ?? toLocalIsoDate(bookingDate),
+      refundCutoffDays: Number(seasonalCutoff),
+      depositAmount: depositGbp,
+    })
+    if (!decision.entitled) {
+      logger.info('Seasonal deposit not refunded: inside the window the guest was told about', {
+        metadata: {
+          tableBookingId,
+          bookingPeriodCode: booking?.booking_period_code ?? null,
+          daysBefore: decision.daysBefore,
+          cutoffDays: decision.cutoffDays,
+        },
+      })
+      return { refused: { refunded: false, reason: 'seasonal_cutoff', cutoffDays: decision.cutoffDays } }
+    }
+    return { entitledGbp: decision.amount, tier: 'full', requestKey: `tbl-paypal-refund-${tableBookingId}-full` }
+  }
+
+  const { percent, tier } = calculateRefundTier(bookingDate)
+  if (percent === 0) return { refused: { refunded: false, reason: 'zero_tier' } }
+  const entitledGbp = Math.round(depositGbp * percent) / 100
+  if (entitledGbp <= 0) return { refused: { refunded: false, reason: 'zero_tier' } }
+  return { entitledGbp, tier, requestKey: `tbl-paypal-refund-${tableBookingId}-${tier}` }
+}
+
+/**
+ * A deposit taken in cash at the bar (record_table_cash_deposit_v05): the booking says cash and
+ * paid, or a succeeded deposit row with no provider id exists.
+ */
+function isCashDeposit(booking: PayPalDepositBooking, cashLedgerAmountGbp: number | null): boolean {
+  // Refunded counts too, so a deposit already handed back reads as that, not as no deposit.
+  const paid = ['completed', 'partial_refund', 'refunded'].includes(booking.payment_status ?? '')
+  if (booking.payment_method === 'cash' && paid) return true
+  return cashLedgerAmountGbp !== null && cashLedgerAmountGbp > 0 && booking.payment_method !== 'paypal'
+}
+
+/**
+ * Works out what is owed on a cash deposit, under the same terms as a PayPal one, and puts it in
+ * front of a person (BK-041, owner decision D19): cash goes back across the bar, so nothing can be
+ * sent automatically. An audit row marks it `action_needed` and the manager is emailed once, so
+ * they can hand it back and offer to rebook. The guest is told what is owed.
+ */
+async function cashDepositOwed(
+  supabase: ReturnType<typeof createAdminClient>,
+  tableBookingId: string,
+  bookingDate: Date,
+  booking: PayPalDepositBooking,
+  terms: DepositRefundTerms,
+  cashLedgerAmountGbp: number | null,
+): Promise<RefundResult> {
+  if (booking.payment_status === 'refunded' || booking.deposit_refund_status === 'refunded') {
+    return { refunded: false, reason: 'already_refunded' }
+  }
+
+  // What the guest actually handed over, which the cash deposit row records.
+  const paidGbp = cashLedgerAmountGbp ?? toGbp(booking.deposit_amount_locked) ?? toGbp(booking.deposit_amount)
+  if (paidGbp === null || paidGbp <= 0) {
+    logger.error('Booking has a cash deposit but no readable amount, so a person has to work out the refund', {
+      metadata: { tableBookingId },
+    })
+    await recordCashRefundOwed(supabase, tableBookingId, null, terms)
+    return { refunded: false, reason: 'cash_refund_due', depositOwed: true }
+  }
+
+  const entitlement = resolveEntitlement(tableBookingId, bookingDate, booking, paidGbp, terms)
+  if ('refused' in entitlement) return entitlement.refused
+
+  const soFar = await readDepositRefundsSoFar(tableBookingId)
+  if (!soFar) {
+    // Not knowing what has already been handed back is not evidence that nothing has.
+    await recordCashRefundOwed(supabase, tableBookingId, entitlement.entitledGbp, terms, 'the refunds already made could not be read')
+    return { refunded: false, reason: 'terms_unreadable' }
+  }
+
+  const owedGbp = Math.round((entitlement.entitledGbp - soFar.reservedGbp) * 100) / 100
+  if (owedGbp <= 0) return { refunded: false, reason: 'already_refunded' }
+
+  await recordCashRefundOwed(supabase, tableBookingId, owedGbp, terms)
+  return {
+    refunded: false,
+    reason: 'cash_refund_due',
+    depositOwed: true,
+    amountOwedPence: Math.round(owedGbp * 100),
+  }
+}
+
+async function recordCashRefundOwed(
+  supabase: ReturnType<typeof createAdminClient>,
+  tableBookingId: string,
+  owedGbp: number | null,
+  terms: DepositRefundTerms,
+  problem?: string,
+): Promise<void> {
+  const amount = formatPounds(owedGbp)
+  await AuditService.logAuditEvent({
+    operation_type: 'table_booking.cash_refund_due',
+    resource_type: 'table_booking',
+    resource_id: tableBookingId,
+    operation_status: 'failure',
+    additional_info: {
+      amount_gbp: owedGbp,
+      cancelled_by: terms.cancelledBy ?? 'guest',
+      manager_amount_gbp: terms.managerAmountGbp ?? null,
+      action_needed: problem
+        ? `The booking was cancelled with a cash deposit, but ${problem}. Check the Refund History and hand back what is due at the bar`
+        : `Hand back the ${amount} cash deposit at the bar, then record it on the booking with Process Refund (method: cash)`,
+    },
+  }).catch(() => undefined)
+  await alertTableDepositNeedsAPerson(supabase, {
+    bookingId: tableBookingId,
+    kind: 'cash_refund_due',
+    amountGbp: owedGbp,
+    detail: problem ?? (terms.cancelledBy === 'venue' ? 'the pub cancelled the booking' : null),
+    source: 'table booking cancellation',
+  })
+}
+
 /**
  * What the refund ledger says has already gone back on this deposit, or null when it cannot be read.
  *
@@ -555,6 +742,7 @@ async function readDepositRefundsSoFar(
 const CANCELLATION_REFUND_REASON: Record<Exclude<RefundTier, 'none'>, string> = {
   full: 'Booking cancelled: deposit refunded in full',
   half: 'Booking cancelled: half the deposit refunded',
+  chosen: 'Booking cancelled: a manager chose the refund',
 }
 
 const PAYPAL_REFUND_STATUSES = ['PENDING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const
@@ -581,7 +769,7 @@ async function recordPayPalDepositRefund(args: {
   tier: RefundTier
 }): Promise<void> {
   const { tableBookingId, captureId, refund, refundGbp, depositGbp, tier } = args
-  const reason = CANCELLATION_REFUND_REASON[tier === 'half' ? 'half' : 'full']
+  const reason = CANCELLATION_REFUND_REASON[tier === 'none' ? 'full' : tier]
 
   const paypalStatus = PAYPAL_REFUND_STATUSES.find((status) => status === String(refund.status ?? '').toUpperCase()) ?? null
   // The same reading of PayPal's status as the refund webhook: only COMPLETED is money returned.

@@ -18,6 +18,7 @@ export type TableDepositAlertKind =
   | 'captured_amount_problem'
   | 'capture_pending'
   | 'capture_booking_mismatch'
+  | 'cash_refund_due'
 
 const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; summary: string }> = {
   refund_failed: (amount) => ({
@@ -43,6 +44,11 @@ const TEXT: Record<TableDepositAlertKind, (amount: string) => { title: string; s
   capture_booking_mismatch: (amount) => ({
     title: `A table deposit (${amount}) was taken on an order that names another booking`,
     summary: `PayPal took ${amount} on the order stored for this booking, but the order names a different booking, so nothing was recorded. The guest was told not to retry. Check the order in PayPal, then record the deposit on the right booking or refund it.`,
+  }),
+  // BK-041, owner decision D19: cash goes back across the bar, so a person has to do it.
+  cash_refund_due: (amount) => ({
+    title: `A cancelled table booking is owed ${amount} in cash`,
+    summary: `The booking was cancelled and its deposit was paid in cash, so nothing could be refunded automatically. Hand back ${amount} at the bar (or arrange it with the guest), offer to rebook them, and record it on the booking with Process Refund, method cash.`,
   }),
   capture_pending: (amount) => ({
     title: `PayPal is holding a table deposit (${amount})`,
