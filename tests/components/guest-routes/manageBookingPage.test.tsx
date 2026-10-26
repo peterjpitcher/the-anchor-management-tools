@@ -209,7 +209,7 @@ describe('manage-booking page', () => {
       ...readyPreview, payment_mode: 'prepaid', event_start_datetime: '2099-11-20T19:00:00.000Z',
     } as never)
     await renderPage({ state: 'change_requested', seats: '1' })
-    expect(screen.getByText(/we have passed your request for 1 place to the team/)).toHaveTextContent('Your booking stays as it is until then.')
+    expect(screen.getByText(/we've passed your request for 1 place to the team/)).toHaveTextContent('Your booking stays as it is until then.')
   })
 
   it('uses the shared blocked pattern when the token is throttled', async () => {
