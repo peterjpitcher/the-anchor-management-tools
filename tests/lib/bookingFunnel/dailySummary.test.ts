@@ -70,6 +70,28 @@ describe('loadDailyFunnelSummary', () => {
     expect(summaryNeedsSending(summary)).toBe(true)
   })
 
+  it('counts refusals that come after a busy day of form signals', async () => {
+    // PR 262 review: the read stopped at 1,000 rows, so a day whose first 1,000 rows were
+    // ordinary "opened" signals dropped every later refusal, and could send nothing at all.
+    const opened = Array.from({ length: 1200 }, (_, index) =>
+      event(new Date(Date.parse('2026-10-25T08:00:00.000Z') + index * 1000).toISOString(), {
+        id: `opened-${index}`,
+        stage: 'form',
+        route: 'event_booking',
+        reason_code: 'opened',
+      }),
+    )
+    const late = event('2026-10-25T20:00:00.000Z', { id: 'late-refusal', stage: 'refused', route: 'api/table-bookings', reason_code: 'OUTSIDE_HOURS' })
+    const db = createFakeDb({ api_keys: KEYS, booking_funnel_events: [...opened, late] })
+
+    const summary = await loadDailyFunnelSummary(db.client as never, '2026-10-25')
+
+    expect(summary.refusedTotal).toBe(1)
+    expect(summary.forms).toEqual([{ form: 'event_booking', step: 'opened', reason: null, count: 1200 }])
+    expect(summary.truncated).toBe(false)
+    expect(summaryNeedsSending(summary)).toBe(true)
+  })
+
   it('has nothing to send on a quiet day', async () => {
     const db = createFakeDb({
       api_keys: KEYS,

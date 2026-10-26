@@ -10,7 +10,7 @@ import { createFakeDb, type FakeDb } from '../../helpers/fakeSupabaseDb'
  */
 
 const { reportCronFailure, authorizeCronRequest, createAdminClient } = vi.hoisted(() => ({
-  reportCronFailure: vi.fn(async () => undefined),
+  reportCronFailure: vi.fn(async (): Promise<boolean> => true),
   authorizeCronRequest: vi.fn(() => ({ authorized: true })),
   createAdminClient: vi.fn(),
 }))
@@ -116,6 +116,39 @@ describe('withCronRun: every_run', () => {
     await GET(request())
 
     expect(runs().filter((row) => row.status === 'failed')).toHaveLength(3)
+    expect(reportCronFailure).toHaveBeenCalledTimes(2)
+  })
+
+  it('alerts again an hour after the last alert, however often the job keeps failing', async () => {
+    // PR 262 review: counting from the last failed run, a job failing every 15 minutes only ever
+    // sent its first alert, because each failure renewed the quiet hour.
+    const GET = withCronRun('test-job', async () => NextResponse.json({ error: 'down' }, { status: 503 }), {
+      recording: 'every_run',
+    })
+
+    for (const minutes of [0, 15, 30, 45, 60, 75, 90]) {
+      vi.setSystemTime(new Date(NOW.getTime() + minutes * 60_000))
+      await GET(request())
+    }
+
+    expect(runs().filter((row) => row.status === 'failed')).toHaveLength(7)
+    // At 0, then at 75: the first failure more than an hour after the alert at 0.
+    expect(reportCronFailure).toHaveBeenCalledTimes(2)
+  })
+
+  it('tries again on the next failure when an alert could not be sent', async () => {
+    const GET = withCronRun('test-job', async () => NextResponse.json({ error: 'down' }, { status: 503 }), {
+      recording: 'every_run',
+    })
+    reportCronFailure.mockResolvedValueOnce(false)
+
+    await GET(request())
+    vi.setSystemTime(new Date(NOW.getTime() + 15 * 60_000))
+    await GET(request())
+    vi.setSystemTime(new Date(NOW.getTime() + 30 * 60_000))
+    await GET(request())
+
+    // The undelivered first alert does not quiet the hour; the delivered second one does.
     expect(reportCronFailure).toHaveBeenCalledTimes(2)
   })
 
