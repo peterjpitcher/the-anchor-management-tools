@@ -419,3 +419,29 @@ describe('BookingDetailClient cash deposit prompt', () => {
     expect(screen.queryByText('Return the cash deposit')).toBeNull()
   })
 })
+
+// BK-048: Mark Confirmed and Seat Guests showed on every booking, cancelled ones included, and one
+// click brought a cancelled booking back.
+describe('BookingDetailClient status buttons', () => {
+  it('offers no way to bring back a cancelled booking', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'cancelled' }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.queryByRole('button', { name: 'Mark Confirmed' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Seat Guests' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Booking' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mark No-Show' })).toBeNull()
+  })
+
+  it('offers Mark Confirmed on a no-show, to put it back', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'no_show' }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.getByRole('button', { name: 'Mark Confirmed' })).toBeInTheDocument()
+  })
+
+  it('does not offer Mark Confirmed on a booking that is already confirmed', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'confirmed', seated_at: null }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.queryByRole('button', { name: 'Mark Confirmed' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Seat Guests' })).toBeInTheDocument()
+  })
+})

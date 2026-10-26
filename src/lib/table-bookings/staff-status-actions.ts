@@ -40,6 +40,28 @@ function getBookingStartIso(booking: StaffStatusBooking): string | null {
 }
 
 function blocks(action: string, booking: StaffStatusBooking): StaffStatusTransitionResult | null {
+  /*
+   * 'Mark Confirmed' never brings back a cancelled or completed booking (BK-048, customer bookings
+   * review of 24 October 2026). One click used to turn a cancelled booking confirmed again with no
+   * check that its table was still free, no new deposit after a refund, and nothing said to the
+   * guest, who still believed it was cancelled. A no-show can still be put back, after the routes
+   * check its table and deposit (reinstate-check.ts).
+   */
+  if (action === 'confirmed' && booking.status === 'cancelled') {
+    return {
+      ok: false,
+      status: 409,
+      error: 'A cancelled booking cannot be put back. Make a new booking, so the table and any deposit are checked again.',
+    }
+  }
+  if (action === 'confirmed' && booking.status === 'completed') {
+    return {
+      ok: false,
+      status: 409,
+      error: 'A completed booking cannot be put back to confirmed.',
+    }
+  }
+
   if (action === 'completed') {
     if (booking.status === 'cancelled' || booking.status === 'no_show') {
       return {
@@ -207,4 +229,26 @@ export function buildStaffStatusTransitionPlan(input: {
       select: 'id, status, no_show_at, no_show_marked_at, no_show_marked_by',
     },
   }
+}
+
+/**
+ * The status buttons that apply to a booking as it stands (BK-048), so the booking page offers only
+ * what the routes will take. Seating is a timestamp, not a status, so the seated and left times
+ * decide Mark Left. The routes still check everything; this only decides what is shown.
+ */
+export function staffStatusActionsFor(booking: {
+  status: string
+  seated_at?: string | null
+  left_at?: string | null
+}): StaffStatusAction[] {
+  const status = booking.status
+  if (status === 'cancelled' || status === 'completed') return []
+  if (status === 'no_show') return ['seated', 'confirmed']
+
+  const actions: StaffStatusAction[] = []
+  if (!booking.seated_at) actions.push('seated')
+  if (booking.seated_at && !booking.left_at) actions.push('left')
+  if (status === 'pending_payment') actions.push('confirmed')
+  actions.push('completed')
+  return actions
 }

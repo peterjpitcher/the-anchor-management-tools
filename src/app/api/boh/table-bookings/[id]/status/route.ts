@@ -15,6 +15,7 @@ import {
   type StaffStatusAction
 } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkNoShowCanComeBack } from '@/lib/table-bookings/reinstate-check'
 
 // Passthrough: a cancel also carries who is cancelling and any manager refund amount (BK-046),
 // which resolveStaffCancellation reads and checks.
@@ -93,6 +94,14 @@ export async function POST(
       },
       { status: 409 }
     )
+  }
+
+  // Putting a no-show back checks its table is still free and its deposit still held (BK-048).
+  if ((action === 'seated' || action === 'confirmed') && booking.status === 'no_show') {
+    const problem = await checkNoShowCanComeBack(auth.supabase, booking)
+    if (problem) {
+      return NextResponse.json({ error: problem }, { status: 409 })
+    }
   }
 
   if (action === 'left') {

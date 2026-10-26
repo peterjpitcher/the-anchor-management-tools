@@ -53,6 +53,7 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
+import { staffStatusActionsFor } from '@/lib/table-bookings/staff-status-actions'
 import {
   describeGuestNotificationChannel,
   describeGuestNotificationProblem,
@@ -438,6 +439,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     }),
     [depositRefunds],
   )
+
+  // The status buttons that apply to the booking as it stands (BK-048).
+  const statusActions = staffStatusActionsFor(booking)
+  const bookingClosed = booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'no_show'
 
   // What the guest paid and still has with us: where a manager's chosen refund starts (D7).
   const depositHeld = depositHeldGbp(booking, refundTotals.totalRefunded + refundTotals.totalPending)
@@ -923,26 +928,30 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => setNoShowConfirmOpen(true)}
-        disabled={Boolean(actionLoadingKey)}
-      >
-        Mark No-Show
-      </Button>
-      <Button
-        size="sm"
-        variant="danger"
-        onClick={() => {
-          setCancelForm(initialStaffCancelForm(depositHeld))
-          setCancelFormProblem(null)
-          setCancelConfirmOpen(true)
-        }}
-        disabled={Boolean(actionLoadingKey)}
-      >
-        Cancel Booking
-      </Button>
+      {!bookingClosed && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setNoShowConfirmOpen(true)}
+          disabled={Boolean(actionLoadingKey)}
+        >
+          Mark No-Show
+        </Button>
+      )}
+      {!bookingClosed && (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => {
+            setCancelForm(initialStaffCancelForm(depositHeld))
+            setCancelFormProblem(null)
+            setCancelConfirmOpen(true)
+          }}
+          disabled={Boolean(actionLoadingKey)}
+        >
+          Cancel Booking
+        </Button>
+      )}
       <Button
         size="sm"
         variant="danger"
@@ -1161,41 +1170,51 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 <CardHeader title="Actions" />
                 <CardBody className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => void handleStatusAction('seated')}
-                      loading={actionLoadingKey === 'status:seated'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Seat Guests
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('left')}
-                      loading={actionLoadingKey === 'status:left'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Left
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('confirmed')}
-                      loading={actionLoadingKey === 'status:confirmed'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Confirmed
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('completed')}
-                      loading={actionLoadingKey === 'status:completed'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Completed
-                    </Button>
+                    {/* Only the status changes that apply now (BK-048): Mark Confirmed no longer
+                        shows on a cancelled or completed booking, which it used to bring back. */}
+                    {statusActions.includes('seated') && (
+                      <Button
+                        size="sm"
+                        onClick={() => void handleStatusAction('seated')}
+                        loading={actionLoadingKey === 'status:seated'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Seat Guests
+                      </Button>
+                    )}
+                    {statusActions.includes('left') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('left')}
+                        loading={actionLoadingKey === 'status:left'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Left
+                      </Button>
+                    )}
+                    {statusActions.includes('confirmed') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('confirmed')}
+                        loading={actionLoadingKey === 'status:confirmed'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Confirmed
+                      </Button>
+                    )}
+                    {statusActions.includes('completed') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('completed')}
+                        loading={actionLoadingKey === 'status:completed'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Completed
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="secondary"
