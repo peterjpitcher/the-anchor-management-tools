@@ -236,23 +236,30 @@ describe('an ordinary booking behaves exactly as it always has', () => {
 
 describe('both party-size routes hand the seasonal columns in', () => {
   /**
-   * The guard is only reachable if the routes actually SELECT booking_period_id. Without it the
+   * The guard is only reachable if the change actually SELECTs booking_period_id. Without it the
    * field is undefined, the guard never fires, and the deposit is zeroed exactly as before, with
    * every test above still passing.
+   *
+   * The FOH and BOH routes were two copies kept in step only by this check, and drifted anyway.
+   * Since BK-129 both run one handler, so the check reads the handler and pins both routes to it.
    */
-  it('selects booking_period_id on the FOH and BOH routes', async () => {
+  it('selects booking_period_id in the one handler both staff routes call', async () => {
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
-    const routes = [
-      'src/app/api/foh/bookings/[id]/party-size/route.ts',
-      'src/app/api/boh/table-bookings/[id]/party-size/route.ts',
+    const handler = readFileSync(join(process.cwd(), 'src/lib/table-bookings/party-size-change.ts'), 'utf8')
+    expect(handler).toContain('booking_period_id')
+    expect(handler).toContain('booking_period_name')
+    // And the message reaches the person who made the change.
+    expect(handler).toContain("depositTransition?.state === 'manual_review'")
+
+    const routes: Array<[string, string]> = [
+      ['src/app/api/foh/bookings/[id]/party-size/route.ts', "'foh'"],
+      ['src/app/api/boh/table-bookings/[id]/party-size/route.ts', "'boh'"],
     ]
-    for (const route of routes) {
+    for (const [route, surface] of routes) {
       const source = readFileSync(join(process.cwd(), route), 'utf8')
-      expect(source).toContain('booking_period_id')
-      expect(source).toContain('booking_period_name')
-      // And the message reaches the person who made the change.
-      expect(source).toContain("depositTransition?.state === 'manual_review'")
+      expect(source, route).toContain(`changeTableBookingPartySize(request, context, ${surface})`)
+      expect(source, route).not.toContain('applyPartySizeDepositTransition')
     }
   })
 })
