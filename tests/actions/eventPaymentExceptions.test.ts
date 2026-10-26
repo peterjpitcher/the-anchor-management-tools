@@ -97,6 +97,18 @@ describe('resolveEventPaymentException', () => {
     expect(sendEventBookingCancelledEmail).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: BOOKING, refundStatus: 'succeeded', paymentTaken: true }))
   })
 
+  it('refunds only what is left after an earlier partial refund', async () => {
+    const db = seed()
+    db.tables.payments.push({ id: 'refund-1', event_booking_id: BOOKING, charge_type: 'refund', status: 'refunded', amount: 20 })
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'succeeded', amount: 60, currency: 'GBP' })
+
+    const result = await resolveEventPaymentException({ exceptionId: EXCEPTION, resolution: 'refunded' })
+
+    expect(result).toEqual({ success: true, data: { resolution: 'refunded', refundAmount: 60, refundStatus: 'succeeded' } })
+    expect(processEventRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: BOOKING, amount: 60 }))
+    expect(db.tables.event_payment_exceptions[0]).toMatchObject({ status: 'resolved', resolution: 'refunded' })
+  })
+
   it('leaves the booking and the exception as they are, and tells a manager, when the refund does not go through', async () => {
     const db = seed()
     vi.mocked(processEventRefund).mockResolvedValue({ status: 'failed', amount: 80, currency: 'GBP', reason: 'paypal_refund_failed' })

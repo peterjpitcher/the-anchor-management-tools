@@ -83,6 +83,27 @@ async function paidByBooking(
   return paid
 }
 
+/** Money already refunded or being refunded on each booking, so a refund asks only for what is left. */
+async function refundedByBooking(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingIds: string[],
+): Promise<Map<string, number>> {
+  const refunded = new Map<string, number>()
+  if (bookingIds.length === 0) return refunded
+  const { data, error } = await supabase
+    .from('payments')
+    .select('event_booking_id, amount')
+    .in('event_booking_id', bookingIds)
+    .eq('charge_type', 'refund')
+    .in('status', ['refunded', 'pending', 'succeeded'])
+  if (error) throw error
+  for (const row of data ?? []) {
+    if (!row.event_booking_id) continue
+    refunded.set(row.event_booking_id, (refunded.get(row.event_booking_id) ?? 0) + Math.max(0, Number(row.amount ?? 0)))
+  }
+  return refunded
+}
+
 export async function listEventPaymentExceptions(
   input: { eventId?: string } = {},
 ): Promise<{ data?: EventPaymentExceptionRow[]; error?: string }> {
@@ -245,14 +266,17 @@ export async function resolveEventPaymentException(input: {
       return { success: true, data: { resolution: 'confirmed' } }
     }
 
-    // Refund everything paid, then cancel. One refund per payment problem, however often the
-    // button is pressed.
-    const refund = paid > 0
+    // Refund what is left of what was paid (an earlier partial refund is not asked for again, or
+    // the refund would come back as partial and be reported as failed), then cancel. One refund
+    // per payment problem, however often the button is pressed.
+    const refunded = (await refundedByBooking(supabase, [booking.id])).get(booking.id) ?? 0
+    const refundable = Math.round(Math.max(0, paid - refunded) * 100) / 100
+    const refund = refundable > 0
       ? await processEventRefund(supabase, {
           bookingId: booking.id,
           customerId: booking.customer_id,
           eventId: booking.event_id,
-          amount: paid,
+          amount: refundable,
           reason: 'payment_exception_refund',
           metadata: { idempotency_key: `payment-exception-refund:${exception.id}`, initiated_by: user?.id ?? null },
         })
@@ -263,7 +287,7 @@ export async function resolveEventPaymentException(input: {
         bookingId: booking.id,
         kind: 'refund_failed',
         reason: refund.reason ?? refund.status,
-        amount: paid,
+        amount: refundable,
         source: 'paid, needs action list',
       })
       return { error: 'The refund did not go through, so the booking was left as it is. Refund it by hand in PayPal.' }
