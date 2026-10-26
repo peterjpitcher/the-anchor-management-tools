@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CHRISTMAS_MIN_PARTY_SIZE, extractChristmasRuleErrorMessage } from './christmas'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, extractChristmasRuleErrorMessage } from './christmas'
 
 /**
  * The Christmas dinner minimum, held to one figure at every layer that enforces or shows it.
@@ -71,6 +71,33 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
       expect(extractChristmasRuleErrorMessage({ message })).toBe(message)
     })
   }
+
+  it('create_table_booking_christmas_v01, the website Christmas path, takes the same range', () => {
+    // This function was missed on 11 September, so parties of 4 and 5 who chose Christmas dinner
+    // online were still refused (BK-004, 24 October review).
+    const { file, body } = latestDefinitionOf('create_table_booking_christmas_v01')
+    const range = /IF v_party NOT BETWEEN (\d+) AND (\d+) THEN\s*RAISE EXCEPTION '([^']+)'/.exec(body)
+    expect(range, `${file} has no Christmas party-size range`).toBeTruthy()
+    expect(Number(range![1])).toBe(CHRISTMAS_MIN_PARTY_SIZE)
+    expect(Number(range![2])).toBe(CHRISTMAS_MAX_PARTY_SIZE)
+    const message = range![3]
+    expect(message).toBe(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)
+    expect(extractChristmasRuleErrorMessage({ message })).toBe(message)
+  })
+
+  it('the API schemas that carry course choices take the same minimum', () => {
+    const schemaFiles = [
+      'src/app/api/table-bookings/route.ts',
+      'src/app/api/foh/bookings/[id]/party-size/route.ts',
+      'src/app/api/boh/table-bookings/[id]/party-size/route.ts',
+    ]
+    for (const path of schemaFiles) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8')
+      expect(source, path).toContain(
+        'christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE)',
+      )
+    }
+  })
 
   it('moves the christmas-2026 booking period to the same minimum', () => {
     // The period row is data, so it moves by migration, and the newest migration that sets it wins.
