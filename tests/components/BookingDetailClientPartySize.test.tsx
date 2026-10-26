@@ -272,7 +272,10 @@ describe('BookingDetailClient party size changes', () => {
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
     await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
+    // Who is cancelling decides the refund (BK-046), so it is asked every time.
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('radio', { name: /The guest asked to cancel/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -281,7 +284,27 @@ describe('BookingDetailClient party size changes', () => {
       )
     })
     expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/status`, {
-      body: { action: 'cancelled' },
+      body: { cancelled_by: 'guest', action: 'cancelled' },
+    })
+  })
+
+  it('does not cancel until staff say who is cancelling (BK-046)', async () => {
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
+
+    expect(within(dialog).getByText('Choose who is cancelling.')).toBeInTheDocument()
+    expect(requestTableBookingActionMock).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('radio', { name: /The pub is cancelling/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
+    await waitFor(() => {
+      expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/status`, {
+        body: { cancelled_by: 'venue', action: 'cancelled' },
+      })
     })
   })
 
@@ -293,7 +316,10 @@ describe('BookingDetailClient party size changes', () => {
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
     await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
+    // Who is cancelling decides the refund (BK-046), so it is asked every time.
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('radio', { name: /The guest asked to cancel/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Booking updated')

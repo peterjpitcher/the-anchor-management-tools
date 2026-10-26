@@ -6,7 +6,7 @@ import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-aler
 
 import { sendTableBookingCancelledSmsIfAllowed } from './bookings'
 import type { GuestNotificationOutcome } from './guest-notification-outcome'
-import { refundTableBookingDeposit, type RefundResult } from './refunds'
+import { refundTableBookingDeposit, type DepositRefundTerms, type RefundResult } from './refunds'
 
 /**
  * Refund the deposit and tell the guest, for every staff cancellation path.
@@ -30,6 +30,11 @@ export async function refundAndNotifyOnCancel(
     bookingDate: string
     customerId: string
     source: string
+    /**
+     * Who cancelled, and a manager's chosen amount (BK-046, owner decision D7). Omitted, the
+     * guest's own terms apply, as they always have for the guest's own cancellation.
+     */
+    terms?: DepositRefundTerms
   },
 ): Promise<{
   refundResult: RefundResult
@@ -43,7 +48,7 @@ export async function refundAndNotifyOnCancel(
 
   let refundResult: RefundResult
   try {
-    refundResult = await refundTableBookingDeposit(params.bookingId, bookingDate)
+    refundResult = await refundTableBookingDeposit(params.bookingId, bookingDate, params.terms ?? {})
   } catch (error) {
     logger.error('Deposit refund threw during cancellation, so the guest may be owed money', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -70,7 +75,12 @@ export async function refundAndNotifyOnCancel(
     })
 
     // Carry on to the message. A guest whose refund failed is the one who most needs telling.
-    refundResult = { refunded: false, reason: 'refund_failed', depositOwed: true }
+    refundResult = {
+      refunded: false,
+      reason: 'refund_failed',
+      depositOwed: true,
+      ...(params.terms?.cancelledBy === 'venue' ? { cancelledBy: 'venue' as const } : {}),
+    }
   }
 
   let notified = false

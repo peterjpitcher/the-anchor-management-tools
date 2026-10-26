@@ -1177,6 +1177,7 @@ async function sendTableBookingCancelledEmailFirst(
       startDateTime: booking?.start_datetime ?? null,
       partySize: booking?.party_size ?? null,
       refundSentence: describeTableBookingCancellationRefund(params.refundResult),
+      cancelledBy: params.refundResult.cancelledBy,
     })
 
     return await notifyTableBookingGuestEmailFirst({
@@ -1198,6 +1199,7 @@ async function sendTableBookingCancelledEmailFirst(
       auditContext: {
         booking_reference: params.bookingReference,
         refunded: params.refundResult.refunded,
+        cancelled_by: params.refundResult.cancelledBy ?? null,
       },
       fallback: {
         message: 'cancellation',

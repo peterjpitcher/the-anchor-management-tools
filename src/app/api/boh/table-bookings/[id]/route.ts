@@ -6,7 +6,8 @@ import type { TradingHours } from '@/lib/business-hours/open-now'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
-import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { resolveStaffCancellation, staffCancellationAuditInfo } from '@/lib/table-bookings/staff-cancellation-auth'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -358,7 +359,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireBohTableBookingPermission('manage')
@@ -521,7 +522,15 @@ export async function DELETE(
     }
   }
 
-  const cancellationReason = 'boh_soft_delete'
+  // Deleting a live booking cancels it, so who is cancelling decides the refund here too (BK-046).
+  // A body-less request (a screen loaded before this change) keeps the guest's terms.
+  const body = await request.json().catch(() => ({}))
+  const cancellation = await resolveStaffCancellation(body, auth.userId)
+  if (!cancellation.ok) {
+    return cancellation.response
+  }
+
+  const cancellationReason = cancellation.cancellationReason
   const { data: cancelledBooking, error: cancelError } = await auth.supabase.from('table_bookings')
     .update({
       status: 'cancelled',
@@ -565,7 +574,7 @@ export async function DELETE(
       ...cancelledBooking,
       soft_deleted: true,
     },
-    additional_info: { action: 'boh_table_booking_soft_cancel' },
+    additional_info: { action: 'boh_table_booking_soft_cancel', ...staffCancellationAuditInfo(cancellation.choice) },
   }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
@@ -580,6 +589,7 @@ export async function DELETE(
       bookingDate: existing.booking_date,
       customerId: existing.customer_id,
       source: 'boh_soft_delete',
+      terms: cancellation.terms,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)

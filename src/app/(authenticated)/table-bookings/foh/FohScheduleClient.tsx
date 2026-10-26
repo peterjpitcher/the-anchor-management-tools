@@ -569,6 +569,7 @@ export function FohScheduleClient({
       <FohBookingDetailModal
         selectedBookingContext={selectedBookingContext}
         canEdit={canEdit}
+        canChooseRefund={canWaiveDeposit}
         bookingActionInFlight={bookingActionInFlight}
         showCancelBookingConfirmation={showCancelBookingConfirmation}
         showNoShowConfirmation={showNoShowConfirmation}
