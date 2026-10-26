@@ -25,6 +25,8 @@ vi.mock('@/services/audit', () => ({ AuditService: { logAuditEvent: vi.fn(async 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({ from: vi.fn() })) }))
 
 import { sendTableBookingCreatedSmsIfAllowed, type TableBookingRpcResult } from './bookings'
+import { resolveNotificationRoute } from '@/lib/notifications/routing-matrix'
+import { selectChannel } from '@/lib/notifications/channel'
 
 /**
  * Which channels the booking notice goes on, and what a seasonal booking is told.
@@ -111,6 +113,18 @@ describe('the booking notice channels', () => {
 
     const notice = captureNotice()
     expect(notice.policy).toBe('email_only')
+    // And the real router (notifyCustomer is stood in for here) holds that policy for this
+    // template: email or nothing, never the text the guest asked not to get (BK-085).
+    const route = resolveNotificationRoute({ templateKey: 'table_booking_pending_payment', policy: 'email_only' })
+    expect(route.channels).toEqual(['email'])
+    expect(
+      selectChannel({
+        policy: 'email_only',
+        urgency: 'standard',
+        eligibility: { email: false, whatsapp: true, sms: true },
+        orderedChannels: route.channels,
+      })
+    ).toEqual({ channels: [], reason: 'no_channel_available' })
     expect(notice.email?.subject).toBe('Pay your deposit to secure your table at The Anchor')
     // The four facts the old email left out: what the money is, that it comes off the bill, the
     // deadline, and what comes back on a cancellation.
