@@ -91,6 +91,13 @@ $old$  IF p_section = 'party_limits' THEN
 $old$,
 $new$  -- Owner decision D30: one party limit (table_booking_max_party_online) for every channel, so
   -- there is no staff limit to compare it with.
+$new$),
+      (6, 'check_table_availability_v06',
+$old$  IF p_channel = 'online' AND p_party_size > v_max_online THEN
+$old$,
+$new$  -- One party limit for every channel (owner decision D30, BK-146): staff and walk-in slot lists
+  -- offer nothing the staff booking function would refuse as too large.
+  IF p_party_size > v_max_online THEN
 $new$)
     ) AS t(step, proname, new_text, old_text)
     ORDER BY step DESC

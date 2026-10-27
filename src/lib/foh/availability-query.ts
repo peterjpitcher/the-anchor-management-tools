@@ -1,3 +1,5 @@
+import { fohBookingBypassesPacing } from '@/lib/foh/pacing-bypass'
+
 /**
  * The inputs of the FOH free-times check (BK-184), parsed from a query string. Shared by the route
  * and its tests so the two cannot read the form differently.
@@ -12,6 +14,8 @@ export type FohAvailabilityQuery = {
   highChairCount: number
   /** Never taken from the caller as such: 'walkin' for a walk-in, otherwise 'staff'. */
   channel: 'staff' | 'walkin'
+  /** Saving this booking skips kitchen pacing and the drinks ceiling, as the create route does. */
+  bypassPacing: boolean
 }
 
 export function parseFohAvailabilityQuery(
@@ -40,7 +44,32 @@ export function parseFohAvailabilityQuery(
       requiresAccessibleTable: params.get('requires_accessible_table') === 'true',
       highChairCount,
       channel: params.get('walk_in') === 'true' ? 'walkin' : 'staff',
+      bypassPacing: fohBookingBypassesPacing({ walkIn: params.get('walk_in') === 'true', purpose: rawPurpose }),
     },
+  }
+}
+
+/** The public reasons that come only from the arrival limits a FOH walk-in or drinks booking skips. */
+const PACING_REASONS = new Set(['kitchen_full', 'drinks_full'])
+
+type AvailabilitySlot = { state?: string; public_reason?: string | null; message?: string | null; [key: string]: unknown }
+
+/**
+ * The slot list as the FOH create route would honour it. check_table_availability_v06 judges the
+ * arrival limits (kitchen pacing for food, the drinks ceiling for drinks) only for a time that
+ * already has a table and is open, so a time refused for one of them would save once the limit is
+ * skipped. For a booking that skips them (fohBookingBypassesPacing) those times are offered; every
+ * other refusal stands.
+ */
+export function withPacingBypass<T extends { slots?: AvailabilitySlot[] }>(answer: T, bypassPacing: boolean): T {
+  if (!bypassPacing || !Array.isArray(answer?.slots)) return answer
+  return {
+    ...answer,
+    slots: answer.slots.map((slot) =>
+      slot.state === 'unavailable' && PACING_REASONS.has(String(slot.public_reason))
+        ? { ...slot, state: 'available', public_reason: null, message: null }
+        : slot
+    ),
   }
 }
 

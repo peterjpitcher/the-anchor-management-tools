@@ -194,6 +194,9 @@ def main():
                 raise RuntimeError(f'FAIL the slot list did not compute for {day}: {raw}')
             return raw
 
+        def raw_availability(day=DAY, party=2, purpose='drinks', channel='online'):
+            return json.loads(sql(f"SELECT check_table_availability_v06('{day}', {party}, '{purpose}', false, false, 0, '{channel}')::text;"))
+
         def slots(**kwargs):
             return {slot['time']: slot for slot in availability(**kwargs)['slots']}
 
@@ -232,6 +235,9 @@ def main():
                   'baseline: a drinks refusal reads as the kitchen being full')
             check(f"position('table_booking_max_party_staff' in {body('create_table_booking_staff_v06')}) > 0",
                   'baseline: staff bookings read the staff limit of 40')
+            if raw_availability(party=21, channel='staff').get('public_reason') == 'too_large':
+                raise RuntimeError('FAIL baseline: production should offer staff times for 21')
+            print('BASELINE production offers staff times for a party of 21, which staff then cannot book')
             check(f"position('v_purpose = ''drinks'' AND NOT COALESCE(p_outside_seating, false)' in {body('create_table_booking_core_v06')}) > 0",
                   'baseline: indoor drinks bookings are written as soft')
 
@@ -326,6 +332,13 @@ def main():
             if json.loads(staff).get('reason') != 'too_large_party':
                 raise RuntimeError(f'FAIL a staff booking of 21 should be too_large_party: {staff}')
             print('PASS a staff booking of 21 is refused as too large (it was allowed up to 40)')
+            for channel in ('online', 'staff', 'walkin'):
+                over = raw_availability(party=21, purpose='food', channel=channel)
+                if over.get('public_reason') != 'too_large' or over.get('slots') != [] or over.get('max_party_size_online') != 20:
+                    raise RuntimeError(f'FAIL {channel}: a party of 21 should get no times: {over}')
+                if raw_availability(party=20, purpose='food', channel=channel).get('public_reason') == 'too_large':
+                    raise RuntimeError(f'FAIL {channel}: a party of 20 should still get times')
+            print('PASS a party of 21 gets no times on any channel (online, staff, walk-in), and 20 still does')
             check("table_booking_settings_keys('party_limits') = ARRAY['table_booking_max_party_online'] "
                   "AND table_booking_settings_keys('drinks') = ARRAY['drinks_arrivals_ceiling'] "
                   "AND 'booking_message_drinks_full' = ANY (table_booking_settings_keys('messages'))",
