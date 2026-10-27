@@ -5,6 +5,8 @@ import { Badge, Button, Input, Modal, Textarea } from '@/ds'
 import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
+import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { FohDepositActions } from './FohDepositActions'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -50,6 +52,8 @@ type FohBookingDetailModalProps = {
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
   onOpenChangeTime: (bookingId: string) => void
+  /** table_bookings manage: may settle an owed deposit after booking (BK-045, D18). */
+  canManageDeposit?: boolean
 }
 
 export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(props: FohBookingDetailModalProps) {
@@ -71,6 +75,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
     onOpenChangeTime,
+    canManageDeposit = false,
   } = props
 
   const selectedBooking = selectedBookingContext?.booking ?? null
@@ -143,6 +148,18 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
               {formatChristmasCourseTally(selectedBooking.christmas_course_counts) || 'not recorded yet'}
             </p>
           )}
+          {selectedBooking.guest_party_size_change && (
+            // BK-091: the guest changed the party size themselves, so staff know who did it.
+            <p className="mt-1 text-xs text-text">
+              <Badge tone="info">Changed by guest</Badge>{' '}
+              {selectedBooking.guest_party_size_change.from != null && selectedBooking.guest_party_size_change.to != null
+                ? `Party size ${selectedBooking.guest_party_size_change.from} to ${selectedBooking.guest_party_size_change.to}`
+                : 'Party size changed'}
+              {Number.isFinite(Date.parse(selectedBooking.guest_party_size_change.at))
+                ? `, ${formatDateTime12Hour(selectedBooking.guest_party_size_change.at)}`
+                : ''}
+            </p>
+          )}
           {(selectedBookingIsOutside || selectedBookingHighChairs > 0 || selectedBookingNeedsStepFree) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {selectedBookingIsOutside ? <Badge tone="info">Outside</Badge> : null}
@@ -169,6 +186,15 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         </div>
 
         <GuestRequirements booking={selectedBooking} />
+
+        {canManageDeposit && selectedBookingDeposit.kind === 'pending' && !selectedBookingIsEventOnly && !selectedBooking.is_private_block && (
+          <FohDepositActions
+            bookingId={selectedBooking.id}
+            bookingStartIso={selectedBooking.start_datetime ?? null}
+            bookingActionInFlight={bookingActionInFlight}
+            onRunAction={onRunAction}
+          />
+        )}
 
         {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
           // Keyed on the booking so a different booking never inherits half-typed notes.

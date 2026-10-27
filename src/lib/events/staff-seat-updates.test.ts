@@ -131,6 +131,8 @@ function christmasWrites(rpc: ReturnType<typeof vi.fn>) {
 const availability = {
   startIso: '2026-07-10T17:00:00.000Z',
   endIso: '2026-07-10T19:00:00.000Z',
+  bookingEndIso: '2026-07-10T19:00:00.000Z',
+  turnaroundMinutes: 0,
   assignedTableIds: ['old-1'],
   tables: [
     { id: 'new-1', table_ids: ['new-1'], table_number: '9', name: 'Table 9', capacity: 8 },

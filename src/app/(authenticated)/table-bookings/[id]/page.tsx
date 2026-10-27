@@ -60,6 +60,7 @@ export default async function BookingDetailPage({ params }: Props) {
       deposit_waived, is_venue_event, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
+      deposit_review_needed_at, deposit_review_note,
       contact_email,
       customer:customers!table_bookings_customer_id_fkey(
         id, first_name, last_name, mobile_number, email

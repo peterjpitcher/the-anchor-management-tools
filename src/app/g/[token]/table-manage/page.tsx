@@ -27,6 +27,7 @@ import {
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP, LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
 import { logger } from '@/lib/logger'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
@@ -139,20 +140,26 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       return { tone: 'amber', text: 'Your numbers changed while this page was open, so nothing was saved. Please check the list below and try again.' }
     case 'christmas_call':
       return { tone: 'red', text: `To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.` }
-    case 'no_table':
-      return {
-        tone: 'red',
-        text: `We couldn't find a table for that many guests at your time. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
-      }
-    case 'too_large':
-      return {
-        tone: 'red',
-        text: `For more than ${CHRISTMAS_MAX_PARTY_SIZE} guests, please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
-      }
     case 'error':
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':
       return { tone: 'red', text: 'Too many attempts were made. Please wait a few minutes and try again.' }
+    // A bigger party we cannot fit online. Your booking is unchanged, and the phone is the way on.
+    case 'no_table':
+      return {
+        tone: 'amber',
+        text: `We don't have a table free for that many people at your time, so your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll see what we can do.`
+      }
+    case 'slot_full':
+      return {
+        tone: 'amber',
+        text: `The kitchen is full at your time, so we can't add more people online and your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll see what we can do.`
+      }
+    case 'too_large':
+      return {
+        tone: 'amber',
+        text: `That's more people than we can book online, so your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
     default:
       return null
   }
@@ -281,6 +288,15 @@ export default async function TableManageBookingPage({
     }
   }
 
+  // Said before the guest saves (BK-044): a party growing to the group threshold owes the group
+  // deposit. SSOT section 7's standard line, from the live threshold and rate, then what happens.
+  // Not shown to a Christmas booking, whose deposit is per person at any size, or to a party
+  // already over the threshold, which has already been asked.
+  const partySizeHint =
+    !isChristmas && Number(preview.party_size || 1) < LARGE_GROUP_DEPOSIT_THRESHOLD
+      ? `Groups of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more: a £${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP} per person deposit, fully deducted from your bill. If your party grows to ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more, your table stays booked and you'll go straight to the payment page when you save.`
+      : undefined
+
   const preorderBanner = preorderMessage(query.preorder)
   const errorSeat = Number.parseInt(query.seat || '', 10)
   const bookingReference = preview.booking_reference || preview.table_booking_id
@@ -340,9 +356,9 @@ export default async function TableManageBookingPage({
             <input type="hidden" name="action" value="update" />
 
             {!isChristmas && (
-              <GuestField id="party_size" label="Party size" required>
+              <GuestField id="party_size" label="Party size" required hint={partySizeHint}>
                 <GuestInput
-                  {...guestFieldControlProps({ id: 'party_size', required: true })}
+                  {...guestFieldControlProps({ id: 'party_size', required: true, hint: partySizeHint })}
                   name="party_size"
                   type="number"
                   min="1"

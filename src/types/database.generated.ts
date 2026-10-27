@@ -18497,6 +18497,8 @@ export type Database = {
           deposit_refund_cutoff_days: number | null
           deposit_refund_policy: string | null
           deposit_refund_status: string | null
+          deposit_review_needed_at: string | null
+          deposit_review_note: string | null
           deposit_rule: string | null
           deposit_waived: boolean
           dietary_requirements: string[] | null
@@ -18575,6 +18577,8 @@ export type Database = {
           deposit_refund_cutoff_days?: number | null
           deposit_refund_policy?: string | null
           deposit_refund_status?: string | null
+          deposit_review_needed_at?: string | null
+          deposit_review_note?: string | null
           deposit_rule?: string | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null
@@ -18653,6 +18657,8 @@ export type Database = {
           deposit_refund_cutoff_days?: number | null
           deposit_refund_policy?: string | null
           deposit_refund_status?: string | null
+          deposit_review_needed_at?: string | null
+          deposit_review_note?: string | null
           deposit_rule?: string | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null

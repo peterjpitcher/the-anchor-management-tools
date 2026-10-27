@@ -88,9 +88,10 @@ export async function POST(
     return NextResponse.json(
       {
         error:
+          // A manager can settle it from the booking now (BK-045).
           action === 'seated'
-            ? 'Booking cannot be seated until the required deposit is paid.'
-            : 'Booking cannot be confirmed until the required deposit is paid.'
+            ? 'Booking cannot be seated until the required deposit is paid. A manager can record it as taken at the bar, or waive it, from the booking.'
+            : 'Booking cannot be confirmed until the required deposit is paid. A manager can record it as taken at the bar, or waive it, from the booking.'
       },
       { status: 409 }
     )

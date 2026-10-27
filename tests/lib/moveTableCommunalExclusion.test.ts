@@ -31,7 +31,7 @@ function buildSupabase() {
   const existingAssignmentEq = () => Promise.resolve({ data: [{ table_id: TABLE_FREE }], error: null })
   const overlapChain = { gt: () => Promise.resolve({ data: [], error: null }) }
   const assignmentSelect = (cols: string) => {
-    if (cols === 'table_id') return { eq: existingAssignmentEq }
+    if (cols === 'table_id, end_datetime') return { eq: existingAssignmentEq }
     if (cols === 'table_id, table_booking_id') {
       return { in: () => ({ neq: () => ({ lt: () => overlapChain }) }) }
     }

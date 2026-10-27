@@ -36,6 +36,8 @@ export type FohBooking = {
   requires_accessible_table?: boolean
   /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first; null when none were recorded. */
   christmas_course_counts?: number[] | null
+  /** The latest party-size change the guest made through their manage link (BK-091). */
+  guest_party_size_change?: { at: string; from: number | null; to: number | null } | null
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]

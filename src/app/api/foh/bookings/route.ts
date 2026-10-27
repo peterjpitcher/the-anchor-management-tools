@@ -1814,7 +1814,8 @@ async function createFohTableBooking(
           },
         })
         return NextResponse.json(
-          { error: 'Booking was created but cash deposit confirmation failed. Please reopen the booking and retry.' },
+          // A manager can now record it from the booking (BK-045); "reopen and retry" was impossible.
+          { error: 'Booking was created but the cash deposit was not recorded. Open the booking and use "Deposit taken at the bar" to record it.' },
           { status: 500 }
         )
       }
@@ -1865,7 +1866,7 @@ async function createFohTableBooking(
         })
         return NextResponse.json(
           {
-            error: 'Booking confirmed but deposit amount could not be locked. Please reopen the booking and lock the deposit manually.',
+            error: 'Booking confirmed and the cash recorded, but the deposit amount could not be locked on the booking. Tell a manager before the booking is changed.',
             tableBookingId: bookingResult.table_booking_id,
           },
           { status: 500 }

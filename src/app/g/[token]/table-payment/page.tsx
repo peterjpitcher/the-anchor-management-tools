@@ -202,7 +202,10 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         description: `Table booking deposit – ${preview.partySize} guests`,
         amount: preview.totalAmount,
         currency: preview.currency,
-        requestId: `tb-deposit-${preview.tableBookingId}`,
+        // The amount is part of the key: PayPal answers a repeated request id with the order it
+        // made first, so a deposit re-priced after a party-size change (D20) would otherwise
+        // get the old order back and the capture would be refused as the wrong amount.
+        requestId: `tb-deposit-${preview.tableBookingId}-${Math.round(preview.totalAmount * 100)}`,
       })
     } catch {
       return (
@@ -290,6 +293,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         currency={preview.currency}
         partySize={preview.partySize}
         holdExpiresAt={preview.holdExpiresAt}
+        stillBooked={preview.stillBooked}
         showCancelledMessage={state === 'cancelled'}
         paypalClientId={paypalClientId}
         paypalEnvironment={paypalEnvironment}

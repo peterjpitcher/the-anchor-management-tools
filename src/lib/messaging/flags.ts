@@ -50,6 +50,9 @@ export const MESSAGING_FLAG_KEYS = [
   // The one reminder before an unpaid table deposit hold runs out (BK-088, owner decision D16, 26
   // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
   'table_deposit_hold_reminder',
+  // The amended-booking notice when staff change a table booking's party size (BK-091, 26 October
+  // 2026). New guest wording for this trigger, so it stays off until the owner has read it.
+  'table_party_size_change_notice',
   // The refund notice when a table deposit is paid after the booking was cancelled and is refunded
   // on its own (BK-047, owner decision D19, 26 October 2026). It reuses the staff refund notice's
   // words, but no staff click sends it, so it stays off until the owner switches it on.

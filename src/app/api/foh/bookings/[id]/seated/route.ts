@@ -33,7 +33,7 @@ export async function POST(
       .maybeSingle()
     return NextResponse.json(
       {
-        error: 'Booking cannot be seated until the required deposit is paid.',
+        error: 'Booking cannot be seated until the required deposit is paid. A manager can record it as taken at the bar, or waive it, from the booking.',
         booking: currentBooking ?? null
       },
       { status: 409 }
