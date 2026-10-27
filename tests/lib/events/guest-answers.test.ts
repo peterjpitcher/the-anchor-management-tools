@@ -122,3 +122,17 @@ describe('generateKitchenSummaryPdf', () => {
     expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
   })
 })
+
+// Codex review on PR 274: a guest saved with their name to follow keeps their answers on the
+// kitchen summary, named by ticket.
+describe('guests whose names are to follow', () => {
+  it('lists their answers and missing answers against the ticket', () => {
+    const summary = summariseGuestAnswers([{ id: 'b1', reference: 'ANC-1', bookerName: 'Pat Booker', attendees: [
+      { id: 'a', name: '', ticket_type_id: null, answers: [{ question_id: 'q1', label: 'Any allergies?', type: 'text', required: true, value: 'Peanuts' }] },
+      { id: 'b', name: ' ', ticket_type_id: null, answers: [{ question_id: 'q1', label: 'Any allergies?', type: 'text', required: true, value: '' }] },
+    ] }])
+    expect(summary.questions[0].answered).toEqual([{ reference: 'ANC-1', guestName: 'Ticket 1 (name to follow)', value: 'Peanuts' }])
+    expect(summary.questions[0].missingRequired).toEqual([{ reference: 'ANC-1', guestName: 'Ticket 2 (name to follow)' }])
+  })
+})
+

@@ -95,23 +95,26 @@ export function summariseGuestAnswers(bookings: GuestAnswersBooking[], currentQu
   let guests = 0
   const notes: GuestAnswersSummary['notes'] = []
   for (const booking of bookings) {
-    for (const attendee of storedAttendees(booking.attendees)) {
+    for (const [index, attendee] of storedAttendees(booking.attendees).entries()) {
       guests += 1
+      // A guest saved with their name still to follow (BK-011) is named by their ticket, so the
+      // kitchen can still tie an allergy to a booking and a seat.
+      const guestName = attendee.name.trim() || `Ticket ${index + 1} (name to follow)`
       const askedIds = new Set<string>()
       for (const answer of Array.isArray(attendee.answers) ? attendee.answers : []) {
         if (!answer?.question_id) continue
         askedIds.add(answer.question_id)
         const summary = questionFor(answer.question_id, String(answer.label ?? ''), Boolean(answer.required))
         const value = typeof answer.value === 'string' ? answer.value.trim() : ''
-        if (value) summary.answered.push({ reference: booking.reference, guestName: attendee.name, value: displayAnswer(answer.type, value) })
-        else if (answer.required && !attendee.details_removed_at) summary.missingRequired.push({ reference: booking.reference, guestName: attendee.name })
+        if (value) summary.answered.push({ reference: booking.reference, guestName, value: displayAnswer(answer.type, value) })
+        else if (answer.required && !attendee.details_removed_at) summary.missingRequired.push({ reference: booking.reference, guestName })
       }
       // A required question added after this guest booked is not in their snapshot at all, so it
       // is missing too (unless their details were removed under the retention rule).
       if (!attendee.details_removed_at) {
         for (const question of currentQuestions) {
           if (question.required && !askedIds.has(question.id)) {
-            questionFor(question.id, question.label, question.required).missingRequired.push({ reference: booking.reference, guestName: attendee.name })
+            questionFor(question.id, question.label, question.required).missingRequired.push({ reference: booking.reference, guestName })
           }
         }
       }
