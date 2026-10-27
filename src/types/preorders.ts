@@ -61,6 +61,12 @@ export const PREORDER_SELECTION_COURSE_LABELS: Record<PreorderSelectionCourse, s
 export const PREORDER_ADDON_GUEST_NOTE =
   'Add-ons are extras on top of your meal. You pay for them on your bill at the pub on the day, not now.'
 
+/**
+ * What a guest is shown for a dish with no allergens recorded (BK-060). The exact words come from
+ * the website's docs/SSOT.md, "Allergen wording": missing data means unknown, never "no allergens".
+ */
+export const PREORDER_ALLERGEN_FALLBACK = 'See menu or contact us for allergen information'
+
 /** The same fact, said to staff. Shown wherever an add-on total appears on a staff or kitchen view. */
 export const PREORDER_ADDON_STAFF_NOTE =
   'Add-ons are charged on the night. Nothing has been taken online for them, so put them on the bill.'
@@ -179,6 +185,12 @@ export type PreorderOrder = {
   partySize: number
   /** The booking's own snapshot: this guest accepted a seasonal offer that requires a pre-order. */
   requiresPreorder: boolean
+  /**
+   * Every guest has a seat for a name and a dietary note: a booking that requires a pre-order, or a
+   * Christmas booking with courses recorded, 1 course guests included (BK-148, owner decision D23).
+   * A Christmas party all on 1 course has seats but nothing to pre-order.
+   */
+  hasGuestSeats: boolean
   bookingAllergies: string[]
   periodId: string | null
   periodName: string | null

@@ -97,6 +97,19 @@ describe('resolveEventPaymentException', () => {
     expect(sendEventBookingCancelledEmail).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: BOOKING, refundStatus: 'succeeded', paymentTaken: true }))
   })
 
+  it('counts a fully refunded extra charge as taken, and its refund once', async () => {
+    const db = seed()
+    db.tables.payments.push(
+      { id: 'payment-2', event_booking_id: BOOKING, charge_type: 'seat_increase', status: 'refunded', amount: 40 },
+      { id: 'refund-2', event_booking_id: BOOKING, charge_type: 'refund', status: 'refunded', amount: 40 },
+    )
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'succeeded', amount: 80, currency: 'GBP' })
+
+    await resolveEventPaymentException({ exceptionId: EXCEPTION, resolution: 'refunded' })
+
+    expect(processEventRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ amount: 80 }))
+  })
+
   it('refunds only what is left after an earlier partial refund', async () => {
     const db = seed()
     db.tables.payments.push({ id: 'refund-1', event_booking_id: BOOKING, charge_type: 'refund', status: 'refunded', amount: 20 })

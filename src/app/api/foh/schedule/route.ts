@@ -3,7 +3,8 @@ import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { whenLondonClockReaches } from '@/lib/dateUtils'
-import { privateBookingOccupiesSpace } from '@/lib/private-bookings/occupies-space'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads, type DayLoad } from '@/services/day-load'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -85,58 +86,72 @@ function toLondonIso(dateIso: string | null, clock: string | null, fallbackClock
   return whenLondonClockReaches(dateIso, normalizedClock)?.toISOString() ?? null
 }
 
-function addMinutesToClock(clock: string, minutesToAdd: number): string {
-  const [hoursRaw, minutesRaw] = clock.split(':')
-  const hours = Number(hoursRaw)
-  const minutes = Number(minutesRaw)
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return '23:59'
-  }
-
-  const total = (hours * 60 + minutes + minutesToAdd + 1440) % 1440
-  const nextHours = Math.floor(total / 60)
-  const nextMinutes = total % 60
-  return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`
-}
-
-function computePrivateBookingWindow(privateBooking: any): { startIso: string; endIso: string } | null {
-  const eventDate =
-    typeof privateBooking?.event_date === 'string' ? privateBooking.event_date : null
-  const setupDate =
-    typeof privateBooking?.setup_date === 'string' ? privateBooking.setup_date : null
-  const startTime = normalizeClock(privateBooking?.start_time) || '12:00'
-  const setupTime = normalizeClock(privateBooking?.setup_time)
-  const endTime = normalizeClock(privateBooking?.end_time)
-
-  const startDate = setupDate && isIsoDate(setupDate) ? setupDate : eventDate
-  const startIso = toLondonIso(startDate, setupTime || startTime, startTime)
-  if (!startIso) return null
-
-  const fallbackEnd = addMinutesToClock(startTime, 240)
-  const endIsoRaw = toLondonIso(eventDate, endTime || fallbackEnd, fallbackEnd)
-  if (!endIsoRaw) return null
-
-  const startMs = Date.parse(startIso)
-  let endMs = Date.parse(endIsoRaw)
-
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+/** The day's load, or null when it cannot be read (the screen then says the figures are missing). */
+async function loadFohDayLoad(date: string): Promise<DayLoad | null> {
+  try {
+    const loads = await loadDayLoads(date, date, { db: createAdminClient(), withHours: false })
+    return loads.get(date) ?? null
+  } catch (error) {
+    console.error('Failed to load the day load for FOH', error)
     return null
   }
+}
 
-  // An end at or before the start is the same clock time on the next day. Read off the clock
-  // on that date rather than adding 24 hours, which is an hour out across a clock change.
-  if (endMs <= startMs) {
-    const nextDayEndIso = toLondonIso(shiftIsoDate(eventDate as string, 1), endTime || fallbackEnd, fallbackEnd)
-    if (!nextDayEndIso) return null
-    endMs = Date.parse(nextDayEndIso)
+type PrivateHireBlockRow = {
+  table_id: string
+  blocked_from: string
+  blocked_until: string
+  booking: {
+    id: string
+    customer_name: string | null
+    customer_first_name: string | null
+    customer_last_name: string | null
+    event_type: string | null
+    start_time: string | null
+    guest_count: number | null
   }
+}
 
-  const bufferedStartMs = startMs - 30 * 60 * 1000
-  const bufferedEndMs = endMs + 30 * 60 * 1000
+/**
+ * The tables private hires take off sale between two instants, with each hire's name and size.
+ * Never throws: a failed read comes back as an error with no blocks, so the screen can say so.
+ */
+async function loadPrivateHireTableBlocks(
+  fromIso: string,
+  untilIso: string,
+): Promise<{ blocks: PrivateHireBlockRow[]; error: unknown | null }> {
+  try {
+    const admin = createAdminClient()
+    const { data: blocks, error } = await admin.rpc('private_hire_table_blocks', {
+      p_window_start: fromIso,
+      p_window_end: untilIso,
+    })
+    if (error) return { blocks: [], error }
 
-  return {
-    startIso: new Date(bufferedStartMs).toISOString(),
-    endIso: new Date(bufferedEndMs).toISOString()
+    const rows = (blocks ?? []) as Array<{ private_booking_id: string; table_id: string; blocked_from: string; blocked_until: string }>
+    const bookingIds = Array.from(new Set(rows.map((row) => row.private_booking_id)))
+    if (bookingIds.length === 0) return { blocks: [], error: null }
+
+    const { data: bookings, error: bookingsError } = await admin
+      .from('private_bookings')
+      .select('id, customer_name, customer_first_name, customer_last_name, event_type, start_time, guest_count')
+      .in('id', bookingIds)
+    if (bookingsError) return { blocks: [], error: bookingsError }
+
+    const bookingById = new Map(
+      ((bookings ?? []) as PrivateHireBlockRow['booking'][]).map((booking) => [booking.id, booking]),
+    )
+    return {
+      blocks: rows.flatMap((row) => {
+        const booking = bookingById.get(row.private_booking_id)
+        return booking
+          ? [{ table_id: row.table_id, blocked_from: row.blocked_from, blocked_until: row.blocked_until, booking }]
+          : []
+      }),
+      error: null,
+    }
+  } catch (error) {
+    return { blocks: [], error }
   }
 }
 
@@ -160,7 +175,7 @@ type PrivateBlockForTable = {
     booking_reference: string
     guest_name: string
     booking_time: string
-    party_size: null
+    party_size: number | null
     booking_type: 'private'
     booking_purpose: 'private_hire'
     status: 'private_block'
@@ -368,13 +383,11 @@ export async function GET(request: NextRequest) {
     )
   )
   const bookingIds = bookings.map((booking) => booking.id)
-  const privateRangeStart = shiftIsoDate(date, -1)
-  const privateRangeEnd = shiftIsoDate(date, 1)
   const scheduleStartIso = fromZonedTime(`${date}T00:00:00`, 'Europe/London').toISOString()
   const scheduleEndIso = fromZonedTime(`${shiftIsoDate(date, 1)}T06:00:00`, 'Europe/London').toISOString()
 
   // Run follow-up queries in parallel (they only depend on the initial results, not each other)
-  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult] = await Promise.all([
+  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult, dayLoadResult] = await Promise.all([
     eventIds.length > 0
       ? supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null },
@@ -383,13 +396,10 @@ export async function GET(request: NextRequest) {
           .select('table_booking_id, table_id, start_datetime, end_datetime')
           .in('table_booking_id', bookingIds)
       : { data: [], error: null },
-    supabase.from('private_bookings')
-      .select(
-        'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time, guest_count, deposit_paid_date, hold_expiry, date_tbd'
-      )
-      .in('status', ['draft', 'confirmed'])
-      .gte('event_date', privateRangeStart)
-      .lte('event_date', privateRangeEnd),
+    // The tables each private hire takes off sale, and when, from the database: the same list the
+    // booking engine refuses tables from (BK-159), so the screen cannot show a table free that a
+    // booking would be refused. Service-role only, so the admin client, after the FOH check above.
+    loadPrivateHireTableBlocks(scheduleStartIso, scheduleEndIso),
     supabase.from('event_communal_seat_allocations')
       .select(`
         id,
@@ -426,7 +436,9 @@ export async function GET(request: NextRequest) {
       `)
       .eq('event_seating_type', 'standing')
       .eq('event.date', date)
-      .in('status', ['confirmed', 'pending_payment'])
+      .in('status', ['confirmed', 'pending_payment']),
+    // Who is in tonight, counted the same way as the dashboard, calendar and rota (BK-075).
+    loadFohDayLoad(date),
   ])
 
   const eventNameById = new Map<string, string>()
@@ -463,117 +475,46 @@ export async function GET(request: NextRequest) {
   }
 
   const privateBlocksByTableId = new Map<string, PrivateBlockForTable['block'][]>()
-  // Only hires that hold their room block tables: the database rule (BK-005, BK-160), so an
-  // undated enquiry or a lapsed unpaid draft no longer shows as a block.
-  const privateBookingsRows = (privateBookingsResult.data as any[] | null)?.filter((row) =>
-    privateBookingOccupiesSpace(row)
-  ) ?? null
-  const privateBookingsError = privateBookingsResult.error
-
-  if (!privateBookingsError && Array.isArray(privateBookingsRows) && privateBookingsRows.length > 0) {
-    const privateBookingIds = privateBookingsRows.map((row: any) => row.id).filter(Boolean)
-
-    const [privateBookingItemsResult, spaceAreaLinksResult] = await Promise.all([
-      supabase.from('private_booking_items')
-        .select('booking_id, space_id, item_type')
-        .eq('item_type', 'space')
-        .in('booking_id', privateBookingIds)
-        .not('space_id', 'is', null),
-      supabase.from('venue_space_table_areas')
-        .select('venue_space_id, table_area_id')
-    ])
-
-    if (!privateBookingItemsResult.error && !spaceAreaLinksResult.error) {
-      const areaIdsBySpaceId = new Map<string, Set<string>>()
-      for (const row of (spaceAreaLinksResult.data || [])) {
-        const venueSpaceId = row?.venue_space_id
-        const tableAreaId = row?.table_area_id
-        if (!venueSpaceId || !tableAreaId) continue
-
-        const current = areaIdsBySpaceId.get(venueSpaceId) || new Set<string>()
-        current.add(tableAreaId)
-        areaIdsBySpaceId.set(venueSpaceId, current)
-      }
-
-      const spaceIdsByPrivateBookingId = new Map<string, Set<string>>()
-      for (const row of (privateBookingItemsResult.data || [])) {
-        const bookingId = row?.booking_id
-        const spaceId = row?.space_id
-        if (!bookingId || !spaceId) continue
-
-        const current = spaceIdsByPrivateBookingId.get(bookingId) || new Set<string>()
-        current.add(spaceId)
-        spaceIdsByPrivateBookingId.set(bookingId, current)
-      }
-
-      const tableIdsByAreaId = new Map<string, string[]>()
-      for (const table of tables) {
-        if (!table.area_id) continue
-        const current = tableIdsByAreaId.get(table.area_id) || []
-        current.push(table.id)
-        tableIdsByAreaId.set(table.area_id, current)
-      }
-
-      for (const privateBooking of privateBookingsRows as any[]) {
-        const bookingWindow = computePrivateBookingWindow(privateBooking)
-        if (!bookingWindow) continue
-
-        const bookingSpaceIds = spaceIdsByPrivateBookingId.get(privateBooking.id)
-        if (!bookingSpaceIds || bookingSpaceIds.size === 0) continue
-
-        const areaIds = new Set<string>()
-        for (const spaceId of bookingSpaceIds) {
-          const mappedAreas = areaIdsBySpaceId.get(spaceId)
-          if (!mappedAreas) continue
-          for (const areaId of mappedAreas) {
-            areaIds.add(areaId)
-          }
-        }
-
-        if (areaIds.size === 0) continue
-
-        const guestName = buildPrivateBookingGuestName(privateBooking)
-        const bookingReference = `PB-${String(privateBooking.id).slice(0, 8).toUpperCase()}`
-        const noteParts = ['Private booking']
-        if (privateBooking.event_type) {
-          noteParts.push(String(privateBooking.event_type))
-        }
-
-        for (const areaId of areaIds) {
-          const tableIds = tableIdsByAreaId.get(areaId) || []
-          for (const tableId of tableIds) {
-            const block = {
-              id: `private-${privateBooking.id}-${tableId}`,
-              booking_reference: bookingReference,
-              guest_name: guestName,
-              booking_time: normalizeClock(privateBooking.start_time) || '00:00',
-              // The hire's own guest count, so FOH can see the size of the party (BK-007).
-              party_size: typeof privateBooking.guest_count === 'number' ? privateBooking.guest_count : null,
-              booking_type: 'private' as const,
-              booking_purpose: 'private_hire' as const,
-              status: 'private_block' as const,
-              notes: noteParts.join(' · '),
-              seated_at: null,
-              left_at: null,
-              no_show_at: null,
-              assigned_table_ids: [tableId],
-              assignment_count: 1,
-              start_datetime: bookingWindow.startIso,
-              end_datetime: bookingWindow.endIso,
-              is_private_block: true as const,
-              private_booking_id: privateBooking.id,
-              high_chair_count: 0,
-              is_outside_seating: false,
-              requires_accessible_table: false
-            }
-
-            const current = privateBlocksByTableId.get(tableId) || []
-            current.push(block)
-            privateBlocksByTableId.set(tableId, current)
-          }
-        }
-      }
+  // When the hires cannot be read the screen says so (BK-159): it used to draw no blocks at all,
+  // which looked like a night with every table free.
+  const privateHiresUnavailable = Boolean(privateBookingsResult.error)
+  for (const block of privateBookingsResult.blocks) {
+    if (!visibleTableIds.has(block.table_id)) continue
+    const privateBooking = block.booking
+    const guestName = buildPrivateBookingGuestName(privateBooking)
+    const bookingReference = `PB-${String(privateBooking.id).slice(0, 8).toUpperCase()}`
+    const noteParts = ['Private booking']
+    if (privateBooking.event_type) {
+      noteParts.push(String(privateBooking.event_type))
     }
+
+    const current = privateBlocksByTableId.get(block.table_id) || []
+    current.push({
+      id: `private-${privateBooking.id}-${block.table_id}`,
+      booking_reference: bookingReference,
+      guest_name: guestName,
+      booking_time: normalizeClock(privateBooking.start_time) || '00:00',
+      // The hire's own guest count, so FOH can see the size of the party (BK-007).
+      party_size: typeof privateBooking.guest_count === 'number' ? privateBooking.guest_count : null,
+      booking_type: 'private' as const,
+      booking_purpose: 'private_hire' as const,
+      status: 'private_block' as const,
+      notes: noteParts.join(' · '),
+      seated_at: null,
+      left_at: null,
+      no_show_at: null,
+      assigned_table_ids: [block.table_id],
+      assignment_count: 1,
+      // Including the time to set up and clear down, and the turnaround either side.
+      start_datetime: block.blocked_from,
+      end_datetime: block.blocked_until,
+      is_private_block: true as const,
+      private_booking_id: privateBooking.id,
+      high_chair_count: 0,
+      is_outside_seating: false,
+      requires_accessible_table: false
+    })
+    privateBlocksByTableId.set(block.table_id, current)
   }
 
   const tableCapacityById = new Map<string, number>()
@@ -723,6 +664,9 @@ export async function GET(request: NextRequest) {
           deposit_amount_locked: booking.deposit_amount_locked ?? null,
           hold_expires_at: booking.hold_expires_at || null,
           notes: combinedNotes || null,
+          // The guest's own notes, without the event label, for the Allergy and Note marker and the
+          // notes editor (BK-052).
+          special_requirements: booking.special_requirements || null,
           seated_at: booking.seated_at || null,
           left_at: booking.left_at || null,
           no_show_at: booking.no_show_at || null,
@@ -801,6 +745,7 @@ export async function GET(request: NextRequest) {
               .filter((part: string | null) => typeof part === 'string' && part.trim().length > 0)
               .join(' · ')
           : booking.special_requirements || null,
+      special_requirements: booking.special_requirements || null,
       seated_at: booking.seated_at || null,
       left_at: booking.left_at || null,
       no_show_at: booking.no_show_at || null,
@@ -905,7 +850,9 @@ export async function GET(request: NextRequest) {
       trading_day_now: { date: tradingDayNow.date, until: tradingDayNow.until.toISOString() },
       lanes,
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
-      outside_bookings: outsideBookings
+      outside_bookings: outsideBookings,
+      private_hires_unavailable: privateHiresUnavailable,
+      day_load: dayLoadResult
     }
   })
 }

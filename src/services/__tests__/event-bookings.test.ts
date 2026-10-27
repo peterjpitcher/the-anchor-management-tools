@@ -170,6 +170,26 @@ describe('EventBookingService.createBooking', () => {
 
   // ── RPC parameter forwarding ────────────────────────────────────────────────
 
+  // BK-134: only the exact codes for a changed question set mean "questions changed"; a fault
+  // that merely mentions a guest, a question or an answer is not dressed up as one.
+  it.each([
+    ['unknown_attendee_question', 'questions_changed'],
+    ['attendee_answer_required', 'questions_changed'],
+    ['invalid_attendee_answer', 'questions_changed'],
+    ['attendee_count_mismatch', 'guest_details_invalid'],
+    ['invalid_attendee_id', 'guest_details_invalid'],
+    ['attendee_ticket_quantity_mismatch', 'guest_details_invalid'],
+    ['column "answer_text" of relation "bookings" does not exist', null],
+    ['null value in column "attendees" violates not-null constraint', null],
+  ])('classifies the booking function error %s as %s', async (message, expected) => {
+    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v08: { data: null, error: { message } } } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, expectedTotal: 80, shouldSendSms: true })
+    expect(result.rpcFailed).toBe(true)
+    expect(result.rpcErrorCode).toBe(expected)
+  })
+
   it.each(['price_changed', 'attendee_answer_required'])('rolls a failed atomic guest booking up without sending messages: %s', async (message) => {
     const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v08: { data: null, error: { message } } } })
     vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)

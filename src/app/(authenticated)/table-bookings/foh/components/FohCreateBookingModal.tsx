@@ -43,6 +43,8 @@ export type CreateForm = {
   seating_preference: 'seated' | 'standing'
   sunday_deposit_method: 'payment_link' | 'cash'
   notes: string
+  /** Allergies, comma separated, saved to their own field (BK-052). */
+  allergies: string
   waive_deposit: boolean
   is_venue_event: boolean
   bypass_pacing: boolean
@@ -758,6 +760,16 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               Select event
             </button>
           </div>
+        )}
+
+        {createForm.purpose !== 'event' && (
+          <Input
+            label="Allergies (optional)"
+            hint="Separate each one with a comma, for example: peanuts, shellfish."
+            value={createForm.allergies}
+            onChange={(event) => onSetCreateForm((current) => ({ ...current, allergies: event.target.value }))}
+            maxLength={600}
+          />
         )}
 
         {createForm.purpose !== 'event' && (

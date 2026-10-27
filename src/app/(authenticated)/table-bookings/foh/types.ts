@@ -1,3 +1,5 @@
+import type { DayLoad } from '@/services/day-load'
+
 export type FohBooking = {
   id: string
   booking_reference: string | null
@@ -14,6 +16,8 @@ export type FohBooking = {
   deposit_amount_locked?: number | null
   hold_expires_at?: string | null
   notes: string | null
+  /** The guest's own notes, without the event label that `notes` may carry (BK-052). */
+  special_requirements?: string | null
   seated_at?: string | null
   left_at?: string | null
   no_show_at?: string | null
@@ -78,6 +82,12 @@ export type FohScheduleResponse = {
     // Outside bookings (no physical table) — rendered as cards via the Outside view
     // toggle. Optional so existing schedule fixtures keep compiling; consumers read `?? []`.
     outside_bookings?: FohBooking[]
+    // True when private hires could not be read, so their tables are not drawn as blocked
+    // (BK-159). Optional so existing fixtures keep compiling.
+    private_hires_unavailable?: boolean
+    // Who is in that day, counted as every other screen counts it (BK-075); null when it could
+    // not be read. Optional so existing fixtures keep compiling.
+    day_load?: DayLoad | null
   }
   error?: string
 }
@@ -91,6 +101,8 @@ export type FohCreateBookingResponse = {
     christmas_courses_saved?: boolean
     /** False when a confirmation was due and none reached the guest (BK-162). */
     notification_sent?: boolean | null
+    /** Sent only when allergies were sent; false means the booking exists without them. */
+    allergies_saved?: boolean
     state: 'confirmed' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null

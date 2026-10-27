@@ -122,18 +122,19 @@ export async function reportPaymentAlert(input: {
  * @param cronName - The name of the cron job that failed (e.g. 'parking-notifications')
  * @param error - The error that caused the failure
  * @param context - Optional additional context to include in the alert (will be PII-redacted)
+ * @returns true when the email was accepted, false when it was not sent (no inbox, or the send failed)
  */
 export async function reportCronFailure(
   cronName: string,
   error: unknown,
   context?: Record<string, unknown>
-): Promise<void> {
+): Promise<boolean> {
   const alertEmail = process.env.CRON_ALERT_EMAIL
   if (!alertEmail) {
     console.warn(
       `[cron-alert] CRON_ALERT_EMAIL not configured; skipping failure alert for ${cronName}`
     )
-    return
+    return false
   }
 
   const errorMessage = getErrorMessage(error)
@@ -189,7 +190,9 @@ export async function reportCronFailure(
         `[cron-alert] Failed to send failure alert for ${cronName}:`,
         result.error
       )
+      return false
     }
+    return true
   } catch (sendError) {
     // Never let the alert mechanism itself throw — the original cron error
     // must propagate normally.
@@ -197,5 +200,6 @@ export async function reportCronFailure(
       `[cron-alert] Exception sending failure alert for ${cronName}:`,
       sendError
     )
+    return false
   }
 }

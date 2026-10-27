@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Badge, Button, Modal } from '@/ds'
+import { Badge, Button, Input, Modal, Textarea } from '@/ds'
+import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
@@ -23,10 +24,14 @@ import {
   postBookingAction,
   getFohTimeChangeBlocker,
 } from '../utils'
+import { staffCancellationBody } from '@/lib/table-bookings/staff-cancellation'
+import { FohCancelBookingConfirm } from './FohCancelBookingConfirm'
 
 type FohBookingDetailModalProps = {
   selectedBookingContext: SelectedBookingContext | null
   canEdit: boolean
+  /** table_bookings manage: may choose the refund amount when cancelling (BK-046). */
+  canChooseRefund?: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
   showNoShowConfirmation: boolean
@@ -51,6 +56,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const {
     selectedBookingContext,
     canEdit,
+    canChooseRefund = false,
     bookingActionInFlight,
     showCancelBookingConfirmation,
     showNoShowConfirmation,
@@ -164,6 +170,16 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
 
         <GuestRequirements booking={selectedBooking} />
 
+        {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
+          // Keyed on the booking so a different booking never inherits half-typed notes.
+          <GuestNotesEditor
+            key={selectedBooking.id}
+            booking={selectedBooking}
+            busy={Boolean(bookingActionInFlight)}
+            onRunAction={onRunAction}
+          />
+        )}
+
         {selectedBooking.is_private_block && (
           <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">
             This block is managed by private-booking area mapping. Edit the private booking or area mapping in settings.
@@ -179,6 +195,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
           <BookingActions
             selectedBooking={selectedBooking}
+            canChooseRefund={canChooseRefund}
             selectedBookingIsOutside={selectedBookingIsOutside}
             bookingActionInFlight={bookingActionInFlight}
             showCancelBookingConfirmation={showCancelBookingConfirmation}
@@ -266,6 +283,77 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
   )
 }
 
+/**
+ * Notes and allergies, changed from the floor (BK-052). A guest often mentions an allergy on
+ * arrival, and FOH-only staff cannot open the back-office booking page where these used to be
+ * the only fields. Allergies go in their own field, so the red flag, the kitchen sheet and the
+ * timeline marker all see them.
+ */
+function GuestNotesEditor({
+  booking,
+  busy,
+  onRunAction,
+}: {
+  booking: FohBooking
+  busy: boolean
+  onRunAction: FohBookingDetailModalProps['onRunAction']
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [notes, setNotes] = React.useState(booking.special_requirements ?? '')
+  const [allergies, setAllergies] = React.useState((booking.allergies ?? []).join(', '))
+
+  if (!open) {
+    return (
+      <Button type="button" variant="secondary" className="min-h-touch w-full" onClick={() => setOpen(true)}>
+        Edit Notes and Allergies
+      </Button>
+    )
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3">
+      <Input
+        label="Allergies"
+        hint="Separate each one with a comma, for example: peanuts, shellfish."
+        value={allergies}
+        maxLength={600}
+        onChange={(event) => setAllergies(event.target.value)}
+      />
+      <Textarea
+        label="Notes"
+        rows={3}
+        maxLength={2000}
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+      />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="secondary" className="min-h-touch" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          className="min-h-touch"
+          disabled={busy}
+          onClick={async () => {
+            const saved = await onRunAction(
+              () =>
+                postBookingAction(`/api/foh/bookings/${booking.id}/notes`, {
+                  notes: notes.trim() || null,
+                  allergies: parseAllergyList(allergies),
+                }),
+              'Notes and allergies saved',
+              'notes',
+            )
+            if (saved) setOpen(false)
+          }}
+        >
+          Save Notes
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // The action grid: full-width tiles at the 44px touch floor (owner decision D6). The
 // destructive two-step actions keep a red outline so they read differently from the rest,
 // and turn solid pale red while their confirm step is open.
@@ -276,6 +364,7 @@ const DANGER_OUTLINE_SELECTED_CLASS = 'border-danger bg-danger-soft'
 // Inner component for the action buttons section
 function BookingActions(props: {
   selectedBooking: FohBooking
+  canChooseRefund: boolean
   selectedBookingIsOutside: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
@@ -301,6 +390,7 @@ function BookingActions(props: {
 }) {
   const {
     selectedBooking,
+    canChooseRefund,
     selectedBookingIsOutside,
     bookingActionInFlight,
     showCancelBookingConfirmation,
@@ -472,43 +562,24 @@ function BookingActions(props: {
       )}
 
       {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
-        <div className="rounded-md border border-danger-border bg-danger-soft px-3 py-2">
-          <p className="text-xs font-semibold text-danger-fg">Confirm cancellation</p>
-          <p className="mt-1 text-xs text-danger-fg">
-            This will mark the booking as cancelled and remove it from active covers.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => onSetShowCancelBookingConfirmation(false)}
-              className="min-h-touch"
-            >
-              Keep booking
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => {
-                void (async () => {
-                  const ok = await onRunAction(
-                    () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/cancel`),
-                    'Booking cancelled',
-                    'cancel'
-                  )
-                  if (ok) onClose()
-                })()
-              }}
-              className="min-h-touch"
-            >
-              {bookingActionInFlight === 'cancel' ? 'Cancelling...' : 'Confirm cancel'}
-            </Button>
-          </div>
-        </div>
+        <FohCancelBookingConfirm
+          key={selectedBooking.id}
+          booking={selectedBooking}
+          canChooseRefund={canChooseRefund}
+          busy={Boolean(bookingActionInFlight)}
+          cancelling={bookingActionInFlight === 'cancel'}
+          onKeep={() => onSetShowCancelBookingConfirmation(false)}
+          onConfirm={(choice) => {
+            void (async () => {
+              const ok = await onRunAction(
+                () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/cancel`, staffCancellationBody(choice)),
+                'Booking cancelled',
+                'cancel'
+              )
+              if (ok) onClose()
+            })()
+          }}
+        />
       )}
 
       {/* Move table, last.
