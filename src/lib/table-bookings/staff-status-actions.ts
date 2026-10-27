@@ -13,6 +13,49 @@ export type StaffStatusBooking = {
   booking_date: string
   booking_time: string
   start_datetime: string | null
+  /** The planned end. 'left' only ever brings it forward, never pushes it later (BK-093). */
+  end_datetime?: string | null
+}
+
+/**
+ * The end time to record when a party leaves: the click time, or the planned end if that is
+ * earlier. Pressing 'left' late must not stretch the booking over the next party (BK-093).
+ */
+export function leftEndDatetime(plannedEndIso: string | null | undefined, nowIso: string): string {
+  const plannedMs = plannedEndIso ? Date.parse(plannedEndIso) : Number.NaN
+  const nowMs = Date.parse(nowIso)
+  if (Number.isFinite(plannedMs) && plannedMs < nowMs) return new Date(plannedMs).toISOString()
+  return nowIso
+}
+
+type AssignmentShortenClient = {
+  from: (table: 'booking_table_assignments') => {
+    update: (values: { end_datetime: string }) => {
+      eq: (column: string, value: string) => {
+        lt: (column: string, value: string) => {
+          gt: (column: string, value: string) => PromiseLike<{ error: unknown }>
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Frees a leaving party's tables from now. Only assignments that started already and are planned
+ * to end later are cut back to now; one that already ended earlier is left alone, so the update
+ * can never overlap the next party or a private hire and be refused (BK-093).
+ */
+export async function shortenAssignmentsOnLeave(
+  supabase: unknown,
+  bookingId: string,
+  nowIso: string,
+): Promise<{ error: unknown }> {
+  const client = supabase as AssignmentShortenClient
+  return client.from('booking_table_assignments')
+    .update({ end_datetime: nowIso })
+    .eq('table_booking_id', bookingId)
+    .lt('start_datetime', nowIso)
+    .gt('end_datetime', nowIso)
 }
 
 type StaffStatusTransitionPlan = {
@@ -190,8 +233,9 @@ export function buildStaffStatusTransitionPlan(input: {
       ok: true,
       plan: {
         update: {
+          // left_at is the real click time; the end only ever moves earlier (BK-093).
           left_at: input.nowIso,
-          end_datetime: input.nowIso,
+          end_datetime: leftEndDatetime(input.booking.end_datetime, input.nowIso),
           updated_at: input.nowIso,
         },
         select: 'id, status, left_at, end_datetime',

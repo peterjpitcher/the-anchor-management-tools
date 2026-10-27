@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
+import { leftEndDatetime, shortenAssignmentsOnLeave } from '@/lib/table-bookings/staff-status-actions'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -36,17 +38,18 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
-  const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
-    .update({ end_datetime: nowIso })
-    .eq('table_booking_id', id)
-    .lt('start_datetime', nowIso)
-
+  // Only ever shortens the table times, so a late 'left' cannot overlap the next party or a
+  // private hire and be refused; and a failure there never leaves the party 'seated' (BK-093).
+  const { error: assignmentError } = await shortenAssignmentsOnLeave(auth.supabase, id, nowIso)
   if (assignmentError) {
-    return NextResponse.json({ error: 'Failed to update booking table assignment end time' }, { status: 500 })
+    logger.error('Could not shorten table assignments when marking a booking as left', {
+      error: new Error(String((assignmentError as { message?: unknown })?.message ?? assignmentError)),
+      metadata: { bookingId: id },
+    })
   }
 
   const { data, error } = await auth.supabase.from('table_bookings')
-    .update({ left_at: nowIso, end_datetime: nowIso, updated_at: nowIso })
+    .update({ left_at: nowIso, end_datetime: leftEndDatetime(booking.end_datetime, nowIso), updated_at: nowIso })
     .eq('id', id)
     .eq('status', booking.status)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')

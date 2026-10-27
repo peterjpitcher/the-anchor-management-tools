@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Modal, Button } from '@/ds'
 import { getDueChecklistPrompts, type DuePrompt } from '@/app/actions/checklists'
+import { isStaleServerActionError, reloadStalePage } from '@/lib/foh/stale-page'
 
 // Mid-shift prompt (spec 9.2). Mounted on the FOH screen. Polls the server every 60s for
 // pending checks whose window has opened. getDueChecklistPrompts() returns [] unless both
@@ -104,8 +105,10 @@ export function ChecklistMidShiftPrompt() {
         // Defer opening while typing/hidden; keep the prompt owed and retry next tick.
         if (!openRef.current && isGuarded()) return
         setOpen(true)
-      } catch {
-        /* swallow: never throw from the polling loop */
+      } catch (error) {
+        // Never throw from the polling loop. But an action this page no longer knows means the
+        // device is running an old release: reload it so the prompts come back (BK-096).
+        if (isStaleServerActionError(error)) reloadStalePage()
       }
     }
 
