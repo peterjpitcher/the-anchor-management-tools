@@ -1,4 +1,4 @@
--- Rollback for 20261027193337_event_guest_phone_and_details_to_follow.sql.
+-- Rollback for 20261027232730_event_guest_phone_and_details_to_follow.sql.
 --
 -- The migration only adds create_event_booking_v09 and
 -- create_event_booking_with_attendees_and_requests_v02; v08 and the v01 wrapper were never
