@@ -4,7 +4,7 @@
 BK-164 (customer bookings review of 24 October 2026): managers can merge duplicate customers.
 The customers table and the tables that point at it are fixtures with production's columns,
 foreign keys and unique indexes (read 27 October 2026), and the suppression list migration
-(20261027154844) is loaded first because the merge writes to it.
+(20261027180333) is loaded first because the merge writes to it.
 
 Against that baseline the defect is shown: a guest with a new number has two records, and the
 kept one cannot be given the duplicate's email because the unique index refuses it. Then the
@@ -26,8 +26,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-SUPPRESSIONS = ROOT / 'supabase/migrations/20261027154844_customer_contact_suppressions.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261027154845_merge_customers.sql'
+SUPPRESSIONS = ROOT / 'supabase/migrations/20261027180333_customer_contact_suppressions.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027232352_merge_customers.sql'
 ROLLBACK = ROOT / 'tasks/merge-customers/rollback.sql'
 
 KEEP = '00000000-0000-0000-0000-00000000000a'

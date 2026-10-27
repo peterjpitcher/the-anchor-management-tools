@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the release 28 data tidy (20261027154849_retire_old_booking_rows) in an isolated socket-only
+"""Run the release 28 data tidy (20261027232614_retire_old_booking_rows) in an isolated socket-only
 PostgreSQL database.
 
 Owner decision D36 (customer bookings review of 24 October 2026): BK-223, BK-224, BK-166 and
@@ -25,7 +25,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261027154849_retire_old_booking_rows.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027232614_retire_old_booking_rows.sql'
 ROLLBACK = ROOT / 'tasks/retire-old-booking-rows/rollback.sql'
 
 UUID = r"'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'"

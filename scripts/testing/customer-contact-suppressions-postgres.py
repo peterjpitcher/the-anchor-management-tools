@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261027154844_customer_contact_suppressions.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027180333_customer_contact_suppressions.sql'
 ROLLBACK = ROOT / 'tasks/customer-contact-suppressions/rollback.sql'
 
 SETUP = r"""

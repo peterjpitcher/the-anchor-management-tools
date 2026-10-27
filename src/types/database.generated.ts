@@ -3532,6 +3532,20 @@ export type Database = {
             foreignKeyName: "customers_merged_into_customer_id_fkey"
             columns: ["merged_into_customer_id"]
             isOneToOne: false
+            referencedRelation: "customer_consent_legacy_gaps"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_messaging_health"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
@@ -21912,7 +21926,37 @@ export type Database = {
         }
         Returns: Json
       }
+      create_event_booking_v09: {
+        Args: {
+          p_attendees: Json
+          p_customer_id: string
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes: number
+          p_seating_preference: string
+          p_seats: number
+          p_source: string
+          p_ticket_selections: Json
+        }
+        Returns: Json
+      }
       create_event_booking_with_attendees_and_requests_v01: {
+        Args: {
+          p_attendees?: Json
+          p_customer_id: string
+          p_dining_request?: string
+          p_early_arrival_request?: boolean
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes?: number
+          p_seating_preference?: string
+          p_seats: number
+          p_source?: string
+          p_ticket_selections?: Json
+        }
+        Returns: Json
+      }
+      create_event_booking_with_attendees_and_requests_v02: {
         Args: {
           p_attendees?: Json
           p_customer_id: string

@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027154849_retire_old_booking_rows.sql.
+-- Rollback for supabase/migrations/20261027232614_retire_old_booking_rows.sql.
 -- Puts back every value the migration changed, from the two backup tables it wrote, then drops
 -- them: the 6 payment holds (status, consumed_at, released_at, updated_at), the 9 ledger rows
 -- (status 'pending', metadata, updated_at) and payments_status_check without 'void', the 30 table
