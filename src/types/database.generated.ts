@@ -16157,6 +16157,75 @@ export type Database = {
         }
         Relationships: []
       }
+      retired_pending_bookings_20261027: {
+        Row: {
+          booking_id: string | null
+          confirmed_at: string | null
+          created_at: string | null
+          customer_id: string | null
+          event_id: string
+          expires_at: string
+          id: string
+          initiated_by_api_key: string | null
+          metadata: Json | null
+          mobile_number: string
+          seats: number | null
+          token: string
+          updated_at: string | null
+        }
+        Insert: {
+          booking_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          event_id: string
+          expires_at: string
+          id: string
+          initiated_by_api_key?: string | null
+          metadata?: Json | null
+          mobile_number: string
+          seats?: number | null
+          token: string
+          updated_at?: string | null
+        }
+        Update: {
+          booking_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          event_id?: string
+          expires_at?: string
+          id?: string
+          initiated_by_api_key?: string | null
+          metadata?: Json | null
+          mobile_number?: string
+          seats?: number | null
+          token?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      retired_row_values_20261027: {
+        Row: {
+          copied_at: string
+          old_values: Json
+          row_id: string
+          source_table: string
+        }
+        Insert: {
+          copied_at?: string
+          old_values: Json
+          row_id: string
+          source_table: string
+        }
+        Update: {
+          copied_at?: string
+          old_values?: Json
+          row_id?: string
+          source_table?: string
+        }
+        Relationships: []
+      }
       review_feedback: {
         Row: {
           comments: string | null
