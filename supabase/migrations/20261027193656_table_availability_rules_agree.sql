@@ -18,7 +18,8 @@
 --     table_booking_max_party_staff (live 40) while every staff screen stopped at 20, so the
 --     setting did nothing above 20. Staff bookings now read table_booking_max_party_online, the
 --     staff setting is deleted and taken out of Settings, and the validator's staff-versus-online
---     comparison goes with it.
+--     comparison goes with it. The slot list applied the limit to the online channel only; it now
+--     applies it to every channel, so the FOH free-times list offers nothing staff cannot book.
 --   * BK-147, D30. Drinks bookings keep their table. Indoor drinks bookings were written with
 --     assignment_soft = true ("yield it to a food booking"), and Settings showed "Let a food
 --     booking move a drinks booking" (drinks_bump_enabled, live true) and a protection window
@@ -206,6 +207,13 @@ $old$  IF p_section = 'party_limits' THEN
 $old$,
 $new$  -- Owner decision D30: one party limit (table_booking_max_party_online) for every channel, so
   -- there is no staff limit to compare it with.
+$new$),
+      (6, 'check_table_availability_v06',
+$old$  IF p_channel = 'online' AND p_party_size > v_max_online THEN
+$old$,
+$new$  -- One party limit for every channel (owner decision D30, BK-146): staff and walk-in slot lists
+  -- offer nothing the staff booking function would refuse as too large.
+  IF p_party_size > v_max_online THEN
 $new$)
     ) AS t(step, proname, old_text, new_text)
     ORDER BY step

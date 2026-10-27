@@ -44,6 +44,7 @@ import {
 } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
+import { fohBookingBypassesPacing } from '@/lib/foh/pacing-bypass'
 import {
   PARTY_SIZE_INPUT_CEILING,
   readTableBookingPartyLimit,
@@ -1291,7 +1292,8 @@ async function createFohTableBooking(
   // are subject to pacing unless a manager/super_admin explicitly overrides.
   // Drinks do not add kitchen covers, so they must never be blocked by the
   // food-only kitchen pacing gate.
-  let bypassPacing = payload.walk_in === true || payload.purpose === 'drinks'
+  // The same rule the FOH free-times list applies (src/lib/foh/pacing-bypass.ts).
+  let bypassPacing = fohBookingBypassesPacing({ walkIn: payload.walk_in === true, purpose: payload.purpose })
   if (payload.bypass_pacing === true && payload.walk_in !== true) {
     // The table_bookings manage permission, not role names (BK-106).
     const canManage = await canManageTableBookings(auth.userId)

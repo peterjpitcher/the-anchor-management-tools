@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
-import { parseFohAvailabilityQuery } from '@/lib/foh/availability-query'
+import { parseFohAvailabilityQuery, withPacingBypass } from '@/lib/foh/availability-query'
 
 /**
  * Which times are free, for staff taking a booking on the FOH screen (BK-184).
@@ -16,6 +16,11 @@ import { parseFohAvailabilityQuery } from '@/lib/foh/availability-query'
  *
  * The answer is passed through as the database gives it. calculation_state 'unknown' means the
  * check could not run: the screen must then not mark any time as free.
+ *
+ * Party size: the database applies the one table booking limit (table_booking_max_party_online,
+ * D30) to every channel, so a party over it gets no times, as the staff booking function would
+ * refuse it. Walk-ins and drinks bookings skip kitchen pacing and the drinks ceiling when saved, so
+ * their times are not refused for those here.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireFohPermission('view')
@@ -52,5 +57,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } })
+  // Walk-ins and drinks skip the arrival limits when they are saved, so their times are not
+  // refused for them here either (the same rule as the create route).
+  const answer = withPacingBypass((data ?? {}) as { slots?: Array<Record<string, unknown>> }, query.value.bypassPacing)
+  return NextResponse.json({ success: true, data: answer }, { headers: { 'Cache-Control': 'no-store' } })
 }
