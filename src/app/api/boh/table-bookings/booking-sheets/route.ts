@@ -18,11 +18,14 @@ import { getTableBookingStatusLabel, getTableBookingVisualState } from '@/lib/ta
 import {
   generateTableBookingSheetsHTML,
   type TableBookingSheetData,
+  type TableBookingSheetGuestNotes,
   type TableBookingSheetPreorder,
   type TableBookingSheetPreorderAddonTotal,
   type TableBookingSheetPreorderCover,
 } from '@/lib/table-booking-sheet-template'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads, type DayLoadHire } from '@/services/day-load'
+import { privateHireSheet, privateHireSortTime, privateHiresNotLoadedSheet } from '@/lib/table-bookings/private-hire-sheets'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   describeCourseCount,
@@ -90,8 +93,12 @@ type BookingRow = {
   christmas_course_counts: number[] | null
   /** The seasonal period, for when its pre-order form locked. */
   booking_period_id: string | null
-  /** Booking-level allergy list the pub already records. Printed on the food page, never elsewhere. */
+  /** Booking-level allergy list. Printed on both pages, marked confidential (D6, BK-052). */
   allergies: string[] | null
+  /** Booking-level dietary needs, printed beside the allergies. */
+  dietary_requirements: string[] | null
+  /** The notes box on every booking form, where most allergies have arrived. */
+  special_requirements: string | null
   customer: CustomerRow | CustomerRow[] | null
   table_booking_tables: AssignmentRow[] | null
 }
@@ -174,6 +181,23 @@ function requirementsField(row: BookingRow): string[] {
   return requirements
 }
 
+/**
+ * The guest's allergies, dietary needs and notes, or undefined when the booking has none (which keeps
+ * that sheet exactly as it printed before). The owner agreed these may be printed, marked
+ * confidential, because the sheets are shredded after service (decision D6, BK-052).
+ */
+function guestNotesField(row: BookingRow): TableBookingSheetGuestNotes | undefined {
+  const clean = (values: string[] | null) =>
+    (values ?? []).map((value) => (typeof value === 'string' ? value.trim() : '')).filter((value) => value.length > 0)
+  const allergies = clean(row.allergies)
+  const dietary = clean(row.dietary_requirements)
+  const notes = typeof row.special_requirements === 'string' && row.special_requirements.trim()
+    ? row.special_requirements.trim()
+    : null
+  if (allergies.length === 0 && dietary.length === 0 && !notes) return undefined
+  return { allergies, dietary, notes }
+}
+
 function toSheetData(
   row: BookingRow,
   bookingDate: string,
@@ -194,6 +218,7 @@ function toSheetData(
     ...(row.booking_type === 'christmas'
       ? { christmasCourses: formatChristmasCourseTally(row.christmas_course_counts) || 'Not recorded' }
       : {}),
+    ...(guestNotesField(row) ? { guestNotes: guestNotesField(row) } : {}),
   }
 }
 
@@ -415,6 +440,8 @@ export async function GET(request: NextRequest) {
         high_chair_count,
         requires_accessible_table,
         allergies,
+        dietary_requirements,
+        special_requirements,
         customer:customers!table_bookings_customer_id_fkey(first_name, last_name),
         table_booking_tables:booking_table_assignments!booking_table_assignments_table_booking_id_fkey(
           table:tables!booking_table_assignments_table_id_fkey(id, name, table_number, is_bookable)
@@ -433,7 +460,18 @@ export async function GET(request: NextRequest) {
 
     const bookingRows = (rows ?? []) as unknown as BookingRow[]
 
-    if (bookingRows.length === 0) {
+    // The day's private hires print too (BK-075, reversing spec decision D-4), so the kitchen sees
+    // a catered party on its sheets. A failed read prints a page saying so rather than a quiet gap.
+    let hires: DayLoadHire[] = []
+    let hiresFailed = false
+    try {
+      hires = (await loadDayLoads(date, date, { db: createAdminClient(), withHours: false })).get(date)?.privateHires ?? []
+    } catch (hireError) {
+      console.error('Failed to load private hires for the booking sheets:', hireError)
+      hiresFailed = true
+    }
+
+    if (bookingRows.length === 0 && hires.length === 0 && !hiresFailed) {
       return new NextResponse('No printable bookings found for the selected day', { status: 404 })
     }
 
@@ -472,7 +510,7 @@ export async function GET(request: NextRequest) {
       )
     )
 
-    const sheets = ordered.map((row) => {
+    const bookingSheets = ordered.map((row) => {
       const preorder = preorders.get(row.id)
       // The booking-level allergy list is attached here, not in the loader, because it lives on the
       // booking rather than on a cover. Both sources must reach the food page: showing only the
@@ -484,6 +522,16 @@ export async function GET(request: NextRequest) {
         preorder ? { ...preorder, allergies: row.allergies ?? [] } : undefined
       )
     })
+
+    // Hires slot in by start time; the table bookings keep their own order among themselves.
+    const timed = [
+      ...ordered.map((row, index) => ({ time: (row.booking_time || '').slice(0, 5), order: index, sheet: bookingSheets[index] })),
+      ...hires.map((hire, index) => ({ time: privateHireSortTime(hire), order: ordered.length + index, sheet: privateHireSheet(hire, bookingDate, generatedAt) })),
+    ].sort((a, b) => a.time.localeCompare(b.time) || a.order - b.order)
+    const sheets = [
+      ...(hiresFailed ? [privateHiresNotLoadedSheet(bookingDate, generatedAt)] : []),
+      ...timed.map((entry) => entry.sheet),
+    ]
 
     const logoDataUrl = await imageDataUrl('booking-confirmation/anchor-logo-black.png', 'image/png')
     const html = generateTableBookingSheetsHTML(sheets, { logoDataUrl })
@@ -505,7 +553,7 @@ export async function GET(request: NextRequest) {
       operation_type: 'export',
       resource_type: 'table_booking_sheets',
       operation_status: 'success',
-      additional_info: { date, count: sheets.length },
+      additional_info: { date, count: sheets.length, private_hires: hires.length },
     })
 
     return new NextResponse(pdfContent, {

@@ -6,6 +6,7 @@ import {
   GUEST_MARKETING_SMS_LABEL,
   GUEST_WHATSAPP_SERVICE_LABEL,
   GUEST_MARKETING_WHATSAPP_LABEL,
+  resolveConsentNotice,
 } from '@/lib/consent/constants'
 import type {
   CommunicationConsentPayload,
@@ -27,6 +28,10 @@ type CustomerConsentState = {
   whatsapp_status?: string | null
   marketing_whatsapp_opt_in?: boolean | null
   marketing_email_opt_in?: boolean | null
+  marketing_sms_opted_out_at?: string | null
+  marketing_email_opted_out_at?: string | null
+  marketing_whatsapp_opted_out_at?: string | null
+  sms_deactivation_reason?: string | null
 }
 
 type RecordConsentInput = {
@@ -72,8 +77,43 @@ function isSmsStopped(customer: CustomerConsentState | null): boolean {
   return customer?.sms_status === 'opted_out'
 }
 
+/*
+ * Twilio refused this number outright (not a valid number, not a mobile, cannot take texts), so
+ * src/lib/sms/undeliverable-number.ts switched texts off. A new booking's service consent used to
+ * switch them straight back on (record_customer_consent sets sms_status active), and every later
+ * text went to a number that could never receive it (BK-080). The number on a booking is the
+ * number the customer is matched by, so it has not changed; staff turn texts back on from the
+ * customer record once the number is corrected.
+ */
+function isSmsUndeliverable(customer: CustomerConsentState | null): boolean {
+  return customer?.sms_status === 'sms_deactivated'
+    && (customer?.sms_deactivation_reason === 'invalid_number' || customer?.sms_deactivation_reason === 'unreachable_number')
+}
+
 function isWhatsAppStopped(customer: CustomerConsentState | null): boolean {
   return customer?.whatsapp_status === 'opted_out'
+}
+
+/*
+ * Has this customer said no to marketing on the channel?
+ *
+ * A booking must never switch marketing back on for someone who opted out (BK-077, owner decision
+ * D31). record_customer_consent clears marketing_*_opted_out_at on any marketing opt-in, so a
+ * ticked box on a later booking (or someone else typing a regular's number and ticking it) used to
+ * undo an unsubscribe or a NOEVENTS. A STOP, or texts switched off on the record, counts as no to
+ * marketing texts too. The customer can still opt back in from a channel they control: START to
+ * Twilio, or staff changing the record at their request.
+ */
+function hasRefusedMarketingSms(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_sms_opted_out_at) || isSmsStopped(customer) || customer?.sms_opt_in === false
+}
+
+function hasRefusedMarketingEmail(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_email_opted_out_at)
+}
+
+function hasRefusedMarketingWhatsApp(customer: CustomerConsentState | null): boolean {
+  return Boolean(customer?.marketing_whatsapp_opted_out_at) || isWhatsAppStopped(customer)
 }
 
 export class ConsentService {
@@ -110,7 +150,7 @@ export class ConsentService {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('customers')
-      .select('id, sms_opt_in, sms_status, marketing_sms_opt_in, whatsapp_opt_in, whatsapp_status, marketing_whatsapp_opt_in, marketing_email_opt_in')
+      .select('id, sms_opt_in, sms_status, sms_deactivation_reason, marketing_sms_opt_in, whatsapp_opt_in, whatsapp_status, marketing_whatsapp_opt_in, marketing_email_opt_in, marketing_sms_opted_out_at, marketing_email_opted_out_at, marketing_whatsapp_opted_out_at')
       .eq('id', customerId)
       .maybeSingle()
 
@@ -131,6 +171,10 @@ export class ConsentService {
     const current = await this.getConsentState(customerId)
     if (!current) throw new Error('Customer not found')
 
+    // The notice the guest was shown, named by the website or by a staff path (BK-080). Its words
+    // are stored with the consent, so the record says what that guest actually read.
+    const notice = resolveConsentNotice(consent.notice_key)
+
     const base = {
       customerId,
       source: context.source,
@@ -142,10 +186,10 @@ export class ConsentService {
       userAgent: context.userAgent,
       relatedEntityType: context.relatedEntityType,
       relatedEntityId: context.relatedEntityId,
-      metadata: context.metadata,
+      metadata: consent.notice_key ? { ...(context.metadata ?? {}), notice_key: consent.notice_key } : context.metadata,
     }
 
-    if (consent.service_contact_notice_shown === true && !isSmsStopped(current)) {
+    if (consent.service_contact_notice_shown === true && !isSmsStopped(current) && !isSmsUndeliverable(current)) {
       await this.recordConsent({
         ...base,
         channel: 'sms',
@@ -153,10 +197,11 @@ export class ConsentService {
         status: 'opted_in',
         legalBasis: 'legitimate_interests',
         captureMethod: 'service_notice',
+        consentText: notice?.text ?? context.consentText,
       })
     }
 
-    if (consent.marketing_email_opt_in === true) {
+    if (consent.marketing_email_opt_in === true && !hasRefusedMarketingEmail(current)) {
       await this.recordConsent({
         ...base,
         channel: 'email',
@@ -164,10 +209,11 @@ export class ConsentService {
         status: 'opted_in',
         legalBasis: 'consent',
         captureMethod: context.captureMethod,
+        consentText: notice?.marketingText,
       })
     }
 
-    if (consent.marketing_sms_opt_in === true) {
+    if (consent.marketing_sms_opt_in === true && !hasRefusedMarketingSms(current)) {
       await this.recordConsent({
         ...base,
         channel: 'sms',
@@ -175,7 +221,40 @@ export class ConsentService {
         status: 'opted_in',
         legalBasis: 'consent',
         captureMethod: context.captureMethod,
+        consentText: notice?.marketingText,
       })
+    }
+
+    // The compact notices tell the guest we will send the latest from The Anchor and how to refuse:
+    // the PECR soft opt-in. Recorded as its own row with that legal basis, so the regulars texts
+    // can show their basis (get_cross_promo_audience requires one). update_summary is off: the
+    // customer's marketing_*_opt_in flags mean a ticked box, and a notice is not a tick. Never for
+    // someone who had opted out, and not again for a channel just ticked.
+    if (consent.service_contact_notice_shown === true && notice) {
+      if (notice.softOptIn.includes('sms') && consent.marketing_sms_opt_in !== true && !hasRefusedMarketingSms(current)) {
+        await this.recordConsent({
+          ...base,
+          channel: 'sms',
+          purpose: 'marketing',
+          status: 'opted_in',
+          legalBasis: 'soft_opt_in',
+          captureMethod: 'service_notice',
+          consentText: notice.text,
+          updateSummary: false,
+        })
+      }
+      if (notice.softOptIn.includes('email') && consent.marketing_email_opt_in !== true && !hasRefusedMarketingEmail(current)) {
+        await this.recordConsent({
+          ...base,
+          channel: 'email',
+          purpose: 'marketing',
+          status: 'opted_in',
+          legalBasis: 'soft_opt_in',
+          captureMethod: 'service_notice',
+          consentText: notice.text,
+          updateSummary: false,
+        })
+      }
     }
 
     if ((consent.whatsapp_opt_in === true || consent.marketing_whatsapp_opt_in === true) && !isWhatsAppStopped(current)) {
@@ -189,7 +268,7 @@ export class ConsentService {
       })
     }
 
-    if (consent.marketing_whatsapp_opt_in === true) {
+    if (consent.marketing_whatsapp_opt_in === true && !hasRefusedMarketingWhatsApp(current)) {
       await this.recordConsent({
         ...base,
         channel: 'whatsapp',

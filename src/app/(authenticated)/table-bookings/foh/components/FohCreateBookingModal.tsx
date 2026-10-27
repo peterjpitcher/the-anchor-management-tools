@@ -20,6 +20,7 @@ import type {
   WalkInTargetTable,
 } from '../types'
 import type { FohBookingPeriod } from '../hooks/useFohCreateBooking'
+import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import {
   formatEventBookingMode,
   formatEventOptionDateTime,
@@ -42,6 +43,8 @@ export type CreateForm = {
   seating_preference: 'seated' | 'standing'
   sunday_deposit_method: 'payment_link' | 'cash'
   notes: string
+  /** Allergies, comma separated, saved to their own field (BK-052). */
+  allergies: string
   waive_deposit: boolean
   is_venue_event: boolean
   bypass_pacing: boolean
@@ -51,6 +54,8 @@ export type CreateForm = {
   requires_accessible_table: boolean
   /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. 0 means not chosen yet. */
   christmas_course_counts?: number[]
+  /** Staff read the guest the marketing notice and they said yes (D32). Never assumed. */
+  marketing_texts_yes?: boolean
 }
 
 type FohCreateBookingModalProps = {
@@ -367,6 +372,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               onChange={(event) => onSetCreateForm((current) => ({ ...current, phone: event.target.value }))}
               placeholder="+1 415 555 2671 or local format"
               className={FIELD_CLASS}
+            />
+          )}
+
+          {createMode !== 'management' && (
+            <StaffMarketingConsentField
+              idPrefix="foh-create-marketing"
+              checked={createForm.marketing_texts_yes === true}
+              onChange={(checked) => onSetCreateForm((current) => ({ ...current, marketing_texts_yes: checked }))}
             />
           )}
 
@@ -747,6 +760,16 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               Select event
             </button>
           </div>
+        )}
+
+        {createForm.purpose !== 'event' && (
+          <Input
+            label="Allergies (optional)"
+            hint="Separate each one with a comma, for example: peanuts, shellfish."
+            value={createForm.allergies}
+            onChange={(event) => onSetCreateForm((current) => ({ ...current, allergies: event.target.value }))}
+            maxLength={600}
+          />
         )}
 
         {createForm.purpose !== 'event' && (

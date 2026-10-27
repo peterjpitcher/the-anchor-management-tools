@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/night-clashes';
 import { withApiAuth, createApiResponse, createErrorResponse, createCorsPreflightResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { buildEventImageFields } from '@/lib/api/eventImageFields';
@@ -14,6 +15,7 @@ import {
   type EventTicketTypeRow,
 } from '@/lib/events/ticket-types';
 import { logger } from '@/lib/logger';
+import { requiresGuestDetails } from '@/lib/events/booking-questions';
 // Removed unused date-fns imports
 
 type EventFaqRow = {
@@ -174,6 +176,11 @@ export async function GET(_request: NextRequest) {
       return createErrorResponse('Event availability is temporarily unavailable', 'AVAILABILITY_UNAVAILABLE', 503)
     }
 
+    // Owner decision D24: a whole-pub private hire stops ticket sales for an event it overlaps, so
+    // the website stops offering it. The booking function refuses such a booking whatever this
+    // says, so a failed read here only leaves the button showing.
+    const closedByWholePubHire = await loadEventIdsClosedByWholePubHire(eventIds, supabase)
+
     // Multiple ticket options (feature-flagged, same gate as the detail route).
     // Loaded for the whole page in ONE query: without this a list-sourced event
     // with several differently-priced types advertises a single price, because
@@ -259,6 +266,9 @@ export async function GET(_request: NextRequest) {
         online_discount_value: event.online_discount_value ?? null,
       online_discount_ends_at: event.online_discount_ends_at ?? null,
       booking_questions: event.booking_questions ?? [],
+      // Whether to ask for each ticket's name and answers: the event's own setting (BK-014). The
+      // website reads this instead of working the rule out itself.
+      guest_details_required: requiresGuestDetails(event),
         primary_keywords: event.primary_keywords || [],
         secondary_keywords: event.secondary_keywords || [],
         local_seo_keywords: event.local_seo_keywords || [],
@@ -272,7 +282,7 @@ export async function GET(_request: NextRequest) {
         attendance_note: event.attendance_note || null,
         cancellation_policy: event.cancellation_policy || null,
         accessibility_notes: event.accessibility_notes || null,
-        bookings_enabled: event.bookings_enabled ?? true,
+        bookings_enabled: (event.bookings_enabled ?? true) && !closedByWholePubHire.has(event.id),
         booking_cutoff_at: event.booking_cutoff_at ?? null,
         // Same shape as the detail route, so the website's category chip and
         // "More {category}" link work off the list without a website change.

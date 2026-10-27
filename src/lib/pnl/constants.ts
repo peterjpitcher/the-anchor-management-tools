@@ -8,7 +8,8 @@ export const PNL_TIMEFRAMES: Array<{ key: PnlTimeframeKey; label: string; days: 
   { key: '12m', label: 'Last 365 days', days: 365 },
 ]
 
-type PnlMetricType = 'cashup' | 'manual' | 'expense'
+/** 'online' is money taken online, read from the online income view (BK-117, D33). */
+type PnlMetricType = 'cashup' | 'manual' | 'expense' | 'online'
 export type PnlMetricFormat = 'currency' | 'percent'
 export type PnlMetricGroup =
   | 'sales'
@@ -66,6 +67,17 @@ export const PNL_METRICS: PnlMetric[] = [
   { key: 'food_sales', label: 'Food + other sales', type: 'cashup', group: 'sales', format: 'currency' },
   { key: 'accommodation_sales', label: 'Accommodation sales', type: 'manual', group: 'sales', format: 'currency' },
   { key: 'net_machine_income', label: 'Net machine income', type: 'manual', group: 'sales', format: 'currency' },
+  // Deposits, tickets, hire payments and parking paid online, net of refunds, by the day taken. Its
+  // own line, kept off the till (owner decision D33), and not added to total sales or gross profit
+  // until the accountant says how to treat it.
+  {
+    key: 'online_booking_income',
+    label: 'Online booking income (not in total sales)',
+    type: 'online',
+    group: 'sales',
+    format: 'currency',
+    description: 'Money taken online for bookings, net of refunds, by the day it was taken. Kept off the till.',
+  },
   { key: 'total_drinks_post_wastage', label: 'Drinks GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'drinks_sales' },
   { key: 'total_food', label: 'Food + other GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'food_sales' },
   { key: 'total_accommodation', label: 'Accommodation GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'accommodation_sales' },

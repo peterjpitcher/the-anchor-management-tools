@@ -1270,6 +1270,8 @@ export async function getRotaSummaryForWeek(
           .from('cashup_sessions')
           .select('session_date, total_counted_amount, status')
           .eq('site_id', siteRow.id)
+          // A voided cash-up is out of every total (BK-219).
+          .is('voided_at', null)
           .gte('session_date', days[0])
           .lte('session_date', days[days.length - 1]),
       ]);

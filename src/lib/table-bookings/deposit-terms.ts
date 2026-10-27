@@ -128,7 +128,10 @@ export function depositRefundLine(input: { isChristmas: boolean; refundCutoffDay
  * that hold to the sooner of the booking start and 24 hours from now, so "up to 24 hours" is the
  * honest fallback when the instant is not to hand.
  */
-export function depositPayByLine(payByLabel: string | null): string {
+export function depositPayByLine(payByLabel: string | null, options: { stillBooked?: boolean } = {}): string {
+  // A confirmed booking that grew to owe a deposit stays booked (owner decision D20, BK-044): there
+  // is no hold to run out, so the guest is never told their table goes if they miss a deadline.
+  if (options.stillBooked) return 'Your table stays booked. Please pay the deposit before your visit.'
   return payByLabel
     ? `Please pay by ${payByLabel}, which is when the hold on your table runs out.`
     : 'Your table is held while you pay, for up to 24 hours.'
@@ -144,11 +147,13 @@ export function depositTermsLines(input: {
   refundCutoffDays: number | null
   payByLabel: string | null
   depositRule?: string | null
+  /** The booking stays confirmed while the deposit is owed (D20), so there is no hold deadline. */
+  stillBooked?: boolean
 }): string[] {
   const refund = depositRefundLine(input)
   return [
     depositPurposeLine(input),
-    depositPayByLine(input.payByLabel),
+    depositPayByLine(input.payByLabel, { stillBooked: input.stillBooked === true }),
     ...(refund ? [refund] : []),
   ]
 }

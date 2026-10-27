@@ -64,3 +64,17 @@ describe('the booking audit trail', () => {
     expect(auditEventLabel('table_booking.something_new')).toBe('Something new')
   })
 })
+
+describe('a guest changing their own party size (BK-091)', () => {
+  it('reads as the guest, not as the system', () => {
+    const [entry] = buildBookingAuditTrail([
+      log({
+        operation_type: 'table_booking.party_size_changed_by_guest',
+        additional_info: { source: 'guest_manage_link', previousPartySize: 4, newPartySize: 6 },
+      }),
+    ])
+
+    expect(entry.label).toBe('Party size changed by the guest')
+    expect(entry.actor).toBe('Guest')
+  })
+})

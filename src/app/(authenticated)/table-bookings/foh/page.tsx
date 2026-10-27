@@ -12,6 +12,7 @@ import FohClockWidget from './FohClockWidget'
 import { LinkButton } from '@/ds'
 import { ChecklistMidShiftPrompt } from '@/app/(authenticated)/checklists/_components/ChecklistMidShiftPrompt'
 import { getDeploymentVersion } from '@/lib/foh/deployment-version'
+import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
@@ -124,6 +125,10 @@ export default async function TableBookingsFohPage() {
       compactHeader={useManagerKioskStyle}
       padded={!useManagerKioskStyle}
     >
+      {/* Earlier bookings nobody marked as arrived or no-show (BK-130). Renders nothing when there are none. */}
+      <div className="mb-3">
+        <OpenEarlierBookingsStrip canEdit={canEdit} />
+      </div>
       <FohScheduleClient
         initialDate={initialDate}
         deploymentVersion={getDeploymentVersion()}

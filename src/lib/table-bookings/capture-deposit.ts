@@ -5,6 +5,7 @@ import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
+import { isClosedTableBookingStatus, settleDepositOnClosedBooking } from '@/lib/table-bookings/late-deposit'
 import {
   buildPayPalDepositCompletedUpdate,
   extractPayPalOrderAmountGbp,
@@ -278,6 +279,23 @@ export async function captureTableDeposit(
       .neq('status', 'completed')
       .select('id')
       .maybeSingle()
+
+    // Cancelled while the guest was paying (BK-047): the booking stays cancelled, the deposit is
+    // recorded on it and refunded in full, and the manager is told. The guest is still told the
+    // team has been notified, which is now true.
+    if (!updateError && !updated && captureId) {
+      const { data: current } = await supabase.from('table_bookings').select('status').eq('id', bookingId).maybeSingle()
+      if (isClosedTableBookingStatus(current?.status)) {
+        await settleDepositOnClosedBooking(supabase, {
+          bookingId,
+          captureId,
+          orderId,
+          amountGbp: capturedAmountGbp,
+          source,
+        })
+        return { ok: false, code: 'CAPTURED_BOOKING_UPDATE_FAILED' }
+      }
+    }
 
     if (updateError || !updated) {
       return await captureNotRecorded(supabase, input, {

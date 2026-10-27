@@ -224,7 +224,13 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
         isChristmas: isChristmasBookingType(booking.booking_type),
         bookingType: booking.booking_type,
       })
-      return buildPartySizeDepositText({ firstName: getSmartFirstName(customer.first_name), wording, paymentUrl: link })
+      return buildPartySizeDepositText({
+        firstName: getSmartFirstName(customer.first_name),
+        wording,
+        paymentUrl: link,
+        // A confirmed booking that grew into owing the deposit stays booked (D20), as the email said.
+        stillBooked: booking.status === 'confirmed',
+      })
     },
     smsMetadata: () => ({ trigger: 'party_size_threshold_crossed' }),
   },

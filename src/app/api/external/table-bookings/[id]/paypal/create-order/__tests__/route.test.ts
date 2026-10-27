@@ -112,7 +112,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/create-order', () => {
     expect(mockCreateSimplePayPalOrder).toHaveBeenCalledOnce();
     expect(mockCreateSimplePayPalOrder).toHaveBeenCalledWith(
       expect.objectContaining({
-        requestId: 'tb-deposit-booking-uuid-1',
+        // The amount is in the key, so a re-priced deposit gets a new PayPal order (D20).
+        requestId: 'tb-deposit-booking-uuid-1-4000',
         amount: 40,
       }),
     );

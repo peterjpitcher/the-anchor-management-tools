@@ -8,6 +8,7 @@ import {
   parsePayPalAmountGbp,
   sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit'
+import { settleDepositOnClosedBooking } from '@/lib/table-bookings/late-deposit'
 
 /**
  * Table booking deposit handler, moved out of the route verbatim. The logic is unchanged.
@@ -60,6 +61,31 @@ export async function handleDepositCaptureCompleted(
   }
 
   const blockReason = getPayPalDepositCaptureBlockReason(booking)
+
+  /*
+   * The booking was cancelled (or had finished) before the money landed (BK-047, owner decision
+   * D19). This used to log and stop, so nothing was recorded and the hourly sweep later marked the
+   * cancelled booking confirmed. Record it on the booking, which stays closed, and refund a
+   * cancelled booking in full; a person hears about it either way.
+   */
+  const closedAmountGbp = parsePayPalAmountGbp(resource.amount?.value ?? null)
+  const closedCurrency = typeof resource.amount?.currency_code === 'string' ? resource.amount.currency_code.toUpperCase() : null
+  if (blockReason === 'booking_closed' && closedAmountGbp !== null && closedCurrency === 'GBP') {
+    const settled = await settleDepositOnClosedBooking(supabase, {
+      bookingId: booking.id,
+      captureId,
+      orderId,
+      amountGbp: closedAmountGbp,
+      capturedAtIso: typeof resource.create_time === 'string' ? resource.create_time : null,
+      source: 'webhook',
+    })
+    if (settled.outcome === 'record_failed') {
+      // Let PayPal retry: the booking could not be updated, and the sweep will try again too.
+      throw new Error('Could not record a deposit paid on a closed table booking')
+    }
+    return
+  }
+
   if (blockReason) {
     logger.error('Table booking deposit webhook ignored because booking is no longer payable', {
       metadata: { bookingId: booking.id, orderId, captureId, eventId: event.id, blockReason },

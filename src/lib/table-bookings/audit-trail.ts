@@ -61,7 +61,14 @@ const LABELS: Record<string, string> = {
   'table_booking.cancelled': 'Cancelled',
   'table_booking.auto_cancelled': 'Cancelled: deposit not paid in time',
   'table_booking.party_size_changed': 'Party size changed',
+  'table_booking.party_size_changed_by_guest': 'Party size changed by the guest',
   'table_booking.deposit_waived': 'Deposit waived',
+  'table_booking.deposit_repriced': 'Deposit changed with the party size',
+  'table_booking.deposit_owed': 'Deposit now owed',
+  'table_booking.deposit_review_needed': 'Deposit flagged for a manager',
+  'table_booking.deposit_review_cleared': 'Deposit checked by a manager',
+  'table_booking.deposit_cash_recorded': 'Deposit taken at the bar',
+  'table_booking.deposit_hold_extended': 'More time to pay the deposit',
   'table_booking.notification_sent': 'Guest message sent',
   'table_booking.notification_failed': 'Guest message not delivered',
   'table_booking.sms_sent': 'Text sent',
@@ -130,7 +137,8 @@ export function buildBookingAuditTrail(
       new_status: text(newValues.status) ?? text(info.status_to) ?? text(info.new_status),
       meta: { ...newValues, ...info },
       created_at: row.created_at,
-      actor: text(row.user_email) ?? (row.user_id ? 'Team member' : 'System'),
+      // A guest's own change through their manage link has no staff user behind it (BK-091).
+      actor: text(row.user_email) ?? (row.user_id ? 'Team member' : info.source === 'guest_manage_link' ? 'Guest' : 'System'),
     }
   })
 

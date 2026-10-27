@@ -8,6 +8,8 @@ type PersistCronRunResultInput = {
   runId: string
   status: 'completed' | 'failed'
   errorMessage?: string
+  /** What the run recorded about itself (BK-212: what a run stopped at its time limit skipped). */
+  result?: Record<string, unknown>
   context: string
 }
 
@@ -22,6 +24,10 @@ export async function persistCronRunResult(
 
   if (input.errorMessage) {
     payload.error_message = input.errorMessage.slice(0, 2000)
+  }
+
+  if (input.result) {
+    payload.result = input.result
   }
 
   const { data, error } = await supabase
