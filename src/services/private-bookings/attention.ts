@@ -119,16 +119,62 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-/** The manager's email for these hires. */
-export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: string): {
+/**
+ * The rest of the private hire to-do list the same daily email carries, beyond the upcoming hires
+ * above. Counts and short lines only: no customer name, phone number or email address.
+ */
+export interface PrivateHireToDo {
+  /** Texts that have waited for staff approval for more than a day (BK-064). */
+  textsAwaitingApproval: number
+}
+
+const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0 }
+
+const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000
+
+/** Everything on the to-do list. Throws when a read fails, so the caller can say so. */
+export async function findPrivateHireToDo(input: { now: Date; db?: DbClient }): Promise<PrivateHireToDo> {
+  const db = input.db ?? createAdminClient()
+  const waitingSince = new Date(input.now.getTime() - APPROVAL_WAIT_MS).toISOString()
+  const { data, error } = await db
+    .from('private_booking_sms_queue')
+    .select('id')
+    .eq('status', 'pending')
+    .lt('created_at', waitingSince)
+  if (error) throw new Error(`Could not read the texts waiting for approval: ${error.message}`)
+  return { textsAwaitingApproval: (data ?? []).length }
+}
+
+function hasToDo(toDo: PrivateHireToDo): boolean {
+  return toDo.textsAwaitingApproval > 0
+}
+
+function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string; url: string }> {
+  const lines: Array<{ text: string; url: string }> = []
+  if (toDo.textsAwaitingApproval > 0) {
+    const count = toDo.textsAwaitingApproval
+    lines.push({
+      text: `${count} private hire ${count === 1 ? 'text has' : 'texts have'} waited more than a day for approval.`,
+      url: `${appUrl}/private-bookings/sms-queue`,
+    })
+  }
+  return lines
+}
+
+/** The manager's email for these hires, and the rest of the to-do list. */
+export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: string, toDo: PrivateHireToDo = EMPTY_TO_DO): {
   subject: string
   html: string
   text: string
 } {
   const count = items.length
-  const subject = `Private hires needing attention: ${count} ${count === 1 ? 'booking' : 'bookings'}`
-  const intro =
-    'These upcoming private hires need sorting out. Until they are, a paid hire stays a draft, and a hire with no room, or with more guests than its room holds, leaves the rest of the pub on sale.'
+  const extra = toDoLines(toDo, appUrl)
+  const subject = count > 0
+    ? `Private hires needing attention: ${count} ${count === 1 ? 'booking' : 'bookings'}`
+    : `Private hire to-do: ${extra.length} ${extra.length === 1 ? 'item' : 'items'}`
+  const intro = count > 0
+    ? 'These upcoming private hires need sorting out. Until they are, a paid hire stays a draft, and a hire with no room, or with more guests than its room holds, leaves the rest of the pub on sale.'
+    : 'Nothing is wrong with the upcoming private hires. These need doing:'
 
   const describe = (item: HireNeedingAttention): string => {
     const date = formatDateInLondon(item.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -151,7 +197,13 @@ export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: s
     ].join('')
   })
 
-  const html = [`<p>${escapeHtml(intro)}</p>`, '<ul>', ...htmlItems, '</ul>'].join('')
+  const extraHtml = extra.length === 0 ? [] : [
+    count > 0 ? '<p>Also to do:</p>' : '',
+    '<ul>',
+    ...extra.map((line) => `<li>${escapeHtml(line.text)} <a href="${escapeHtml(line.url)}">Open</a></li>`),
+    '</ul>',
+  ]
+  const html = [`<p>${escapeHtml(intro)}</p>`, ...(count > 0 ? ['<ul>', ...htmlItems, '</ul>'] : []), ...extraHtml].join('')
   const text = [
     intro,
     '',
@@ -161,12 +213,14 @@ export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: s
       `Open the booking: ${appUrl}/private-bookings/${item.bookingId}`,
       '',
     ]),
+    ...(extra.length > 0 && count > 0 ? ['Also to do:'] : []),
+    ...extra.flatMap((line) => [`- ${line.text}`, `  ${line.url}`]),
   ].join('\n')
 
   return { subject, html, text }
 }
 
-/** Finds the hires and emails the manager when there are any. Never throws. */
+/** Finds the hires and the rest of the to-do list, and emails the manager when there is any. Never throws. */
 export async function runHireAttentionCheck(input: {
   todayIso: string
   now: Date
@@ -178,13 +232,24 @@ export async function runHireAttentionCheck(input: {
   } catch (error) {
     return { listed: 0, emailed: false, error: error instanceof Error ? error.message : String(error) }
   }
-  if (items.length === 0) return { listed: 0, emailed: false }
+
+  // The to-do list is read separately, so a failure there still lets the hires above go out.
+  let toDo = EMPTY_TO_DO
+  let toDoError: string | undefined
+  try {
+    toDo = await findPrivateHireToDo(input)
+  } catch (error) {
+    toDoError = error instanceof Error ? error.message : String(error)
+  }
+  if (items.length === 0 && !hasToDo(toDo)) {
+    return toDoError ? { listed: 0, emailed: false, error: toDoError } : { listed: 0, emailed: false }
+  }
 
   try {
-    const email = buildHireAttentionEmail(items, getAppUrl())
+    const email = buildHireAttentionEmail(items, getAppUrl(), toDo)
     const result = await sendEmail({ to: PRIVATE_BOOKINGS_MANAGER_EMAIL, ...email })
     return result.success
-      ? { listed: items.length, emailed: true }
+      ? { listed: items.length, emailed: true, ...(toDoError ? { error: toDoError } : {}) }
       : { listed: items.length, emailed: false, error: result.error || 'The email was not sent' }
   } catch (error) {
     return { listed: items.length, emailed: false, error: error instanceof Error ? error.message : String(error) }

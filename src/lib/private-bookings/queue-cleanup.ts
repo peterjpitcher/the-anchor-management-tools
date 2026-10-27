@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger'
+import { queuedPrivateBookingTextStaleReason } from '@/lib/private-bookings/queue-staleness'
 
 type QueueCleanupClient = {
   from: (table: 'private_booking_sms_queue') => any
@@ -46,4 +47,63 @@ export async function cancelPendingQueuedSms(
   }
 
   return { ok: true }
+}
+
+export type StaleQueueSweepResult = { expired: number; error?: string }
+
+/**
+ * Cancel every waiting private booking text whose date has passed (BK-064), so it can never be
+ * approved and sent late. Run once a day by the expire-holds job. Only a row nobody is sending
+ * (no dispatch claim in error_message) is touched, and each cancelled row records why in its
+ * metadata. Never throws: a failure is logged and returned.
+ */
+export async function expireStaleQueuedPrivateBookingTexts(
+  client: { from: (table: string) => any },
+  todayIso: string
+): Promise<StaleQueueSweepResult> {
+  try {
+    const { data: rows, error } = await client
+      .from('private_booking_sms_queue')
+      .select('id, booking_id, trigger_type, metadata')
+      .in('status', ['pending', 'approved'])
+      .is('error_message', null)
+    if (error) throw new Error(error.message)
+    const queued = (rows ?? []) as Array<{ id: string; booking_id: string; trigger_type: string | null; metadata: Record<string, unknown> | null }>
+    if (queued.length === 0) return { expired: 0 }
+
+    const bookingIds = [...new Set(queued.map((row) => row.booking_id))]
+    const { data: bookings, error: bookingsError } = await client
+      .from('private_bookings')
+      .select('id, status, event_date')
+      .in('id', bookingIds)
+    if (bookingsError) throw new Error(bookingsError.message)
+    const bookingById = new Map(((bookings ?? []) as Array<{ id: string; status: string | null; event_date: string | null }>).map((row) => [row.id, row]))
+
+    let expired = 0
+    for (const row of queued) {
+      const reason = queuedPrivateBookingTextStaleReason(row, bookingById.get(row.booking_id) ?? null, todayIso)
+      if (!reason) continue
+      const { data: cancelled, error: cancelError } = await client
+        .from('private_booking_sms_queue')
+        .update({ status: 'cancelled', metadata: { ...(row.metadata ?? {}), expired_reason: reason, expired_on: todayIso } })
+        .eq('id', row.id)
+        .in('status', ['pending', 'approved'])
+        .is('error_message', null)
+        .select('id')
+        .maybeSingle()
+      if (cancelError) {
+        logger.error('Failed to expire an out-of-date private booking text', {
+          error: new Error(cancelError.message),
+          metadata: { queueId: row.id, bookingId: row.booking_id, reason },
+        })
+        continue
+      }
+      if (cancelled) expired += 1
+    }
+    return { expired }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Expiring out-of-date private booking texts failed', { error: new Error(message) })
+    return { expired: 0, error: message }
+  }
 }

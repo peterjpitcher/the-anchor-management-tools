@@ -23,7 +23,7 @@ import {
 } from '@/lib/email/private-booking-emails';
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger';
 import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue';
-import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
+import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation';
 import type {
   BookingStatus,
   PrivateBookingWithDetails,
@@ -36,6 +36,7 @@ import {
   normalizeSmsSafetyMeta,
   toNumber,
   computeHoldExpiry,
+  shortNoticeHoldCap,
   balanceDueMoment,
   computeBalanceDueDateIso,
   DATE_TBD_NOTE,
@@ -150,6 +151,19 @@ async function isDepositStillToBeConfirmed(bookingId: string): Promise<boolean> 
   return isDepositAwaitingConfirmation(data)
 }
 
+/**
+ * True when the booking has no deposit hold to run: its deposit is paid, waived, or nothing (BK-068).
+ * Such a booking must never be given a hold_expiry, because the expire-holds job cancels any draft
+ * whose hold has passed.
+ */
+function bookingHasNoHold(booking: {
+  deposit_paid_date?: string | null
+  deposit_waived?: boolean | null
+  deposit_amount?: unknown
+}): boolean {
+  return Boolean(booking.deposit_paid_date) || booking.deposit_waived === true || toNumber(booking.deposit_amount) <= 0
+}
+
 type CancellationSmsVariant = {
   triggerType:
     | 'booking_cancelled_hold'
@@ -221,7 +235,7 @@ export type CancellationCaptureDetails = {
 }
 
 const UPDATE_BOOKING_BASE_SELECT =
-  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status'
+  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status, deposit_waived'
 
 const CANCELLED_BOOKING_CORRECTION_FIELDS = new Set([
   'contact_email',
@@ -883,14 +897,14 @@ export async function createBooking(
     // was told they had until.
     holdExpiryMoment = endOfLondonDayUtc(input.hold_expiry) ?? new Date(input.hold_expiry);
 
+    // The cap is applied first and the end of its day after it (BK-110): both caps are midnight
+    // UTC moments, so a capped hold used to end at the very start of its deadline day.
     if (!isShortNotice) {
       if (holdExpiryMoment.getTime() > dueMoment.getTime()) {
-        holdExpiryMoment = dueMoment;
+        holdExpiryMoment = endOfLondonDayUtc(dueMoment) ?? dueMoment;
       }
     } else {
-      if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
-        holdExpiryMoment = actualEventDate;
-      }
+      holdExpiryMoment = shortNoticeHoldCap(holdExpiryMoment, actualEventDate, currentDateTime);
     }
   } else {
     // Default auto-calculation
@@ -1140,7 +1154,16 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   let holdExpiryIso = undefined;
   const dateChanged = input.event_date && input.event_date !== currentBooking.event_date;
 
-  if (dateChanged && currentBooking.status === 'draft') {
+  // A paid or waived deposit (or none at all) has no hold (BK-068). Moving such a draft used to
+  // set a new deadline, the 06:00 job then cancelled a booking the guest had paid for, and the
+  // monitor reminded them to pay again in the meantime.
+  const holdAllowed = !bookingHasNoHold({
+    deposit_paid_date: currentBooking.deposit_paid_date,
+    deposit_waived: (currentBooking as { deposit_waived?: boolean | null }).deposit_waived,
+    deposit_amount: input.deposit_amount !== undefined ? input.deposit_amount : currentBooking.deposit_amount,
+  });
+
+  if (dateChanged && currentBooking.status === 'draft' && holdAllowed) {
     const currentDateTime = new Date();
     const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
 
@@ -1312,7 +1335,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       updatePayload.balance_due_date = null; // trigger will recalculate
     }
     // Compute hold_expiry for the now-real date
-    if (currentBooking.status === 'draft') {
+    if (currentBooking.status === 'draft' && holdAllowed) {
       const newEventDate = new Date(finalEventDate);
       updatePayload.hold_expiry = computeHoldExpiry(newEventDate, new Date()).toISOString();
     }
@@ -1368,12 +1391,28 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   // Clearing the cancellation is a consequence of the status transition, not a
   // user edit, so adding it above would have made every reinstatement throw
   // "Cannot edit a cancelled booking".
-  if (input.status && input.status !== 'cancelled' && currentBooking.status === 'cancelled') {
+  const reinstating = Boolean(input.status && input.status !== 'cancelled' && currentBooking.status === 'cancelled');
+  if (reinstating) {
     updatePayload.cancelled_at = null;
     updatePayload.cancellation_reason = null;
     updatePayload.cancellation_channel = null;
     updatePayload.cancellation_received_at = null;
     updatePayload.cancelled_by = null;
+    // A reinstated booking gets a hold it can keep (BK-067). The old one had usually passed, so
+    // at 06:00 the next morning the expire-holds job cancelled the booking again and told the
+    // guest their hold had lapsed. A hold still in the future is kept; otherwise the rule a new
+    // booking gets. A paid or waived deposit, or a date still to be confirmed, has no hold.
+    updatePayload.hold_expiry = holdAllowed
+      ? resolveConfirmationHoldExpiry(
+          {
+            event_date: finalEventDate,
+            hold_expiry: currentBooking.hold_expiry,
+            date_tbd: input.date_tbd ?? (currentBooking as { date_tbd?: boolean | null }).date_tbd ?? null,
+            internal_notes: internalNotes,
+          },
+          new Date(),
+        )
+      : null;
   }
 
   // SOP §6/§28: when the event timing moves on a real-dated booking with space
@@ -1433,6 +1472,28 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   if (!updatedBooking) {
     throw new Error('Booking not found');
+  }
+
+  if (reinstating) {
+    try {
+      const { error: reinstateAuditError } = await createAdminClient().from('private_booking_audit').insert({
+        booking_id: id,
+        action: 'reinstated',
+        old_value: currentBooking.status,
+        new_value: updatedBooking.status,
+        performed_by: performedByUserId ?? null,
+        metadata: {
+          previous_hold_expiry: currentBooking.hold_expiry ?? null,
+          hold_expiry: updatedBooking.hold_expiry ?? null,
+        },
+      });
+      if (reinstateAuditError) throw new Error(reinstateAuditError.message);
+    } catch (reinstateAuditFailure) {
+      logger.error('Failed to audit a reinstated private booking (non-blocking)', {
+        error: reinstateAuditFailure instanceof Error ? reinstateAuditFailure : new Error(String(reinstateAuditFailure)),
+        metadata: { bookingId: id },
+      });
+    }
   }
 
   // SOP §15.6: audit the date change (original date, new date, reason, approver).
@@ -2550,12 +2611,17 @@ export async function extendHold(
   // 1. Fetch booking
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, hold_expiry, customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_type, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes')
+    .select('id, status, event_date, hold_expiry, customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_type, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes, deposit_paid_date, deposit_waived')
     .eq('id', id)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
   if (booking.status !== 'draft') throw new Error('Only draft bookings can have their hold extended');
+  // A paid or waived deposit has no hold to extend (BK-068). Setting one armed the 06:00 job to
+  // cancel a booking the guest had paid for, and told them their hold had lapsed.
+  if (booking.deposit_paid_date || booking.deposit_waived === true) {
+    throw new Error('The deposit has been paid or waived, so this booking has no hold to extend');
+  }
 
   // 2. Calculate new hold_expiry: extend from current expiry (or now if already expired)
   const baseDate = booking.hold_expiry && new Date(booking.hold_expiry) > new Date()
@@ -2564,26 +2630,30 @@ export async function extendHold(
   const newExpiry = new Date(baseDate);
   newExpiry.setDate(newExpiry.getDate() + days);
 
-  // Cap at the balance & final-details due date: a hold must never run past
-  // it (SOP §10). Extensions inside the 14-day window cap at the event start.
-  // The cap is reported back so staff learn the granted expiry differs from
-  // the days they picked; the customer SMS below already quotes the capped date.
-  let capped = false;
-  if (booking.event_date) {
-    const eventDate = new Date(booking.event_date);
-    const dueMoment = balanceDueMoment(eventDate);
-    const cap = new Date() > dueMoment ? eventDate : dueMoment;
-    if (newExpiry > cap) {
-      newExpiry.setTime(cap.getTime());
-      capped = true;
-    }
-  }
-
   // The whole of the day the guest is given, not its first instant: the extension email quotes
   // "New deadline: 20 September", and a midnight-UTC expiry let the cron cancel the booking at
   // 07:00 that morning (review PB-BR-1).
   const endOfExpiryDay = endOfLondonDayUtc(newExpiry);
   if (endOfExpiryDay) newExpiry.setTime(endOfExpiryDay.getTime());
+
+  // Cap at the balance & final-details due date: a hold must never run past
+  // it (SOP §10). Extensions inside the 14-day window end with the day before
+  // the event (BK-110), never on the event day itself.
+  // The cap is reported back so staff learn the granted expiry differs from
+  // the days they picked; the customer SMS below already quotes the capped date.
+  let capped = false;
+  if (booking.event_date) {
+    const now = new Date();
+    const eventDate = new Date(booking.event_date);
+    const dueMoment = balanceDueMoment(eventDate);
+    const cap = now > dueMoment
+      ? shortNoticeHoldCap(newExpiry, eventDate, now)
+      : endOfLondonDayUtc(dueMoment) ?? dueMoment;
+    if (newExpiry > cap) {
+      newExpiry.setTime(cap.getTime());
+      capped = true;
+    }
+  }
 
   const newExpiryIso = newExpiry.toISOString();
 

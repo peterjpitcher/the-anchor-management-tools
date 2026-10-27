@@ -78,3 +78,32 @@ describe('the deadline a new booking is given', () => {
     expect(expiry.toISOString()).toBe('2026-11-15T23:59:59.000Z')
   })
 })
+
+// BK-110 (customer bookings review, 24 October 2026): a capped hold ended at 00:00 UTC on its
+// deadline day, and the 06:00 job cancelled it that morning, on the event day for a short-notice
+// booking. Absolute instants, so the suite passing in London and in UTC is the check.
+describe('a capped hold keeps the whole of its last day', () => {
+  it('an event 10 days out gets 48 hours, to the end of the second day', () => {
+    const expiry = computeHoldExpiry(new Date('2026-10-31'), new Date('2026-10-21T09:00:00.000Z'))
+    // 23 October is still BST.
+    expect(expiry.toISOString()).toBe('2026-10-23T22:59:59.000Z')
+  })
+
+  it('an event 20 days out is held to the end of its balance deadline, 14 days before', () => {
+    const expiry = computeHoldExpiry(new Date('2026-10-31'), new Date('2026-10-11T09:00:00.000Z'))
+    expect(expiry.toISOString()).toBe('2026-10-17T22:59:59.000Z')
+  })
+
+  it('a booking two days out is held to the end of the day before the event, not into it', () => {
+    const expiry = computeHoldExpiry(new Date('2026-10-31'), new Date('2026-10-29T09:00:00.000Z'))
+    // 30 October is GMT, after the clocks went back.
+    expect(expiry.toISOString()).toBe('2026-10-30T23:59:59.000Z')
+  })
+
+  it('a booking made the day before, or on the day, keeps its hold to the end of today', () => {
+    expect(computeHoldExpiry(new Date('2026-10-31'), new Date('2026-10-30T09:00:00.000Z')).toISOString())
+      .toBe('2026-10-30T23:59:59.000Z')
+    expect(computeHoldExpiry(new Date('2026-10-30'), new Date('2026-10-30T09:00:00.000Z')).toISOString())
+      .toBe('2026-10-30T23:59:59.000Z')
+  })
+})
