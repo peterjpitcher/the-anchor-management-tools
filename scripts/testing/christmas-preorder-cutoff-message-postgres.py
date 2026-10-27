@@ -17,7 +17,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261027184127_christmas_preorder_cutoff_message.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027232639_christmas_preorder_cutoff_message.sql'
 ROLLBACK = ROOT / 'tasks/christmas-preorder-cutoff-message/rollback.sql'
 SIGNATURE = 'create_table_booking_christmas_v01(jsonb,integer[])'
 

@@ -1,4 +1,4 @@
--- Rollback for 20261027184127_christmas_preorder_cutoff_message.sql: restores
+-- Rollback for 20261027232639_christmas_preorder_cutoff_message.sql: restores
 -- create_table_booking_christmas_v01 exactly as 20261026172410_christmas_booking_minimum_four left it
 -- (the fixed 'noon seven days before the booking' message). No data to restore.
 
