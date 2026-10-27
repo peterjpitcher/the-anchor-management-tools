@@ -222,7 +222,7 @@ describe('private booking monitor route error payloads', () => {
             }
 
             // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
-            if (columns === 'id, status, event_date') {
+            if (columns === 'id, status, event_date, invoice_deposit_treatment') {
               return {
                 or: () => ({
                   not: () => ({
@@ -372,7 +372,7 @@ describe('private booking monitor route error payloads', () => {
                 }
 
                 // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
-                if (columns === 'id, status, event_date') {
+                if (columns === 'id, status, event_date, invoice_deposit_treatment') {
                   return {
                     or: () => ({
                       not: () => ({
@@ -559,7 +559,7 @@ describe('private booking monitor route error payloads', () => {
                 }
 
                 // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
-                if (columns === 'id, status, event_date') {
+                if (columns === 'id, status, event_date, invoice_deposit_treatment') {
                   return {
                     or: () => ({
                       not: () => ({

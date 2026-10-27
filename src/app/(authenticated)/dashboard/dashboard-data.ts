@@ -116,6 +116,11 @@ type PrivateBookingsSnapshot = {
   past: PrivateBookingSummary[]
   balanceDueDates: PrivateBookingBalanceDueSummary[]
   totalUpcoming: number
+  /**
+   * The private hire to-do counts (BK-062, BK-064, BK-065, BK-131). Optional: a snapshot cached
+   * before this field existed has none, and the page reads it as nothing to do.
+   */
+  toDo?: { refundsOwed: number; depositsDueBack: number; depositsOverdue: number; hiresToClose: number; textsAwaitingApproval: number }
   error?: string
 }
 
@@ -1039,6 +1044,23 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
         } catch (error) {
           console.error('Failed to load dashboard message metrics:', error)
           messages.error = 'Failed to load message metrics'
+        }
+      })() : Promise.resolve(),
+
+      // The private hire to-do list the manager's daily email carries, as counts.
+      privateBookings.permitted ? (async () => {
+        try {
+          const { findPrivateHireToDo } = await import('@/services/private-bookings/attention')
+          const toDo = await findPrivateHireToDo({ now: new Date(), db: createAdminClient() })
+          privateBookings.toDo = {
+            refundsOwed: toDo.refundsOwed.length,
+            depositsDueBack: toDo.depositsDueBack.length,
+            depositsOverdue: toDo.depositsDueBack.filter((deposit) => deposit.dueBy < todayIso).length,
+            hiresToClose: toDo.hiresToClose.length,
+            textsAwaitingApproval: toDo.textsAwaitingApproval,
+          }
+        } catch (error) {
+          console.error('Failed to load the private hire to-do counts:', error)
         }
       })() : Promise.resolve(),
 
