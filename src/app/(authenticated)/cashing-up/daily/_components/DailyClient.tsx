@@ -38,6 +38,8 @@ import {
   cashVarianceTextClass,
   cashupSessionStatusTone,
 } from '../../_shared/status-ui'
+import { needsSalesGapNote, salesGapNoteMessage } from '@/lib/cashing-up/sales-gap'
+import { CashupDayMoneyCard } from './CashupDayMoneyCard'
 
 const DENOMINATIONS = [
   { value: 50, label: '£50' },
@@ -258,6 +260,13 @@ export function DailyClient({
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
   const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
+  // Till sales against takings (BK-119): a gap over £5 needs a note before submitting (D33).
+  const salesGap = salesSplitTotal > 0 ? salesSplitVariance : null
+  const gapNeedsNote = needsSalesGapNote(salesGap)
+  const gapNoteMissing = gapNeedsNote && !notes.trim()
+  // Stripe is historic (the last Stripe takings were 1 January 2026), so its field shows only
+  // on a cash-up that already holds a Stripe amount, which saving must keep.
+  const showStripe = getBreakdownValue(existingSession, 'STRIPE', 'countedAmount') !== 0
   const target = parseFloat(targetAmount) || 0
 
   const buildSessionDTO = useCallback((status: UpsertCashupSessionDTO['status'] = 'draft'): UpsertCashupSessionDTO => {
@@ -271,6 +280,8 @@ export function DailyClient({
       sessionDate,
       status,
       notes: [notes, autoNotes].filter(Boolean).join('\n\n').trim() || null,
+      // The member of staff's own words, checked at submit against a sales and takings gap.
+      gapNote: notes.trim() || null,
       paymentBreakdowns: [
         { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: cashExpectedNum, countedAmount: cashCountedTotal },
         { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: cardNum, countedAmount: cardNum },
@@ -310,6 +321,11 @@ export function DailyClient({
   }, [buildSessionDTO, router, sessionId, siteId])
 
   const handleSubmit = useCallback(async () => {
+    if (gapNoteMissing && salesGap !== null) {
+      toast.error(salesGapNoteMessage(salesGap))
+      document.getElementById('input-notes')?.focus()
+      return
+    }
     const shouldStayOnCurrentDate = Boolean(sessionId && editMode && currentStatus && currentStatus !== 'draft')
     setSaving(true)
     try {
@@ -342,7 +358,7 @@ export function DailyClient({
     } finally {
       setSaving(false)
     }
-  }, [buildSessionDTO, clearFormFields, currentStatus, editMode, missingDates, router, sessionDate, sessionId, siteId])
+  }, [buildSessionDTO, clearFormFields, currentStatus, editMode, gapNoteMissing, missingDates, router, salesGap, sessionDate, sessionId, siteId])
 
   const handleOpenForEditing = useCallback(() => {
     if (isLockedStatus) {
@@ -646,7 +662,7 @@ export function DailyClient({
         {/* Column 1: Cash and payment totals */}
         <Card>
           <CardHeader
-            title="Cash, Card & Stripe"
+            title={showStripe ? 'Cash, Card & Stripe' : 'Cash & Card'}
             subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer and payment totals'}
           />
           <CardBody className="space-y-4">
@@ -730,7 +746,7 @@ export function DailyClient({
                   step="0.01"
                   value={cardTotal}
                   onChange={(e) => setCardTotal(e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, 'input-stripe-total')}
+                  onKeyDown={(e) => handleKeyDown(e, showStripe ? 'input-stripe-total' : 'input-drinks-sales')}
                   placeholder="0.00"
                   icon={<Icon name="pound" size={16} />}
                   className={compactAmountInputClass}
@@ -738,21 +754,23 @@ export function DailyClient({
                 />
               </Field>
 
-              <Field label="Stripe total (dashboard)">
-                <Input
-                  id="input-stripe-total"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={stripeTotal}
-                  onChange={(e) => setStripeTotal(e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, 'input-drinks-sales')}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                  className={compactAmountInputClass}
-                  disabled={fieldsDisabled}
-                />
-              </Field>
+              {showStripe && (
+                <Field label="Stripe total (historic)">
+                  <Input
+                    id="input-stripe-total"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={stripeTotal}
+                    onChange={(e) => setStripeTotal(e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, 'input-drinks-sales')}
+                    placeholder="0.00"
+                    icon={<Icon name="pound" size={16} />}
+                    className={compactAmountInputClass}
+                    disabled={fieldsDisabled}
+                  />
+                </Field>
+              )}
             </div>
 
           </CardBody>
@@ -821,8 +839,13 @@ export function DailyClient({
               </div>
             </Alert>
 
-            {/* Notes */}
-            <Field label="Notes / variance reason">
+            {/* Notes: required when till sales and takings differ by more than £5 (D33) */}
+            <Field
+              label="Notes / variance reason"
+              required={gapNeedsNote}
+              hint={gapNeedsNote && !gapNoteMissing ? 'Explains the gap between till sales and takings.' : undefined}
+              error={gapNoteMissing && salesGap !== null && !fieldsDisabled ? salesGapNoteMessage(salesGap) : undefined}
+            >
               <Input
                 id="input-notes"
                 value={notes}
@@ -927,10 +950,10 @@ export function DailyClient({
       </div>
 
       {/* Revenue stats */}
-      <StatGrid columns={5}>
+      <StatGrid columns={showStripe ? 5 : 4}>
         <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
         <Stat label="Card" value={`£${fmt(cardNum)}`} />
-        <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />
+        {showStripe && <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />}
         <Stat
           label="Total revenue"
           value={`£${fmt(totalRevenue)}`}
@@ -940,9 +963,12 @@ export function DailyClient({
         <Stat
           label="Split difference"
           value={`£${fmt(salesSplitVariance)}`}
-          hint="For P&L reference"
+          hint={gapNeedsNote ? 'Over £5: say why in the notes' : 'Till sales less takings'}
+          tone={gapNoteMissing ? 'warning' : 'default'}
         />
       </StatGrid>
+      {/* What was paid outside the till for this day, to help explain the split difference (BK-119). */}
+      <CashupDayMoneyCard sessionDate={sessionDate} />
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Delete Cash-Up Session"

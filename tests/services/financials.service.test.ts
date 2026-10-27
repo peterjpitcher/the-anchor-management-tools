@@ -28,6 +28,7 @@ type CashupSalesRow = {
   session_date: string
   status: string
   total_counted_amount: number
+  voided_at?: string | null
   cashup_sales_breakdowns?: Array<{ sales_category: string; amount: number }>
 }
 
@@ -60,8 +61,16 @@ function createFinancialDashboardClient(
   const receiptGte = vi.fn().mockReturnValue({ in: receiptIn })
   const receiptSelect = vi.fn().mockReturnValue({ gte: receiptGte })
 
-  const cashupOrder = vi.fn().mockResolvedValue({ data: cashupRows, error: null })
-  const cashupIn = vi.fn().mockReturnValue({ order: cashupOrder })
+  const cashupOrder = vi.fn()
+  // Applies the voided filter as Postgres would, so a voided session is really left out.
+  const cashupIs = vi.fn((column: string, value: unknown) => {
+    cashupOrder.mockResolvedValue({
+      data: cashupRows.filter((row) => ((row as Record<string, unknown>)[column] ?? null) === value),
+      error: null,
+    })
+    return { order: cashupOrder }
+  })
+  const cashupIn = vi.fn().mockReturnValue({ is: cashupIs })
   const cashupGte = vi.fn().mockReturnValue({ in: cashupIn })
   const cashupSelect = vi.fn().mockReturnValue({ gte: cashupGte })
 
@@ -121,6 +130,7 @@ function createFinancialDashboardClient(
       receiptOrderByDate,
       receiptOrderById,
       cashupOrder,
+      cashupIs,
       cashupIn,
       cashupGte,
       importedSalesOrder,
@@ -451,4 +461,34 @@ describe('FinancialService P&L aggregation correctness', () => {
     expect(result.actuals['1m'].online_booking_income).toBe(0)
     expect(result.dataQuality.warnings).toContain('Online booking income could not be loaded, so its line shows £0.')
   })
+
+  it('leaves a voided cash-up out of P&L sales (BK-219)', async () => {
+    const rows: CashupSalesRow[] = [
+      {
+        id: 'kept',
+        session_date: isoDateDaysAgo(2),
+        status: 'submitted',
+        total_counted_amount: 500,
+        cashup_sales_breakdowns: [{ sales_category: 'drinks_sales', amount: 300 }, { sales_category: 'food_sales', amount: 200 }],
+      },
+      {
+        id: 'voided',
+        session_date: isoDateDaysAgo(3),
+        status: 'submitted',
+        total_counted_amount: 900,
+        voided_at: new Date().toISOString(),
+        cashup_sales_breakdowns: [{ sales_category: 'drinks_sales', amount: 900 }],
+      },
+    ]
+    const { client, mocks } = createFinancialDashboardClient([[]], rows)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(mocks.cashupIs).toHaveBeenCalledWith('voided_at', null)
+    expect(result.cashupSales['1m'].totalRevenue).toBe(500)
+    expect(result.cashupSales['1m'].drinksSales).toBe(300)
+    expect(result.cashupSales['1m'].sessionCount).toBe(1)
+  })
 })
+

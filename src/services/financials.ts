@@ -285,6 +285,9 @@ async function fetchCashupSalesRows(
     `)
     .gte('session_date', startDate)
     .in('status', ['draft', 'submitted', 'approved', 'locked'])
+    // A voided cash-up stays on record but is out of every total (BK-219), as in
+    // cashing-up.service.ts since commit bea827bb.
+    .is('voided_at', null)
     .order('session_date', { ascending: false });
 
   if (error) {

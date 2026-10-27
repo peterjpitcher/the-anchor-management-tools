@@ -292,6 +292,11 @@ export const CASHING_UP = {
   datesNamed: 5,
   /** Members listed under a merged action before it says "and N more". */
   membersShown: 10,
+  /**
+   * A gap between till sales and takings above this needs a note at cash-up (owner decision D33,
+   * BK-119). Matches CASHUP_SALES_GAP_NOTE_THRESHOLD in src/lib/cashing-up/sales-gap.ts.
+   */
+  salesGapNote: 5,
 } as const
 
 export const SHORT_LINKS = {
