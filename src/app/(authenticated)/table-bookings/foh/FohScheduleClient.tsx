@@ -663,6 +663,7 @@ export function FohScheduleClient({
         walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
         formRequiresDeposit={createBooking.formRequiresDeposit}
         seasonalPeriod={createBooking.seasonalPeriod}
+        christmasPreorderCutoffDays={createBooking.christmasPreorderCutoffDays}
         seasonalAnswer={createBooking.seasonalAnswer}
         onSetSeasonalAnswer={createBooking.setSeasonalAnswer}
         errorMessage={errorMessage}
