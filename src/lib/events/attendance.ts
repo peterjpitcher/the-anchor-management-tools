@@ -12,7 +12,7 @@
 
 export type EventAttendance = 'came' | 'did_not_come' | 'not_recorded'
 
-/** The check-in method written when staff tick 'Came' from the list (migration 20261026231641). */
+/** The check-in method written when staff tick 'Came' from the list (migration 20261027133352). */
 export const STAFF_LIST_CHECK_IN_METHOD = 'staff_list'
 
 /**

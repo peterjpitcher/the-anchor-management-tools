@@ -1,4 +1,4 @@
--- Rollback for 20261026182434_staff_database_access.sql: restores the policies and grants production held on 26 October 2026.
+-- Rollback for 20261027001434_staff_database_access.sql: restores the policies and grants production held on 26 October 2026.
 
 DROP POLICY booking_table_assignments_staff_select ON public.booking_table_assignments;
 DROP POLICY "Signed-in users can view short links; guest links need short-link access" ON public.short_links;

@@ -22,7 +22,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026190515_christmas_party_size_changes.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027132719_christmas_party_size_changes.sql'
 ROLLBACK = ROOT / 'tasks/christmas-party-size-changes/rollback.sql'
 TRIGGER_FN = 'assert_christmas_course_snapshot_v01()'
 CHANGE_FN = 'change_christmas_party_v01(uuid,integer[],integer[],integer[])'

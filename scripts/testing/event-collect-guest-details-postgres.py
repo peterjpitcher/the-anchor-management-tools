@@ -25,7 +25,7 @@ SUITE = ROOT / 'tests/database/event-physical-capacity'
 CAPACITY = ROOT / 'supabase/migrations/20260921074304_event_physical_capacity.sql'
 ATTENDEES_WRAPPER = ROOT / 'supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql'
 COMMUNAL_PAYMENT = ROOT / 'supabase/migrations/20261026135338_event_payment_confirm_communal_seats.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261026195347_event_collect_guest_details.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027132851_event_collect_guest_details.sql'
 ROLLBACK = ROOT / 'tasks/event-collect-guest-details/rollback.sql'
 V08 = 'public.create_event_booking_v08(uuid,uuid,integer,text,text,integer,jsonb,jsonb,numeric)'
 PRODUCTION_V08_MD5 = 'bb05eb67c52cdb2f99c8e32a0b459ffc'
@@ -110,7 +110,7 @@ def main():
             run_file(CAPACITY, single=True)
             run_file(ATTENDEES_WRAPPER, single=True)
             run_file(COMMUNAL_PAYMENT, single=True)
-            # Production's grants since 20261026181322: service_role only.
+            # Production's grants since 20261026212313: service_role only.
             sql(f"REVOKE ALL ON FUNCTION {V08} FROM PUBLIC, anon, authenticated; GRANT EXECUTE ON FUNCTION {V08} TO service_role;")
             baseline = definition()
             check(f"split_part('{baseline}', ' ', 1) = '{PRODUCTION_V08_MD5}'", 'baseline: create_event_booking_v08 is production\'s body')
