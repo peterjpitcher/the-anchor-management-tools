@@ -24,6 +24,7 @@ export type PaymentHistoryBooking = {
   deposit_amount?: number | string | null
   deposit_payment_method?: string | null
   invoice_id?: string | null
+  paypal_deposit_capture_id?: string | null
 }
 
 export type PaymentHistoryLedger = {
@@ -42,10 +43,15 @@ export function buildPaymentHistoryEntries(
   const entries: PaymentHistoryEntry[] = []
 
   if (booking.deposit_paid_date) {
+    // A deposit PayPal took is never edited or deleted here (BK-069). Deleting one returned
+    // nothing to the guest, and the reconciliation sweep found the PayPal payment and recorded it
+    // again within 15 minutes. It goes back through Process Refund instead.
+    const paidThroughPayPal = Boolean(booking.paypal_deposit_capture_id)
     entries.push({
       id: 'deposit',
       appliedAmount: ledger.appliedDepositAmount,
-      readonly: Boolean(booking.invoice_id),
+      readonly: Boolean(booking.invoice_id) || paidThroughPayPal,
+      ...(paidThroughPayPal ? { refundOnly: true } : {}),
       invoice_id: booking.invoice_id ?? undefined,
       type: 'deposit',
       amount: booking.deposit_amount as number,

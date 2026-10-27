@@ -2365,6 +2365,11 @@ export async function captureDepositPayment(
     return { error: 'Order ID does not match this booking' }
   }
 
+  // BK-063: checked before PayPal is asked to take anything, as order creation already is.
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: `This booking is ${booking.status}, so the deposit was not taken.` }
+  }
+
   if (booking.deposit_paid_date) {
     // Already captured — idempotent success
     return { success: true }
@@ -2496,6 +2501,12 @@ export async function captureDepositPayment(
     revalidatePath('/private-bookings')
     revalidatePath('/events')
     revalidateTag('dashboard')
+    if (finalizeResult.paidAfterClose) {
+      return {
+        success: true,
+        warning: 'The booking was closed while PayPal took this deposit. It is recorded on the booking for refunding, and a manager has been told.',
+      }
+    }
     // Review BK-005: say so when the money is in but the booking did not confirm.
     return finalizeResult.confirmationBlocked
       ? { success: true, warning: describeBlockedDeposit(finalizeResult.confirmationBlockedReasons ?? []) }

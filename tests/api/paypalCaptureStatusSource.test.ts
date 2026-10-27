@@ -55,4 +55,15 @@ describe('deposit capture paths read the capture status before recording the dep
     const body = between(actions, 'export async function captureDepositPayment(', '\nexport async function ')
     expectOutcomeCheckedBeforeRecording(body, 'finalizeDepositPayment(')
   })
+
+  // BK-063: the staff capture took the money before looking at the booking, so a cancelled hire
+  // could be paid for, as the guest portal could. The status refusal must come before the capture.
+  it('the staff private hire deposit capture refuses a closed booking before PayPal takes anything', () => {
+    const actions = readFileSync(resolve(process.cwd(), 'src/app/actions/privateBookingActions.ts'), 'utf8')
+    const body = between(actions, 'export async function captureDepositPayment(', '\nexport async function ')
+    const refusal = body.indexOf("booking.status === 'cancelled' || booking.status === 'completed'")
+    expect(refusal, 'closed booking refusal').toBeGreaterThan(0)
+    expect(refusal).toBeLessThan(body.indexOf('capturePayPalPayment('))
+    expect(body.slice(refusal, body.indexOf('capturePayPalPayment('))).toMatch(/return \{ error:/)
+  })
 })

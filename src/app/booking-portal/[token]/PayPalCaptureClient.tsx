@@ -6,6 +6,7 @@ import { captureDepositPaymentByToken } from '@/app/actions/portalPayPalActions'
 // Imported file by file rather than through the `guest` barrel, which would pull
 // the guest webfont module into this client bundle.
 import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 interface PayPalCaptureClientProps {
   portalToken: string
@@ -75,7 +76,7 @@ export function PayPalCaptureClient({ portalToken, depositPaid }: PayPalCaptureC
   if (status === 'error') {
     return (
       <GuestAlert tone="problem" title="Payment issue">
-        {errorMessage} If you need help, please call us.
+        {errorMessage} If you need help, please call us on {GUEST_CONTACT.phoneDisplay}.
       </GuestAlert>
     )
   }

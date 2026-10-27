@@ -14,6 +14,18 @@ import {
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
 
+/**
+ * What a guest returning from PayPal is told when the booking closed before the deposit was taken
+ * (BK-063). The page adds the venue's phone number after each message.
+ */
+const CLOSED_BOOKING_PAYMENT_REFUSAL: Record<'cancelled' | 'completed', string> = {
+  cancelled: 'This booking has been cancelled, so we have not taken a payment.',
+  completed: 'This booking has already finished, so we have not taken a payment.',
+}
+
+const PAID_AFTER_CLOSE_MESSAGE =
+  'Your payment went through, but this booking was no longer open, so the team has been told and will be in touch about refunding it.'
+
 function getPayPalOrderAmount(order: any): number | null {
   const raw = order?.purchase_units?.[0]?.amount?.value
   const amount = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
@@ -250,6 +262,13 @@ export async function captureDepositPaymentByToken(
     return { error: 'Booking not found' }
   }
 
+  // A cancelled or finished booking takes no deposit (BK-063). The guest may still have the
+  // PayPal checkout or the emailed link open, so this is checked before PayPal is asked to take
+  // anything: refusing afterwards left their money in PayPal with nothing on the booking.
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: CLOSED_BOOKING_PAYMENT_REFUSAL[booking.status as 'cancelled' | 'completed'] }
+  }
+
   // Already paid — idempotent success
   if (booking.deposit_paid_date) {
     return { success: true, bookingConfirmed: booking.status === 'confirmed' }
@@ -382,6 +401,21 @@ export async function captureDepositPaymentByToken(
       method: 'paypal',
       paypalCaptureId: captureResult.transactionId,
     }, admin)
+
+    // Staff cancelled the booking while PayPal was taking the money. It is recorded on the booking
+    // and a manager has been told; the guest is told the truth rather than "confirmed".
+    if (finalizeResult.paidAfterClose) {
+      const closed = { error: PAID_AFTER_CLOSE_MESSAGE }
+      try {
+        await persistIdempotencyResponse(admin, captureKey, captureHash, closed)
+      } catch (persistError) {
+        logger.error('Portal capture: failed to persist paid-after-close response', {
+          error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+          metadata: { bookingId, paypalOrderId },
+        })
+      }
+      return closed
+    }
 
     // Audit log
     if (!finalizeResult.alreadyRecorded) {
