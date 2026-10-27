@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027160421_private_hire_refunds_owed.sql.
+-- Rollback for supabase/migrations/20261027180147_private_hire_refunds_owed.sql.
 --
 -- Restores production as it was on 26 October 2026: no refund owed columns, and the refund status
 -- check allowing only 'partially_refunded' and 'refunded'. A booking marked 'refund_due' since the
