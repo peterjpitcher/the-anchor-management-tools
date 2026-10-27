@@ -24,6 +24,7 @@ import {
 import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '../types'
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import {
   FOH_CLIENT_OUTDATED_CODE,
   getFohBookingClientHeaders,
@@ -161,6 +162,7 @@ export function useFohCreateBooking(input: {
     seating_preference: 'seated',
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     notes: '',
+    allergies: '',
     waive_deposit: false,
     is_venue_event: false,
     bypass_pacing: false,
@@ -403,7 +405,7 @@ export function useFohCreateBooking(input: {
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
-      notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+      notes: '', allergies: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
       high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
       christmas_course_counts: []
     }))
@@ -463,7 +465,8 @@ export function useFohCreateBooking(input: {
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
         phone: walkInMode ? '' : current.phone, email: walkInMode ? '' : current.email, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
-        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+        notes: walkInMode ? '' : current.notes, allergies: walkInMode ? '' : current.allergies,
+        waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
         christmas_course_counts: []
       }
@@ -638,6 +641,8 @@ export function useFohCreateBooking(input: {
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: isChristmasBooking ? 'christmas' : createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
+          // Its own field, so the allergy flag, the kitchen sheet and the FOH marker see it (BK-052).
+          allergies: parseAllergyList(createForm.allergies).length > 0 ? parseAllergyList(createForm.allergies) : undefined,
           sunday_deposit_method: (!isWalkIn && !isManagement && !isVenueEvent && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: isVenueEvent || undefined,
           bypass_pacing: createForm.bypass_pacing || undefined,
@@ -687,7 +692,11 @@ export function useFohCreateBooking(input: {
       const coursesText = payload.data.christmas_courses_saved === false
         ? ' The Christmas courses did not save: set them on the booking.'
         : ''
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${paymentLinkText}`)
+      // The booking exists either way; an allergy that did not save must be said, not dropped.
+      const allergiesText = payload.data.allergies_saved === false
+        ? ' The allergies did not save: add them to the booking now.'
+        : ''
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${allergiesText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

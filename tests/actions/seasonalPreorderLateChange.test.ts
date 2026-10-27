@@ -44,6 +44,7 @@ describe('saveSeasonalPreorderCovers after the cutoff', () => {
       bookingReference: 'TB-FIXTURE',
       bookingDate: '2026-11-10',
       requiresPreorder: true,
+      hasGuestSeats: true,
       preorderCutoffDays: 7,
       covers: [{ id: 'cover-1', ordinal: 1 }],
     })

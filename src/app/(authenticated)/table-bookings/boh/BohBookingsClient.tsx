@@ -36,6 +36,8 @@ import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
+import { BookingNoteMarker } from '@/components/features/table-bookings/BookingNoteMarker'
+import { bookingNoteMarker, type BookingNoteFacts } from '@/lib/table-bookings/allergy-words'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -159,6 +161,8 @@ type BohBooking = {
   status: string | null
   visual_status: string
   special_requirements: string | null
+  allergies?: string[]
+  dietary_requirements?: string[]
   seated_at: string | null
   left_at: string | null
   no_show_at: string | null
@@ -378,6 +382,15 @@ function formatLifecycleTime(value: string | null): string | null {
     minute: '2-digit',
     hourCycle: 'h12'
   }).format(parsed)
+}
+
+/** What the Allergy and Note marker reads from a row (BK-052). */
+function noteFacts(booking: BohBooking): BookingNoteFacts {
+  return {
+    allergies: booking.allergies ?? [],
+    dietaryRequirements: booking.dietary_requirements ?? [],
+    notes: booking.special_requirements,
+  }
 }
 
 function getStatusBadgeClasses(status: string): string {
@@ -1091,7 +1104,7 @@ export function BohBookingsClient({
                 dishTotals.pendingPaymentBookingCount
                   ? `, including ${dishTotals.pendingPaymentBookingCount} still waiting for a deposit`
                   : ''
-              }. Dietary notes and allergies are on the booking sheet.`}
+              }. Allergies, dietary needs and booking notes are printed on the booking sheets, marked confidential.`}
             />
             {(dishTotals.lateChangeCount ?? 0) > 0 && (
               <CardBody className="border-b border-border">
@@ -1309,8 +1322,9 @@ export function BohBookingsClient({
                           )}
                         </dl>
 
-                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
+                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none' || bookingNoteMarker(noteFacts(booking))) && (
                           <div className="mt-3 flex flex-wrap gap-2">
+                            <BookingNoteMarker {...noteFacts(booking)} />
                             {(booking.high_chair_count ?? 0) > 0 && (
                               <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
                             )}
@@ -1372,9 +1386,12 @@ export function BohBookingsClient({
                                 {booking.event_name}
                               </div>
                             )}
-                            {(booking.high_chair_count ?? 0) > 0 && (
-                              <div className="mt-1">
-                                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                            {((booking.high_chair_count ?? 0) > 0 || bookingNoteMarker(noteFacts(booking))) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <BookingNoteMarker {...noteFacts(booking)} />
+                                {(booking.high_chair_count ?? 0) > 0 && (
+                                  <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                                )}
                               </div>
                             )}
                           </TableCell>

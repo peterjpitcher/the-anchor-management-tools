@@ -7,11 +7,22 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 
-function installFetch(response: { ok: boolean; counts?: number[] }) {
+function installFetch(response: {
+  ok: boolean
+  counts?: number[]
+  names?: Array<string | null>
+  deadline?: 'open' | 'closed' | 'none'
+  canChangeLate?: boolean
+}) {
   const fetchMock = vi.fn(async () => ({
     ok: response.ok,
     status: response.ok ? 200 : 500,
-    json: async () => ({ course_counts: response.counts ?? [] }),
+    json: async () => ({
+      course_counts: response.counts ?? [],
+      seat_names: response.names ?? [],
+      deadline: response.deadline ?? 'open',
+      can_change_late: response.canChangeLate ?? false,
+    }),
   }))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
@@ -31,7 +42,7 @@ describe('ChristmasCourseFields', () => {
     expect(group).toBeInTheDocument()
     expect(screen.getByLabelText('Guest 1')).toHaveValue('2')
     expect(screen.getByLabelText('Guest 2')).toHaveValue('3')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([2, 3]))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 3], removedSeats: [], expectedCourseCounts: [2, 3] }))
   })
 
   it('keeps the old compact rows for the FOH kiosk, each select still named by its guest', async () => {
@@ -48,7 +59,7 @@ describe('ChristmasCourseFields', () => {
     const select = screen.getByRole('combobox', { name: 'Guest 1' })
     expect(select).toHaveValue('1')
     await user.selectOptions(select, '3')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([3]))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3], removedSeats: [], expectedCourseCounts: [1] }))
   })
 
   it('says the courses could not be loaded in either look', async () => {
@@ -83,7 +94,7 @@ describe('ChristmasCourseFields on a Christmas booking with no courses recorded'
     expect(onChange).toHaveBeenLastCalledWith(undefined)
 
     await user.selectOptions(screen.getByLabelText('Guest 2'), '1')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([3, 1]))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1], removedSeats: [], expectedCourseCounts: [] }))
   })
 
   it('shows nothing on a booking that may not take courses', async () => {
@@ -93,5 +104,58 @@ describe('ChristmasCourseFields on a Christmas booking with no courses recorded'
 
     await waitFor(() => expect(onChange).toHaveBeenCalled())
     expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  })
+})
+
+// BK-054: a smaller party names who is not coming, so that guest's own dishes go; and after the
+// pre-order deadline (D21) a guest can only stay on their tier or move down, and anyone new is on 1.
+describe('ChristmasCourseFields when the party changes size', () => {
+  it('asks who is not coming, and sends nothing until exactly that many are ticked', async () => {
+    installFetch({ ok: true, counts: [3, 2, 1, 1, 1], names: [null, 'Dave', null, null, null] })
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<ChristmasCourseFields bookingId="b1" partySize={4} onChange={onChange} />)
+
+    expect(await screen.findByRole('group', { name: 'Who is not coming? Tick 1 guest.' })).toBeInTheDocument()
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(undefined))
+
+    await user.click(screen.getByRole('checkbox', { name: 'Guest 2 (Dave), 2 courses' }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1, 1, 1], removedSeats: [2], expectedCourseCounts: [3, 2, 1, 1, 1] }))
+    // The guest who is leaving has no course control any more.
+    expect(screen.queryByLabelText('Guest 2 (Dave)')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Guest 3, 1 course' }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(undefined))
+  })
+
+  it('offers the same picker in the FOH kiosk look', async () => {
+    installFetch({ ok: true, counts: [1, 1, 1, 1, 1] })
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<ChristmasCourseFields bookingId="b1" partySize={4} onChange={onChange} appearance="foh" />)
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Guest 5, 1 course' }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [1, 1, 1, 1], removedSeats: [5], expectedCourseCounts: [1, 1, 1, 1, 1] }))
+  })
+
+  it('after the deadline, puts a new guest on 1 course and lets nobody move up', async () => {
+    installFetch({ ok: true, counts: [2, 1, 1, 1], deadline: 'closed', canChangeLate: true })
+    const onChange = vi.fn()
+    render(<ChristmasCourseFields bookingId="b1" partySize={5} onChange={onChange} />)
+
+    expect(await screen.findByText(/saved as a late change/)).toBeInTheDocument()
+    const newGuest = screen.getByLabelText('Guest 5')
+    expect(newGuest).toHaveValue('1')
+    expect(Array.from((newGuest as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
+    expect(Array.from((screen.getByLabelText('Guest 1') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1', '2'])
+    expect(Array.from((screen.getByLabelText('Guest 2') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 1, 1, 1, 1], removedSeats: [], expectedCourseCounts: [2, 1, 1, 1] }))
+  })
+
+  it('after the deadline, tells staff who are not managers that a manager has to make the change', async () => {
+    installFetch({ ok: true, counts: [2, 1, 1, 1], deadline: 'closed', canChangeLate: false })
+    render(<ChristmasCourseFields bookingId="b1" partySize={4} onChange={vi.fn()} />)
+
+    expect(await screen.findByText(/only a manager can change the numbers/)).toBeInTheDocument()
   })
 })
