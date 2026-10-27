@@ -88,6 +88,8 @@ export function EventOutcomesCard({ event, bookings, canManage, onChanged }: Eve
         return
       }
       await onChanged()
+    } catch {
+      toast.error('Failed to record who came. Please try again.')
     } finally {
       setSavingBookingId(null)
     }
@@ -220,6 +222,10 @@ function DoorMoneyPanel({
         setFreeEntries(String(data.freeEntries))
         setNote(data.note ?? '')
       }
+    }).catch(() => {
+      if (cancelled) return
+      setLoaded(true)
+      setLoadError('Door money could not be loaded.')
     })
     return () => {
       cancelled = true
@@ -257,6 +263,8 @@ function DoorMoneyPanel({
       }
       setRecord(result.data)
       toast.success('Door money saved')
+    } catch {
+      setFormError('Failed to save the door money. Please try again.')
     } finally {
       setSaving(false)
     }
