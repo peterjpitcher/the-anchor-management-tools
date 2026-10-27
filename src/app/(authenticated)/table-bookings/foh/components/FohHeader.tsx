@@ -15,7 +15,7 @@ type FohHeaderProps = {
   clockNow: Date
   /** The service date in force: the night before, from midnight until an after-midnight close. */
   serviceDateNow: string
-  totals: { bookings: number; covers: number }
+  totals: { bookings: number; covers: number; privateHireGuests?: number | null }
   viewMode: FohViewMode
   outsideCount: number
   onViewModeChange: (mode: FohViewMode) => void
@@ -226,6 +226,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             </Button>
             <span className={totalsBadgeClass}>Total bookings: {totals.bookings}</span>
             <span className={totalsBadgeClass}>Total covers: {totals.covers}</span>
+            {typeof totals.privateHireGuests === 'number' && totals.privateHireGuests > 0 && (
+              <span className={totalsBadgeClass}>Private hire guests: {totals.privateHireGuests}</span>
+            )}
           </div>
         </div>
 

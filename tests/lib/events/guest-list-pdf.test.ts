@@ -52,7 +52,7 @@ describe('pdfSafeText', () => {
 
 describe('generateEventGuestListPdf (Unicode safety)', () => {
   const groupsWith = (names: string[]): GuestGroup[] => [
-    { bookerName: names[0], lines: names.map((name, i) => ({ name, isBooker: i === 0 })) },
+    { bookerName: names[0], bookedBy: null, paymentNote: null, lines: names.map((name, i) => ({ name, isBooker: i === 0, answers: [] })) },
   ]
 
   it('resolves to a Buffer for a CJK guest name (does not throw)', async () => {
@@ -84,7 +84,7 @@ describe('generateEventGuestListPdf (Unicode safety)', () => {
 
 describe('generateEventGuestListPdf (logo)', () => {
   const groups: GuestGroup[] = [
-    { bookerName: 'Jane Smith', lines: [{ name: 'Jane Smith', isBooker: true }, { name: '', isBooker: false }] },
+    { bookerName: 'Jane Smith', bookedBy: null, paymentNote: null, lines: [{ name: 'Jane Smith', isBooker: true, answers: [] }, { name: '', isBooker: false, answers: [] }] },
   ]
 
   it('embeds The Anchor logo when one is given', async () => {

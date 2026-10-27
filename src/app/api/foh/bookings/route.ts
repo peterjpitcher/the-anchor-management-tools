@@ -6,6 +6,8 @@ import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib/business-hours/trading-day'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
@@ -83,6 +85,8 @@ const CreateFohTableBookingSchema = z.object({
   // exactly as for `food`, but a deposit is always taken whatever the size.
   purpose: z.enum(['food', 'drinks', 'christmas']),
   notes: z.string().trim().max(500).optional(),
+  // Allergies in their own field (BK-052), split on the screen. The same limits as the public API.
+  allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   // Deprecated. Older FOH clients may still post this while their bundle rolls
   // forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
@@ -106,7 +110,9 @@ const CreateFohTableBookingSchema = z.object({
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
   bypass_pacing: z.boolean().optional(),
-  is_venue_event: z.boolean().optional().default(false)
+  is_venue_event: z.boolean().optional().default(false),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketing_texts_yes: z.boolean().optional()
 }).superRefine((value, context) => {
   if (value.customer_mode === 'selected' && !value.customer_id) {
     context.addIssue({
@@ -820,9 +826,37 @@ async function markWalkInBookingAsSeated(
   }
 }
 
+/**
+ * The guest's allergies, in their own field (BK-052). The booking functions do not take them, so they
+ * are written straight after the booking. A failure is an error, not a warning, and the screen tells
+ * staff to add them: a booking that quietly lost an allergy is the outcome to avoid.
+ */
+async function saveStaffBookingAllergies(
+  supabase: any,
+  tableBookingId: string,
+  allergies: string[]
+): Promise<boolean> {
+  const { error } = await supabase.from('table_bookings').update({ allergies }).eq('id', tableBookingId)
+  if (error) {
+    logger.error('Staff booking saved but its allergies did not', {
+      error: new Error(error.message || 'Allergy update failed'),
+      metadata: { tableBookingId, allergyCount: allergies.length },
+    })
+    return false
+  }
+  return true
+}
+
 type FohCreateBookingResponseData = {
   /** Present when staff sent Christmas courses: false means the booking exists without them. */
   christmas_courses_saved?: boolean
+  /**
+   * True when a confirmation is known to have reached the guest, false when one was due and none
+   * did (a landline with no email, say), null when none was due. Staff are told on false (BK-162).
+   */
+  notification_sent?: boolean | null
+  /** Present when staff sent allergies: false means the booking exists without them. */
+  allergies_saved?: boolean
   state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
@@ -1076,6 +1110,12 @@ async function createFohTableBooking(
       return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
     }
 
+    const mgmtAllergiesSaved =
+      (payload.allergies?.length ?? 0) > 0 &&
+      mgmtResult.table_booking_id &&
+      (mgmtResult.state === 'confirmed' || mgmtResult.state === 'pending_payment')
+        ? await saveStaffBookingAllergies(auth.supabase, mgmtResult.table_booking_id, payload.allergies ?? [])
+        : undefined
     if (mgmtResult.state === 'confirmed') {
       await recordFohBookingCreated({
         userId: auth.userId,
@@ -1095,6 +1135,7 @@ async function createFohTableBooking(
     }
 
     const responseData: FohCreateBookingResponseData = {
+      ...(mgmtAllergiesSaved === undefined ? {} : { allergies_saved: mgmtAllergiesSaved }),
       state: mgmtResult.state as FohCreateBookingResponseData['state'],
       table_booking_id: mgmtResult.table_booking_id ?? null,
       booking_reference: mgmtResult.booking_reference ?? null,
@@ -1149,6 +1190,8 @@ async function createFohTableBooking(
   const walkInNameParts = splitWalkInGuestName(payload.walk_in_guest_name)
   const fallbackFirstName = payload.first_name || walkInNameParts.firstName
   const fallbackLastName = payload.last_name || walkInNameParts.lastName
+  // The typed email when the matched customer's record holds a different one (BK-078).
+  let bookingContactEmail: string | null = null
 
   if (payload.customer_id) {
     const { data: selectedCustomer, error: selectedCustomerError } = await auth.supabase
@@ -1248,8 +1291,9 @@ async function createFohTableBooking(
       firstName: fallbackFirstName,
       lastName: fallbackLastName,
       email: payload.email
-    })
+    }, { trustedEntry: true })
     customerId = customerResolution.customerId
+    bookingContactEmail = customerResolution.bookingContactEmail ?? null
   } else if (payload.walk_in === true) {
     try {
       const walkInCustomer = await createWalkInCustomer(auth.supabase, {
@@ -1667,6 +1711,13 @@ async function createFohTableBooking(
     }
   }
 
+  const allergiesSaved =
+    (payload.allergies?.length ?? 0) > 0 &&
+    bookingResult.table_booking_id &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+      ? await saveStaffBookingAllergies(auth.supabase, bookingResult.table_booking_id, payload.allergies ?? [])
+      : undefined
+
   // The courses staff chose for each guest are recorded on the booking (BK-057), so the pre-order
   // forms, the chase and the kitchen know who is on 1, 2 or 3 courses. A request without them (an
   // older FOH bundle) keeps the earlier rule: inside the Christmas pre-order deadline the 1 course
@@ -1902,6 +1953,24 @@ async function createFohTableBooking(
     }
   }
 
+  // Kept before the confirmation goes, so it reaches the address the guest gave (BK-078).
+  if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
+    await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, bookingContactEmail)
+    // A made-up walk-in customer has no number to text, so there is nothing to consent to.
+    await recordStaffReadOutConsent({
+      saidYes: payload.marketing_texts_yes === true && !walkInTrail.customer,
+      customerId,
+      actorUserId: auth.userId,
+      source: 'staff_table_booking',
+      relatedEntityType: 'table_booking',
+      relatedEntityId: bookingResult.table_booking_id,
+    })
+  }
+
+  // Whether a confirmation is known to have reached the guest, so staff can tell them when none
+  // did (BK-162). Null when none was due: a walk-in, a blocked booking or no number.
+  let notificationSent: boolean | null = null
+
   if (
     shouldSendBookingSms &&
     normalizedPhone &&
@@ -1926,6 +1995,10 @@ async function createFohTableBooking(
           nextStepUrl
         })
       : null
+
+    if (smsSendResult) {
+      notificationSent = smsSendResult.notificationSent === true
+    }
 
     if (!guestNoticeApplies) {
       logger.info('Walk-in booking created, so no guest booking confirmation was sent', {
@@ -2027,7 +2100,9 @@ async function createFohTableBooking(
         sunday_preorder_reason: sundayPreorderReason,
         high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
         is_outside_seating: bookingResult.is_outside_seating ?? false,
-        ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved })
+        notification_sent: notificationSent,
+        ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved }),
+        ...(allergiesSaved === undefined ? {} : { allergies_saved: allergiesSaved })
       } satisfies FohCreateBookingResponseData
     },
     { status: responseStatus }

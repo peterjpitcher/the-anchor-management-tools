@@ -15,6 +15,7 @@ import {
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -198,6 +199,12 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
     }
 
+    // A landline or non-UK number cannot take our texts, so without an email the guest would never
+    // hear that a place came up (BK-162). Ask for an email instead.
+    if (!parsed.data.email && !isUkMobile(normalizedPhone)) {
+      return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
+    }
+
     const requestHash = computeIdempotencyRequestHash({
       event_id: parsed.data.event_id,
       phone: normalizedPhone,
@@ -248,19 +255,6 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
-      await ConsentService.applyBookingContactConsent(
-        customerResolution.customerId,
-        parsed.data.communication_consent,
-        {
-          source: 'public_event_waitlist',
-          captureMethod: 'checkbox',
-          sourceUrl: req.headers.get('referer'),
-          userAgent: req.headers.get('user-agent'),
-          relatedEntityType: 'event_waitlist',
-          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-        }
-      )
-
       const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_event_waitlist_entry_v05', {
         p_event_id: parsed.data.event_id,
         p_customer_id: customerResolution.customerId,
@@ -279,6 +273,24 @@ export async function POST(request: NextRequest) {
       const state = waitlistResult.state || 'blocked'
       mutationCommitted = state === 'queued' || Boolean(waitlistResult.waitlist_entry_id)
       let smsMeta: SmsSafetyMeta = null
+
+      // Recorded once the entry exists, so the consent names it (BK-080), and before the waitlist
+      // text so that text's channel choice sees it.
+      if (state === 'queued' && waitlistResult.waitlist_entry_id) {
+        await ConsentService.applyBookingContactConsent(
+          customerResolution.customerId,
+          parsed.data.communication_consent,
+          {
+            source: 'public_event_waitlist',
+            captureMethod: 'checkbox',
+            sourceUrl: req.headers.get('referer'),
+            userAgent: req.headers.get('user-agent'),
+            relatedEntityType: 'event_waitlist',
+            relatedEntityId: waitlistResult.waitlist_entry_id,
+            metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+          }
+        )
+      }
 
       if (state === 'queued') {
         const [, smsOutcome] = await Promise.allSettled([

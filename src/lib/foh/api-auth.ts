@@ -36,6 +36,24 @@ export async function requireBohTableBookingPermission(action: FohPermissionActi
   return auth
 }
 
+/**
+ * Whether the signed-in user holds table_bookings 'manage', asked only when a change needs it (a
+ * Christmas party changed after its pre-order deadline, owner decision D21). Read from the
+ * permission, never from a role name. A failed read answers no.
+ */
+export function tableBookingsManagerCheck(
+  auth: Extract<PermissionCheckResult, { ok: true }>,
+): () => Promise<boolean> {
+  return async () => {
+    const { data, error } = await auth.supabase.rpc('user_has_permission', {
+      p_user_id: auth.userId,
+      p_module_name: 'table_bookings',
+      p_action: 'manage',
+    })
+    return !error && data === true
+  }
+}
+
 export function getLondonDateIso(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',

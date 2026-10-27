@@ -137,6 +137,9 @@ export interface PrivateBooking {
   special_risk_notes?: string
   communication_preference?: string
   cleardown_time?: string
+  // Kitchen covers for pacing (owner decision D29): null counts automatically.
+  kitchen_covers?: number | null
+  kitchen_food_time?: string | null
   // Workflow flags (SOP pack §8)
   final_details_status?: FinalDetailsStatus
   supplier_status?: SupplierStatus

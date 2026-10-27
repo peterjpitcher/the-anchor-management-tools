@@ -373,6 +373,10 @@ export default async function DashboardPage() {
         covers: (() => {
           if (!snapshot.tableBookings.permitted) return '--'
           const total = snapshot.tableBookings.todayCovers
+          // Private-hire guests as their own figure (BK-075): a night with a 120-guest party and no
+          // diners no longer reads as empty.
+          const hireGuests = snapshot.tableBookings.todayPrivateHireGuests ?? 0
+          if (hireGuests > 0) return `${total} + ${hireGuests} private hire`
           return total > 0 ? String(total) : '--'
         })(),
       }}
