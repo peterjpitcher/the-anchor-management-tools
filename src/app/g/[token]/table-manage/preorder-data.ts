@@ -61,7 +61,8 @@ export type BookerPreorderView = {
  *
  * Null covers every "no section on the page" case: the feature is switched off, this booking is not
  * a seasonal one, the guest declined the seasonal offer, or the period has no live menu to choose
- * from. A guest is never shown an empty menu to pick from.
+ * from. A guest is never shown an empty menu to pick from. A Christmas party all on 1 course still
+ * gets the section, with a name and a dietary note for each guest and no dishes (BK-148).
  */
 export async function loadBookerPreorderView(
   supabase: Db,
@@ -70,7 +71,9 @@ export async function loadBookerPreorderView(
   if (!(await isPreorderEnabled(supabase))) return null
 
   const order = await loadPreorderOrder(supabase, tableBookingId)
-  if (!order || !order.requiresPreorder || !order.periodId) return null
+  // A Christmas party all on 1 course has no dishes to choose but a seat per guest for a name and a
+  // dietary note (BK-148), so it gets the section too.
+  if (!order || !order.hasGuestSeats || !order.periodId) return null
 
   const { data, error } = await supabase
     .from('booking_period_menu_items')
@@ -102,7 +105,8 @@ export async function loadBookerPreorderView(
     }
   }
 
-  if (menuByCourse.main.length === 0) return null
+  // No menu to choose from is only a reason to hide the form when somebody has dishes to choose.
+  if (order.requiresPreorder && menuByCourse.main.length === 0) return null
 
   return {
     order,

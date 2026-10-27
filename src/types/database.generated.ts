@@ -5541,6 +5541,7 @@ export type Database = {
           cancellation_policy: string | null
           capacity: number | null
           category_id: string | null
+          collect_guest_details: boolean | null
           created_at: string
           date: string
           doors_time: string | null
@@ -5612,6 +5613,7 @@ export type Database = {
           cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
+          collect_guest_details?: boolean | null
           created_at?: string
           date: string
           doors_time?: string | null
@@ -5683,6 +5685,7 @@ export type Database = {
           cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
+          collect_guest_details?: boolean | null
           created_at?: string
           date?: string
           doors_time?: string | null
@@ -21246,6 +21249,15 @@ export type Database = {
         Returns: Json
       }
       categorize_historical_events: { Args: never; Returns: number }
+      change_christmas_party_v01: {
+        Args: {
+          p_booking_id: string
+          p_course_counts: number[]
+          p_expected_course_counts?: number[]
+          p_removed_ordinals?: number[]
+        }
+        Returns: Json
+      }
       check_and_reserve_capacity: {
         Args: {
           p_booking_time: string
@@ -22032,6 +22044,10 @@ export type Database = {
           p_sent: boolean
         }
         Returns: Json
+      }
+      gdpr_scrub_audit_logs_v01: {
+        Args: { p_booking_ids?: string[]; p_customer_ids: string[] }
+        Returns: number
       }
       generate_booking_reference: { Args: never; Returns: string }
       generate_invoice_reminder_digest: {

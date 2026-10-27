@@ -216,7 +216,10 @@ async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefu
 async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage: boolean) {
   // The booking's own snapshot answers this, not the live period row: a guest who said "no, this
   // is not a Christmas dinner" gets the normal menu and owes nobody a choice.
-  if (rawBooking.booking_period_requires_preorder !== true || rawBooking.booking_period_answer !== true) {
+  // A Christmas booking with courses recorded has a seat per guest for a name and a dietary note even
+  // when everyone is on 1 course (BK-148), so it gets the card too.
+  const hasChristmasCourses = Array.isArray(rawBooking.christmas_course_counts)
+  if ((rawBooking.booking_period_requires_preorder !== true && !hasChristmasCourses) || rawBooking.booking_period_answer !== true) {
     return null
   }
 
@@ -225,7 +228,7 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage
     loadPreorderOrder(admin, rawBooking.id),
     isPreorderEnabled(admin),
   ])
-  if (!order || !order.requiresPreorder) return null
+  if (!order || !order.hasGuestSeats) return null
 
   // Switched off and never started means there is nothing to show. Switched off with orders
   // already taken still shows them, because hiding what staff typed in would be worse.

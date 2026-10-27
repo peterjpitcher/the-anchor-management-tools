@@ -664,6 +664,9 @@ export async function GET(request: NextRequest) {
           deposit_amount_locked: booking.deposit_amount_locked ?? null,
           hold_expires_at: booking.hold_expires_at || null,
           notes: combinedNotes || null,
+          // The guest's own notes, without the event label, for the Allergy and Note marker and the
+          // notes editor (BK-052).
+          special_requirements: booking.special_requirements || null,
           seated_at: booking.seated_at || null,
           left_at: booking.left_at || null,
           no_show_at: booking.no_show_at || null,
@@ -742,6 +745,7 @@ export async function GET(request: NextRequest) {
               .filter((part: string | null) => typeof part === 'string' && part.trim().length > 0)
               .join(' · ')
           : booking.special_requirements || null,
+      special_requirements: booking.special_requirements || null,
       seated_at: booking.seated_at || null,
       left_at: booking.left_at || null,
       no_show_at: booking.no_show_at || null,

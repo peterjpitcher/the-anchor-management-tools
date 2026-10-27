@@ -16,6 +16,8 @@ export type FohBooking = {
   deposit_amount_locked?: number | null
   hold_expires_at?: string | null
   notes: string | null
+  /** The guest's own notes, without the event label that `notes` may carry (BK-052). */
+  special_requirements?: string | null
   seated_at?: string | null
   left_at?: string | null
   no_show_at?: string | null
@@ -97,6 +99,8 @@ export type FohCreateBookingResponse = {
   data?: {
     /** Sent only when Christmas courses were sent; false means the booking exists without them. */
     christmas_courses_saved?: boolean
+    /** Sent only when allergies were sent; false means the booking exists without them. */
+    allergies_saved?: boolean
     state: 'confirmed' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null
