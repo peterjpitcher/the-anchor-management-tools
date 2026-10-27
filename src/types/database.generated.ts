@@ -3291,7 +3291,6 @@ export type Database = {
           last_successful_email_at: string | null
           last_successful_sms_at: string | null
           last_successful_whatsapp_at: string | null
-          last_table_booking_date: string | null
           last_whatsapp_failure_reason: string | null
           last_whatsapp_inbound_at: string | null
           marketing_email_opt_in: boolean
@@ -3321,7 +3320,6 @@ export type Database = {
           sms_opted_out_at: string | null
           sms_status: string
           stripe_customer_id: string | null
-          table_booking_count: number | null
           total_failures_30d: number | null
           whatsapp_deactivated_at: string | null
           whatsapp_deactivation_reason: string | null
@@ -3350,7 +3348,6 @@ export type Database = {
           last_successful_email_at?: string | null
           last_successful_sms_at?: string | null
           last_successful_whatsapp_at?: string | null
-          last_table_booking_date?: string | null
           last_whatsapp_failure_reason?: string | null
           last_whatsapp_inbound_at?: string | null
           marketing_email_opt_in?: boolean
@@ -3380,7 +3377,6 @@ export type Database = {
           sms_opted_out_at?: string | null
           sms_status?: string
           stripe_customer_id?: string | null
-          table_booking_count?: number | null
           total_failures_30d?: number | null
           whatsapp_deactivated_at?: string | null
           whatsapp_deactivation_reason?: string | null
@@ -3409,7 +3405,6 @@ export type Database = {
           last_successful_email_at?: string | null
           last_successful_sms_at?: string | null
           last_successful_whatsapp_at?: string | null
-          last_table_booking_date?: string | null
           last_whatsapp_failure_reason?: string | null
           last_whatsapp_inbound_at?: string | null
           marketing_email_opt_in?: boolean
@@ -3439,7 +3434,6 @@ export type Database = {
           sms_opted_out_at?: string | null
           sms_status?: string
           stripe_customer_id?: string | null
-          table_booking_count?: number | null
           total_failures_30d?: number | null
           whatsapp_deactivated_at?: string | null
           whatsapp_deactivation_reason?: string | null
@@ -16141,6 +16135,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      retired_customer_booking_counters_20261027: {
+        Row: {
+          copied_at: string
+          customer_id: string
+          last_table_booking_date: string | null
+          table_booking_count: number | null
+        }
+        Insert: {
+          copied_at?: string
+          customer_id: string
+          last_table_booking_date?: string | null
+          table_booking_count?: number | null
+        }
+        Update: {
+          copied_at?: string
+          customer_id?: string
+          last_table_booking_date?: string | null
+          table_booking_count?: number | null
+        }
+        Relationships: []
       }
       review_feedback: {
         Row: {
