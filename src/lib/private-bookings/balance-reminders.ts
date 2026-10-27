@@ -1,13 +1,13 @@
 /**
- * Balance reminders by email (owner decision, 11 September 2026; messaging flag
- * private_booking_balance_email_auto): "send them by email automatically from now on, don't send
- * historic ones".
+ * Balance reminders by email (owner decision, 11 September 2026): "send them by email
+ * automatically from now on, don't send historic ones". The messaging flag that switched this on,
+ * private_booking_balance_email_auto, was on from 15 September and is gone (owner decision D16,
+ * 26 October 2026): this is simply how balance reminders work now.
  *
- * While the flag is on, every balance reminder the monitor queues carries this marker in its
- * metadata. A balance reminder row without it was queued before the switch (the backlog that has
- * waited for approval since July) and is never sent: Approve and Send Now refuse it. This does
- * not depend on those rows being cancelled in the database, and with the flag off nothing here
- * applies.
+ * Every balance reminder the monitor queues carries this marker in its metadata. A balance
+ * reminder row without it was queued before the switch (the backlog that waited for approval
+ * from July) and is never sent: Approve and Send Now refuse it. This does not depend on those rows
+ * being cancelled in the database.
  *
  * Kept free of imports so the text queue can read it without pulling anything else in.
  */

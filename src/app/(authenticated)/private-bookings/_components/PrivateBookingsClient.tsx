@@ -431,6 +431,11 @@ export default function PrivateBookingsClient({
     { value: '30', label: '+30 days' },
   ]
 
+  // Only a draft still waiting for its deposit has a hold to extend (BK-068): a paid or waived
+  // deposit has none, and extending one armed the job that cancels lapsed holds.
+  const canExtendHold = (booking: { status?: string | null; deposit_paid_date?: string | null; deposit_waived?: boolean | null }) =>
+    booking.status === 'draft' && !booking.deposit_paid_date && booking.deposit_waived !== true
+
   // The extend-hold picker in each row: choosing a number of days opens the reason dialog.
   const renderExtendHoldSelect = (bookingId: string) => (
     <Select
@@ -829,7 +834,7 @@ export default function PrivateBookingsClient({
                             View
                           </Link>
 
-                          {booking.status === 'draft' && permissions.hasEditPermission && (
+                          {canExtendHold(booking) && permissions.hasEditPermission && (
                             <>
                               {renderExtendHoldSelect(booking.id)}
                               {extendingHoldId === booking.id && <Spinner size="sm" />}
@@ -962,7 +967,7 @@ export default function PrivateBookingsClient({
                     >
                       View Details
                     </Link>
-                    {booking.status === 'draft' && permissions.hasEditPermission && (
+                    {canExtendHold(booking) && permissions.hasEditPermission && (
                       <div className="flex items-center gap-1">
                         {renderExtendHoldSelect(booking.id)}
                         {extendingHoldId === booking.id && <Spinner size="sm" />}

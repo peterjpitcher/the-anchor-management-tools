@@ -1,5 +1,7 @@
 'use server'
 
+import { getTodayIsoDate } from '@/lib/dateUtils'
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -13,6 +15,7 @@ import {
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { resolveSeasonalDepositRefund } from '@/lib/table-bookings/deposit-refund'
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 
@@ -70,6 +73,11 @@ interface SourceBookingData {
   captureId: string | null
   captureDate: string | null
   originalAmount: number
+  /**
+   * What the booking's refund status is measured against, when that is not originalAmount: a
+   * cancelled private hire's promised refund (BK-065), so it reads refunded once that is paid.
+   */
+  refundStatusBase?: number
   customerId: string | null
   customerName: string | null
   customerEmail: string | null
@@ -107,15 +115,27 @@ async function loadSourceBooking(
   if (sourceType === 'private_booking') {
     const { data } = await db
       .from('private_bookings')
-      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment, event_date')
+      .select('id, status, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, refund_due_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment, event_date')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
+    // A cancelled hire can owe back more than its deposit: the balance paid too (BK-065). The
+    // money held is the cap; the refund promised decides when it reads refunded. The balance comes
+    // from the same de-duplicated ledger the cancellation outcome reads, so a receipt against the
+    // hire's invoice counts, and a deposit the invoice took (the applied-deposit guard below) does
+    // not. If the ledger cannot be read this throws, and the refund is refused.
+    let held = Number(data.deposit_amount) || 0
+    if (data.status === 'cancelled') {
+      const ledger = await readBookingPaymentLedger(sourceId)
+      held = Math.round(((data.deposit_paid_date ? Number(data.deposit_amount) || 0 : 0) + ledger.balancePaymentsTotal) * 100) / 100
+    }
+    const promised = Number(data.refund_due_amount)
     return {
       id: data.id,
       captureId: data.paypal_deposit_capture_id,
       captureDate: data.deposit_paid_date,
-      originalAmount: Number(data.deposit_amount) || 0,
+      originalAmount: held,
+      ...(data.status === 'cancelled' && Number.isFinite(promised) && promised > 0 ? { refundStatusBase: promised } : {}),
       customerId: data.customer_id ?? null,
       customerName: data.customer_name,
       customerEmail: data.contact_email,
@@ -336,6 +356,23 @@ async function updateRefundStatus(
         note: 'the refund itself went through',
       }
     )
+    // BK-062: a refund after the event closes the deposit's post-event step too, which the nightly
+    // job set to 'awaiting_inspection' and nothing ever cleared. A cancelled booking has none.
+    // Never fails the refund: it has already gone.
+    try {
+      const { error: postEventError } = await db
+        .from('private_bookings')
+        .update({ post_event_status: status === 'refunded' ? 'complete' : 'refund_processed' })
+        .eq('id', sourceId)
+        .in('status', ['confirmed', 'completed'])
+        .lte('event_date', getTodayIsoDate())
+      if (postEventError) throw new Error(postEventError.message)
+    } catch (postEventError) {
+      console.error('[payment_refunds] Recording the post-event deposit step failed; the refund itself went through', {
+        sourceId,
+        message: postEventError instanceof Error ? postEventError.message : String(postEventError),
+      })
+    }
   } else if (sourceType === 'table_booking') {
     // Both columns, not just the refund one. `payment_status` left at 'completed' means a
     // fully refunded booking still reads as paid to hasUnpaidRequiredDeposit and to the
@@ -504,7 +541,12 @@ export async function processPayPalRefund(
   const db = createAdminClient()
 
   // 3. Load booking
-  const booking = await loadSourceBooking(db, sourceType, sourceId)
+  let booking: SourceBookingData | null
+  try {
+    booking = await loadSourceBooking(db, sourceType, sourceId)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not load the booking' }
+  }
   if (!booking) return { error: 'Booking not found' }
   if (booking.appliedInvoiceId) {
     return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }
@@ -634,7 +676,7 @@ export async function processPayPalRefund(
       // refund notice goes out at all, and the reconciled result below tells that notice whether
       // the booking was cancelled. A completed private booking used to get both emails, the
       // itemised deposit one and the generic one, disagreeing with each other (review PB-19).
-      const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+      const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.refundStatusBase ?? booking.originalAmount)
       // 'paypal' is the method, not the staff reason: the reason is labelled internal only in the
       // refund dialog and was reaching the guest verbatim (review PB-6).
       const privateBookingEmailSent = await sendPrivateBookingRefundEmailSideEffect(
@@ -863,7 +905,12 @@ export async function processManualRefund(
   const db = createAdminClient()
 
   // 3. Load booking
-  const booking = await loadSourceBooking(db, sourceType, sourceId)
+  let booking: SourceBookingData | null
+  try {
+    booking = await loadSourceBooking(db, sourceType, sourceId)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not load the booking' }
+  }
   if (!booking) return { error: 'Booking not found' }
   if (booking.appliedInvoiceId) {
     return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }
@@ -909,7 +956,7 @@ export async function processManualRefund(
   const refundRow = { id: row.refund_id }
 
   // 6. Update booking refund status
-  const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+  const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.refundStatusBase ?? booking.originalAmount)
   await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, refundMethod)
 
   // 7. Audit

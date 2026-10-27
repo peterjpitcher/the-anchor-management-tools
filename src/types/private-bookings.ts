@@ -96,6 +96,11 @@ export interface PrivateBooking {
   updated_at: string
   paypal_deposit_order_id?: string
   paypal_deposit_capture_id?: string
+  /** What a cancellation promised to refund (BK-065); owed until the refunds recorded reach it. */
+  refund_due_amount?: number | null
+  /** The London date that refund was promised by. */
+  refund_due_by?: string | null
+  deposit_refund_status?: string | null
   deposit_waived?: boolean
   deposit_waived_reason?: string
   /**
@@ -339,7 +344,7 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   balance_remaining?: number
   payment_status?: 'Fully Paid' | 'Partially Paid' | 'Unpaid'
   deposit_status?: 'Paid' | 'Required' | 'Not Required'
-  /** Set by the list query while private_booking_deposit_confirmation is on. */
+  /** Set by the list query: the deposit is still to be confirmed to the guest. */
   deposit_awaiting_confirmation?: boolean
   /**
    * Set by the list query for draft and confirmed hires (review BK-005, BK-006, BK-007): what is
@@ -427,6 +432,8 @@ export type DepositPaymentEntry = {
   date: string  // YYYY-MM-DD (London timezone)
   appliedAmount?: number
   readonly?: boolean
+  /** Paid through PayPal: money goes back through Process Refund, never by editing the row (BK-069). */
+  refundOnly?: boolean
   invoice_id?: string
 }
 

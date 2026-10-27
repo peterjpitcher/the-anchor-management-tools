@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026231641_event_booking_no_show.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133352_event_booking_no_show.sql'
 ROLLBACK = ROOT / 'tasks/event-booking-no-show/rollback.sql'
 
 PRODUCTION_STATUS_CHECK = ("CHECK ((status = ANY (ARRAY['pending_payment'::text, 'confirmed'::text, 'cancelled'::text, "

@@ -8,6 +8,14 @@ vi.mock('@/services/private-bookings/conflicts', async (importOriginal) =>
 vi.mock('@/services/private-bookings/night-clashes', async (importOriginal) =>
   (await import('../helpers/clearDiary')).clearDiaryNight(importOriginal))
 
+// cancelBooking works out the money before it touches the booking (BK-065); nothing paid here.
+vi.mock('@/services/private-bookings/financial', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/private-bookings/financial')>()),
+  getPrivateBookingCancellationOutcome: vi.fn(async () => ({
+    outcome: 'no_money', refund_amount: 0, retained_amount: 0, deposit_deduction: 0, max_retainable: 0,
+  })),
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))

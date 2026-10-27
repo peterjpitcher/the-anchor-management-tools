@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Migration 20261026182434 (BK-008) closed the booking and payment tables to signed-in
+ * Migration 20261027001434 (BK-008) closed the booking and payment tables to signed-in
  * accounts: only service_role reaches them, except table assignments, which staff with
  * table_bookings view may read. Before it, one policy per table let any login read and
  * change every row (USING auth.uid() IS NOT NULL), so the app's permission checks and
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = process.cwd()
 const MIGRATIONS = join(ROOT, 'supabase/migrations')
-const LOCKED_FROM = '20261026182434'
+const LOCKED_FROM = '20261027001434'
 const TABLES = [
   'payments',
   'guest_tokens',
@@ -47,7 +47,7 @@ describe('booking and payment tables stay closed to signed-in accounts', () => {
 
   it('reads the migration that closed them', () => {
     expect(migrations.map((migration) => migration.name)).toContain(
-      '20261026182434_staff_database_access.sql',
+      '20261027001434_staff_database_access.sql',
     )
   })
 

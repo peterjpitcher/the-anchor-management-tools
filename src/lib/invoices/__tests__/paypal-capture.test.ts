@@ -8,6 +8,8 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/paypal', () => ({ capturePayPalPayment: vi.fn(), getPayPalOrder: vi.fn(), isPayPalOrderAlreadyCapturedError: vi.fn(() => false), PAYPAL_DEFAULT_CURRENCY: 'GBP' }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
+// Whether the invoice's private booking is cancelled has its own tests (BK-065); not here.
+vi.mock('@/lib/invoices/cancelled-private-booking', () => ({ invoiceBookingCancelled: vi.fn(async () => false), CANCELLED_BOOKING_INVOICE_UNPAYABLE: 'cancelled' }))
 
 const invoice = { id: 'invoice', status: 'sent', total_amount: 120, paid_amount: 20, credits: [{ status: 'issued', amount_inc_vat: 30 }], vendor: { paypal_payments_enabled: true } }
 const order = (amount: string, completed = false) => ({ id: 'order', status: completed ? 'COMPLETED' : 'APPROVED', purchase_units: [{ reference_id: invoice.id, custom_id: invoicePaymentCustomId(invoice.id), amount: { value: amount, currency_code: 'GBP' }, ...(completed ? { payments: { captures: [{ id: 'capture', status: 'COMPLETED', create_time: '2026-09-18T12:00:00Z', amount: { value: amount, currency_code: 'GBP' } }] } } : {}) }] })

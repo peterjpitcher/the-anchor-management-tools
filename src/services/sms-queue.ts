@@ -11,13 +11,18 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
 import type { ApprovedMessageEmailOutcome } from '@/lib/private-bookings/approved-message';
-import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval';
 import {
   HISTORIC_BALANCE_REMINDER_REFUSAL,
   isHistoricBalanceReminderRow,
 } from '@/lib/private-bookings/balance-reminders';
 import { settleWrite } from '@/lib/supabase/settle-write';
+import {
+  STALE_QUEUED_TEXT_REFUSAL,
+  queuedPrivateBookingTextStaleReason,
+  type BookingForStaleness,
+} from '@/lib/private-bookings/queue-staleness';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export type QueueSmsInput = {
   booking_id: string;
@@ -690,33 +695,49 @@ export class SmsQueueService {
   }
 
   /**
-   * Balance reminders by email (flag private_booking_balance_email_auto): a balance reminder queued
-   * before the switch is never sent, so it cannot be approved or sent from the queue. Throws the
-   * reason for staff. With the flag off this reads nothing and changes nothing.
+   * A queued private booking text that must never go, so it cannot be approved or sent from the
+   * queue. Throws the reason for staff, before the row is touched:
+   * - a balance reminder queued before balance reminders moved to email (owner decision,
+   *   11 September 2026);
+   * - a text whose date has passed, or whose booking has been cancelled (BK-064): approving one
+   *   late told a guest their balance was "due tomorrow" after the date had gone.
    */
-  private static async refuseHistoricBalanceReminder(
+  private static async refuseUnsendableQueuedText(
     supabase: Awaited<ReturnType<typeof createClient>>,
     smsId: string
   ): Promise<void> {
-    if (!(await isMessagingFlagOn('private_booking_balance_email_auto'))) return;
-
     const { data: row, error } = await supabase
       .from('private_booking_sms_queue')
-      .select('trigger_type, metadata')
+      .select('trigger_type, metadata, booking_id')
       .eq('id', smsId)
       .maybeSingle();
     if (error) {
       throw new Error('Could not check this queued message, so it was not sent. Please try again.');
     }
-    if (row && isHistoricBalanceReminderRow(row as { trigger_type?: string | null; metadata?: Record<string, unknown> | null })) {
+    if (!row) return;
+    const queued = row as { trigger_type?: string | null; metadata?: Record<string, unknown> | null; booking_id?: string | null };
+    if (isHistoricBalanceReminderRow(queued)) {
       throw new Error(HISTORIC_BALANCE_REMINDER_REFUSAL);
+    }
+
+    if (!queued.booking_id) return;
+    const { data: booking, error: bookingError } = await supabase
+      .from('private_bookings')
+      .select('status, event_date')
+      .eq('id', queued.booking_id)
+      .maybeSingle();
+    if (bookingError) {
+      throw new Error('Could not check this queued message, so it was not sent. Please try again.');
+    }
+    if (queuedPrivateBookingTextStaleReason(queued, booking as BookingForStaleness, getTodayIsoDate())) {
+      throw new Error(STALE_QUEUED_TEXT_REFUSAL);
     }
   }
 
   static async approveSms(smsId: string, userId: string) {
     const supabase = await createClient();
 
-    await SmsQueueService.refuseHistoricBalanceReminder(supabase, smsId);
+    await SmsQueueService.refuseUnsendableQueuedText(supabase, smsId);
 
     const { data: approvedRow, error } = await supabase
       .from('private_booking_sms_queue')
@@ -811,7 +832,7 @@ export class SmsQueueService {
     const dispatchClaim = buildDispatchClaim()
 
     // Checked before the row is claimed, so a refused reminder is left exactly as it was.
-    await SmsQueueService.refuseHistoricBalanceReminder(supabase, smsId);
+    await SmsQueueService.refuseUnsendableQueuedText(supabase, smsId);
 
     // Atomically claim this row so only one worker can dispatch.
     const { data: claimedSms, error: claimError } = await supabase
@@ -1005,27 +1026,25 @@ export class SmsQueueService {
         ? sms.trigger_type
         : undefined;
 
-    // Email first (P6, flag private_booking_email_first): the approval step stays, and the channel
-    // is chosen now. The email goes only when the booking has a usable address and the email
-    // states exactly what staff approved; otherwise the approved text goes as it always has.
-    let emailFirst: ApprovedMessageEmailOutcome = { status: 'not_attempted', reason: 'flag_off' };
-    if (await isMessagingFlagOn('private_booking_email_first')) {
-      try {
-        const { tryEmailForApprovedPrivateBookingText } = await import('@/lib/private-bookings/approved-message');
-        emailFirst = await tryEmailForApprovedPrivateBookingText({
-          row: {
-            id: sms.id,
-            booking_id: sms.booking_id,
-            trigger_type: sms.trigger_type ?? null,
-            template_key: sms.template_key ?? null,
-            message_body: sms.message_body,
-            metadata: (sms.metadata as Record<string, unknown> | null) ?? null,
-          },
-          performedBy: sms.approved_by ?? null,
-        });
-      } catch (emailFirstError) {
-        console.error('Email-first check for an approved private booking message failed; sending the text:', emailFirstError);
-      }
+    // Email first (P6): the approval step stays, and the channel is chosen now. The email goes
+    // only when the booking has a usable address and the email states exactly what staff
+    // approved; otherwise the approved text goes as it always has.
+    let emailFirst: ApprovedMessageEmailOutcome = { status: 'not_attempted', reason: 'email_attempt_error' };
+    try {
+      const { tryEmailForApprovedPrivateBookingText } = await import('@/lib/private-bookings/approved-message');
+      emailFirst = await tryEmailForApprovedPrivateBookingText({
+        row: {
+          id: sms.id,
+          booking_id: sms.booking_id,
+          trigger_type: sms.trigger_type ?? null,
+          template_key: sms.template_key ?? null,
+          message_body: sms.message_body,
+          metadata: (sms.metadata as Record<string, unknown> | null) ?? null,
+        },
+        performedBy: sms.approved_by ?? null,
+      });
+    } catch (emailFirstError) {
+      console.error('Email-first check for an approved private booking message failed; sending the text:', emailFirstError);
     }
 
     if (emailFirst.status === 'sent') {

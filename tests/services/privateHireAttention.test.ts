@@ -71,7 +71,7 @@ function seed() {
       hire('dddddddd-0000-0000-0000-000000000004', { status: 'draft', deposit_paid_date: null, hold_expiry: null }),
       hire('eeeeeeee-0000-0000-0000-000000000005', { date_tbd: true }),
       hire('ffffffff-0000-0000-0000-000000000006'),
-      hire('99999999-0000-0000-0000-000000000007', { event_date: '2026-10-20' }),
+      hire('99999999-0000-0000-0000-000000000007', { event_date: '2026-10-20', deposit_amount: 250 }),
       hire('88888888-0000-0000-0000-000000000008', { status: 'cancelled' }),
     ],
     private_booking_items: [
@@ -132,6 +132,9 @@ describe('the manager email', () => {
     expect(email.subject).toBe('Private hires needing attention: 3 bookings')
     expect(email.text).toContain('PB-AAAAAAAA: Sat, 14 Nov 2026, 30 guests, Birthday party (confirmed)')
     expect(email.text).toContain('Open the booking: https://management.example.test/private-bookings/aaaaaaaa-0000-0000-0000-000000000001')
+    // BK-062 and BK-131: the past hire on 20 October is still open, with its deposit unrecorded.
+    expect(email.text).toContain('PB-99999999: £250.00 deposit has no outcome recorded; due back by Thu, 22 Oct 2026.')
+    expect(email.text).toContain('PB-99999999: the hire on Tue, 20 Oct 2026 has not been closed out.')
     for (const body of [email.text, email.html]) {
       expect(body).not.toContain('Jamie')
       expect(body).not.toContain('07700')
@@ -165,4 +168,53 @@ describe('the manager email', () => {
     expect(email.subject).toBe('Private hires needing attention: 1 booking')
     expect(email.text).toContain('PB-X: Sat, 14 Nov 2026, guest count not set (draft)')
   })
+
+  // BK-064: texts waited 120 days for an approval nobody gave, and nobody was told.
+  it('also lists texts that have waited more than a day for approval, and emails for them alone', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      private_bookings: [],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [
+        { id: 'q1', booking_id: 'b1', status: 'pending', created_at: '2026-10-22T09:00:00.000Z' },
+        { id: 'q2', booking_id: 'b1', status: 'pending', created_at: '2026-10-24T08:00:00.000Z' },
+        { id: 'q3', booking_id: 'b1', status: 'sent', created_at: '2026-10-01T09:00:00.000Z' },
+      ],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: true })
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.subject).toBe('Private hire to-do: 1 item')
+    expect(email.text).toContain('1 private hire text has waited more than a day for approval.')
+    expect(email.text).toContain('https://management.example.test/private-bookings/sms-queue')
+  })
+
+  // BK-065: a refund a cancellation promised was recorded nowhere, so it could be forgotten.
+  it('lists refunds owed to cancelled bookings until the refunds recorded cover them', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      private_bookings: [
+        { id: 'aaaaaaaa-1111-0000-0000-000000000001', status: 'cancelled', refund_due_amount: 237.5, refund_due_by: '2026-11-03', event_date: '2026-12-12' },
+        { id: 'bbbbbbbb-1111-0000-0000-000000000002', status: 'cancelled', refund_due_amount: 100, refund_due_by: '2026-11-01', event_date: '2026-12-12' },
+      ],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [],
+      payment_refunds: [
+        { id: 'r1', source_type: 'private_booking', source_id: 'aaaaaaaa-1111-0000-0000-000000000001', status: 'completed', amount: 37.5 },
+        { id: 'r2', source_type: 'private_booking', source_id: 'bbbbbbbb-1111-0000-0000-000000000002', status: 'completed', amount: 100 },
+      ],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: true })
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.text).toContain('PB-AAAAAAAA: £200.00 refund owed to a cancelled booking, promised by Tue, 3 Nov 2026.')
+    expect(email.text).not.toContain('PB-BBBBBBBB')
+  })
 })
+

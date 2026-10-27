@@ -22,6 +22,9 @@ type Row = Record<string, unknown>
 const LINK = (path: string): string => `${TEST_APP_URL}${path}`
 
 /** A confirmed booking with nothing outstanding. Carries view and table columns together. */
+/** Scope 4 (BK-121) checks, left out where a test is about another scope. */
+const notCloseOut = (key: string) => !/^private_hire\.(past_balance|past_deposit|not_closed)\./.test(key)
+
 function booking(overrides: Row = {}): Row {
   return {
     id: 'pb-ready',
@@ -60,21 +63,16 @@ function booking(overrides: Row = {}): Row {
   }
 }
 
-/** The messaging switches as stored live since 15 Sep 2026: deposit confirmation on. */
-const FLAGS_ON: Row = { key: 'messaging_flags', value: { private_booking_deposit_confirmation: true } }
-
 /**
- * `past` rows are in the booking tables but dated before today. `flags` is the messaging_flags
- * row (deposit confirmation on by default, as live); null leaves the row out, which means off.
+ * `past` rows are in the booking tables but dated before today. Deposits always wait for staff to
+ * confirm them now (owner decision D16, 26 October 2026, retired the switch), so no settings row.
  */
-function db(bookings: Row[], extra: { texts?: Row[]; past?: Row[]; flags?: Row | null } = {}): FakeDb {
+function db(bookings: Row[], extra: { texts?: Row[]; past?: Row[] } = {}): FakeDb {
   const all = [...bookings, ...(extra.past ?? [])]
-  const flags = extra.flags === undefined ? FLAGS_ON : extra.flags
   return new FakeDb({
     private_bookings_with_details: all,
     private_bookings: all,
     private_booking_sms_queue: extra.texts ?? [],
-    system_settings: flags ? [flags] : [],
   })
 }
 
@@ -128,6 +126,7 @@ describe('private hire section', () => {
       { label: 'Next 90 days', value: '0 confirmed, 0 draft' },
       { label: 'Later bookings needing action', value: '0 bookings' },
       { label: 'Outcomes not recorded', value: '0 past bookings' },
+      { label: 'Past 90 days still to close', value: '0 hires' },
     ])
     expect(result.lists).toEqual([{ title: 'Next 14 days', items: [], emptyText: 'No private bookings in the next 14 days.' }, NO_PAPERWORK_LIST])
     expect(result.notes).toEqual(['Not tracked in the app: menu confirmed, dietary requirements, room set-up.'])
@@ -417,7 +416,7 @@ describe('private hire section', () => {
           { id: 's3', booking_id: 'pb-cancelled', status: 'cancelled' },
         ],
       }))
-      expect(keys(result)).toEqual(['private_hire.texts_other.queue'])
+      expect(keys(result).filter(notCloseOut)).toEqual(['private_hire.texts_other.queue'])
       const queue = signal(result, 'private_hire.texts_other.queue')
       expect(queue).toEqual({
         key: 'private_hire.texts_other.queue',
@@ -428,7 +427,7 @@ describe('private hire section', () => {
         emailSafe: true,
       })
       expect(JSON.stringify(queue)).not.toMatch(/Brown|Green|Smith/)
-      expect(result.headline).toBe('1 private booking in the next 14 days, all ready; 2 texts for past or cancelled bookings waiting for approval.')
+      expect(result.headline).toBe('1 private booking in the next 14 days, all ready; 1 past hire still to close; 2 texts for past or cancelled bookings waiting for approval.')
       expectCleanText(result)
 
       const one = await build(db([], { past: [booking({ id: 'pb-past', event_date: '2026-09-05' })], texts: [{ id: 's1', booking_id: 'pb-past', status: 'pending' }] }))
@@ -436,7 +435,7 @@ describe('private hire section', () => {
         text: '1 text for a past or cancelled booking is waiting for approval.',
         action: { text: 'Approve or cancel 1 text for a past or cancelled booking' },
       })
-      expect(one.headline).toBe('No private bookings in the next 14 days; 1 text for a past or cancelled booking waiting for approval.')
+      expect(one.headline).toBe('No private bookings in the next 14 days; 1 past hire still to close; 1 text for a past or cancelled booking waiting for approval.')
     })
   })
 
@@ -519,19 +518,6 @@ describe('private hire section', () => {
       ])
     })
 
-    it('ignores the confirmation column while the switch is off or unset, as the app does', async () => {
-      const rows = [awaiting({ id: 'pb1', event_date: '2026-09-30', hold_expiry: '2026-09-24T09:00:00.000Z' })]
-      const states: Array<Row | null> = [
-        null,
-        { key: 'messaging_flags', value: { private_booking_deposit_confirmation: false } },
-        { key: 'messaging_flags', value: { private_booking_deposit_confirmation: 'true' } },
-        { key: 'messaging_flags', value: 'on' },
-      ]
-      for (const flags of states) {
-        const result = await build(db(rows, { flags }))
-        expect(keys(result)).toEqual(['private_hire.not_confirmed.pb1', 'private_hire.hold_expired.pb1', 'private_hire.deposit.pb1'])
-      }
-    })
   })
 
   describe('past bookings', () => {
@@ -544,7 +530,7 @@ describe('private hire section', () => {
           booking({ id: 'pb-noemail', event_date: '2026-08-01', outcome_email_sent_at: null }),
         ],
       }))
-      expect(keys(result)).toEqual(['private_hire.outcome.pb-stale'])
+      expect(keys(result).filter(notCloseOut)).toEqual(['private_hire.outcome.pb-stale'])
       expect(signal(result, 'private_hire.outcome.pb-stale')).toMatchObject({
         entity: 'private_booking:pb-stale',
         rag: 'amber',
@@ -556,7 +542,7 @@ describe('private hire section', () => {
         title: 'Past: outcome not recorded',
         items: [{ text: 'Sat 5 Sep, Brown party: outcome not recorded, email sent 18 days ago', href: LINK('/private-bookings/pb-stale'), rag: 'amber' }],
       })
-      expect(result.headline).toBe('No private bookings in the next 14 days; 1 past booking with no outcome recorded.')
+      expect(result.headline).toBe('No private bookings in the next 14 days; 1 past booking with no outcome recorded; 4 past hires still to close.')
     })
   })
 
@@ -567,17 +553,19 @@ describe('private hire section', () => {
       booking({ id: 'pb-c', event_date: '2026-11-21', balance_remaining: 400, final_payment_date: null, balance_due_date: '2026-09-20' }),
       booking({ id: 'pb-d', event_date: '2026-11-28' }),
     ], { past: [booking({ id: 'pb-e', event_date: '2026-09-05', outcome_email_sent_at: '2026-09-06T09:00:00.000Z' })] }))
-    expect(result.headline).toBe('2 private bookings in the next 14 days, 1 needs action; 1 later booking needs action; 1 past booking with no outcome recorded.')
+    expect(result.headline).toBe('2 private bookings in the next 14 days, 1 needs action; 1 later booking needs action; 1 past booking with no outcome recorded; 1 past hire still to close.')
     expect(result.metrics).toEqual([
       { label: 'Next 14 days', value: '2 bookings', comparison: '1 needs action' },
       { label: 'Next 90 days', value: '4 confirmed, 0 draft' },
       { label: 'Later bookings needing action', value: '1 booking' },
       { label: 'Outcomes not recorded', value: '1 past booking' },
+      { label: 'Past 90 days still to close', value: '1 hire' },
     ])
     expect(result.lists.map((list) => [list.title, list.items.length])).toEqual([
       ['Next 14 days', 2],
       ['Further ahead: needs action', 1],
       ['Past: outcome not recorded', 1],
+      ['Past 90 days: still to close', 1],
       ['Private bookings: paperwork outstanding', 0],
     ])
   })
@@ -651,8 +639,6 @@ describe('private hire section', () => {
     await expect(build(db([booking()]).fail('private_bookings_with_details'))).rejects.toThrow()
     await expect(build(db([booking()]).fail('private_bookings'))).rejects.toThrow()
     await expect(build(db([booking()]).fail('private_booking_sms_queue'))).rejects.toThrow()
-    // Unread, the deposit switch could turn an unconfirmed deposit into a false "hold expired".
-    await expect(build(db([booking()]).fail('system_settings'))).rejects.toThrow('insights private hire messaging flags failed')
   })
 
   it('leaves a booking seen by only one of the two reads for the next report', async () => {
@@ -862,4 +848,33 @@ describe('stale pending outcomes seam', () => {
     await expect(getStalePendingOutcomes()).resolves.toEqual([])
     expect(logger.error).toHaveBeenCalledTimes(1)
   })
+
+  // BK-121: the report looked only from today on, so a balance not recorded as paid dropped out
+  // of it the day after the event.
+  describe('past 90 days, still to close', () => {
+    it('flags a balance not recorded as paid red, and a deposit with no outcome and an open hire amber', async () => {
+      const result = await build(db([], {
+        past: [
+          booking({ id: 'pb-owes', customer_last_name: 'Brown', event_date: '2026-09-05', balance_remaining: 640, final_payment_date: null }),
+          booking({ id: 'pb-closed', event_date: '2026-09-12', status: 'completed', deposit_refund_status: 'refunded' }),
+          booking({ id: 'pb-applied', event_date: '2026-09-13', status: 'completed', invoice_deposit_treatment: 'deducted' }),
+          booking({ id: 'pb-old', event_date: '2026-05-01', balance_remaining: 100, final_payment_date: null }),
+        ],
+      }))
+      expect(keys(result).filter((key) => !notCloseOut(key)).sort()).toEqual([
+        'private_hire.not_closed.pb-owes',
+        'private_hire.past_balance.pb-owes',
+        'private_hire.past_deposit.pb-owes',
+      ])
+      expect(signal(result, 'private_hire.past_balance.pb-owes')).toMatchObject({
+        rag: 'red',
+        text: 'Brown party (Sat 5 Sep): the £640 balance is not recorded as paid.',
+        action: { href: LINK('/private-bookings/pb-owes'), target: 'record', impact: 'money' },
+      })
+      expect(result.lists.find((list) => list.title === 'Past 90 days: still to close')?.items).toEqual([
+        { text: 'Sat 5 Sep, Brown party: £640 balance not recorded as paid, deposit outcome not recorded, not closed out', href: LINK('/private-bookings/pb-owes'), rag: 'red' },
+      ])
+    })
+  })
 })
+

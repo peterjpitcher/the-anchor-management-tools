@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ db: null as any, depositConfirmation: true }))
+const state = vi.hoisted(() => ({ db: null as any }))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => state.db),
@@ -12,9 +12,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) =>
-    key === 'private_booking_deposit_confirmation' ? state.depositConfirmation : false
-  ),
+  isMessagingFlagOn: vi.fn(async () => false),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -75,7 +73,6 @@ function seed(bookings: Record<string, unknown>[]) {
 describe('the Communications tab preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.depositConfirmation = true
   })
 
   it('lists no deposit reminder while the deposit is still to be confirmed', async () => {
@@ -94,20 +91,11 @@ describe('the Communications tab preview', () => {
     expect(previews.map((preview) => preview.trigger_type)).toContain('deposit_reminder_7day')
   })
 
-  it('with the flag off lists it exactly as today', async () => {
-    state.depositConfirmation = false
-    seed([draft('booking-1', { deposit_confirmed_at: null })])
-
-    const previews = await getBookingScheduledSms('booking-1', NOW)
-
-    expect(previews.map((preview) => preview.trigger_type)).toContain('deposit_reminder_7day')
-  })
 })
 
 describe('the private bookings list', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.depositConfirmation = true
   })
 
   it('marks each booking whose deposit is still to be confirmed, and only those', async () => {
@@ -122,15 +110,6 @@ describe('the private bookings list', () => {
 
     const marked = Object.fromEntries(data.map((booking) => [booking.id, booking.deposit_awaiting_confirmation]))
     expect(marked).toEqual({ waiting: true, confirmed: false, waived: false, paid: false })
-  })
-
-  it('with the flag off marks none', async () => {
-    state.depositConfirmation = false
-    seed([draft('waiting', { deposit_confirmed_at: null })])
-
-    const { data } = await fetchPrivateBookings({ status: 'all', dateFilter: 'all' })
-
-    expect(data[0].deposit_awaiting_confirmation).toBe(false)
   })
 
   it('still lists the bookings when the confirmation read fails, marking none and logging it', async () => {

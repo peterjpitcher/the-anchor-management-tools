@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
@@ -65,9 +65,16 @@ function seed() {
 describe('Send Now for an approved private booking text (email first)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Before the dates these queued texts carry, so none of them is out of date (BK-064).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-20T09:00:00.000Z'))
     state.flagOn = true
     seed()
     mockedSendSms.mockResolvedValue({ success: true, sid: 'SM-1', messageId: 'msg-1', customerId: 'customer-1' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('sends the email instead of the text, and records the row as sent by email', async () => {
@@ -121,12 +128,4 @@ describe('Send Now for an approved private booking text (email first)', () => {
     expect(mockedFinish).not.toHaveBeenCalled()
   })
 
-  it('flag off: the email path is never tried', async () => {
-    state.flagOn = false
-
-    await SmsQueueService.sendApprovedSms('sms-1')
-
-    expect(mockedTryEmail).not.toHaveBeenCalled()
-    expect(mockedSendSms).toHaveBeenCalledTimes(1)
-  })
 })

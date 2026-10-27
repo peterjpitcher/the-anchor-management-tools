@@ -75,6 +75,25 @@ describe('the payment history a balance reminder lists', () => {
     )
     expect(entries).toEqual([])
   })
+
+  // BK-069: deleting a PayPal deposit returned nothing to the guest, and the reconciliation sweep
+  // recorded the PayPal payment again within 15 minutes.
+  it('lists a deposit PayPal took as refund-only: it cannot be edited or deleted', () => {
+    const [deposit] = buildPaymentHistoryEntries(
+      { deposit_paid_date: '2026-08-12T10:00:00.000Z', deposit_amount: 250, deposit_payment_method: 'paypal', invoice_id: null, paypal_deposit_capture_id: 'CAPTURE-1' },
+      { payments: [], appliedDepositAmount: 0 }
+    )
+    expect(deposit).toMatchObject({ type: 'deposit', readonly: true, refundOnly: true })
+  })
+
+  it('leaves a cash deposit editable', () => {
+    const [deposit] = buildPaymentHistoryEntries(
+      { deposit_paid_date: '2026-08-12T10:00:00.000Z', deposit_amount: 250, deposit_payment_method: 'cash', invoice_id: null, paypal_deposit_capture_id: null },
+      { payments: [], appliedDepositAmount: 0 }
+    )
+    expect(deposit).toMatchObject({ type: 'deposit', readonly: false })
+    expect(deposit).not.toHaveProperty('refundOnly')
+  })
 })
 
 describe('the deposit refunds the booking page lists', () => {

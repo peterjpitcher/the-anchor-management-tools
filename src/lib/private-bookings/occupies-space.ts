@@ -2,7 +2,7 @@
  * Whether a private hire holds its room, so tables in that room come off sale.
  *
  * The same rule as `private_booking_occupies_space` in the database (migration
- * 20261026175212_private_hire_occupies_space), which the clash check, the table block and the
+ * 20261026212246_private_hire_occupies_space), which the clash check, the table block and the
  * garden block all use. The app applies it itself only where it lists hires directly: the day load
  * (src/services/day-load.ts), the private hire night view and the event form's list of hires. The
  * FOH schedule now reads its blocks from the database (private_hire_table_blocks). Keep the two in

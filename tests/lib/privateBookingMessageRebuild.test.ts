@@ -119,7 +119,7 @@ function queueRow(overrides: Record<string, unknown> = {}) {
 describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { private_booking_email_first: true }
+    state.flags = {}
     seed()
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
   })
@@ -149,23 +149,6 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
-  it('emails an approved balance reminder with the amount still owed', async () => {
-    seed(bookingRow({ status: 'confirmed' }))
-    const body = balanceReminder21DayMessage({
-      customerFirstName: 'Alex',
-      eventDate: '3 October 2026',
-      balanceAmount: 1234.5,
-      balanceDueDate: '19 September 2026',
-    })
-    const outcome = await tryEmailForApprovedPrivateBookingText({
-      row: queueRow({ trigger_type: 'balance_reminder_21day', template_key: 'private_booking_balance_reminder_21day', message_body: body }),
-      performedBy: 'user-1',
-      now: NOW,
-    })
-    expect(outcome).toMatchObject({ status: 'sent' })
-    expect(mockedSendEmail.mock.calls[0][0].text).toContain('£1,234.50')
-  })
-
   it('emails an approved retention cancellation with the amounts the queued text states', async () => {
     seed(bookingRow({ status: 'cancelled' }))
     const body = bookingCancelledRetentionMessage({
@@ -186,7 +169,7 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     })
     expect(outcome).toMatchObject({ status: 'sent' })
     const text = mockedSendEmail.mock.calls[0][0].text
-    expect(text).toContain('£150 of your deposit has been retained')
+    expect(text).toContain("we've kept £150 to cover costs from the cancellation")
     expect(text).toContain('£100 will be refunded within 10 working days')
   })
 
@@ -199,11 +182,6 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
-  it('does nothing while the flag is off', async () => {
-    state.flags = {}
-    const outcome = await tryEmailForApprovedPrivateBookingText({ row: queueRow(), performedBy: 'user-1', now: NOW })
-    expect(outcome).toEqual({ status: 'not_attempted', reason: 'flag_off' })
-  })
 })
 
 describe('bounce fallback for a private booking email (P4 with P6)', () => {
@@ -229,7 +207,7 @@ describe('bounce fallback for a private booking email (P4 with P6)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -324,7 +302,7 @@ async function runAsTheQueueWould(firstRun: Date) {
 describe('bounce fallback: a text is never sent after its words stop being true', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -449,7 +427,7 @@ describe('bounce fallback: a text is never sent after its words stop being true'
 describe('bounce fallback: a message that no longer applies is skipped, never failed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -528,10 +506,15 @@ describe('bounce fallback: a message that no longer applies is skipped, never fa
   })
 })
 
-describe('bounce fallback: a text that needs staff approval is never sent without it', () => {
+// Owner decision D16 (26 October 2026, BK-064): the 3-day deposit reminder, the balance reminders
+// and the partial-refund, retention and review-pending cancellations no longer wait for approval,
+// so when their email bounces the text goes, as it does for every other automated text. A trigger
+// still waiting for approval (one no longer sent, such as the old booking-created text) is never
+// sent by the fallback.
+describe('bounce fallback: the texts that used to wait for approval', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -586,8 +569,26 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     ],
   ]
 
-  it.each(GATED)('%s: no text; listed under Undelivered guest messages and staff are told', async (triggerType, templateKey, change, facts) => {
+  it.each(GATED)('%s: the text goes once the email bounces', async (triggerType, templateKey, change, facts) => {
     seed(bookingRow(change), { notification_deliveries: [fallbackDelivery(triggerType, templateKey, facts)] })
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
+
+    expect(outcome).toMatchObject({ outcome: 'sent' })
+    expect(mockedSendSMS).toHaveBeenCalledTimes(1)
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('a trigger that still waits for approval: no text; listed under Undelivered guest messages and staff are told', async () => {
+    seed(bookingRow(), {
+      notification_deliveries: [
+        fallbackDelivery('booking_created', 'private_booking_created', {
+          event_date: '2026-10-03',
+          hold_expiry_date: '2026-09-25',
+          deposit_amount: 250,
+        }),
+      ],
+    })
 
     const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
 
@@ -621,7 +622,7 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     ])
   })
 
-  it('a retention cancellation, emailed at once by cancelBooking, is listed for staff when that email bounces', async () => {
+  it('a retention cancellation, emailed at once by cancelBooking, is texted when that email bounces', async () => {
     seed(bookingRow({ status: 'cancelled' }), {
       notification_deliveries: [
         {
@@ -645,11 +646,11 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
 
     const { final } = await runAsTheQueueWould(new Date('2026-09-20T21:40:00.000Z'))
 
-    expect(final).toMatchObject({ outcome: 'failed', reason: 'needs_approval' })
-    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(final).toMatchObject({ outcome: 'sent' })
+    expect(mockedSendSMS).toHaveBeenCalledTimes(1)
   })
 
-  it('a gated message whose booking has since been cancelled is skipped, not listed', async () => {
+  it('a reminder whose booking has since been cancelled is skipped, not listed', async () => {
     seed(bookingRow({ status: 'cancelled', hold_expiry: '2026-09-22T22:30:00.000Z' }), {
       notification_deliveries: [
         fallbackDelivery('deposit_reminder_3day', 'private_booking_deposit_reminder_3day', {
@@ -666,7 +667,7 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     expect(reportCronFailure).not.toHaveBeenCalled()
   })
 
-  it('a gated reminder that would land too late is skipped, not listed', async () => {
+  it('a reminder that would land too late is skipped, not listed', async () => {
     seed(bookingRow({ status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-19' }), {
       notification_deliveries: [
         fallbackDelivery('balance_reminder_15day', 'private_booking_balance_reminder_15day', {
