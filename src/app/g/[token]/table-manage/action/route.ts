@@ -386,44 +386,23 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
   }
 }
 
+/**
+ * A GET never changes a booking (BK-109, customer bookings review of 24 October 2026).
+ *
+ * This used to cancel the table, and refund the deposit, for `?action=cancel&confirm=1`, so that
+ * a plain link could cancel from a sandboxed frame that blocks forms. Anything that fetched the
+ * address did the same: a link scanner, a browser extension, a preview. Cancelling is now a POST
+ * only. An old link, or anyone who opens this address, is sent back to the manage page with the
+ * cancel step open, where the guest confirms with a button.
+ */
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ token: string }> }
 ) {
   const { token } = await context.params
-  const throttle = await checkGuestTokenThrottle({
-    request,
-    rawToken: token,
-    scope: 'guest_table_manage_action',
-    maxAttempts: 12
-  })
-
-  if (!throttle.allowed) {
-    return redirectWithStatus(request, token, 'rate_limited')
-  }
-
-  const action = request.nextUrl.searchParams.get('action')
-  const confirm = request.nextUrl.searchParams.get('confirm')
-
-  if (action !== 'cancel' || confirm !== '1') {
-    logger.warn('Guest table-manage GET action rejected', {
-      metadata: {
-        action,
-        hasConfirm: Boolean(confirm)
-      }
-    })
-    return redirectWithStatus(request, token, 'error')
-  }
-
-  // The "cancel without giving a reason" fallback, and the path sandboxed frames take when
-  // they cannot submit a form. No reason is recorded, by design.
-  return runGuestTableManageAction(request, token, {
-    action: 'cancel',
-    party_size: undefined,
-    notes: undefined,
-    cancellation_reason: undefined,
-    cancellation_reason_detail: undefined
-  })
+  const wantsCancel = request.nextUrl.searchParams.get('action') === 'cancel'
+  const target = wantsCancel ? `/g/${token}/table-manage?confirmCancel=1` : `/g/${token}/table-manage`
+  return NextResponse.redirect(new URL(target, request.url), 303)
 }
 
 export async function POST(

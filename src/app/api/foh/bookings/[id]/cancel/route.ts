@@ -5,13 +5,13 @@ import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-statu
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
-import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { resolveStaffCancellation, staffCancellationAuditInfo } from '@/lib/table-bookings/staff-cancellation-auth'
 import { logAuditEvent } from '@/app/actions/audit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireFohPermission('edit')
@@ -23,6 +23,15 @@ export async function POST(
   if (!UUID_REGEX.test(id)) {
     return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
   }
+
+  // Who is cancelling decides the refund (BK-046): the guest's own terms, or in full when the pub
+  // cancels. A body-less request (a screen loaded before this change) keeps the guest's terms.
+  const body = await request.json().catch(() => ({}))
+  const cancellation = await resolveStaffCancellation(body, auth.userId)
+  if (!cancellation.ok) {
+    return cancellation.response
+  }
+
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {
@@ -82,6 +91,7 @@ export async function POST(
       // were the siblings that never got the same fix.
       ...transition.plan.update,
       hold_expires_at: null,
+      cancellation_reason: cancellation.cancellationReason,
     })
     .eq('id', id)
     .eq('status', booking.status)
@@ -102,8 +112,8 @@ export async function POST(
     )
   }
 
-  // Set only on the email-first path (flag table_cancelled_email_first), so the screen can say
-  // when the guest was not reached. The text-only path returns nothing, as before.
+  // What reached the guest, so the screen can say when the guest was not reached. Null only when
+  // the notice itself could not be attempted.
   let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   // What happened to the deposit, for the person who cancelled (BK-114).
   let depositRefund: DepositRefundOutcome | null = null
@@ -114,6 +124,8 @@ export async function POST(
       bookingDate: booking.booking_date,
       customerId: booking.customer_id,
       source: 'foh_cancel',
+      terms: cancellation.terms,
+      staffCancel: true,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
@@ -127,7 +139,7 @@ export async function POST(
     resource_type: 'table_booking',
     resource_id: id,
     operation_status: 'success',
-    additional_info: { source: 'foh' },
+    additional_info: { source: 'foh', ...staffCancellationAuditInfo(cancellation.choice) },
   }).catch(() => {})
 
   return NextResponse.json({

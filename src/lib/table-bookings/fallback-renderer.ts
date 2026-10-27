@@ -8,6 +8,7 @@ import { resolveTableBookingGuestSmsTo } from '@/lib/table-bookings/guest-notify
 import {
   buildConfirmReminderText,
   buildDepositConfirmedText,
+  buildDepositHoldReminderText,
   buildPartySizeDepositText,
   buildPreorderReminderText,
   buildTableBookingCancelledText,
@@ -17,6 +18,7 @@ import {
   cancellationFacts,
   confirmReminderFacts,
   depositConfirmedFacts,
+  depositHoldReminderFacts,
   isAwaitingTableDeposit,
   isoInstant,
   partySizeDepositRequestFacts,
@@ -225,6 +227,43 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
       return buildPartySizeDepositText({ firstName: getSmartFirstName(customer.first_name), wording, paymentUrl: link })
     },
     smsMetadata: () => ({ trigger: 'party_size_threshold_crossed' }),
+  },
+
+  // sendDepositHoldReminder in lib/table-bookings/deposit-hold-reminder.ts (BK-088)
+  deposit_hold_reminder: {
+    link: { kind: 'table_payment', tokenAction: 'payment', optional: false, doneWhenUsed: true },
+    mobileFirst: 'mobile_e164',
+    expectCancelled: false,
+    assess: ({ booking }) => ({
+      facts: depositHoldReminderFacts({
+        partySize: booking.party_size,
+        depositAmount: booking.deposit_amount,
+        holdExpiresAt: booking.hold_expires_at,
+        awaitingPayment: isAwaitingTableDeposit(booking),
+      }),
+      // "Pay by" holds only while the hold does: the link runs out with it.
+      validUntil: isoInstant(booking.hold_expires_at),
+      // Paid, or the deposit cleared since: there is nothing left to ask for.
+      noLongerNeeded: !isAwaitingTableDeposit(booking),
+    }),
+    text: ({ booking, customer }, link) => {
+      const partySize = Number(booking.party_size)
+      const depositAmount = Number(booking.deposit_amount)
+      // Never a reminder for nothing, and never without the deadline it names.
+      if (!link || !booking.hold_expires_at || !Number.isFinite(partySize) || partySize <= 0 || !Number.isFinite(depositAmount) || depositAmount <= 0) {
+        return null
+      }
+      return buildDepositHoldReminderText({
+        firstName: getSmartFirstName(customer.first_name),
+        partySize,
+        startDateTime: booking.start_datetime,
+        holdExpiresAt: booking.hold_expires_at,
+        depositLabel: new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount),
+        isOutsideSeating: Boolean(booking.is_outside_seating),
+        paymentUrl: link,
+      })
+    },
+    smsMetadata: () => ({ trigger: 'deposit_hold_reminder' }),
   },
 
   // sendConfirmReminderEmailFirst in app/api/cron/table-booking-confirm/route.ts

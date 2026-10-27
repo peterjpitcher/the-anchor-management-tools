@@ -321,8 +321,11 @@ export function useFohCreateBooking(input: {
     },
     [seasonalPeriod, createForm.booking_date]
   )
+  // A pub event never removes a Christmas deposit (D18, BK-106), so a tick left over from before
+  // the purpose changed to Christmas counts for nothing.
+  const isVenueEvent = createForm.is_venue_event && !isChristmasBooking
   const formRequiresDeposit =
-    createMode !== 'management' && !createForm.is_venue_event && createMode !== 'walk_in' &&
+    createMode !== 'management' && !isVenueEvent && createMode !== 'walk_in' &&
     requiresDepositForParty(Number(createForm.party_size) || 0, {
       depositWaived: createForm.waive_deposit === true,
       isChristmas: isChristmasBooking,
@@ -601,7 +604,7 @@ export function useFohCreateBooking(input: {
     }
 
     const requiresDepositValidation =
-      (!isWalkIn && !isManagement && !createForm.is_venue_event) &&
+      (!isWalkIn && !isManagement && !isVenueEvent) &&
       requiresDepositForParty(partySize, {
         depositWaived: createForm.waive_deposit === true,
         isChristmas: isChristmasBooking,
@@ -635,8 +638,8 @@ export function useFohCreateBooking(input: {
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: isChristmasBooking ? 'christmas' : createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
-          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
-          waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined,
+          sunday_deposit_method: (!isWalkIn && !isManagement && !isVenueEvent && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
+          waive_deposit: createForm.waive_deposit || undefined, is_venue_event: isVenueEvent || undefined,
           bypass_pacing: createForm.bypass_pacing || undefined,
           high_chair_count: requestedHighChairs || undefined,
           outside_seating: createForm.outside_seating || undefined,

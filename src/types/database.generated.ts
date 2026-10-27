@@ -18091,6 +18091,39 @@ export type Database = {
           },
         ]
       }
+      table_booking_deposit_reminders: {
+        Row: {
+          hold_expires_at: string
+          sent_at: string
+          table_booking_id: string
+        }
+        Insert: {
+          hold_expires_at: string
+          sent_at?: string
+          table_booking_id: string
+        }
+        Update: {
+          hold_expires_at?: string
+          sent_at?: string
+          table_booking_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_booking_deposit_reminders_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_deposit_reminders_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings_awaiting_confirmation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_booking_items: {
         Row: {
           booking_id: string
@@ -18509,7 +18542,7 @@ export type Database = {
           source?: string | null
           special_requirements?: string | null
           start_datetime?: string | null
-          status?: Database["public"]["Enums"]["table_booking_status"]
+          status: Database["public"]["Enums"]["table_booking_status"]
           sunday_preorder_completed_at?: string | null
           sunday_preorder_cutoff_at?: string | null
           table_pinned?: boolean

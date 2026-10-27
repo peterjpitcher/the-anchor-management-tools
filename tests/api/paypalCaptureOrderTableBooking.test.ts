@@ -107,7 +107,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     const tableBookingsSingle = vi
       .fn()
       .mockResolvedValueOnce({ data: bookingRow, error: null })
-    const tableBookingsEq1 = vi.fn(() => ({ single: tableBookingsSingle }))
+    const tableBookingsEq1 = vi.fn(() => ({ maybeSingle: tableBookingsSingle }))
     const tableBookingsSelect = vi.fn((_columns: string) => ({ eq: tableBookingsEq1 }))
     const tableBookingsUpdate = vi.fn((_payload: Record<string, unknown>) => makeUpdateChain())
 
@@ -189,7 +189,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     }
 
     const tableBookingsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
-    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
+    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: tableBookingsSingle })) }))
     const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
     const customersSelect = vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -243,7 +243,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     }
 
     const tableBookingsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
-    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
+    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: tableBookingsSingle })) }))
     const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
     supabaseFrom.mockImplementation((table: string) =>
       table === 'table_bookings'
@@ -277,7 +277,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
 
     // Must log the high-severity diagnostic so on-call can investigate.
     expect(loggerError).toHaveBeenCalledWith(
-      expect.stringContaining('no parseable GBP amount'),
+      expect.stringContaining('no GBP amount could be read'),
       expect.objectContaining({
         metadata: expect.objectContaining({ bookingId: BOOKING_ID }),
       }),
@@ -289,7 +289,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       data: null,
       error: { message: "column table_bookings.sunday_lunch does not exist", code: '42703', details: 'x' },
     })
-    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
+    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: tableBookingsSingle })) }))
     supabaseFrom.mockImplementation(() => ({ select: tableBookingsSelect }))
 
     const response = await POST(
@@ -299,10 +299,84 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
 
     expect(response.status).toBe(404)
     expect(loggerError).toHaveBeenCalledWith(
-      'capture-order: booking fetch failed',
+      'Table deposit capture could not read the booking',
       expect.objectContaining({
         metadata: expect.objectContaining({ bookingId: BOOKING_ID, code: '42703' }),
       }),
     )
+  })
+
+  function payableBooking(overrides: Record<string, unknown> = {}) {
+    return {
+      id: BOOKING_ID,
+      status: 'pending_payment',
+      payment_status: 'pending',
+      paypal_deposit_order_id: 'ORDER-123',
+      paypal_deposit_capture_id: null,
+      customer_id: 'cust-1',
+      party_size: 15,
+      hold_expires_at: '2099-04-24T19:00:00Z',
+      booking_type: 'regular',
+      deposit_amount: 150,
+      deposit_amount_locked: null,
+      deposit_waived: false,
+      ...overrides,
+    }
+  }
+
+  function wireTables(bookingRow: unknown, update = vi.fn(() => makeUpdateChain())) {
+    const select = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: bookingRow, error: null }) })) }))
+    const alertInsert = vi.fn().mockResolvedValue({ data: null, error: null })
+    supabaseFrom.mockImplementation((table: string) => {
+      if (table === 'table_bookings') return { select, update }
+      // The manager alert's own writes and reads; their outcome does not matter here.
+      return {
+        select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) })) })),
+        insert: alertInsert,
+        upsert: alertInsert,
+      }
+    })
+    return { update }
+  }
+
+  // BK-129: only the guest page checked that the PayPal order named this booking. The website's
+  // route now runs the same capture service, so it refuses too, and records nothing.
+  it('refuses a capture whose PayPal order names another booking, and records nothing', async () => {
+    const { update } = wireTables(payableBooking())
+    getPayPalOrder.mockResolvedValue(makePayPalOrder('150.00'))
+    capturePayPalPayment.mockResolvedValue({
+      transactionId: 'TXN-OTHER',
+      status: 'COMPLETED',
+      captureStatus: 'COMPLETED',
+      amount: '150.00',
+      customId: 'a-different-booking',
+    })
+
+    const response = await POST(buildRequest({ orderId: 'ORDER-123' }), { params: Promise.resolve({ id: BOOKING_ID }) })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ success: false, code: 'CAPTURE_BOOKING_MISMATCH' })
+    expect(update).not.toHaveBeenCalled()
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).not.toHaveBeenCalled()
+  })
+
+  it('never tells the guest to retry when recording a taken deposit throws', async () => {
+    const update = vi.fn(() => {
+      throw new Error('connection reset')
+    })
+    wireTables(payableBooking(), update)
+    getPayPalOrder.mockResolvedValue(makePayPalOrder('150.00'))
+    capturePayPalPayment.mockResolvedValue({
+      transactionId: 'TXN-1',
+      status: 'COMPLETED',
+      captureStatus: 'COMPLETED',
+      amount: '150.00',
+      customId: BOOKING_ID,
+    })
+
+    const response = await POST(buildRequest({ orderId: 'ORDER-123' }), { params: Promise.resolve({ id: BOOKING_ID }) })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ success: false, code: 'CAPTURED_BOOKING_UPDATE_FAILED' })
   })
 })

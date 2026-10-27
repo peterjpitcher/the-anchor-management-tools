@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildTableBookingCancelledEmail,
   buildTableBookingConfirmedEmail,
   buildTableBookingDepositAtBookingEmail,
   buildTableBookingDepositRequestEmail,
@@ -8,6 +9,7 @@ import {
   buildTableBookingRescheduledEmail,
 } from './guest-emails'
 import { assertCleanRender, expectedLongDate } from '../../../tests/mocks/emailRenderChecks'
+import { describeTableBookingCancellationRefund } from './guest-texts'
 
 /**
  * Fixture renders of the table booking emails the 11 September review found wrong.
@@ -245,5 +247,75 @@ describe('pre-order chase email renders', () => {
     expect(email.text).toContain(`Time: ${time}`)
     expect(email.text).not.toContain('A starter and a dessert are optional')
     expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+  })
+})
+
+// BK-113: the cancellation after a deposit hold runs out says why the table has gone.
+describe('hold-expired cancellation email renders', () => {
+  it.each(CASES)('$label: $bookingDate at $bookingTime', ({ bookingDate, bookingTime, time }) => {
+    const email = buildTableBookingCancelledEmail({
+      ...BASE,
+      bookingDate,
+      bookingTime,
+      refundSentence: describeTableBookingCancellationRefund({ refunded: false, reason: 'hold_expired' }),
+    })
+
+    assertCleanRender(email)
+    expect(email.text).toContain(`Date: ${expectedLongDate(bookingDate)}`)
+    expect(email.text).toContain(`Time: ${time}`)
+    expect(email.text).toContain("The deposit wasn't paid in time, so the table has been released.")
+    expect(email.text).toContain("If you'd still like to come, call us on 01753 682707.")
+  })
+})
+
+// BK-046 and BK-041: the pub's own cancellation apologises and refunds in full, and a cash
+// deposit says it is owed. Rendered with fixture data in both zones.
+describe('pub cancellation and cash deposit emails render', () => {
+  it.each(CASES)('$label: the pub cancelled, deposit refunded in full', ({ bookingDate, bookingTime }) => {
+    const refundResult = { refunded: true as const, amountPence: 16000, tier: 'full', cancelledBy: 'venue' as const }
+    const email = buildTableBookingCancelledEmail({
+      ...BASE,
+      bookingDate,
+      bookingTime,
+      refundSentence: describeTableBookingCancellationRefund(refundResult),
+      cancelledBy: 'venue',
+    })
+
+    assertCleanRender(email)
+    expect(email.subject).toBe("We've had to cancel your booking at The Anchor")
+    expect(email.text).toContain(`Hi Alex, we're sorry, but we've had to cancel your booking on ${expectedLongDate(bookingDate)}.`)
+    expect(email.text).toContain("We're refunding your £160.00 deposit in full. It will land within 5-10 days.")
+    expect(email.text).not.toContain("can't be refunded")
+  })
+
+  it.each(CASES)('$label: the pub cancelled a booking with no deposit', ({ bookingDate, bookingTime }) => {
+    const email = buildTableBookingCancelledEmail({
+      ...BASE,
+      bookingDate,
+      bookingTime,
+      refundSentence: describeTableBookingCancellationRefund({ refunded: false, reason: 'no_deposit', cancelledBy: 'venue' }),
+      cancelledBy: 'venue',
+    })
+
+    assertCleanRender(email)
+    expect(email.text).toContain("If you'd like to book another time, call us on 01753 682707.")
+  })
+
+  it.each(CASES)('$label: a cash deposit is owed back', ({ bookingDate, bookingTime }) => {
+    const email = buildTableBookingCancelledEmail({
+      ...BASE,
+      bookingDate,
+      bookingTime,
+      refundSentence: describeTableBookingCancellationRefund({
+        refunded: false,
+        reason: 'cash_refund_due',
+        depositOwed: true,
+        amountOwedPence: 8000,
+      }),
+    })
+
+    assertCleanRender(email)
+    expect(email.subject).toBe('Your booking at The Anchor has been cancelled')
+    expect(email.text).toContain("We owe you your £80.00 cash deposit. Collect it from the bar, or call us on 01753 682707 and we'll sort it out.")
   })
 })

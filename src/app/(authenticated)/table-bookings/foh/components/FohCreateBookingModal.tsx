@@ -567,24 +567,29 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
           {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
             <div className="space-y-2 md:col-span-2">
-              <div className={CHECKBOX_ROW_CLASS}>
-                <input
-                  id="is-venue-event"
-                  type="checkbox"
-                  checked={createForm.is_venue_event}
-                  onChange={(e) =>
-                    onSetCreateForm((prev) => ({
-                      ...prev,
-                      is_venue_event: e.target.checked,
-                      waive_deposit: e.target.checked ? false : prev.waive_deposit
-                    }))
-                  }
-                  className="h-4 w-4"
-                />
-                <label htmlFor="is-venue-event" className={CHECKBOX_LABEL_CLASS}>
-                  Pub Event (remove deposit for {LARGE_GROUP_DEPOSIT_THRESHOLD}+ group)
-                </label>
-              </div>
+              {/* Marking a pub event takes the deposit off, so it is offered only to staff who may
+                  waive one (table_bookings manage, D18), and never on a Christmas booking, which
+                  always takes its deposit (BK-106). */}
+              {canWaiveDeposit && createForm.purpose !== 'christmas' && (
+                <div className={CHECKBOX_ROW_CLASS}>
+                  <input
+                    id="is-venue-event"
+                    type="checkbox"
+                    checked={createForm.is_venue_event}
+                    onChange={(e) =>
+                      onSetCreateForm((prev) => ({
+                        ...prev,
+                        is_venue_event: e.target.checked,
+                        waive_deposit: e.target.checked ? false : prev.waive_deposit
+                      }))
+                    }
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="is-venue-event" className={CHECKBOX_LABEL_CLASS}>
+                    Pub Event (remove deposit for {LARGE_GROUP_DEPOSIT_THRESHOLD}+ group)
+                  </label>
+                </div>
+              )}
 
               {/* The seasonal question, for periods that are not Christmas.
                   Christmas travels as a purpose and already works; asking twice

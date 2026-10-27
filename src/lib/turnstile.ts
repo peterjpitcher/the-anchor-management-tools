@@ -11,8 +11,10 @@ type TurnstileResult = {
  * Verify a Cloudflare Turnstile token server-side.
  * Returns { success: true } if valid, { success: false, error } otherwise.
  *
- * Requires TURNSTILE_SECRET_KEY env var.
- * If the env var is missing, verification is skipped (dev/test environments).
+ * Requires TURNSTILE_SECRET_KEY. Without it, verification is skipped in development and tests,
+ * and REFUSED in production (BK-129): a missing secret there used to wave every bot through
+ * silently. Production has the secret set (checked 26 October 2026), so this only bites if it is
+ * ever removed, and then loudly, through logger.error.
  */
 export async function verifyTurnstileToken(
   token: string | null | undefined,
@@ -20,7 +22,11 @@ export async function verifyTurnstileToken(
 ): Promise<TurnstileResult> {
   const secret = process.env.TURNSTILE_SECRET_KEY
   if (!secret) {
-    logger.warn('TURNSTILE_SECRET_KEY not set — skipping Turnstile verification')
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('TURNSTILE_SECRET_KEY is not set in production; refusing the Turnstile check')
+      return { success: false, error: 'Turnstile verification is not configured' }
+    }
+    logger.warn('TURNSTILE_SECRET_KEY not set: skipping Turnstile verification outside production')
     return { success: true }
   }
 

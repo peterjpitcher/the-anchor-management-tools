@@ -78,7 +78,8 @@ const MANAGER_ESCALATION_EMAIL = 'manager@the-anchor.pub'
  * `pending_payment` is the case that matters today. That guest has not paid their deposit, their hold
  * can still expire, and the booking may never exist. Texting them to choose three courses invites them
  * to plan a Christmas dinner they have not secured, and it spends an SMS on a booking that may
- * evaporate. Whatever is chasing them for the deposit is the right conversation, not this one. They
+ * evaporate. The deposit is the right conversation, not this one: the request when the booking is made
+ * and the one reminder before the hold ends (BK-088, api/cron/table-booking-deposit-timeout). They
  * join the sweep the moment payment lands and they become confirmed.
  */
 const CHASEABLE_BOOKING_STATUSES = ['confirmed']
