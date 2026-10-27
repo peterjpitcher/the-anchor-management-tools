@@ -11,16 +11,22 @@ import {
   computeIdempotencyRequestHash,
   getIdempotencyKey,
   claimIdempotencyKey,
+  markIdempotencyClaimCommitted,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import {
+  GUEST_BOOKING_MAX_PER_HOUR,
+  MAX_PENDING_EVENT_HOLDS_PER_CUSTOMER,
+  limitBookingAttempt
+} from '@/lib/api/booking-rate-limits'
 import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
-import { ConsentService } from '@/services/consent'
+import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
 import {
   isSundayLunchOnlyEvent,
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
@@ -112,6 +118,50 @@ const ATTRIBUTION_KEYS = [
   'food_intent',
 ] as const
 
+/**
+ * How long a "you already have a booking" answer is replayed for (BK-189). It names the guest's
+ * existing booking, so it is kept, but only briefly: if that booking is cancelled, a retry should
+ * be able to book.
+ */
+const CUSTOMER_CONFLICT_REPLAY_HOURS = 0.25
+
+/**
+ * Whether a result left nothing behind, so its answer must not be stored (BK-189). A refusal was
+ * replayed for 24 hours even after staff freed a table or a guest cancelled, because the website's
+ * retry key is built from the same event, phone, seats and names. Only "you already have a
+ * booking" is kept, because it points at a booking that does exist.
+ */
+function isRefusalWithNothingSaved(state: string, reason: string | null | undefined): boolean {
+  if (state === 'full_with_waitlist_option') return true
+  return state === 'blocked' && reason !== 'customer_conflict'
+}
+
+/**
+ * Unpaid event holds this customer has right now, across all events. Null when the count could
+ * not be made, which the caller treats as "allow": our fault must never refuse a guest.
+ */
+async function countLivePendingEventHolds(
+  supabase: ReturnType<typeof createAdminClient>,
+  customerId: string
+): Promise<number | null> {
+  try {
+    const { count, error } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .eq('status', 'pending_payment')
+      .gt('hold_expires_at', new Date().toISOString())
+    if (error) throw new Error(error.message)
+    return count ?? 0
+  } catch (error) {
+    logger.error('Could not count unpaid event holds for a guest; allowing the booking', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { customerId },
+    })
+    return null
+  }
+}
+
 type EventBookingAttribution = Pick<z.infer<typeof CreateEventBookingSchema>, typeof ATTRIBUTION_KEYS[number]>
 
 function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>): EventBookingAttribution | null {
@@ -195,6 +245,17 @@ export async function POST(request: NextRequest) {
     })
     const attribution = buildBookingAttribution(parsed.data)
 
+    // Per-guest cap (BK-108). Event bookings had no limit of their own, so a flood could fill an
+    // event with 15-minute payment holds. Counted across every server copy.
+    const guestLimitResponse = await limitBookingAttempt(req, {
+      prefix: 'event-booking-guest',
+      subject: normalizedPhone,
+      max: GUEST_BOOKING_MAX_PER_HOUR
+    })
+    if (guestLimitResponse) {
+      return guestLimitResponse
+    }
+
     const supabase = createAdminClient()
     const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
@@ -233,6 +294,10 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (eventLookupError) {
+        logger.error('Event booking could not load the event', {
+          error: new Error(eventLookupError.message),
+          metadata: { eventId: parsed.data.event_id },
+        })
         return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500)
       }
 
@@ -244,7 +309,13 @@ export async function POST(request: NextRequest) {
       // answer from /api/events and create_event_booking_v08 applies it to the same column.
       const guestDetailsRequired = requiresGuestDetails(eventRow)
       const questions = bookingQuestionsSchema.safeParse(eventRow.booking_questions ?? [])
-      if (!questions.success) return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
+      if (!questions.success) {
+        logger.error('Event booking could not read the event guest questions', {
+          error: new Error(questions.error.issues[0]?.message ?? 'booking_questions_invalid'),
+          metadata: { eventId: parsed.data.event_id },
+        })
+        return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
+      }
       const guestError = validateEventAttendees({
         attendees: parsed.data.attendees,
         questions: questions.data,
@@ -309,7 +380,25 @@ export async function POST(request: NextRequest) {
         email: parsed.data.email || null
       })
       if (!customerResolution.customerId) {
+        logger.error('Event booking could not find or create the customer', {
+          error: new Error('customer_resolution_failed'),
+          metadata: { eventId: parsed.data.event_id },
+        })
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
+      }
+
+      // A cap on unpaid holds per guest across all events (BK-108). Each hold keeps seats off sale
+      // for 15 minutes, so one number holding many at once is a flood, not a guest. A failed count
+      // lets the booking through: our fault must never refuse a guest.
+      if (eventRow.payment_mode === 'prepaid') {
+        const pendingHolds = await countLivePendingEventHolds(supabase, customerResolution.customerId)
+        if (pendingHolds !== null && pendingHolds >= MAX_PENDING_EVENT_HOLDS_PER_CUSTOMER) {
+          return createErrorResponse(
+            'You already have tickets waiting for payment. Please finish paying for those first, or call us on 01753 682707.',
+            'RATE_LIMIT_EXCEEDED',
+            429
+          )
+        }
       }
 
       const appBaseUrl = getAppUrl()
@@ -327,7 +416,11 @@ export async function POST(request: NextRequest) {
         let defaultTypeId: string | null = null
         try {
           defaultTypeId = await getDefaultTicketTypeId(supabase, parsed.data.event_id)
-        } catch {
+        } catch (ticketTypeError) {
+          logger.error('Event booking could not load the ticket prices', {
+            error: ticketTypeError instanceof Error ? ticketTypeError : new Error(String(ticketTypeError)),
+            metadata: { eventId: parsed.data.event_id },
+          })
           return createErrorResponse('Failed to load event ticket types', 'DATABASE_ERROR', 500)
         }
         const decision = decideTicketSelectionHandling({
@@ -432,6 +525,42 @@ export async function POST(request: NextRequest) {
       // the idempotency claim and risk creating a duplicate booking on retry.
       mutationCommitted = Boolean(result.rpcResult.booking_id)
 
+      // A booking that stands: note it on the claim, so a retry after this function dies replays
+      // it instead of booking again (BK-127). Best effort; logged on failure.
+      if (
+        result.bookingId &&
+        !result.paymentLinkFailed &&
+        !result.rollbackFailed &&
+        (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment')
+      ) {
+        try {
+          await markIdempotencyClaimCommitted(supabase, idempotencyKey, requestHash, {
+            success: true,
+            data: {
+              state: result.resolvedState,
+              booking_id: result.bookingId,
+              reason: null,
+              seats_remaining: null,
+              seated_remaining: null,
+              standing_remaining: null,
+              total_remaining: null,
+              event_seating_type: result.eventSeatingType ?? null,
+              next_step_url: null,
+              manage_booking_url: null,
+              requests_recorded: false,
+              notification_sent: false,
+              notification_channel: null
+            },
+            meta: { status_code: 201, recovered: true }
+          })
+        } catch (markError) {
+          logger.error('Could not note a saved event booking on its idempotency claim', {
+            error: markError instanceof Error ? markError : new Error(String(markError)),
+            metadata: { key: idempotencyKey, bookingId: result.bookingId },
+          })
+        }
+      }
+
       // Recorded once the booking exists, so the consent names it (BK-080). It used to be recorded
       // before the booking was made, so no event consent was ever tied to its booking. Decided on
       // the state, never on whether an id came back (tasks/lessons.md, 2026-07-03).
@@ -439,10 +568,11 @@ export async function POST(request: NextRequest) {
         result.bookingId &&
         (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment')
       ) {
-        await ConsentService.applyBookingContactConsent(
-          customerResolution.customerId,
-          parsed.data.communication_consent,
-          {
+        // A failure is logged and raised with the manager; the booking carries on (BK-039).
+        await applyBookingContactConsentSafe({
+          customerId: customerResolution.customerId,
+          consent: parsed.data.communication_consent,
+          context: {
             source: 'public_event_booking',
             captureMethod: 'checkbox',
             // The referer is a page address too, so it gets the same cleaning: no click id is kept.
@@ -451,7 +581,22 @@ export async function POST(request: NextRequest) {
             relatedEntityType: 'event_booking',
             relatedEntityId: result.bookingId,
             metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-          }
+          },
+          alert: { domain: 'event_bookings', bookingId: result.bookingId, path: `/events/${parsed.data.event_id}` },
+        })
+      }
+
+      if (result.rollbackFailed && result.paymentLinkFailed) {
+        // The payment link failed and the booking could not be cancelled, so it still holds
+        // seats. Same answer as the table route: the booking stands and the pub will be in touch.
+        logger.error('Event booking holds seats with no payment link', {
+          error: new Error('payment_link_failed_booking_held'),
+          metadata: { bookingId: result.bookingId, eventId: parsed.data.event_id },
+        })
+        return createErrorResponse(
+          'Your booking was received, but we could not set up the payment. We will be in touch to take it.',
+          'PAYMENT_LINK_FAILED_BOOKING_HELD',
+          500
         )
       }
 
@@ -464,9 +609,10 @@ export async function POST(request: NextRequest) {
       }
 
       if (result.paymentLinkFailed) {
+        // The service cancelled the booking, so nothing is left and the claim is released.
         mutationCommitted = false
         return createErrorResponse(
-          'Booking created but payment link generation failed. Please contact us.',
+          'We could not set up the payment, so the booking was not made. Please try again.',
           'PAYMENT_LINK_FAILED',
           500
         )
@@ -513,17 +659,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Capacity can change before the guest retries. No booking exists for
-      // these results, so let finally release the claim instead of caching it.
-      if (resolvedState === 'blocked' && (
-        resolvedReason === 'seated_capacity_changed' ||
-        resolvedReason === 'standing_not_available_until_seated_full'
-      )) {
+      // Space can free up before the guest retries. No booking exists for these results, so let
+      // finally release the claim instead of storing the refusal (BK-189).
+      if (isRefusalWithNothingSaved(resolvedState, resolvedReason)) {
+        mutationCommitted = false
         return createApiResponse(responsePayload, responseStatus)
       }
 
       try {
-        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+        await persistIdempotencyResponse(
+          supabase,
+          idempotencyKey,
+          requestHash,
+          responsePayload,
+          resolvedState === 'blocked' && resolvedReason === 'customer_conflict' ? CUSTOMER_CONFLICT_REPLAY_HOURS : undefined
+        )
         claimHeld = false
       } catch (persistError) {
         // Fail closed: a booking may already exist, and releasing the claim would allow retries
