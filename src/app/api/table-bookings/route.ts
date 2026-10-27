@@ -659,10 +659,12 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', bookingResult.table_booking_id)
         if (arraysError) {
-          logger.warn('Failed to persist dietary/allergy arrays on table booking', {
+          // An error, not a warning: warnings are silent in production, and this is an allergy the
+          // kitchen will not see (BK-052).
+          logger.error('Failed to persist dietary/allergy arrays on table booking', {
+            error: new Error(arraysError.message),
             metadata: {
               tableBookingId: bookingResult.table_booking_id,
-              error: arraysError.message,
             },
           })
         }
@@ -711,7 +713,10 @@ export async function POST(request: NextRequest) {
           reason: 'late_one_course'
         }
       } else if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
-          && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false)) {
+          // A Christmas party all on 1 course has no dishes, but its guests' names and dietary notes
+          // still save to their seats (BK-148). With neither, there is nothing to write.
+          && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false
+            && !(payload.preorder ?? []).some((entry) => Boolean(entry.guest_name?.trim() || entry.dietary_note?.trim())))) {
         const entries = payload.preorder ?? []
 
         if (entries.length > payload.party_size) {
