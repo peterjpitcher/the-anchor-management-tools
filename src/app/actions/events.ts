@@ -1,5 +1,6 @@
 'use server'
 
+import { isSundayLunchOnlyEvent, SUNDAY_LUNCH_ONLY_EVENT_MESSAGE } from '@/lib/events/sunday-lunch-only-policy'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
@@ -979,12 +980,24 @@ export async function createEventManualBooking(input: {
 
     const { data: eventRow, error: eventError } = await supabase
       .from('events')
-      .select('id, name, booking_mode')
+      .select('id, name, date, start_datetime, booking_mode')
       .eq('id', parsed.data.eventId)
       .maybeSingle()
 
     if (eventError || !eventRow) {
       return { error: 'Event not found.' }
+    }
+
+    // Mother's Day is sold as Sunday lunch tables, on every channel (BK-153, D35).
+    if (
+      isSundayLunchOnlyEvent({
+        id: eventRow.id || null,
+        name: eventRow.name || null,
+        date: eventRow.date || null,
+        start_datetime: eventRow.start_datetime || null
+      })
+    ) {
+      return { error: SUNDAY_LUNCH_ONLY_EVENT_MESSAGE }
     }
 
     const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)

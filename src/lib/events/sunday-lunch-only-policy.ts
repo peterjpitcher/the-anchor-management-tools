@@ -1,3 +1,5 @@
+import { getMotheringSunday, toLocalIsoDate } from '@/lib/dateUtils'
+
 export type SundayLunchOnlyEventInput = {
   id?: string | null
   name?: string | null
@@ -5,19 +7,22 @@ export type SundayLunchOnlyEventInput = {
   start_datetime?: string | null
 }
 
-// Mother's Day 2026: bookings must run through Sunday Lunch with pre-order.
-const SUNDAY_LUNCH_ONLY_DATES = new Set([
-  '2026-03-15'
-])
-
+/**
+ * Mother's Day is sold as Sunday lunch table bookings, not event places, so diners sit inside
+ * kitchen pacing and one system holds them. Owner decision D35 (BK-153): the date is worked out
+ * each year (Mothering Sunday, the fourth Sunday of Lent), matching the website's
+ * lib/mothers-day-booking.ts, instead of a hard-coded 15 March 2026.
+ */
 const SUNDAY_LUNCH_ONLY_NAME_PATTERNS = [
-  /\bmother['’]?s day\b/i
+  /\bmother['’]?s day\b/i,
+  /\bmothering sunday\b/i
 ]
 
 export const SUNDAY_LUNCH_ONLY_EVENT_MESSAGE =
-  "Mother's Day bookings are handled as Sunday lunch bookings with pre-order. Please use the Sunday lunch booking flow."
+  "Mother's Day is booked as a Sunday lunch table booking, not as an event. Please book a table for that day instead."
 
-function toIsoDate(value?: string | null): string | null {
+/** The event's London calendar date, YYYY-MM-DD. */
+function toLondonIsoDate(value?: string | null): string | null {
   if (!value) {
     return null
   }
@@ -31,12 +36,17 @@ function toIsoDate(value?: string | null): string | null {
     return null
   }
 
-  return new Date(parsedMs).toISOString().slice(0, 10)
+  return toLocalIsoDate(new Date(parsedMs))
+}
+
+export function isMotheringSundayDate(isoDate: string): boolean {
+  const year = Number(isoDate.slice(0, 4))
+  return Number.isInteger(year) && getMotheringSunday(year) === isoDate
 }
 
 export function isSundayLunchOnlyEvent(input: SundayLunchOnlyEventInput): boolean {
-  const eventDate = toIsoDate(input.date) || toIsoDate(input.start_datetime)
-  if (!eventDate || !SUNDAY_LUNCH_ONLY_DATES.has(eventDate)) {
+  const eventDate = toLondonIsoDate(input.date) || toLondonIsoDate(input.start_datetime)
+  if (!eventDate || !isMotheringSundayDate(eventDate)) {
     return false
   }
 
