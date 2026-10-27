@@ -168,7 +168,7 @@ describe('deposit taken at the bar', () => {
 
   it('takes nothing when the guest has just paid online', async () => {
     const db = seed({ paypal_deposit_order_id: 'ORDER-1' })
-    vi.mocked(reconcileTableDepositOrder).mockResolvedValueOnce({ outcome: 'recorded', amountGbp: 160, wasCancelled: false })
+    vi.mocked(reconcileTableDepositOrder).mockResolvedValueOnce({ outcome: 'recorded', amountGbp: 160 })
 
     const result = await runStaffDepositAction(db as never, { bookingId: BOOKING_ID, userId: 'manager-1', request: { action: 'cash', reason: 'Cash' } })
 
