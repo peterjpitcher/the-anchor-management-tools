@@ -2,7 +2,7 @@
 """Run the private-hire-deposit-close-out migration (BK-062) in an isolated socket-only PostgreSQL database.
 
 private_bookings is a fixture with production's refund status and post-event checks, after
-20261027011052 (refunds owed). Against that baseline it shows the defect: a kept deposit, or one
+20261027160421 (refunds owed). Against that baseline it shows the defect: a kept deposit, or one
 put against the bill, cannot be stored. Then the migration runs: the three new values are accepted
 and an unknown one is still refused; the five deducted deposits become 'applied' and post-event
 'complete', the refunded one becomes 'complete'; a listed booking that has moved on since, and an
@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-PREVIOUS = ROOT / 'supabase/migrations/20261027011052_private_hire_refunds_owed.sql'
+PREVIOUS = ROOT / 'supabase/migrations/20261027160421_private_hire_refunds_owed.sql'
 MIGRATION = ROOT / 'supabase/migrations/20261027160422_private_hire_deposit_close_out.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-deposit-close-out/rollback.sql'
 

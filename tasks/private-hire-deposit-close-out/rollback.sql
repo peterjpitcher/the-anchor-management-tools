@@ -1,7 +1,7 @@
 -- Rollback for supabase/migrations/20261027160422_private_hire_deposit_close_out.sql.
 --
 -- Puts the six backfilled bookings back as they were on 27 October 2026, then restores the refund
--- status check as 20261027011052 left it. A booking closed since the migration with one of the
+-- status check as 20261027160421 left it. A booking closed since the migration with one of the
 -- three new values has that value cleared first (to NULL, with post-event 'awaiting_inspection'
 -- so the close-out shows again), or the old check would refuse it: read
 -- deposit_refund_status first if any were closed that way.
