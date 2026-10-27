@@ -59,6 +59,8 @@ describe('buildGuestReviewUrl', () => {
     expect(createShortLinkInternalMock).toHaveBeenCalledWith({
       destination_url: LONG_URL,
       link_type: 'custom',
+      // A long secure code, not the database 6-character one (BK-203).
+      generate_code: expect.any(Function),
       metadata: {
         source: 'guest_review_ask',
         guest_link_kind: 'guest_review',
