@@ -11,23 +11,19 @@ import { reportWriteError } from '@/lib/supabase/settle-write';
 import {
   sendBookingConfirmationEmail,
   sendBookingCalendarInvite,
-  sendBookingCancelledEmail,
   buildBalanceDueDateChangedEmail,
   buildBookingConfirmedMessageEmail,
   buildCancellationEmail,
   buildDateChangedEmail,
   buildHoldExtendedEmail,
   buildHoldLapsedEmail,
-  buildPrivateBookingCreatedEmail,
   buildSetupReminderEmail,
   buildThankYouEmail,
   resolveConfirmationDepositState,
 } from '@/lib/email/private-booking-emails';
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger';
-import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first';
 import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue';
-import { isMessagingFlagOn } from '@/lib/messaging/flags';
-import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
+import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation';
 import type {
   BookingStatus,
   PrivateBookingWithDetails,
@@ -40,6 +36,7 @@ import {
   normalizeSmsSafetyMeta,
   toNumber,
   computeHoldExpiry,
+  shortNoticeHoldCap,
   balanceDueMoment,
   computeBalanceDueDateIso,
   DATE_TBD_NOTE,
@@ -66,7 +63,6 @@ import {
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 import {
-  privateBookingCreatedMessage,
   bookingConfirmedMessage,
   setupReminderMessage,
   dateChangedMessage,
@@ -74,17 +70,15 @@ import {
   bookingCompletedThanksMessage,
   bookingExpiredMessage,
   holdExtendedMessage,
-  bookingCancelledHoldMessage,
-  bookingCancelledRefundableMessage,
-  bookingCancelledPartialRefundMessage,
-  bookingCancelledRetentionMessage,
-  bookingCancelledReviewPendingMessage,
-  bookingCancelledManualReviewMessage,
 } from '@/lib/private-bookings/messages';
+import { getPrivateBookingCancellationOutcome } from '@/services/private-bookings/financial';
 import {
-  getPrivateBookingCancellationOutcome,
-  type CancellationFinancialOutcome,
-} from '@/services/private-bookings/financial';
+  chooseCancellationVariant,
+  refundBeforeCosts,
+  type CancellationVariant,
+} from '@/lib/private-bookings/cancellation-variant';
+import { refundDueByIso } from '@/lib/private-bookings/refund-due';
+import { closeCancelledBookingInvoices, type CancelledBookingInvoiceOutcome } from './cancellation-invoices';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -99,117 +93,8 @@ function formatPrivateBookingDate(
 }
 
  
-async function sendCreationSms(booking: any, phone?: string | null): Promise<void> {
-  const isTbd = isBookingDateTbd(booking);
-  const eventDateReadable = isTbd
-    ? 'Date to be confirmed'
-    : formatPrivateBookingDate(booking.event_date);
-
-  const depositAmount = toNumber(booking.deposit_amount);
-
-  // Quote the stored hold expiry (deposit deadline). No fabricated fallback —
-  // a missing expiry must not read as "due today" (discovery 2026-07-08).
-  const expiryReadable = booking.hold_expiry
-    ? formatPrivateBookingDate(new Date(booking.hold_expiry), {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      })
-    : null;
-
-  const smsMessage = privateBookingCreatedMessage({
-    customerFirstName: booking.customer_first_name,
-    eventDate: eventDateReadable,
-    depositAmount: depositAmount,
-    holdExpiry: expiryReadable,
-  });
-
-  try {
-    const result = await sendPrivateBookingMessage({
-      sms: {
-        booking_id: booking.id,
-        trigger_type: 'booking_created',
-        template_key: 'private_booking_created',
-        message_body: smsMessage,
-        customer_phone: phone ?? undefined,
-        customer_name: booking.customer_name,
-        customer_id: booking.customer_id,
-        created_by: booking.created_by,
-        priority: 2,
-        metadata: {
-          template: 'private_booking_created',
-          first_name: booking.customer_first_name,
-          event_date: eventDateReadable,
-          deposit_amount: depositAmount
-        }
-      },
-      booking,
-      email: () => buildPrivateBookingCreatedEmail({
-        booking,
-        firstName: booking.customer_first_name,
-        depositAmount,
-        holdExpiry: expiryReadable,
-      }),
-      windowKey: 'created',
-      facts: buildPrivateBookingMessageFacts('booking_created', booking),
-    });
-
-    const smsSafety = normalizeSmsSafetyMeta(result)
-    if (smsSafety.logFailure) {
-      logger.error('Private booking created SMS logging failed', {
-        metadata: {
-          bookingId: booking.id,
-          triggerType: 'booking_created',
-          templateKey: 'private_booking_created',
-          code: smsSafety.code
-        }
-      })
-    }
-
-    if (typeof result?.error === 'string') {
-      logger.error('Private booking created SMS queue/send failed', {
-        metadata: {
-          bookingId: booking.id,
-          triggerType: 'booking_created',
-          templateKey: 'private_booking_created',
-          error: result.error
-        }
-      })
-    }
-  } catch (smsError) {
-    logger.error('Failed to queue booking created SMS after booking creation:', { error: smsError instanceof Error ? smsError : new Error(String(smsError)) });
-  }
-}
-
 /**
- * With deposit confirmation off, the deposit is stated to the guest when the booking is made, so
- * that is when it was confirmed. Recording it keeps the booking right if the flag is switched on
- * later: it is not shown as waiting, and its reminders and hold expiry carry on.
- *
- * Never blocks the booking. Until migration 20260911200000 is applied the column does not exist
- * and the write is refused, which is logged and otherwise harmless while the flag is off.
- */
-async function recordDepositConfirmedAtCreation(bookingId: string, confirmedBy: string | null): Promise<void> {
-  try {
-    const { error } = await createAdminClient()
-      .from('private_bookings')
-      .update({ deposit_confirmed_at: new Date().toISOString(), deposit_confirmed_by: confirmedBy })
-      .eq('id', bookingId)
-      .is('deposit_confirmed_at', null);
-    if (error) {
-      logger.warn('Deposit not recorded as confirmed at booking time', {
-        metadata: { bookingId, code: error.code ?? null, message: error.message ?? null },
-      });
-    }
-  } catch (recordError) {
-    logger.warn('Deposit not recorded as confirmed at booking time', {
-      metadata: { bookingId, message: recordError instanceof Error ? recordError.message : String(recordError) },
-    });
-  }
-}
-
-/**
- * Deposit confirmation (flag private_booking_deposit_confirmation): a booking whose deposit the
+ * Deposit confirmation (owner decision, 11 September 2026): a booking whose deposit the
  * guest has not been told cannot be moved to Confirmed, because that confirmation states the
  * deposit ("Deposit due"). Staff confirm the deposit first, which sends the deposit request, or
  * waive it to £0. Fails closed: if the deposit state cannot be read, the booking is not confirmed.
@@ -219,8 +104,6 @@ async function assertDepositConfirmedBeforeBookingConfirmation(
   currentBooking: { deposit_amount?: unknown; deposit_paid_date?: string | null },
   input: UpdatePrivateBookingInput
 ): Promise<void> {
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return
-
   const { data, error } = await createAdminClient()
     .from('private_bookings')
     .select('deposit_confirmed_at, deposit_waived')
@@ -249,13 +132,11 @@ async function assertDepositConfirmedBeforeBookingConfirmation(
 }
 
 /**
- * True while private_booking_deposit_confirmation is on and this booking's deposit is still to be
- * confirmed, so no message about its hold may go. If the deposit state cannot be read the answer
+ * True while this booking's deposit is still to be confirmed (owner decision, 11 September 2026),
+ * so no message about its hold may go. If the deposit state cannot be read the answer
  * is true: sending nothing is the safe side, and the failure is logged.
  */
 async function isDepositStillToBeConfirmed(bookingId: string): Promise<boolean> {
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return false
-
   const { data, error } = await createAdminClient()
     .from('private_bookings')
     .select('status, deposit_amount, deposit_paid_date, deposit_waived, deposit_confirmed_at')
@@ -270,28 +151,20 @@ async function isDepositStillToBeConfirmed(bookingId: string): Promise<boolean> 
   return isDepositAwaitingConfirmation(data)
 }
 
-type CancellationSmsVariant = {
-  triggerType:
-    | 'booking_cancelled_hold'
-    | 'booking_cancelled_refundable'
-    | 'booking_cancelled_partial_refund'
-    | 'booking_cancelled_retention'
-    | 'booking_cancelled_review_pending'
-    | 'booking_cancelled_manual_review'
-  templateKey:
-    | 'private_booking_cancelled_hold'
-    | 'private_booking_cancelled_refundable'
-    | 'private_booking_cancelled_partial_refund'
-    | 'private_booking_cancelled_retention'
-    | 'private_booking_cancelled_review_pending'
-    | 'private_booking_cancelled_manual_review'
-  messageBody: string
-  outcome: CancellationFinancialOutcome
-  refundAmount: number
-  retainedAmount: number
-  /** The administration deduction the partial-refund text states; 0 for every other variant. */
-  deductionAmount: number
+/**
+ * True when the booking has no deposit hold to run: its deposit is paid, waived, or nothing (BK-068).
+ * Such a booking must never be given a hold_expiry, because the expire-holds job cancels any draft
+ * whose hold has passed.
+ */
+function bookingHasNoHold(booking: {
+  deposit_paid_date?: string | null
+  deposit_waived?: boolean | null
+  deposit_amount?: unknown
+}): boolean {
+  return Boolean(booking.deposit_paid_date) || booking.deposit_waived === true || toNumber(booking.deposit_amount) <= 0
 }
+
+type CancellationSmsVariant = CancellationVariant
 
 function cancellationAmountsOf(variant: CancellationSmsVariant, retentionReason?: string | null) {
   return {
@@ -332,6 +205,15 @@ export type CancellationRetentionDecision = {
 }
 
 /**
+ * Direct costs already committed for a cancelled hire, kept back from the refund with a recorded
+ * reason (owner decision D26, 26 October 2026). Never more than the refund the outcome gives.
+ */
+export type CancellationCostsKept = {
+  amount: number
+  reason: string
+}
+
+/**
  * SOP §14: cancellations are captured with the written channel they arrived
  * through and when they were received; the processor is recorded separately.
  */
@@ -341,7 +223,7 @@ export type CancellationCaptureDetails = {
 }
 
 const UPDATE_BOOKING_BASE_SELECT =
-  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status'
+  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status, deposit_waived'
 
 const CANCELLED_BOOKING_CORRECTION_FIELDS = new Set([
   'contact_email',
@@ -403,136 +285,6 @@ function isMissingDateTbdColumnError(error: unknown): boolean {
     text.includes('does not exist') ||
     text.includes('pgrst204')
   )
-}
-
-/**
- * Resolve the cancellation SMS variant for a booking from its financial
- * outcome. Returns the trigger/template keys and the rendered message body
- * so `cancelBooking()` and the status-change cancel path in `updateBooking()`
- * can queue a single variant-specific SMS instead of the generic
- * `booking_cancelled` placeholder that Wave 2 left in place.
- */
-async function resolveCancellationSmsVariant(input: {
-  bookingId: string
-  customerFirstName: string | null | undefined
-  eventDate: string
-  retentionDecision?: CancellationRetentionDecision | null
-}): Promise<CancellationSmsVariant> {
-  const outcome = await getPrivateBookingCancellationOutcome(input.bookingId)
-
-  switch (outcome.outcome) {
-    case 'no_money':
-      return {
-        triggerType: 'booking_cancelled_hold',
-        templateKey: 'private_booking_cancelled_hold',
-        messageBody: bookingCancelledHoldMessage({
-          customerFirstName: input.customerFirstName,
-          eventDate: input.eventDate,
-        }),
-        outcome: outcome.outcome,
-        refundAmount: outcome.refund_amount,
-        retainedAmount: outcome.retained_amount,
-        deductionAmount: 0,
-      }
-    case 'refundable':
-      return {
-        triggerType: 'booking_cancelled_refundable',
-        templateKey: 'private_booking_cancelled_refundable',
-        messageBody: bookingCancelledRefundableMessage({
-          customerFirstName: input.customerFirstName,
-          eventDate: input.eventDate,
-          refundAmount: outcome.refund_amount,
-        }),
-        outcome: outcome.outcome,
-        refundAmount: outcome.refund_amount,
-        retainedAmount: outcome.retained_amount,
-        deductionAmount: 0,
-      }
-    case 'deposit_partial_refund':
-      return {
-        triggerType: 'booking_cancelled_partial_refund',
-        templateKey: 'private_booking_cancelled_partial_refund',
-        messageBody: bookingCancelledPartialRefundMessage({
-          customerFirstName: input.customerFirstName,
-          eventDate: input.eventDate,
-          refundAmount: outcome.refund_amount,
-          deductionAmount: outcome.deposit_deduction,
-        }),
-        outcome: outcome.outcome,
-        refundAmount: outcome.refund_amount,
-        retainedAmount: outcome.retained_amount,
-        deductionAmount: outcome.deposit_deduction,
-      }
-    case 'gm_review_required': {
-      // SOP §14: retention up to the full deposit is a manager decision.
-      const decision = input.retentionDecision
-      if (!decision) {
-        // Cancelled before a retention decision exists (e.g. edit-form path):
-        // tell the customer the payment review is in progress — never assert
-        // an automatic retention.
-        return {
-          triggerType: 'booking_cancelled_review_pending',
-          templateKey: 'private_booking_cancelled_review_pending',
-          messageBody: bookingCancelledReviewPendingMessage({
-            customerFirstName: input.customerFirstName,
-            eventDate: input.eventDate,
-          }),
-          outcome: outcome.outcome,
-          refundAmount: outcome.refund_amount,
-          retainedAmount: 0,
-          deductionAmount: 0,
-        }
-      }
-
-      const retained = Math.min(Math.max(decision.retainedAmount, 0), outcome.max_retainable)
-      const refundTotal = outcome.refund_amount + (outcome.max_retainable - retained)
-
-      if (retained <= 0) {
-        return {
-          triggerType: 'booking_cancelled_refundable',
-          templateKey: 'private_booking_cancelled_refundable',
-          messageBody: bookingCancelledRefundableMessage({
-            customerFirstName: input.customerFirstName,
-            eventDate: input.eventDate,
-            refundAmount: refundTotal,
-          }),
-          outcome: outcome.outcome,
-          refundAmount: refundTotal,
-          retainedAmount: 0,
-          deductionAmount: 0,
-        }
-      }
-
-      return {
-        triggerType: 'booking_cancelled_retention',
-        templateKey: 'private_booking_cancelled_retention',
-        messageBody: bookingCancelledRetentionMessage({
-          customerFirstName: input.customerFirstName,
-          eventDate: input.eventDate,
-          retainedAmount: retained,
-          refundAmount: refundTotal,
-        }),
-        outcome: outcome.outcome,
-        refundAmount: refundTotal,
-        retainedAmount: retained,
-        deductionAmount: 0,
-      }
-    }
-    case 'manual_review':
-    default:
-      return {
-        triggerType: 'booking_cancelled_manual_review',
-        templateKey: 'private_booking_cancelled_manual_review',
-        messageBody: bookingCancelledManualReviewMessage({
-          customerFirstName: input.customerFirstName,
-          eventDate: input.eventDate,
-        }),
-        outcome: 'manual_review',
-        refundAmount: outcome.refund_amount,
-        retainedAmount: outcome.retained_amount,
-        deductionAmount: 0,
-      }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,14 +763,14 @@ export async function createBooking(
     // was told they had until.
     holdExpiryMoment = endOfLondonDayUtc(input.hold_expiry) ?? new Date(input.hold_expiry);
 
+    // The cap is applied first and the end of its day after it (BK-110): both caps are midnight
+    // UTC moments, so a capped hold used to end at the very start of its deadline day.
     if (!isShortNotice) {
       if (holdExpiryMoment.getTime() > dueMoment.getTime()) {
-        holdExpiryMoment = dueMoment;
+        holdExpiryMoment = endOfLondonDayUtc(dueMoment) ?? dueMoment;
       }
     } else {
-      if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
-        holdExpiryMoment = actualEventDate;
-      }
+      holdExpiryMoment = shortNoticeHoldCap(holdExpiryMoment, actualEventDate, currentDateTime);
     }
   } else {
     // Default auto-calculation
@@ -1122,25 +874,17 @@ export async function createBooking(
 
   // SMS
   if (booking) {
-    const bookingForSideEffects = { ...bookingPayload, ...booking, hold_expiry: holdExpiryIso };
     if (input.is_web_enquiry) {
       // Deliberately silent to the customer. The only message that should reach
       // someone who filled in the enquiry form is a human replying to it. The
       // manager is notified separately by the calling route.
-    } else if (requiresDeposit && (await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
+    } else if (requiresDeposit) {
       // Owner decision, 11 September 2026: nothing about the deposit goes at booking time, by
       // any channel. The booking holds the date with its deposit "to be confirmed"
       // (deposit_confirmed_at stays null) until staff confirm the amount on the booking page,
       // which sends the guest one deposit request. Until then the reminder and expiry crons leave
-      // it alone.
-    } else if (requiresDeposit) {
-      await recordDepositConfirmedAtCreation(booking.id, (booking as any).created_by ?? (bookingPayload as any).created_by ?? null)
-      void sendCreationSms(bookingForSideEffects, normalizedContactPhone).catch((smsError) => {
-        logger.error('Private booking creation SMS background task failed', {
-          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
-          metadata: { bookingId: booking.id }
-        })
-      })
+      // it alone. The flag that made this optional, private_booking_deposit_confirmation, was on
+      // from 15 September and is gone (D16, 26 October 2026), and with it the booking-time text.
     }
     // A waived (£0) deposit is a draft with nothing to pay, so nothing goes now: the guest is told
     // the booking is confirmed when staff confirm it (updateBooking sends that).
@@ -1214,6 +958,13 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
   }
 
+  // Every cancellation goes through cancelBooking (BK-065): it works out the refund owed, records
+  // it on the booking, closes an unpaid invoice and sends the one message for that outcome. The
+  // edit form's own cancellation did none of the money work, and sent no email under email first.
+  if (input.status === 'cancelled' && currentBooking.status !== 'cancelled') {
+    throw new Error('Cancel a booking with Change Status on the booking page, so the refund is worked out and the guest is told.');
+  }
+
   // SOP §12: deposit reductions below £250 need a recorded reason; £0 needs an
   // explicit GM waiver. Enforced on the edit path too (mirrors createBooking).
   const depositChanged =
@@ -1278,7 +1029,16 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   let holdExpiryIso = undefined;
   const dateChanged = input.event_date && input.event_date !== currentBooking.event_date;
 
-  if (dateChanged && currentBooking.status === 'draft') {
+  // A paid or waived deposit (or none at all) has no hold (BK-068). Moving such a draft used to
+  // set a new deadline, the 06:00 job then cancelled a booking the guest had paid for, and the
+  // monitor reminded them to pay again in the meantime.
+  const holdAllowed = !bookingHasNoHold({
+    deposit_paid_date: currentBooking.deposit_paid_date,
+    deposit_waived: (currentBooking as { deposit_waived?: boolean | null }).deposit_waived,
+    deposit_amount: input.deposit_amount !== undefined ? input.deposit_amount : currentBooking.deposit_amount,
+  });
+
+  if (dateChanged && currentBooking.status === 'draft' && holdAllowed) {
     const currentDateTime = new Date();
     const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
 
@@ -1450,7 +1210,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       updatePayload.balance_due_date = null; // trigger will recalculate
     }
     // Compute hold_expiry for the now-real date
-    if (currentBooking.status === 'draft') {
+    if (currentBooking.status === 'draft' && holdAllowed) {
       const newEventDate = new Date(finalEventDate);
       updatePayload.hold_expiry = computeHoldExpiry(newEventDate, new Date()).toISOString();
     }
@@ -1473,11 +1233,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // Clean up undefined values
   Object.keys(updatePayload).forEach(key => updatePayload[key] === undefined && delete updatePayload[key]);
-
-  if (input.status === 'cancelled' && currentBooking.status !== 'cancelled') {
-    updatePayload.cancellation_reason = 'Cancelled via edit form';
-    updatePayload.cancelled_at = new Date().toISOString();
-  }
 
   const immutableStatuses = ['completed', 'cancelled'];
   if (immutableStatuses.includes(currentBooking.status as string)) {
@@ -1506,12 +1261,28 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   // Clearing the cancellation is a consequence of the status transition, not a
   // user edit, so adding it above would have made every reinstatement throw
   // "Cannot edit a cancelled booking".
-  if (input.status && input.status !== 'cancelled' && currentBooking.status === 'cancelled') {
+  const reinstating = Boolean(input.status && input.status !== 'cancelled' && currentBooking.status === 'cancelled');
+  if (reinstating) {
     updatePayload.cancelled_at = null;
     updatePayload.cancellation_reason = null;
     updatePayload.cancellation_channel = null;
     updatePayload.cancellation_received_at = null;
     updatePayload.cancelled_by = null;
+    // A reinstated booking gets a hold it can keep (BK-067). The old one had usually passed, so
+    // at 06:00 the next morning the expire-holds job cancelled the booking again and told the
+    // guest their hold had lapsed. A hold still in the future is kept; otherwise the rule a new
+    // booking gets. A paid or waived deposit, or a date still to be confirmed, has no hold.
+    updatePayload.hold_expiry = holdAllowed
+      ? resolveConfirmationHoldExpiry(
+          {
+            event_date: finalEventDate,
+            hold_expiry: currentBooking.hold_expiry,
+            date_tbd: input.date_tbd ?? (currentBooking as { date_tbd?: boolean | null }).date_tbd ?? null,
+            internal_notes: internalNotes,
+          },
+          new Date(),
+        )
+      : null;
   }
 
   // SOP §6/§28: when the event timing moves on a real-dated booking with space
@@ -1578,6 +1349,28 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   if (!updatedBooking) {
     throw new Error('Booking not found');
+  }
+
+  if (reinstating) {
+    try {
+      const { error: reinstateAuditError } = await createAdminClient().from('private_booking_audit').insert({
+        booking_id: id,
+        action: 'reinstated',
+        old_value: currentBooking.status,
+        new_value: updatedBooking.status,
+        performed_by: performedByUserId ?? null,
+        metadata: {
+          previous_hold_expiry: currentBooking.hold_expiry ?? null,
+          hold_expiry: updatedBooking.hold_expiry ?? null,
+        },
+      });
+      if (reinstateAuditError) throw new Error(reinstateAuditError.message);
+    } catch (reinstateAuditFailure) {
+      logger.error('Failed to audit a reinstated private booking (non-blocking)', {
+        error: reinstateAuditFailure instanceof Error ? reinstateAuditFailure : new Error(String(reinstateAuditFailure)),
+        metadata: { bookingId: id },
+      });
+    }
   }
 
   // SOP §15.6: audit the date change (original date, new date, reason, approver).
@@ -1729,10 +1522,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // 4. Side Effects
 
-  // Email first (P6): read once for every message this change sends, and passed to each, so a
-  // send and the decisions made on the flag here (the old confirmation email) cannot disagree.
-  const emailFirst = await isPrivateBookingEmailFirstOn()
-
   // The customer must hear about a moved balance/final-details deadline —
   // silent changes are how Paula got contradictory dates (discovery
   // 2026-07-08). Compare against the post-trigger row so DB-side refills
@@ -1798,7 +1587,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         balanceDueDate: balanceDueReadable,
       }),
       windowKey: `moved-${String(updatedBooking.event_date).slice(0, 10)}`,
-      emailFirst,
       facts: buildPrivateBookingMessageFacts('date_changed', updatedBooking, { includeBalanceDueDate: Boolean(balanceDueReadable) }),
     })
     captureSmsSideEffect('date_changed', 'private_booking_date_changed', result)
@@ -1853,7 +1641,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         balanceDueDate: balanceDueReadable,
       }),
       windowKey: `due-${nextBalanceDueIso}`,
-      emailFirst,
       facts: buildPrivateBookingMessageFacts('balance_due_date_changed', updatedBooking),
     })
     captureSmsSideEffect('balance_due_date_changed', 'private_booking_balance_due_date_changed', result)
@@ -1910,7 +1697,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       booking: updatedBooking,
       email: () => buildSetupReminderEmail({ booking: updatedBooking, firstName }),
       windowKey: `setup-${updatedBooking.setup_date ?? 'none'}-${String(updatedBooking.setup_time ?? '').slice(0, 5)}`,
-      emailFirst,
       facts: buildPrivateBookingMessageFacts('setup_reminder', updatedBooking),
     })
     captureSmsSideEffect('setup_reminder', 'private_booking_setup_reminder', result)
@@ -1928,10 +1714,9 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
     // Email first (P6): when the confirmation text is due, one corrected confirmation email
     // replaces both the text and the old confirmation email. The text goes only if that email
-    // does not.
+    // does not. A booking whose deposit is already paid gets the old confirmation email.
     const confirmationTextDue =
       !abortSmsSideEffects && updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date
-    const confirmationByEmailFirst = confirmationTextDue && emailFirst
 
     if (updatedBooking.status === 'confirmed' && updatedBooking.customer_id) {
       try {
@@ -1950,7 +1735,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       }
 
       // Send confirmation email (non-blocking)
-      if (updatedBooking.contact_email && !confirmationByEmailFirst) {
+      if (updatedBooking.contact_email && !confirmationTextDue) {
         const confirmationGrossTotal = await resolveConfirmationGrossTotal(updatedBooking.id);
         sendBookingConfirmationEmail({ ...updatedBooking, total_amount: confirmationGrossTotal }).catch(e =>
           logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
@@ -1969,7 +1754,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         customerFirstName: firstName,
         eventDate: eventDateReadable,
       });
-      const confirmationGrossTotal = confirmationByEmailFirst ? await resolveConfirmationGrossTotal(updatedBooking.id) : null;
+      const confirmationGrossTotal = await resolveConfirmationGrossTotal(updatedBooking.id);
 
       const result = await sendPrivateBookingMessage({
         sms: {
@@ -2000,95 +1785,9 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
           totalAmount: confirmationGrossTotal,
         }),
         windowKey: `confirmed-${String(updatedBooking.event_date ?? 'tbd').slice(0, 10)}`,
-        emailFirst,
         facts: buildPrivateBookingMessageFacts('booking_confirmed', updatedBooking),
       })
       captureSmsSideEffect('booking_confirmed', 'private_booking_confirmed', result)
-    }
-
-    // Cancel pending SMS queue entries when transitioning to cancelled
-    if (updatedBooking.status === 'cancelled' && currentBooking.status !== 'cancelled') {
-      try {
-        await cancelPendingQueuedSms(createAdminClient(), id, 'status_change_to_cancelled');
-      } catch (smsCleanupError) {
-        logger.error('Failed to cancel pending SMS during status change to cancelled:', {
-          error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
-          metadata: { bookingId: id },
-        });
-      }
-    }
-
-    if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
-      // Pick the variant keyed by the financial outcome (no_money /
-      // refundable / non-refundable / manual review). See
-      // `resolveCancellationSmsVariant` for the mapping.
-      const variant = await resolveCancellationSmsVariant({
-        bookingId: updatedBooking.id,
-        customerFirstName: firstName,
-        eventDate: eventDateReadable,
-      })
-
-      const result = await sendPrivateBookingMessage({
-        sms: {
-          booking_id: updatedBooking.id,
-          trigger_type: variant.triggerType,
-          template_key: variant.templateKey,
-          message_body: variant.messageBody,
-          customer_phone: updatedBooking.contact_phone,
-          customer_name:
-            updatedBooking.customer_name ||
-            `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
-          customer_id: updatedBooking.customer_id,
-          created_by: performedByUserId,
-          priority: 2,
-          metadata: {
-            template: variant.templateKey,
-            event_date: eventDateReadable,
-            reason: 'status_change',
-            financial_outcome: variant.outcome,
-            refund_amount: variant.refundAmount,
-            retained_amount: variant.retainedAmount,
-          }
-        },
-        booking: updatedBooking,
-        email: () => buildCancellationEmail({
-          booking: updatedBooking,
-          firstName,
-          variant: variant.templateKey,
-          refundAmount: variant.refundAmount,
-          retainedAmount: variant.retainedAmount,
-          deductionAmount: variant.deductionAmount,
-        }),
-        windowKey: 'cancelled',
-        facts: buildPrivateBookingMessageFacts(variant.triggerType, updatedBooking, { cancellation: cancellationAmountsOf(variant) }),
-        emailFirst,
-      })
-      captureSmsSideEffect(variant.triggerType, variant.templateKey, result)
-
-      // Cancelling from the edit form used to send the text and nothing else, so a guest with no
-      // mobile heard nothing at all (review PB-18). `cancelBooking` has always emailed as well.
-      if (!emailFirst && updatedBooking.contact_email) {
-        void sendBookingCancelledEmail({
-          id: updatedBooking.id,
-          customer_id: updatedBooking.customer_id,
-          contact_email: updatedBooking.contact_email,
-          customer_first_name: updatedBooking.customer_first_name,
-          customer_name: updatedBooking.customer_name,
-          event_date: updatedBooking.event_date,
-          event_type: updatedBooking.event_type,
-          refund_amount: variant.refundAmount,
-          retained_amount: variant.retainedAmount,
-          deduction_amount: variant.deductionAmount,
-          variant: variant.templateKey,
-          date_tbd: (updatedBooking as { date_tbd?: boolean | null }).date_tbd ?? null,
-          internal_notes: updatedBooking.internal_notes,
-        }).catch((emailError) => {
-          logger.error('Private booking cancellation email background task failed', {
-            error: emailError instanceof Error ? emailError : new Error(String(emailError)),
-            metadata: { bookingId: updatedBooking.id },
-          })
-        })
-      }
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
@@ -2117,7 +1816,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         booking: updatedBooking,
         email: () => buildThankYouEmail({ booking: updatedBooking, firstName }),
         windowKey: 'completed',
-        emailFirst,
         facts: buildPrivateBookingMessageFacts('booking_completed', updatedBooking),
       })
       captureSmsSideEffect('booking_completed', 'private_booking_thank_you', result)
@@ -2343,8 +2041,16 @@ export async function cancelBooking(
   options?: {
     retentionDecision?: CancellationRetentionDecision | null
     capture?: CancellationCaptureDetails | null
+    costsKept?: CancellationCostsKept | null
   }
-): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
+): Promise<{
+  success: true
+  smsSideEffects?: PrivateBookingSmsSideEffectSummary[]
+  /** What happened to the booking's invoices (BK-065); only present when it had any. */
+  invoices?: CancelledBookingInvoiceOutcome[]
+  /** The refund now owed to the guest, and by when; absent when nothing is owed. */
+  refundDue?: { amount: number; dueBy: string }
+}> {
   const supabase = await createClient();
 
   // 1. Get Booking
@@ -2362,12 +2068,14 @@ export async function cancelBooking(
     throw new Error('Booking cannot be cancelled');
   }
 
-  // 1b. Validate any retention decision before the booking is touched.
-  // SOP §14: for sub-30-day cancellations with a paid deposit, retention up
-  // to the full deposit is a manager decision with a recorded reason.
+  // 1b. The money first, all checked before the booking is touched (BK-065): the outcome, the
+  // manager's retention decision and any costs kept, and so the refund owed and the one message.
+  // SOP §14: for sub-30-day cancellations with a paid deposit, retention up to the full deposit is
+  // a manager decision with a recorded reason, made here rather than left "under review".
   const retentionDecision = options?.retentionDecision ?? null
+  const costsKept = options?.costsKept ?? null
+  const outcome = await getPrivateBookingCancellationOutcome(id)
   if (retentionDecision) {
-    const outcome = await getPrivateBookingCancellationOutcome(id)
     if (outcome.outcome !== 'gm_review_required') {
       throw new Error('A retention decision only applies to cancellations within 30 days of the event with a paid deposit')
     }
@@ -2377,27 +2085,83 @@ export async function cancelBooking(
     if (retentionDecision.retainedAmount > 0 && !retentionDecision.reason.trim()) {
       throw new Error('Please record the reason for retaining part or all of the deposit')
     }
+  } else if (outcome.outcome === 'gm_review_required') {
+    throw new Error('This booking is being cancelled within 30 days of its event with a paid deposit, so decide how much of the deposit to keep first. Use Change Status on the booking page.')
   }
+  if (costsKept) {
+    const base = refundBeforeCosts(outcome, { retainedAmount: retentionDecision?.retainedAmount ?? null })
+    if (!Number.isFinite(costsKept.amount) || costsKept.amount <= 0) {
+      throw new Error('Enter the costs to keep as an amount above £0, or leave them out')
+    }
+    if (!costsKept.reason.trim()) {
+      throw new Error('Please record what the costs kept were for')
+    }
+    if (!base || base.refund <= 0) {
+      throw new Error('There is no refund on this cancellation to keep costs from')
+    }
+    if (costsKept.amount > base.refund + 0.005) {
+      throw new Error(`The costs kept cannot be more than the £${base.refund.toFixed(2)} refund`)
+    }
+  }
+
+  const bookingIsTbd = isBookingDateTbd(booking);
+  const eventDate = bookingIsTbd
+    ? 'Date to be confirmed'
+    : formatPrivateBookingDate(booking.event_date);
+  const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
+  // Shared by the SMS and the cancellation email (SOP §14.9).
+  const variant = chooseCancellationVariant(outcome, { customerFirstName: firstName, eventDate }, {
+    retainedAmount: retentionDecision?.retainedAmount ?? null,
+    costsKept: costsKept?.amount ?? null,
+  })
+  const keptReason = [
+    retentionDecision && retentionDecision.retainedAmount > 0 ? retentionDecision.reason.trim() : null,
+    costsKept ? costsKept.reason.trim() : null,
+  ].filter(Boolean).join('. ') || null
+  const refundDue = variant.refundAmount > 0.005
+    ? { amount: variant.refundAmount, dueBy: refundDueByIso(new Date()) }
+    : null
 
   // 2. Update Status
   const nowIso = new Date().toISOString();
   // SOP §14: capture how and when the cancellation arrived and who processed it.
   const capture = options?.capture ?? null;
   const cancellationReceivedAt = capture?.receivedAt || nowIso;
+  const cancellationFields = {
+    status: 'cancelled',
+    cancellation_reason: reason || 'Cancelled by staff',
+    cancelled_at: nowIso,
+    cancellation_channel: capture?.channel ?? null,
+    cancellation_received_at: cancellationReceivedAt,
+    cancelled_by: performedByUserId ?? null,
+    updated_at: nowIso
+  }
+  // The refund promised is written with the cancellation itself (BK-065), so the two cannot part.
+  const refundFields = refundDue
+    ? { refund_due_amount: refundDue.amount, refund_due_by: refundDue.dueBy, deposit_refund_status: 'refund_due' }
+    : {}
   let { data: updatedBookingRow, error: updateError } = await supabase
     .from('private_bookings')
-    .update({
-      status: 'cancelled',
-      cancellation_reason: reason || 'Cancelled by staff',
-      cancelled_at: nowIso,
-      cancellation_channel: capture?.channel ?? null,
-      cancellation_received_at: cancellationReceivedAt,
-      cancelled_by: performedByUserId ?? null,
-      updated_at: nowIso
-    })
+    .update({ ...cancellationFields, ...refundFields })
     .eq('id', id)
     .select('id')
     .maybeSingle();
+
+  // Migration 20261027180147 not applied yet: cancel anyway, and log that the refund owed was not kept.
+  if (updateError && refundDue && (updateError.code === 'PGRST204' || (updateError.message || '').includes('refund_due'))) {
+    logger.error('Cancelled a private booking without recording the refund owed: the refund columns are missing', {
+      error: new Error(updateError.message || 'refund columns missing'),
+      metadata: { bookingId: id, refundDue },
+    })
+    const retry = await supabase
+      .from('private_bookings')
+      .update(cancellationFields)
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+    updateError = retry.error || null;
+    updatedBookingRow = retry.data || null;
+  }
 
   // Fallback for legacy schema
   if (updateError && (updateError.code === 'PGRST204' || (updateError.message || '').includes('cancellation_reason'))) {
@@ -2456,138 +2220,93 @@ export async function cancelBooking(
     });
   }
 
+  // 3c. An unpaid invoice is cancelled with the booking; one with money on it goes to a manager.
+  const invoices = await closeCancelledBookingInvoices(id, performedByUserId ?? null)
+
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
-  const bookingIsTbd = isBookingDateTbd(booking);
-  const eventDate = bookingIsTbd
-    ? 'Date to be confirmed'
-    : formatPrivateBookingDate(booking.event_date);
-  const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-
-  // Pick the cancellation variant based on paid totals + dispute state and
-  // any manager retention decision (SOP §14 — retention is never automatic).
-  // Shared by the SMS and the cancellation email (SOP §14.9).
-  const variant = await resolveCancellationSmsVariant({
-    bookingId: id,
-    customerFirstName: firstName,
-    eventDate: eventDate,
-    retentionDecision,
-  })
-
-  // Email first (P6): the cancellation email has always gone alongside the text straight away,
-  // so under the flag the variant email goes now, whatever the text's approval rule, and the text
+  // 4. Message. Email first (P6): the cancellation email has always gone alongside the text
+  // straight away, so the variant email goes now, whatever the text's approval rule, and the text
   // only if that email does not.
-  const cancellationByEmailFirst = await isPrivateBookingEmailFirstOn();
-
-  // 4. SMS Notification
-  if (cancellationByEmailFirst || booking.contact_phone || booking.customer_id) {
-    let smsResult: any
-    try {
-      smsResult = await sendPrivateBookingMessage({
-        sms: {
-          booking_id: id,
-          trigger_type: variant.triggerType,
-          template_key: variant.templateKey,
-          message_body: variant.messageBody,
-          customer_phone: booking.contact_phone,
-          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-          customer_id: booking.customer_id,
-          created_by: performedByUserId,
-          priority: 2,
-          metadata: {
-            template: variant.templateKey,
-            event_date: eventDate,
-            reason: reason || 'staff_cancelled',
-            financial_outcome: variant.outcome,
-            refund_amount: variant.refundAmount,
-            retained_amount: variant.retainedAmount,
-          }
-        },
+  let smsResult: any
+  try {
+    smsResult = await sendPrivateBookingMessage({
+      sms: {
+        booking_id: id,
+        trigger_type: variant.triggerType,
+        template_key: variant.templateKey,
+        message_body: variant.messageBody,
+        customer_phone: booking.contact_phone,
+        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+        customer_id: booking.customer_id,
+        created_by: performedByUserId,
+        priority: 2,
+        metadata: {
+          template: variant.templateKey,
+          event_date: eventDate,
+          reason: reason || 'staff_cancelled',
+          financial_outcome: variant.outcome,
+          refund_amount: variant.refundAmount,
+          retained_amount: variant.retainedAmount,
+          deduction_amount: variant.deductionAmount,
+          ...(variant.costsKept > 0 ? { costs_kept: variant.costsKept } : {}),
+          ...(keptReason ? { retention_reason: keptReason } : {}),
+        }
+      },
+      booking,
+      email: () => buildCancellationEmail({
         booking,
-        email: () => buildCancellationEmail({
-          booking,
-          firstName,
-          variant: variant.templateKey,
-          refundAmount: variant.refundAmount,
-          retainedAmount: variant.retainedAmount,
-          deductionAmount: variant.deductionAmount,
-          retentionReason: retentionDecision?.reason ?? null,
-        }),
-        windowKey: 'cancelled',
-        facts: buildPrivateBookingMessageFacts(variant.triggerType, booking, {
-          cancellation: cancellationAmountsOf(variant, retentionDecision?.reason),
-        }),
-        emailEvenWhenTextNeedsApproval: true,
-        // The same read that decides, below, whether the old cancellation email goes too.
-        emailFirst: cancellationByEmailFirst,
-      });
-    } catch (smsError) {
-      smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
-    }
-
-    const smsSafety = normalizeSmsSafetyMeta(smsResult)
-    const smsSummary: PrivateBookingSmsSideEffectSummary = {
-      triggerType: variant.triggerType,
-      templateKey: variant.templateKey,
-      queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
-      sent: smsResult?.sent === true,
-      suppressed: smsResult?.suppressed === true,
-      requiresApproval: smsResult?.requiresApproval === true,
-      code: smsSafety.code,
-      logFailure: smsSafety.logFailure,
-      error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
-    }
-
-    smsSideEffects.push(smsSummary)
-
-    if (smsSummary.logFailure) {
-      logger.error('Private booking SMS logging failed', {
-        metadata: {
-          bookingId: id,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          code: smsSummary.code ?? null
-        }
-      })
-    }
-
-    if (smsSummary.error) {
-      logger.error('Private booking SMS queue/send failed', {
-        metadata: {
-          bookingId: id,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          error: smsSummary.error
-        }
-      })
-    }
+        firstName,
+        variant: variant.templateKey,
+        refundAmount: variant.refundAmount,
+        retainedAmount: variant.retainedAmount,
+        deductionAmount: variant.deductionAmount,
+        retentionReason: keptReason,
+      }),
+      windowKey: 'cancelled',
+      facts: buildPrivateBookingMessageFacts(variant.triggerType, booking, {
+        cancellation: cancellationAmountsOf(variant, keptReason),
+      }),
+      emailEvenWhenTextNeedsApproval: true,
+    });
+  } catch (smsError) {
+    smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
   }
 
-  // 4b. Cancellation confirmation email (SOP §14.9) — fire-and-forget so an
-  // email failure never blocks the cancellation itself.
-  if (booking.contact_email && !cancellationByEmailFirst) {
-    void sendBookingCancelledEmail({
-      id,
-      customer_id: booking.customer_id,
-      contact_email: booking.contact_email,
-      customer_first_name: booking.customer_first_name,
-      customer_name: booking.customer_name,
-      event_date: booking.event_date,
-      event_type: booking.event_type,
-      refund_amount: variant.refundAmount,
-      retained_amount: variant.retainedAmount,
-      deduction_amount: variant.deductionAmount,
-      retention_reason: retentionDecision?.reason ?? null,
-      // The variant the text uses, not the financial outcome: `gm_review_required` is the outcome
-      // both before and after the manager decides, so keying on it hid the decision (review PB-5).
-      variant: variant.templateKey,
-      date_tbd: (booking as { date_tbd?: boolean | null }).date_tbd ?? null,
-      internal_notes: booking.internal_notes,
-    }).catch((emailError) => {
-      logger.error('Private booking cancellation email background task failed', {
-        error: emailError instanceof Error ? emailError : new Error(String(emailError)),
-        metadata: { bookingId: id },
-      })
+  const smsSafety = normalizeSmsSafetyMeta(smsResult)
+  const smsSummary: PrivateBookingSmsSideEffectSummary = {
+    triggerType: variant.triggerType,
+    templateKey: variant.templateKey,
+    queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
+    sent: smsResult?.sent === true,
+    suppressed: smsResult?.suppressed === true,
+    requiresApproval: smsResult?.requiresApproval === true,
+    code: smsSafety.code,
+    logFailure: smsSafety.logFailure,
+    error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
+  }
+
+  smsSideEffects.push(smsSummary)
+
+  if (smsSummary.logFailure) {
+    logger.error('Private booking SMS logging failed', {
+      metadata: {
+        bookingId: id,
+        triggerType: smsSummary.triggerType,
+        templateKey: smsSummary.templateKey,
+        code: smsSummary.code ?? null
+      }
+    })
+  }
+
+  if (smsSummary.error) {
+    logger.error('Private booking SMS queue/send failed', {
+      metadata: {
+        bookingId: id,
+        triggerType: smsSummary.triggerType,
+        templateKey: smsSummary.templateKey,
+        error: smsSummary.error
+      }
     })
   }
 
@@ -2608,10 +2327,18 @@ export async function cancelBooking(
             retention_reason: retentionDecision.reason,
           }
         : {}),
+      ...(costsKept ? { costs_kept: variant.costsKept, costs_kept_reason: costsKept.reason.trim() } : {}),
+      ...(refundDue ? { refund_due_amount: refundDue.amount, refund_due_by: refundDue.dueBy } : {}),
+      ...(invoices.length > 0 ? { invoices: invoices.map((invoice) => ({ id: invoice.invoiceId, result: invoice.result })) } : {}),
     },
   })
 
-  return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
+  return {
+    success: true,
+    ...(smsSideEffects.length > 0 ? { smsSideEffects } : {}),
+    ...(invoices.length > 0 ? { invoices } : {}),
+    ...(refundDue ? { refundDue } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2689,8 +2416,7 @@ export async function expireBooking(
   let smsSent = false
   let smsCode: string | null = null
   let smsLogFailure = false
-  const expiryByEmailFirst = options?.sendNotification !== false && (await isPrivateBookingEmailFirstOn())
-  if (options?.sendNotification !== false && (expiryByEmailFirst || booking.contact_phone || booking.customer_id)) {
+  if (options?.sendNotification !== false) {
     const expiryIsTbd = isBookingDateTbd(booking);
     const eventDate = expiryIsTbd
       ? 'Date to be confirmed'
@@ -2724,7 +2450,6 @@ export async function expireBooking(
         email: () => buildHoldLapsedEmail({ booking, firstName: booking.customer_first_name }),
         windowKey: 'expired',
         facts: buildPrivateBookingMessageFacts('booking_expired', booking),
-        emailFirst: expiryByEmailFirst,
       });
     } catch (error) {
       logger.error('Failed to queue expiry SMS notification:', { error: error instanceof Error ? error : new Error(String(error)) })
@@ -2768,12 +2493,17 @@ export async function extendHold(
   // 1. Fetch booking
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, hold_expiry, customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_type, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes')
+    .select('id, status, event_date, hold_expiry, customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_type, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes, deposit_paid_date, deposit_waived')
     .eq('id', id)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
   if (booking.status !== 'draft') throw new Error('Only draft bookings can have their hold extended');
+  // A paid or waived deposit has no hold to extend (BK-068). Setting one armed the 06:00 job to
+  // cancel a booking the guest had paid for, and told them their hold had lapsed.
+  if (booking.deposit_paid_date || booking.deposit_waived === true) {
+    throw new Error('The deposit has been paid or waived, so this booking has no hold to extend');
+  }
 
   // 2. Calculate new hold_expiry: extend from current expiry (or now if already expired)
   const baseDate = booking.hold_expiry && new Date(booking.hold_expiry) > new Date()
@@ -2782,26 +2512,30 @@ export async function extendHold(
   const newExpiry = new Date(baseDate);
   newExpiry.setDate(newExpiry.getDate() + days);
 
-  // Cap at the balance & final-details due date: a hold must never run past
-  // it (SOP §10). Extensions inside the 14-day window cap at the event start.
-  // The cap is reported back so staff learn the granted expiry differs from
-  // the days they picked; the customer SMS below already quotes the capped date.
-  let capped = false;
-  if (booking.event_date) {
-    const eventDate = new Date(booking.event_date);
-    const dueMoment = balanceDueMoment(eventDate);
-    const cap = new Date() > dueMoment ? eventDate : dueMoment;
-    if (newExpiry > cap) {
-      newExpiry.setTime(cap.getTime());
-      capped = true;
-    }
-  }
-
   // The whole of the day the guest is given, not its first instant: the extension email quotes
   // "New deadline: 20 September", and a midnight-UTC expiry let the cron cancel the booking at
   // 07:00 that morning (review PB-BR-1).
   const endOfExpiryDay = endOfLondonDayUtc(newExpiry);
   if (endOfExpiryDay) newExpiry.setTime(endOfExpiryDay.getTime());
+
+  // Cap at the balance & final-details due date: a hold must never run past
+  // it (SOP §10). Extensions inside the 14-day window end with the day before
+  // the event (BK-110), never on the event day itself.
+  // The cap is reported back so staff learn the granted expiry differs from
+  // the days they picked; the customer SMS below already quotes the capped date.
+  let capped = false;
+  if (booking.event_date) {
+    const now = new Date();
+    const eventDate = new Date(booking.event_date);
+    const dueMoment = balanceDueMoment(eventDate);
+    const cap = now > dueMoment
+      ? shortNoticeHoldCap(newExpiry, eventDate, now)
+      : endOfLondonDayUtc(dueMoment) ?? dueMoment;
+    if (newExpiry > cap) {
+      newExpiry.setTime(cap.getTime());
+      capped = true;
+    }
+  }
 
   const newExpiryIso = newExpiry.toISOString();
 
@@ -2813,7 +2547,7 @@ export async function extendHold(
 
   if (updateError) throw new Error('Failed to extend booking hold');
 
-  // Deposit confirmation (flag private_booking_deposit_confirmation): while the deposit is still to
+  // Deposit confirmation (owner decision, 11 September 2026): while the deposit is still to
   // be confirmed the guest has been told no deadline, so the longer hold is recorded without a
   // message. The space stays held until the new date.
   if (await isDepositStillToBeConfirmed(id)) {
@@ -2822,69 +2556,65 @@ export async function extendHold(
 
   // 4. Send SMS
   let smsSent = false;
-  const extensionByEmailFirst = await isPrivateBookingEmailFirstOn();
-  if (extensionByEmailFirst || booking.contact_phone || booking.customer_id) {
-    const expiryReadable = formatPrivateBookingDate(newExpiry, {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
-    const eventDateReadable = booking.event_date
-      ? formatPrivateBookingDate(booking.event_date)
-      : 'your event';
+  const expiryReadable = formatPrivateBookingDate(newExpiry, {
+    day: 'numeric', month: 'long', year: 'numeric'
+  });
+  const eventDateReadable = booking.event_date
+    ? formatPrivateBookingDate(booking.event_date)
+    : 'your event';
 
-    const smsMessage = holdExtendedMessage({
-      customerFirstName: booking.customer_first_name,
-      eventDate: eventDateReadable,
-      newExpiryDate: expiryReadable,
-    });
+  const smsMessage = holdExtendedMessage({
+    customerFirstName: booking.customer_first_name,
+    eventDate: eventDateReadable,
+    newExpiryDate: expiryReadable,
+  });
 
 
-    let smsResult: any;
-    try {
-      const extendedBooking = { ...booking, hold_expiry: newExpiryIso };
-      smsResult = await sendPrivateBookingMessage({
-        sms: {
-          booking_id: id,
-          trigger_type: 'hold_extended',
-          template_key: 'private_booking_hold_extended',
-          message_body: smsMessage,
-          customer_phone: booking.contact_phone,
-          customer_name: booking.customer_name,
-          customer_id: booking.customer_id,
-          created_by: extendedBy,
-          priority: 2,
-          metadata: {
-            template: 'private_booking_hold_extended',
-            event_date: eventDateReadable,
-            new_expiry: expiryReadable,
-            extended_days: days,
-            extension_reason: reason,
-          }
-        },
+  let smsResult: any;
+  try {
+    const extendedBooking = { ...booking, hold_expiry: newExpiryIso };
+    smsResult = await sendPrivateBookingMessage({
+      sms: {
+        booking_id: id,
+        trigger_type: 'hold_extended',
+        template_key: 'private_booking_hold_extended',
+        message_body: smsMessage,
+        customer_phone: booking.contact_phone,
+        customer_name: booking.customer_name,
+        customer_id: booking.customer_id,
+        created_by: extendedBy,
+        priority: 2,
+        metadata: {
+          template: 'private_booking_hold_extended',
+          event_date: eventDateReadable,
+          new_expiry: expiryReadable,
+          extended_days: days,
+          extension_reason: reason,
+        }
+      },
+      booking: extendedBooking,
+      email: () => buildHoldExtendedEmail({
         booking: extendedBooking,
-        email: () => buildHoldExtendedEmail({
-          booking: extendedBooking,
-          firstName: booking.customer_first_name,
-          newExpiryDate: expiryReadable,
-        }),
-        windowKey: `extended-${newExpiryIso.slice(0, 10)}`,
-        facts: buildPrivateBookingMessageFacts('hold_extended', extendedBooking),
-        emailFirst: extensionByEmailFirst,
-      });
-    } catch (error) {
-      logger.error('Failed to queue hold extension SMS:', { error: error instanceof Error ? error : new Error(String(error)) });
-      smsResult = { error: 'Failed to queue SMS' };
-    }
-
-    if (smsResult?.error) {
-      logger.error('Hold extension SMS failed:', {
-        error: new Error(String(smsResult.error)),
-        metadata: { bookingId: id, code: smsResult.code }
-      });
-    }
-
-    const smsSafety = normalizeSmsSafetyMeta(smsResult);
-    smsSent = Boolean(!smsResult?.error && 'sent' in smsResult && smsResult.sent);
+        firstName: booking.customer_first_name,
+        newExpiryDate: expiryReadable,
+      }),
+      windowKey: `extended-${newExpiryIso.slice(0, 10)}`,
+      facts: buildPrivateBookingMessageFacts('hold_extended', extendedBooking),
+    });
+  } catch (error) {
+    logger.error('Failed to queue hold extension SMS:', { error: error instanceof Error ? error : new Error(String(error)) });
+    smsResult = { error: 'Failed to queue SMS' };
   }
+
+  if (smsResult?.error) {
+    logger.error('Hold extension SMS failed:', {
+      error: new Error(String(smsResult.error)),
+      metadata: { bookingId: id, code: smsResult.code }
+    });
+  }
+
+  const smsSafety = normalizeSmsSafetyMeta(smsResult);
+  smsSent = Boolean(!smsResult?.error && 'sent' in smsResult && smsResult.sent);
 
   return { success: true, newExpiry: newExpiryIso, smsSent, capped };
 }

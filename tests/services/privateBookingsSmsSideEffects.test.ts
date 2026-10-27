@@ -34,6 +34,17 @@ vi.mock('@/services/sms-queue', () => ({
   },
 }))
 
+// What each action reports about its message is under test here, not the channel. Every private
+// booking message goes email first now (owner decision D16, 26 October 2026); that choice is tested
+// in tests/lib/privateBookingMessenger.test.ts, so here the messenger hands each one to the queue.
+vi.mock('@/lib/private-bookings/messenger', async () => {
+  const { SmsQueueService } = await import('@/services/sms-queue')
+  return {
+    sendPrivateBookingMessage: vi.fn((input: { sms: Parameters<typeof SmsQueueService.queueAndSend>[0] }) =>
+      SmsQueueService.queueAndSend(input.sms)),
+  }
+})
+
 vi.mock('@/lib/google-calendar', () => ({
   syncCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
@@ -169,6 +180,16 @@ describe('PrivateBookingService SMS side-effect meta', () => {
           update,
         }
       }),
+    })
+
+    // Confirming reads the deposit confirmation first (owner decision, 11 September 2026). This
+    // booking owes no deposit, so it is not waiting on one.
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { deposit_confirmed_at: null, deposit_waived: false }, error: null }),
+      })),
     })
 
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
@@ -491,7 +512,9 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     )
   })
 
-  it('cancelBooking picks booking_cancelled_review_pending when gm_review_required and no decision recorded', async () => {
+  // BK-065: the retention decision is made in the cancel dialog, so a cancellation that needs one
+  // is refused without it rather than sent as "under review" with nothing recorded as owed.
+  it('cancelBooking refuses a cancellation that needs a retention decision without one, and sends nothing', async () => {
     mockCancelBookingSupabase()
 
     mockedGetCancellationOutcome.mockResolvedValue({
@@ -502,29 +525,10 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       max_retainable: 150,
     })
 
-    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
-      success: true,
-      queueId: 'queue-review-1',
-      sent: true,
-    })
-
-    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
-
-    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        trigger_type: 'booking_cancelled_review_pending',
-        template_key: 'private_booking_cancelled_review_pending',
-        message_body: bookingCancelledReviewPendingMessage({
-          customerFirstName: 'Alex',
-          eventDate: '20 February 2026',
-        }),
-        metadata: expect.objectContaining({
-          financial_outcome: 'gm_review_required',
-          refund_amount: 0,
-          retained_amount: 0,
-        }),
-      })
+    await expect(PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')).rejects.toThrow(
+      'decide how much of the deposit to keep first',
     )
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
   })
 
   it('cancelBooking picks booking_cancelled_retention when a manager retains part of the deposit', async () => {

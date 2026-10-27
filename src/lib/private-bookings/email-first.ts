@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import {
@@ -13,11 +12,6 @@ import type { PrivateBookingEmailContent } from '@/lib/email/private-booking-ema
 import type { FallbackBookingFacts } from '@/lib/notifications/delayed-fallback/types'
 
 type AdminClient = ReturnType<typeof createAdminClient>
-
-/** Private booking messages go by email first while this flag is on (P6). */
-export async function isPrivateBookingEmailFirstOn(): Promise<boolean> {
-  return isMessagingFlagOn('private_booking_email_first')
-}
 
 export type PrivateBookingEmailAttempt =
   | { status: 'sent'; deliveryId: string | null; emailMessageId: string | null; recipientSource: 'contact_email' | 'customer_email' }

@@ -12640,6 +12640,8 @@ export type Database = {
           post_event_outcome_decided_at: string | null
           post_event_status: string | null
           receipt_version: number
+          refund_due_amount: number | null
+          refund_due_by: string | null
           review_clicked_at: string | null
           review_processed_at: string | null
           review_sms_sent_at: string | null
@@ -12739,6 +12741,8 @@ export type Database = {
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
+          refund_due_amount?: number | null
+          refund_due_by?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -12838,6 +12842,8 @@ export type Database = {
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
+          refund_due_amount?: number | null
+          refund_due_by?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -21582,6 +21588,22 @@ export type Database = {
       cleanup_old_reminder_logs: { Args: never; Returns: undefined }
       cleanup_old_service_slots: { Args: never; Returns: number }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
+      close_out_private_booking: {
+        Args: {
+          p_balance_method: string
+          p_booking_id: string
+          p_deposit_method: string
+          p_deposit_outcome: string
+          p_kept_amount: number
+          p_kept_reason: string
+          p_performed_by: string
+        }
+        Returns: {
+          balance_recorded: number
+          deposit_handled: number
+          deposit_status: string
+        }[]
+      }
       compare_employee_versions: {
         Args: { p_employee_id: string; p_version1: number; p_version2: number }
         Returns: {

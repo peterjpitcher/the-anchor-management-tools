@@ -2,10 +2,11 @@ import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { computeHoldExpiry } from '@/services/private-bookings/types'
 
 /**
- * Deposits confirmed by staff (owner decision, 11 September 2026; messaging flag
- * private_booking_deposit_confirmation).
+ * Deposits confirmed by staff (owner decision, 11 September 2026). The messaging flag that switched
+ * this on, private_booking_deposit_confirmation, was on from 15 September and is gone (owner
+ * decision D16, 26 October 2026).
  *
- * While the flag is on, creating a booking tells the guest nothing about a deposit. The deposit
+ * Creating a booking tells the guest nothing about a deposit. The deposit
  * is "to be confirmed" until a member of staff confirms the amount, which sends the guest one
  * deposit request. Until then no deposit reminder, automatic hold expiry, hold-lapsed or
  * hold-extended message may go, because the guest has not been told a deposit or a deadline.

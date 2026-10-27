@@ -51,7 +51,7 @@ const FAILING_ROUTES = [
   { jobName: 'event-payment-reminders', path: '/api/cron/event-payment-reminders', handler: eventPaymentReminders, table: 'bookings', operation: 'select' as const },
   { jobName: 'event-waitlist-offers', path: '/api/cron/event-waitlist-offers', handler: eventWaitlistOffers, table: 'waitlist_entries', operation: 'select' as const },
   { jobName: 'paypal-deposit-reconciliation', path: '/api/cron/paypal-deposit-reconciliation', handler: privateDepositReconciliation, table: 'private_bookings', operation: 'select' as const },
-  { jobName: 'private-bookings-expire-holds', path: '/api/cron/private-bookings-expire-holds', handler: privateExpireHolds, table: 'private_bookings', operation: 'update' as const },
+  { jobName: 'private-bookings-expire-holds', path: '/api/cron/private-bookings-expire-holds', handler: privateExpireHolds, table: 'private_bookings', operation: 'select' as const },
 ]
 
 describe('booking crons record failed runs and alert', () => {

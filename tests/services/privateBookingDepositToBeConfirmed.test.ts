@@ -4,7 +4,6 @@ import { createFakeSupabase } from '../helpers/fakeSupabase'
 
 const state = vi.hoisted(() => ({
   db: null as any,
-  depositConfirmation: true,
 }))
 
 // Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
@@ -22,9 +21,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) =>
-    key === 'private_booking_deposit_confirmation' ? state.depositConfirmation : false
-  ),
+  isMessagingFlagOn: vi.fn(async () => false),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -147,7 +144,6 @@ describe('creating a private booking', () => {
     // Only Date is faked, so the background sends still flush on real timers.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.depositConfirmation = true
     seed()
   })
 
@@ -175,32 +171,7 @@ describe('creating a private booking', () => {
     expect(state.db.tables.private_bookings[0].deposit_confirmed_at).toBeNull()
   })
 
-  it('with the flag off, sends the booking created text as today and records the deposit as confirmed', async () => {
-    state.depositConfirmation = false
-
-    await PrivateBookingService.createBooking(createInput)
-    await vi.waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
-
-    expect(mockedSend.mock.calls[0][0].sms).toMatchObject({ trigger_type: 'booking_created', template_key: 'private_booking_created' })
-    const row = state.db.tables.private_bookings[0]
-    expect(row.deposit_confirmed_at).toEqual(expect.any(String))
-    expect(row.deposit_confirmed_by).toBe('user-1')
-  })
-
-  it('with the flag off, a failed confirmation stamp never blocks the booking or its text', async () => {
-    state.depositConfirmation = false
-    state.db.failures.push({ table: 'private_bookings', op: 'update', error: { code: 'PGRST204', message: "Could not find the 'deposit_confirmed_at' column" } })
-
-    const booking = await PrivateBookingService.createBooking(createInput)
-    await vi.waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
-
-    expect(booking.id).toBe('booking-new')
-    expect(logger.warn).toHaveBeenCalledWith('Deposit not recorded as confirmed at booking time', expect.anything())
-  })
-
-  it.each([true, false])('a website enquiry stays silent and unconfirmed (flag %s)', async (flag) => {
-    state.depositConfirmation = flag
-
+  it('a website enquiry stays silent and unconfirmed', async () => {
     await PrivateBookingService.createBooking({ ...createInput, is_web_enquiry: true }, { client: state.db })
     await flushBackgroundSends()
 
@@ -212,7 +183,7 @@ describe('creating a private booking', () => {
   // Until 24 October 2026 a waived deposit confirmed the booking as it was made, with no room on
   // it, and told the guest so. Under D24 a hire is confirmed only with a room that fits its guests,
   // so one made with no room is saved as a draft and the guest hears nothing until staff confirm it.
-  it('a waived deposit with no room yet is saved as a draft and nothing is sent, flag on', async () => {
+  it('a waived deposit with no room yet is saved as a draft and nothing is sent', async () => {
     await PrivateBookingService.createBooking({
       ...createInput,
       deposit_amount: 0,
@@ -253,7 +224,6 @@ describe('extending the hold on a booking', () => {
     // Only Date is faked, so the background sends still flush on real timers.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.depositConfirmation = true
   })
 
   it('with the deposit to be confirmed: the hold moves, and the guest is not told a deadline', async () => {
@@ -274,15 +244,6 @@ describe('extending the hold on a booking', () => {
     expect(result.guestNotNotifiedReason).toBeUndefined()
     expect(mockedSend).toHaveBeenCalledTimes(1)
     expect(mockedSend.mock.calls[0][0].sms.trigger_type).toBe('hold_extended')
-  })
-
-  it('with the flag off, an unconfirmed deposit is extended and messaged exactly as today', async () => {
-    state.depositConfirmation = false
-    seed([bookingRow()])
-
-    await PrivateBookingService.extendHold('booking-1', 7, 'user-1', 'Customer needs a week')
-
-    expect(mockedSend).toHaveBeenCalledTimes(1)
   })
 
   it('when the deposit state cannot be read, no message goes', async () => {
@@ -317,7 +278,6 @@ describe('moving a booking to Confirmed', () => {
     // Only Date is faked, so the background sends still flush on real timers.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.depositConfirmation = true
   })
 
   it('is refused while the deposit is to be confirmed, and nothing is sent', async () => {
@@ -351,12 +311,4 @@ describe('moving a booking to Confirmed', () => {
     expect(state.db.tables.private_bookings[0].status).toBe('confirmed')
   })
 
-  it('with the flag off goes ahead exactly as today', async () => {
-    state.depositConfirmation = false
-    seed([bookingRow()])
-
-    await PrivateBookingService.updateBookingStatus('booking-1', 'confirmed', 'user-1')
-
-    expect(state.db.tables.private_bookings[0].status).toBe('confirmed')
-  })
 })

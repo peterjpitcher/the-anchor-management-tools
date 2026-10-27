@@ -98,7 +98,7 @@ const row = {
 describe('Send Now for a balance reminder queued after the switch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { private_booking_email_first: true, private_booking_balance_email_auto: true }
+    state.flags = {}
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
   })
 
@@ -127,13 +127,4 @@ describe('Send Now for a balance reminder queued after the switch', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
-  it('with the balance flag off, the email is as it has always been', async () => {
-    state.flags = { private_booking_email_first: true }
-    seed()
-
-    const outcome = await tryEmailForApprovedPrivateBookingText({ row, performedBy: 'user-1', now: NOW })
-
-    expect(outcome.status).toBe('sent')
-    expect(mockedSendEmail.mock.calls[0][0].text).not.toContain('Payments received')
-  })
 })

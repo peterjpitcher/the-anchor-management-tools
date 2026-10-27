@@ -375,5 +375,49 @@ describe('portalPayPalActions', () => {
     expect(result).toEqual({ error: 'We could not safely confirm this payment. Please contact us for assistance.' })
     expect(mockedFinalizeDepositPayment).not.toHaveBeenCalled()
   })
-})
 
+  // BK-063: a guest still at the PayPal checkout, or holding the emailed link, after the booking
+  // was cancelled used to have the deposit taken and was then told it was "being confirmed".
+  it.each([
+    ['cancelled', "This booking has been cancelled, so we haven't taken a payment."],
+    ['completed', "This booking has already finished, so we haven't taken a payment."],
+  ])('takes nothing from PayPal for a %s booking', async (status, message) => {
+    mockedVerifyBookingToken.mockReturnValue('booking-1')
+    mockAdminForCapture({ status })
+    mockedGetPayPalOrder.mockResolvedValue(payPalOrderForBooking())
+
+    const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
+
+    expect(result).toEqual({ error: message })
+    expect(mockedGetPayPalOrder).not.toHaveBeenCalled()
+    expect(mockedClaimIdempotencyKey).not.toHaveBeenCalled()
+    expect(mockedCapturePayPalPayment).not.toHaveBeenCalled()
+    expect(mockedFinalizeDepositPayment).not.toHaveBeenCalled()
+  })
+
+  it('tells the guest the truth when the booking was cancelled while PayPal took the money', async () => {
+    mockedVerifyBookingToken.mockReturnValue('booking-1')
+    const { admin } = mockAdminForCapture()
+    mockedGetPayPalOrder.mockResolvedValue(payPalOrderForBooking())
+    mockedCapturePayPalPayment.mockResolvedValue({
+      amount: '250.00',
+      currency: 'GBP',
+      transactionId: 'CAPTURE-1',
+      captureStatus: 'COMPLETED',
+    })
+    mockedFinalizeDepositPayment.mockResolvedValue({ success: true, paidAfterClose: true })
+
+    const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
+
+    const closed = {
+      error: "Your payment went through, but this booking had already closed. We've told the team, and they'll be in touch about refunding it.",
+    }
+    expect(result).toEqual(closed)
+    expect(mockedPersistIdempotencyResponse).toHaveBeenLastCalledWith(
+      admin,
+      'private-booking-deposit-capture:booking-1',
+      'capture-hash',
+      closed,
+    )
+  })
+})

@@ -28,6 +28,14 @@ vi.mock('@/lib/api/idempotency', () => ({
   releaseIdempotencyClaim: vi.fn(),
 }))
 
+// Send Now always tries email first now (owner decision D16, 26 October 2026: the flag
+// private_booking_email_first and its text-only path are gone). These tests are about the text
+// queue's own guards, so the email attempt stands aside; it is tested in
+// tests/services/smsQueueSendNowEmailFirst.test.ts.
+vi.mock('@/lib/private-bookings/approved-message', () => ({
+  tryEmailForApprovedPrivateBookingText: vi.fn(async () => ({ status: 'not_attempted', reason: 'no_email_version' })),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { sendSms } from '@/app/actions/sms'
@@ -52,6 +60,12 @@ const mockedReleaseIdempotencyClaim = releaseIdempotencyClaim as unknown as Mock
 describe('SmsQueueService queue persistence guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The refusal of texts that must never go (balance reminders queued before they moved to
+    // email, texts past their date) reads the row first; it has its own tests
+    // (tests/services/smsQueueHistoricBalanceReminders.test.ts) and these queue mocks answer each
+    // read in turn, so it stands aside here.
+    vi.spyOn(SmsQueueService as unknown as { refuseUnsendableQueuedText: () => Promise<void> }, 'refuseUnsendableQueuedText')
+      .mockResolvedValue(undefined)
 
     mockedComputeIdempotencyRequestHash.mockReturnValue('lock-hash')
     mockedClaimIdempotencyKey.mockResolvedValue({ state: 'claimed' })
@@ -82,8 +96,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_name: 'Alex Smith',
       customer_id: 'customer-1',
@@ -122,8 +136,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_name: 'Alex Smith',
       customer_id: 'customer-1',
@@ -171,8 +185,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_name: 'Alex Smith',
       customer_id: 'customer-1',
@@ -236,8 +250,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_phone: '+447700900123',
       customer_name: 'Alex Smith',
@@ -318,8 +332,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-2',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Second message',
       customer_phone: '+447700900124',
       customer_name: 'Jamie Smith',
@@ -361,8 +375,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-3',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_phone: '+447700900125',
       customer_name: 'Taylor Smith',
@@ -403,8 +417,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: 'booking-4',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_phone: '+447700900126',
       customer_name: 'Morgan Smith',
@@ -1155,8 +1169,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result: any = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_phone: '+447700900123',
       customer_name: 'Alex Smith',
@@ -1243,8 +1257,8 @@ describe('SmsQueueService queue persistence guards', () => {
 
     const result: any = await SmsQueueService.queueAndSend({
       booking_id: 'booking-1',
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
+      trigger_type: 'deposit_received',
+      template_key: 'private_booking_deposit_received',
       message_body: 'Hello from The Anchor',
       customer_phone: '+447700900123',
       customer_name: 'Alex Smith',

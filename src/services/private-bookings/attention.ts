@@ -1,10 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
 import { formatPrivateBookingReference } from '@/lib/email/private-booking-emails'
 import { PRIVATE_BOOKINGS_MANAGER_EMAIL } from '@/lib/private-bookings/manager-notifications'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { refundStillOwed } from '@/lib/private-bookings/refund-due'
 import {
   hireRoomProblems,
   isPaidButNotConfirmed,
@@ -119,16 +120,154 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-/** The manager's email for these hires. */
-export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: string): {
+/**
+ * The rest of the private hire to-do list the same daily email carries, beyond the upcoming hires
+ * above. Counts and short lines only: no customer name, phone number or email address.
+ */
+export interface PrivateHireToDo {
+  /** Texts that have waited for staff approval for more than a day (BK-064). */
+  textsAwaitingApproval: number
+  /** Refunds a cancellation promised and the refunds recorded do not yet cover (BK-065). */
+  refundsOwed: Array<{ bookingId: string; reference: string; owed: number; dueBy: string | null }>
+  /**
+   * Deposits held after the event with no outcome recorded (BK-062). The contract promises them
+   * back within 48 hours, so each is due two days after its event.
+   */
+  depositsDueBack: Array<{ bookingId: string; reference: string; amount: number; dueBy: string }>
+  /** Hires still "confirmed" more than two days after their event (BK-131). */
+  hiresToClose: Array<{ bookingId: string; reference: string; eventDate: string }>
+}
+
+const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0, refundsOwed: [], depositsDueBack: [], hiresToClose: [] }
+
+/** Days after the event a deposit is promised back by (the contract's 48 hours). */
+const DEPOSIT_RETURN_DAYS = 2
+
+const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000
+
+/** Everything on the to-do list. Throws when a read fails, so the caller can say so. */
+export async function findPrivateHireToDo(input: { now: Date; db?: DbClient }): Promise<PrivateHireToDo> {
+  const db = input.db ?? createAdminClient()
+  const waitingSince = new Date(input.now.getTime() - APPROVAL_WAIT_MS).toISOString()
+  const { data, error } = await db
+    .from('private_booking_sms_queue')
+    .select('id')
+    .eq('status', 'pending')
+    .lt('created_at', waitingSince)
+  if (error) throw new Error(`Could not read the texts waiting for approval: ${error.message}`)
+
+  const { data: cancelled, error: cancelledError } = await db
+    .from('private_bookings')
+    .select('id, refund_due_amount, refund_due_by')
+    .eq('status', 'cancelled')
+    .gt('refund_due_amount', 0)
+  if (cancelledError) throw new Error(`Could not read the refunds owed: ${cancelledError.message}`)
+  const owing = (cancelled ?? []) as Array<{ id: string; refund_due_amount: number | string | null; refund_due_by: string | null }>
+  const refundedById = new Map<string, number>()
+  if (owing.length > 0) {
+    const { data: refunds, error: refundsError } = await db
+      .from('payment_refunds')
+      .select('source_id, amount')
+      .eq('source_type', 'private_booking')
+      .eq('status', 'completed')
+      .in('source_id', owing.map((row) => row.id))
+    if (refundsError) throw new Error(`Could not read the refunds recorded: ${refundsError.message}`)
+    for (const row of (refunds ?? []) as Array<{ source_id: string; amount: number | string }>) {
+      refundedById.set(row.source_id, (refundedById.get(row.source_id) ?? 0) + (Number(row.amount) || 0))
+    }
+  }
+  const refundsOwed = owing
+    .map((row) => ({
+      bookingId: row.id,
+      reference: formatPrivateBookingReference(row.id),
+      owed: refundStillOwed(row, refundedById.get(row.id) ?? 0),
+      dueBy: row.refund_due_by ? String(row.refund_due_by).slice(0, 10) : null,
+    }))
+    .filter((row) => row.owed > 0)
+    .sort((a, b) => (a.dueBy ?? '9999').localeCompare(b.dueBy ?? '9999'))
+
+  const todayIso = toLocalIsoDate(input.now)
+  const { data: past, error: pastError } = await db
+    .from('private_bookings')
+    .select('id, status, event_date, deposit_amount, deposit_paid_date, deposit_refund_status, invoice_deposit_treatment')
+    .in('status', ['confirmed', 'completed'])
+    .lt('event_date', todayIso)
+    .gte('event_date', shiftIsoDate(todayIso, -365) ?? todayIso)
+    .order('event_date', { ascending: true })
+  if (pastError) throw new Error(`Could not read the past hires: ${pastError.message}`)
+  const pastRows = (past ?? []) as Array<{
+    id: string; status: string; event_date: string; deposit_amount: number | string | null
+    deposit_paid_date: string | null; deposit_refund_status: string | null; invoice_deposit_treatment: string | null
+  }>
+  const closeBy = shiftIsoDate(todayIso, -DEPOSIT_RETURN_DAYS) ?? todayIso
+  const hiresToClose = pastRows
+    .filter((row) => row.status === 'confirmed' && String(row.event_date).slice(0, 10) < closeBy)
+    .map((row) => ({ bookingId: row.id, reference: formatPrivateBookingReference(row.id), eventDate: String(row.event_date).slice(0, 10) }))
+  const depositsDueBack = pastRows
+    .filter((row) => row.deposit_paid_date && Number(row.deposit_amount ?? 0) > 0 && row.invoice_deposit_treatment !== 'deducted'
+      && ((row.deposit_refund_status ?? null) === null || row.deposit_refund_status === 'partially_refunded'))
+    .map((row) => ({
+      bookingId: row.id,
+      reference: formatPrivateBookingReference(row.id),
+      amount: Number(row.deposit_amount ?? 0),
+      dueBy: shiftIsoDate(String(row.event_date).slice(0, 10), DEPOSIT_RETURN_DAYS) ?? String(row.event_date).slice(0, 10),
+    }))
+
+  return { textsAwaitingApproval: (data ?? []).length, refundsOwed, depositsDueBack, hiresToClose }
+}
+
+function hasToDo(toDo: PrivateHireToDo): boolean {
+  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0 || toDo.depositsDueBack.length > 0 || toDo.hiresToClose.length > 0
+}
+
+function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string; url: string }> {
+  const lines: Array<{ text: string; url: string }> = []
+  if (toDo.textsAwaitingApproval > 0) {
+    const count = toDo.textsAwaitingApproval
+    lines.push({
+      text: `${count} private hire ${count === 1 ? 'text has' : 'texts have'} waited more than a day for approval.`,
+      url: `${appUrl}/private-bookings/sms-queue`,
+    })
+  }
+  for (const refund of toDo.refundsOwed) {
+    const due = refund.dueBy
+      ? `, promised by ${formatDateInLondon(refund.dueBy, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
+      : ''
+    lines.push({
+      text: `${refund.reference}: £${refund.owed.toFixed(2)} refund owed to a cancelled booking${due}.`,
+      url: `${appUrl}/private-bookings/${refund.bookingId}`,
+    })
+  }
+  const day = (iso: string) => formatDateInLondon(iso, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  for (const deposit of toDo.depositsDueBack) {
+    lines.push({
+      text: `${deposit.reference}: £${deposit.amount.toFixed(2)} deposit has no outcome recorded; due back by ${day(deposit.dueBy)}.`,
+      url: `${appUrl}/private-bookings/${deposit.bookingId}`,
+    })
+  }
+  for (const hire of toDo.hiresToClose) {
+    lines.push({
+      text: `${hire.reference}: the hire on ${day(hire.eventDate)} has not been closed out.`,
+      url: `${appUrl}/private-bookings/${hire.bookingId}`,
+    })
+  }
+  return lines
+}
+
+/** The manager's email for these hires, and the rest of the to-do list. */
+export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: string, toDo: PrivateHireToDo = EMPTY_TO_DO): {
   subject: string
   html: string
   text: string
 } {
   const count = items.length
-  const subject = `Private hires needing attention: ${count} ${count === 1 ? 'booking' : 'bookings'}`
-  const intro =
-    'These upcoming private hires need sorting out. Until they are, a paid hire stays a draft, and a hire with no room, or with more guests than its room holds, leaves the rest of the pub on sale.'
+  const extra = toDoLines(toDo, appUrl)
+  const subject = count > 0
+    ? `Private hires needing attention: ${count} ${count === 1 ? 'booking' : 'bookings'}`
+    : `Private hire to-do: ${extra.length} ${extra.length === 1 ? 'item' : 'items'}`
+  const intro = count > 0
+    ? 'These upcoming private hires need sorting out. Until they are, a paid hire stays a draft, and a hire with no room, or with more guests than its room holds, leaves the rest of the pub on sale.'
+    : 'Nothing is wrong with the upcoming private hires. These need doing:'
 
   const describe = (item: HireNeedingAttention): string => {
     const date = formatDateInLondon(item.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -151,7 +290,13 @@ export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: s
     ].join('')
   })
 
-  const html = [`<p>${escapeHtml(intro)}</p>`, '<ul>', ...htmlItems, '</ul>'].join('')
+  const extraHtml = extra.length === 0 ? [] : [
+    count > 0 ? '<p>Also to do:</p>' : '',
+    '<ul>',
+    ...extra.map((line) => `<li>${escapeHtml(line.text)} <a href="${escapeHtml(line.url)}">Open</a></li>`),
+    '</ul>',
+  ]
+  const html = [`<p>${escapeHtml(intro)}</p>`, ...(count > 0 ? ['<ul>', ...htmlItems, '</ul>'] : []), ...extraHtml].join('')
   const text = [
     intro,
     '',
@@ -161,12 +306,14 @@ export function buildHireAttentionEmail(items: HireNeedingAttention[], appUrl: s
       `Open the booking: ${appUrl}/private-bookings/${item.bookingId}`,
       '',
     ]),
+    ...(extra.length > 0 && count > 0 ? ['Also to do:'] : []),
+    ...extra.flatMap((line) => [`- ${line.text}`, `  ${line.url}`]),
   ].join('\n')
 
   return { subject, html, text }
 }
 
-/** Finds the hires and emails the manager when there are any. Never throws. */
+/** Finds the hires and the rest of the to-do list, and emails the manager when there is any. Never throws. */
 export async function runHireAttentionCheck(input: {
   todayIso: string
   now: Date
@@ -178,13 +325,24 @@ export async function runHireAttentionCheck(input: {
   } catch (error) {
     return { listed: 0, emailed: false, error: error instanceof Error ? error.message : String(error) }
   }
-  if (items.length === 0) return { listed: 0, emailed: false }
+
+  // The to-do list is read separately, so a failure there still lets the hires above go out.
+  let toDo = EMPTY_TO_DO
+  let toDoError: string | undefined
+  try {
+    toDo = await findPrivateHireToDo(input)
+  } catch (error) {
+    toDoError = error instanceof Error ? error.message : String(error)
+  }
+  if (items.length === 0 && !hasToDo(toDo)) {
+    return toDoError ? { listed: 0, emailed: false, error: toDoError } : { listed: 0, emailed: false }
+  }
 
   try {
-    const email = buildHireAttentionEmail(items, getAppUrl())
+    const email = buildHireAttentionEmail(items, getAppUrl(), toDo)
     const result = await sendEmail({ to: PRIVATE_BOOKINGS_MANAGER_EMAIL, ...email })
     return result.success
-      ? { listed: items.length, emailed: true }
+      ? { listed: items.length, emailed: true, ...(toDoError ? { error: toDoError } : {}) }
       : { listed: items.length, emailed: false, error: result.error || 'The email was not sent' }
   } catch (error) {
     return { listed: items.length, emailed: false, error: error instanceof Error ? error.message : String(error) }
