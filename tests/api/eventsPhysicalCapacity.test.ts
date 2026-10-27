@@ -26,6 +26,7 @@ function setup(mode: string, failure?: 'missing' | 'error', seatedRemaining = 7)
     total_remaining: seatedRemaining + 10, is_full: false,
   }]
   if (failure === 'error') db.fail('get_event_capacity_snapshot_v05')
+  db.rpcHandlers.events_closed_by_whole_pub_hire = () => []
   vi.mocked(createAdminClient).mockReturnValue(db.asDb())
   return db
 }
@@ -43,9 +44,30 @@ describe('events list physical capacity', () => {
       seated_remaining: 7, standing_remaining: 10, total_remaining: 17, waitlist_enabled: true,
     })
     expect(JSON.stringify(body)).not.toContain('999')
-    expect(db.calls.filter(call => call.kind === 'rpc')).toEqual([{
-      table: 'get_event_capacity_snapshot_v05', kind: 'rpc', args: { p_event_ids: ['physical-event'] },
-    }])
+    expect(db.calls.filter(call => call.kind === 'rpc')).toEqual([
+      { table: 'get_event_capacity_snapshot_v05', kind: 'rpc', args: { p_event_ids: ['physical-event'] } },
+      { table: 'events_closed_by_whole_pub_hire', kind: 'rpc', args: { p_event_ids: ['physical-event'] } },
+    ])
+    expect(body.data.events[0].bookings_enabled).toBe(true)
+  })
+
+  // Owner decision D24: a whole-pub private hire stops ticket sales, so the website stops offering them.
+  it('reports bookings closed for an event a whole-pub hire has taken', async () => {
+    const db = setup('table')
+    db.rpcHandlers.events_closed_by_whole_pub_hire = () => [{ event_id: 'physical-event', private_booking_id: 'hire-1' }]
+    const response = await GET(new NextRequest('https://management.orangejelly.co.uk/api/events'))
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.data.events[0].bookings_enabled).toBe(false)
+    expect(JSON.stringify(body)).not.toContain('hire-1')
+  })
+
+  it('still serves the list when the hire check fails, as the booking function refuses anyway', async () => {
+    const db = setup('table')
+    db.fail('events_closed_by_whole_pub_hire')
+    const response = await GET(new NextRequest('https://management.orangejelly.co.uk/api/events'))
+    expect(response.status).toBe(200)
+    expect((await response.json()).data.events[0].bookings_enabled).toBe(true)
   })
 
   it('keeps standing availability distinct when the seated pool is exhausted', async () => {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button, Card, Checkbox, ConfirmDialog, Icon, Input, Modal, SubHeading, toast } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
+import { hoursImpactNoticeFrom, type HoursImpactNotice } from './HoursImpactDialog'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 
@@ -108,7 +109,8 @@ interface SpecialHoursModalProps {
   date: Date
   initialData?: SpecialHours | null
   canManage: boolean
-  onSave: () => void
+  /** Called after a save, with what it says about bookings left outside the hours (BK-076). */
+  onSave: (notice?: HoursImpactNotice | null) => void
 }
 
 export function SpecialHoursModal({ 
@@ -234,7 +236,7 @@ export function SpecialHoursModal({
       toast.error(result.error)
     } else {
       toast.success('Exception removed')
-      onSave()
+      onSave(hoursImpactNoticeFrom(result))
       onClose()
     }
   }
@@ -331,7 +333,7 @@ export function SpecialHoursModal({
       toast.error(result.error)
     } else {
       toast.success(initialData ? 'Hours updated' : 'Exception created')
-      onSave()
+      onSave(hoursImpactNoticeFrom(result))
       onClose()
     }
   }

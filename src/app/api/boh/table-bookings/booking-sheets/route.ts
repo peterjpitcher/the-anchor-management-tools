@@ -24,6 +24,8 @@ import {
   type TableBookingSheetPreorderCover,
 } from '@/lib/table-booking-sheet-template'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads, type DayLoadHire } from '@/services/day-load'
+import { privateHireSheet, privateHireSortTime, privateHiresNotLoadedSheet } from '@/lib/table-bookings/private-hire-sheets'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   describeCourseCount,
@@ -458,7 +460,18 @@ export async function GET(request: NextRequest) {
 
     const bookingRows = (rows ?? []) as unknown as BookingRow[]
 
-    if (bookingRows.length === 0) {
+    // The day's private hires print too (BK-075, reversing spec decision D-4), so the kitchen sees
+    // a catered party on its sheets. A failed read prints a page saying so rather than a quiet gap.
+    let hires: DayLoadHire[] = []
+    let hiresFailed = false
+    try {
+      hires = (await loadDayLoads(date, date, { db: createAdminClient(), withHours: false })).get(date)?.privateHires ?? []
+    } catch (hireError) {
+      console.error('Failed to load private hires for the booking sheets:', hireError)
+      hiresFailed = true
+    }
+
+    if (bookingRows.length === 0 && hires.length === 0 && !hiresFailed) {
       return new NextResponse('No printable bookings found for the selected day', { status: 404 })
     }
 
@@ -497,7 +510,7 @@ export async function GET(request: NextRequest) {
       )
     )
 
-    const sheets = ordered.map((row) => {
+    const bookingSheets = ordered.map((row) => {
       const preorder = preorders.get(row.id)
       // The booking-level allergy list is attached here, not in the loader, because it lives on the
       // booking rather than on a cover. Both sources must reach the food page: showing only the
@@ -509,6 +522,16 @@ export async function GET(request: NextRequest) {
         preorder ? { ...preorder, allergies: row.allergies ?? [] } : undefined
       )
     })
+
+    // Hires slot in by start time; the table bookings keep their own order among themselves.
+    const timed = [
+      ...ordered.map((row, index) => ({ time: (row.booking_time || '').slice(0, 5), order: index, sheet: bookingSheets[index] })),
+      ...hires.map((hire, index) => ({ time: privateHireSortTime(hire), order: ordered.length + index, sheet: privateHireSheet(hire, bookingDate, generatedAt) })),
+    ].sort((a, b) => a.time.localeCompare(b.time) || a.order - b.order)
+    const sheets = [
+      ...(hiresFailed ? [privateHiresNotLoadedSheet(bookingDate, generatedAt)] : []),
+      ...timed.map((entry) => entry.sheet),
+    ]
 
     const logoDataUrl = await imageDataUrl('booking-confirmation/anchor-logo-black.png', 'image/png')
     const html = generateTableBookingSheetsHTML(sheets, { logoDataUrl })
@@ -530,7 +553,7 @@ export async function GET(request: NextRequest) {
       operation_type: 'export',
       resource_type: 'table_booking_sheets',
       operation_status: 'success',
-      additional_info: { date, count: sheets.length },
+      additional_info: { date, count: sheets.length, private_hires: hires.length },
     })
 
     return new NextResponse(pdfContent, {

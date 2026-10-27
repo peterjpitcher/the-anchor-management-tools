@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
+import type { DayLoad } from '@/services/day-load'
 import {
   Alert,
   Badge,
@@ -533,6 +535,8 @@ export function BohBookingsClient({
   const [createStatusMessage, setCreateStatusMessage] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<boolean>(false)
   const [dishTotals, setDishTotals] = useState<PreorderDishTotalsResponse['data'] | null>(null)
+  // The day's private hires for the kitchen (BK-075): undefined while loading, null when it failed.
+  const [dayLoad, setDayLoad] = useState<DayLoad | null | undefined>(undefined)
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const clockNow = useMemo(() => new Date(), [])
@@ -651,6 +655,33 @@ export function BohBookingsClient({
         // An aborted fetch is the normal case when the date changes. Either way the panel simply
         // does not appear, which is honest: no totals shown beats stale totals shown.
         setDishTotals(null)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [focusDate, view])
+
+  // Private hires on the focused day, so the kitchen sees a catered party next to the bookings
+  // (BK-075). A failure says so on screen rather than looking like a day with no hire.
+  useEffect(() => {
+    if (view !== 'day') {
+      setDayLoad(undefined)
+      return
+    }
+
+    const controller = new AbortController()
+    setDayLoad(undefined)
+    void (async () => {
+      try {
+        const response = await fetch(`/api/boh/table-bookings/day-load?date=${focusDate}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload = (await response.json()) as { success?: boolean; data?: DayLoad | null }
+        if (controller.signal.aborted) return
+        setDayLoad(response.ok && payload.success ? (payload.data ?? null) : null)
+      } catch {
+        if (!controller.signal.aborted) setDayLoad(null)
       }
     })()
 
@@ -1091,6 +1122,10 @@ export function BohBookingsClient({
               />
             ))}
           </StatGrid>
+        )}
+
+        {isDayView && dayLoad !== undefined && (
+          <PrivateHireTodayStrip hires={dayLoad?.privateHires ?? []} loadFailed={dayLoad === null} />
         )}
 
         {isDayView &&

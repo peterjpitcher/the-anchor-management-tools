@@ -1,3 +1,5 @@
+import type { DayLoad } from '@/services/day-load'
+
 export type FohBooking = {
   id: string
   booking_reference: string | null
@@ -80,6 +82,12 @@ export type FohScheduleResponse = {
     // Outside bookings (no physical table) — rendered as cards via the Outside view
     // toggle. Optional so existing schedule fixtures keep compiling; consumers read `?? []`.
     outside_bookings?: FohBooking[]
+    // True when private hires could not be read, so their tables are not drawn as blocked
+    // (BK-159). Optional so existing fixtures keep compiling.
+    private_hires_unavailable?: boolean
+    // Who is in that day, counted as every other screen counts it (BK-075); null when it could
+    // not be read. Optional so existing fixtures keep compiling.
+    day_load?: DayLoad | null
   }
   error?: string
 }

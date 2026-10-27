@@ -93,14 +93,19 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                         {(() => {
                             const iso = format(group.date, 'yyyy-MM-dd')
                             const covers = dailyOps?.coversByDate[iso] ?? 0
+                            const hireGuests = dailyOps?.hireGuestsByDate?.[iso] ?? 0
                             const staff = dailyOps?.staffByDate[iso] ?? []
-                            if (covers === 0 && staff.length === 0) return null
+                            if (covers === 0 && hireGuests === 0 && staff.length === 0) return null
                             return (
                                 <p className="text-meta leading-snug text-text-muted px-3 py-1 border-b border-border">
                                     {covers > 0 && (
                                         <span>{covers} cover{covers === 1 ? '' : 's'} booked</span>
                                     )}
-                                    {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
+                                    {covers > 0 && hireGuests > 0 && <span aria-hidden> · </span>}
+                                    {hireGuests > 0 && (
+                                        <span>{hireGuests} guest{hireGuests === 1 ? '' : 's'} at private hires</span>
+                                    )}
+                                    {(covers > 0 || hireGuests > 0) && staff.length > 0 && <span aria-hidden> · </span>}
                                     {staff.length > 0 && <span>Working: {staff.join(', ')}</span>}
                                 </p>
                             )

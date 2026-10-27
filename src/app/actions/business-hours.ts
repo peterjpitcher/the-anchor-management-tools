@@ -11,6 +11,27 @@ import { getErrorMessage } from '@/lib/errors';
 import { getActiveVersion, getVersionRows, listVersions } from '@/lib/business-hours/effective'
 import { getTodayIsoDate, isValidIsoDate, shiftIsoDate } from '@/lib/dateUtils'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { checkHoursImpact, WEEKLY_HOURS_HORIZON_DAYS, type HoursImpact } from '@/services/hours-impact'
+
+/**
+ * What a save returns about the bookings it left outside the hours (review BK-076). Never fails the
+ * save: the hours are already stored, so a check that could not run says so instead.
+ */
+type HoursImpactFields = { hoursImpact?: HoursImpact; hoursImpactError?: string }
+
+async function hoursImpactFields(dates: Array<string | null | undefined>): Promise<HoursImpactFields> {
+  const real = dates.filter((date): date is string => typeof date === 'string' && isValidIsoDate(date)).sort()
+  if (real.length === 0) return {}
+  const result = await checkHoursImpact(real[0], real[real.length - 1])
+  return 'impact' in result ? { hoursImpact: result.impact } : { hoursImpactError: result.impactError }
+}
+
+/** Weekly hours apply from a date onwards, so the check runs a year ahead from it (or from today). */
+async function weeklyHoursImpactFields(effectiveFrom?: string | null): Promise<HoursImpactFields> {
+  const today = getTodayIsoDate()
+  const from = effectiveFrom && isValidIsoDate(effectiveFrom) && effectiveFrom > today ? effectiveFrom : today
+  return hoursImpactFields([from, shiftIsoDate(from, WEEKLY_HOURS_HORIZON_DAYS)])
+}
 
 type SettingsManagePermissionResult =
   | { error: string }
@@ -95,7 +116,7 @@ export async function updateBusinessHours(formData: FormData) {
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
 
-    return { success: true }
+    return { success: true, ...(await weeklyHoursImpactFields()) }
   } catch (error: unknown) {
     console.error('Error updating business hours:', error)
     return { error: getErrorMessage(error) }
@@ -290,7 +311,7 @@ export async function createSpecialHours(formData: FormData) {
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
     
-    return { success: true, data: createdRecords }
+    return { success: true, data: createdRecords, ...(await hoursImpactFields(datesToCreate)) }
   } catch (error: unknown) {
     console.error('Error creating special hours:', error)
     return { error: getErrorMessage(error) }
@@ -322,7 +343,14 @@ export async function updateSpecialHours(id: string, formData: FormData) {
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
     
-    return { success: true, data: updated }
+    return {
+      success: true,
+      data: updated,
+      ...(await hoursImpactFields([
+        (updated as { date?: string } | null)?.date,
+        (oldData as { date?: string } | null)?.date,
+      ])),
+    }
   } catch (error: unknown) {
     console.error('Error updating special hours:', error)
     return { error: getErrorMessage(error) }
@@ -353,7 +381,8 @@ export async function deleteSpecialHours(id: string) {
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
     
-    return { success: true }
+    // The day goes back to its weekly hours, which may be shorter than the exception was.
+    return { success: true, ...(await hoursImpactFields([(oldData as { date?: string } | null)?.date])) }
   } catch (error: unknown) {
     console.error('Error deleting special hours:', error)
     return { error: getErrorMessage(error) }
@@ -558,7 +587,7 @@ export async function saveHoursVersionDraft(
 
 export async function publishHoursVersion(
   versionId: string,
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string } & HoursImpactFields> {
   try {
     const permission = await requireSettingsManagePermission()
     if ('error' in permission) return { error: permission.error }
@@ -584,7 +613,14 @@ export async function publishHoursVersion(
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
     revalidatePath('/api/business-hours')
-    return { success: true }
+
+    // The new hours apply from the version's date: check what is booked from then on (BK-076).
+    const { data: version } = await admin
+      .from('business_hours_versions')
+      .select('effective_from')
+      .eq('id', versionId)
+      .maybeSingle()
+    return { success: true, ...(await weeklyHoursImpactFields((version as { effective_from?: string } | null)?.effective_from)) }
   } catch (error: unknown) {
     console.error('Error publishing hours version:', error)
     return { error: getErrorMessage(error) }
@@ -626,4 +662,37 @@ export async function withdrawHoursVersion(
     console.error('Error withdrawing hours version:', error)
     return { error: getErrorMessage(error) }
   }
+}
+
+/**
+ * The manager has checked the bookings an hours change left outside the hours (review BK-076):
+ * recorded on the audit log with the bookings listed. Contacting the guests is done from each
+ * booking, or from the day's guest list.
+ */
+export async function acknowledgeHoursImpact(input: {
+  from: string
+  to: string
+  items: Array<{ kind: string; id: string; date: string; reason: string }>
+}): Promise<{ success?: boolean; error?: string }> {
+  const permission = await requireSettingsManagePermission()
+  if ('error' in permission) return { error: permission.error }
+  if (!isValidIsoDate(input.from) || !isValidIsoDate(input.to) || !Array.isArray(input.items)) {
+    return { error: 'Nothing was recorded: the list was not valid.' }
+  }
+  const items = input.items.slice(0, 500).map((item) => ({
+    kind: String(item.kind).slice(0, 20),
+    id: String(item.id).slice(0, 64),
+    date: String(item.date).slice(0, 10),
+    reason: String(item.reason).slice(0, 30),
+  }))
+  await logAuditEvent({
+    user_id: permission.user.id,
+    ...(permission.user.email && { user_email: permission.user.email }),
+    operation_type: 'update',
+    resource_type: 'settings',
+    resource_id: 'business_hours_impact',
+    operation_status: 'success',
+    additional_info: { action: 'hours_change_bookings_checked', from: input.from, to: input.to, count: items.length, items },
+  })
+  return { success: true }
 }

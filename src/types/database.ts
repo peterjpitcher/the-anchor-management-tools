@@ -65,6 +65,10 @@ export interface Event {
   promo_sms_enabled?: boolean;
   bookings_enabled?: boolean;
   booking_cutoff_at?: string | null;
+  // Kitchen covers for pacing (owner decision D29): guests eat, how many, and when.
+  food_served?: boolean;
+  kitchen_covers?: number | null;
+  kitchen_food_time?: string | null;
 }
 
 export type PerformerSubmissionStatus =
