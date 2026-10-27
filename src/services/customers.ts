@@ -183,6 +183,8 @@ export type CustomerDeleteResult = {
   message: string;
   counts: Record<string, number>;
   unscrubbedRows: number;
+  /** True when some personal data could not be removed; the message says what and how to finish. */
+  incomplete: boolean;
 };
 
 async function findExistingCustomerByPhone(
@@ -423,6 +425,9 @@ export class CustomerService {
       message: result.message,
       counts: { ...result.counts },
       unscrubbedRows: result.unscrubbedRows,
+      // Rows the database refused, or an audit log that could not be cleared, leave personal
+      // data behind; the message then says what is left and how to finish it.
+      incomplete: result.unscrubbedRows > 0 || result.auditScrubFailed === true,
     };
   }
 

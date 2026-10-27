@@ -303,6 +303,8 @@ def main():
             check(f"(SELECT first_name = 'Merged' AND last_name = 'Customer' AND email IS NULL AND mobile_e164 IS NULL AND mobile_number = '07700900000'"
                   f" AND sms_status = 'opted_out' AND is_placeholder AND internal_notes LIKE 'Merged into customer {KEEP} on %' FROM customers WHERE id = '{DUP}')",
                   'the duplicate is anonymised and says which record it was merged into')
+            check(f"(SELECT merged_into_customer_id FROM customers WHERE id = '{DUP}') = '{KEEP}'",
+                  'the duplicate records where it went, so its old unsubscribe link reaches the kept record')
             check(f"(SELECT count(*) FROM customers) = {customers_before}", 'no customers row is deleted')
             check("(SELECT sms_opted_out AND marketing_email_opted_out AND source = 'customer_merged' FROM customer_contact_suppressions"
                   " WHERE contact_kind = 'phone' AND contact_hash = customer_contact_hash('phone', '+447700900102'))",

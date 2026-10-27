@@ -463,14 +463,15 @@ export async function deleteCustomer(id: string) {
       additional_info: {
         anonymised: true,
         rows_scrubbed: result.counts,
-        rows_left_unscrubbed: result.unscrubbedRows
+        rows_left_unscrubbed: result.unscrubbedRows,
+        incomplete: result.incomplete
       }
     })
 
     revalidatePath('/customers')
     revalidatePath(`/customers/${id}`)
     revalidateTag('dashboard')
-    return { success: true, message: result.message }
+    return { success: true, message: result.message, incomplete: result.incomplete }
   } catch (error) {
     console.error('Unexpected error deleting customer:', error)
     const message = error instanceof Error ? error.message : 'An unexpected error occurred'

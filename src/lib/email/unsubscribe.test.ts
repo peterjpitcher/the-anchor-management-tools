@@ -110,6 +110,40 @@ describe('lookupUnsubscribeToken', () => {
     })
   })
 
+  // BK-164: a customer holds one token, so when two merged records both held one, the
+  // duplicate's stays with the anonymised record. Its link must still opt out the kept record.
+  function mergedSupabase(merges: Record<string, string | null>, opts: { customerReadFails?: boolean } = {}) {
+    return {
+      from(table: string) {
+        return {
+          select: () => ({
+            eq: (_column: string, value: string) => ({
+              maybeSingle: async () => {
+                if (table === 'email_unsubscribe_tokens') {
+                  return { data: { customer_id: 'cust-dup', business_contact_id: null }, error: null }
+                }
+                if (opts.customerReadFails) return { data: null, error: { message: 'connection reset' } }
+                return { data: value in merges ? { merged_into_customer_id: merges[value] } : null, error: null }
+              },
+            }),
+          }),
+        }
+      },
+    } as never
+  }
+
+  it('follows a merge so an old link opts out the record that was kept', async () => {
+    await expect(
+      lookupUnsubscribeToken(mergedSupabase({ 'cust-dup': 'cust-mid', 'cust-mid': 'cust-keep', 'cust-keep': null }), 'dup-token-aaaaaaaaaaaaaaaaaaaaaaa')
+    ).resolves.toMatchObject({ ok: true, customerId: 'cust-keep' })
+  })
+
+  it('says it did not go through when the merge cannot be read, never that it did', async () => {
+    await expect(
+      lookupUnsubscribeToken(mergedSupabase({}, { customerReadFails: true }), 'dup-token-aaaaaaaaaaaaaaaaaaaaaaa')
+    ).resolves.toEqual({ ok: false, reason: 'unavailable' })
+  })
+
   it('rejects an unknown token without saying whose it was', async () => {
     await expect(
       lookupUnsubscribeToken(fakeSupabase([]), 'nope-aaaaaaaaaaaaaaaaaaaaaaaaaa')

@@ -4,3 +4,7 @@
 -- duplicate stays anonymised (the audit log names both ids for each merge).
 DROP FUNCTION IF EXISTS public.merge_customers(uuid, uuid, boolean);
 DROP FUNCTION IF EXISTS public.merge_customers_apply(uuid, uuid);
+-- Roll back the unsubscribe route (src/lib/email/unsubscribe.ts) first: it reads this column.
+-- Dropping it forgets where merged records went, so an old link of a merged record then opts
+-- out only the anonymised duplicate.
+ALTER TABLE public.customers DROP COLUMN IF EXISTS merged_into_customer_id;

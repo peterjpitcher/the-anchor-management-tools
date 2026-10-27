@@ -269,7 +269,14 @@ export default function CustomersClient({
     try {
       const result = await deleteCustomerAction(deleteTarget.id)
       if ('error' in result && result.error) throw new Error(result.error)
-      toast.success('Customer deleted. Their details are removed and their opt-outs kept.'); refreshCurrentPage()
+      // Some personal data could not be removed: say so, with what is left and how to finish it,
+      // rather than report a clean delete (the record is hidden either way).
+      if ('incomplete' in result && result.incomplete) {
+        toast.error(`Customer deleted, but not everything was removed. ${result.message ?? ''}`.trim(), { duration: 15000 })
+      } else {
+        toast.success('Customer deleted. Their details are removed and their opt-outs kept.')
+      }
+      refreshCurrentPage()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete customer')
     } finally { setDeleteTarget(null) }

@@ -88,6 +88,7 @@ describe('CustomerService.deleteCustomer', () => {
       message: 'Personal data erased. customers: 1, SMS messages: 4.',
       counts: { customers: 1, messages: 4 },
       unscrubbedRows: 0,
+      incomplete: false,
     })
     expect(fake.rpc).toHaveBeenCalledWith('record_customer_contact_suppression', {
       p_customer_ids: ['customer-1'],
