@@ -31,7 +31,11 @@ import { logger } from '@/lib/logger'
  * Four table booking flags (table_cancelled_email_first, table_deposit_confirmed_email_first,
  * table_party_size_deposit_email_first, table_confirm_reminder_email_first) were on from
  * 15 September and are gone: those messages always go email first now (BK-129), so a lost read
- * can no longer text a guest who is not a regular.
+ * can no longer text a guest who is not a regular. Three private booking flags
+ * (private_booking_email_first, private_booking_deposit_confirmation and
+ * private_booking_balance_email_auto), also on from 15 September, went the same way (owner
+ * decision D16, 26 October 2026): private hire messages always go email first, every deposit is
+ * confirmed by staff before the guest hears of it, and balance reminders go by email.
  */
 export const MESSAGING_FLAG_KEYS = [
   // Regulars week-ahead invites (owner, 15 September 2026). While on, the only event promotion
@@ -50,18 +54,8 @@ export const MESSAGING_FLAG_KEYS = [
   // The one reminder before an unpaid table deposit hold runs out (BK-088, owner decision D16, 26
   // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
   'table_deposit_hold_reminder',
-  'private_booking_email_first',
   'bounce_sms_fallback',
   'staff_message_email_option',
-  // Private booking deposits (owner, 11 September 2026): creating a booking sends no deposit
-  // message; staff confirm the amount and one deposit request goes. Until then the booking gets
-  // no deposit reminders, no automatic hold expiry and no hold-lapsed message. Needs migration
-  // 20260911200000 applied before it is switched on.
-  'private_booking_deposit_confirmation',
-  // Balance reminders go by email straight away, listing the payments made, when the booking has
-  // a usable address; the text still waits for approval when it has none. Reminders queued before
-  // the switch are never sent.
-  'private_booking_balance_email_auto',
 ] as const
 
 export type MessagingFlagKey = (typeof MESSAGING_FLAG_KEYS)[number]
@@ -72,10 +66,6 @@ export type MessagingFlagKey = (typeof MESSAGING_FLAG_KEYS)[number]
  * 15 September 2026 whose off state is a text the owner retired, off for everything else (a
  * runtime switch such as bounce_sms_fallback, or a new message still waiting for the owner to read
  * its wording), which sends less.
- *
- * The private booking flags are left to the last-value rule only: their off paths are still
- * exercised by the private hire code and its tests, which other release work owns. Deleting those
- * off branches, as BK-129 did for the table ones, is the lasting fix.
  */
 const ON_WHEN_UNREADABLE: ReadonlySet<MessagingFlagKey> = new Set<MessagingFlagKey>([
   'table_preorder_email_first',

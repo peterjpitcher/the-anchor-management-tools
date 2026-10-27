@@ -60,21 +60,16 @@ function booking(overrides: Row = {}): Row {
   }
 }
 
-/** The messaging switches as stored live since 15 Sep 2026: deposit confirmation on. */
-const FLAGS_ON: Row = { key: 'messaging_flags', value: { private_booking_deposit_confirmation: true } }
-
 /**
- * `past` rows are in the booking tables but dated before today. `flags` is the messaging_flags
- * row (deposit confirmation on by default, as live); null leaves the row out, which means off.
+ * `past` rows are in the booking tables but dated before today. Deposits always wait for staff to
+ * confirm them now (owner decision D16, 26 October 2026, retired the switch), so no settings row.
  */
-function db(bookings: Row[], extra: { texts?: Row[]; past?: Row[]; flags?: Row | null } = {}): FakeDb {
+function db(bookings: Row[], extra: { texts?: Row[]; past?: Row[] } = {}): FakeDb {
   const all = [...bookings, ...(extra.past ?? [])]
-  const flags = extra.flags === undefined ? FLAGS_ON : extra.flags
   return new FakeDb({
     private_bookings_with_details: all,
     private_bookings: all,
     private_booking_sms_queue: extra.texts ?? [],
-    system_settings: flags ? [flags] : [],
   })
 }
 
@@ -519,19 +514,6 @@ describe('private hire section', () => {
       ])
     })
 
-    it('ignores the confirmation column while the switch is off or unset, as the app does', async () => {
-      const rows = [awaiting({ id: 'pb1', event_date: '2026-09-30', hold_expiry: '2026-09-24T09:00:00.000Z' })]
-      const states: Array<Row | null> = [
-        null,
-        { key: 'messaging_flags', value: { private_booking_deposit_confirmation: false } },
-        { key: 'messaging_flags', value: { private_booking_deposit_confirmation: 'true' } },
-        { key: 'messaging_flags', value: 'on' },
-      ]
-      for (const flags of states) {
-        const result = await build(db(rows, { flags }))
-        expect(keys(result)).toEqual(['private_hire.not_confirmed.pb1', 'private_hire.hold_expired.pb1', 'private_hire.deposit.pb1'])
-      }
-    })
   })
 
   describe('past bookings', () => {
@@ -651,8 +633,6 @@ describe('private hire section', () => {
     await expect(build(db([booking()]).fail('private_bookings_with_details'))).rejects.toThrow()
     await expect(build(db([booking()]).fail('private_bookings'))).rejects.toThrow()
     await expect(build(db([booking()]).fail('private_booking_sms_queue'))).rejects.toThrow()
-    // Unread, the deposit switch could turn an unconfirmed deposit into a false "hold expired".
-    await expect(build(db([booking()]).fail('system_settings'))).rejects.toThrow('insights private hire messaging flags failed')
   })
 
   it('leaves a booking seen by only one of the two reads for the next report', async () => {

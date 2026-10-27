@@ -11,7 +11,6 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
 import type { ApprovedMessageEmailOutcome } from '@/lib/private-bookings/approved-message';
-import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval';
 import {
   HISTORIC_BALANCE_REMINDER_REFUSAL,
@@ -690,16 +689,14 @@ export class SmsQueueService {
   }
 
   /**
-   * Balance reminders by email (flag private_booking_balance_email_auto): a balance reminder queued
+   * Balance reminders by email (owner decision, 11 September 2026): a balance reminder queued
    * before the switch is never sent, so it cannot be approved or sent from the queue. Throws the
-   * reason for staff. With the flag off this reads nothing and changes nothing.
+   * reason for staff.
    */
   private static async refuseHistoricBalanceReminder(
     supabase: Awaited<ReturnType<typeof createClient>>,
     smsId: string
   ): Promise<void> {
-    if (!(await isMessagingFlagOn('private_booking_balance_email_auto'))) return;
-
     const { data: row, error } = await supabase
       .from('private_booking_sms_queue')
       .select('trigger_type, metadata')
@@ -1005,27 +1002,25 @@ export class SmsQueueService {
         ? sms.trigger_type
         : undefined;
 
-    // Email first (P6, flag private_booking_email_first): the approval step stays, and the channel
-    // is chosen now. The email goes only when the booking has a usable address and the email
-    // states exactly what staff approved; otherwise the approved text goes as it always has.
-    let emailFirst: ApprovedMessageEmailOutcome = { status: 'not_attempted', reason: 'flag_off' };
-    if (await isMessagingFlagOn('private_booking_email_first')) {
-      try {
-        const { tryEmailForApprovedPrivateBookingText } = await import('@/lib/private-bookings/approved-message');
-        emailFirst = await tryEmailForApprovedPrivateBookingText({
-          row: {
-            id: sms.id,
-            booking_id: sms.booking_id,
-            trigger_type: sms.trigger_type ?? null,
-            template_key: sms.template_key ?? null,
-            message_body: sms.message_body,
-            metadata: (sms.metadata as Record<string, unknown> | null) ?? null,
-          },
-          performedBy: sms.approved_by ?? null,
-        });
-      } catch (emailFirstError) {
-        console.error('Email-first check for an approved private booking message failed; sending the text:', emailFirstError);
-      }
+    // Email first (P6): the approval step stays, and the channel is chosen now. The email goes
+    // only when the booking has a usable address and the email states exactly what staff
+    // approved; otherwise the approved text goes as it always has.
+    let emailFirst: ApprovedMessageEmailOutcome = { status: 'not_attempted', reason: 'email_attempt_error' };
+    try {
+      const { tryEmailForApprovedPrivateBookingText } = await import('@/lib/private-bookings/approved-message');
+      emailFirst = await tryEmailForApprovedPrivateBookingText({
+        row: {
+          id: sms.id,
+          booking_id: sms.booking_id,
+          trigger_type: sms.trigger_type ?? null,
+          template_key: sms.template_key ?? null,
+          message_body: sms.message_body,
+          metadata: (sms.metadata as Record<string, unknown> | null) ?? null,
+        },
+        performedBy: sms.approved_by ?? null,
+      });
+    } catch (emailFirstError) {
+      console.error('Email-first check for an approved private booking message failed; sending the text:', emailFirstError);
     }
 
     if (emailFirst.status === 'sent') {

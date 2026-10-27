@@ -68,7 +68,7 @@ function queued() {
 describe('balance reminders queued before the switch to email are never sent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { private_booking_balance_email_auto: true }
+    state.flags = {}
     mockedSendSms.mockResolvedValue({ success: true, sid: 'SM-1', messageId: 'msg-1', customerId: 'customer-1' })
     mockedTryEmail.mockResolvedValue({ status: 'not_attempted', reason: 'flag_off' })
   })
@@ -134,14 +134,4 @@ describe('balance reminders queued before the switch to email are never sent', (
     expect(mockedSendSms).not.toHaveBeenCalled()
   })
 
-  it('with the flag off, the backlog behaves exactly as today', async () => {
-    state.flags = {}
-    seed(queueRow())
-
-    await SmsQueueService.approveSms('sms-1', 'user-1')
-    await SmsQueueService.sendApprovedSms('sms-1')
-
-    expect(mockedSendSms).toHaveBeenCalledTimes(1)
-    expect(queued().status).toBe('sent')
-  })
 })

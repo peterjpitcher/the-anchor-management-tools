@@ -4,7 +4,6 @@ import { logger } from '@/lib/logger';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logAuditEvent } from '@/app/actions/audit';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
-import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { getPayPalOrder, isPayPalOrderNotFoundError } from '@/lib/paypal';
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome';
@@ -23,25 +22,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
-  // Deposit confirmation (flag private_booking_deposit_confirmation): while it is on, a hold whose
-  // deposit is still to be confirmed never expires by itself, and so never gets the hold-lapsed
-  // message. The guest has not been told a deposit or a deadline. With the flag off the update
-  // below is exactly as it was.
-  const depositConfirmation = await isMessagingFlagOn('private_booking_deposit_confirmation');
-
   // The holds that have run out. hold_expiry IS NOT NULL leaves out TBD bookings (which have no
-  // hold). Each one is then checked and cancelled on its own, below, so a deposit PayPal took
+  // hold). A hold whose deposit is still to be confirmed (owner decision, 11 September 2026) never
+  // expires by itself, and so never gets the hold-lapsed message: the guest has not been told a
+  // deposit or a deadline. Each one is then checked and cancelled on its own, below, so a deposit PayPal took
   // just before the deadline is recorded instead of the booking being cancelled under it (BK-063).
-  let candidatesQuery = supabase
+  const { data: candidates, error: candidatesError } = await supabase
     .from('private_bookings')
     .select('id, paypal_deposit_order_id')
     .eq('status', 'draft')
     .not('hold_expiry', 'is', null)
-    .lt('hold_expiry', now);
-  if (depositConfirmation) {
-    candidatesQuery = candidatesQuery.not('deposit_confirmed_at', 'is', null);
-  }
-  const { data: candidates, error: candidatesError } = await candidatesQuery;
+    .lt('hold_expiry', now)
+    .not('deposit_confirmed_at', 'is', null);
 
   if (candidatesError) {
     logger.error('private-bookings-expire-holds: reading expired holds failed', {
@@ -63,7 +55,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Status-guarded, so a booking confirmed or paid since it was read is left alone.
-    let expireQuery = supabase
+    const { data: expiredRow, error: updateError } = await supabase
       .from('private_bookings')
       .update({
         status: 'cancelled',
@@ -74,11 +66,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq('id', candidate.id)
       .eq('status', 'draft')
       .not('hold_expiry', 'is', null)
-      .lt('hold_expiry', now);
-    if (depositConfirmation) {
-      expireQuery = expireQuery.not('deposit_confirmed_at', 'is', null);
-    }
-    const { data: expiredRow, error: updateError } = await expireQuery.select('id').maybeSingle();
+      .lt('hold_expiry', now)
+      .not('deposit_confirmed_at', 'is', null)
+      .select('id')
+      .maybeSingle();
     if (updateError) {
       logger.error('private-bookings-expire-holds: cancelling an expired hold failed', {
         error: new Error(updateError.message),
@@ -175,10 +166,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           .maybeSingle();
 
         // Email first (P6): a booking with only an email address hears about the lapse too.
-        const { isPrivateBookingEmailFirstOn } = await import('@/lib/private-bookings/email-first');
-        const emailFirst = await isPrivateBookingEmailFirstOn();
-
-        if (booking && (emailFirst || booking.contact_phone || booking.customer_id)) {
+        if (booking) {
           const { isBookingDateTbd } = await import('@/lib/private-bookings/tbd-detection');
           const { bookingExpiredMessage } = await import('@/lib/private-bookings/messages');
           const { sendPrivateBookingMessage } = await import('@/lib/private-bookings/messenger');
@@ -218,8 +206,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             email: () => buildHoldLapsedEmail({ booking: bookingForMessage, firstName: booking.customer_first_name }),
             windowKey: 'expired',
             facts: buildPrivateBookingMessageFacts('booking_expired', bookingForMessage),
-            // The same read that let an email-only booking through above.
-            emailFirst,
           });
 
           smsSent = Boolean(smsResult?.sent);

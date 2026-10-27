@@ -1,5 +1,4 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
-import type { MessagingFlagKey } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import { paperworkWarning, PAPERWORK_WARNING_DAYS, type PaperworkWarning } from '@/lib/private-bookings/paperwork'
 import { readStalePendingOutcomes, type StalePendingOutcome } from '@/lib/private-bookings/stale-outcomes'
@@ -54,14 +53,6 @@ const VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name
  */
 const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, contract_sent_at, contract_accepted_at, outside_food, waiver_status, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
 
-/**
- * The switch the rest of the app reads through isMessagingFlagOn (src/lib/messaging/flags.ts):
- * one system_settings row holding an object of booleans. While private_booking_deposit_confirmation
- * is on, a new booking's deposit waits for staff to confirm it; until then the guest has not been
- * asked for it and the hold does not run (the expiry cron and deposit reminders skip it).
- */
-const MESSAGING_FLAGS_KEY = 'messaging_flags'
-const DEPOSIT_CONFIRMATION_FLAG: MessagingFlagKey = 'private_booking_deposit_confirmation'
 
 interface ViewRow {
   id: string
@@ -213,13 +204,7 @@ function linkedInvoice(row: InvoiceRow | null): LinkedInvoice | null {
   return { id: row.id, name: number ? `invoice ${number}` : 'the invoice', dueDate: row.due_date ? row.due_date.slice(0, 10) : null, outstanding }
 }
 
-/** On only when the stored value is an object whose entry is the boolean true, as isMessagingFlagOn reads it. */
-function isFlagOn(value: unknown, flag: MessagingFlagKey): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  return (value as Record<string, unknown>)[flag] === true
-}
-
-function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, depositConfirmationOn: boolean, today: string): Booking {
+function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, today: string): Booking {
   const holdMs = view.hold_expiry ? Date.parse(view.hold_expiry) : Number.NaN
   const balance = toAmount(view.balance_remaining)
   // Normalised for the shared classifier rule, which expects a number.
@@ -257,8 +242,9 @@ function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, deposit
     depositAmount: toAmount(view.deposit_amount),
     depositPaid: Boolean(view.deposit_paid_date),
     depositWaived: table.deposit_waived === true,
-    // The same rule as the booking page and list: only while the switch is on.
-    depositAwaitingConfirmation: depositConfirmationOn && isDepositAwaitingConfirmation({
+    // The same rule as the booking page and list (owner decision, 11 September 2026): a new
+    // booking's deposit waits for staff to confirm it, and until then the hold does not run.
+    depositAwaitingConfirmation: isDepositAwaitingConfirmation({
       status: view.status,
       deposit_amount: view.deposit_amount,
       deposit_paid_date: view.deposit_paid_date,
@@ -618,7 +604,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   const { today, next7, next14 } = ctx.windows
   const pipelineEnd = addDays(today, PRIVATE_HIRE.pipelineDays - 1)
 
-  const [viewRows, tableRows, pendingTexts, staleOutcomes, flagsResult] = await Promise.all([
+  const [viewRows, tableRows, pendingTexts, staleOutcomes] = await Promise.all([
     fetchAllRows<ViewRow>(
       (from, to) => ctx.db
         .from('private_bookings_with_details')
@@ -649,16 +635,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
       { label: 'private hire texts awaiting approval' },
     ),
     readStalePendingOutcomes(ctx.db, ctx.now),
-    ctx.db
-      .from('system_settings')
-      .select('value')
-      .eq('key', MESSAGING_FLAGS_KEY)
-      .maybeSingle(),
   ])
-  // Unread, the switch could turn every unconfirmed deposit into a false "hold expired", so the
-  // section fails rather than guessing. A missing row means off, as it does for the app.
-  if (flagsResult.error) throw new Error(`insights private hire messaging flags failed: ${flagsResult.error.message}`)
-  const depositConfirmationOn = isFlagOn((flagsResult.data as { value?: unknown } | null)?.value, DEPOSIT_CONFIRMATION_FLAG)
 
   const textsByBooking = new Map<string, number>()
   for (const row of pendingTexts) {
@@ -670,7 +647,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   const tableById = new Map(tableRows.map((row) => [row.id, row]))
   const bookings = viewRows
     .filter((row) => row.event_date && tableById.has(row.id))
-    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, depositConfirmationOn, today))
+    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, today))
     .sort(compareBookings)
 
   const withdrawnInvoices = bookings.filter((booking) => booking.invoiced && !booking.invoice).length

@@ -151,7 +151,7 @@ describe('balance reminders by email, with the payments made', () => {
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.flags = { private_booking_balance_email_auto: true }
+    state.flags = {}
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, requiresApproval: true, queueId: 'queue-1' })
   })
@@ -273,26 +273,6 @@ describe('balance reminders by email, with the payments made', () => {
     expect(mockedQueueAndSend.mock.calls[0][0].metadata).toMatchObject({ balance_email_auto: true })
   })
 
-  it('with the flag off, exactly as today: the text waits for approval and carries no marker', async () => {
-    state.flags = {}
-    seed()
-
-    await runMonitor()
-
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
-    expect(mockedQueueAndSend.mock.calls[0][0].metadata).toEqual({ balance_due_date: '2026-09-26' })
-  })
-
-  it('with the flag off, a booking with no number is skipped as today', async () => {
-    state.flags = {}
-    seed({ booking: { contact_phone: null, customer_mobile: null } })
-
-    await runMonitor()
-
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).not.toHaveBeenCalled()
-  })
 })
 
 describe('PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED still switches the balance pass off', () => {
@@ -308,7 +288,7 @@ describe('PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED still switches the balance 
     vi.setSystemTime(NOW)
     vi.stubEnv('PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED', 'false')
     vi.resetModules()
-    state.flags = { private_booking_balance_email_auto: true }
+    state.flags = {}
     const { GET: gatedGet } = await import('@/app/api/cron/private-booking-monitor/route')
     const { sendEmail: gatedSendEmail } = await import('@/lib/email/emailService')
     seed()

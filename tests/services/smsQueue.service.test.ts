@@ -28,6 +28,14 @@ vi.mock('@/lib/api/idempotency', () => ({
   releaseIdempotencyClaim: vi.fn(),
 }))
 
+// Send Now always tries email first now (owner decision D16, 26 October 2026: the flag
+// private_booking_email_first and its text-only path are gone). These tests are about the text
+// queue's own guards, so the email attempt stands aside; it is tested in
+// tests/services/smsQueueSendNowEmailFirst.test.ts.
+vi.mock('@/lib/private-bookings/approved-message', () => ({
+  tryEmailForApprovedPrivateBookingText: vi.fn(async () => ({ status: 'not_attempted', reason: 'no_email_version' })),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { sendSms } from '@/app/actions/sms'
@@ -52,6 +60,11 @@ const mockedReleaseIdempotencyClaim = releaseIdempotencyClaim as unknown as Mock
 describe('SmsQueueService queue persistence guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The refusal of balance reminders queued before they moved to email reads the row first; it
+    // has its own tests (tests/services/smsQueueHistoricBalanceReminders.test.ts) and these
+    // queue mocks answer each read in turn, so it stands aside here.
+    vi.spyOn(SmsQueueService as unknown as { refuseHistoricBalanceReminder: () => Promise<void> }, 'refuseHistoricBalanceReminder')
+      .mockResolvedValue(undefined)
 
     mockedComputeIdempotencyRequestHash.mockReturnValue('lock-hash')
     mockedClaimIdempotencyKey.mockResolvedValue({ state: 'claimed' })

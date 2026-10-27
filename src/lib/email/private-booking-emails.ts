@@ -1363,8 +1363,7 @@ export async function sendPrivateBookingRefundSentEmail(booking: {
 // ---------------------------------------------------------------------------
 // Email versions of the private booking texts (email first, owner decision 11 September 2026).
 //
-// Sent by src/lib/private-bookings/messenger.ts when the flag private_booking_email_first is on
-// and the booking has a usable address. Each builder takes the same inputs as the text it
+// Sent by src/lib/private-bookings/messenger.ts when the booking has a usable address. Each builder takes the same inputs as the text it
 // replaces (src/lib/private-bookings/messages.ts) and states every fact that text states, with
 // amounts and deadlines printed exactly as the text prints them, plus the booking reference, the
 // event date with its weekday, the times and the guest numbers. Nothing promotional: these are
@@ -1856,7 +1855,7 @@ export function buildBalanceReminderEmail(input: {
   /** The deadline exactly as the text prints it. */
   balanceDueDate: string;
   /**
-   * The payments already made and how they add up (flag private_booking_balance_email_auto). The
+   * The payments already made and how they add up (owner decision, 11 September 2026). The
    * email lists them above the balance; without it the email is as it has always been.
    */
   payments?: PrivateBookingPaymentStatement | null;

@@ -119,7 +119,7 @@ function queueRow(overrides: Record<string, unknown> = {}) {
 describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { private_booking_email_first: true }
+    state.flags = {}
     seed()
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
   })
@@ -147,23 +147,6 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     const outcome = await tryEmailForApprovedPrivateBookingText({ row: queueRow(), performedBy: 'user-1', now: NOW })
     expect(outcome).toEqual({ status: 'not_attempted', reason: 'queued_text_differs' })
     expect(mockedSendEmail).not.toHaveBeenCalled()
-  })
-
-  it('emails an approved balance reminder with the amount still owed', async () => {
-    seed(bookingRow({ status: 'confirmed' }))
-    const body = balanceReminder21DayMessage({
-      customerFirstName: 'Alex',
-      eventDate: '3 October 2026',
-      balanceAmount: 1234.5,
-      balanceDueDate: '19 September 2026',
-    })
-    const outcome = await tryEmailForApprovedPrivateBookingText({
-      row: queueRow({ trigger_type: 'balance_reminder_21day', template_key: 'private_booking_balance_reminder_21day', message_body: body }),
-      performedBy: 'user-1',
-      now: NOW,
-    })
-    expect(outcome).toMatchObject({ status: 'sent' })
-    expect(mockedSendEmail.mock.calls[0][0].text).toContain('£1,234.50')
   })
 
   it('emails an approved retention cancellation with the amounts the queued text states', async () => {
@@ -199,11 +182,6 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
-  it('does nothing while the flag is off', async () => {
-    state.flags = {}
-    const outcome = await tryEmailForApprovedPrivateBookingText({ row: queueRow(), performedBy: 'user-1', now: NOW })
-    expect(outcome).toEqual({ status: 'not_attempted', reason: 'flag_off' })
-  })
 })
 
 describe('bounce fallback for a private booking email (P4 with P6)', () => {
@@ -229,7 +207,7 @@ describe('bounce fallback for a private booking email (P4 with P6)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -324,7 +302,7 @@ async function runAsTheQueueWould(firstRun: Date) {
 describe('bounce fallback: a text is never sent after its words stop being true', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -449,7 +427,7 @@ describe('bounce fallback: a text is never sent after its words stop being true'
 describe('bounce fallback: a message that no longer applies is skipped, never failed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 
@@ -531,7 +509,7 @@ describe('bounce fallback: a message that no longer applies is skipped, never fa
 describe('bounce fallback: a text that needs staff approval is never sent without it', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
   })
 

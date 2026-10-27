@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ db: null as any, depositConfirmation: true }))
+const state = vi.hoisted(() => ({ db: null as any }))
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -23,12 +23,6 @@ vi.mock('@/lib/supabase/server', () => ({
     from: (table: string) => state.db.from(table),
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: 'user-1', email: 'manager@example.com' } } })) },
   })),
-}))
-
-vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) =>
-    key === 'private_booking_deposit_confirmation' ? state.depositConfirmation : false
-  ),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -146,7 +140,6 @@ describe('Confirm deposit, the action staff press', () => {
     // 10:00 in London on 11 September 2026, so the deadline is always 25 September.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-11T09:00:00.000Z'))
-    state.depositConfirmation = true
     mockedPermission.mockImplementation(async () => true)
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'queue-1' })
@@ -221,17 +214,6 @@ describe('Confirm deposit, the action staff press', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
-  it('is refused while the flag is off: nothing changes and nothing is sent', async () => {
-    state.depositConfirmation = false
-    seed(booking())
-
-    const result = await confirmPrivateBookingDeposit(BOOKING_ID, { amount: 250 })
-
-    expect(result.error).toBe('Deposit confirmation is switched off, so nothing was sent.')
-    expect(state.db.tables.private_bookings[0].deposit_confirmed_at).toBeNull()
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-  })
-
   it('a reduction below £250 needs the General Manager override and a reason', async () => {
     seed(booking())
     mockedPermission.mockImplementation(async (_module: string, action: string) => action !== 'gm_override')
@@ -267,7 +249,6 @@ describe('Confirm deposit, the action staff press', () => {
 describe('Send payment link while the deposit is to be confirmed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.depositConfirmation = true
   })
 
   it('is refused, so the guest hears about a deposit only through Confirm deposit', async () => {
@@ -289,15 +270,6 @@ describe('Send payment link while the deposit is to be confirmed', () => {
     expect(sendDepositPaymentLinkEmail).toHaveBeenCalledTimes(1)
   })
 
-  it('goes exactly as today with the flag off', async () => {
-    state.depositConfirmation = false
-    seed(booking())
-
-    const result = await sendDepositPaymentLink(BOOKING_ID)
-
-    expect(result).toEqual({ success: true })
-    expect(sendDepositPaymentLinkEmail).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('Send payment link, what gets recorded', () => {
@@ -305,14 +277,12 @@ describe('Send payment link, what gets recorded', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    // Off, so the action runs its own path rather than being turned away at the confirmation gate.
-    state.depositConfirmation = false
     mockedPermission.mockImplementation(async () => true)
     mockedDepositLinkEmail.mockResolvedValue({ sent: true })
   })
 
   it('records a sent link in the audit log and on the booking timeline', async () => {
-    seed(booking())
+    seed(booking({ deposit_confirmed_at: '2026-09-11T10:00:00.000Z' }))
 
     const result = await sendDepositPaymentLink(BOOKING_ID)
 
@@ -351,7 +321,7 @@ describe('Send payment link, what gets recorded', () => {
   })
 
   it('records a failed link too, so a guest left without one can be traced', async () => {
-    seed(booking())
+    seed(booking({ deposit_confirmed_at: '2026-09-11T10:00:00.000Z' }))
     mockedDepositLinkEmail.mockResolvedValue({ sent: false, error: 'Resend 503' })
 
     const result = await sendDepositPaymentLink(BOOKING_ID)
@@ -391,7 +361,7 @@ describe('Send payment link, what gets recorded', () => {
     ['a sent link', { sent: true }],
     ['a failed link', { sent: false, error: 'Resend 503' }],
   ])('keeps the guest out of both payloads for %s', async (_label, emailOutcome) => {
-    seed(booking())
+    seed(booking({ deposit_confirmed_at: '2026-09-11T10:00:00.000Z' }))
     mockedDepositLinkEmail.mockResolvedValue(emailOutcome)
 
     await sendDepositPaymentLink(BOOKING_ID)
@@ -408,7 +378,7 @@ describe('Send payment link, what gets recorded', () => {
   })
 
   it('still reports a delivered email when the audit writes fail', async () => {
-    seed(booking())
+    seed(booking({ deposit_confirmed_at: '2026-09-11T10:00:00.000Z' }))
     state.db.failures.push({
       table: 'private_booking_audit',
       op: 'insert',

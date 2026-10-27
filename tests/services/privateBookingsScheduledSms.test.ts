@@ -37,7 +37,16 @@ function mockSupabase(opts: {
     error:
       opts.bookingError ?? (opts.booking ? null : { message: 'not found' }),
   })
-  const bookingEq = vi.fn().mockReturnValue({ single: bookingSingle })
+  // The deposit reminder preview reads whether the deposit has been confirmed to the guest (owner
+  // decision, 11 September 2026); unless a test says otherwise it has been.
+  const confirmationMaybeSingle = vi.fn().mockResolvedValue({
+    data: {
+      deposit_confirmed_at: opts.booking && 'deposit_confirmed_at' in opts.booking ? opts.booking.deposit_confirmed_at : '2026-04-20T10:00:00.000Z',
+      deposit_waived: false,
+    },
+    error: null,
+  })
+  const bookingEq = vi.fn().mockReturnValue({ single: bookingSingle, maybeSingle: confirmationMaybeSingle })
   const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq, in: vi.fn(async (_key: string, ids: string[]) => ({ data: ids.map(id => ({ id, invoice_id: opts.booking?.invoice_id ?? null, invoice_deposit_treatment: opts.booking?.invoice_deposit_treatment ?? null })), error: null })) })
 
   const idempEq = vi.fn().mockResolvedValue({

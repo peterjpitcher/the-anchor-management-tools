@@ -336,7 +336,7 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   balance_remaining?: number
   payment_status?: 'Fully Paid' | 'Partially Paid' | 'Unpaid'
   deposit_status?: 'Paid' | 'Required' | 'Not Required'
-  /** Set by the list query while private_booking_deposit_confirmation is on. */
+  /** Set by the list query: the deposit is still to be confirmed to the guest. */
   deposit_awaiting_confirmation?: boolean
   /**
    * Set by the list query for draft and confirmed hires (review BK-005, BK-006, BK-007): what is

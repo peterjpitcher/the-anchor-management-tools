@@ -44,8 +44,7 @@ export async function loadPrivateBookingMessageContext(input: {
   cancellation?: CancellationAmounts | null
   storedFacts?: Record<string, unknown> | null
   /**
-   * For a balance reminder email while private_booking_balance_email_auto is on: load the payments
-   * made as well. Only Send Now asks; the bounce fallback only ever rebuilds the text.
+   * For a balance reminder email: load the payments made as well. Only Send Now asks; the bounce fallback only ever rebuilds the text.
    */
   withPaymentStatement?: boolean
 }): Promise<CatalogueContext | null> {

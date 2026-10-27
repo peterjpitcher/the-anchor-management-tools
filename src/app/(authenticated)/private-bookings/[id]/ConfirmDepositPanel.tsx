@@ -20,7 +20,7 @@ interface ConfirmDepositPanelProps {
 const STANDARD_DEPOSIT = 250
 
 /**
- * "Deposit to be confirmed" on the booking page (flag private_booking_deposit_confirmation). The
+ * "Deposit to be confirmed" on the booking page (owner decision, 11 September 2026). The
  * guest has been told nothing about a deposit, so staff confirm the amount here, which sends the
  * one deposit request. Whatever happens is shown: the channel it went by, or why nothing went.
  */

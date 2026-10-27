@@ -4,7 +4,6 @@ import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { getBookingDepositRefunds, getBookingPaymentHistory } from '@/services/private-bookings'
 import { currentUserCanInvoicePrivateBookings } from '@/app/actions/privateBookingInvoice'
 import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation'
 import type { DepositRefundEntry, PaymentHistoryEntry } from '@/types/private-bookings'
 import {
@@ -119,14 +118,14 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     errors.push('We could not load this booking.')
   }
 
-  // Deposit confirmation (flag private_booking_deposit_confirmation): a deposit the guest has not
+  // Deposit confirmation (owner decision, 11 September 2026): a deposit the guest has not
   // been told about shows on the page with the Confirm deposit action, and the deadline confirming
   // would set.
   let depositConfirmation: { awaiting: boolean; holdExpiryPreview: string | null } = {
     awaiting: false,
     holdExpiryPreview: null,
   }
-  if (bookingData && (await isMessagingFlagOn('private_booking_deposit_confirmation')) && isDepositAwaitingConfirmation(bookingData)) {
+  if (bookingData && isDepositAwaitingConfirmation(bookingData)) {
     let holdExpiryPreview: string | null = null
     try {
       holdExpiryPreview = resolveConfirmationHoldExpiry(bookingData, new Date())

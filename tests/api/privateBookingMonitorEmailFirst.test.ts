@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ db: null as any, flagOn: true }))
+const state = vi.hoisted(() => ({ db: null as any }))
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(() => ({ authorized: true })),
@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) => (key === 'private_booking_email_first' ? state.flagOn : false)),
+  isMessagingFlagOn: vi.fn(async () => false),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -55,7 +55,6 @@ vi.mock('@/services/sms-queue', async () => {
 })
 
 import { sendEmail } from '@/lib/email/emailService'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { SmsQueueService } from '@/services/sms-queue'
 import { GET } from '@/app/api/cron/private-booking-monitor/route'
 
@@ -110,6 +109,7 @@ function draftWithEmailOnly(overrides: Record<string, unknown> = {}) {
     internal_notes: null,
     date_tbd: false,
     deposit_paid_date: null,
+    deposit_confirmed_at: '2026-09-11T10:00:00.000Z',
     ...overrides,
   }
 }
@@ -124,7 +124,6 @@ describe('private booking monitor, email first', () => {
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.flagOn = true
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'queue-1' })
   })
@@ -156,43 +155,6 @@ describe('private booking monitor, email first', () => {
     expect(second.status).toBe(200)
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
     expect(mockedQueueAndSend).not.toHaveBeenCalled()
-  })
-
-  it('with the flag off, a guest with no number is skipped exactly as today', async () => {
-    state.flagOn = false
-    seed(draftWithEmailOnly())
-
-    const result = await runMonitor()
-
-    expect(result.status).toBe(200)
-    expect(result.body.stats.remindersSent).toBe(0)
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).not.toHaveBeenCalled()
-  })
-
-  it('reads the flag once for the run, so a booking it chose for email is sent by email', async () => {
-    seed(draftWithEmailOnly())
-    // The run's read says on; any later read in the same run would have failed and said off, and
-    // this guest has no number, so a second read would have left them with nothing.
-    const flagMock = vi.mocked(isMessagingFlagOn)
-    const original = flagMock.getMockImplementation()!
-    let emailFirstReads = 0
-    flagMock.mockImplementation(async (key) => {
-      if (key !== 'private_booking_email_first') return false
-      emailFirstReads += 1
-      return emailFirstReads === 1
-    })
-
-    try {
-      const result = await runMonitor()
-
-      expect(result.body.stats.remindersSent).toBe(1)
-      expect(mockedSendEmail).toHaveBeenCalledTimes(1)
-      expect(mockedQueueAndSend).not.toHaveBeenCalled()
-      expect(emailFirstReads).toBe(1)
-    } finally {
-      flagMock.mockImplementation(original)
-    }
   })
 
   it('a guest with a number but no usable email still gets the text', async () => {
