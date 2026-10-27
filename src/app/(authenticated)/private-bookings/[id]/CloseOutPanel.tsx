@@ -15,6 +15,8 @@ export interface CloseOutPanelProps {
   balanceOutstanding: number
   /** Deposit still held, after any refunds; 0 when there is none to close. */
   depositLeft: number
+  /** An invoiced hire's payments belong on its invoice, so neither is recorded here. */
+  invoiced: boolean
   canClose: boolean
   canRefund: boolean
   onOpenRefund: () => void
@@ -27,12 +29,16 @@ export function CloseOutPanel({
   bookingId,
   balanceOutstanding,
   depositLeft,
+  invoiced,
   canClose,
   canRefund,
   onOpenRefund,
   onClosed,
 }: CloseOutPanelProps): React.ReactElement {
-  const [settledAtTill, setSettledAtTill] = useState(balanceOutstanding > 0)
+  // Putting the deposit against the bill is only offered when it fits inside the balance left:
+  // otherwise the guest would be recorded as paying more than the bill, so staff return or keep it.
+  const canApplyDeposit = !invoiced && depositLeft > 0 && depositLeft <= balanceOutstanding
+  const [settledAtTill, setSettledAtTill] = useState(balanceOutstanding > 0 && !invoiced)
   const [balanceMethod, setBalanceMethod] = useState<'card' | 'cash'>('card')
   const [deposit, setDeposit] = useState<DepositChoice>('returned')
   const [depositMethod, setDepositMethod] = useState<'card' | 'cash'>('card')
@@ -53,12 +59,12 @@ export function CloseOutPanel({
     const kept = Number(keptStr)
     setSaving(true)
     const result = await closeOutPrivateBooking(bookingId, {
-      balanceSettledAtTill: balanceOutstanding > 0 && settledAtTill ? { method: balanceMethod } : null,
+      balanceSettledAtTill: balanceOutstanding > 0 && !invoiced && settledAtTill ? { method: balanceMethod } : null,
       deposit: depositLeft <= 0
         ? null
         : deposit === 'returned'
           ? { outcome: 'returned', method: depositMethod }
-          : deposit === 'applied'
+          : deposit === 'applied' && canApplyDeposit
             ? { outcome: 'applied' }
             : { outcome: 'kept', amount: kept, reason: keptReason, restMethod: depositMethod },
     })
@@ -79,7 +85,14 @@ export function CloseOutPanel({
           not sent anything.
         </p>
 
-        {balanceOutstanding > 0 && (
+        {balanceOutstanding > 0 && invoiced && (
+          <p>
+            The {formatCurrency(balanceOutstanding)} balance is on the invoice: record any payment
+            there.
+          </p>
+        )}
+
+        {balanceOutstanding > 0 && !invoiced && (
           <div className="space-y-2">
             <Checkbox
               label={`The ${formatCurrency(balanceOutstanding)} balance was settled at the till on the night`}
@@ -99,7 +112,16 @@ export function CloseOutPanel({
           <Fieldset legend={`The ${formatCurrency(depositLeft)} deposit`}>
             <Radio name="close-out-deposit" value="returned" label="Returned at the till" checked={deposit === 'returned'} onChange={() => setDeposit('returned')} />
             <Radio name="close-out-deposit" value="kept" label="Kept, in full or in part" checked={deposit === 'kept'} onChange={() => setDeposit('kept')} />
-            <Radio name="close-out-deposit" value="applied" label="Put against the final bill" checked={deposit === 'applied'} onChange={() => setDeposit('applied')} />
+            {canApplyDeposit && (
+              <Radio name="close-out-deposit" value="applied" label="Put against the final bill" checked={deposit === 'applied'} onChange={() => setDeposit('applied')} />
+            )}
+            {!canApplyDeposit && (
+              <p className="text-sm text-text-muted">
+                {invoiced
+                  ? 'To put the deposit against the bill, record it on the invoice.'
+                  : `The deposit is more than the ${formatCurrency(balanceOutstanding)} balance left, so it cannot all go against the bill: return or keep it.`}
+              </p>
+            )}
             {canRefund && (
               <Radio name="close-out-deposit" value="paypal" label="Refund it through PayPal (opens Process Refund)" checked={deposit === 'paypal'} onChange={() => setDeposit('paypal')} />
             )}

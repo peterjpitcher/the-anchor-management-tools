@@ -2675,6 +2675,7 @@ export default function PrivateBookingDetailClient({
           bookingId={bookingId}
           balanceOutstanding={closeOutBalance}
           depositLeft={closeOutDepositLeft}
+          invoiced={Boolean(booking.invoice_id)}
           canClose={canManageDeposits || canEdit}
           canRefund={canRefund}
           onOpenRefund={() => setShowRefundDialog(true)}
