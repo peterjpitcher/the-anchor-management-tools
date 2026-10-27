@@ -32,6 +32,7 @@ import {
 import { generateInvoiceToken, verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 import { invoicePaymentCustomId } from '@/lib/invoices/paypal-custom-id'
 import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
+import { CANCELLED_BOOKING_INVOICE_UNPAYABLE, invoiceBookingCancelled } from '@/lib/invoices/cancelled-private-booking'
 import { invoiceBalanceDue, type InvoiceBalanceInput } from '@/lib/invoices/balance'
 import { invoiceCanOfferPayPal } from '@/lib/invoices/payment-link-footer'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -70,6 +71,10 @@ export async function describeUnpayable(invoice: PayableInvoice | null): Promise
   if (invoice.status === 'void') return 'This invoice has been cancelled, so there is nothing to pay.'
   if (invoice.status === 'written_off') return 'This invoice has been written off, so there is nothing to pay.'
   if (invoice.status === 'paid') return 'This invoice is already paid in full. Thank you.'
+  // BK-065: an invoice for a cancelled private booking is never paid online.
+  const bookingCancelled = await invoiceBookingCancelled(invoice.id)
+  if (bookingCancelled === 'unknown') return 'We could not check this invoice just now. Please try again in a few minutes.'
+  if (bookingCancelled) return CANCELLED_BOOKING_INVOICE_UNPAYABLE
   // A draft that has demonstrably reached the customer is payable. The manual
   // send flips the status to `sent` immediately after the email goes out, and
   // that flip can fail while the email has already landed; refusing here would

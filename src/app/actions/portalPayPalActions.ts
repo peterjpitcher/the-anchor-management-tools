@@ -19,12 +19,12 @@ import {
  * (BK-063). The page adds the venue's phone number after each message.
  */
 const CLOSED_BOOKING_PAYMENT_REFUSAL: Record<'cancelled' | 'completed', string> = {
-  cancelled: 'This booking has been cancelled, so we have not taken a payment.',
-  completed: 'This booking has already finished, so we have not taken a payment.',
+  cancelled: "This booking has been cancelled, so we haven't taken a payment.",
+  completed: "This booking has already finished, so we haven't taken a payment.",
 }
 
 const PAID_AFTER_CLOSE_MESSAGE =
-  'Your payment went through, but this booking was no longer open, so the team has been told and will be in touch about refunding it.'
+  "Your payment went through, but this booking had already closed. We've told the team, and they'll be in touch about refunding it."
 
 function getPayPalOrderAmount(order: any): number | null {
   const raw = order?.purchase_units?.[0]?.amount?.value

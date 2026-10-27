@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { formatPrivateBookingReference } from '@/lib/email/private-booking-emails'
 import { PRIVATE_BOOKINGS_MANAGER_EMAIL } from '@/lib/private-bookings/manager-notifications'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { refundStillOwed } from '@/lib/private-bookings/refund-due'
 import {
   hireRoomProblems,
   isPaidButNotConfirmed,
@@ -126,9 +127,11 @@ function escapeHtml(value: string): string {
 export interface PrivateHireToDo {
   /** Texts that have waited for staff approval for more than a day (BK-064). */
   textsAwaitingApproval: number
+  /** Refunds a cancellation promised and the refunds recorded do not yet cover (BK-065). */
+  refundsOwed: Array<{ bookingId: string; reference: string; owed: number; dueBy: string | null }>
 }
 
-const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0 }
+const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0, refundsOwed: [] }
 
 const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000
 
@@ -142,11 +145,42 @@ export async function findPrivateHireToDo(input: { now: Date; db?: DbClient }): 
     .eq('status', 'pending')
     .lt('created_at', waitingSince)
   if (error) throw new Error(`Could not read the texts waiting for approval: ${error.message}`)
-  return { textsAwaitingApproval: (data ?? []).length }
+
+  const { data: cancelled, error: cancelledError } = await db
+    .from('private_bookings')
+    .select('id, refund_due_amount, refund_due_by')
+    .eq('status', 'cancelled')
+    .gt('refund_due_amount', 0)
+  if (cancelledError) throw new Error(`Could not read the refunds owed: ${cancelledError.message}`)
+  const owing = (cancelled ?? []) as Array<{ id: string; refund_due_amount: number | string | null; refund_due_by: string | null }>
+  const refundedById = new Map<string, number>()
+  if (owing.length > 0) {
+    const { data: refunds, error: refundsError } = await db
+      .from('payment_refunds')
+      .select('source_id, amount')
+      .eq('source_type', 'private_booking')
+      .eq('status', 'completed')
+      .in('source_id', owing.map((row) => row.id))
+    if (refundsError) throw new Error(`Could not read the refunds recorded: ${refundsError.message}`)
+    for (const row of (refunds ?? []) as Array<{ source_id: string; amount: number | string }>) {
+      refundedById.set(row.source_id, (refundedById.get(row.source_id) ?? 0) + (Number(row.amount) || 0))
+    }
+  }
+  const refundsOwed = owing
+    .map((row) => ({
+      bookingId: row.id,
+      reference: formatPrivateBookingReference(row.id),
+      owed: refundStillOwed(row, refundedById.get(row.id) ?? 0),
+      dueBy: row.refund_due_by ? String(row.refund_due_by).slice(0, 10) : null,
+    }))
+    .filter((row) => row.owed > 0)
+    .sort((a, b) => (a.dueBy ?? '9999').localeCompare(b.dueBy ?? '9999'))
+
+  return { textsAwaitingApproval: (data ?? []).length, refundsOwed }
 }
 
 function hasToDo(toDo: PrivateHireToDo): boolean {
-  return toDo.textsAwaitingApproval > 0
+  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0
 }
 
 function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string; url: string }> {
@@ -156,6 +190,15 @@ function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string;
     lines.push({
       text: `${count} private hire ${count === 1 ? 'text has' : 'texts have'} waited more than a day for approval.`,
       url: `${appUrl}/private-bookings/sms-queue`,
+    })
+  }
+  for (const refund of toDo.refundsOwed) {
+    const due = refund.dueBy
+      ? `, promised by ${formatDateInLondon(refund.dueBy, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
+      : ''
+    lines.push({
+      text: `${refund.reference}: £${refund.owed.toFixed(2)} refund owed to a cancelled booking${due}.`,
+      url: `${appUrl}/private-bookings/${refund.bookingId}`,
     })
   }
   return lines

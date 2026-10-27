@@ -93,6 +93,9 @@ describe('a PayPal deposit captured for a closed private booking', () => {
     // The hold and the cancellation are left exactly as they were.
     expect(booking.hold_expiry).toBe('2026-10-19T23:59:59.000Z')
     expect(booking.cancelled_at).toBe('2026-10-20T09:00:00.000Z')
+    // And it is owed back (BK-065): listed until it is refunded.
+    expect(booking).toMatchObject({ refund_due_amount: 250, deposit_refund_status: 'refund_due' })
+    expect(booking.refund_due_by).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 
     expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
     expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(

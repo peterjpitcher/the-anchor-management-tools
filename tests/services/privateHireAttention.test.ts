@@ -188,5 +188,30 @@ describe('the manager email', () => {
     expect(email.text).toContain('1 private hire text has waited more than a day for approval.')
     expect(email.text).toContain('https://management.example.test/private-bookings/sms-queue')
   })
+
+  // BK-065: a refund a cancellation promised was recorded nowhere, so it could be forgotten.
+  it('lists refunds owed to cancelled bookings until the refunds recorded cover them', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      private_bookings: [
+        { id: 'aaaaaaaa-1111-0000-0000-000000000001', status: 'cancelled', refund_due_amount: 237.5, refund_due_by: '2026-11-03', event_date: '2026-12-12' },
+        { id: 'bbbbbbbb-1111-0000-0000-000000000002', status: 'cancelled', refund_due_amount: 100, refund_due_by: '2026-11-01', event_date: '2026-12-12' },
+      ],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [],
+      payment_refunds: [
+        { id: 'r1', source_type: 'private_booking', source_id: 'aaaaaaaa-1111-0000-0000-000000000001', status: 'completed', amount: 37.5 },
+        { id: 'r2', source_type: 'private_booking', source_id: 'bbbbbbbb-1111-0000-0000-000000000002', status: 'completed', amount: 100 },
+      ],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: true })
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.text).toContain('PB-AAAAAAAA: £200.00 refund owed to a cancelled booking, promised by Tue, 3 Nov 2026.')
+    expect(email.text).not.toContain('PB-BBBBBBBB')
+  })
 })
 

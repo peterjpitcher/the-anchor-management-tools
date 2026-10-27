@@ -12640,6 +12640,8 @@ export type Database = {
           post_event_outcome_decided_at: string | null
           post_event_status: string | null
           receipt_version: number
+          refund_due_amount: number | null
+          refund_due_by: string | null
           review_clicked_at: string | null
           review_processed_at: string | null
           review_sms_sent_at: string | null
@@ -12739,6 +12741,8 @@ export type Database = {
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
+          refund_due_amount?: number | null
+          refund_due_by?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -12838,6 +12842,8 @@ export type Database = {
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
+          refund_due_amount?: number | null
+          refund_due_by?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null

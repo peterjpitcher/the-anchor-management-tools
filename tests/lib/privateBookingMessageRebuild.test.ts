@@ -169,7 +169,7 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
     })
     expect(outcome).toMatchObject({ status: 'sent' })
     const text = mockedSendEmail.mock.calls[0][0].text
-    expect(text).toContain('£150 of your deposit has been retained')
+    expect(text).toContain("we've kept £150 to cover costs from the cancellation")
     expect(text).toContain('£100 will be refunded within 10 working days')
   })
 

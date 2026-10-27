@@ -512,7 +512,9 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     )
   })
 
-  it('cancelBooking picks booking_cancelled_review_pending when gm_review_required and no decision recorded', async () => {
+  // BK-065: the retention decision is made in the cancel dialog, so a cancellation that needs one
+  // is refused without it rather than sent as "under review" with nothing recorded as owed.
+  it('cancelBooking refuses a cancellation that needs a retention decision without one, and sends nothing', async () => {
     mockCancelBookingSupabase()
 
     mockedGetCancellationOutcome.mockResolvedValue({
@@ -523,29 +525,10 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       max_retainable: 150,
     })
 
-    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
-      success: true,
-      queueId: 'queue-review-1',
-      sent: true,
-    })
-
-    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
-
-    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        trigger_type: 'booking_cancelled_review_pending',
-        template_key: 'private_booking_cancelled_review_pending',
-        message_body: bookingCancelledReviewPendingMessage({
-          customerFirstName: 'Alex',
-          eventDate: '20 February 2026',
-        }),
-        metadata: expect.objectContaining({
-          financial_outcome: 'gm_review_required',
-          refund_amount: 0,
-          retained_amount: 0,
-        }),
-      })
+    await expect(PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')).rejects.toThrow(
+      'decide how much of the deposit to keep first',
     )
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
   })
 
   it('cancelBooking picks booking_cancelled_retention when a manager retains part of the deposit', async () => {

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
+import { invoiceBookingCancelled } from '@/lib/invoices/cancelled-private-booking'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { Alert, Card } from '@/ds'
 import { cn } from '@/lib/utils'
@@ -95,7 +96,13 @@ export default async function InvoicePortalPage({
       paypal_payments_enabled?: boolean | null
     } | null
   }).vendor
-  const invoiceCollectible = !settled && !withdrawn && !notYetIssued
+  // An invoice for a private booking that has been cancelled is never paid online (BK-065). One
+  // with nothing paid is voided when the booking is cancelled; one with money already received
+  // stays open for a credit note, so it is closed to payment here. Not knowing counts as closed.
+  const bookingCancelled = !settled && !withdrawn && !notYetIssued
+    ? (await invoiceBookingCancelled(invoice.id)) !== false
+    : false
+  const invoiceCollectible = !settled && !withdrawn && !notYetIssued && !bookingCancelled
   const paypalEnabled = vendor?.paypal_payments_enabled === true
   const payable = invoiceCollectible && paypalEnabled
   const paymentUnavailable = invoiceCollectible && !paypalEnabled
@@ -112,7 +119,9 @@ export default async function InvoicePortalPage({
     ? creditTotal > 0 ? 'This invoice is settled' : 'This invoice is paid'
     : withdrawn
       ? 'This invoice has been cancelled'
-      : notYetIssued
+      : bookingCancelled
+        ? 'This booking has been cancelled'
+        : notYetIssued
         ? 'This invoice is not ready yet'
         : paymentUnavailable
           ? 'Online payment is unavailable'
@@ -122,7 +131,9 @@ export default async function InvoicePortalPage({
     ? 'Thank you, there is nothing left to pay.'
     : withdrawn
       ? 'There is nothing to pay on this one.'
-      : notYetIssued
+      : bookingCancelled
+        ? "There's nothing to pay online. We'll be in touch about anything you've already paid."
+        : notYetIssued
         ? 'We have not issued this invoice yet.'
         : paymentUnavailable
           ? firstName
@@ -195,6 +206,12 @@ export default async function InvoicePortalPage({
             <Alert tone="warning" role="status">
               This invoice has been cancelled, so there is nothing to pay. If you
               were expecting to pay something, please get in touch.
+            </Alert>
+          )}
+          {bookingCancelled && (
+            <Alert tone="warning" role="status">
+              The booking this invoice is for has been cancelled, so it can&apos;t be paid online. If
+              you have a question about it, please get in touch.
             </Alert>
           )}
           {notYetIssued && (

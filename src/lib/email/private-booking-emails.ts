@@ -2005,12 +2005,12 @@ export function buildCancellationEmail(input: {
     case 'private_booking_cancelled_retention':
       paragraphs = [
         `Your booking ${date} is cancelled.`,
-        `Following review, ${money(input.retainedAmount)} of your deposit has been retained to cover costs from the cancellation.`,
+        `Following review, we've kept ${money(input.retainedAmount)} to cover costs from the cancellation.`,
         ...(input.refundAmount > 0 ? [`${refund} will be refunded within 10 working days.`] : []),
         "We'll send a breakdown on request.",
       ];
       rows = [
-        ['Deposit retained', money(input.retainedAmount)],
+        ['Kept to cover costs', money(input.retainedAmount)],
         ...(input.retentionReason ? ([['Reason', input.retentionReason]] as Array<[string, string]>) : []),
         ...(input.refundAmount > 0 ? ([['Refund', refund]] as Array<[string, string]>) : []),
       ];
