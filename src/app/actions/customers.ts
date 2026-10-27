@@ -452,7 +452,9 @@ export async function deleteCustomer(id: string) {
         resource_type: 'customer',
         resource_id: id,
         operation_status: 'success',
-        old_values: customer
+        // The record is gone, so the audit row must not become the last copy of the guest's
+        // name, phone and email (BK-081). The id says which record was deleted.
+        old_values: { id }
       })
     }
 

@@ -10,6 +10,10 @@ import { buildGuestListModel, type GuestListBookingInput } from '@/lib/events/gu
 import { generateEventGuestListPdf } from '@/lib/events/guest-list-pdf'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
 import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
+import { logAuditEvent } from '@/app/actions/audit'
+import { DOOR_LIST_EXCLUDED_STATUS_FILTER, doorPaymentLabel, isOnDoorList, loadDoorPayments } from '@/lib/events/door-list'
+import { hasGuestAnswers } from '@/lib/events/guest-answers'
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -21,11 +25,21 @@ type EventRow = {
   date: string
   time: string | null
   slug: string | null
+  payment_mode: string | null
+  is_free: boolean | null
+  price: number | null
+  price_per_seat: number | null
+  online_discount_type: string | null
+  online_discount_value: number | null
+  online_discount_ends_at: string | null
 }
 
 type BookingRow = {
+  id: string
   seats: number | null
+  status: string | null
   attendee_names: string[] | null
+  attendees: unknown
   is_reminder_only: boolean | null
   customer: {
     first_name: string | null
@@ -57,7 +71,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const { data: event, error: eventError } = await admin
       .from('events')
-      .select('id, name, date, time, slug')
+      .select('id, name, date, time, slug, payment_mode, is_free, price, price_per_seat, online_discount_type, online_discount_value, online_discount_ends_at')
       .eq('id', eventId)
       .maybeSingle()
 
@@ -66,24 +80,40 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const eventRow = event as EventRow
 
+    // The same people as the booking sheets and the event page (BK-030): everyone except
+    // cancelled bookings and lapsed payment holds. It used to list confirmed bookings only.
     const { data: bookings, error: bookingsError } = await admin
       .from('bookings')
-      .select('seats, attendee_names, is_reminder_only, customer:customers(first_name, last_name)')
+      .select('id, seats, status, attendee_names, attendees, is_reminder_only, customer:customers(first_name, last_name)')
       .eq('event_id', eventId)
-      .eq('status', 'confirmed')
+      .not('status', 'in', DOOR_LIST_EXCLUDED_STATUS_FILTER)
       .eq('is_reminder_only', false)
 
     if (bookingsError) throw bookingsError
 
-    const bookingRows = (bookings ?? []) as unknown as BookingRow[]
+    const bookingRows = ((bookings ?? []) as unknown as BookingRow[]).filter(isOnDoorList)
+    const payments = await loadDoorPayments(admin, bookingRows.map((b) => b.id))
+    const paymentMode = resolveEventPaymentMode(eventRow)
+    const pricePerSeat = resolveEventPriceAmount(eventRow)
 
-    const groups = buildGuestListModel(bookingRows.map((b): GuestListBookingInput => ({
-      seats: b.seats,
-      attendeeNames: b.attendee_names,
-      customerFirstName: b.customer?.first_name ?? null,
-      customerLastName: b.customer?.last_name ?? null,
-      isReminderOnly: b.is_reminder_only,
-    })))
+    const groups = buildGuestListModel(bookingRows.map((b): GuestListBookingInput => {
+      const label = doorPaymentLabel({
+        paymentMode,
+        isFree: pricePerSeat === 0 && paymentMode === 'free',
+        payments: payments.get(b.id) ?? [],
+        amountDue: pricePerSeat * Math.max(1, Number(b.seats ?? 1)),
+      })
+      return {
+        seats: b.seats,
+        attendeeNames: b.attendee_names,
+        attendees: b.attendees,
+        customerFirstName: b.customer?.first_name ?? null,
+        customerLastName: b.customer?.last_name ?? null,
+        isReminderOnly: b.is_reminder_only,
+        // Only what the door has to act on: money still to take.
+        paymentNote: label.startsWith('Not paid') ? label : null,
+      }
+    }))
 
     const dateLabel = formatDateInLondon(eventRow.date, {
       weekday: 'long',
@@ -99,6 +129,20 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     )
 
     const filename = `guest-list-${safeFilename(eventRow.slug || eventRow.name)}.pdf`
+
+    // The list carries guests' answers (health data on the tasting night), so each download is
+    // recorded (BK-017). Counts only.
+    if (bookingRows.some((b) => hasGuestAnswers(b.attendees))) {
+      await logAuditEvent({
+        user_id: user.id,
+        user_email: user.email ?? undefined,
+        operation_type: 'export',
+        resource_type: 'event',
+        resource_id: eventRow.id,
+        operation_status: 'success',
+        additional_info: { document: 'guest_list', bookings: bookingRows.length },
+      })
+    }
 
     return new NextResponse(pdf as unknown as BodyInit, {
       headers: {
