@@ -1,4 +1,4 @@
--- Rollback for 20261026195347_event_collect_guest_details.sql: restores create_event_booking_v08
+-- Rollback for 20261027132851_event_collect_guest_details.sql: restores create_event_booking_v08
 -- exactly as production held it on 26 October 2026 (md5(prosrc) bb05eb67c52cdb2f99c8e32a0b459ffc,
 -- SECURITY DEFINER, search_path public, service_role only) and drops events.collect_guest_details.
 --

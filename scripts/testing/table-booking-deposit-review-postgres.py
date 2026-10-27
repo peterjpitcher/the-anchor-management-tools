@@ -24,7 +24,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026233632_table_booking_deposit_review.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133418_table_booking_deposit_review.sql'
 ROLLBACK = ROOT / 'tasks/table-booking-deposit-review/rollback.sql'
 
 SETUP = """

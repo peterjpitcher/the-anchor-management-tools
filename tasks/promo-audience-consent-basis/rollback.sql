@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261026224114_promo_audience_consent_basis.sql.
+-- Rollback for supabase/migrations/20261027133329_promo_audience_consent_basis.sql.
 -- Restores production's definition exactly (md5(prosrc) 2e7eb2740facd6397bea90194ae0c661) and its
 -- grants: service_role only.
 
