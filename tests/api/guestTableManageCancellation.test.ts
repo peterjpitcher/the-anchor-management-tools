@@ -86,7 +86,7 @@ describe('guest table-manage cancellation route', () => {
     )
   })
 
-  it('accepts the guarded cancel link for sandboxed browsers that block forms', async () => {
+  it('never cancels on a GET: the old link opens the cancel step instead (BK-109)', async () => {
     const response = await GET(buildCancelLinkRequest(), {
       params: Promise.resolve({ token: 'raw-token' }),
     })
@@ -95,16 +95,23 @@ describe('guest table-manage cancellation route', () => {
 
     const redirectUrl = new URL(response.headers.get('location') || '')
     expect(redirectUrl.pathname).toBe('/g/raw-token/table-manage')
-    expect(redirectUrl.searchParams.get('status')).toBe('cancelled')
+    expect(redirectUrl.searchParams.get('confirmCancel')).toBe('1')
+    expect(redirectUrl.searchParams.get('status')).toBeNull()
 
-    expect(mocks.updateTableBookingByRawToken).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        rawToken: 'raw-token',
-        action: 'cancel',
-        newPartySize: undefined,
-        notes: undefined,
-      })
+    expect(mocks.updateTableBookingByRawToken).not.toHaveBeenCalled()
+    expect(mocks.createAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('sends any other GET back to the manage page without touching the booking', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/g/raw-token/table-manage/action?action=update&party_size=4', { method: 'GET' }),
+      { params: Promise.resolve({ token: 'raw-token' }) },
     )
+
+    expect(response.status).toBe(303)
+    const redirectUrl = new URL(response.headers.get('location') || '')
+    expect(redirectUrl.pathname).toBe('/g/raw-token/table-manage')
+    expect(redirectUrl.search).toBe('')
+    expect(mocks.updateTableBookingByRawToken).not.toHaveBeenCalled()
   })
 })

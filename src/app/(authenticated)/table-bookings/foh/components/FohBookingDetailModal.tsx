@@ -23,10 +23,14 @@ import {
   postBookingAction,
   getFohTimeChangeBlocker,
 } from '../utils'
+import { staffCancellationBody } from '@/lib/table-bookings/staff-cancellation'
+import { FohCancelBookingConfirm } from './FohCancelBookingConfirm'
 
 type FohBookingDetailModalProps = {
   selectedBookingContext: SelectedBookingContext | null
   canEdit: boolean
+  /** table_bookings manage: may choose the refund amount when cancelling (BK-046). */
+  canChooseRefund?: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
   showNoShowConfirmation: boolean
@@ -51,6 +55,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const {
     selectedBookingContext,
     canEdit,
+    canChooseRefund = false,
     bookingActionInFlight,
     showCancelBookingConfirmation,
     showNoShowConfirmation,
@@ -179,6 +184,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
           <BookingActions
             selectedBooking={selectedBooking}
+            canChooseRefund={canChooseRefund}
             selectedBookingIsOutside={selectedBookingIsOutside}
             bookingActionInFlight={bookingActionInFlight}
             showCancelBookingConfirmation={showCancelBookingConfirmation}
@@ -276,6 +282,7 @@ const DANGER_OUTLINE_SELECTED_CLASS = 'border-danger bg-danger-soft'
 // Inner component for the action buttons section
 function BookingActions(props: {
   selectedBooking: FohBooking
+  canChooseRefund: boolean
   selectedBookingIsOutside: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
@@ -301,6 +308,7 @@ function BookingActions(props: {
 }) {
   const {
     selectedBooking,
+    canChooseRefund,
     selectedBookingIsOutside,
     bookingActionInFlight,
     showCancelBookingConfirmation,
@@ -472,43 +480,24 @@ function BookingActions(props: {
       )}
 
       {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
-        <div className="rounded-md border border-danger-border bg-danger-soft px-3 py-2">
-          <p className="text-xs font-semibold text-danger-fg">Confirm cancellation</p>
-          <p className="mt-1 text-xs text-danger-fg">
-            This will mark the booking as cancelled and remove it from active covers.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => onSetShowCancelBookingConfirmation(false)}
-              className="min-h-touch"
-            >
-              Keep booking
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => {
-                void (async () => {
-                  const ok = await onRunAction(
-                    () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/cancel`),
-                    'Booking cancelled',
-                    'cancel'
-                  )
-                  if (ok) onClose()
-                })()
-              }}
-              className="min-h-touch"
-            >
-              {bookingActionInFlight === 'cancel' ? 'Cancelling...' : 'Confirm cancel'}
-            </Button>
-          </div>
-        </div>
+        <FohCancelBookingConfirm
+          key={selectedBooking.id}
+          booking={selectedBooking}
+          canChooseRefund={canChooseRefund}
+          busy={Boolean(bookingActionInFlight)}
+          cancelling={bookingActionInFlight === 'cancel'}
+          onKeep={() => onSetShowCancelBookingConfirmation(false)}
+          onConfirm={(choice) => {
+            void (async () => {
+              const ok = await onRunAction(
+                () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/cancel`, staffCancellationBody(choice)),
+                'Booking cancelled',
+                'cancel'
+              )
+              if (ok) onClose()
+            })()
+          }}
+        />
       )}
 
       {/* Move table, last.

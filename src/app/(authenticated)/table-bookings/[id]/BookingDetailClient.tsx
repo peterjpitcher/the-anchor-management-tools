@@ -1,6 +1,8 @@
 'use client'
 
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
+import { StaffCancelChoice } from '@/components/features/table-bookings/StaffCancelChoice'
+import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -52,12 +54,20 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
+import { staffStatusActionsFor } from '@/lib/table-bookings/staff-status-actions'
 import {
   describeGuestNotificationChannel,
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
+import {
+  depositHeldGbp,
+  initialStaffCancelForm,
+  readStaffCancelForm,
+  staffCancellationBody,
+  type StaffCancelFormState,
+} from '@/lib/table-bookings/staff-cancellation'
 import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_shared/status-ui'
 import type { BookingAuditTrailEntry } from '@/lib/table-bookings/audit-trail'
 
@@ -398,6 +408,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [noShowConfirmOpen, setNoShowConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  // Who is cancelling, for the cancel and delete dialogs (BK-046). Reset each time one opens.
+  const [cancelForm, setCancelForm] = useState<StaffCancelFormState>(() => initialStaffCancelForm(0))
+  const [cancelFormProblem, setCancelFormProblem] = useState<string | null>(null)
+  // Bumped after a cancellation so the "guest not told" warning looks again (BK-177).
+  const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
@@ -427,6 +442,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     }),
     [depositRefunds],
   )
+
+  // The status buttons that apply to the booking as it stands (BK-048).
+  const statusActions = staffStatusActionsFor(booking)
+  const bookingClosed = booking.status === 'cancelled' || booking.status === 'completed' || booking.status === 'no_show'
+
+  // What the guest paid and still has with us: where a manager's chosen refund starts (D7).
+  const depositHeld = depositHeldGbp(booking, refundTotals.totalRefunded + refundTotals.totalPending)
 
   const assignedTables = useMemo(
     () => booking.table_booking_tables.map((assignment) => assignment.table).filter((table): table is BookingTableInner => Boolean(table)),
@@ -566,15 +588,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   }
 
   async function handleStatusAction(
-    action: 'seated' | 'left' | 'no_show' | 'cancelled' | 'confirmed' | 'completed'
+    action: 'seated' | 'left' | 'no_show' | 'cancelled' | 'confirmed' | 'completed',
+    extra: Record<string, unknown> = {}
   ) {
     await runAction(
       `status:${action}`,
       async () => {
         const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
-          body: { action },
+          body: { ...extra, action },
         })
         warnIfCancellationNotReached(payload)
+        if (action === 'cancelled') setGuestNotToldRefresh((count) => count + 1)
       },
       'Booking updated'
     )
@@ -799,12 +823,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     )
   }
 
-  async function handleDeleteBooking() {
+  async function handleDeleteBooking(cancellation?: Record<string, unknown>) {
     await runAction(
       'delete',
       async () => {
         const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
           method: 'DELETE',
+          ...(cancellation ? { body: cancellation } : {}),
         })
         warnIfCancellationNotReached(payload)
         router.push('/table-bookings/boh')
@@ -907,26 +932,38 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => setNoShowConfirmOpen(true)}
-        disabled={Boolean(actionLoadingKey)}
-      >
-        Mark No-Show
-      </Button>
+      {!bookingClosed && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setNoShowConfirmOpen(true)}
+          disabled={Boolean(actionLoadingKey)}
+        >
+          Mark No-Show
+        </Button>
+      )}
+      {!bookingClosed && (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => {
+            setCancelForm(initialStaffCancelForm(depositHeld))
+            setCancelFormProblem(null)
+            setCancelConfirmOpen(true)
+          }}
+          disabled={Boolean(actionLoadingKey)}
+        >
+          Cancel Booking
+        </Button>
+      )}
       <Button
         size="sm"
         variant="danger"
-        onClick={() => setCancelConfirmOpen(true)}
-        disabled={Boolean(actionLoadingKey)}
-      >
-        Cancel Booking
-      </Button>
-      <Button
-        size="sm"
-        variant="danger"
-        onClick={() => setDeleteConfirmOpen(true)}
+        onClick={() => {
+          setCancelForm(initialStaffCancelForm(depositHeld))
+          setCancelFormProblem(null)
+          setDeleteConfirmOpen(true)
+        }}
         disabled={Boolean(actionLoadingKey)}
       >
         Delete
@@ -946,6 +983,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       {/* data-touch-targets: reached from BOH on a tablet. The wrapper carries that attribute and
           keeps the page's own 24px rhythm between blocks. */}
       <div className="space-y-6" data-touch-targets>
+        {/* A guest staff cancelled on who was not told stays here until someone rings (BK-177). */}
+        <GuestNotToldPanel bookingId={booking.id} refreshKey={guestNotToldRefresh} canEdit={canEdit} />
+
         {/* The guest's name is the page title, so this card carries the status and the when. */}
         <Card>
           <CardBody className="space-y-2">
@@ -1137,41 +1177,51 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 <CardHeader title="Actions" />
                 <CardBody className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => void handleStatusAction('seated')}
-                      loading={actionLoadingKey === 'status:seated'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Seat Guests
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('left')}
-                      loading={actionLoadingKey === 'status:left'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Left
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('confirmed')}
-                      loading={actionLoadingKey === 'status:confirmed'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Confirmed
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleStatusAction('completed')}
-                      loading={actionLoadingKey === 'status:completed'}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark Completed
-                    </Button>
+                    {/* Only the status changes that apply now (BK-048): Mark Confirmed no longer
+                        shows on a cancelled or completed booking, which it used to bring back. */}
+                    {statusActions.includes('seated') && (
+                      <Button
+                        size="sm"
+                        onClick={() => void handleStatusAction('seated')}
+                        loading={actionLoadingKey === 'status:seated'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Seat Guests
+                      </Button>
+                    )}
+                    {statusActions.includes('left') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('left')}
+                        loading={actionLoadingKey === 'status:left'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Left
+                      </Button>
+                    )}
+                    {statusActions.includes('confirmed') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('confirmed')}
+                        loading={actionLoadingKey === 'status:confirmed'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Confirmed
+                      </Button>
+                    )}
+                    {statusActions.includes('completed') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleStatusAction('completed')}
+                        loading={actionLoadingKey === 'status:completed'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        Mark Completed
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="secondary"
@@ -1320,6 +1370,20 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   <Alert tone="warning">
                     The refunds on this booking could not be loaded, so this card may not show money already returned.
                     Reload the page before refunding the deposit.
+                  </Alert>
+                )}
+
+                {/* A cancelled booking still holding a cash deposit (BK-041): it goes back across
+                    the bar, so it stays on screen until the refund is recorded. */}
+                {booking.status === 'cancelled' &&
+                  booking.payment_method === 'cash' &&
+                  depositCanBeRefunded &&
+                  depositRefunds !== null &&
+                  refundTotals.totalRefunded + refundTotals.totalPending < refundableDepositAmount && (
+                  <Alert tone="warning" title="Return the cash deposit">
+                    This booking was cancelled while its deposit, paid in cash, is still held. Hand back
+                    what is owed at the bar (the cancellation email to the manager has the amount), then
+                    record it here with Process Refund, method cash.
                   </Alert>
                 )}
 
@@ -1488,30 +1552,114 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           closeOnConfirm={false}
         />
 
-        <ConfirmDialog
+        {/* Who is cancelling decides the refund and the words the guest gets (BK-046, D7). */}
+        <Modal
           open={cancelConfirmOpen}
           onClose={() => setCancelConfirmOpen(false)}
-          onConfirm={async () => {
-            setCancelConfirmOpen(false)
-            await handleStatusAction('cancelled')
-          }}
-          tone="danger"
           title="Cancel Booking"
-          message="Cancel this booking? The customer will be notified."
-          confirmLabel="Cancel Booking"
-          cancelLabel="Keep Booking"
-          closeOnConfirm={false}
-        />
+          width="md"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setCancelConfirmOpen(false)}>
+                Keep Booking
+              </Button>
+              <Button
+                variant="danger"
+                loading={actionLoadingKey === 'status:cancelled'}
+                disabled={Boolean(actionLoadingKey)}
+                onClick={() => {
+                  const read = readStaffCancelForm(cancelForm, depositHeld)
+                  if (!read.ok) {
+                    setCancelFormProblem(read.error)
+                    return
+                  }
+                  setCancelConfirmOpen(false)
+                  void handleStatusAction('cancelled', staffCancellationBody(read.choice))
+                }}
+              >
+                Cancel Booking
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-text">Cancel this booking? The customer will be notified.</p>
+            <StaffCancelChoice
+              name="detail-cancelled-by"
+              value={cancelForm}
+              onChange={(next) => {
+                setCancelForm(next)
+                setCancelFormProblem(null)
+              }}
+              heldGbp={depositHeld}
+              canChooseAmount={canManage}
+              disabled={Boolean(actionLoadingKey)}
+            />
+            {cancelFormProblem ? <Alert tone="danger" size="sm">{cancelFormProblem}</Alert> : null}
+          </div>
+        </Modal>
 
-        <ConfirmDialog
-          open={deleteConfirmOpen}
-          onClose={() => setDeleteConfirmOpen(false)}
-          onConfirm={() => void handleDeleteBooking()}
-          tone="danger"
-          title="Delete Booking"
-          message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
-          confirmLabel="Delete"
-        />
+        {booking.status === 'cancelled' ? (
+          <ConfirmDialog
+            open={deleteConfirmOpen}
+            onClose={() => setDeleteConfirmOpen(false)}
+            onConfirm={() => void handleDeleteBooking()}
+            tone="danger"
+            title="Delete Booking"
+            message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
+            confirmLabel="Delete"
+          />
+        ) : (
+          // Deleting a live booking cancels it, refunds and tells the guest, so it asks who is
+          // cancelling as the cancel does (BK-046).
+          <Modal
+            open={deleteConfirmOpen}
+            onClose={() => setDeleteConfirmOpen(false)}
+            title="Delete Booking"
+            width="md"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setDeleteConfirmOpen(false)}>
+                  Keep Booking
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={actionLoadingKey === 'delete'}
+                  disabled={Boolean(actionLoadingKey)}
+                  onClick={() => {
+                    const read = readStaffCancelForm(cancelForm, depositHeld)
+                    if (!read.ok) {
+                      setCancelFormProblem(read.error)
+                      return
+                    }
+                    setDeleteConfirmOpen(false)
+                    void handleDeleteBooking(staffCancellationBody(read.choice))
+                  }}
+                >
+                  Delete
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <p className="text-sm text-text">
+                {`Delete booking ${booking.booking_reference ?? ''}? It is cancelled first, so the customer is notified and any deposit refunded.`}
+              </p>
+              <StaffCancelChoice
+                name="detail-delete-cancelled-by"
+                value={cancelForm}
+                onChange={(next) => {
+                  setCancelForm(next)
+                  setCancelFormProblem(null)
+                }}
+                heldGbp={depositHeld}
+                canChooseAmount={canManage}
+                disabled={Boolean(actionLoadingKey)}
+              />
+              {cancelFormProblem ? <Alert tone="danger" size="sm">{cancelFormProblem}</Alert> : null}
+            </div>
+          </Modal>
+        )}
 
         {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)
             each dialog's controls get the 44px floor (D6). */}
