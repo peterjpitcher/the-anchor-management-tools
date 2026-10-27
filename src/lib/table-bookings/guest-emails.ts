@@ -716,8 +716,29 @@ export function buildTableBookingConfirmReminderEmail(input: BookingFacts & { co
  * "has been cancelled.", passed in verbatim so the amount and the refund timing cannot drift
  * from what the text says.
  */
-export function buildTableBookingCancelledEmail(input: BookingFacts & { refundSentence: string }): TableBookingEmail {
+export function buildTableBookingCancelledEmail(
+  input: BookingFacts & {
+    refundSentence: string
+    /** 'venue' when the pub cancelled (BK-046): the email apologises and says it was us. */
+    cancelledBy?: 'guest' | 'venue'
+  }
+): TableBookingEmail {
   const date = formatBookingDateForEmail(input.bookingDate, input.startDateTime)
+  if (input.cancelledBy === 'venue') {
+    return renderTableBookingEmail({
+      subject: "We've had to cancel your booking at The Anchor",
+      preheader: date ? `We're sorry, we've had to cancel your booking on ${date}` : "We're sorry, we've had to cancel your booking",
+      heading: "We've had to cancel your booking",
+      opening: [
+        date
+          ? `Hi ${input.firstName}, we're sorry, but we've had to cancel your booking on ${date}.`
+          : `Hi ${input.firstName}, we're sorry, but we've had to cancel your booking.`,
+      ],
+      details: bookingDetailRows(input),
+      closing: [input.refundSentence],
+      beforeContact: ['If you have any questions, tell us.'],
+    })
+  }
   return renderTableBookingEmail({
     subject: 'Your booking at The Anchor has been cancelled',
     preheader: date ? `Your booking on ${date} has been cancelled` : 'Your booking has been cancelled',

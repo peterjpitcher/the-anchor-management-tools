@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
-import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { resolveStaffCancellation, staffCancellationAuditInfo } from '@/lib/table-bookings/staff-cancellation-auth'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 import {
@@ -15,10 +15,13 @@ import {
   type StaffStatusAction
 } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkNoShowCanComeBack } from '@/lib/table-bookings/reinstate-check'
 
+// Passthrough: a cancel also carries who is cancelling and any manager refund amount (BK-046),
+// which resolveStaffCancellation reads and checks.
 const UpdateStatusSchema = z.object({
   action: z.enum(['seated', 'left', 'no_show', 'cancelled', 'confirmed', 'completed'])
-})
+}).passthrough()
 
 const ACTION_ERROR_MESSAGE: Record<StaffStatusAction, string> = {
   seated: 'Failed to mark booking as seated',
@@ -68,6 +71,17 @@ export async function POST(
 
   const action = parsed.data.action
   const nowIso = new Date().toISOString()
+
+  // Who is cancelling decides the refund (BK-046). Read before anything changes, so a refund amount
+  // from someone who may not choose one is refused with the booking untouched.
+  let cancellation: Extract<Awaited<ReturnType<typeof resolveStaffCancellation>>, { ok: true }> | null = null
+  if (action === 'cancelled') {
+    const resolved = await resolveStaffCancellation(body, auth.userId)
+    if (!resolved.ok) {
+      return resolved.response
+    }
+    cancellation = resolved
+  }
   const blockUnpaidRequiredDeposit = hasUnpaidRequiredDeposit(booking)
 
   if ((action === 'seated' || action === 'confirmed') && blockUnpaidRequiredDeposit) {
@@ -80,6 +94,14 @@ export async function POST(
       },
       { status: 409 }
     )
+  }
+
+  // Putting a no-show back checks its table is still free and its deposit still held (BK-048).
+  if ((action === 'seated' || action === 'confirmed') && booking.status === 'no_show') {
+    const problem = await checkNoShowCanComeBack(auth.supabase, booking)
+    if (problem) {
+      return NextResponse.json({ error: problem }, { status: 409 })
+    }
   }
 
   if (action === 'left') {
@@ -113,6 +135,7 @@ export async function POST(
           // taken but never recorded.
           ...transition.plan.update,
           hold_expires_at: null,
+          ...(cancellation ? { cancellation_reason: cancellation.cancellationReason } : {}),
         }
       : transition.plan.update)
     .eq('id', id)
@@ -146,6 +169,8 @@ export async function POST(
       bookingDate: booking.booking_date,
       customerId: booking.customer_id,
       source: 'boh_status_cancel',
+      terms: cancellation?.terms,
+      staffCancel: true,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)
@@ -161,7 +186,8 @@ export async function POST(
     additional_info: {
       status_from: booking.status,
       status_to: action === 'seated' ? booking.status : action,
-      action
+      action,
+      ...(cancellation ? staffCancellationAuditInfo(cancellation.choice) : {}),
     }
   }).catch(() => {})
 
