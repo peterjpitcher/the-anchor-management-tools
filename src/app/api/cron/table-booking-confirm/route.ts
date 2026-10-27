@@ -28,6 +28,7 @@ import { logger } from '@/lib/logger'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { createBookingConfirmToken } from '@/lib/table-bookings/manage-booking'
 import { getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import { bookingStartInstant } from '@/lib/table-bookings/confirm-token'
 import {
   CONFIRMABLE_BOOKING_STATUSES,
   decideConfirmReminder,
@@ -53,6 +54,7 @@ type BookingRow = {
   booking_reference: string
   booking_date: string
   booking_time: string | null
+  start_datetime: string | null
   party_size: number | null
   status: string
   guest_confirmed_at: string | null
@@ -155,7 +157,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings, error: bookingsError } = await supabase
       .from('table_bookings')
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status, sms_opt_in, email, email_status, email_deactivated_at)',
+        'id, booking_reference, booking_date, booking_time, start_datetime, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status, sms_opt_in, email, email_status, email_deactivated_at)',
       )
       .in('status', CONFIRMABLE_BOOKING_STATUSES as unknown as string[])
       .is('guest_confirmed_at', null)
@@ -224,7 +226,14 @@ export async function GET(request: NextRequest) {
         const token = await createBookingConfirmToken(supabase, {
           customerId: candidate.customer!.id,
           tableBookingId: row.id,
-          bookingStartIso: `${row.booking_date}T${row.booking_time || '00:00'}:00`,
+          // BK-207: the stored start, or the London clock time on the booking date. The old
+          // `${date}T${time}:00` string never parsed, so every link lasted 14 days.
+          bookingStartIso:
+            bookingStartInstant({
+              startDateTime: row.start_datetime,
+              bookingDate: row.booking_date,
+              bookingTime: row.booking_time,
+            })?.toISOString() ?? null,
           appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
         })
 
