@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027003609_customer_contact_suppressions.sql.
+-- Rollback for supabase/migrations/20261027154844_customer_contact_suppressions.sql.
 -- Production held none of these objects before the migration (checked 27 October 2026), so the
 -- rollback removes them all. Any suppression rows written since are lost with the table: a
 -- customer deleted or merged in the meantime would again come back without their opt-outs.

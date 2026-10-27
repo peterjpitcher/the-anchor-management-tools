@@ -26,7 +26,7 @@
 -- customer counter: the match was its own local variable v_cancelled_table_booking_count. It is
 -- not changed.
 --
--- Part 2 (20261027005403_drop_customer_booking_counters) keeps a copy of the two columns and drops
+-- Part 2 (20261027154847_drop_customer_booking_counters) keeps a copy of the two columns and drops
 -- them; it refuses to run until this part is in.
 --
 -- Rollback: tasks/customer-booking-counters/rollback-live.sql restores both functions as

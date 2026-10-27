@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027005339_customer_booking_counters_live.sql.
+-- Rollback for supabase/migrations/20261027154846_customer_booking_counters_live.sql.
 -- Restores update_customer_booking_stats and get_email_capture_audience exactly as production held
 -- them on 27 October 2026 (pg_get_functiondef output; md5(prosrc) e91880fe00e9f4424a38037a3046bd20
 -- and 42cf7716b86ab6c4979ef7c5636cc1a7), with their grants. Roll back part 2

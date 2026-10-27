@@ -9,7 +9,7 @@
 -- on finished bookings, and 9 'pending' table_deposit rows.
 --
 -- This migration changes how new bookings behave; the old rows are tidied separately in
--- 20261027010145_retire_old_booking_rows (owner decision D36).
+-- 20261027154849_retire_old_booking_rows (owner decision D36).
 --
 --   create_table_booking_core_v06   stops writing the 'pending' payments row. The deposit is
 --                                   already on the booking (deposit_amount); the cash path,
@@ -30,8 +30,8 @@
 --                                   composes with release 12's pacing patch in either order.
 --                                   CREATE OR REPLACE keeps owner, SECURITY DEFINER, search_path
 --                                   and grants; the grants (service_role only) are restated.
---                                   Checked against production on 27 October 2026: md5(prosrc)
---                                   e831d41dc33d4331c09db4570fd85003.
+--                                   Checked against production on 27 October 2026, after release
+--                                   12's patch was applied: md5(prosrc) 7bd5ba3e1bbf40ad350248960e7b75dd.
 --
 --   table_booking_payment_hold_on_capture   AFTER UPDATE OF paypal_deposit_capture_id: when a
 --                                   capture is first recorded, the booking's active payment hold

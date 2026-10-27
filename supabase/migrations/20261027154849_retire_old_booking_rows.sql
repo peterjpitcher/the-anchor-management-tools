@@ -129,14 +129,14 @@ BEGIN
     PRIMARY KEY (source_table, row_id)
   );
   COMMENT ON TABLE public.retired_row_values_20261027 IS
-    'Old values of the rows changed by 20261027010145_retire_old_booking_rows (release 28, D36), for its rollback.';
+    'Old values of the rows changed by 20261027154849_retire_old_booking_rows (release 28, D36), for its rollback.';
   ALTER TABLE public.retired_row_values_20261027 ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON TABLE public.retired_row_values_20261027 FROM PUBLIC, anon, authenticated;
   GRANT SELECT ON TABLE public.retired_row_values_20261027 TO service_role;
 
   CREATE TABLE public.retired_pending_bookings_20261027 (LIKE public.pending_bookings);
   COMMENT ON TABLE public.retired_pending_bookings_20261027 IS
-    'The 48 pending_bookings rows deleted by 20261027010145_retire_old_booking_rows (BK-166), for its rollback. Holds phone numbers: drop once no longer needed.';
+    'The 48 pending_bookings rows deleted by 20261027154849_retire_old_booking_rows (BK-166), for its rollback. Holds phone numbers: drop once no longer needed.';
   ALTER TABLE public.retired_pending_bookings_20261027 ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON TABLE public.retired_pending_bookings_20261027 FROM PUBLIC, anon, authenticated;
   GRANT SELECT ON TABLE public.retired_pending_bookings_20261027 TO service_role;

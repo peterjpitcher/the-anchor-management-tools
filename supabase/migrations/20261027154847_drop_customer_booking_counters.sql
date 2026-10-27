@@ -3,7 +3,7 @@
 --
 -- customers.table_booking_count and customers.last_table_booking_date only ever went up, so they
 -- disagreed with the bookings for 129 and 105 of the 852 customers with table bookings on 27
--- October 2026. Part 1 (20261027005339_customer_booking_counters_live) stopped the trigger writing
+-- October 2026. Part 1 (20261027154846_customer_booking_counters_live) stopped the trigger writing
 -- them and moved their one reader, get_email_capture_audience, to the bookings themselves. Nothing
 -- else reads them: no view, policy, index or other function (checked in production on 27 October
 -- 2026), no TypeScript outside the generated types, and not the website.
@@ -33,7 +33,7 @@ BEGIN
      WHERE p.pronamespace = 'public'::regnamespace
        AND (p.prosrc ~ '(^|[^a-z_])table_booking_count' OR p.prosrc ~ '(^|[^a-z_])last_table_booking_date')
   ) THEN
-    RAISE EXCEPTION 'drop_customer_booking_counters: a function still reads or writes the counters; apply 20261027005339_customer_booking_counters_live first';
+    RAISE EXCEPTION 'drop_customer_booking_counters: a function still reads or writes the counters; apply 20261027154846_customer_booking_counters_live first';
   END IF;
 END
 $guard$;

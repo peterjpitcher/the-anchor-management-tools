@@ -4,7 +4,7 @@
 BK-164 (customer bookings review of 24 October 2026): managers can merge duplicate customers.
 The customers table and the tables that point at it are fixtures with production's columns,
 foreign keys and unique indexes (read 27 October 2026), and the suppression list migration
-(20261027003609) is loaded first because the merge writes to it.
+(20261027154844) is loaded first because the merge writes to it.
 
 Against that baseline the defect is shown: a guest with a new number has two records, and the
 kept one cannot be given the duplicate's email because the unique index refuses it. Then the
@@ -26,8 +26,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-SUPPRESSIONS = ROOT / 'supabase/migrations/20261027003609_customer_contact_suppressions.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261027004416_merge_customers.sql'
+SUPPRESSIONS = ROOT / 'supabase/migrations/20261027154844_customer_contact_suppressions.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027154845_merge_customers.sql'
 ROLLBACK = ROOT / 'tasks/merge-customers/rollback.sql'
 
 KEEP = '00000000-0000-0000-0000-00000000000a'
@@ -59,7 +59,8 @@ CREATE TABLE public.customers (
   email_status text NOT NULL DEFAULT 'unknown', email_delivery_failures integer NOT NULL DEFAULT 0,
   last_email_failure_reason text, last_successful_email_at timestamptz, email_deactivated_at timestamptz,
   last_sms_failure_reason text, sms_deactivation_reason text, last_whatsapp_failure_reason text,
-  whatsapp_deactivation_reason text, sms_opt_in_source text, whatsapp_opt_in_source text
+  whatsapp_deactivation_reason text, sms_opt_in_source text, whatsapp_opt_in_source text,
+  is_placeholder boolean NOT NULL DEFAULT false
 );
 CREATE UNIQUE INDEX idx_customers_mobile_e164 ON public.customers (mobile_e164);
 CREATE UNIQUE INDEX idx_customers_email_unique ON public.customers (lower(email::text));
@@ -300,7 +301,7 @@ def main():
             check(f"(SELECT no_show_count = 3 AND created_at = '2025-03-01' AND first_name = 'Jo' AND mobile_e164 = '+447700900101'"
                   f" FROM customers WHERE id = '{KEEP}')", 'no-shows add up, the earlier created date is kept, the name and phone stay')
             check(f"(SELECT first_name = 'Merged' AND last_name = 'Customer' AND email IS NULL AND mobile_e164 IS NULL AND mobile_number = '07700900000'"
-                  f" AND sms_status = 'opted_out' AND internal_notes LIKE 'Merged into customer {KEEP} on %' FROM customers WHERE id = '{DUP}')",
+                  f" AND sms_status = 'opted_out' AND is_placeholder AND internal_notes LIKE 'Merged into customer {KEEP} on %' FROM customers WHERE id = '{DUP}')",
                   'the duplicate is anonymised and says which record it was merged into')
             check(f"(SELECT count(*) FROM customers) = {customers_before}", 'no customers row is deleted')
             check("(SELECT sms_opted_out AND marketing_email_opted_out AND source = 'customer_merged' FROM customer_contact_suppressions"
