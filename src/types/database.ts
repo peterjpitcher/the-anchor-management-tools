@@ -31,6 +31,8 @@ export interface Event {
   online_discount_value?: number | null;
   online_discount_ends_at?: string | null;
   booking_questions?: BookingQuestion[];
+  /** Ask for each ticket's name and answers. Null follows the default (paid online in advance). BK-014. */
+  collect_guest_details?: boolean | null;
   is_free?: boolean | null;
   booking_url?: string | null;
   // Phase 1 SEO fields

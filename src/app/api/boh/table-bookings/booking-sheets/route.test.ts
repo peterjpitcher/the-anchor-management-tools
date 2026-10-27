@@ -399,9 +399,38 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     // The Christmas tiers come from the booking, not from cover rows (BK-058).
     expect(select).toContain('christmas_course_counts')
 
-    // Never selected.
-    expect(select).not.toContain('special_requirements')
+    // The guest's notes and dietary needs print beside the allergies, marked confidential: owner
+    // decision D6 (BK-052) reversed spec D-3 because allergies mostly arrive in the notes.
+    expect(select).toContain('special_requirements')
+    expect(select).toContain('dietary_requirements')
+    expect(select).toContain('allergies')
+
+    // Never selected: the staff-only note stays off the printed sheet.
+    expect(select).not.toContain('internal_notes')
     expect(select).not.toContain('is_private_block')
+  })
+
+  it("prints a booking's notes, allergies and dietary needs, and leaves a booking with none unchanged", async () => {
+    queryResult.data = [
+      makeRow({ id: 'b1', booking_reference: 'ANC-001' }),
+      makeRow({
+        id: 'b2',
+        booking_reference: 'ANC-002',
+        special_requirements: '  Coeliac, please no bread  ',
+        dietary_requirements: ['Vegetarian'],
+        allergies: [],
+      }),
+    ]
+
+    await GET(makeRequest('2026-07-16'))
+
+    const sheets = lastSheets() as Array<Sheet & { guestNotes?: unknown }>
+    expect(sheets.find((sheet) => sheet.bookingRef === 'ANC-001')?.guestNotes).toBeUndefined()
+    expect(sheets.find((sheet) => sheet.bookingRef === 'ANC-002')?.guestNotes).toEqual({
+      allergies: [],
+      dietary: ['Vegetarian'],
+      notes: 'Coeliac, please no bread',
+    })
   })
 
   it('maps step-free and high-chair needs onto the sheet, step-free first', async () => {

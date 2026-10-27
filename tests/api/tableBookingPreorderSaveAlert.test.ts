@@ -250,3 +250,90 @@ describe('POST /api/table-bookings: food choices that fail to save', () => {
     expect(reportPreorderSaveFailure).not.toHaveBeenCalled()
   })
 })
+
+// BK-148 and owner decision D23: a Christmas party all on 1 course has nothing to pre-order, but each
+// guest's name and dietary note still save to their seat.
+describe('POST /api/table-bookings: a Christmas party all on 1 course', () => {
+  function buildChristmasSupabase() {
+    const base = buildSupabase()
+    base.rpc.mockResolvedValue({
+      data: {
+        state: 'pending_payment',
+        table_booking_id: BOOKING_ID,
+        booking_reference: 'TB-FIXTURE',
+        hold_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        deposit_amount: 40,
+        table_name: 'T1',
+        booking_period_requires_preorder: false,
+        christmas_course_counts: [1, 1, 1, 1],
+      },
+      error: null,
+    } as never)
+    const coverQuery = {
+      select: () => coverQuery,
+      eq: () => coverQuery,
+      order: async () => ({
+        data: [1, 2, 3, 4].map((ordinal) => ({ id: `cover-${ordinal}`, ordinal })),
+        error: null,
+      }),
+    }
+    return {
+      ...base,
+      from: vi.fn((table: string) => (table === 'booking_preorder_covers' ? coverQuery : base.from(table))),
+    }
+  }
+
+  function bookOneCourse(preorder: Array<Record<string, unknown>>) {
+    return POST(
+      new Request('http://localhost/api/table-bookings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-key', 'idempotency-key': 'idem-2' },
+        body: JSON.stringify({
+          phone: '+447000000000',
+          first_name: 'Fixture',
+          date: '2026-12-05',
+          time: '18:00',
+          party_size: 4,
+          purpose: 'christmas',
+          booking_period_id: PERIOD_ID,
+          booking_period_answer: true,
+          christmas_course_counts: [1, 1, 1, 1],
+          preorder,
+        }),
+      }) as Parameters<typeof POST>[0],
+    )
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ensureCustomerForPhone.mockResolvedValue({ customerId: '44444444-4444-4444-8444-444444444444' })
+    savePreorderCover.mockResolvedValue({})
+    vi.mocked(createAdminClient).mockReturnValue(buildChristmasSupabase() as unknown as ReturnType<typeof createAdminClient>)
+  })
+
+  it("saves each guest's name and dietary note to their seat", async () => {
+    const response = await bookOneCourse([
+      { guest_name: 'Sam', dietary_note: 'No dairy' },
+      {},
+      { guest_name: 'Alex' },
+      {},
+    ])
+
+    const body = await response.json()
+    expect(body.data.preorder).toMatchObject({ saved: true, saved_covers: 4 })
+    expect(savePreorderCover).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      coverId: 'cover-1', guestName: 'Sam', dietaryNote: 'No dairy',
+    }))
+    expect(savePreorderCover).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      coverId: 'cover-3', guestName: 'Alex',
+    }))
+  })
+
+  it('writes nothing when no guest was named or given a note', async () => {
+    const response = await bookOneCourse([{}, {}, {}, {}])
+
+    const body = await response.json()
+    expect(body.data.preorder ?? null).toBeNull()
+    expect(savePreorderCover).not.toHaveBeenCalled()
+  })
+})

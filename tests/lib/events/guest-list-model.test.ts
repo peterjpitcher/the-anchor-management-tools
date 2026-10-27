@@ -7,15 +7,64 @@ const booking = (o: Partial<GuestListBookingInput>): GuestListBookingInput => ({
 })
 
 describe('buildGuestListModel', () => {
-  it('lists the booker first, then each further named guest', () => {
+  // BK-031: every named ticket is a line from ticket 1, and the booker is named in the heading.
+  it('lists every named ticket from ticket 1, with the booker in the heading', () => {
     const [group] = buildGuestListModel([
       booking({ seats: 3, customerFirstName: 'Jane', customerLastName: 'Smith',
         attendeeNames: ['Jane Smith', 'Tom Smith', 'Priya Patel'] }),
     ])
     expect(group.bookerName).toBe('Jane Smith')
+    expect(group.bookedBy).toBe('Jane Smith')
     expect(group.lines.map(l => l.name)).toEqual(['Jane Smith', 'Tom Smith', 'Priya Patel'])
-    expect(group.lines[0].isBooker).toBe(true)
-    expect(group.lines[1].isBooker).toBe(false)
+    expect(group.lines.every(l => !l.isBooker)).toBe(true)
+  })
+
+  it('lists ticket 1 when the booker bought tickets for others and is not coming', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 2, customerFirstName: 'Pat', customerLastName: 'Booker',
+        attendeeNames: ['Ann Guest', 'Bo Guest'] }),
+    ])
+    expect(group.lines.map(l => l.name)).toEqual(['Ann Guest', 'Bo Guest'])
+    expect(group.lines.map(l => l.name)).not.toContain('Pat Booker')
+    expect(group.bookedBy).toBe('Pat Booker')
+  })
+
+  it('lists the booker once when they are ticket 3', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 3, customerFirstName: 'Cat', customerLastName: 'Third',
+        attendeeNames: ['Ann Guest', 'Bo Guest', 'Cat Third'] }),
+    ])
+    expect(group.lines.map(l => l.name)).toEqual(['Ann Guest', 'Bo Guest', 'Cat Third'])
+    expect(group.lines.filter(l => l.name === 'Cat Third')).toHaveLength(1)
+  })
+
+  // BK-015: each guest's answers go on the door list under their name.
+  it('takes names and answers from the stored guest details, keeping only answers given', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 2, customerFirstName: 'Pat', customerLastName: 'Booker', attendeeNames: ['stale', 'names'],
+        attendees: [
+          { id: 'a', name: 'Ann Guest', ticket_type_id: null, answers: [
+            { question_id: 'q1', label: 'Any allergies?', type: 'text', value: 'Peanuts' },
+            { question_id: 'q2', label: 'Step-free access?', type: 'yes_no', value: 'yes' },
+          ] },
+          { id: 'b', name: 'Bo Guest', ticket_type_id: null, answers: [
+            { question_id: 'q1', label: 'Any allergies?', type: 'text', value: '' },
+          ] },
+        ] }),
+    ])
+    expect(group.lines.map(l => l.name)).toEqual(['Ann Guest', 'Bo Guest'])
+    expect(group.lines[0].answers).toEqual([
+      { label: 'Any allergies?', value: 'Peanuts' },
+      { label: 'Step-free access?', value: 'Yes' },
+    ])
+    expect(group.lines[1].answers).toEqual([])
+  })
+
+  it('carries what the door still has to take', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 1, customerFirstName: 'Sol', customerLastName: 'Reed', paymentNote: 'Not paid yet: £45.00 due' }),
+    ])
+    expect(group.paymentNote).toBe('Not paid yet: £45.00 due')
   })
 
   it('fills blank lines up to the seat count when names are missing', () => {

@@ -83,6 +83,9 @@ type PeriodDraft = {
 
 type MenuDraft = {
   period_id: string
+  /** Set when editing a dish already on the menu, so its allergens can be filled in (BK-060). */
+  id?: string
+  sort_order?: number
   course: MenuCourse
   name: string
   description: string
@@ -453,6 +456,15 @@ export function SeasonalPeriods() {
                                   {item.description && (
                                     <p className="text-xs text-text-muted">{item.description}</p>
                                   )}
+                                  {/* Guests see these beside each choice; a dish with none tells them to
+                                      ask, so a gap is worth filling in rather than leaving (BK-060). */}
+                                  {item.allergens ? (
+                                    <p className="text-xs text-text">Allergens: {item.allergens}</p>
+                                  ) : (
+                                    <p className="text-xs text-warning-fg">
+                                      No allergens recorded. Guests are told to check the menu or ask us.
+                                    </p>
+                                  )}
                                   {/* Only reachable if the row was written outside this screen, which
                                       refuses to save it. Say so rather than showing a silent blank. */}
                                   {menuCourseRequiresPrice(item.course) && item.priceGbp === null && (
@@ -462,20 +474,41 @@ export function SeasonalPeriods() {
                                     </p>
                                   )}
                                 </div>
-                                <Button
-                                  variant="secondary"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void post(
-                                      '/api/settings/table-bookings/periods/menu',
-                                      'DELETE',
-                                      { id: item.id },
-                                      'Menu item removed',
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </Button>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    aria-label={`Edit ${item.name}`}
+                                    onClick={() =>
+                                      setMenuDraft({
+                                        period_id: period.id,
+                                        id: item.id,
+                                        sort_order: item.sortOrder,
+                                        course: item.course,
+                                        name: item.name,
+                                        description: item.description ?? '',
+                                        price_gbp: item.priceGbp === null ? '' : String(item.priceGbp),
+                                        allergens: item.allergens ?? '',
+                                      })
+                                    }
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void post(
+                                        '/api/settings/table-bookings/periods/menu',
+                                        'DELETE',
+                                        { id: item.id },
+                                        'Menu item removed',
+                                      )
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               </li>
                             ))}
                           </ul>
@@ -491,6 +524,8 @@ export function SeasonalPeriods() {
                             <Select
                               label="Course"
                               options={COURSE_OPTIONS}
+                              // A dish already on the menu keeps its course: guests may have chosen it as one.
+                              disabled={Boolean(menuDraft.id)}
                               value={menuDraft.course}
                               onChange={(e) =>
                                 setMenuDraft({ ...menuDraft, course: e.target.value as MenuCourse })
@@ -568,7 +603,9 @@ export function SeasonalPeriods() {
                                     '/api/settings/table-bookings/periods/menu',
                                     'POST',
                                     {
-                                      period_id: menuDraft.period_id,
+                                      ...(menuDraft.id
+                                        ? { id: menuDraft.id, sort_order: menuDraft.sort_order ?? 0 }
+                                        : { period_id: menuDraft.period_id }),
                                       course: menuDraft.course,
                                       name: menuDraft.name.trim(),
                                       description: menuDraft.description.trim() || null,
@@ -576,12 +613,12 @@ export function SeasonalPeriods() {
                                         menuDraft.price_gbp === '' ? null : Number(menuDraft.price_gbp),
                                       allergens: menuDraft.allergens.trim() || null,
                                     },
-                                    'Menu item added',
+                                    menuDraft.id ? 'Menu item saved' : 'Menu item added',
                                   )
                                   if (ok) setMenuDraft(null)
                                 }}
                               >
-                                Add Dish
+                                {menuDraft.id ? 'Save Dish' : 'Add Dish'}
                               </Button>
                             </FormFooter>
                           </div>

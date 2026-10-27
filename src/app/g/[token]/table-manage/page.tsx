@@ -30,6 +30,9 @@ import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { logger } from '@/lib/logger'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
+import { loadGuestChristmasParty, type GuestChristmasParty } from './christmas-party-data'
+import { ChristmasPartySection } from './ChristmasPartySection'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from '@/lib/table-bookings/christmas'
 
 /** Names the flow at the top of the page, per the approved kicker list. */
 // Static and non-personal on purpose: no token, customer name or booking reference may reach
@@ -115,6 +118,37 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       return { tone: 'green', text: 'Booking updated.' }
     case 'cancelled':
       return { tone: 'green', text: 'Booking cancelled.' }
+    case 'christmas_updated':
+      return {
+        tone: 'green',
+        text: "Your numbers are updated. We'll check your deposit against the new numbers and let you know if anything needs to change."
+      }
+    case 'christmas_closed':
+      return {
+        tone: 'red',
+        text: `The deadline for changing your Christmas numbers online has passed. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
+    case 'christmas_size':
+      return {
+        tone: 'red',
+        text: `Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
+    case 'christmas_no_change':
+      return { tone: 'amber', text: 'Tick anyone not coming, or add guests, then press Update numbers.' }
+    case 'christmas_changed':
+      return { tone: 'amber', text: 'Your numbers changed while this page was open, so nothing was saved. Please check the list below and try again.' }
+    case 'christmas_call':
+      return { tone: 'red', text: `To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.` }
+    case 'no_table':
+      return {
+        tone: 'red',
+        text: `We couldn't find a table for that many guests at your time. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
+    case 'too_large':
+      return {
+        tone: 'red',
+        text: `For more than ${CHRISTMAS_MAX_PARTY_SIZE} guests, please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
     case 'error':
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':
@@ -231,6 +265,22 @@ export default async function TableManageBookingPage({
     }
   }
 
+  // Christmas numbers change through their own form (BK-053, D21), never the plain party-size box.
+  const isChristmas = isChristmasBookingType(preview.booking_type ?? null)
+  let christmasParty: GuestChristmasParty | null = null
+  if (isChristmas && preview.can_edit && preview.table_booking_id) {
+    try {
+      christmasParty = await loadGuestChristmasParty(supabase, preview.table_booking_id)
+    } catch (error) {
+      // The rest of the page still works; the numbers card falls back to "please call us".
+      logger.error('Guest table-manage could not load the Christmas numbers', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { tableBookingId: preview.table_booking_id }
+      })
+      christmasParty = { courseCounts: null, seatNames: [], canChangeOnline: false, closesAt: null }
+    }
+  }
+
   const preorderBanner = preorderMessage(query.preorder)
   const errorSeat = Number.parseInt(query.seat || '', 10)
   const bookingReference = preview.booking_reference || preview.table_booking_id
@@ -289,16 +339,18 @@ export default async function TableManageBookingPage({
           <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
             <input type="hidden" name="action" value="update" />
 
-            <GuestField id="party_size" label="Party size" required>
-              <GuestInput
-                {...guestFieldControlProps({ id: 'party_size', required: true })}
-                name="party_size"
-                type="number"
-                min="1"
-                max="20"
-                defaultValue={String(preview.party_size || 1)}
-              />
-            </GuestField>
+            {!isChristmas && (
+              <GuestField id="party_size" label="Party size" required>
+                <GuestInput
+                  {...guestFieldControlProps({ id: 'party_size', required: true })}
+                  name="party_size"
+                  type="number"
+                  min="1"
+                  max="20"
+                  defaultValue={String(preview.party_size || 1)}
+                />
+              </GuestField>
+            )}
 
             <GuestField id="notes" label="Special requirements" hint={NOTES_HINT}>
               <GuestTextarea
@@ -316,6 +368,8 @@ export default async function TableManageBookingPage({
           </form>
         </GuestCard>
       )}
+
+      {christmasParty && <ChristmasPartySection {...christmasParty} actionUrl={actionUrl} />}
 
       {preorderLoadFailed && (
         <GuestAlert

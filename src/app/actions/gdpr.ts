@@ -90,6 +90,63 @@ export async function exportUserData(userId?: string) {
 }
 
 /**
+ * Answer a guest's request for their data (BK-081, customer bookings review of 24 October 2026).
+ *
+ * `subjectIdentifier` is what the guest gave us: an email address, a phone number, or a customer
+ * or profile record id. It resolves exactly as an erasure does and exports the same tables, so
+ * the pub can answer within the month the law allows without hand-written SQL. Super admins
+ * only, like erasure, because the file holds a guest's whole history.
+ */
+export async function exportGuestData(subjectIdentifier: string): Promise<{
+  success?: boolean
+  error?: string
+  data?: string
+  fileName?: string
+  mimeType?: string
+}> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'User not authenticated' }
+    }
+
+    if (!(await callerIsSuperAdmin(user.id))) {
+      return { error: 'Insufficient permissions' }
+    }
+
+    const subject = await GdprService.resolveErasureSubject(subjectIdentifier)
+    if (!subject) {
+      return { error: 'No customer or user found with that email address, phone number or record id' }
+    }
+
+    const result = await GdprService.exportSubjectData(subject, user.id)
+    const exportJson = await appendVoucherDataToExport(result.data)
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email || undefined,
+      operation_type: 'export',
+      resource_type: 'user_data',
+      resource_id: subject.profileId ?? subject.customerIds[0] ?? undefined,
+      operation_status: 'success',
+      additional_info: {
+        exported_by: user.id,
+        // Ids and counts only: the request's email or phone must not be copied into the log.
+        profile_id: subject.profileId,
+        customer_ids: subject.customerIds,
+        record_counts: result.counts,
+      },
+    })
+
+    return { success: true, data: exportJson, fileName: result.fileName, mimeType: result.mimeType }
+  } catch (error: unknown) {
+    console.error('Error exporting guest data:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
  * Erase a data subject's personal data (right to be forgotten).
  *
  * `subjectIdentifier` is whatever the requester gave us: an email address, a

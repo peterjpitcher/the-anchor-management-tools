@@ -293,6 +293,34 @@ async function maybeMoveTableForPartySizeIncrease(
   }
 }
 
+/**
+ * Put a booking back on the table it had before `maybeMoveTableForPartySizeIncrease` moved it, when
+ * the party size then failed to save. A booking that had no table loses the row the move added.
+ * Never throws: the caller reports the original failure, and a failed undo is logged as an error so
+ * it is seen in production.
+ */
+async function undoTableMoveForPartySize(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string,
+  previousTableId: string | null
+): Promise<void> {
+  try {
+    const { error } = previousTableId
+      ? await supabase.from('booking_table_assignments')
+        .update({ table_id: previousTableId })
+        .eq('table_booking_id', bookingId)
+      : await supabase.from('booking_table_assignments')
+        .delete()
+        .eq('table_booking_id', bookingId)
+    if (error) throw error
+  } catch (error) {
+    logger.error('Could not undo a table move after a guest party-size change failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId, previousTableId }
+    })
+  }
+}
+
 /** What the booking function falls back to when the setting is missing or unreadable. */
 const DEFAULT_ONLINE_PARTY_LIMIT = 20
 
@@ -677,6 +705,17 @@ export async function updateTableBookingByRawToken(
     }
   }
 
+  // A Christmas party changes size through its own form (guest-christmas-party.ts), which knows who
+  // is leaving and each new guest's courses. This box never did: the database refuses a size that
+  // does not match the course list, and on a booking without one it skipped the 4-guest minimum
+  // (BK-053). The page no longer shows the box on a Christmas booking, so this is a stale form.
+  if (isChristmasBookingType(preview.booking_type ?? null) && newPartySize !== oldPartySize) {
+    return {
+      state: 'blocked',
+      reason: 'christmas_party_form'
+    }
+  }
+
   const commitTime = getThreeDayCommitTime(startAt)
   let nextCommittedSize = oldCommittedSize
   if (now.getTime() < commitTime.getTime()) {
@@ -688,6 +727,9 @@ export async function updateTableBookingByRawToken(
   // (they have no assignment rows and cannot be given one here). The outside table they DO hold
   // is re-costed for us, because the `party_size` UPDATE below trips the reconciling trigger
   // from 20260802000008_outside_reservation_sync.sql. Do not add a bespoke copy of that here.
+  // The table move a bigger party needed, so it can be undone if the size then fails to save.
+  let tableMove: { previousTableId: string | null } | null = null
+
   if (newPartySize > oldPartySize && preview.is_outside_seating !== true) {
     const tableCapacity = Math.max(0, Number(preview.table_capacity || 0))
 
@@ -717,6 +759,9 @@ export async function updateTableBookingByRawToken(
           reason: 'no_table'
         }
       }
+      if (moveResult.moved) {
+        tableMove = { previousTableId: preview.table_id || null }
+      }
     }
   }
 
@@ -725,23 +770,33 @@ export async function updateTableBookingByRawToken(
   // for the same reason as the late-cancel charge above: no card is held, so the
   // fee could never be collected. See the note in the cancel branch.
 
-  const { data: updatedBooking, error: updateError } = await supabase.from('table_bookings')
-    .update({
-      party_size: newPartySize,
-      committed_party_size: nextCommittedSize,
-      special_requirements: cleanNotes ?? preview.special_requirements ?? null,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', bookingId)
-    .eq('status', 'confirmed')
-    .select('id')
-    .maybeSingle()
+  let updatedBooking: { id: string } | null = null
+  try {
+    const { data, error: updateError } = await supabase.from('table_bookings')
+      .update({
+        party_size: newPartySize,
+        committed_party_size: nextCommittedSize,
+        special_requirements: cleanNotes ?? preview.special_requirements ?? null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', bookingId)
+      .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle()
 
-  if (updateError) {
+    if (updateError) {
+      throw updateError
+    }
+    updatedBooking = data
+  } catch (updateError) {
+    // The move to a bigger table has already been saved, so put the booking back where it was
+    // rather than leave it holding a table for a party size that never changed (BK-053).
+    if (tableMove) await undoTableMoveForPartySize(supabase, bookingId, tableMove.previousTableId)
     throw updateError
   }
 
   if (!updatedBooking) {
+    if (tableMove) await undoTableMoveForPartySize(supabase, bookingId, tableMove.previousTableId)
     return {
       state: 'blocked',
       reason: 'booking_not_confirmed'
@@ -759,6 +814,8 @@ export async function updateTableBookingByRawToken(
    * A failure here must not fail the amendment: the size is already saved, and the
    * transition raises its own manual-review state for cases a person has to decide.
    */
+  let depositReview: string | null = null
+  let bookingFacts: { booking_reference?: string | null; booking_date?: string | null } | null = null
   try {
     // Read the deposit state separately rather than widening the preview: that preview is
     // serialised straight to the guest-facing page, and it must not start carrying the
@@ -766,13 +823,14 @@ export async function updateTableBookingByRawToken(
     const { data: depositState } = await supabase
       .from('table_bookings')
       .select(
-        'id, customer_id, party_size, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name',
+        'id, customer_id, party_size, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name, booking_reference, booking_date',
       )
       .eq('id', bookingId)
       .maybeSingle()
 
     if (depositState) {
-      await applyPartySizeDepositTransition(supabase, {
+      bookingFacts = depositState
+      const transition = await applyPartySizeDepositTransition(supabase, {
         booking: {
           ...(depositState as Record<string, unknown>),
           // The row now carries the NEW size; the transition needs the old one as its base.
@@ -783,11 +841,29 @@ export async function updateTableBookingByRawToken(
         sendSms: true,
         appBaseUrl: resolveAppBaseUrl(input.appBaseUrl),
       })
+      // A seasonal deposit is left for a person to check. That message used to be dropped here.
+      if (transition.state === 'manual_review') depositReview = transition.message
     }
   } catch (depositError) {
     logger.error('Guest party-size amendment saved but the deposit transition failed', {
       error: depositError instanceof Error ? depositError : new Error(String(depositError)),
       metadata: { bookingId, oldPartySize, newPartySize },
+    })
+    depositReview = 'The deposit could not be checked automatically. Check it and handle it manually.'
+  }
+
+  // Every guest change is audited, and one that leaves the deposit for a person reaches the manager
+  // (BK-053). Imported here for the same reason as cancel-notify above: it keeps the email and audit
+  // modules out of everything that imports this file for its token helpers. Never throws.
+  if (newPartySize !== oldPartySize) {
+    const { recordGuestPartySizeChange } = await import('./party-size-alerts')
+    await recordGuestPartySizeChange({
+      tableBookingId: bookingId,
+      bookingReference: bookingFacts?.booking_reference ?? preview.booking_reference ?? null,
+      bookingDate: bookingFacts?.booking_date ?? null,
+      previousPartySize: oldPartySize,
+      newPartySize,
+      depositReview,
     })
   }
 

@@ -40,6 +40,7 @@ import { FohOutsideBookings } from './components/FohOutsideBookings'
 import { FohBookingDetailModal } from './components/FohBookingDetailModal'
 import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
+import type { ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { FohChangeTimeModal } from './components/FohChangeTimeModal'
 import {
   describeGuestNotificationChannel,
@@ -96,7 +97,7 @@ export function FohScheduleClient({
   const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
   const [showNoShowConfirmation, setShowNoShowConfirmation] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
-  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
+  const [christmasPartyChange, setChristmasPartyChange] = useState<ChristmasPartyChange | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditBookingId, setPartySizeEditBookingId] = useState<string | null>(null)
   const [changeTimeOpen, setChangeTimeOpen] = useState(false)
@@ -656,7 +657,7 @@ export function FohScheduleClient({
 
       <FohPartySizeModal
         bookingId={partySizeEditBookingId}
-        onCoursesChange={setChristmasCourseCounts}
+        onCoursesChange={setChristmasPartyChange}
         open={partySizeEditOpen}
         bookingActionInFlight={bookingActionInFlight}
         partySizeEditValue={partySizeEditValue}
@@ -669,7 +670,7 @@ export function FohScheduleClient({
           if (!bid) return
           setPartySizeEditOpen(false)
           void (async () => {
-            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasCourseCounts }), 'Party size updated', 'party_size')
+            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats, expected_course_counts: christmasPartyChange?.expectedCourseCounts }), 'Party size updated', 'party_size')
             if (ok) closeBookingDetails()
           })()
         }}
