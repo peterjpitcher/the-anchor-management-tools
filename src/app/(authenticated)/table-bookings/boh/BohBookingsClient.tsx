@@ -38,6 +38,7 @@ import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
+import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
 import { BookingNoteMarker } from '@/components/features/table-bookings/BookingNoteMarker'
 import { bookingNoteMarker, type BookingNoteFacts } from '@/lib/table-bookings/allergy-words'
 import {
@@ -1054,6 +1055,8 @@ export function BohBookingsClient({
           only applies below 821px. See the note in FohScheduleClient. This wrapper carries the
           attribute for the page body and keeps the page's own 24px rhythm between blocks. */}
       <div className="space-y-6" data-touch-targets>
+        {/* Earlier bookings nobody marked as arrived or no-show (BK-130). Renders nothing when there are none. */}
+        <OpenEarlierBookingsStrip canEdit={canEdit} />
         <Card>
           <CardHeader
             title={formatRangeLabel(rangeStartDate, rangeEndDate)}

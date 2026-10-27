@@ -6,6 +6,8 @@
  * both now read this one, so a session looks the same on every Cashing Up screen.
  */
 
+import type { OnlineIncomeStatus } from '@/lib/finance/online-income'
+
 type CashupBadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
 /** Session status to Badge tone: approved is done, submitted waits for approval, locked is closed. */
@@ -107,3 +109,19 @@ export function weeklyProgressTone(percentOfTarget: number): 'success' | 'primar
 export function cashVarianceAlertTone(variance: number): 'danger' | 'warning' | 'success' {
   return CASH_VARIANCE_UI[cashVarianceKind(variance)].alert
 }
+
+/**
+ * Where a payment taken online stands (BK-117, the Online Income page): a refund is the one to
+ * look at, money held for a visit to come is information, and anything taken for good is good news.
+ * Words: ONLINE_INCOME_STATUS_LABELS in src/lib/finance/online-income.ts.
+ */
+export const ONLINE_INCOME_STATUS_TONE: Record<OnlineIncomeStatus, CashupBadgeTone> = {
+  held: 'info',
+  applied: 'success',
+  kept: 'success',
+  earned: 'success',
+  paid: 'success',
+  refunded: 'warning',
+  part_refunded: 'warning',
+}
+

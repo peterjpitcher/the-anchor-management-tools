@@ -106,3 +106,50 @@ describe('upsertAndSubmitSessionAction duplicate recovery', () => {
     expect(result).toMatchObject({ success: true, data: storedSession, recovered: true })
   })
 })
+
+describe('upsertAndSubmitSessionAction sales and takings gap (BK-119, D33)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+    } as never)
+    vi.mocked(PermissionService.checkUserPermission).mockResolvedValue(true)
+    vi.mocked(CashingUpService.getSessionByDateAndSite).mockResolvedValue(null)
+    vi.mocked(CashingUpService.upsertSession).mockResolvedValue(storedSession as never)
+  })
+
+  const withGap = (gapNote?: string | null): UpsertCashupSessionDTO => ({
+    ...input,
+    notes: 'Auto-detected: Quiz night',
+    gapNote,
+    salesBreakdowns: [{ salesCategory: 'drinks_sales', amount: 130 }],
+    paymentBreakdowns: [{ paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: 10, countedAmount: 10 }],
+  })
+
+  it('refuses to submit a gap over £5 that the member of staff has not explained', async () => {
+    const result = await upsertAndSubmitSessionAction(withGap('   '))
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Till sales are £120.00 more than takings. Say why in the notes before submitting (any gap over £5.00).',
+    })
+    expect(CashingUpService.upsertSession).not.toHaveBeenCalled()
+  })
+
+  it('submits once the gap is explained', async () => {
+    const result = await upsertAndSubmitSessionAction(withGap('Private hire balance paid by bank'))
+
+    expect(result).toMatchObject({ success: true })
+    expect(CashingUpService.upsertSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('needs no note for a gap of £5 or less', async () => {
+    const result = await upsertAndSubmitSessionAction({
+      ...withGap(null),
+      salesBreakdowns: [{ salesCategory: 'drinks_sales', amount: 15 }],
+    })
+
+    expect(result).toMatchObject({ success: true })
+  })
+})
+

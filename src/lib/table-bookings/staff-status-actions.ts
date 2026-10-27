@@ -108,6 +108,49 @@ function blocks(action: string, booking: StaffStatusBooking): StaffStatusTransit
   return null
 }
 
+/**
+ * 'Arrived' for a booking from an earlier day that nobody marked on the night (BK-130). The
+ * floor's 'seated' action stamps the time it is pressed, which the morning after would put the
+ * party at its table hours after it left. This stamps the booking's own start and end instead,
+ * and leaves the status alone, as 'seated' does.
+ */
+export function buildPastArrivalPlan(input: {
+  booking: StaffStatusBooking & {
+    seated_at: string | null
+    left_at: string | null
+    no_show_at: string | null
+    end_datetime: string | null
+  }
+  tradingDayIso: string
+  nowIso: string
+}): StaffStatusTransitionResult {
+  const { booking } = input
+  if (booking.status !== 'confirmed') {
+    return { ok: false, status: 409, error: 'Only a confirmed booking can be marked as arrived.' }
+  }
+  if (booking.seated_at || booking.left_at || booking.no_show_at) {
+    return { ok: false, status: 409, error: 'This booking already has an outcome.' }
+  }
+  if (!(booking.booking_date < input.tradingDayIso)) {
+    return { ok: false, status: 409, error: 'Mark today\'s bookings from the floor.' }
+  }
+  const startIso = getBookingStartIso(booking)
+  if (!startIso) {
+    return { ok: false, status: 409, error: 'This booking has no start time.' }
+  }
+  return {
+    ok: true,
+    plan: {
+      update: {
+        seated_at: startIso,
+        left_at: booking.end_datetime ?? startIso,
+        updated_at: input.nowIso,
+      },
+      select: 'id, status, seated_at, left_at, no_show_at',
+    },
+  }
+}
+
 export function buildStaffStatusTransitionPlan(input: {
   action: StaffStatusAction
   booking: StaffStatusBooking

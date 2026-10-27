@@ -88,6 +88,8 @@ export type EventBookingRow = {
   ticket_breakdown?: string | null
   /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
   charge_total?: number | null
+  /** The guest's check-in for this event, from the door or the staff list (BK-130); null when none. */
+  check_in?: { id: string; check_in_method: string | null } | null
   /** The email typed for this booking when the customer record holds a different one (BK-078). */
   contact_email?: string | null
   customer?: {
@@ -759,6 +761,23 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
 
     if (paymentsError) throw paymentsError
 
+    // Who came (BK-130): a check-in from the door kiosk or ticked from the staff list. One per guest
+    // per event; older rows without a booking are matched to the guest's bookings.
+    const { data: checkInRows, error: checkInsError } = await supabase
+      .from('event_check_ins')
+      .select('id, booking_id, customer_id, check_in_method')
+      .eq('event_id', eventId)
+
+    if (checkInsError) throw checkInsError
+
+    const checkInByBooking = new Map<string, { id: string; check_in_method: string | null }>()
+    const checkInByCustomer = new Map<string, { id: string; check_in_method: string | null }>()
+    for (const row of checkInRows ?? []) {
+      const checkIn = { id: row.id, check_in_method: row.check_in_method }
+      if (row.booking_id) checkInByBooking.set(row.booking_id, checkIn)
+      else if (row.customer_id) checkInByCustomer.set(row.customer_id, checkIn)
+    }
+
     type PaymentRow = {
       event_booking_id: string | null
       amount: number | null
@@ -856,6 +875,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         payment_method_summary: paymentMethodSummary,
         ticket_breakdown: breakdownByBooking.get(booking.id) ?? null,
         charge_total: chargeTotalByBooking.get(booking.id) ?? null,
+        check_in: checkInByBooking.get(booking.id) ?? checkInByCustomer.get(booking.customer_id) ?? null,
       }
     })
 
@@ -2307,8 +2327,97 @@ const markEventBookingPaidSchema = z.object({
   bookingId: z.string().uuid(),
   method: z.enum(['cash', 'card_terminal', 'comp']),
   note: z.string().trim().max(500).optional(),
+  /**
+   * The amount the member of staff confirmed on screen for cash or card (BK-217). The payment is
+   * refused if the door price has changed since, so nothing is recorded that nobody saw.
+   */
+  confirmedAmount: z.number().nonnegative().optional(),
   sendSms: z.boolean().optional().default(true)
 })
+  // A free booking must be explainable later (BK-217): a comp needs a reason.
+  .refine((value) => value.method !== 'comp' || Boolean(value.note), {
+    message: 'Say why this booking is free.',
+    path: ['note'],
+  })
+  .refine((value) => value.method === 'comp' || value.confirmedAmount !== undefined, {
+    message: 'Confirm the amount taken before recording the payment.',
+    path: ['confirmedAmount'],
+  })
+
+type EventDoorChargeEvent = {
+  payment_mode?: string | null
+  price?: number | string | null
+  price_per_seat?: number | string | null
+  is_free?: boolean | null
+}
+
+/**
+ * What a door payment records for a booking: its real composition at FULL per-type price (the
+ * online discount never applies at the venue; owner decision EV-02, 4 July 2026). Legacy bookings
+ * without line items fall back to the event's full ticket price × seats.
+ */
+async function resolveManualDoorChargeAmount(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  eventRecord: EventDoorChargeEvent | null,
+  seatCount: number
+): Promise<number> {
+  let doorItems: BookingItemWithBasePrice[] = []
+  try {
+    doorItems = await loadBookingItemsWithBasePrices(supabase, bookingId)
+  } catch (itemsError) {
+    logger.warn('Failed to load booking items for door charge; falling back to event price', {
+      metadata: {
+        bookingId,
+        error: itemsError instanceof Error ? itemsError.message : String(itemsError),
+      },
+    })
+  }
+  return resolveDoorChargeAmount({
+    items: doorItems,
+    eventFullUnitPrice: resolveEventTicketPriceAmount((eventRecord ?? {}) as unknown as Event),
+    seats: seatCount
+  })
+}
+
+/** The amount Cash Paid or Card Paid would record, shown to staff before they confirm (BK-217). */
+export async function getEventBookingDoorCharge(
+  bookingId: string
+): Promise<{ error: string } | { success: true; data: { amount: number; seats: number } }> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to mark event bookings paid.' }
+    }
+    if (!z.string().uuid().safeParse(bookingId).success) {
+      return { error: 'Booking not found.' }
+    }
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, seats, status, event:events(id, payment_mode, price, price_per_seat, is_free)')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+    if (bookingRow.status !== 'pending_payment') {
+      return { error: 'This booking is not waiting for payment.' }
+    }
+
+    const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const seats = Math.max(1, Number(bookingRow.seats || 1))
+    const amount = await resolveManualDoorChargeAmount(supabase, bookingId, eventRecord ?? null, seats)
+    return { success: true, data: { amount, seats } }
+  } catch (error) {
+    logger.error('Failed to work out the door charge for an event booking', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
+    })
+    return { error: 'Could not work out the amount to record.' }
+  }
+}
 
 type MarkEventBookingPaidResult =
   | { error: string }
@@ -2327,7 +2436,10 @@ type MarkEventBookingPaidResult =
 export async function markEventBookingPaidManually(input: {
   bookingId: string
   method: EventManualPaymentMethod
+  /** Required for a comp: why the booking is free (BK-217). */
   note?: string
+  /** Required for cash or card: the amount staff confirmed on screen (BK-217). */
+  confirmedAmount?: number
   sendSms?: boolean
 }): Promise<MarkEventBookingPaidResult> {
   try {
@@ -2365,29 +2477,19 @@ export async function markEventBookingPaidManually(input: {
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seatCount = Math.max(1, Number(bookingRow.seats || 1))
 
-    // Door payments charge the booking's real composition at FULL per-type price
-    // — the online discount never applies at the venue. Legacy bookings without
-    // line items fall back to the event's full ticket price × seats.
-    let doorItems: BookingItemWithBasePrice[] = []
-    if (parsed.data.method !== 'comp') {
-      try {
-        doorItems = await loadBookingItemsWithBasePrices(supabase, parsed.data.bookingId)
-      } catch (itemsError) {
-        logger.warn('Failed to load booking items for door charge; falling back to event price', {
-          metadata: {
-            bookingId: parsed.data.bookingId,
-            error: itemsError instanceof Error ? itemsError.message : String(itemsError),
-          },
-        })
-      }
-    }
     const expectedAmount = parsed.data.method === 'comp'
       ? 0
-      : resolveDoorChargeAmount({
-        items: doorItems,
-        eventFullUnitPrice: resolveEventTicketPriceAmount(eventRecord as unknown as Event),
-        seats: seatCount
-      })
+      : await resolveManualDoorChargeAmount(supabase, parsed.data.bookingId, eventRecord ?? null, seatCount)
+
+    // Record only the amount staff confirmed on screen (BK-217).
+    if (
+      parsed.data.method !== 'comp' &&
+      Math.round((parsed.data.confirmedAmount ?? -1) * 100) !== Math.round(expectedAmount * 100)
+    ) {
+      return {
+        error: `The amount to record is now ${new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(expectedAmount)}. Check it and try again.`,
+      }
+    }
 
     const { data: confirmRaw, error: confirmError } = await supabase.rpc(
       'confirm_event_manual_payment_v01',
@@ -2472,6 +2574,7 @@ export async function markEventBookingPaidManually(input: {
         event_id: bookingRow.event_id,
         method: parsed.data.method,
         amount: expectedAmount,
+        note: parsed.data.note || null,
         state,
         reason
       }

@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+import { whenLondonClockReaches } from '@/lib/dateUtils'
+import { resolveEventStartIso } from '@/lib/events/event-when'
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
@@ -10,7 +12,22 @@ const ONE_WEEK_MS = 7 * ONE_DAY_MS
 const LONDON_TIMEZONE = 'Europe/London'
 const SUPABASE_PAGE_SIZE = 1000
 const NON_PRODUCTION_MARKERS = ['api_test', 'test', 'dummy', 'demo', 'sample', 'seed', 'sandbox', 'staging']
-const CONFIRMED_PRIVATE_BOOKING_STATUS = 'confirmed'
+/** Keeps each `.in()` list comfortably inside the request URL limit. */
+const ID_CHUNK = 100
+
+/*
+ * What counts as a booking (BK-120, customer bookings review of 24 October 2026). The report
+ * counted every event row, 1,143 of them old reminder-only sign-ups, plus cancellations and
+ * expiries, so event bookings read almost four times too high; table bookings included
+ * cancellations and no-shows; and private hire counted only 'confirmed', so a party dropped out
+ * once it was completed. The weekly insights sections already apply these rules.
+ */
+/** Event bookings that went ahead or will: not reminder-only, cancelled, expired, unpaid or no-show. */
+const REPORTABLE_EVENT_BOOKING_STATUSES = ['confirmed', 'completed', 'visited_waiting_for_review', 'review_clicked']
+/** Table bookings left out of counts and covers. */
+const UNREPORTABLE_TABLE_BOOKING_STATUSES = new Set(['cancelled', 'no_show'])
+/** Private hires that went ahead or will. */
+const REPORTABLE_PRIVATE_BOOKING_STATUSES = ['confirmed', 'completed']
 
 const EVENT_BOOKING_ALLOWED_SOURCES = new Set([
   'direct_booking',
@@ -88,22 +105,59 @@ type CoverTrendBucket = {
 
 type EventCoverRow = {
   customer_id: string | null
-  created_at: string | null
+  event_id: string | null
   seats: number | null
   booking_source: string | null
+  status: string | null
+  is_reminder_only: boolean | null
+}
+
+type CoverEventRow = {
+  id: string
+  start_datetime: string | null
+  date: string | null
+  time: string | null
 }
 
 type TableCoverRow = {
   customer_id: string | null
-  created_at: string | null
   party_size: number | null
   source: string | null
+  status: string | null
+  start_datetime: string | null
+  booking_date: string | null
+  booking_time: string | null
 }
 
 type PrivateCoverRow = {
   customer_id: string | null
-  created_at: string | null
   guest_count: number | null
+  source: string | null
+  status: string | null
+  event_date: string | null
+  start_time: string | null
+  date_tbd: boolean | null
+}
+
+type EventBookingReportRow = {
+  customer_id: string | null
+  created_at: string | null
+  status: string | null
+  booking_source: string | null
+  is_reminder_only: boolean | null
+}
+
+type TableBookingReportRow = {
+  customer_id: string | null
+  created_at: string | null
+  status: string | null
+  source: string | null
+}
+
+type PrivateBookingReportRow = {
+  customer_id: string | null
+  created_at: string | null
+  status: string | null
   source: string | null
 }
 
@@ -174,6 +228,49 @@ function isAllowedSource(value: string | null | undefined, allowedSources: Set<s
   const normalized = normalizeSource(value)
   if (!normalized) return true
   return allowedSources.has(normalized)
+}
+
+/** A real event booking (BK-120): not a reminder-only sign-up, and confirmed or after. */
+export function isReportableEventBooking(row: {
+  status?: string | null
+  is_reminder_only?: boolean | null
+  booking_source?: string | null
+}): boolean {
+  if (row.is_reminder_only === true) return false
+  if (!REPORTABLE_EVENT_BOOKING_STATUSES.includes(String(row.status ?? ''))) return false
+  return isAllowedSource(row.booking_source, EVENT_BOOKING_ALLOWED_SOURCES)
+}
+
+/** A table booking that was not cancelled and was not a no-show (BK-120). */
+export function isReportableTableBooking(row: { status?: string | null; source?: string | null }): boolean {
+  if (!row.status || UNREPORTABLE_TABLE_BOOKING_STATUSES.has(row.status)) return false
+  return isAllowedSource(row.source, TABLE_BOOKING_ALLOWED_SOURCES)
+}
+
+/** A private hire that is confirmed or completed (BK-120: completed parties used to drop out). */
+export function isReportablePrivateBooking(row: { status?: string | null; source?: string | null }): boolean {
+  if (!REPORTABLE_PRIVATE_BOOKING_STATUSES.includes(String(row.status ?? ''))) return false
+  return isAllowedSource(row.source, PRIVATE_BOOKING_ALLOWED_SOURCES)
+}
+
+function countCreatedSince(rows: Array<{ created_at: string | null }>, sinceMs: number | null): number {
+  if (sinceMs === null) return rows.length
+  return rows.filter((row) => {
+    const createdMs = row.created_at ? Date.parse(row.created_at) : Number.NaN
+    return Number.isFinite(createdMs) && createdMs >= sinceMs
+  }).length
+}
+
+function chunk<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size))
+  return chunks
+}
+
+function londonInstantIso(date: string | null, time: string | null): string | null {
+  if (!date) return null
+  const instant = whenLondonClockReaches(date, (time || '00:00').slice(0, 8))
+  return instant ? instant.toISOString() : null
 }
 
 function buildSourceOrFilter(column: string, allowedSources: Set<string>): string {
@@ -373,17 +470,18 @@ function mapCoverTrendGranularity(window: TableBookingReportsWindow): 'hour' | '
   }
 }
 
+/** Covers by when the guests came (BK-120), not by when the booking was made. */
 function aggregateCoverTrend(
   buckets: CoverTrendBucket[],
-  rows: Array<{ created_at: string | null; covers: number; customer_id: string | null }>,
+  rows: Array<{ visit_at: string | null; covers: number; customer_id: string | null }>,
   excludedCustomerIds: Set<string>
 ) {
   const totals = new Array<number>(buckets.length).fill(0)
 
   for (const row of rows) {
-    if (!row.created_at || !Number.isFinite(row.covers) || row.covers <= 0) continue
+    if (!row.visit_at || !Number.isFinite(row.covers) || row.covers <= 0) continue
     if (row.customer_id && excludedCustomerIds.has(row.customer_id)) continue
-    const timestampMs = Date.parse(row.created_at)
+    const timestampMs = Date.parse(row.visit_at)
     if (!Number.isFinite(timestampMs)) continue
 
     for (let index = 0; index < buckets.length; index += 1) {
@@ -512,17 +610,14 @@ export async function loadTableBookingReportsSnapshot(input: {
   const tableBookingSourceFilter = buildSourceOrFilter('source', TABLE_BOOKING_ALLOWED_SOURCES)
   const privateBookingSourceFilter = buildSourceOrFilter('source', PRIVATE_BOOKING_ALLOWED_SOURCES)
 
+  // London dates of the covers chart: covers are counted by the day the guests came (BK-120).
+  const coverSinceDate = formatInTimeZone(new Date(coverTrendSinceIso), LONDON_TIMEZONE, 'yyyy-MM-dd')
+  const coverUntilDate = formatInTimeZone(now, LONDON_TIMEZONE, 'yyyy-MM-dd')
+
   const [
-    eventAllCountResult,
-    tableAllCountResult,
-    privateAllCountResult,
-    eventSelectedCountResult,
-    tableSelectedCountResult,
-    privateSelectedCountResult,
-    event30CountResult,
-    table30CountResult,
-    private30CountResult,
-    eventStatusRowsResult,
+    eventBookingRowsResult,
+    tableBookingRowsResult,
+    privateBookingRowsResult,
     waitlistEntriesRowsResult,
     waitlistOffersRowsResult,
     eventReviewSentCountResult,
@@ -532,64 +627,35 @@ export async function loadTableBookingReportsSnapshot(input: {
     topEngagedResult,
     eventInterestBookingsResult,
     eventInterestWaitlistResult,
-    eventCustomerActivityResult,
-    tableCustomerActivityResult,
-    privateCustomerActivityResult,
     nonProductionCustomersResult,
-    eventCoverRowsResult,
+    coverEventsResult,
     tableCoverRowsResult,
     privateCoverRowsResult
   ] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('table_bookings')
-      .select('id', { count: 'exact', head: true })
-      .or(tableBookingSourceFilter),
-    supabase
-      .from('private_bookings')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
-      .or(privateBookingSourceFilter),
-    supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', sinceSelectedWindow)
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('table_bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', sinceSelectedWindow)
-      .or(tableBookingSourceFilter),
-    supabase
-      .from('private_bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', sinceSelectedWindow)
-      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
-      .or(privateBookingSourceFilter),
-    supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', since30)
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('table_bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', since30)
-      .or(tableBookingSourceFilter),
-    supabase
-      .from('private_bookings')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', since30)
-      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
-      .or(privateBookingSourceFilter),
-    fetchAllRows((from, to) =>
+    // Every booking of each kind, once: the counts, the conversion figures and new versus
+    // returning guests are all worked out from these rows with the rules above.
+    fetchAllRows<EventBookingReportRow>((from, to) =>
       supabase
         .from('bookings')
-        .select('id, status, booking_source')
+        .select('customer_id, created_at, status, booking_source, is_reminder_only')
         .or(eventBookingSourceFilter)
+        .order('id', { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllRows<TableBookingReportRow>((from, to) =>
+      supabase
+        .from('table_bookings')
+        .select('customer_id, created_at, status, source')
+        .or(tableBookingSourceFilter)
+        .order('id', { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllRows<PrivateBookingReportRow>((from, to) =>
+      supabase
+        .from('private_bookings')
+        .select('customer_id, created_at, status, source')
+        .or(privateBookingSourceFilter)
+        .order('id', { ascending: true })
         .range(from, to)
     ),
     fetchAllRows((from, to) =>
@@ -659,75 +725,49 @@ export async function loadTableBookingReportsSnapshot(input: {
     ),
     fetchAllRows((from, to) =>
       supabase
-        .from('bookings')
-        .select('customer_id, created_at')
-        .not('customer_id', 'is', null)
-        .or(eventBookingSourceFilter)
-        .range(from, to)
-    ),
-    fetchAllRows((from, to) =>
-      supabase
-        .from('table_bookings')
-        .select('customer_id, created_at')
-        .not('customer_id', 'is', null)
-        .or(tableBookingSourceFilter)
-        .range(from, to)
-    ),
-    fetchAllRows((from, to) =>
-      supabase
-        .from('private_bookings')
-        .select('customer_id, created_at')
-        .not('customer_id', 'is', null)
-        .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
-        .or(privateBookingSourceFilter)
-        .range(from, to)
-    ),
-    fetchAllRows((from, to) =>
-      supabase
         .from('customers')
         .select('id')
         .or(NON_PRODUCTION_CUSTOMER_FILTER)
         .range(from, to)
     ),
-    fetchAllRows((from, to) =>
+    fetchAllRows<CoverEventRow>((from, to) =>
       supabase
-        .from('bookings')
-        .select('customer_id, created_at, seats, booking_source')
-        .gte('created_at', coverTrendSinceIso)
-        .or(eventBookingSourceFilter)
+        .from('events')
+        .select('id, start_datetime, date, time')
+        .gte('date', coverSinceDate)
+        .lte('date', coverUntilDate)
+        .order('id', { ascending: true })
         .range(from, to)
     ),
-    fetchAllRows((from, to) =>
+    fetchAllRows<TableCoverRow>((from, to) =>
       supabase
         .from('table_bookings')
-        .select('customer_id, created_at, party_size, source')
-        .gte('created_at', coverTrendSinceIso)
+        .select('customer_id, party_size, source, status, start_datetime, booking_date, booking_time')
+        .gte('booking_date', coverSinceDate)
+        .lte('booking_date', coverUntilDate)
+        .not('status', 'in', '(cancelled,no_show)')
         .or(tableBookingSourceFilter)
+        .order('id', { ascending: true })
         .range(from, to)
     ),
-    fetchAllRows((from, to) =>
+    fetchAllRows<PrivateCoverRow>((from, to) =>
       supabase
         .from('private_bookings')
-        .select('customer_id, created_at, guest_count, source')
-        .gte('created_at', coverTrendSinceIso)
-        .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
+        .select('customer_id, guest_count, source, status, event_date, start_time, date_tbd')
+        .gte('event_date', coverSinceDate)
+        .lte('event_date', coverUntilDate)
+        .in('status', REPORTABLE_PRIVATE_BOOKING_STATUSES)
         .or(privateBookingSourceFilter)
+        .order('id', { ascending: true })
         .range(from, to)
     )
   ])
 
   const errors: string[] = []
   const allResults = [
-    eventAllCountResult,
-    tableAllCountResult,
-    privateAllCountResult,
-    eventSelectedCountResult,
-    tableSelectedCountResult,
-    privateSelectedCountResult,
-    event30CountResult,
-    table30CountResult,
-    private30CountResult,
-    eventStatusRowsResult,
+    eventBookingRowsResult,
+    tableBookingRowsResult,
+    privateBookingRowsResult,
     waitlistEntriesRowsResult,
     waitlistOffersRowsResult,
     eventReviewSentCountResult,
@@ -737,11 +777,8 @@ export async function loadTableBookingReportsSnapshot(input: {
     topEngagedResult,
     eventInterestBookingsResult,
     eventInterestWaitlistResult,
-    eventCustomerActivityResult,
-    tableCustomerActivityResult,
-    privateCustomerActivityResult,
     nonProductionCustomersResult,
-    eventCoverRowsResult,
+    coverEventsResult,
     tableCoverRowsResult,
     privateCoverRowsResult
   ]
@@ -752,32 +789,59 @@ export async function loadTableBookingReportsSnapshot(input: {
     }
   }
 
+  // Event bookings for the events in the covers chart, read by event so covers follow the
+  // night the guests came.
+  const coverEvents = (coverEventsResult.data || []) as CoverEventRow[]
+  const coverEventStartById = new Map(coverEvents.map((event) => [event.id, resolveEventStartIso(event)]))
+  const eventCoverRows: EventCoverRow[] = []
+  for (const ids of chunk(coverEvents.map((event) => event.id), ID_CHUNK)) {
+    const result = await fetchAllRows<EventCoverRow>((from, to) =>
+      supabase
+        .from('bookings')
+        .select('customer_id, event_id, seats, booking_source, status, is_reminder_only')
+        .in('event_id', ids)
+        .eq('is_reminder_only', false)
+        .in('status', REPORTABLE_EVENT_BOOKING_STATUSES)
+        .order('id', { ascending: true })
+        .range(from, to)
+    )
+    if (result.error) {
+      errors.push(result.error.message)
+      break
+    }
+    eventCoverRows.push(...result.data)
+  }
+
   if (errors.length > 0) {
     throw new Error(`Failed to load table booking reports: ${errors.join('; ')}`)
   }
 
-  const eventAllCount = eventAllCountResult.count || 0
-  const tableAllCount = tableAllCountResult.count || 0
-  const privateAllCount = privateAllCountResult.count || 0
-  const eventSelectedCount = eventSelectedCountResult.count || 0
-  const tableSelectedCount = tableSelectedCountResult.count || 0
-  const privateSelectedCount = privateSelectedCountResult.count || 0
-  const event30Count = event30CountResult.count || 0
-  const table30Count = table30CountResult.count || 0
-  const private30Count = private30CountResult.count || 0
+  const eventBookingRows = (eventBookingRowsResult.data || []) as EventBookingReportRow[]
+  const reportableEventRows = eventBookingRows.filter(isReportableEventBooking)
+  const reportableTableRows = ((tableBookingRowsResult.data || []) as TableBookingReportRow[]).filter(isReportableTableBooking)
+  const reportablePrivateRows = ((privateBookingRowsResult.data || []) as PrivateBookingReportRow[]).filter(isReportablePrivateBooking)
+
+  const thirtyDaysAgoMs = now.getTime() - THIRTY_DAYS_MS
+  const eventAllCount = reportableEventRows.length
+  const tableAllCount = reportableTableRows.length
+  const privateAllCount = reportablePrivateRows.length
+  const eventSelectedCount = countCreatedSince(reportableEventRows, selectedWindowSinceMs)
+  const tableSelectedCount = countCreatedSince(reportableTableRows, selectedWindowSinceMs)
+  const privateSelectedCount = countCreatedSince(reportablePrivateRows, selectedWindowSinceMs)
+  const event30Count = countCreatedSince(reportableEventRows, thirtyDaysAgoMs)
+  const table30Count = countCreatedSince(reportableTableRows, thirtyDaysAgoMs)
+  const private30Count = countCreatedSince(reportablePrivateRows, thirtyDaysAgoMs)
 
   const nonProductionCustomers = (nonProductionCustomersResult.data || []) as NonProductionCustomerRow[]
   const excludedCustomerIds = new Set(nonProductionCustomers.map((row) => row.id))
 
-  const eventStatusRows = (eventStatusRowsResult.data || []) as Array<{
-    status: string | null
-    booking_source: string | null
-  }>
-  const productionEventStatusRows = eventStatusRows.filter((row) =>
-    isAllowedSource(row.booking_source, EVENT_BOOKING_ALLOWED_SOURCES)
+  // Event conversion counts bookings, not reminder-only sign-ups: created is every booking made,
+  // confirmed is every one that went ahead or will.
+  const productionEventStatusRows = eventBookingRows.filter((row) =>
+    row.is_reminder_only !== true && isAllowedSource(row.booking_source, EVENT_BOOKING_ALLOWED_SOURCES)
   )
   const eventBookingsCreated = productionEventStatusRows.length
-  const eventBookingsConfirmed = productionEventStatusRows.filter((row) => row.status === 'confirmed').length
+  const eventBookingsConfirmed = productionEventStatusRows.filter(isReportableEventBooking).length
   const eventBookingsCancelled = productionEventStatusRows.filter((row) => row.status === 'cancelled').length
 
   const waitlistEntriesRows = (waitlistEntriesRowsResult.data || []) as Array<{ status: string | null }>
@@ -862,10 +926,11 @@ export async function loadTableBookingReportsSnapshot(input: {
     }))
     .sort((a, b) => b.guest_count - a.guest_count)
 
-  const customerActivityRecords = [
-    ...((eventCustomerActivityResult.data || []) as TimestampedCustomerRecord[]),
-    ...((tableCustomerActivityResult.data || []) as TimestampedCustomerRecord[]),
-    ...((privateCustomerActivityResult.data || []) as TimestampedCustomerRecord[])
+  // Active, new and returning guests come from real bookings only, as the counts do (BK-120).
+  const customerActivityRecords: TimestampedCustomerRecord[] = [
+    ...reportableEventRows,
+    ...reportableTableRows,
+    ...reportablePrivateRows
   ]
 
   const firstBookingByCustomer = new Map<string, number>()
@@ -917,30 +982,30 @@ export async function loadTableBookingReportsSnapshot(input: {
   const selectedWindowGuestSplit = splitGuests(activeSelectedWindowCustomers, selectedWindowSinceMs)
 
   const selectedWindowLabel = REPORT_WINDOW_LABELS[selectedWindowKey]
-  const eventCoverRows = (eventCoverRowsResult.data || []) as EventCoverRow[]
   const tableCoverRows = (tableCoverRowsResult.data || []) as TableCoverRow[]
   const privateCoverRows = (privateCoverRowsResult.data || []) as PrivateCoverRow[]
 
   const normalizedCoverRows = [
     ...eventCoverRows
-      .filter((row) => isAllowedSource(row.booking_source, EVENT_BOOKING_ALLOWED_SOURCES))
+      .filter((row) => isReportableEventBooking(row))
       .map((row) => ({
         customer_id: row.customer_id,
-        created_at: row.created_at,
+        visit_at: row.event_id ? coverEventStartById.get(row.event_id) ?? null : null,
         covers: Math.max(0, Math.round(asNumber(row.seats)))
       })),
     ...tableCoverRows
-      .filter((row) => isAllowedSource(row.source, TABLE_BOOKING_ALLOWED_SOURCES))
+      .filter((row) => isReportableTableBooking(row))
       .map((row) => ({
         customer_id: row.customer_id,
-        created_at: row.created_at,
+        visit_at: row.start_datetime || londonInstantIso(row.booking_date, row.booking_time),
         covers: Math.max(0, Math.round(asNumber(row.party_size)))
       })),
     ...privateCoverRows
-      .filter((row) => isAllowedSource(row.source, PRIVATE_BOOKING_ALLOWED_SOURCES))
+      // A hire with its date still to be confirmed sits on a placeholder date.
+      .filter((row) => isReportablePrivateBooking(row) && row.date_tbd !== true)
       .map((row) => ({
         customer_id: row.customer_id,
-        created_at: row.created_at,
+        visit_at: londonInstantIso(row.event_date, row.start_time),
         covers: Math.max(0, Math.round(asNumber(row.guest_count)))
       }))
   ]
