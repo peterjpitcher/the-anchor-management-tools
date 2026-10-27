@@ -185,7 +185,7 @@ describe('balance reminders by email, with the payments made', () => {
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
   })
 
-  it('with no usable email, queues the text for approval as today, marked as queued after the switch', async () => {
+  it('with no usable email, the text goes through the queue, marked as queued after the switch', async () => {
     seed({ booking: { contact_email: null } })
 
     const result = await runMonitor()
@@ -239,14 +239,20 @@ describe('balance reminders by email, with the payments made', () => {
     expect(mockedQueueAndSend).not.toHaveBeenCalled()
   })
 
-  it('a statement that does not add up sends no email; the text waits for approval instead', async () => {
-    // The view says £850 is owed, but the ledger leaves £900: an email would show two balances.
+  // Balance texts send automatically again (owner decision D16, 26 October 2026), so nothing waits
+  // for approval: the email goes as it did before the payment list, stating only the balance owed.
+  it('a statement that does not add up is left out: the email goes without the payment list', async () => {
+    // The view says £850 is owed, but the ledger leaves £900: a list would show two balances.
     seed({ booking: { balance_remaining: 850 } })
 
     await runMonitor()
 
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.text).toContain('£850')
+    expect(email.text).not.toContain('£900')
+    expect(email.text).not.toContain('Payments received')
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
     expect(logger.error).toHaveBeenCalledWith(
       'Balance reminder: payment statement does not add up, so no email goes with it',
       expect.objectContaining({ metadata: expect.objectContaining({ problem: 'balance_does_not_match' }) })

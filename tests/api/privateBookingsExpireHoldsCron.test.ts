@@ -40,11 +40,17 @@ vi.mock('@/services/private-bookings', () => ({
   finalizeDepositPayment: vi.fn(async () => ({ success: true })),
 }))
 
+vi.mock('@/lib/money-alerts', () => ({
+  alertMoneyNeedsAPerson: vi.fn(async () => ({ sent: true, duplicate: false })),
+  formatPounds: (amount: number) => `£${amount.toFixed(2)}`,
+}))
+
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { getPayPalOrder, isPayPalOrderNotFoundError } from '@/lib/paypal'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 import { GET } from '@/app/api/cron/private-bookings-expire-holds/route'
 
 // 07:00 in London on Wednesday 21 October 2026, an hour after the job's 06:00 UTC slot.
@@ -220,5 +226,74 @@ describe('private bookings expire-holds cron', () => {
       expect(bookingRow('never-paid').status).toBe('cancelled')
       expect(bookingRow('gone').status).toBe('cancelled')
     })
+  })
+
+  // BK-068: a paid draft carrying a past hold (a moved date or an extended hold set one) was
+  // cancelled, and its guest told the hold had lapsed.
+  it('never cancels a booking whose deposit is paid', async () => {
+    seed([draft('paid', { deposit_paid_date: '2026-10-05T10:00:00.000Z' })])
+
+    const { body } = await run()
+
+    expect(body.cancelled).toBe(0)
+    expect(bookingRow('paid').status).toBe('draft')
+    expect(sendPrivateBookingMessage).not.toHaveBeenCalled()
+  })
+
+  // Owner decision D26 and BK-110: a hire booked less than 14 days ahead, or one whose event is today
+  // or tomorrow, is not cancelled by the job: a manager is told and decides.
+  describe('a lapsed hold a manager decides about', () => {
+    it.each([
+      ['booked 10 days before the event', { created_at: '2026-10-15T10:00:00.000Z', event_date: '2026-10-25' }, 'booked_short_notice'],
+      ['whose event is tomorrow', { event_date: '2026-10-22' }, 'event_within_a_day'],
+      ['whose event is today', { event_date: '2026-10-21' }, 'event_within_a_day'],
+    ])('is kept, and the manager told, for a hire %s', async (_label, overrides, reason) => {
+      seed([draft('short', overrides)])
+
+      const { body } = await run()
+
+      expect(body.cancelled).toBe(0)
+      expect(body.kept).toEqual([{ id: 'short', reason }])
+      expect(bookingRow('short').status).toBe('draft')
+      expect(sendPrivateBookingMessage).not.toHaveBeenCalled()
+      expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(
+        state.db,
+        expect.objectContaining({
+          domain: 'private_bookings',
+          bookingId: 'short',
+          kind: 'unpaid_hold_not_cancelled',
+          summary: expect.stringContaining('No message has been sent to the customer.'),
+        }),
+      )
+      // Staff only: nothing about the guest goes in it.
+      expect(JSON.stringify(vi.mocked(alertMoneyNeedsAPerson).mock.calls[0][1])).not.toMatch(/Alex|alex@example|07700|\+447700/)
+    })
+
+    it('a hire booked 14 days or more ahead is cancelled as before', async () => {
+      seed([draft('long', { created_at: '2026-09-01T10:00:00.000Z', event_date: '2026-11-20' })])
+
+      const { body } = await run()
+
+      expect(body.cancelled).toBe(1)
+      expect(alertMoneyNeedsAPerson).not.toHaveBeenCalled()
+    })
+  })
+
+  // BK-064: texts that waited for an approval nobody gave sat in the queue past their dates.
+  it('cancels waiting texts whose date has passed, and leaves the rest', async () => {
+    seed([draft('long', { hold_expiry: '2026-11-05T23:59:59.000Z' })], [
+      { id: 'stale', booking_id: 'long', status: 'pending', error_message: null, trigger_type: 'balance_reminder_due', metadata: { balance_due_date: '2026-10-10' } },
+      { id: 'live', booking_id: 'long', status: 'pending', error_message: null, trigger_type: 'balance_reminder_21day', metadata: { balance_due_date: '2026-11-28' } },
+      { id: 'sending', booking_id: 'long', status: 'approved', error_message: 'dispatching:2026-10-21T08:59:00.000Z:abc', trigger_type: 'balance_reminder_due', metadata: { balance_due_date: '2026-10-10' } },
+    ])
+
+    const { body } = await run()
+
+    expect(body.staleTextsExpired).toBe(1)
+    const queue = Object.fromEntries(state.db.tables.private_booking_sms_queue.map((row) => [row.id, row]))
+    expect(queue.stale).toMatchObject({ status: 'cancelled', metadata: { balance_due_date: '2026-10-10', expired_reason: 'deadline_passed', expired_on: '2026-10-21' } })
+    expect(queue.live.status).toBe('pending')
+    // A text being sent right now is left to its sender.
+    expect(queue.sending.status).toBe('approved')
   })
 })

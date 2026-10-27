@@ -166,4 +166,18 @@ describe('private booking monitor, email first', () => {
     expect(mockedSendEmail).not.toHaveBeenCalled()
     expect(mockedQueueAndSend).toHaveBeenCalledWith(expect.objectContaining({ trigger_type: 'deposit_reminder_7day' }))
   })
+
+  // BK-064: the 3-day reminder waited for an approval nobody gave, and a guest with only an email
+  // address was never sent it at all. It goes by email now, like the 7-day and 1-day reminders.
+  it('sends the 3-day reminder by email, straight away', async () => {
+    seed(draftWithEmailOnly({ hold_expiry: '2026-09-23T22:59:59.000Z' }))
+
+    const result = await runMonitor()
+
+    expect(result.body.stats.remindersSent).toBe(1)
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+    expect(mockedSendEmail.mock.calls[0][0].commType).toBe('private_booking_deposit_reminder_3day')
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
+  })
 })
+

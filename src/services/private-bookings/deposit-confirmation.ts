@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { formatPrivateBookingAmount } from '@/lib/private-bookings/messages'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
 import {
@@ -236,7 +237,11 @@ export async function confirmDeposit(input: {
   }
 
   const holdExpiry = resolveConfirmationHoldExpiry(booking, now)
-  if (holdExpiry && Date.parse(holdExpiry) <= now.getTime()) {
+  // A hold on the event day itself now runs to the end of that day (BK-110), so the event date is
+  // checked as well: a deposit is never first asked for on the day of the event, or after it.
+  const eventIso = booking.event_date ? String(booking.event_date).slice(0, 10) : null
+  const eventIsTodayOrPast = Boolean(eventIso && eventIso <= toLocalIsoDate(now))
+  if (holdExpiry && (eventIsTodayOrPast || Date.parse(holdExpiry) <= now.getTime())) {
     throw new DepositConfirmationError('The deposit deadline would already have passed because the event is today or has passed. Check the event date first.')
   }
 

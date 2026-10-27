@@ -168,4 +168,17 @@ describe('deposit reminders and hold expiry for a deposit still to be confirmed'
     expect(lapsed.map((sms) => sms.booking_id)).toEqual(['confirmed'])
   })
 
+  // BK-068: a paid draft given a new hold by a date change was reminded to pay again.
+  it('the monitor never reminds a deposit that is paid or waived', async () => {
+    seed([
+      draft('paid', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z', deposit_paid_date: '2026-09-15T10:00:00.000Z' }),
+      draft('waived', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z', deposit_waived: true }),
+      draft('owed', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z' }),
+    ])
+
+    await runMonitorRoute(new Request('http://localhost/api/cron/private-booking-monitor'))
+
+    expect(remindedBookingIds()).toEqual(['owed'])
+  })
 })
+

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
@@ -32,6 +32,7 @@ import { sendSms } from '@/app/actions/sms'
 import { tryEmailForApprovedPrivateBookingText } from '@/lib/private-bookings/approved-message'
 import { SmsQueueService } from '@/services/sms-queue'
 import { HISTORIC_BALANCE_REMINDER_REFUSAL } from '@/lib/private-bookings/balance-reminders'
+import { STALE_QUEUED_TEXT_REFUSAL } from '@/lib/private-bookings/queue-staleness'
 
 const mockedSendSms = sendSms as unknown as Mock
 const mockedTryEmail = tryEmailForApprovedPrivateBookingText as unknown as Mock
@@ -68,9 +69,16 @@ function queued() {
 describe('balance reminders queued before the switch to email are never sent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Before the dates these queued texts carry, so none of them is out of date (BK-064).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-20T09:00:00.000Z'))
     state.flags = {}
     mockedSendSms.mockResolvedValue({ success: true, sid: 'SM-1', messageId: 'msg-1', customerId: 'customer-1' })
     mockedTryEmail.mockResolvedValue({ status: 'not_attempted', reason: 'flag_off' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('cannot be approved: staff are told why and the row is left as it was', async () => {
@@ -134,4 +142,23 @@ describe('balance reminders queued before the switch to email are never sent', (
     expect(mockedSendSms).not.toHaveBeenCalled()
   })
 
+  // BK-064: approving a waiting text after its date told the guest something no longer true.
+  it('a text whose date has passed cannot be approved or sent, and is left for staff to reject', async () => {
+    seed(queueRow({ status: 'approved', approved_by: 'user-1', metadata: { balance_due_date: '2026-09-18', balance_email_auto: true } }))
+
+    await expect(SmsQueueService.sendApprovedSms('sms-1')).rejects.toThrow(STALE_QUEUED_TEXT_REFUSAL)
+
+    expect(queued()).toMatchObject({ status: 'approved', error_message: null })
+    expect(mockedSendSms).not.toHaveBeenCalled()
+    expect(mockedTryEmail).not.toHaveBeenCalled()
+  })
+
+  it('a text for a booking since cancelled cannot be approved', async () => {
+    seed(queueRow({ metadata: { balance_due_date: '2026-09-26', balance_email_auto: true } }))
+    state.db.tables.private_bookings[0].status = 'cancelled'
+
+    await expect(SmsQueueService.approveSms('sms-1', 'user-1')).rejects.toThrow(STALE_QUEUED_TEXT_REFUSAL)
+    expect(queued().status).toBe('pending')
+  })
 })
+

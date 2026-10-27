@@ -506,7 +506,12 @@ describe('bounce fallback: a message that no longer applies is skipped, never fa
   })
 })
 
-describe('bounce fallback: a text that needs staff approval is never sent without it', () => {
+// Owner decision D16 (26 October 2026, BK-064): the 3-day deposit reminder, the balance reminders
+// and the partial-refund, retention and review-pending cancellations no longer wait for approval,
+// so when their email bounces the text goes, as it does for every other automated text. A trigger
+// still waiting for approval (one no longer sent, such as the old booking-created text) is never
+// sent by the fallback.
+describe('bounce fallback: the texts that used to wait for approval', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     state.flags = { bounce_sms_fallback: true }
@@ -564,8 +569,26 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     ],
   ]
 
-  it.each(GATED)('%s: no text; listed under Undelivered guest messages and staff are told', async (triggerType, templateKey, change, facts) => {
+  it.each(GATED)('%s: the text goes once the email bounces', async (triggerType, templateKey, change, facts) => {
     seed(bookingRow(change), { notification_deliveries: [fallbackDelivery(triggerType, templateKey, facts)] })
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
+
+    expect(outcome).toMatchObject({ outcome: 'sent' })
+    expect(mockedSendSMS).toHaveBeenCalledTimes(1)
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('a trigger that still waits for approval: no text; listed under Undelivered guest messages and staff are told', async () => {
+    seed(bookingRow(), {
+      notification_deliveries: [
+        fallbackDelivery('booking_created', 'private_booking_created', {
+          event_date: '2026-10-03',
+          hold_expiry_date: '2026-09-25',
+          deposit_amount: 250,
+        }),
+      ],
+    })
 
     const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
 
@@ -599,7 +622,7 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     ])
   })
 
-  it('a retention cancellation, emailed at once by cancelBooking, is listed for staff when that email bounces', async () => {
+  it('a retention cancellation, emailed at once by cancelBooking, is texted when that email bounces', async () => {
     seed(bookingRow({ status: 'cancelled' }), {
       notification_deliveries: [
         {
@@ -623,11 +646,11 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
 
     const { final } = await runAsTheQueueWould(new Date('2026-09-20T21:40:00.000Z'))
 
-    expect(final).toMatchObject({ outcome: 'failed', reason: 'needs_approval' })
-    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(final).toMatchObject({ outcome: 'sent' })
+    expect(mockedSendSMS).toHaveBeenCalledTimes(1)
   })
 
-  it('a gated message whose booking has since been cancelled is skipped, not listed', async () => {
+  it('a reminder whose booking has since been cancelled is skipped, not listed', async () => {
     seed(bookingRow({ status: 'cancelled', hold_expiry: '2026-09-22T22:30:00.000Z' }), {
       notification_deliveries: [
         fallbackDelivery('deposit_reminder_3day', 'private_booking_deposit_reminder_3day', {
@@ -644,7 +667,7 @@ describe('bounce fallback: a text that needs staff approval is never sent withou
     expect(reportCronFailure).not.toHaveBeenCalled()
   })
 
-  it('a gated reminder that would land too late is skipped, not listed', async () => {
+  it('a reminder that would land too late is skipped, not listed', async () => {
     seed(bookingRow({ status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-19' }), {
       notification_deliveries: [
         fallbackDelivery('balance_reminder_15day', 'private_booking_balance_reminder_15day', {

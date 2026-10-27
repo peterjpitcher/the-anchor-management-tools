@@ -165,4 +165,28 @@ describe('the manager email', () => {
     expect(email.subject).toBe('Private hires needing attention: 1 booking')
     expect(email.text).toContain('PB-X: Sat, 14 Nov 2026, guest count not set (draft)')
   })
+
+  // BK-064: texts waited 120 days for an approval nobody gave, and nobody was told.
+  it('also lists texts that have waited more than a day for approval, and emails for them alone', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      private_bookings: [],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [
+        { id: 'q1', booking_id: 'b1', status: 'pending', created_at: '2026-10-22T09:00:00.000Z' },
+        { id: 'q2', booking_id: 'b1', status: 'pending', created_at: '2026-10-24T08:00:00.000Z' },
+        { id: 'q3', booking_id: 'b1', status: 'sent', created_at: '2026-10-01T09:00:00.000Z' },
+      ],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: true })
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.subject).toBe('Private hire to-do: 1 item')
+    expect(email.text).toContain('1 private hire text has waited more than a day for approval.')
+    expect(email.text).toContain('https://management.example.test/private-bookings/sms-queue')
+  })
 })
+

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { endOfLondonDayUtc, toLocalIsoDate } from '@/lib/dateUtils';
+import { endOfLondonDayUtc, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 import type {
   BookingStatus,
   BookingLayout,
@@ -108,7 +108,8 @@ export function computeBalanceDueDateIso(eventDate: string | Date, now: Date = n
  * SOP §10: a hold must never run past the balance & final-details deadline
  * (14 calendar days before the event).
  * - Booking created inside that window (short notice): 48 hours from now,
- *   capped at event start, and everything is due immediately.
+ *   capped at the end of the day before the event (shortNoticeHoldCap), and
+ *   everything is due immediately.
  * - Otherwise: 14 days from now, capped at the balance due date.
  *
  * A cap lands on the last instant of its London day, not its first. `new Date('2026-10-04')` is
@@ -121,12 +122,11 @@ export function computeHoldExpiry(eventDate: Date, now: Date): Date {
   const dueMoment = balanceDueMoment(eventDate);
 
   if (now.getTime() > dueMoment.getTime()) {
-    // Short notice: 48 hours from now, capped at event start
+    // Short notice: 48 hours from now, to the end of that London day, capped at the end of the day
+    // before the event.
     const shortNoticeExpiry = new Date(now);
     shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
-    if (shortNoticeExpiry.getTime() > eventDate.getTime()) return eventDate;
-    const endOfDay = endOfHoldDay(shortNoticeExpiry);
-    return endOfDay.getTime() > eventDate.getTime() ? eventDate : endOfDay;
+    return shortNoticeHoldCap(endOfHoldDay(shortNoticeExpiry), eventDate, now);
   }
 
   // Normal: 14 days from now, capped at the balance & final-details due date
@@ -138,6 +138,22 @@ export function computeHoldExpiry(eventDate: Date, now: Date): Date {
 /** The last instant of the London day a hold deadline falls on, so the whole day is honoured. */
 function endOfHoldDay(moment: Date): Date {
   return endOfLondonDayUtc(moment) ?? moment;
+}
+
+/**
+ * A short-notice hold never runs into the event day (BK-110, customer bookings review of 24 October
+ * 2026). The cap used to be the event date itself, which callers build as 00:00 UTC, so the hold
+ * ended at midnight at the start of the event day and the 06:00 job cancelled the booking that
+ * morning. It now ends at 23:59:59 London on the day before the event. A booking made on the day
+ * before, or the day of, the event keeps its hold to the end of today rather than one already over.
+ */
+export function shortNoticeHoldCap(hold: Date, eventDate: Date, now: Date): Date {
+  const eventIso = toLocalIsoDate(eventDate);
+  const dayBefore = shiftIsoDate(eventIso, -1);
+  const lastDay = dayBefore ? endOfLondonDayUtc(dayBefore) : null;
+  const capped = lastDay && hold.getTime() > lastDay.getTime() ? lastDay : hold;
+  const endOfToday = endOfHoldDay(now);
+  return capped.getTime() < endOfToday.getTime() ? endOfToday : capped;
 }
 
 // ---------------------------------------------------------------------------

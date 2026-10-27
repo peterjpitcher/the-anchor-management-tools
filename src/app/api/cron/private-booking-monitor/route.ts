@@ -153,6 +153,8 @@ type MonitorBookingRow = {
   hold_expiry?: string | null
   deposit_amount?: number | null
   deposit_confirmed_at?: string | null
+  deposit_paid_date?: string | null
+  deposit_waived?: boolean | null
   total_amount?: number | null
   calculated_total?: number | null
   gross_total?: number | null
@@ -550,7 +552,7 @@ export async function GET(request: Request) {
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const draftColumns =
-      'id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes, deposit_confirmed_at'
+      'id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes, deposit_confirmed_at, deposit_paid_date, deposit_waived'
     const draftsQuery = supabase
       .from('private_bookings')
       .select(withEmailColumns(draftColumns))
@@ -597,6 +599,10 @@ export async function GET(request: Request) {
         // chased if that filter is lost.
         if (booking.deposit_confirmed_at === null) continue
 
+        // A paid or waived deposit is never chased (BK-068): moving a paid draft's date used to
+        // set a new hold, and the guest was then reminded to pay money they had already paid.
+        if (booking.deposit_paid_date || booking.deposit_waived === true) continue
+
         // Suppress reminders for bookings whose date is still TBD — the
         // messages would point at a placeholder date.
         if (isBookingDateTbd(booking)) continue
@@ -607,13 +613,11 @@ export async function GET(request: Request) {
         // Resolve phone number (fallback to pre-fetched customer mobile map)
         const contactPhone = booking.contact_phone || (booking.customer_id ? customerMobileById.get(booking.customer_id) ?? null : null)
 
-        // A booking with no number can still be reminded by email, but only by the reminders that
-        // send straight away: one waiting for approval needs a number to queue.
-        let emailOnly = false
+        // A booking with no number can still be reminded by email: every deposit reminder sends
+        // straight away (owner decision D16), so none waits for approval with no number to queue.
         if (!contactPhone) {
           const recipient = await resolvePrivateBookingEmailRecipient(booking, supabase)
           if (!recipient.usable) continue
-          emailOnly = true
         }
 
         // London calendar days, the count the preview and the reminder wording use (PB-BR-1). Elapsed
@@ -730,7 +734,7 @@ export async function GET(request: Request) {
 
         // 2. Check 3-Day Reminder (Window: 2-3 days) — SOP §10 hold reminders
         // run at 7, 3 and 1 days before expiry.
-        if (depositTrigger === 'deposit_reminder_3day' && !emailOnly) {
+        if (depositTrigger === 'deposit_reminder_3day') {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
