@@ -368,7 +368,8 @@ describe('PayPalCaptureClient', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Payment issue'))
     expect(screen.getByRole('alert')).toHaveTextContent('Payment could not be verified.')
-    expect(screen.getByRole('alert')).toHaveTextContent('If you need help, please call us.')
+    // The venue's number, not just "call us" (BK-063: a closed booking's refusal sends guests here).
+    expect(screen.getByRole('alert')).toHaveTextContent('If you need help, please call us on 01753 682707.')
   })
 
   it('does not capture again once the deposit is already paid', () => {

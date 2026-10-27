@@ -424,6 +424,8 @@ export type DepositPaymentEntry = {
   date: string  // YYYY-MM-DD (London timezone)
   appliedAmount?: number
   readonly?: boolean
+  /** Paid through PayPal: money goes back through Process Refund, never by editing the row (BK-069). */
+  refundOnly?: boolean
   invoice_id?: string
 }
 

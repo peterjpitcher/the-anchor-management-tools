@@ -222,13 +222,16 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Find all bookings with a PayPal order but no deposit recorded
+  // Find all bookings with a PayPal order but no deposit recorded. Cancelled and completed ones
+  // are included (BK-063), as the table booking sweep already includes cancelled ones: a guest can
+  // finish paying after the booking closed, and that money must be found and refunded. For them
+  // the sweep never takes a payment; it records one PayPal already took, or clears the order.
   const { data: pendingBookings, error: queryError } = await admin
     .from('private_bookings')
     .select('id, paypal_deposit_order_id, deposit_amount, status, paypal_reconciliation_attempts, paypal_reconciliation_last_error')
     .not('paypal_deposit_order_id', 'is', null)
     .is('deposit_paid_date', null)
-    .in('status', ['draft', 'confirmed'])
+    .in('status', ['draft', 'confirmed', 'cancelled', 'completed'])
     .limit(20) // Process in batches to stay within function timeout
 
   if (queryError) {
@@ -248,6 +251,7 @@ export async function GET(request: NextRequest) {
   for (const booking of pendingBookings as PendingPayPalBooking[]) {
     const bookingId = booking.id
     const orderId = booking.paypal_deposit_order_id
+    const bookingClosed = booking.status === 'cancelled' || booking.status === 'completed'
 
     if (!orderId) {
       results.push({ bookingId, outcome: 'missing_order_id' })
@@ -331,6 +335,27 @@ export async function GET(request: NextRequest) {
         const capturedAmount = Number(order.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? 0)
         const capturedCurrency = getCaptureAmountCurrency(order)
         const expectedAmount = Number(booking.deposit_amount ?? 0)
+
+        // The money is in PayPal for a booking that has closed: record it for refunding, whatever
+        // the amount, and tell a manager (finalizeDepositPayment does both). Never confirm anything.
+        if (bookingClosed) {
+          const closedResult = await finalizeDepositPayment({
+            bookingId,
+            amount: capturedAmount,
+            method: 'paypal',
+            paypalCaptureId: captureId,
+          }, admin)
+          if (!closedResult.alreadyRecorded) {
+            await writePayPalReconciliationAudit(admin, {
+              operationType: 'paypal_deposit_reconciled_after_close',
+              bookingId,
+              additionalInfo: { capture_id: captureId, order_id: orderId, amount: capturedAmount, booking_status: booking.status }
+            })
+          }
+          results.push({ bookingId, outcome: closedResult.alreadyRecorded ? 'already_recorded' : 'recorded_after_close' })
+          continue
+        }
+
         if (
           (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) ||
           capturedCurrency !== PAYPAL_DEFAULT_CURRENCY
@@ -364,6 +389,18 @@ export async function GET(request: NextRequest) {
         } else {
           results.push({ bookingId, outcome: 'already_recorded' })
         }
+
+      } else if (bookingClosed) {
+        // Approved, still at checkout, or expired: PayPal has taken nothing, and nothing will be
+        // taken now the booking has closed. Clearing the order stops it being picked up again.
+        const cleared = await clearStalePayPalOrder(admin, {
+          bookingId,
+          orderId,
+          orderStatus,
+          reason: 'booking_closed',
+          auditAction: 'paypal_deposit_order_cleared_booking_closed'
+        })
+        results.push({ bookingId, outcome: cleared ? 'cleared_booking_closed' : 'clear_booking_closed_failed' })
 
       } else if (orderStatus === 'APPROVED') {
         // Customer approved but capture never happened — capture now

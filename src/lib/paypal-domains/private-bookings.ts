@@ -76,13 +76,17 @@ export async function handleDepositCaptureCompleted(
 
   if (finalizeResult.alreadyRecorded) {
     logger.info('Private booking deposit already recorded; ignoring duplicate webhook', {
-      metadata: { bookingId, captureId }
+      metadata: { bookingId, captureId, paidAfterClose: finalizeResult.paidAfterClose === true }
     })
     return
   }
 
+  // BK-063: a capture on a cancelled or completed booking is recorded for refunding and a manager
+  // is told (inside finalizeDepositPayment), instead of throwing and answering PayPal with a 500.
   const { error: auditError } = await writePrivateBookingAudit(supabase, {
-    operationType: 'paypal_deposit_captured_via_webhook',
+    operationType: finalizeResult.paidAfterClose
+      ? 'paypal_deposit_captured_after_close_via_webhook'
+      : 'paypal_deposit_captured_via_webhook',
     bookingId,
     additionalInfo: {
       capture_id: captureId,

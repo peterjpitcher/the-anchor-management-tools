@@ -2340,6 +2340,16 @@ export default function PrivateBookingDetailClient({
     depositConfirmation?.awaiting === true && depositRequired && !booking.deposit_paid_date;
   const appliedDepositAmount = toNumber(booking.applied_deposit_amount, 0);
   const depositAppliedToInvoice = Boolean(booking.invoice_id && booking.invoice_deposit_treatment === "deducted");
+  // BK-063: PayPal took the deposit after the booking was cancelled. It is recorded so it can go
+  // back, and the page says so until it has.
+  const depositPaidAfterCancellation = Boolean(
+    booking.status === 'cancelled' &&
+      booking.paypal_deposit_capture_id &&
+      booking.deposit_paid_date &&
+      booking.cancelled_at &&
+      Date.parse(booking.deposit_paid_date) > Date.parse(booking.cancelled_at) &&
+      refundTotals.totalRefunded + refundTotals.totalPending < depositAmount,
+  );
   // Colours the deposit line the way the bookings list colours its deposit badge.
   const depositPaymentState: PrivateBookingPaymentState = !depositRequired
     ? 'not_required'
@@ -2558,6 +2568,26 @@ export default function PrivateBookingDetailClient({
       )}
 
       <RecordLockBanner booking={booking} />
+
+      {depositPaidAfterCancellation && (
+        <Alert tone="danger" title="Deposit paid after this booking was cancelled">
+          <p>
+            The guest paid a {formatMoney(depositAmount)} deposit through PayPal after this booking
+            was cancelled. Refund it, unless the guest is coming after all.
+          </p>
+          {canRefund && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => setShowRefundDialog(true)}
+            >
+              Refund deposit
+            </Button>
+          )}
+        </Alert>
+      )}
 
       {depositAwaitingConfirmation && (
         <ConfirmDepositPanel

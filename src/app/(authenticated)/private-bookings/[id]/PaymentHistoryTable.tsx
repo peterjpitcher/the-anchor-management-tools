@@ -56,6 +56,8 @@ export default function PaymentHistoryTable({
   // Held deposits stay separate; only an actual invoice deposit credit reduces the event balance.
   const paidToDate = payments.reduce((sum, payment) => sum + (payment.type === 'balance' ? payment.amount : payment.appliedAmount ?? 0), 0)
   const outstanding = Math.max(0, totalAmount - paidToDate)
+  // Deposit refunds only: a PayPal deposit row points staff at Process Refund until it is all back.
+  const depositRefunded = refunds.reduce((sum, refund) => sum + refund.amount, 0)
 
   function formatMethodLabel(method: string): string {
     const labels: Record<string, string> = {
@@ -279,6 +281,9 @@ export default function PaymentHistoryTable({
                   <span className="font-medium">{formatCurrency(entry.amount)}</span>
                   {entry.invoice_id && (
                     <Link href={`/invoices/${entry.invoice_id}`} className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">View invoice</Link>
+                  )}
+                  {entry.type === 'deposit' && entry.refundOnly && canEditPayments && depositRefunded < entry.amount && (
+                    <span>Return it with Process Refund</span>
                   )}
                   {canEditPayments && !entry.readonly && (
                     <div className="flex gap-1">
