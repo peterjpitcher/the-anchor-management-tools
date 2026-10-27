@@ -237,9 +237,16 @@ export function FohScheduleClient({
     || partySizeEditOpen || walkoutModalOpen || changeTimeOpen
   )
 
+  // An open booking panel no longer holds a new release off: the screen reloads once it has been
+  // idle, and an open form delays that by at most 15 minutes (BK-096).
   useFohDeploymentRefresh({
     currentVersion: deploymentVersion,
-    pauseReload: hasActiveFohWork,
+    busy: Boolean(bookingActionInFlight || createBooking.submittingBooking || submittingFoodOrderAlert),
+    formOpen: Boolean(
+      createBooking.isCreateModalOpen || showCancelBookingConfirmation
+      || partySizeEditOpen || walkoutModalOpen || changeTimeOpen
+    ),
+    lastInteractionAtMsRef,
   })
 
   useEffect(() => {
