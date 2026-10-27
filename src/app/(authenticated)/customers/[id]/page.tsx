@@ -42,6 +42,13 @@ import { CustomerLabelSelector } from '@/components/features/customers/CustomerL
 import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
 import { privateBookingStatusTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 import { CUSTOMERS_BACK_LABEL } from '../_shared/nav'
+import {
+  eventBookingReference,
+  eventBookingSeatsCounted,
+  eventBookingStatus,
+  privateBookingCountsTowardValue,
+  splitEventTableBookings,
+} from '@/lib/customers/booking-history'
 import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
@@ -91,11 +98,15 @@ type CustomerTableBooking = {
   created_at: string | null
   high_chair_count: number | null
   is_outside_seating: boolean | null
+  /** Set when this table was booked as part of an event booking (BK-092). */
+  event_booking_id: string | null
+  table_names: string[]
 }
 
 type CustomerEventBooking = {
   id: string
   event_id: string | null
+  status: string | null
   seats: number | null
   is_reminder_only: boolean | null
   created_at: string | null
@@ -169,6 +180,8 @@ type UnifiedCustomerBookingRow = {
   title: string
   reference: string | null
   status: string
+  /** The stored status, for the badge colour (BK-092). */
+  status_key: string
   interest: string
   party_size: number | null
   amount: number | null
@@ -282,6 +295,8 @@ export default function CustomerViewPage() {
   const [eventBookings, setEventBookings] = useState<CustomerEventBooking[]>([])
   const [privateBookings, setPrivateBookings] = useState<CustomerPrivateBooking[]>([])
   const [parkingBookings, setParkingBookings] = useState<CustomerParkingBooking[]>([])
+  // Booking types whose query failed: shown as an error, never as 'no bookings' (BK-092).
+  const [bookingLoadErrors, setBookingLoadErrors] = useState<string[]>([])
   const [categoryPreferences, setCategoryPreferences] = useState<CustomerCategoryPreference[]>([])
   const [consentAudit, setConsentAudit] = useState<ConsentAuditRow[]>([])
   const [smsStats, setSmsStats] = useState<{
@@ -381,7 +396,7 @@ export default function CustomerViewPage() {
           .single(),
         supabase.from('table_bookings')
           .select(
-            'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status, source, created_at, high_chair_count, is_outside_seating'
+            'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status, source, created_at, high_chair_count, is_outside_seating, event_booking_id, assignments:booking_table_assignments(table:tables!booking_table_assignments_table_id_fkey(name, table_number))'
           )
           .eq('customer_id', customerId)
           .order('start_datetime', { ascending: false, nullsFirst: false })
@@ -391,6 +406,7 @@ export default function CustomerViewPage() {
           .select(`
             id,
             event_id,
+            status,
             seats,
             is_reminder_only,
             created_at,
@@ -451,8 +467,10 @@ export default function CustomerViewPage() {
       setCustomer(typedCustomer)
       setNotesValue(typedCustomer.internal_notes ?? '')
 
+      const loadErrors: string[] = []
       if (tableBookingsError) {
         console.error('Failed to load customer table bookings:', tableBookingsError)
+        loadErrors.push('table bookings')
         setTableBookings([])
       } else {
         const rows = Array.isArray(customerTableBookings) ? customerTableBookings : []
@@ -470,13 +488,21 @@ export default function CustomerViewPage() {
             source: row.source || null,
             created_at: row.created_at || null,
             high_chair_count: row.high_chair_count ?? null,
-            is_outside_seating: row.is_outside_seating ?? null
+            is_outside_seating: row.is_outside_seating ?? null,
+            event_booking_id: row.event_booking_id || null,
+            table_names: (Array.isArray(row.assignments) ? row.assignments : [])
+              .map((assignment: any) => {
+                const table = Array.isArray(assignment?.table) ? assignment.table[0] : assignment?.table
+                return table?.name || (table?.table_number ? `Table ${table.table_number}` : null)
+              })
+              .filter((name: string | null): name is string => Boolean(name))
           }))
         )
       }
 
       if (eventBookingsError) {
         console.error('Failed to load customer event bookings:', eventBookingsError)
+        loadErrors.push('event bookings')
         setEventBookings([])
       } else {
         const rows = Array.isArray(customerEventBookings) ? customerEventBookings : []
@@ -488,6 +514,7 @@ export default function CustomerViewPage() {
             return {
               id: row.id,
               event_id: row.event_id || null,
+              status: row.status || null,
               seats: row.seats ?? null,
               is_reminder_only: row.is_reminder_only ?? null,
               created_at: row.created_at || null,
@@ -514,6 +541,7 @@ export default function CustomerViewPage() {
 
       if (privateBookingsError) {
         console.error('Failed to load customer private bookings:', privateBookingsError)
+        loadErrors.push('private bookings')
         setPrivateBookings([])
       } else {
         const rows = Array.isArray(customerPrivateBookings) ? customerPrivateBookings : []
@@ -551,6 +579,7 @@ export default function CustomerViewPage() {
 
       if (parkingBookingsError) {
         console.error('Failed to load customer parking bookings:', parkingBookingsError)
+        loadErrors.push('parking bookings')
         setParkingBookings([])
       } else {
         const rows = Array.isArray(customerParkingBookings) ? customerParkingBookings : []
@@ -567,6 +596,8 @@ export default function CustomerViewPage() {
           }))
         )
       }
+
+      setBookingLoadErrors(loadErrors)
 
       if (categoryStatsError) {
         console.error('Failed to load customer category preferences:', categoryStatsError)
@@ -819,8 +850,13 @@ export default function CustomerViewPage() {
 
   const unifiedBookings = useMemo<UnifiedCustomerBookingRow[]>(() => {
     const rows: UnifiedCustomerBookingRow[] = []
+    // A table booked as part of an event booking is shown on the event's row, not again (BK-092).
+    const { standalone: standaloneTableBookings, byEventBooking: tablesByEventBooking } = splitEventTableBookings(
+      tableBookings,
+      new Set(eventBookings.map((booking) => booking.id))
+    )
 
-    tableBookings.forEach((booking) => {
+    standaloneTableBookings.forEach((booking) => {
       const bookingDateTime = booking.start_datetime || toDateTimeIso(booking.booking_date, booking.booking_time)
       const bookingTimestamp = toTimestamp(bookingDateTime || booking.created_at)
       rows.push({
@@ -831,6 +867,7 @@ export default function CustomerViewPage() {
         title: formatLabel(booking.booking_type, 'Table Booking'),
         reference: booking.booking_reference || booking.id.slice(0, 8).toUpperCase(),
         status: formatLabel(booking.status, 'Unknown'),
+        status_key: (booking.status || 'unknown').toLowerCase(),
         interest: formatLabel(booking.booking_purpose || booking.booking_type, 'Dining'),
         party_size: booking.party_size ?? null,
         amount: null,
@@ -850,14 +887,18 @@ export default function CustomerViewPage() {
       const bookingDateTime = toDateTimeIso(booking.event?.date, booking.event?.time)
       const bookingTimestamp = toTimestamp(bookingDateTime || booking.created_at)
       const reminderOnly = booking.is_reminder_only || (booking.seats ?? 0) <= 0
+      // The booking's own status and reference, not 'Booked' and the event's id (BK-092).
+      const eventStatus = eventBookingStatus(booking.status, Boolean(reminderOnly))
+      const tableNames = (tablesByEventBooking.get(booking.id) ?? []).flatMap((table) => table.table_names)
       rows.push({
         key: `event-${booking.id}`,
         id: booking.id,
         source: 'event',
         source_label: 'Event',
         title: booking.event?.name || 'Event Booking',
-        reference: booking.event?.id ? booking.event.id.slice(0, 8).toUpperCase() : booking.id.slice(0, 8).toUpperCase(),
-        status: reminderOnly ? 'Reminder Only' : 'Booked',
+        reference: eventBookingReference(booking.id),
+        status: eventStatus.label,
+        status_key: eventStatus.key,
         interest: booking.event?.category?.name || 'Live Event',
         party_size: booking.seats ?? null,
         amount: null,
@@ -866,6 +907,7 @@ export default function CustomerViewPage() {
         booking_display: formatDateTimeWithFallback(bookingDateTime, booking.event?.date, booking.event?.time),
         summary: [
           `${booking.seats ?? 0} seat${(booking.seats ?? 0) === 1 ? '' : 's'}`,
+          tableNames.length > 0 ? `Table: ${Array.from(new Set(tableNames)).join(', ')}` : null,
           booking.event?.event_status ? `Event ${formatLabel(booking.event.event_status)}` : null
         ]
           .filter(Boolean)
@@ -884,6 +926,7 @@ export default function CustomerViewPage() {
         title: formatLabel(booking.event_type, 'Private Booking'),
         reference: booking.id.slice(0, 8).toUpperCase(),
         status: formatLabel(booking.status, 'Unknown'),
+        status_key: (booking.status || 'unknown').toLowerCase(),
         interest: formatLabel(booking.event_type, 'Private Event'),
         party_size: booking.guest_count ?? null,
         amount: booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? null,
@@ -911,6 +954,7 @@ export default function CustomerViewPage() {
         status: booking.payment_status
           ? `${formatLabel(booking.status, 'Unknown')} / ${formatLabel(booking.payment_status)}`
           : formatLabel(booking.status, 'Unknown'),
+        status_key: (booking.status || 'unknown').toLowerCase(),
         interest: 'Parking',
         party_size: null,
         amount: null,
@@ -1008,14 +1052,14 @@ export default function CustomerViewPage() {
       ? partySizes.reduce((sum, value) => sum + value, 0) / partySizes.length
       : null
 
-    const totalEventSeats = eventBookings.reduce((sum, booking) => {
-      const seats = booking.seats ?? 0
-      if (booking.is_reminder_only || seats <= 0) return sum
-      return sum + seats
-    }, 0)
+    // Cancelled and expired bookings are not seats taken; they count as disrupted below (BK-092).
+    const totalEventSeats = eventBookings.reduce((sum, booking) => sum + eventBookingSeatsCounted(booking), 0)
 
     const reminderOnlyEvents = eventBookings.filter((booking) => booking.is_reminder_only || (booking.seats ?? 0) <= 0).length
-    const totalPrivateValue = privateBookings.reduce((sum, booking) => sum + ((booking.gross_total ?? booking.calculated_total ?? booking.total_amount) ?? 0), 0)
+    // A cancelled hire is not part of the customer's lifetime value (BK-092).
+    const totalPrivateValue = privateBookings
+      .filter((booking) => privateBookingCountsTowardValue(booking.status))
+      .reduce((sum, booking) => sum + ((booking.gross_total ?? booking.calculated_total ?? booking.total_amount) ?? 0), 0)
 
     const topTablePurposeMap = new Map<string, number>()
     tableBookings.forEach((booking) => {
@@ -1119,10 +1163,9 @@ export default function CustomerViewPage() {
         // Status colours come from the booking status maps, so a status reads the same here as
         // on the screens that own it: private bookings use the private booking map (the bookings
         // list and calendar), everything else the table booking map (owner decision D4: FOH, BOH
-        // and the booking page). The label is the stored status title-cased ("No Show"); parking
-        // rows add the payment state ("Confirmed / Paid") and event rows say "Booked", so turn it
-        // back into a status key first.
-        const statusKey = booking.status.split(' / ')[0].trim().toLowerCase().replace(/\s+/g, '_')
+        // and the booking page). Each row carries its stored status key, so the colour never
+        // depends on the label (an event booking labelled "Booked" is 'confirmed', BK-092).
+        const statusKey = booking.status_key
 
         if (booking.source === 'private') {
           return (
@@ -1135,7 +1178,7 @@ export default function CustomerViewPage() {
         // The table booking map returns Badge-matching class strings (it includes category
         // tones Badge has no prop for), so they are applied over Badge's neutral colours.
         return (
-          <Badge size="sm" className={getTableBookingStatusBadgeClasses(statusKey === 'booked' ? 'confirmed' : statusKey)}>
+          <Badge size="sm" className={getTableBookingStatusBadgeClasses(statusKey)}>
             {booking.status}
           </Badge>
         )
@@ -1658,6 +1701,15 @@ export default function CustomerViewPage() {
               </Badge>
             }
           />
+          {bookingLoadErrors.length > 0 ? (
+            // A failed query used to drop that booking type silently (BK-092).
+            <CardBody className="border-b border-border">
+              <Alert tone="danger" title="Some bookings could not be loaded">
+                These are missing from the list and the figures above: {bookingLoadErrors.join(', ')}. Reload the
+                page to try again before relying on this customer&apos;s history.
+              </Alert>
+            </CardBody>
+          ) : null}
           {/* Filters sit directly above the table they filter. */}
           <CardBody className="border-b border-border">
             <div className="flex flex-wrap items-end gap-3">
@@ -1727,10 +1779,16 @@ export default function CustomerViewPage() {
             getRowKey={(booking) => booking.key}
             bordered={false}
             className="max-shell:p-4"
-            emptyMessage={unifiedBookings.length === 0 ? 'No bookings yet' : 'No bookings match these filters'}
+            emptyMessage={
+              unifiedBookings.length === 0
+                ? bookingLoadErrors.length > 0 ? 'Bookings could not be loaded' : 'No bookings yet'
+                : 'No bookings match these filters'
+            }
             emptyDescription={
               unifiedBookings.length === 0
-                ? 'This customer has not made a booking yet.'
+                ? bookingLoadErrors.length > 0
+                  ? 'Reload the page to try again.'
+                  : 'This customer has not made a booking yet.'
                 : 'Clear one or more filters to see more bookings.'
             }
           />
