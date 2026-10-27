@@ -37,7 +37,7 @@ import {
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, londonVisitAtIso } from '@/lib/dateUtils'
 import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
 import {
   classifyBalanceReminderWindow,
@@ -1369,7 +1369,7 @@ export async function GET(request: Request) {
               channel: 'private',
               bookingId: booking.id,
               customerId: booking.customer_id,
-              visitAt: `${booking.event_date}T${booking.start_time || '00:00:00'}`,
+              visitAt: londonVisitAtIso(booking.event_date, booking.start_time),
             })),
             supabase,
           )
