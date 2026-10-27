@@ -150,6 +150,8 @@ export function cancellationFacts(input: {
     deposit_owed: refund.refunded ? null : yesNo(refund.depositOwed === true),
     amount_owed_pence: !refund.refunded && typeof refund.amountOwedPence === 'number' ? refund.amountOwedPence : null,
     refund_cutoff_days: !refund.refunded && typeof refund.cutoffDays === 'number' ? refund.cutoffDays : null,
+    // The pub cancelled (BK-046): the fallback text must apologise as the email did.
+    cancelled_by: refund.cancelledBy === 'venue' ? 'venue' : null,
   }
 }
 
@@ -161,6 +163,7 @@ export function cancellationFacts(input: {
 export function refundResultFromFacts(facts: Record<string, unknown> | null | undefined): TableBookingCancellationRefundResult | null {
   const outcome = facts?.refund_outcome
   if (typeof outcome !== 'string' || !outcome) return null
+  const byVenue = facts?.cancelled_by === 'venue' ? { cancelledBy: 'venue' as const } : {}
 
   if (outcome === 'refunded') {
     const amountPence = Number(facts?.refund_amount_pence)
@@ -174,6 +177,7 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
       amountPence,
       tier,
       ...(Number.isFinite(alreadyReturnedPence) && alreadyReturnedPence > 0 ? { alreadyReturnedPence } : {}),
+      ...byVenue,
     }
   }
 
@@ -187,6 +191,7 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
     ...(facts?.deposit_owed === 'yes' ? { depositOwed: true } : {}),
     ...(Number.isFinite(owedPence) && owedPence > 0 ? { amountOwedPence: owedPence } : {}),
     ...(Number.isInteger(cutoffDays) && cutoffDays >= 0 ? { cutoffDays } : {}),
+    ...byVenue,
   }
 }
 

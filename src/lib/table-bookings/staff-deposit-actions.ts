@@ -174,7 +174,8 @@ async function recordCash(
   // take cash only when PayPal positively says nothing was paid: an unreachable PayPal is not a no.
   if (booking.paypal_deposit_order_id) {
     const check = await reconcileTableDepositOrder(supabase, booking, { source: 'staff_cash_deposit' })
-    if (check.outcome === 'recorded' || check.outcome === 'already_recorded') {
+    // closed_booking: the money landed after the booking closed, and release 10's handler settled it.
+    if (check.outcome === 'recorded' || check.outcome === 'already_recorded' || check.outcome === 'closed_booking') {
       return { ok: false, status: 409, error: 'The guest has just paid the deposit online, so nothing should be taken at the bar.' }
     }
     if (check.outcome === 'needs_attention') {

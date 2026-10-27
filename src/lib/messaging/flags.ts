@@ -53,6 +53,10 @@ export const MESSAGING_FLAG_KEYS = [
   // The amended-booking notice when staff change a table booking's party size (BK-091, 26 October
   // 2026). New guest wording for this trigger, so it stays off until the owner has read it.
   'table_party_size_change_notice',
+  // The refund notice when a table deposit is paid after the booking was cancelled and is refunded
+  // on its own (BK-047, owner decision D19, 26 October 2026). It reuses the staff refund notice's
+  // words, but no staff click sends it, so it stays off until the owner switches it on.
+  'table_late_deposit_refund_notice',
   'private_booking_email_first',
   'bounce_sms_fallback',
   'staff_message_email_option',

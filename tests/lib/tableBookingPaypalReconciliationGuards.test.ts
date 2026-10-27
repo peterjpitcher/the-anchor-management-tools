@@ -21,6 +21,12 @@ vi.mock('@/lib/money-alerts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/money-alerts')>()),
   alertMoneyNeedsAPerson: vi.fn().mockResolvedValue({ sent: true, duplicate: false }),
 }))
+// BK-047: what happens to a closed booking is late-deposit.ts's job, tested on its own; here only
+// that the sweep hands it over and never confirms.
+vi.mock('@/lib/table-bookings/late-deposit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/table-bookings/late-deposit')>()),
+  settleDepositOnClosedBooking: vi.fn().mockResolvedValue({ outcome: 'refunded', amountGbp: 100 }),
+}))
 vi.mock('@/lib/table-bookings/paypal-deposit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/table-bookings/paypal-deposit')>()
   return {
@@ -35,6 +41,7 @@ import { getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { sendTableBookingDepositCapturedNotifications } from '@/lib/table-bookings/paypal-deposit'
 import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
+import { settleDepositOnClosedBooking } from '@/lib/table-bookings/late-deposit'
 
 const BOOKING_ID = 'b1111111-1111-4111-8111-111111111111'
 
@@ -81,14 +88,14 @@ function mockDb(rows: Record<string, unknown>[]) {
   vi.mocked(createAdminClient).mockReturnValue({
     from: vi.fn(() => {
       const chain: Record<string, unknown> = {}
-      for (const m of ['select', 'not', 'is', 'gte', 'limit', 'eq', 'neq']) {
+      for (const m of ['select', 'not', 'is', 'gte', 'order', 'limit', 'eq', 'neq']) {
         chain[m] = vi.fn().mockReturnValue(chain)
       }
       ;(chain as any).then = (resolve: (v: unknown) => void) => resolve({ data: rows, error: null })
       chain.update = vi.fn((payload: Record<string, unknown>) => {
         lastUpdate = payload
         const u: Record<string, unknown> = {}
-        for (const m of ['eq', 'is', 'neq', 'select']) u[m] = vi.fn().mockReturnValue(u)
+        for (const m of ['eq', 'is', 'neq', 'not', 'in', 'select']) u[m] = vi.fn().mockReturnValue(u)
         u.maybeSingle = vi.fn().mockResolvedValue({ data: { id: BOOKING_ID }, error: null })
         return u
       })
@@ -221,16 +228,47 @@ describe('table booking reconciliation guards', () => {
     expect(auditCalls('payment.capture_amount_mismatch')).toHaveLength(1)
   })
 
-  it('tells a manager when a guest paid for a booking the deposit timeout had cancelled', async () => {
+  // BK-047 (owner decision D19): a payment that lands after the booking closed used to mark it paid
+  // and "confirmed", keep its cancelled stamps and send the guest a "deposit confirmed" message.
+  it.each(['cancelled', 'no_show', 'completed'])(
+    'never confirms a %s booking: hands the capture to the closed-booking settle step',
+    async (status) => {
+      mockDb([booking({ status })])
+      vi.mocked(getPayPalOrder).mockResolvedValue(order() as any)
+
+      const response = await GET(request())
+      const body = await response.json()
+
+      expect(lastUpdate).toBeNull()
+      expect(sendTableBookingDepositCapturedNotifications).not.toHaveBeenCalled()
+      expect(settleDepositOnClosedBooking).toHaveBeenCalledWith(expect.anything(), {
+        bookingId: BOOKING_ID,
+        captureId: 'CAPTURE-1',
+        orderId: 'ORDER-1',
+        amountGbp: 100,
+        capturedAtIso: null,
+        source: 'reconciliation_cron',
+      })
+      expect(body.needsAttention).toEqual(['TB-274EB223'])
+    }
+  )
+
+  it('settles a closed booking whatever the captured amount, since all of it goes back', async () => {
     mockDb([booking({ status: 'cancelled' })])
-    vi.mocked(getPayPalOrder).mockResolvedValue(order() as any)
+    vi.mocked(getPayPalOrder).mockResolvedValue(order({ amount: '80.00' }) as any)
 
     await GET(request())
 
-    expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      bookingId: BOOKING_ID,
-      kind: 'paid_after_cancel',
-    }))
+    expect(settleDepositOnClosedBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ amountGbp: 80 }))
+    expect(auditCalls('payment.capture_amount_mismatch')).toHaveLength(0)
+  })
+
+  it('looks for candidates by activity, not by when the booking was made', async () => {
+    mockDb([])
+    await GET(request())
+
+    const chain = vi.mocked(createAdminClient).mock.results[0].value.from.mock.results[0].value
+    expect(chain.gte).toHaveBeenCalledWith('updated_at', expect.any(String))
+    expect(chain.gte).not.toHaveBeenCalledWith('created_at', expect.any(String))
   })
 })
-
