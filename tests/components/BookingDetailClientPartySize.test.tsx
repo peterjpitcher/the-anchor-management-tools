@@ -272,7 +272,10 @@ describe('BookingDetailClient party size changes', () => {
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
     await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
+    // Who is cancelling decides the refund (BK-046), so it is asked every time.
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('radio', { name: /The guest asked to cancel/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -281,7 +284,27 @@ describe('BookingDetailClient party size changes', () => {
       )
     })
     expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/status`, {
-      body: { action: 'cancelled' },
+      body: { cancelled_by: 'guest', action: 'cancelled' },
+    })
+  })
+
+  it('does not cancel until staff say who is cancelling (BK-046)', async () => {
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
+
+    expect(within(dialog).getByText('Choose who is cancelling.')).toBeInTheDocument()
+    expect(requestTableBookingActionMock).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('radio', { name: /The pub is cancelling/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
+    await waitFor(() => {
+      expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/status`, {
+        body: { cancelled_by: 'venue', action: 'cancelled' },
+      })
     })
   })
 
@@ -293,7 +316,10 @@ describe('BookingDetailClient party size changes', () => {
     // The header action and the dialog's confirm button share the label "Cancel Booking". PageLayout
     // renders its header actions twice (desktop and phone), so the first copy is the one clicked.
     await user.click(screen.getAllByRole('button', { name: 'Cancel Booking' })[0])
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
+    // Who is cancelling decides the refund (BK-046), so it is asked every time.
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('radio', { name: /The guest asked to cancel/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Booking updated')
@@ -348,5 +374,74 @@ describe('BookingDetailClient party size changes', () => {
       `/api/boh/table-bookings/${BOOKING_ID}/party-size`,
       { body: { party_size: 9, send_sms: true } }
     )
+  })
+})
+
+// BK-041: a cancelled booking still holding a cash deposit says so on the page until the refund is
+// recorded, because nothing can send it back automatically.
+describe('BookingDetailClient cash deposit prompt', () => {
+  const cashCancelled = (): Booking => ({
+    ...makeBooking(),
+    status: 'cancelled',
+    payment_method: 'cash',
+    payment_status: 'completed',
+    deposit_amount: 160,
+    deposit_amount_locked: 160,
+    party_size: 16,
+    committed_party_size: 16,
+  })
+
+  it('asks for the cash to be handed back', () => {
+    render(<BookingDetailClient booking={cashCancelled()} canEdit canManage canRefund depositRefunds={[]} />)
+    expect(screen.getByText('Return the cash deposit')).toBeInTheDocument()
+  })
+
+  it('goes once the cash refund is recorded', () => {
+    render(
+      <BookingDetailClient
+        booking={cashCancelled()}
+        canEdit
+        canManage
+        canRefund
+        depositRefunds={[{ id: 'r-1', amount: 160, status: 'completed' }]}
+      />
+    )
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+  })
+
+  it('is not shown for a live booking or a PayPal deposit', () => {
+    const { unmount } = render(
+      <BookingDetailClient booking={{ ...cashCancelled(), status: 'confirmed' }} canEdit canManage canRefund depositRefunds={[]} />
+    )
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+    unmount()
+    render(<BookingDetailClient booking={{ ...cashCancelled(), payment_method: 'paypal' }} canEdit canManage canRefund depositRefunds={[]} />)
+    expect(screen.queryByText('Return the cash deposit')).toBeNull()
+  })
+})
+
+// BK-048: Mark Confirmed and Seat Guests showed on every booking, cancelled ones included, and one
+// click brought a cancelled booking back.
+describe('BookingDetailClient status buttons', () => {
+  it('offers no way to bring back a cancelled booking', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'cancelled' }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.queryByRole('button', { name: 'Mark Confirmed' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Seat Guests' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Booking' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Mark No-Show' })).toBeNull()
+  })
+
+  it('offers Mark Confirmed on a no-show, to put it back', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'no_show' }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.getByRole('button', { name: 'Mark Confirmed' })).toBeInTheDocument()
+  })
+
+  it('does not offer Mark Confirmed on a booking that is already confirmed', () => {
+    render(<BookingDetailClient booking={{ ...makeBooking(), status: 'confirmed', seated_at: null }} canEdit canManage canRefund={false} depositRefunds={[]} />)
+
+    expect(screen.queryByRole('button', { name: 'Mark Confirmed' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Seat Guests' })).toBeInTheDocument()
   })
 })

@@ -667,6 +667,7 @@ export async function processPayPalRefund(
           tableBookingId: sourceType === 'table_booking' ? sourceId : null,
           privateBookingId: sourceType === 'private_booking' ? sourceId : null,
           parkingBookingId: booking.parkingBookingId ?? null,
+          refundId: refundRow.id,
         })
       } else {
         notificationStatus = 'skipped'

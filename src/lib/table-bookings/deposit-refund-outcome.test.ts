@@ -71,3 +71,18 @@ describe('the cancel routes and screens carry the deposit outcome through', () =
     expect(read(path)).toContain('describeDepositRefundForStaff(readDepositRefundOutcome(')
   })
 })
+
+// BK-041: a cash deposit cannot go back automatically, so the person who cancelled is told to hand
+// it back at the bar, and the state survives the trip through the route response.
+describe('a cash deposit on a staff cancellation', () => {
+  it('tells staff to hand the cash back and record it', () => {
+    const outcome = toDepositRefundOutcome({ refunded: false, reason: 'cash_refund_due', depositOwed: true, amountOwedPence: 16000 })
+    expect(outcome).toEqual({ state: 'cash_owed', amount_pence: 16000 })
+    expect(readDepositRefundOutcome(JSON.parse(JSON.stringify(outcome)))).toEqual({ state: 'cash_owed', amount_pence: 16000, cutoff_days: null })
+    expect(describeDepositRefundForStaff(outcome)).toEqual({
+      tone: 'error',
+      message:
+        'The deposit was paid in cash, so the guest is owed £160.00. Hand it back at the bar and record it with Process Refund (method: cash). A manager has been emailed.',
+    })
+  })
+})

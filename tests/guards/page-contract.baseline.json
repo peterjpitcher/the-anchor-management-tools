@@ -25,7 +25,7 @@
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
     "raw-button": 1,
-    "rounded-md": 8
+    "rounded-md": 7
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
     "compat-import": 1,

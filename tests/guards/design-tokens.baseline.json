@@ -27,7 +27,7 @@
     "brand-ramp-outside-shell": 1
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
-    "rounded-md": 8
+    "rounded-md": 7
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
     "rounded-md": 3
