@@ -27,7 +27,6 @@ const NONE: SettingsTilePermissions = {
   calendarNotesView: false,
   customersView: false,
   messagesView: false,
-  messageTemplatesManage: false,
   menuManage: false,
   maintenanceAreas: false,
 }
@@ -85,7 +84,6 @@ describe('the settings tiles', () => {
         '/settings/event-categories',
         '/settings/calendar-notes',
         '/settings/customer-labels',
-        '/settings/message-templates',
         '/settings/import-messages',
         '/settings/sms-failures',
         '/settings/menu-target',

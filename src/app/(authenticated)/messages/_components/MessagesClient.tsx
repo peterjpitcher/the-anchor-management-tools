@@ -62,7 +62,6 @@ export function MessagesClient() {
   // pair. Showing these controls to a view-only user only produced a failure
   // toast, including on every conversation they opened.
   const canWriteReadState = canSendMessages
-  const canManageTemplates = hasPermission('messages', 'manage_templates')
   // The destination page requires send_marketing, so gating the link on
   // anything else sent people to /unauthorized.
   const canSendBulk = hasPermission('messages', 'send_marketing')
@@ -543,7 +542,8 @@ export function MessagesClient() {
   // Refresh, the holding queue and Bulk Messages stay in the header; the rest collapse into a
   // labelled More menu, so the header never holds more than three actions plus More.
   const showMarkAllRead = canWriteReadState && totalUnreadCount > 0
-  const overflowActions = showMarkAllRead || canManageTemplates ? (
+  // The Message Templates link is gone with the page (BK-178): nothing sent from those templates.
+  const overflowActions = showMarkAllRead ? (
     <Dropdown
       align="right"
       trigger={
@@ -555,14 +555,6 @@ export function MessagesClient() {
       {showMarkAllRead && (
         <DropdownItem onClick={() => setConfirmMarkAllOpen(true)} icon={<Icon name="check" size={14} />}>
           {markingAll ? 'Marking all read…' : 'Mark All Read'}
-        </DropdownItem>
-      )}
-      {canManageTemplates && (
-        <DropdownItem
-          onClick={() => router.push('/settings/message-templates')}
-          icon={<Icon name="file" size={14} />}
-        >
-          Message Templates
         </DropdownItem>
       )}
     </Dropdown>
