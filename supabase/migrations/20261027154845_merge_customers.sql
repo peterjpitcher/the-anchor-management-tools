@@ -35,6 +35,11 @@
 --     every channel off, is_placeholder set so lists and counts leave it out) and its notes
 --     say which record it was merged into. No customers row is
 --     deleted.
+--   * The duplicate records the kept customer in merged_into_customer_id, and anything merged
+--     into the duplicate earlier is pointed at the kept customer too. An unsubscribe token can
+--     belong to one customer only, so when both records hold one the duplicate's stays with it;
+--     the unsubscribe route follows merged_into_customer_id, so an old email's link still opts
+--     out the kept record.
 --
 -- dry_run true runs the whole merge inside a savepoint, reports exactly what it would move and
 -- rolls it back, so the preview staff see is the merge itself rather than an estimate.
@@ -44,6 +49,13 @@
 --
 -- Depends on 20261027154844_customer_contact_suppressions. Rollback:
 -- tasks/merge-customers/rollback.sql. Tested by scripts/testing/merge-customers-postgres.py.
+
+-- Where a merged record went, so links issued to it (unsubscribe tokens) reach the kept record.
+ALTER TABLE public.customers
+  ADD COLUMN merged_into_customer_id uuid REFERENCES public.customers(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.customers.merged_into_customer_id IS
+  'Set on a record merged by merge_customers: the customer it was merged into (BK-164).';
 
 CREATE FUNCTION public.merge_customers_apply(p_keep_id uuid, p_merge_id uuid)
 RETURNS jsonb
@@ -248,6 +260,7 @@ BEGIN
     mobile_number = '07700900000',
     mobile_e164 = NULL,
     mobile_number_raw = NULL,
+    merged_into_customer_id = p_keep_id,
     internal_notes = 'Merged into customer ' || p_keep_id::text || ' on '
       || to_char(v_now AT TIME ZONE 'Europe/London', 'DD Mon YYYY') || '.',
     stripe_customer_id = NULL,
@@ -268,6 +281,9 @@ BEGIN
     whatsapp_status = 'opted_out',
     whatsapp_opted_out_at = COALESCE(whatsapp_opted_out_at, v_now)
   WHERE id = p_merge_id;
+
+  -- Records merged into the duplicate earlier now lead straight to the kept record.
+  UPDATE public.customers SET merged_into_customer_id = p_keep_id WHERE merged_into_customer_id = p_merge_id;
 
   v_sms_out := v_keep.sms_status = 'opted_out' OR v_merge.sms_status = 'opted_out';
   v_whatsapp_out := v_keep.whatsapp_status = 'opted_out' OR v_merge.whatsapp_status = 'opted_out'

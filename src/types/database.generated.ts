@@ -3370,6 +3370,7 @@ export type Database = {
           marketing_whatsapp_opt_in: boolean
           marketing_whatsapp_opt_in_at: string | null
           marketing_whatsapp_opted_out_at: string | null
+          merged_into_customer_id: string | null
           messaging_status: string | null
           mobile_e164: string | null
           mobile_number: string | null
@@ -3428,6 +3429,7 @@ export type Database = {
           marketing_whatsapp_opt_in?: boolean
           marketing_whatsapp_opt_in_at?: string | null
           marketing_whatsapp_opted_out_at?: string | null
+          merged_into_customer_id?: string | null
           messaging_status?: string | null
           mobile_e164?: string | null
           mobile_number?: string | null
@@ -3486,6 +3488,7 @@ export type Database = {
           marketing_whatsapp_opt_in?: boolean
           marketing_whatsapp_opt_in_at?: string | null
           marketing_whatsapp_opted_out_at?: string | null
+          merged_into_customer_id?: string | null
           messaging_status?: string | null
           mobile_e164?: string | null
           mobile_number?: string | null
@@ -3523,6 +3526,13 @@ export type Database = {
             columns: ["marketing_unsubscribe_campaign_id"]
             isOneToOne: false
             referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
         ]

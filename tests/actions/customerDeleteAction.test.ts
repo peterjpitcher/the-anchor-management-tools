@@ -33,11 +33,11 @@ describe('deleteCustomer action', () => {
   })
 
   it('audits the delete by id and counts, with no personal data', async () => {
-    mockedDelete.mockResolvedValue({ message: 'Personal data erased. customers: 1.', counts: { customers: 1 }, unscrubbedRows: 0 })
+    mockedDelete.mockResolvedValue({ message: 'Personal data erased. customers: 1.', counts: { customers: 1 }, unscrubbedRows: 0, incomplete: false })
 
     const result = await deleteCustomer('customer-1')
 
-    expect(result).toEqual({ success: true, message: 'Personal data erased. customers: 1.' })
+    expect(result).toEqual({ success: true, message: 'Personal data erased. customers: 1.', incomplete: false })
     const audit = mockedAudit.mock.calls[0][0]
     expect(audit).toMatchObject({
       operation_type: 'delete',
@@ -47,6 +47,19 @@ describe('deleteCustomer action', () => {
       additional_info: { anonymised: true, rows_scrubbed: { customers: 1 }, rows_left_unscrubbed: 0 },
     })
     expect(JSON.stringify(audit)).not.toMatch(/mobile|email_address|first_name|\+44/)
+  })
+
+  it('tells the screen when personal data was left behind', async () => {
+    mockedDelete.mockResolvedValue({
+      message: 'Personal data erased. customers: 1. 2 row(s) were rejected by the database and still hold personal data, see the server logs.',
+      counts: { customers: 1 },
+      unscrubbedRows: 2,
+      incomplete: true,
+    })
+
+    const result = await deleteCustomer('customer-1')
+
+    expect(result).toMatchObject({ success: true, incomplete: true, message: expect.stringContaining('still hold personal data') })
   })
 
   it('passes a refusal back to the screen and writes no audit row', async () => {

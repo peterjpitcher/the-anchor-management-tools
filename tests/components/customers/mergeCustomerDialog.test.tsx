@@ -14,9 +14,14 @@ vi.mock('@/app/actions/customer-merge', () => actions)
 
 vi.mock('@/components/features/customers/CustomerSearchInput', () => ({
   default: ({ onCustomerSelect }: { onCustomerSelect: (customer: unknown) => void }) => (
-    <button type="button" onClick={() => onCustomerSelect({ id: 'keep-1', first_name: 'Jo', last_name: 'Bloggs', mobile_number: '+447700900101', email: null })}>
-      pick Jo
-    </button>
+    <>
+      <button type="button" onClick={() => onCustomerSelect({ id: 'keep-1', first_name: 'Jo', last_name: 'Bloggs', mobile_number: '+447700900101', email: null })}>
+        pick Jo
+      </button>
+      <button type="button" onClick={() => onCustomerSelect({ id: 'keep-2', first_name: 'Sam', last_name: 'Smith', mobile_number: '+447700900102', email: null })}>
+        pick Sam
+      </button>
+    </>
   ),
 }))
 
@@ -74,5 +79,22 @@ describe('MergeCustomerDialog', () => {
 
     expect(await screen.findByText('Both records are booked on the same event. Cancel one of those bookings first.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Merge into/ })).not.toBeInTheDocument()
+  })
+
+  it('drops a preview that comes back after another record was picked', async () => {
+    let answer: (value: unknown) => void = () => {}
+    actions.previewCustomerMerge.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+    render(<MergeCustomerDialog open onClose={vi.fn()} customerId="dup-1" customerName="Joanne Bloggs" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick Jo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check what moves' }))
+    fireEvent.click(screen.getByRole('button', { name: 'pick Sam' }))
+    answer({ success: true, data: PREVIEW })
+
+    await waitFor(() => expect(actions.previewCustomerMerge).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText('3 text messages')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Merge into/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check what moves' })).toBeEnabled()
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alert, Button, Field, Modal, toast } from '@/ds'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
@@ -37,10 +37,14 @@ export function MergeCustomerDialog({ open, onClose, customerId, customerName }:
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [merging, setMerging] = useState(false)
+  // The record the latest preview was asked for. A preview that comes back after staff picked a
+  // different record is dropped, so the counts on screen are always for the record shown.
+  const previewFor = useRef<string | null>(null)
 
   const targetName = target ? [target.first_name, target.last_name ?? ''].filter(Boolean).join(' ') : ''
 
   function reset() {
+    previewFor.current = null
     setTarget(null)
     setPreview(null)
     setError(null)
@@ -54,25 +58,32 @@ export function MergeCustomerDialog({ open, onClose, customerId, customerName }:
 
   async function checkMerge() {
     if (!target) return
+    const keepId = target.id
+    previewFor.current = keepId
     setChecking(true)
     setError(null)
     setPreview(null)
     try {
-      const result = await previewCustomerMerge(customerId, target.id)
+      const result = await previewCustomerMerge(customerId, keepId)
+      if (previewFor.current !== keepId) return
       if (result.error || !result.data) {
         setError(result.error ?? 'Could not work out what the merge would move. Try again.')
         return
       }
       setPreview(result.data)
     } catch {
+      if (previewFor.current !== keepId) return
       setError('Could not work out what the merge would move. Try again.')
     } finally {
-      setChecking(false)
+      if (previewFor.current === keepId) setChecking(false)
     }
   }
 
+  // Only a preview of this exact pair can be confirmed: the merge cannot be undone.
+  const previewMatches = Boolean(target && preview && preview.keep_id === target.id && preview.merge_id === customerId)
+
   async function confirmMerge() {
-    if (!target || !preview) return
+    if (!target || !preview || !previewMatches) return
     setMerging(true)
     setError(null)
     try {
@@ -107,7 +118,7 @@ export function MergeCustomerDialog({ open, onClose, customerId, customerName }:
           <Button variant="secondary" type="button" onClick={close} disabled={merging}>
             Cancel
           </Button>
-          {preview ? (
+          {preview && previewMatches ? (
             <Button variant="danger" type="button" onClick={confirmMerge} loading={merging}>
               Merge into {targetName}
             </Button>
@@ -123,9 +134,11 @@ export function MergeCustomerDialog({ open, onClose, customerId, customerName }:
         <Field label="Record to keep" hint="Its name and phone number stay. This record is emptied and marked as merged.">
           <CustomerSearchInput
             onCustomerSelect={(customer) => {
+              previewFor.current = null
               setTarget(customer)
               setPreview(null)
               setError(null)
+              setChecking(false)
             }}
             selectedCustomerId={target?.id ?? null}
             excludeCustomerIds={[customerId]}
@@ -135,7 +148,7 @@ export function MergeCustomerDialog({ open, onClose, customerId, customerName }:
 
         {error && <Alert tone="danger">{error}</Alert>}
 
-        {preview && (
+        {preview && previewMatches && (
           <div className="space-y-3 text-sm text-text">
             <div>
               <p className="font-medium">Moves to {targetName}:</p>
