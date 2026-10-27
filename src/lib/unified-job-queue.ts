@@ -183,6 +183,26 @@ function parseBulkSmsAbortCode(message: unknown): FatalSmsSafetyCode | null {
   return isFatalSmsSafetyCode(code) ? code : null
 }
 
+/**
+ * Failures a retry cannot fix (BK-214, customer bookings review of 24 October 2026).
+ *
+ * Every other failure is retried up to max_attempts with backoff. These ones are a property of the
+ * job itself, so a retry only repeats the same refusal: 21 texts to a number that cannot be parsed
+ * were each tried three times. They fail on the first attempt instead.
+ */
+const NON_RETRYABLE_JOB_ERRORS: RegExp[] = [
+  // The recipient number cannot be turned into a valid phone number.
+  /^Invalid phone number format/i,
+  // Twilio refuses the number because the guest replied STOP (error 21610).
+  /opted out of messages/i,
+  // The job names an email template that does not exist.
+  /^Unknown email template:/i,
+]
+
+export function isNonRetryableJobError(message: string): boolean {
+  return NON_RETRYABLE_JOB_ERRORS.some((pattern) => pattern.test(message))
+}
+
 class FatalSmsSafetyError extends Error {
   code: FatalSmsSafetyCode
   smsSent: boolean
@@ -1058,6 +1078,9 @@ export class UnifiedJobQueue {
         // Transport send already succeeded; retries cannot repair missing persistence and can dribble sends.
         shouldRetry = false
       }
+      if (isNonRetryableJobError(errorMessage)) {
+        shouldRetry = false
+      }
       const attemptIndex = Math.max(0, attempts - 1)
 
       const failureUpdate = supabase
@@ -1546,34 +1569,6 @@ export class UnifiedJobQueue {
    */
   async cancelJob(jobId: string): Promise<boolean> {
     return await this.updateJobStatus(jobId, 'cancelled')
-  }
-
-  /**
-   * Clean up old jobs
-   */
-  async cleanupOldJobs(daysToKeep = 30): Promise<number> {
-    const supabase = await createAdminClient()
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
-
-    const { data, error } = await supabase
-      .from('jobs')
-      .delete()
-      .in('status', ['completed', 'failed', 'cancelled'])
-      .lt('created_at', cutoffDate.toISOString())
-      .select('id')
-
-    if (error) {
-      logger.error('Failed to cleanup old jobs', { error })
-      return 0
-    }
-
-    const count = data?.length || 0
-    if (count > 0) {
-      logger.info(`Cleaned up ${count} old jobs`)
-    }
-
-    return count
   }
 }
 
