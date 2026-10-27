@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { Alert } from '@/ds'
+import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -38,6 +40,7 @@ import { FohOutsideBookings } from './components/FohOutsideBookings'
 import { FohBookingDetailModal } from './components/FohBookingDetailModal'
 import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
+import type { ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { FohChangeTimeModal } from './components/FohChangeTimeModal'
 import {
   describeGuestNotificationChannel,
@@ -45,6 +48,8 @@ import {
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
+import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
+import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -61,7 +66,10 @@ function describeGuestNotReached(result: unknown): string | null {
     ? (payload.depositTransition as Record<string, unknown>)
     : null
   const deposit = describeGuestNotificationProblem(readGuestNotificationOutcome(transition?.notification), 'about the deposit')
-  return deposit ? `${deposit} Copy the deposit link from the booking to send it.` : null
+  if (deposit) return `${deposit} Copy the deposit link from the booking to send it.`
+
+  // The new party size, when staff changed it and the guest could not be told (BK-091).
+  return describeGuestNotificationProblem(readGuestNotificationOutcome(payload.partySizeNotification), 'about the new party size')
 }
 
 export function FohScheduleClient({
@@ -83,6 +91,11 @@ export function FohScheduleClient({
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const [date, setDate] = useState(initialDate)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  // What staff must read after a party-size change (a deposit left for a manager, food choices
+  // dropped). Kept on screen until dismissed, never cleared by the next action (BK-043).
+  const [staffNotice, setStaffNotice] = useState<string[] | null>(null)
+  // Bumped after each action so the "guest not told" list looks again (BK-177).
+  const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
   const [bookingActionInFlight, setBookingActionInFlight] = useState<string | null>(null)
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({})
   const [selectedMoveOptions, setSelectedMoveOptions] = useState<FohMoveTableOption[]>([])
@@ -91,7 +104,7 @@ export function FohScheduleClient({
   const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
   const [showNoShowConfirmation, setShowNoShowConfirmation] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
-  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
+  const [christmasPartyChange, setChristmasPartyChange] = useState<ChristmasPartyChange | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditBookingId, setPartySizeEditBookingId] = useState<string | null>(null)
   const [changeTimeOpen, setChangeTimeOpen] = useState(false)
@@ -158,9 +171,15 @@ export function FohScheduleClient({
       const s = (b.status || '').toLowerCase()
       return s !== 'cancelled' && s !== 'no_show'
     })
+    const counted = active.reduce((sum, b) => { const p = Number(b.party_size || 1); return sum + (Number.isFinite(p) && p > 0 ? p : 1) }, 0)
+    // Covers as every other screen counts them (BK-075): diners plus event tickets, with private
+    // hire guests as their own figure. The count of what is on screen stays as the fallback when
+    // the day load could not be read.
+    const dayLoad = schedule.day_load
     return {
       bookings: active.length,
-      covers: active.reduce((sum, b) => { const p = Number(b.party_size || 1); return sum + (Number.isFinite(p) && p > 0 ? p : 1) }, 0)
+      covers: dayLoad ? dayLoad.covers : counted,
+      privateHireGuests: dayLoad ? dayLoad.privateHireGuests : null,
     }
   }, [schedule])
   const nextUpcomingEvent = useMemo(() => upcomingEvents[0] || null, [upcomingEvents])
@@ -327,11 +346,24 @@ export function FohScheduleClient({
         : transition.smsSent === true
           ? 'by SMS'
           : null
-      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}`
+      // A confirmed booking stays confirmed with the deposit owed (D20).
+      const staysConfirmed = transition.stillConfirmed === true ? ' The booking stays confirmed.' : ''
+      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}${staysConfirmed}`
     }
 
     if (transition?.state === 'deposit_cleared') {
       return `${successMessage}. Pending deposit cleared.`
+    }
+
+    // An unpaid deposit that followed the new party size (D20).
+    if (transition?.state === 'deposit_repriced' && typeof payload?.depositNote === 'string') {
+      return `${successMessage}. ${payload.depositNote}`
+    }
+
+    // The guest was told about the new party size (BK-091).
+    const toldBy = describeGuestNotificationChannel(readGuestNotificationOutcome(payload?.partySizeNotification))
+    if (toldBy) {
+      return `${successMessage}. The guest was told ${toldBy}.`
     }
 
     return successMessage
@@ -351,6 +383,8 @@ export function FohScheduleClient({
       // What happened to the deposit on a cancellation, said to the person who cancelled (BK-114).
       const depositRefund = describeDepositRefundForStaff(readDepositRefundOutcome(rp?.deposit_refund))
       const successText = buildActionSuccessMessage(successMessage, result)
+      const notice = describePartySizeStaffNotice(result)
+      if (notice.length > 0) setStaffNotice(notice)
       setStatusMessage(depositRefund?.tone === 'success' ? `${successText} ${depositRefund.message}` : successText)
       // The change stands, but staff must know when the guest was not told about it. Only the
       // email-first paths report this, so without their flags nothing new shows.
@@ -359,6 +393,7 @@ export function FohScheduleClient({
       if (depositProblem && guestNotReached) setErrorMessage(`${depositProblem} ${guestNotReached}`)
       else if (depositProblem) setErrorMessage(depositProblem)
       else if (guestNotReached) setErrorMessage(guestNotReached)
+      setGuestNotToldRefresh((count) => count + 1)
       return true
     } catch (error) {
       if (error instanceof BookingActionError && error.payload) {
@@ -514,10 +549,29 @@ export function FohScheduleClient({
         submittingFoodOrderAlert={submittingFoodOrderAlert}
         statusMessage={statusMessage}
         errorMessage={errorMessage}
+        staffNotice={staffNotice}
+        onDismissStaffNotice={() => setStaffNotice(null)}
         lastInteractionAtMsRef={lastInteractionAtMsRef}
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}
       />
+
+      {schedule && (
+        <PrivateHireTodayStrip
+          hires={schedule.day_load?.privateHires ?? []}
+          loadFailed={schedule.day_load === null}
+          withLinks={!isManagerKioskStyle}
+        />
+      )}
+
+      {schedule?.private_hires_unavailable && (
+        <Alert tone="warning" title="Private hires not shown">
+          Private hires could not be loaded, so tables they take are not shown as blocked. Refresh before seating anyone
+          in a room that may be hired tonight.
+        </Alert>
+      )}
+
+      <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
 
       {viewMode === 'inside' ? (
         <>
@@ -569,6 +623,7 @@ export function FohScheduleClient({
       <FohBookingDetailModal
         selectedBookingContext={selectedBookingContext}
         canEdit={canEdit}
+        canChooseRefund={canWaiveDeposit}
         bookingActionInFlight={bookingActionInFlight}
         showCancelBookingConfirmation={showCancelBookingConfirmation}
         showNoShowConfirmation={showNoShowConfirmation}
@@ -583,6 +638,7 @@ export function FohScheduleClient({
         onOpenPartySizeEdit={(bid, size) => { setPartySizeEditBookingId(bid); setPartySizeEditValue(String(size)); setPartySizeEditOpen(true) }}
         onOpenWalkoutModal={(bid) => { setWalkoutBookingId(bid); setWalkoutAmountValue(''); setWalkoutModalOpen(true) }}
         onOpenChangeTime={(bid) => { setChangeTimeBookingId(bid); setChangeTimeError(null); setChangeTimeOpen(true) }}
+        canManageDeposit={canWaiveDeposit}
       />
 
       <FohCreateBookingModal
@@ -626,7 +682,7 @@ export function FohScheduleClient({
 
       <FohPartySizeModal
         bookingId={partySizeEditBookingId}
-        onCoursesChange={setChristmasCourseCounts}
+        onCoursesChange={setChristmasPartyChange}
         open={partySizeEditOpen}
         bookingActionInFlight={bookingActionInFlight}
         partySizeEditValue={partySizeEditValue}
@@ -639,7 +695,7 @@ export function FohScheduleClient({
           if (!bid) return
           setPartySizeEditOpen(false)
           void (async () => {
-            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasCourseCounts }), 'Party size updated', 'party_size')
+            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats, expected_course_counts: christmasPartyChange?.expectedCourseCounts }), 'Party size updated', 'party_size')
             if (ok) closeBookingDetails()
           })()
         }}

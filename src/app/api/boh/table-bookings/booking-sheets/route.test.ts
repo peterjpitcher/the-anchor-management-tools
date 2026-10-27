@@ -82,6 +82,15 @@ vi.mock('@/lib/table-bookings/preorder', async () => {
   return { ...actual, isPreorderEnabled: vi.fn(async () => preorderState.enabled) }
 })
 
+// The day's private hires print on the sheets too (BK-075). None by default.
+const dayLoadState: { hires: Record<string, unknown>[]; fail: boolean } = { hires: [], fail: false }
+vi.mock('@/services/day-load', () => ({
+  loadDayLoads: vi.fn(async (date: string) => {
+    if (dayLoadState.fail) throw new Error('timeout')
+    return new Map([[date, { date, privateHires: dayLoadState.hires }]])
+  }),
+}))
+
 vi.mock('@/lib/pdf-generator', () => ({
   generatePDFFromHTML: vi.fn(() => Promise.resolve(Buffer.from('%PDF'))),
 }))
@@ -172,6 +181,8 @@ beforeEach(() => {
   preorderState.selections = []
   preorderState.menuItems = []
   preorderState.periods = []
+  dayLoadState.hires = []
+  dayLoadState.fail = false
   vi.mocked(getLondonDateIso).mockReturnValue('2026-07-16')
   vi.mocked(generatePDFFromHTML).mockResolvedValue(Buffer.from('%PDF'))
   vi.mocked(requireBohTableBookingPermission).mockResolvedValue({
@@ -201,6 +212,53 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     // Terminal states are excluded via the proven quoted in-list — a malformed
     // in-list fails open in PostgREST and would silently print cancelled bookings.
     expect(notSpy).toHaveBeenCalledWith('status', 'in', '("cancelled","no_show")')
+  })
+
+  // BK-075 (reversing spec decision D-4): the kitchen sees a catered party on its sheets.
+  it('prints each private hire in time order among the bookings, with its rooms, guests and catering', async () => {
+    queryResult.data = [
+      makeRow({ id: 'b1', booking_reference: 'ANC-001', booking_time: '18:00' }),
+      makeRow({ id: 'b2', booking_reference: 'ANC-002', booking_time: '20:00' }),
+    ]
+    dayLoadState.hires = [{
+      id: 'a1b2c3d4-0000-0000-0000-000000000001', customerName: 'Sam Party', status: 'confirmed',
+      startTime: '19:00', endTime: '23:30', guestCount: 40, roomNames: ['The Dining Room'], holdsRoom: true,
+      catering: ['Finger Buffet x 40'], kitchen: { covers: 40, foodTime: '19:30' },
+    }]
+
+    await GET(makeRequest('2026-07-16'))
+
+    const sheets = lastSheets()
+    expect(sheets.map((sheet) => sheet.bookingRef)).toEqual(['ANC-001', 'PB-A1B2C3D4', 'ANC-002'])
+    expect(sheets[1]).toMatchObject({
+      customerName: 'Sam Party',
+      startTime: '7pm to 11:30pm',
+      partySize: '40',
+      tableLabel: 'Private hire: The Dining Room',
+      status: 'Private hire, confirmed',
+      requirements: ['Finger Buffet x 40', 'Kitchen: 40 covers at 7:30pm'],
+    })
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      additional_info: { date: '2026-07-16', count: 3, private_hires: 1 },
+    }))
+  })
+
+  it('prints a day with only a private hire, and says so when the hires cannot be read', async () => {
+    dayLoadState.hires = [{
+      id: 'a1b2c3d4-0000-0000-0000-000000000002', customerName: 'No Room Party', status: 'draft',
+      startTime: null, endTime: null, guestCount: null, roomNames: [], holdsRoom: false, catering: [], kitchen: null,
+    }]
+    expect((await GET(makeRequest('2026-07-16'))).status).toBe(200)
+    expect(lastSheets()[0]).toMatchObject({
+      tableLabel: 'Private hire: no room booked', partySize: 'Not set', startTime: 'Time not set',
+      status: 'Private hire, not confirmed', requirements: ['No catering booked'],
+    })
+
+    dayLoadState.fail = true
+    queryResult.data = [makeRow()]
+    expect((await GET(makeRequest('2026-07-16'))).status).toBe(200)
+    expect(lastSheets()[0].customerName).toBe('Private hires could not be loaded')
+    expect(lastSheets()).toHaveLength(2)
   })
 
   it('returns 404 with an explanatory body when the day has no printable bookings', async () => {
@@ -341,9 +399,38 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     // The Christmas tiers come from the booking, not from cover rows (BK-058).
     expect(select).toContain('christmas_course_counts')
 
-    // Never selected.
-    expect(select).not.toContain('special_requirements')
+    // The guest's notes and dietary needs print beside the allergies, marked confidential: owner
+    // decision D6 (BK-052) reversed spec D-3 because allergies mostly arrive in the notes.
+    expect(select).toContain('special_requirements')
+    expect(select).toContain('dietary_requirements')
+    expect(select).toContain('allergies')
+
+    // Never selected: the staff-only note stays off the printed sheet.
+    expect(select).not.toContain('internal_notes')
     expect(select).not.toContain('is_private_block')
+  })
+
+  it("prints a booking's notes, allergies and dietary needs, and leaves a booking with none unchanged", async () => {
+    queryResult.data = [
+      makeRow({ id: 'b1', booking_reference: 'ANC-001' }),
+      makeRow({
+        id: 'b2',
+        booking_reference: 'ANC-002',
+        special_requirements: '  Coeliac, please no bread  ',
+        dietary_requirements: ['Vegetarian'],
+        allergies: [],
+      }),
+    ]
+
+    await GET(makeRequest('2026-07-16'))
+
+    const sheets = lastSheets() as Array<Sheet & { guestNotes?: unknown }>
+    expect(sheets.find((sheet) => sheet.bookingRef === 'ANC-001')?.guestNotes).toBeUndefined()
+    expect(sheets.find((sheet) => sheet.bookingRef === 'ANC-002')?.guestNotes).toEqual({
+      allergies: [],
+      dietary: ['Vegetarian'],
+      notes: 'Coeliac, please no bread',
+    })
   })
 
   it('maps step-free and high-chair needs onto the sheet, step-free first', async () => {
@@ -471,7 +558,7 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
       operation_type: 'export',
       resource_type: 'table_booking_sheets',
       operation_status: 'success',
-      additional_info: { date: '2026-07-16', count: 2 },
+      additional_info: { date: '2026-07-16', count: 2, private_hires: 0 },
     })
   })
 

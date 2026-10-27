@@ -50,6 +50,14 @@ class MockSupabaseQuery {
     return this
   }
 
+  // A fixture row with no is_placeholder reads as false, as the column default does (BK-082).
+  private readonly eqFilters: Array<{ column: string; value: unknown }> = []
+
+  eq(column: string, value: unknown) {
+    this.eqFilters.push({ column, value })
+    return this
+  }
+
   not(column: string, operator: string, value: unknown) {
     if (operator === 'is' && value === null) {
       this.notNullColumns.add(column)
@@ -85,6 +93,10 @@ class MockSupabaseQuery {
     }
 
     let rows = [...this.rows]
+
+    for (const filter of this.eqFilters) {
+      rows = rows.filter((row) => (row[filter.column] ?? (filter.column === 'is_placeholder' ? false : undefined)) === filter.value)
+    }
 
     for (const filter of this.gteFilters) {
       const since = Date.parse(filter.value)

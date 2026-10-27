@@ -140,6 +140,9 @@ const SEAT_UPDATE_BLOCKED_MESSAGES: Record<string, string> = {
     'This booking has already been paid, so the seat count cannot be changed here. Cancel it with a refund to reduce seats, or take a payment for the extra seats instead.',
   multi_ticket_type_booking:
     'This booking has multiple ticket options, so the overall seat count cannot be edited. Edit the ticket lines instead.',
+  // BK-022: update_event_booking_seats_staff_v05 answers this instead of failing.
+  guest_details_locked:
+    'Each ticket on this booking has a named guest, so the seat count cannot be changed here. Cancel and rebook it, or ask a manager.',
   booking_not_found: 'This booking could not be found.',
   event_not_found: 'The event for this booking could not be found.',
 }

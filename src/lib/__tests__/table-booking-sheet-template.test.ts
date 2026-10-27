@@ -514,7 +514,27 @@ describe('generateTableBookingSheetsHTML', () => {
       )
 
       expect(html).toContain('Allergies, whole booking')
-      expect(html).toContain('None recorded')
+      expect(html).toContain('None in the allergy field, and no booking notes')
+      expect(html).not.toContain('None recorded')
+    })
+
+    // BK-052 and owner decision D6: allergies mostly arrive in the notes, so the food page prints
+    // the notes and dietary needs beside the allergy field, marked confidential.
+    it('should send the kitchen to the booking notes, printed beside an empty allergy field', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({ allergies: [] }),
+            guestNotes: { allergies: [], dietary: ['Vegan'], notes: 'Severe nut allergy, table of 6' },
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('None in the allergy field, read the booking notes below')
+      expect(html).toContain('Booking notes: Severe nut allergy, table of 6')
+      expect(html).toContain('Dietary: Vegan')
+      expect(html).toContain('Confidential, shred after service')
     })
 
     it('should omit the dietary block for a seat that gave no note', () => {
@@ -949,5 +969,45 @@ describe('generateTableBookingSheetsHTML', () => {
       expect(html).not.toContain('choosing on the day')
       expect(html).toContain('<p class="seat-head">Seat 1 · Jo Bloggs</p>')
     })
+  })
+})
+
+// BK-052 and owner decision D6: allergies, dietary needs and notes print on the booking page too,
+// marked confidential, because the sheets are shredded after service.
+describe('generateTableBookingSheetsHTML guest notes', () => {
+  it('prints them on the booking page, allergies first, marked confidential', () => {
+    const html = generateTableBookingSheetsHTML(
+      [makeSheet({ guestNotes: { allergies: ['Peanuts'], dietary: ['Vegetarian'], notes: 'Birthday, cake at 9' } })],
+      { logoDataUrl: LOGO }
+    )
+
+    expect(html).toContain('Allergies and notes · Confidential, shred after service')
+    expect(html).toContain('Peanuts')
+    expect(html).toContain('Vegetarian')
+    expect(html).toContain('Birthday, cake at 9')
+    expect(html.indexOf('Peanuts')).toBeLessThan(html.indexOf('Birthday, cake at 9'))
+  })
+
+  it('says when the allergy field is empty but the notes may hold one', () => {
+    const html = generateTableBookingSheetsHTML(
+      [makeSheet({ guestNotes: { allergies: [], dietary: [], notes: 'No gluten for one guest' } })],
+      { logoDataUrl: LOGO }
+    )
+
+    expect(html).toContain('None in the allergy field, read the notes below')
+  })
+
+  it('escapes what the guest typed', () => {
+    const html = generateTableBookingSheetsHTML(
+      [makeSheet({ guestNotes: { allergies: [], dietary: [], notes: '<b>no</b> nuts' } })],
+      { logoDataUrl: LOGO }
+    )
+
+    expect(html).toContain('&lt;b&gt;no&lt;/b&gt; nuts')
+  })
+
+  it('leaves a booking with no notes exactly as it printed before, styles included', () => {
+    const before = generateTableBookingSheetsHTML([makeSheet()], { logoDataUrl: LOGO })
+    expect(before).not.toContain('confidential')
   })
 })

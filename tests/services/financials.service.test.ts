@@ -28,6 +28,7 @@ type CashupSalesRow = {
   session_date: string
   status: string
   total_counted_amount: number
+  voided_at?: string | null
   cashup_sales_breakdowns?: Array<{ sales_category: string; amount: number }>
 }
 
@@ -39,10 +40,13 @@ type ImportedSalesTestRow = {
   total_sales: number
 }
 
+type OnlineIncomeTestRow = { source_id: string; money_date: string; net: number; is_booking_money: boolean }
+
 function createFinancialDashboardClient(
   receiptPages: ReceiptExpenseRow[][],
   cashupRows: CashupSalesRow[] = [],
-  importedSalesRows: ImportedSalesTestRow[] = []
+  importedSalesRows: ImportedSalesTestRow[] = [],
+  onlineIncome: { rows?: OnlineIncomeTestRow[]; error?: { message: string } } = {}
 ) {
   const targetSelect = vi.fn().mockResolvedValue({ data: [], error: null })
   const manualSelect = vi.fn().mockResolvedValue({ data: [], error: null })
@@ -57,8 +61,16 @@ function createFinancialDashboardClient(
   const receiptGte = vi.fn().mockReturnValue({ in: receiptIn })
   const receiptSelect = vi.fn().mockReturnValue({ gte: receiptGte })
 
-  const cashupOrder = vi.fn().mockResolvedValue({ data: cashupRows, error: null })
-  const cashupIn = vi.fn().mockReturnValue({ order: cashupOrder })
+  const cashupOrder = vi.fn()
+  // Applies the voided filter as Postgres would, so a voided session is really left out.
+  const cashupIs = vi.fn((column: string, value: unknown) => {
+    cashupOrder.mockResolvedValue({
+      data: cashupRows.filter((row) => ((row as Record<string, unknown>)[column] ?? null) === value),
+      error: null,
+    })
+    return { order: cashupOrder }
+  })
+  const cashupIn = vi.fn().mockReturnValue({ is: cashupIs })
   const cashupGte = vi.fn().mockReturnValue({ in: cashupIn })
   const cashupSelect = vi.fn().mockReturnValue({ gte: cashupGte })
 
@@ -74,7 +86,20 @@ function createFinancialDashboardClient(
   const benchmarkEq = vi.fn().mockReturnValue({ order: benchmarkOrder })
   const benchmarkSelect = vi.fn().mockReturnValue({ eq: benchmarkEq })
 
+  // The online income view (BK-117): rows from the oldest start date, booking money only.
+  const onlineRange = vi.fn().mockResolvedValue(
+    onlineIncome.error ? { data: null, error: onlineIncome.error } : { data: onlineIncome.rows ?? [], error: null }
+  )
+  const onlineOrderById = vi.fn().mockReturnValue({ range: onlineRange })
+  const onlineOrderByDate = vi.fn().mockReturnValue({ order: onlineOrderById })
+  const onlineEq = vi.fn().mockReturnValue({ order: onlineOrderByDate })
+  const onlineGte = vi.fn().mockReturnValue({ eq: onlineEq })
+  const onlineSelect = vi.fn().mockReturnValue({ gte: onlineGte })
+
   const from = vi.fn((table: string) => {
+    if (table === 'online_income_movements') {
+      return { select: onlineSelect }
+    }
     if (table === 'pl_targets') {
       return { select: targetSelect }
     }
@@ -105,12 +130,14 @@ function createFinancialDashboardClient(
       receiptOrderByDate,
       receiptOrderById,
       cashupOrder,
+      cashupIs,
       cashupIn,
       cashupGte,
       importedSalesOrder,
       importedSalesGte,
       importedSalesEqSource,
       importedSalesEqSection,
+      onlineEq,
     },
   }
 }
@@ -404,4 +431,64 @@ describe('FinancialService P&L aggregation correctness', () => {
     expect(result.dataQuality.warnings.join(' ')).not.toContain('missing a matching drinks/food/other split')
     expect(result.dataQuality.warnings.join(' ')).toContain('sales splits exceed counted sales by £10.00')
   })
+
+  it('shows online booking money as its own line, by the day taken, outside total sales (BK-117, D33)', async () => {
+    const { client, mocks } = createFinancialDashboardClient([[]], [], [], {
+      rows: [
+        { source_id: 'a', money_date: isoDateDaysAgo(3), net: 160, is_booking_money: true },
+        { source_id: 'b', money_date: isoDateDaysAgo(60), net: 29.75, is_booking_money: true },
+        { source_id: 'c', money_date: isoDateDaysAgo(200), net: 40, is_booking_money: true },
+      ],
+    })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(mocks.onlineEq).toHaveBeenCalledWith('is_booking_money', true)
+    expect(result.actuals['1m'].online_booking_income).toBe(160)
+    expect(result.actuals['3m'].online_booking_income).toBe(189.75)
+    expect(result.actuals['12m'].online_booking_income).toBe(229.75)
+    expect(result.cashupSales['1m'].totalRevenue).toBe(0)
+    expect(result.dataQuality.warnings.join(' ')).not.toContain('Online booking income')
+  })
+
+  it('warns, and shows the online line as £0, when online income cannot be read', async () => {
+    const { client } = createFinancialDashboardClient([[]], [], [], { error: { message: 'permission denied' } })
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(result.actuals['1m'].online_booking_income).toBe(0)
+    expect(result.dataQuality.warnings).toContain('Online booking income could not be loaded, so its line shows £0.')
+  })
+
+  it('leaves a voided cash-up out of P&L sales (BK-219)', async () => {
+    const rows: CashupSalesRow[] = [
+      {
+        id: 'kept',
+        session_date: isoDateDaysAgo(2),
+        status: 'submitted',
+        total_counted_amount: 500,
+        cashup_sales_breakdowns: [{ sales_category: 'drinks_sales', amount: 300 }, { sales_category: 'food_sales', amount: 200 }],
+      },
+      {
+        id: 'voided',
+        session_date: isoDateDaysAgo(3),
+        status: 'submitted',
+        total_counted_amount: 900,
+        voided_at: new Date().toISOString(),
+        cashup_sales_breakdowns: [{ sales_category: 'drinks_sales', amount: 900 }],
+      },
+    ]
+    const { client, mocks } = createFinancialDashboardClient([[]], rows)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(mocks.cashupIs).toHaveBeenCalledWith('voided_at', null)
+    expect(result.cashupSales['1m'].totalRevenue).toBe(500)
+    expect(result.cashupSales['1m'].drinksSales).toBe(300)
+    expect(result.cashupSales['1m'].sessionCount).toBe(1)
+  })
 })
+

@@ -13,6 +13,9 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 const RECIPIENT = process.env.EVENT_CHECKLIST_EMAIL_RECIPIENT || 'peter@orangejelly.co.uk'
 
 type ChecklistEventSummary = {

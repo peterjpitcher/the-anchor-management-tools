@@ -26,7 +26,13 @@ function record(instant: string): Row {
     last_name: 'Privateperson',
     email: 'jane.private@example.test',
     mobile_e164: '07700900123',
+    is_placeholder: false,
   }
+}
+
+/** A made-up walk-in record (BK-082). */
+function placeholder(instant: string): Row {
+  return { ...record(instant), first_name: 'Walk-in', mobile_e164: '+447000123456', is_placeholder: true }
 }
 
 function onDay(date: string, count: number): Row[] {
@@ -70,6 +76,16 @@ function baseline(perDay: number): Row[] {
 }
 
 describe('customers section', () => {
+  it('does not count made-up walk-in records as new customers (BK-082)', async () => {
+    const now = new Date('2026-09-28T09:00:00Z')
+    const real = await build(onDay('2026-09-22', 3), now)
+    const withWalkIns = await build([
+      ...onDay('2026-09-22', 3),
+      ...Array.from({ length: 5 }, () => placeholder('2026-09-22T12:00:00Z')),
+    ], now)
+    expect(allText(withWalkIns)).toBe(allText(real))
+  })
+
   it('is registered as the customers section linking to /customers', () => {
     expect(customersSection).toMatchObject({ key: 'customers', title: 'Customers', path: '/customers' })
     expect(customersSection.build).toBe(buildCustomersSection)

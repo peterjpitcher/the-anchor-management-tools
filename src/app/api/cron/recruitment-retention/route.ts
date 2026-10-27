@@ -5,6 +5,9 @@ import {
   runRecruitmentRetentionCleanup,
 } from '@/services/recruitment-retention'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 /**
  * Nightly. Removes nothing unless RECRUITMENT_RETENTION_APPLY is `true`.
  *

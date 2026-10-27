@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Alert, Button, Card, CardBody, CardHeader, Input, SubHeading } from '@/ds'
 import { KioskShell } from '@/components/shells/KioskShell'
+import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import { cn } from '@/lib/utils'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
 import {
@@ -50,6 +51,8 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
   const [normalizedPhone, setNormalizedPhone] = useState<string | null>(null)
   const [knownGuest, setKnownGuest] = useState<KnownEventGuest | null>(null)
   const [newGuestDetails, setNewGuestDetails] = useState({ firstName: '', lastName: '', email: '' })
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  const [marketingYes, setMarketingYes] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [attendanceSummary, setAttendanceSummary] = useState<EventCategoryAttendanceSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +81,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
     setNormalizedPhone(null)
     setKnownGuest(null)
     setNewGuestDetails({ firstName: '', lastName: '', email: '' })
+    setMarketingYes(false)
     setMessage(null)
     setAttendanceSummary(null)
     setError(null)
@@ -154,6 +158,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
         firstName: newGuestDetails.firstName,
         lastName: newGuestDetails.lastName,
         email: newGuestDetails.email || undefined,
+        ...(marketingYes ? { marketingTextsYes: true } : {}),
       })
 
       if (!result.success) {
@@ -200,6 +205,12 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
               ? `We have you down for ${seats} ticket${seats === 1 ? '' : 's'}.`
               : 'We could not see an active booking, so we will add one now.'}
           </p>
+          {knownGuest.booking?.answersOnFile && (
+            // BK-015: tells the door to look at the guest list. The answers stay off this screen.
+            <p className="mt-2 text-sm">
+              The team has the answers you gave for your party. Let them know if anything has changed.
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-3">
           <Button type="button" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base" onClick={handleKnownCheckIn}>
@@ -244,6 +255,12 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
         autoComplete="email"
         placeholder="Optional"
         className="min-h-touch"
+      />
+      <StaffMarketingConsentField
+        idPrefix="door-check-in-marketing"
+        checked={marketingYes}
+        onChange={setMarketingYes}
+        disabled={isPending}
       />
       <div className="flex flex-col gap-3">
         <Button type="submit" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base">

@@ -5,6 +5,7 @@ import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/busine
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
 import { Button, Card, CardFooter, Checkbox, DataTable, FormFooter, Input, SubHeading, toast } from '@/ds'
 import { FoodServiceEditor } from './FoodServiceEditor'
+import { HoursImpactDialog, hoursImpactNoticeFrom, type HoursImpactNotice } from './HoursImpactDialog'
 import { validateServiceWindows, readServiceWindows } from '@/lib/business-hours/service-windows'
 
 interface BusinessHoursManagerProps {
@@ -39,6 +40,8 @@ export function BusinessHoursManager({
 
   const [hours, setHours] = useState<BusinessHours[]>(sanitizedInitialHours)
   const [isSaving, setIsSaving] = useState(false)
+  // Bookings the change left outside the hours (BK-076).
+  const [impactNotice, setImpactNotice] = useState<HoursImpactNotice | null>(null)
 
   useEffect(() => {
     setHours(sanitizedInitialHours)
@@ -187,6 +190,8 @@ export function BusinessHoursManager({
       toast.error(result.error)
     } else {
       toast.success(draftVersionId ? 'Draft saved' : 'Business hours updated successfully')
+      // A draft changes nothing yet; the check runs when it is published.
+      if (!draftVersionId) setImpactNotice(hoursImpactNoticeFrom(result))
       onSaved?.()
     }
 
@@ -361,6 +366,7 @@ export function BusinessHoursManager({
           </Button>
         </FormFooter>
       </CardFooter>
+      <HoursImpactDialog notice={impactNotice} onClose={() => setImpactNotice(null)} />
     </form>
   )
 }

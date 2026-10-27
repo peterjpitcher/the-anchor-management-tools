@@ -95,6 +95,8 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await auth.supabase.from('customers')
     .select('id, first_name, last_name, mobile_number, mobile_e164, created_at')
+    // A made-up walk-in record is nobody staff could be looking for (BK-082).
+    .eq('is_placeholder', false)
     .or(orFilters.join(','))
     .order('created_at', { ascending: false })
     .limit(20)

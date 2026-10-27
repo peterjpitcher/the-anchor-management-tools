@@ -3,6 +3,9 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recalculateEngagementScoresAndLabels } from '@/lib/analytics/engagement-scoring'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 export async function GET(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {

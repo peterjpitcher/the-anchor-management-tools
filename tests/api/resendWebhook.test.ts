@@ -85,7 +85,7 @@ describe('Resend webhook route', () => {
     const webhookLogUpdate = vi.fn().mockReturnValue({ eq: webhookLogFinishEq })
     const suppressionUpsert = vi.fn().mockResolvedValue({ error: null })
     const customerSelectMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'customer-1', email_delivery_failures: 1 },
+      data: { id: 'customer-1', email: 'guest@example.com', email_delivery_failures: 1 },
       error: null,
     })
     const customerSelectEq = vi.fn().mockReturnValue({ maybeSingle: customerSelectMaybeSingle })
@@ -179,6 +179,79 @@ describe('Resend webhook route', () => {
     }), { onConflict: 'email' })
   })
 
+  it("leaves the customer's own address alone when the bounce is for an address typed for one booking", async () => {
+    // PR 263 review: a booking may send to the email typed for it (contact_email) under the
+    // customer's id. A hard bounce or complaint from that address must not deactivate, or opt out,
+    // the different address on the customer's record. The address itself is still suppressed.
+    const messageSelectMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'email-message-1', status: 'sent', customer_id: 'customer-1' },
+      error: null,
+    })
+    const messageSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: messageSelectMaybeSingle }) })
+    const messageUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [{ id: 'email-message-1' }], error: null }) }),
+    })
+    const suppressionUpsert = vi.fn().mockResolvedValue({ error: null })
+    const customerSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: 'customer-1', email: 'own@example.com', email_delivery_failures: 0 },
+          error: null,
+        }),
+      }),
+    })
+    const customerUpdate = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+
+    createAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'webhook_logs') {
+          return {
+            insert: vi.fn().mockResolvedValue({ error: null }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ contains: vi.fn().mockResolvedValue({ error: null }) }) }),
+          }
+        }
+        if (table === 'email_messages') return { select: messageSelect, update: messageUpdate }
+        if (table === 'email_suppressions') return { upsert: suppressionUpsert }
+        if (table === 'customers') return { select: customerSelect, update: customerUpdate }
+        if (table === 'business_contacts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+            }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+          }
+        }
+        if (table === 'marketing_do_not_contact') {
+          return { upsert: vi.fn().mockResolvedValue({ error: null }), insert: vi.fn().mockResolvedValue({ error: null }) }
+        }
+        if (table === 'email_webhook_unmatched') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        if (table === 'customer_consents') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    verifyWebhook.mockReturnValue({
+      type: 'email.bounced',
+      created_at: '2026-05-31T12:00:00.000Z',
+      data: {
+        email_id: 'email-1',
+        to: ['Booking.Only@example.com'],
+        bounce: { message: 'Mailbox unavailable', type: 'hard', subType: 'general' },
+      },
+    })
+
+    const { POST } = await import('@/app/api/webhooks/resend/route')
+    const response = await POST(new Request('http://localhost/api/webhooks/resend', {
+      method: 'POST',
+      headers: { 'svix-id': 'msg_alt', 'svix-timestamp': '1780000000', 'svix-signature': 'v1,test' },
+      body: '{}',
+    }))
+
+    expect(response.status).toBe(200)
+    expect(customerUpdate).not.toHaveBeenCalled()
+    expect(suppressionUpsert).toHaveBeenCalledWith(expect.objectContaining({ email: 'booking.only@example.com', reason: 'bounce' }), { onConflict: 'email' })
+  })
+
   it('ignores duplicate svix deliveries before side effects', async () => {
     const webhookLogInsert = vi.fn().mockResolvedValue({
       error: { code: '23505', message: 'duplicate key value violates unique constraint' },
@@ -258,7 +331,7 @@ describe('Resend webhook route', () => {
     const messageUpdateEq = vi.fn().mockReturnValue({ select: messageUpdateSelect })
     const messageUpdate = vi.fn().mockReturnValue({ eq: messageUpdateEq })
     const customerSelectMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'customer-1', email_delivery_failures: 1 },
+      data: { id: 'customer-1', email: 'guest@example.com', email_delivery_failures: 1 },
       error: null,
     })
     const customerSelectEq = vi.fn().mockReturnValue({ maybeSingle: customerSelectMaybeSingle })

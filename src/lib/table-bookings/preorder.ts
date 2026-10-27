@@ -703,6 +703,10 @@ export async function loadPreorderOrder(
     // not a Christmas dinner" gets the normal menu at normal terms and owes nobody a choice.
     requiresPreorder:
       booking.booking_period_requires_preorder === true && booking.booking_period_answer === true,
+    // Matches preorder_sync_covers, which keeps a seat per guest on both (BK-148).
+    hasGuestSeats:
+      booking.booking_period_answer === true &&
+      (booking.booking_period_requires_preorder === true || courseCounts !== null),
     bookingAllergies: booking.allergies ?? [],
     periodId: booking.booking_period_id ?? null,
     periodName: booking.booking_period_name ?? null,

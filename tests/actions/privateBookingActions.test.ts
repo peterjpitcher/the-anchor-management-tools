@@ -79,6 +79,11 @@ vi.mock('@/services/sms-queue', () => ({
   },
 }))
 
+// What else is in the rooms that night (BK-070, D24): tested in privateHireNightClashes.test.ts.
+vi.mock('@/services/private-bookings/night-clashes', () => ({
+  hireNightWarning: vi.fn(async () => null),
+}))
+
 vi.mock('@/services/private-bookings', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@/services/private-bookings')
   return {
@@ -144,6 +149,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
+import { hireNightWarning } from '@/services/private-bookings/night-clashes'
 import { PrivateBookingService, updateBalancePayment, deleteBalancePayment, updateDeposit, updateDepositAmount, deleteDeposit } from '@/services/private-bookings'
 
 import {
@@ -175,6 +181,7 @@ const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
+const mockedHireNightWarning = hireNightWarning as unknown as Mock
 const mockedCreateBooking = PrivateBookingService.createBooking as unknown as Mock
 const mockedUpdateBooking = PrivateBookingService.updateBooking as unknown as Mock
 const mockedUpdateBookingStatus = PrivateBookingService.updateBookingStatus as unknown as Mock
@@ -425,6 +432,21 @@ describe('privateBookingActions', () => {
       )
     })
 
+    // Owner decision D24: a clash with diners, event seats or events is warned about, not refused.
+    it('saves and returns the warning when the hire clashes with diners that night', async () => {
+      mockedUpdateBooking.mockResolvedValue({ id: 'booking-1' })
+      mockedHireNightWarning.mockResolvedValueOnce("This hire's rooms already have 1 table booking (4 guests) that night.")
+
+      const result = await updatePrivateBooking('booking-1', buildCreateFormData())
+
+      expect(result).toEqual({
+        success: true,
+        data: { id: 'booking-1' },
+        warning: "This hire's rooms already have 1 table booking (4 guests) that night.",
+      })
+      expect(mockedHireNightWarning).toHaveBeenCalledWith('booking-1')
+    })
+
     it('passes editable financial fields and structured dispute flag', async () => {
       const mockBooking = { id: 'booking-1' }
       mockedUpdateBooking.mockResolvedValue(mockBooking)
@@ -495,6 +517,22 @@ describe('privateBookingActions', () => {
 
       expect(result).toEqual({ success: true })
       expect(mockedUpdateBookingStatus).toHaveBeenCalledWith('booking-1', 'confirmed', 'user-1')
+    })
+
+    it('warns about diners in the rooms when confirming or reinstating, and only then (BK-070)', async () => {
+      mockedUpdateBookingStatus.mockResolvedValue(undefined)
+      mockedHireNightWarning.mockResolvedValue('This hire takes the whole pub, so ticket sales have stopped for Quiz Night.')
+
+      expect(await updateBookingStatus('booking-1', 'confirmed')).toEqual({
+        success: true,
+        warning: 'This hire takes the whole pub, so ticket sales have stopped for Quiz Night.',
+      })
+      expect(await updateBookingStatus('booking-1', 'draft')).toMatchObject({ success: true, warning: expect.any(String) })
+
+      mockedHireNightWarning.mockClear()
+      expect(await updateBookingStatus('booking-1', 'completed')).toEqual({ success: true })
+      expect(mockedHireNightWarning).not.toHaveBeenCalled()
+      mockedHireNightWarning.mockResolvedValue(null)
     })
 
     it('should return error when permission denied', async () => {

@@ -68,7 +68,9 @@ async function openEditableOrder(tableBookingId: string) {
 
   const order = await loadPreorderOrder(admin, tableBookingId)
   if (!order) return { error: 'That booking no longer exists.' } as const
-  if (!order.requiresPreorder) {
+  // A Christmas party all on 1 course has no dishes to choose but a seat per guest for a name and a
+  // dietary note (BK-148), so it may be saved too.
+  if (!order.hasGuestSeats) {
     return { error: 'This booking is not on a seasonal menu, so there is nothing to pre-order.' } as const
   }
 

@@ -347,8 +347,9 @@ describe('each email-first table booking message is rebuilt as the text its send
     })
     const sent = onlyTextSent()
     const shortUrl = buildShortLinkUrl('sl1')
+    // A confirmed booking that grows stays booked with the deposit owed (owner decision D20).
     expect(sent.body).toBe(
-      `The Anchor: Hi Sarah, your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is now required to secure your booking. Pay now: ${shortUrl}`
+      `The Anchor: Hi Sarah, your party size has been updated to 16 people. Your table is still booked. There's now a table deposit of £160.00 (16 x GBP 10) to pay before your visit. Pay here: ${shortUrl}`
     )
 
     const render = ready(await rebuild())
@@ -361,8 +362,8 @@ describe('each email-first table booking message is rebuilt as the text its send
     expect(render.booking.facts).toEqual({
       party_size: 16,
       deposit_amount: 160,
-      // The 24-hour hold the request set: 20 October 10:00 UTC plus a day.
-      hold_expires_at: '2026-10-21T10:00:00.000Z',
+      // The payment link runs to the booking start: the booking stays confirmed, nothing lapses (D20).
+      hold_expires_at: '2026-10-24T18:00:00.000Z',
       awaiting_payment: 'yes',
     })
     expect(evaluateFallbackSkip(render, lastDelivery().metadata.booking_facts, new Date())).toBeNull()
@@ -1091,8 +1092,9 @@ describe('end to end: a bounced deposit request becomes the text it replaced', (
     expect(again).toMatchObject({ outcome: 'skipped', reason: 'already_handled' })
     const { to, body, options } = onlyTextSent()
     expect(to).toBe('+447700900123')
+    // The booking stayed confirmed with the deposit owed (D20), and the fallback text says so too.
     expect(body).toBe(
-      `The Anchor: Hi Sarah, your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is now required to secure your booking. Pay now: ${shortUrl}`
+      `The Anchor: Hi Sarah, your party size has been updated to 16 people. Your table is still booked. There's now a table deposit of £160.00 (16 x GBP 10) to pay before your visit. Pay here: ${shortUrl}`
     )
     expect(options).toEqual({
       customerId: 'cust-1',

@@ -41,7 +41,8 @@ import {
  * about every lapsed hold with an order before it cancels (reconcileTableDepositOrder, the same
  * check this sweep runs), so a paid deposit is recorded rather than cancelled whichever runs first.
  * This sweep stays as the backstop: it looks back 30 days, so a payment that lands after a booking
- * was cancelled is still found, recorded, and put in front of a person.
+ * was cancelled is still found. Such a booking is never confirmed: it stays cancelled, the deposit
+ * is refunded in full and a person is told (BK-047, owner decision D19).
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -74,7 +75,11 @@ export async function GET(request: NextRequest) {
       .select(TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS)
       .not('paypal_deposit_order_id', 'is', null)
       .is('paypal_deposit_capture_id', null)
-      .gte('created_at', since)
+      // By activity, not by when the booking was made (BK-047): a deposit order raised weeks after
+      // booking (a party grown to 15, a Christmas booking made early) touches updated_at, and was
+      // never checked when this read created_at.
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false })
       .limit(MAX_CANDIDATES)
 
     if (error) {
@@ -93,7 +98,10 @@ export async function GET(request: NextRequest) {
         needsAttention.push(booking.booking_reference ?? booking.id)
       } else if (result.outcome === 'recorded') {
         recovered++
-        if (result.wasCancelled) needsAttention.push(booking.booking_reference ?? booking.id)
+      } else if (result.outcome === 'closed_booking') {
+        // Recorded on the closed booking and refunded, or left for a person; either way a person
+        // has been told, by the settle step.
+        needsAttention.push(booking.booking_reference ?? booking.id)
       }
     }
 

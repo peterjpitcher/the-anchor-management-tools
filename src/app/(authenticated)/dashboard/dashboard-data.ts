@@ -5,6 +5,7 @@ import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads } from '@/services/day-load'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
@@ -76,14 +77,6 @@ type EventsSnapshot = {
   totalUpcoming: number
   nextUpcoming?: EventSummary
   error?: string
-}
-
-type BookingPipelineValue = {
-  confirmed: number
-  draft: number
-  total: number
-  confirmedCount: number
-  draftCount: number
 }
 
 type CustomersSnapshot = {
@@ -250,7 +243,13 @@ type CashingUpSnapshot = {
 type TableBookingsSnapshot = {
   permitted: boolean
   todayTotal: number
+  /** Diners plus event tickets, counted as every screen counts them (BK-075). */
   todayCovers: number
+  /**
+   * Guests at private hires holding their rooms today, shown beside the covers. Optional because
+   * a snapshot cached before it existed has none.
+   */
+  todayPrivateHireGuests?: number
   thisWeekTotal: number
   lastWeekTotal: number
   thisMonthTotal: number
@@ -307,10 +306,6 @@ export type DashboardSnapshot = {
   marketing: MarketingSnapshot
   /** Per-day covers booked + staff on rota, for the schedule operational notes */
   dailyOps: ScheduleDailyOps
-  /** B4: Total revenue from private bookings today (confirmed/completed) */
-  revenueToday: number
-  /** B3: Pipeline value of upcoming confirmed + draft private bookings */
-  bookingPipelineValue: BookingPipelineValue
 }
 
 type PermissionRecord = {
@@ -567,16 +562,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const dailyOps: ScheduleDailyOps = { coversByDate: {}, staffByDate: {} }
     const opsHorizonIso = getLocalIsoDateDaysAhead(90)
 
-    // B4 / B3 analytics — only computed when user has private_bookings access
-    let revenueToday = 0
-    const bookingPipelineValue: BookingPipelineValue = {
-      confirmed: 0,
-      draft: 0,
-      total: 0,
-      confirmedCount: 0,
-      draftCount: 0,
-    }
-
     // Execute all permitted fetches in parallel
     const results = await Promise.allSettled([
       cashingUp.permitted ? (async () => {
@@ -593,6 +578,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const { data: thisWeekData } = await supabase.from('cashup_sessions')
             .select('total_counted_amount, session_date, status')
             .eq('site_id', site.id)
+            // A voided cash-up stays on record but is out of every total (BK-219).
+            .is('voided_at', null)
             .gte('session_date', format(weekStart, 'yyyy-MM-dd'))
             .lte('session_date', todayStr)
 
@@ -636,11 +623,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             supabase.from('cashup_sessions')
               .select('total_counted_amount, session_date')
               .eq('site_id', site.id)
+              .is('voided_at', null)
               .gte('session_date', lastWeekStartStr)
               .lte('session_date', lastWeekEndStr),
             supabase.from('cashup_sessions')
               .select('total_counted_amount')
               .eq('site_id', site.id)
+              .is('voided_at', null)
               .gte('session_date', lastYearStartStr)
               .lte('session_date', lastYearEndStr),
             supabase.from('cashup_targets')
@@ -663,6 +652,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const { data: recentSessions } = await supabase.from('cashup_sessions')
             .select('total_counted_amount, session_date')
             .eq('site_id', site.id)
+            .is('voided_at', null)
             .gte('session_date', fourteenDaysAgo)
             .lte('session_date', todayStr)
             .neq('status', 'draft')
@@ -723,17 +713,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               ? lastMonthNaturalEnd
               : comparableLastMonthEndCandidate
 
-          const [todayResult, todayCoversResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult, coversByDateResult] = await Promise.all([
+          const [todayResult, dayLoads, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
               .not('status', 'in', '(cancelled,no_show)')
               .eq('booking_date', todayIso),
-            supabase
-              .from('table_bookings')
-              .select('party_size')
-              .not('status', 'in', '(cancelled,no_show)')
-              .eq('booking_date', todayIso),
+            // Covers and private-hire guests per day, as the FOH screen, calendar and rota count them.
+            loadDayLoads(todayIso, opsHorizonIso, { db: supabase, withHours: false }),
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
@@ -758,34 +745,24 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .not('status', 'in', '(cancelled,no_show)')
               .gte('booking_date', format(lastMonthStart, 'yyyy-MM-dd'))
               .lte('booking_date', format(lastMonthEnd, 'yyyy-MM-dd')),
-            supabase
-              .from('table_bookings')
-              .select('booking_date, party_size')
-              .not('status', 'in', '(cancelled,no_show)')
-              .gte('booking_date', todayIso)
-              .lte('booking_date', opsHorizonIso),
           ])
 
           if (todayResult.error) throw todayResult.error
-          if (todayCoversResult.error) throw todayCoversResult.error
-          if (coversByDateResult.error) throw coversByDateResult.error
           if (thisWeekResult.error) throw thisWeekResult.error
           if (lastWeekResult.error) throw lastWeekResult.error
           if (thisMonthResult.error) throw thisMonthResult.error
           if (lastMonthResult.error) throw lastMonthResult.error
 
           tableBookings.todayTotal = todayResult.count ?? 0
-          tableBookings.todayCovers = (todayCoversResult.data ?? []).reduce((sum, row) => {
-            const partySize = Number(row.party_size ?? 0)
-            return sum + (Number.isFinite(partySize) ? partySize : 0)
-          }, 0)
-          for (const row of coversByDateResult.data ?? []) {
-            const date = (row as { booking_date?: string | null }).booking_date
-            if (!date) continue
-            const partySize = Number(row.party_size ?? 0)
-            if (!Number.isFinite(partySize)) continue
-            dailyOps.coversByDate[date] = (dailyOps.coversByDate[date] ?? 0) + partySize
+          const todayLoad = dayLoads.get(todayIso)
+          tableBookings.todayCovers = todayLoad?.covers ?? 0
+          tableBookings.todayPrivateHireGuests = todayLoad?.privateHireGuests ?? 0
+          const hireGuestsByDate: Record<string, number> = {}
+          for (const load of dayLoads.values()) {
+            if (load.covers > 0) dailyOps.coversByDate[load.date] = load.covers
+            if (load.privateHireGuests > 0) hireGuestsByDate[load.date] = load.privateHireGuests
           }
+          dailyOps.hireGuestsByDate = hireGuestsByDate
           tableBookings.thisWeekTotal = thisWeekResult.count ?? 0
           tableBookings.lastWeekTotal = lastWeekResult.count ?? 0
           tableBookings.thisMonthTotal = thisMonthResult.count ?? 0
@@ -1013,18 +990,22 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       customers.permitted ? (async () => {
         try {
           const [totalResult, newWeekResult, newMonthResult, lastMonthResult] = await Promise.all([
-            supabase.from('customers').select('id', { count: 'exact', head: true }),
+            // Walk-in and anonymised placeholders are not customers to count (BK-082).
+            supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_placeholder', false),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', sevenDaysAgo),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfThisMonth),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfLastMonth)
               .lt('created_at', startOfThisMonth),
           ])
@@ -1587,44 +1568,9 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           systemHealth.error = 'Failed to load system health'
         }
       })() : Promise.resolve(),
-      // B3 + B4: private booking pipeline value and revenue today
-      privateBookings.permitted ? (async () => {
-        try {
-          // Fetch all upcoming confirmed + draft bookings for pipeline value (no limit)
-          const { data: pipelineData, error: pipelineError } = await supabase
-            .from('private_bookings')
-            .select('status, total_amount, event_date')
-            .gte('event_date', todayIso)
-            .in('status', ['confirmed', 'draft'])
-
-          if (pipelineError) throw pipelineError
-
-          for (const row of pipelineData ?? []) {
-            const amount = Number(row.total_amount ?? 0)
-            if (row.status === 'confirmed') {
-              bookingPipelineValue.confirmed += amount
-              bookingPipelineValue.confirmedCount += 1
-            } else if (row.status === 'draft') {
-              bookingPipelineValue.draft += amount
-              bookingPipelineValue.draftCount += 1
-            }
-          }
-          bookingPipelineValue.total = bookingPipelineValue.confirmed + bookingPipelineValue.draft
-
-          // B4: Revenue today — sum total_amount of confirmed/completed bookings with event_date = today
-          const { data: todayPbData, error: todayPbError } = await supabase
-            .from('private_bookings')
-            .select('total_amount')
-            .eq('event_date', todayIso)
-            .in('status', ['confirmed', 'completed'])
-
-          if (todayPbError) throw todayPbError
-
-          revenueToday = (todayPbData ?? []).reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0)
-        } catch (error) {
-          console.error('Failed to load dashboard booking pipeline / revenue today:', error)
-        }
-      })() : Promise.resolve(),
+      // No private-hire money figures: the money cards came off the dashboard on purpose in March
+      // 2026, and the two queries that still worked them out read total_amount, which is empty on
+      // every booking (BK-220).
 
       rotaToday.permitted ? (async () => {
         try {
@@ -1721,8 +1667,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       rotaToday,
       marketing,
       dailyOps,
-      revenueToday,
-      bookingPipelineValue,
     }
 }
 

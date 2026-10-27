@@ -15,7 +15,7 @@ type FohHeaderProps = {
   clockNow: Date
   /** The service date in force: the night before, from midnight until an after-midnight close. */
   serviceDateNow: string
-  totals: { bookings: number; covers: number }
+  totals: { bookings: number; covers: number; privateHireGuests?: number | null }
   viewMode: FohViewMode
   outsideCount: number
   onViewModeChange: (mode: FohViewMode) => void
@@ -24,6 +24,9 @@ type FohHeaderProps = {
   submittingFoodOrderAlert: boolean
   statusMessage: string | null
   errorMessage: string | null
+  /** Lines staff must read after a party-size change; kept until dismissed (BK-043). */
+  staffNotice?: string[] | null
+  onDismissStaffNotice?: () => void
   lastInteractionAtMsRef: React.MutableRefObject<number>
   onSendFoodOrderAlert: () => void
   onOpenCreateModal: (options?: {
@@ -52,6 +55,8 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     submittingFoodOrderAlert,
     statusMessage,
     errorMessage,
+    staffNotice,
+    onDismissStaffNotice,
     lastInteractionAtMsRef,
     onSendFoodOrderAlert,
     onOpenCreateModal,
@@ -221,6 +226,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             </Button>
             <span className={totalsBadgeClass}>Total bookings: {totals.bookings}</span>
             <span className={totalsBadgeClass}>Total covers: {totals.covers}</span>
+            {typeof totals.privateHireGuests === 'number' && totals.privateHireGuests > 0 && (
+              <span className={totalsBadgeClass}>Private hire guests: {totals.privateHireGuests}</span>
+            )}
           </div>
         </div>
 
@@ -321,6 +329,23 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
       {errorMessage && (
         <Alert tone="danger" size="sm" className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}>
           {errorMessage}
+        </Alert>
+      )}
+
+      {staffNotice && staffNotice.length > 0 && (
+        <Alert
+          tone="warning"
+          size="sm"
+          title="Check this booking"
+          closable
+          onClose={onDismissStaffNotice}
+          className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}
+        >
+          <ul className="list-disc space-y-1 pl-4">
+            {staffNotice.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         </Alert>
       )}
     </div>
