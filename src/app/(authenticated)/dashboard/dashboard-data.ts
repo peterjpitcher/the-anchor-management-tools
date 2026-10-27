@@ -571,6 +571,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const { data: thisWeekData } = await supabase.from('cashup_sessions')
             .select('total_counted_amount, session_date, status')
             .eq('site_id', site.id)
+            // A voided cash-up stays on record but is out of every total (BK-219).
+            .is('voided_at', null)
             .gte('session_date', format(weekStart, 'yyyy-MM-dd'))
             .lte('session_date', todayStr)
 
@@ -614,11 +616,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             supabase.from('cashup_sessions')
               .select('total_counted_amount, session_date')
               .eq('site_id', site.id)
+              .is('voided_at', null)
               .gte('session_date', lastWeekStartStr)
               .lte('session_date', lastWeekEndStr),
             supabase.from('cashup_sessions')
               .select('total_counted_amount')
               .eq('site_id', site.id)
+              .is('voided_at', null)
               .gte('session_date', lastYearStartStr)
               .lte('session_date', lastYearEndStr),
             supabase.from('cashup_targets')
@@ -641,6 +645,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const { data: recentSessions } = await supabase.from('cashup_sessions')
             .select('total_counted_amount, session_date')
             .eq('site_id', site.id)
+            .is('voided_at', null)
             .gte('session_date', fourteenDaysAgo)
             .lte('session_date', todayStr)
             .neq('status', 'draft')
