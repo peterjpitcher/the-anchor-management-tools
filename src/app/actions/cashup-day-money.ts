@@ -12,7 +12,8 @@ import { logger } from '@/lib/logger'
  *
  * - table deposits for that day's bookings, and prepaid tickets for that day's events, from the
  *   online income view (BK-117);
- * - each private hire on the day, with what was paid for it by PayPal, bank transfer or invoice;
+ * - each private hire on the day, with what was paid for it by PayPal, bank transfer or invoice,
+ *   counting its deposit only when the deposit was set against the bill (not held separately);
  * - vouchers redeemed that day, at their face value.
  */
 
@@ -27,6 +28,8 @@ export type CashupDayMoney = {
 /** Ways a private hire is paid that never pass through the till. */
 const INVOICE_METHODS_OUTSIDE_TILL = new Set(['bank_transfer', 'paypal', 'cheque'])
 const BOOKING_METHODS_OUTSIDE_TILL = new Set(['invoice', 'paypal'])
+/** Ways a private-hire deposit is paid that never pass through the till. */
+const DEPOSIT_METHODS_OUTSIDE_TILL = new Set(['invoice', 'paypal', 'bank_transfer'])
 /** Invoice rows that copy a booking payment or deposit: never new money. */
 const INVOICE_COPY_KINDS = new Set(['booking_payment', 'booking_deposit'])
 
@@ -58,7 +61,7 @@ export async function getCashupDayMoneyAction(
         .limit(1000),
       db
         .from('private_bookings')
-        .select('id, event_type, invoice_id, date_tbd')
+        .select('id, event_type, invoice_id, date_tbd, deposit_amount, deposit_paid_date, deposit_payment_method, invoice_deposit_treatment')
         .eq('event_date', date)
         .in('status', ['confirmed', 'completed'])
         .limit(100),
@@ -85,16 +88,20 @@ export async function getCashupDayMoneyAction(
     const hireDeposits = new Map<string, number>()
     for (const row of onlineResult.data ?? []) {
       const net = pounds(row.net)
+      const counts = net > 0 && row.status !== 'kept' && row.status !== 'refunded'
+      if (row.source === 'private_hire_deposit' && row.source_id) {
+        // Recorded even at nothing, so a refunded deposit is not read back from the booking below.
+        hireDeposits.set(row.source_id, pounds((hireDeposits.get(row.source_id) ?? 0) + (counts ? net : 0)))
+        continue
+      }
       // A deposit kept after a cancellation or no-show never met a bill; a refund is not money.
-      if (net <= 0 || row.status === 'kept' || row.status === 'refunded') continue
+      if (!counts) continue
       if (row.source === 'table_deposit') {
         money.tableDeposits.count += 1
         money.tableDeposits.amount = pounds(money.tableDeposits.amount + net)
       } else if (row.source === 'event_ticket') {
         money.eventTickets.count += 1
         money.eventTickets.amount = pounds(money.eventTickets.amount + net)
-      } else if (row.source === 'private_hire_deposit' && row.source_id) {
-        hireDeposits.set(row.source_id, pounds((hireDeposits.get(row.source_id) ?? 0) + net))
       }
     }
 
@@ -112,7 +119,18 @@ export async function getCashupDayMoneyAction(
       for (const hire of hires) if (hire.invoice_id) invoiceToBooking.set(hire.invoice_id, hire.id)
       for (const link of linksResult.data ?? []) invoiceToBooking.set(link.invoice_id, link.booking_id)
 
-      const paidOutside = new Map<string, number>(hireIds.map((id) => [id, hireDeposits.get(id) ?? 0]))
+      // A deposit counts only when it was set against the hire's bill: one held separately (a
+      // refundable damage deposit) never met the bill. A PayPal deposit is read net of refunds from
+      // the online income view; one paid by invoice or bank transfer from the booking itself, since
+      // finalizeDepositPayment records it there and the invoice copy of it is skipped below.
+      const paidOutside = new Map<string, number>(
+        hires.map((hire) => {
+          const method = String(hire.deposit_payment_method ?? '')
+          const applied = hire.deposit_paid_date && hire.invoice_deposit_treatment !== 'held_separately'
+          if (!applied || !DEPOSIT_METHODS_OUTSIDE_TILL.has(method)) return [hire.id, 0]
+          return [hire.id, method === 'paypal' ? hireDeposits.get(hire.id) ?? pounds(hire.deposit_amount) : pounds(hire.deposit_amount)]
+        })
+      )
       for (const payment of bookingPaymentsResult.data ?? []) {
         if (!BOOKING_METHODS_OUTSIDE_TILL.has(String(payment.method ?? ''))) continue
         paidOutside.set(payment.booking_id, pounds((paidOutside.get(payment.booking_id) ?? 0) + pounds(payment.amount)))

@@ -26,7 +26,7 @@ beforeEach(() => {
       { source: 'private_hire_deposit', source_id: 'pb-1', visit_date: '2026-10-10', net: 250, status: 'applied' },
     ],
     private_bookings: [
-      { id: 'pb-1', event_date: '2026-10-10', status: 'confirmed', event_type: 'Christening', invoice_id: 'inv-1', date_tbd: false },
+      { id: 'pb-1', event_date: '2026-10-10', status: 'confirmed', event_type: 'Christening', invoice_id: 'inv-1', date_tbd: false, deposit_amount: 250, deposit_paid_date: '2026-09-01T10:00:00.000Z', deposit_payment_method: 'paypal', invoice_deposit_treatment: 'deducted' },
       { id: 'pb-2', event_date: '2026-10-10', status: 'confirmed', event_type: 'Placeholder', invoice_id: null, date_tbd: true },
       { id: 'pb-3', event_date: '2026-10-10', status: 'cancelled', event_type: 'Birthday', invoice_id: null, date_tbd: false },
     ],
@@ -68,6 +68,47 @@ describe('money paid outside the till for a cash-up day', () => {
         total: 1040,
       },
     })
+  })
+
+  function hireDay(hire: Record<string, unknown>, online: Array<Record<string, unknown>> = []) {
+    state.db = createFakeSupabase({
+      online_income_movements: online,
+      private_bookings: [{ id: 'pb-9', event_date: '2026-10-10', status: 'confirmed', event_type: 'Wake', invoice_id: null, date_tbd: false, ...hire }],
+      private_booking_invoices: [],
+      private_booking_payments: [],
+      invoice_payments: [],
+      vouchers: [],
+    })
+  }
+
+  it('leaves out a deposit held separately, which never met the bill', async () => {
+    hireDay(
+      { deposit_amount: 250, deposit_paid_date: '2026-09-01T10:00:00.000Z', deposit_payment_method: 'paypal', invoice_deposit_treatment: 'held_separately' },
+      [{ source: 'private_hire_deposit', source_id: 'pb-9', visit_date: '2026-10-10', net: 250, status: 'held' }],
+    )
+    const result = await getCashupDayMoneyAction('2026-10-10')
+    expect(result).toMatchObject({ success: true, data: { privateHires: [{ id: 'pb-9', paidOutsideTill: 0 }], total: 0 } })
+  })
+
+  it('counts a deposit recorded as paid by invoice and set against the bill', async () => {
+    hireDay({ deposit_amount: 150, deposit_paid_date: '2026-09-01T10:00:00.000Z', deposit_payment_method: 'invoice', invoice_deposit_treatment: 'deducted' })
+    const result = await getCashupDayMoneyAction('2026-10-10')
+    expect(result).toMatchObject({ success: true, data: { privateHires: [{ id: 'pb-9', paidOutsideTill: 150 }], total: 150 } })
+  })
+
+  it('counts nothing for a PayPal deposit refunded in full', async () => {
+    hireDay(
+      { deposit_amount: 250, deposit_paid_date: '2026-09-01T10:00:00.000Z', deposit_payment_method: 'paypal', invoice_deposit_treatment: 'deducted' },
+      [{ source: 'private_hire_deposit', source_id: 'pb-9', visit_date: '2026-10-10', net: 0, status: 'refunded' }],
+    )
+    const result = await getCashupDayMoneyAction('2026-10-10')
+    expect(result).toMatchObject({ success: true, data: { privateHires: [{ id: 'pb-9', paidOutsideTill: 0 }] } })
+  })
+
+  it('leaves out a deposit paid in cash at the bar', async () => {
+    hireDay({ deposit_amount: 100, deposit_paid_date: '2026-09-01T10:00:00.000Z', deposit_payment_method: 'cash', invoice_deposit_treatment: null })
+    const result = await getCashupDayMoneyAction('2026-10-10')
+    expect(result).toMatchObject({ success: true, data: { privateHires: [{ id: 'pb-9', paidOutsideTill: 0 }] } })
   })
 
   it('needs the cash-up permission', async () => {

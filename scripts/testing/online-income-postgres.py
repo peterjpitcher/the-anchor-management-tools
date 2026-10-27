@@ -219,6 +219,13 @@ def main():
                   'tickets for a night still to come are held')
             check(ROW.format(col="(status, paypal_fee)::text", where="booking_reference = 'TB-APPLIED'") + " = '(applied,5.42)'",
                   'a deposit for a past visit is applied to the bill, with its PayPal fee')
+            # Booking b...1 paid in two captures: the tickets (CAP-T1) and a seat increase (CAP-T1B).
+            sql("INSERT INTO public.paypal_capture_fees (capture_id, fee_amount, source) VALUES ('CAP-T1', 1.50, 'test');")
+            check(ROW.format(col="paypal_fee", where="source = 'event_ticket' AND source_id = 'b0000000-0000-0000-0000-000000000001'") + " IS NULL",
+                  'an event booking with one capture fee missing has an unknown fee, not the first capture alone')
+            sql("INSERT INTO public.paypal_capture_fees (capture_id, fee_amount, source) VALUES ('CAP-T1B', 0.90, 'test');")
+            check(ROW.format(col="paypal_fee", where="source = 'event_ticket' AND source_id = 'b0000000-0000-0000-0000-000000000001'") + " = 2.40",
+                  'an event booking paid in two captures carries both fees added up')
             check(ROW.format(col="(gross, status)::text", where="booking_reference = 'TB-KEPT'") + " = '(150.00,kept)'",
                   'a no-show keeps its deposit, read from deposit_amount when nothing was locked')
             check(ROW.format(col="status", where="booking_reference = 'TB-HELD'") + " = 'held'", 'a deposit for a visit to come is held')

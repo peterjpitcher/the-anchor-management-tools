@@ -69,8 +69,12 @@ event_charges AS (
     p.event_booking_id,
     min(p.created_at) AS paid_at,
     sum(p.amount) AS gross,
-    (array_agg(p.paypal_capture_id ORDER BY p.created_at) FILTER (WHERE p.paypal_capture_id IS NOT NULL))[1] AS capture_id
+    (array_agg(p.paypal_capture_id ORDER BY p.created_at) FILTER (WHERE p.paypal_capture_id IS NOT NULL))[1] AS capture_id,
+    -- A booking can be paid in more than one capture (the tickets, then a seat increase). Its fee
+    -- is every capture's fee added up, and unknown (NULL) if any capture's fee is not recorded.
+    CASE WHEN bool_and(f.capture_id IS NOT NULL) THEN sum(f.fee_amount) END AS paypal_fee
   FROM public.payments p
+  LEFT JOIN public.paypal_capture_fees f ON f.capture_id = p.paypal_capture_id
   WHERE p.payment_provider = 'paypal'
     AND p.charge_type IN ('prepaid_event', 'seat_increase')
     AND p.status IN ('succeeded', 'partially_refunded', 'refunded')
@@ -103,7 +107,9 @@ movements AS (
       WHEN tb.booking_date >= t.today THEN 'held'
       ELSE 'applied'
     END AS state,
-    true AS is_booking_money
+    true AS is_booking_money,
+    -- Only an event booking's fee is worked out above; every other row takes its capture's fee.
+    NULL::numeric AS booking_fee
   FROM public.table_bookings tb
   CROSS JOIN london_today t
   LEFT JOIN completed_refunds r ON r.source_type = 'table_booking' AND r.source_id = tb.id
@@ -127,7 +133,8 @@ movements AS (
       WHEN tb.booking_date >= t.today THEN 'held'
       ELSE 'applied'
     END,
-    true
+    true,
+    NULL::numeric
   FROM public.payments p
   JOIN public.table_bookings tb ON tb.id = p.table_booking_id
   CROSS JOIN london_today t
@@ -154,7 +161,8 @@ movements AS (
       WHEN pb.invoice_deposit_treatment = 'deducted' THEN 'applied'
       ELSE 'held'
     END,
-    true
+    true,
+    NULL::numeric
   FROM public.private_bookings pb
   CROSS JOIN london_today t
   LEFT JOIN completed_refunds r ON r.source_type = 'private_booking' AND r.source_id = pb.id
@@ -179,7 +187,8 @@ movements AS (
       WHEN e.date >= t.today THEN 'held'
       ELSE 'earned'
     END,
-    true
+    true,
+    c.paypal_fee
   FROM event_charges c
   JOIN public.bookings b ON b.id = c.event_booking_id
   LEFT JOIN public.events e ON e.id = b.event_id
@@ -203,7 +212,8 @@ movements AS (
     (
       EXISTS (SELECT 1 FROM public.private_booking_invoices pbi WHERE pbi.invoice_id = i.id)
       OR EXISTS (SELECT 1 FROM public.private_bookings pb WHERE pb.invoice_id = i.id)
-    )
+    ),
+    NULL::numeric
   FROM public.invoice_payments ip
   JOIN public.invoices i ON i.id = ip.invoice_id
   WHERE ip.source_kind = 'paypal'
@@ -223,7 +233,8 @@ movements AS (
     'paypal',
     pp.transaction_id,
     'paid',
-    true
+    true,
+    NULL::numeric
   FROM public.parking_booking_payments pp
   JOIN public.parking_bookings pk ON pk.id = pp.booking_id
   LEFT JOIN completed_refunds r ON r.source_type = 'parking' AND r.source_id = pp.id
@@ -241,7 +252,7 @@ SELECT
   round(m.gross - LEAST(m.refunded, m.gross), 2)::numeric(10,2) AS net,
   m.method,
   m.capture_id,
-  f.fee_amount AS paypal_fee,
+  CASE WHEN m.source = 'event_ticket' THEN m.booking_fee ELSE f.fee_amount END::numeric(10,2) AS paypal_fee,
   CASE
     WHEN m.refunded > 0 AND m.refunded >= m.gross THEN 'refunded'
     WHEN m.refunded > 0 THEN 'part_refunded'
