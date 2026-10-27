@@ -8,6 +8,7 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { Role, Permission, UserPermission, ModuleName, ActionType } from '@/types/rbac';
 import { logAuditEvent } from './audit';
 import { PermissionService, roleSchema } from '@/services/permission'; // Import service and schema
+import type { PermissionCheckStatus } from '@/services/permission';
 
 type PermissionCheckResult =
   | { error: string }
@@ -59,6 +60,33 @@ export async function getUserPermissions(userId?: string) {
     console.error('Error fetching user permissions:', error);
     return { error: error instanceof Error ? error.message : 'Failed to fetch permissions' };
   }
+}
+
+/**
+ * Like checkUserPermission, but tells a failed lookup ('unavailable') apart from a real 'denied',
+ * so a page can show "Connection problem, retrying" instead of Access Denied (BK-095).
+ */
+export async function getPermissionStatus(
+  moduleName: ModuleName,
+  action: ActionType,
+  userId?: string
+): Promise<PermissionCheckStatus> {
+  if (userId) {
+    return PermissionService.getPermissionStatus(moduleName, action, userId);
+  }
+
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (!user) {
+    // A failed auth call is not a real "no" either; the layout has already checked the session.
+    return error && !isAuthSessionMissing(error) ? 'unavailable' : 'denied';
+  }
+
+  return PermissionService.getPermissionStatus(moduleName, action, user.id);
+}
+
+function isAuthSessionMissing(error: { name?: string; status?: number }): boolean {
+  return error.name === 'AuthSessionMissingError' || error.status === 401 || error.status === 403;
 }
 
 export async function checkUserPermission(
