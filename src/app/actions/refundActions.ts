@@ -15,6 +15,7 @@ import {
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { resolveSeasonalDepositRefund } from '@/lib/table-bookings/deposit-refund'
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 
@@ -118,16 +119,15 @@ async function loadSourceBooking(
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
-    // A cancelled hire can owe back more than its deposit: the balance paid on the booking too
-    // (BK-065). The money held is the cap; the refund promised decides when it reads refunded.
+    // A cancelled hire can owe back more than its deposit: the balance paid too (BK-065). The
+    // money held is the cap; the refund promised decides when it reads refunded. The balance comes
+    // from the same de-duplicated ledger the cancellation outcome reads, so a receipt against the
+    // hire's invoice counts, and a deposit the invoice took (the applied-deposit guard below) does
+    // not. If the ledger cannot be read this throws, and the refund is refused.
     let held = Number(data.deposit_amount) || 0
     if (data.status === 'cancelled') {
-      const { data: payments } = await db
-        .from('private_booking_payments')
-        .select('amount')
-        .eq('booking_id', sourceId)
-      const paidOnBooking = (payments ?? []).reduce((sum: number, row: { amount: unknown }) => sum + (Number(row.amount) || 0), 0)
-      held = Math.round(((data.deposit_paid_date ? Number(data.deposit_amount) || 0 : 0) + paidOnBooking) * 100) / 100
+      const ledger = await readBookingPaymentLedger(sourceId)
+      held = Math.round(((data.deposit_paid_date ? Number(data.deposit_amount) || 0 : 0) + ledger.balancePaymentsTotal) * 100) / 100
     }
     const promised = Number(data.refund_due_amount)
     return {
@@ -541,7 +541,12 @@ export async function processPayPalRefund(
   const db = createAdminClient()
 
   // 3. Load booking
-  const booking = await loadSourceBooking(db, sourceType, sourceId)
+  let booking: SourceBookingData | null
+  try {
+    booking = await loadSourceBooking(db, sourceType, sourceId)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not load the booking' }
+  }
   if (!booking) return { error: 'Booking not found' }
   if (booking.appliedInvoiceId) {
     return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }
@@ -900,7 +905,12 @@ export async function processManualRefund(
   const db = createAdminClient()
 
   // 3. Load booking
-  const booking = await loadSourceBooking(db, sourceType, sourceId)
+  let booking: SourceBookingData | null
+  try {
+    booking = await loadSourceBooking(db, sourceType, sourceId)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not load the booking' }
+  }
   if (!booking) return { error: 'Booking not found' }
   if (booking.appliedInvoiceId) {
     return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }

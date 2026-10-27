@@ -32,6 +32,10 @@ vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/table-bookings/deposit-refund', () => ({ resolveSeasonalDepositRefund: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+// A cancelled hire's refund cap reads the booking's payment ledger: nothing paid beyond the deposit here.
+vi.mock('@/lib/private-bookings/payment-ledger', () => ({
+  readBookingPaymentLedger: vi.fn().mockResolvedValue({ balancePaymentsTotal: 0, appliedDepositAmount: 0 }),
+}))
 
 import { processManualRefund, processPayPalRefund } from '@/app/actions/refundActions'
 import { createClient } from '@/lib/supabase/server'
