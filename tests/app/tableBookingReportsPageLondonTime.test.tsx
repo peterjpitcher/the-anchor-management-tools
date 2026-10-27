@@ -8,6 +8,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TableBookingReportsSnapshot } from '@/lib/analytics/table-booking-reports'
 import type { UserPermission } from '@/types/rbac'
 
+vi.mock('@/lib/analytics/website-booking-funnel', () => ({
+  loadWebsiteBookingFunnel: vi.fn(async () => ({ weeks: [], error: null })),
+}))
+
 const managerPermissions: UserPermission[] = [
   { module_name: 'reports', action: 'view' },
   { module_name: 'table_bookings', action: 'view' },

@@ -31,6 +31,9 @@ import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP, LARGE_GROUP_DEPOSIT_THRESHOLD } fro
 import { logger } from '@/lib/logger'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
+import { loadGuestChristmasParty, type GuestChristmasParty } from './christmas-party-data'
+import { ChristmasPartySection } from './ChristmasPartySection'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from '@/lib/table-bookings/christmas'
 
 /** Names the flow at the top of the page, per the approved kicker list. */
 // Static and non-personal on purpose: no token, customer name or booking reference may reach
@@ -116,6 +119,27 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       return { tone: 'green', text: 'Booking updated.' }
     case 'cancelled':
       return { tone: 'green', text: 'Booking cancelled.' }
+    case 'christmas_updated':
+      return {
+        tone: 'green',
+        text: "Your numbers are updated. We'll check your deposit against the new numbers and let you know if anything needs to change."
+      }
+    case 'christmas_closed':
+      return {
+        tone: 'red',
+        text: `The deadline for changing your Christmas numbers online has passed. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
+    case 'christmas_size':
+      return {
+        tone: 'red',
+        text: `Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
+    case 'christmas_no_change':
+      return { tone: 'amber', text: 'Tick anyone not coming, or add guests, then press Update numbers.' }
+    case 'christmas_changed':
+      return { tone: 'amber', text: 'Your numbers changed while this page was open, so nothing was saved. Please check the list below and try again.' }
+    case 'christmas_call':
+      return { tone: 'red', text: `To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.` }
     case 'error':
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':
@@ -248,12 +272,28 @@ export default async function TableManageBookingPage({
     }
   }
 
+  // Christmas numbers change through their own form (BK-053, D21), never the plain party-size box.
+  const isChristmas = isChristmasBookingType(preview.booking_type ?? null)
+  let christmasParty: GuestChristmasParty | null = null
+  if (isChristmas && preview.can_edit && preview.table_booking_id) {
+    try {
+      christmasParty = await loadGuestChristmasParty(supabase, preview.table_booking_id)
+    } catch (error) {
+      // The rest of the page still works; the numbers card falls back to "please call us".
+      logger.error('Guest table-manage could not load the Christmas numbers', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { tableBookingId: preview.table_booking_id }
+      })
+      christmasParty = { courseCounts: null, seatNames: [], canChangeOnline: false, closesAt: null }
+    }
+  }
+
   // Said before the guest saves (BK-044): a party growing to the group threshold owes the group
   // deposit. SSOT section 7's standard line, from the live threshold and rate, then what happens.
   // Not shown to a Christmas booking, whose deposit is per person at any size, or to a party
   // already over the threshold, which has already been asked.
   const partySizeHint =
-    preview.booking_type !== 'christmas' && Number(preview.party_size || 1) < LARGE_GROUP_DEPOSIT_THRESHOLD
+    !isChristmas && Number(preview.party_size || 1) < LARGE_GROUP_DEPOSIT_THRESHOLD
       ? `Groups of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more: a £${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP} per person deposit, fully deducted from your bill. If your party grows to ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more, your table stays booked and you'll go straight to the payment page when you save.`
       : undefined
 
@@ -315,16 +355,18 @@ export default async function TableManageBookingPage({
           <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
             <input type="hidden" name="action" value="update" />
 
-            <GuestField id="party_size" label="Party size" required hint={partySizeHint}>
-              <GuestInput
-                {...guestFieldControlProps({ id: 'party_size', required: true, hint: partySizeHint })}
-                name="party_size"
-                type="number"
-                min="1"
-                max="20"
-                defaultValue={String(preview.party_size || 1)}
-              />
-            </GuestField>
+            {!isChristmas && (
+              <GuestField id="party_size" label="Party size" required hint={partySizeHint}>
+                <GuestInput
+                  {...guestFieldControlProps({ id: 'party_size', required: true, hint: partySizeHint })}
+                  name="party_size"
+                  type="number"
+                  min="1"
+                  max="20"
+                  defaultValue={String(preview.party_size || 1)}
+                />
+              </GuestField>
+            )}
 
             <GuestField id="notes" label="Special requirements" hint={NOTES_HINT}>
               <GuestTextarea
@@ -342,6 +384,8 @@ export default async function TableManageBookingPage({
           </form>
         </GuestCard>
       )}
+
+      {christmasParty && <ChristmasPartySection {...christmasParty} actionUrl={actionUrl} />}
 
       {preorderLoadFailed && (
         <GuestAlert

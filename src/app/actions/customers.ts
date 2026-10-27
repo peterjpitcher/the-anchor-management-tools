@@ -140,19 +140,23 @@ export async function getCustomerList(params: {
 
   const supabase = await createClient()
 
+  // Walk-in and anonymised placeholders are not people to list or count (BK-082).
   // Build the base query for counting
   let countQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
+    .eq('is_placeholder', false)
 
   let smsActiveCountQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
+    .eq('is_placeholder', false)
     .in('sms_status', SMS_ACTIVE_STATUSES)
 
   let smsDeactivatedCountQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
+    .eq('is_placeholder', false)
     .in('sms_status', SMS_DEACTIVATED_STATUSES)
 
   // Build the data query. first_name alone is not a stable sort: names repeat,
@@ -161,6 +165,7 @@ export async function getCustomerList(params: {
   let dataQuery = supabase
     .from('customers')
     .select(CUSTOMER_LIST_SELECT)
+    .eq('is_placeholder', false)
     .order('first_name', { ascending: true })
     .order('last_name', { ascending: true })
     .order('id', { ascending: true })
@@ -452,7 +457,9 @@ export async function deleteCustomer(id: string) {
         resource_type: 'customer',
         resource_id: id,
         operation_status: 'success',
-        old_values: customer
+        // The record is gone, so the audit row must not become the last copy of the guest's
+        // name, phone and email (BK-081). The id says which record was deleted.
+        old_values: { id }
       })
     }
 

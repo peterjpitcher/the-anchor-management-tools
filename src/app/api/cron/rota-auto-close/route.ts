@@ -5,6 +5,9 @@ import { authorizeCronRequest } from '@/lib/cron-auth';
 import { reportCronFailure } from '@/lib/cron/alerting';
 import { clearPayrollApprovalsForDate } from '@/lib/rota/payroll-approval-invalidation';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 // Vercel Cron: runs at 05:00 UTC daily (cron: "0 5 * * *")
 const TIMEZONE = 'Europe/London';
 

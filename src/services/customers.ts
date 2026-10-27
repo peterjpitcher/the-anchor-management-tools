@@ -122,6 +122,8 @@ async function anonymizeCustomerForDelete(
       last_failure_type: null,
       sms_deactivated_at: new Date().toISOString(),
       sms_deactivation_reason: 'customer_deleted',
+      // No longer a real person: kept out of lists, counts and insights (BK-082).
+      is_placeholder: true,
     };
 
     const { data: anonymizedCustomer, error } = await supabase

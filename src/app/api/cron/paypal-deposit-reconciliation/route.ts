@@ -6,6 +6,7 @@ import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
+import { withCronRun } from '@/lib/cron/run-recorder'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -206,7 +207,7 @@ async function alertPrivateDeposit(
   await alertMoneyNeedsAPerson(admin, { domain: 'private_bookings', bookingId, kind, ...text })
 }
 
-export async function GET(request: NextRequest) {
+async function reconcilePrivateBookingDeposits(request: NextRequest) {
   logger.info('PayPal deposit reconciliation cron starting', {
     metadata: { startedAt: new Date().toISOString() }
   })
@@ -481,3 +482,19 @@ export async function GET(request: NextRequest) {
   logger.info('PayPal deposit reconciliation completed', { metadata: { results } })
   return NextResponse.json({ reconciled: results.length, results })
 }
+
+/** Outcomes that mean this run could not finish a booking, rather than a decision it made. */
+function isUnhandledOutcome(outcome: unknown): boolean {
+  if (typeof outcome !== 'string') return false
+  return ['error', 'lookup_failed', 'capture_failed'].includes(outcome) || /clear(_[a-z_]+)?_failed$/.test(outcome)
+}
+
+// A run record per run, a failure email when the run fails, and the bookings it could not finish
+// counted on the record for the daily check (BK-116).
+export const GET = withCronRun('paypal-deposit-reconciliation', reconcilePrivateBookingDeposits, {
+  recording: 'every_run',
+  itemFailures: (body) =>
+    Array.isArray(body.results)
+      ? body.results.filter((entry) => isUnhandledOutcome((entry as { outcome?: unknown } | null)?.outcome)).length
+      : 0,
+})

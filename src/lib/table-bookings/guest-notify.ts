@@ -22,6 +22,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { notifyCustomer, type NotifyCustomerResult } from '@/lib/notifications/notify'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
+import { withBookingContactEmail } from '@/lib/bookings/contact-email'
 import type { TableBookingEmail } from '@/lib/table-bookings/guest-emails'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 import {
@@ -175,8 +176,13 @@ export function summariseGuestNotification(result: NotifyCustomerResult): {
 }
 
 export async function notifyTableBookingGuestEmailFirst(
-  input: TableBookingGuestNotifyInput
+  rawInput: TableBookingGuestNotifyInput
 ): Promise<GuestNotificationOutcome> {
+  // The email the guest typed for this booking, when it differs from the customer's (BK-078).
+  const input: TableBookingGuestNotifyInput = {
+    ...rawInput,
+    customer: await withBookingContactEmail(rawInput.supabase, 'table_bookings', rawInput.tableBookingId, rawInput.customer),
+  }
   let result: NotifyCustomerResult
   try {
     result = await notifyCustomer({

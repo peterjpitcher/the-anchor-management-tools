@@ -17,6 +17,7 @@ import {
 import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
@@ -25,8 +26,7 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
-import { eventAttendeesInputSchema, bookingQuestionsSchema, validateEventAttendees } from '@/lib/events/booking-questions'
-import { resolveEventTicketPriceAmount } from '@/lib/events/pricing'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -162,6 +162,12 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
     }
 
+    // A landline or non-UK number cannot take our texts, so without an email the guest would get
+    // no confirmation or payment link (BK-162). Ask for an email instead.
+    if (!parsed.data.email && !isUkMobile(normalizedPhone)) {
+      return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
+    }
+
     // Per-ticket attendee names are optional here (the website enforces them for
     // paid events); when provided, they must be non-empty and match the seat count.
     const attendeeNamesResult = normalizeAttendeeNames(parsed.data.attendee_names, parsed.data.seats)
@@ -222,7 +228,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions, collect_guest_details')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -234,22 +240,23 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Selected event could not be found', 'NOT_FOUND', 404)
       }
 
-      let paidEvent = eventRow.payment_mode !== 'free' && resolveEventTicketPriceAmount(eventRow) > 0
-      if (!paidEvent && (eventRow.payment_mode === 'prepaid' || eventRow.payment_mode === 'cash_only')) {
-        const { data: pricedTypes, error: priceError } = await supabase.from('event_ticket_types').select('base_price').eq('event_id', eventRow.id).eq('is_active', true)
-        if (priceError) return createErrorResponse('Ticket prices could not be loaded', 'DATABASE_ERROR', 500)
-        paidEvent = (pricedTypes ?? []).some(type => Number(type.base_price) > 0)
-      }
+      // One rule, the event's own setting (BK-014, owner decision D4). The website reads the same
+      // answer from /api/events and create_event_booking_v08 applies it to the same column.
+      const guestDetailsRequired = requiresGuestDetails(eventRow)
       const questions = bookingQuestionsSchema.safeParse(eventRow.booking_questions ?? [])
       if (!questions.success) return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
       const guestError = validateEventAttendees({
         attendees: parsed.data.attendees,
         questions: questions.data,
         seats: parsed.data.seats,
-        required: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
+        required: guestDetailsRequired,
         selections: parsed.data.ticket_selections,
       })
-      if (guestError) return createErrorResponse(guestError, questions.data.length ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
+      // Only an answer to a question the event no longer asks means "the questions changed"
+      // (BK-134). Every other problem is the guest's details, said as it is.
+      if (guestError) {
+        return createErrorResponse(guestError, guestError === QUESTIONS_CHANGED_MESSAGE ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
+      }
 
       if (eventRow.bookings_enabled === false) {
         return createErrorResponse(
@@ -304,20 +311,6 @@ export async function POST(request: NextRequest) {
       if (!customerResolution.customerId) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
-
-      await ConsentService.applyBookingContactConsent(
-        customerResolution.customerId,
-        parsed.data.communication_consent,
-        {
-          source: 'public_event_booking',
-          captureMethod: 'checkbox',
-          // The referer is a page address too, so it gets the same cleaning: no click id is kept.
-          sourceUrl: parsed.data.source_url || cleanAttributionUrl(req.headers.get('referer'), 2048) || null,
-          userAgent: req.headers.get('user-agent'),
-          relatedEntityType: 'event_booking',
-          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-        }
-      )
 
       const appBaseUrl = getAppUrl()
       const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
@@ -390,17 +383,27 @@ export async function POST(request: NextRequest) {
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
         attendees: parsed.data.attendees,
         expectedTotal: parsed.data.expected_total,
-        requireGuestDetails: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
+        requireGuestDetails: guestDetailsRequired,
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
         attribution,
         ticketSelections,
         diningRequest: parsed.data.dining_request,
+        contactEmail: customerResolution.bookingContactEmail,
         earlyArrivalRequest: parsed.data.early_arrival_request
       })
 
       if (result.rpcFailed) {
         if (result.rpcErrorCode === 'questions_changed') {
           return createErrorResponse('The guest questions have changed. Please check the details for each guest.', 'BOOKING_QUESTIONS_CHANGED', 409)
+        }
+        // The website checks these before it posts, so one arriving here is a fault, not a change
+        // (BK-134): say what to fix, and log it as an error so it is seen.
+        if (result.rpcErrorCode === 'guest_details_invalid') {
+          logger.error('Event booking refused guest details the website should have caught', {
+            error: new Error('event_booking_guest_details_invalid'),
+            metadata: { eventId: parsed.data.event_id, seats: parsed.data.seats, attendees: parsed.data.attendees?.length ?? 0 },
+          })
+          return createErrorResponse('Please check the details for each guest: a name for every ticket, and an answer to each required question.', 'VALIDATION_ERROR', 400)
         }
         if (result.rpcErrorCode === 'price_changed') {
           return createErrorResponse('The ticket price has changed. Please check the updated total before booking.', 'PRICE_CHANGED', 409)
@@ -428,6 +431,29 @@ export async function POST(request: NextRequest) {
       // (even if a subsequent step failed), so the finally block does not release
       // the idempotency claim and risk creating a duplicate booking on retry.
       mutationCommitted = Boolean(result.rpcResult.booking_id)
+
+      // Recorded once the booking exists, so the consent names it (BK-080). It used to be recorded
+      // before the booking was made, so no event consent was ever tied to its booking. Decided on
+      // the state, never on whether an id came back (tasks/lessons.md, 2026-07-03).
+      if (
+        result.bookingId &&
+        (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment')
+      ) {
+        await ConsentService.applyBookingContactConsent(
+          customerResolution.customerId,
+          parsed.data.communication_consent,
+          {
+            source: 'public_event_booking',
+            captureMethod: 'checkbox',
+            // The referer is a page address too, so it gets the same cleaning: no click id is kept.
+            sourceUrl: parsed.data.source_url || cleanAttributionUrl(req.headers.get('referer'), 2048) || null,
+            userAgent: req.headers.get('user-agent'),
+            relatedEntityType: 'event_booking',
+            relatedEntityId: result.bookingId,
+            metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+          }
+        )
+      }
 
       if (result.rollbackFailed) {
         return createErrorResponse(

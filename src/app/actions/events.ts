@@ -13,6 +13,7 @@ import { getAppUrl } from '@/lib/env'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import {
   createEventManageToken,
   getEventRefundPolicy,
@@ -87,6 +88,8 @@ export type EventBookingRow = {
   ticket_breakdown?: string | null
   /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
   charge_total?: number | null
+  /** The email typed for this booking when the customer record holds a different one (BK-078). */
+  contact_email?: string | null
   customer?: {
     id: string
     first_name: string | null
@@ -736,7 +739,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, contact_email, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -882,7 +885,9 @@ const createEventManualBookingSchema = z.object({
   ticketSelections: z.array(z.object({
     ticketTypeId: z.string().uuid(),
     quantity: z.number().int().min(1).max(20)
-  })).min(1).max(20).optional()
+  })).min(1).max(20).optional(),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketingTextsYes: z.boolean().optional()
 })
 
 type EventManualBookingResult =
@@ -916,6 +921,8 @@ export async function createEventManualBooking(input: {
   lastName?: string
   attendeeNames?: string[]
   ticketSelections?: Array<{ ticketTypeId: string; quantity: number }>
+  /** Staff read the guest the marketing notice and they said yes (owner decision D32). */
+  marketingTextsYes?: boolean
 }): Promise<EventManualBookingResult> {
   try {
     // ── Admin-specific pre-checks ────────────────────────────────────────────
@@ -942,7 +949,7 @@ export async function createEventManualBooking(input: {
     const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
       firstName: parsed.data.firstName,
       lastName: parsed.data.lastName
-    })
+    }, { trustedEntry: true })
 
     if (!customerResolution.customerId) {
       return { error: 'Could not create or find customer for this phone number.' }
@@ -1117,6 +1124,14 @@ export async function createEventManualBooking(input: {
             quantity: line.quantity
           })) ?? null
         }
+      })
+      await recordStaffReadOutConsent({
+        saidYes: parsed.data.marketingTextsYes,
+        customerId,
+        actorUserId: user.id,
+        source: 'staff_event_booking',
+        relatedEntityType: 'event_booking',
+        relatedEntityId: bookingId,
       })
     }
 
@@ -1569,120 +1584,6 @@ export async function updateEventManualBookingSeats(input: {
   }
 }
 
-const updateEventBookingAttendeeNamesSchema = z.object({
-  bookingId: z.string().uuid(),
-  attendeeNames: z.array(z.string().trim().max(MAX_ATTENDEE_NAME_LENGTH)).max(50)
-})
-
-type UpdateEventBookingAttendeeNamesResult =
-  | { error: string }
-  | {
-      success: true
-      data: {
-        booking_id: string
-        attendee_names: string[]
-      }
-    }
-
-/**
- * Staff edit of a booking's per-ticket attendee names (aggregate list on
- * `bookings.attendee_names`, index 0 = lead booker). Blank entries are dropped;
- * the stored list can never be longer than the booking's seats.
- */
-export async function updateEventBookingAttendeeNames(input: {
-  bookingId: string
-  attendeeNames: string[]
-}): Promise<UpdateEventBookingAttendeeNamesResult> {
-  try {
-    const canManageEvents = await checkUserPermission('events', 'manage')
-    if (!canManageEvents) {
-      return { error: 'You do not have permission to edit event bookings.' }
-    }
-
-    const parsed = updateEventBookingAttendeeNamesSchema.safeParse(input)
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message || 'Invalid attendee names.' }
-    }
-
-    const names = parsed.data.attendeeNames
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0)
-
-    const supabase = createAdminClient()
-    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
-      .select('id, event_id, seats, status, is_reminder_only, attendee_names, attendees')
-      .eq('id', parsed.data.bookingId)
-      .maybeSingle()
-
-    if (bookingError || !bookingRow) {
-      return { error: 'Booking not found.' }
-    }
-
-    if (bookingRow.is_reminder_only === true) {
-      return { error: 'Reminder-only entries have no tickets to name.' }
-    }
-
-    if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0) {
-      return { error: 'Use Guest details to edit this booking so names and answers stay together.' }
-    }
-
-    const seats = Math.max(0, Number(bookingRow.seats) || 0)
-    if (names.length > seats) {
-      return { error: `This booking has ${seats} seat${seats === 1 ? '' : 's'}, so you can enter at most ${seats} name${seats === 1 ? '' : 's'}.` }
-    }
-
-    const previousNames = Array.isArray(bookingRow.attendee_names)
-      ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim().length > 0)
-      : []
-
-    const { error: updateError } = await supabase.from('bookings')
-      .update({ attendee_names: names })
-      .eq('id', bookingRow.id)
-
-    if (updateError) {
-      logger.error('Failed to update event booking attendee names', {
-        error: new Error(updateError.message || 'Failed to update attendee names'),
-        metadata: { bookingId: bookingRow.id }
-      })
-      return { error: 'Failed to update attendee names.' }
-    }
-
-    const authSupabase = await createClient()
-    const { data: { user } } = await authSupabase.auth.getUser()
-    await logAuditEvent({
-      user_id: user?.id ?? undefined,
-      operation_type: 'update',
-      resource_type: 'event_booking',
-      resource_id: bookingRow.id,
-      operation_status: 'success',
-      additional_info: {
-        event_id: bookingRow.event_id,
-        field: 'attendee_names',
-        old_count: previousNames.length,
-        new_count: names.length,
-        seats
-      }
-    })
-
-    if (bookingRow.event_id) {
-      revalidatePath(`/events/${bookingRow.event_id}`)
-    }
-
-    return {
-      success: true,
-      data: {
-        booking_id: bookingRow.id,
-        attendee_names: names
-      }
-    }
-  } catch (error) {
-    logger.error('Unexpected updateEventBookingAttendeeNames error', {
-      error: error instanceof Error ? error : new Error(String(error)),
-    })
-    return { error: getErrorMessage(error, 'Failed to update attendee names.') }
-  }
-}
-
 async function resolveEventRefundActor(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<{ userId: string | null; email: string | null; mayRefund: boolean }> {
@@ -1707,10 +1608,11 @@ async function computeEventBookingRefundable(
   bookingId: string
 ): Promise<{ amountPaid: number; alreadyRefunded: number; maxRefundable: number }> {
   const [paidResult, refundResult] = await Promise.all([
+    // Fully refunded charges count as taken: their refund rows are subtracted below, once.
     supabase.from('payments').select('amount')
       .eq('event_booking_id', bookingId)
       .in('charge_type', ['prepaid_event', 'seat_increase'])
-      .in('status', ['succeeded', 'partially_refunded']),
+      .in('status', ['succeeded', 'partially_refunded', 'refunded']),
     supabase.from('payments').select('amount')
       .eq('event_booking_id', bookingId)
       .eq('charge_type', 'refund')

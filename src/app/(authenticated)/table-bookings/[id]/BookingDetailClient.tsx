@@ -1,6 +1,6 @@
 'use client'
 
-import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
+import { ChristmasCourseFields, type ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { StaffCancelChoice } from '@/components/features/table-bookings/StaffCancelChoice'
 import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -371,6 +371,8 @@ interface Props {
    * whether this guest has a usable address, which makes email the default.
    */
   emailOption?: { enabled: boolean; usable: boolean }
+  /** Shown when the guest gave a different email for this booking (BK-078). Null otherwise. */
+  contactEmailNotice?: ReactNode
 }
 
 type MoveTableOption = {
@@ -404,7 +406,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption, contactEmailNotice }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   // What staff must read after a party-size change, kept until dismissed rather than a toast that
@@ -426,7 +428,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // Bumped after a cancellation so the "guest not told" warning looks again (BK-177).
   const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
-  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
+  const [christmasPartyChange, setChristmasPartyChange] = useState<ChristmasPartyChange | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [partySizeMoveTableId, setPartySizeMoveTableId] = useState('')
@@ -787,7 +789,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
           body: {
             party_size: nextSize,
-            christmas_course_counts: christmasCourseCounts,
+            christmas_course_counts: christmasPartyChange?.courseCounts,
+            removed_seats: christmasPartyChange?.removedSeats,
+            expected_course_counts: christmasPartyChange?.expectedCourseCounts,
             send_sms: partySizeEditSendSms,
             ...(selectedMoveTable
               ? {
@@ -1208,6 +1212,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 />
               )}
             </Card>
+
+            {contactEmailNotice}
 
             {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
             {seasonalPreorder}
@@ -2048,7 +2054,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
             />
-            <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
+            <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasPartyChange} />
             {partySizeNeedsLargerTable && (
               <>
                 <Alert tone="warning" role="status">

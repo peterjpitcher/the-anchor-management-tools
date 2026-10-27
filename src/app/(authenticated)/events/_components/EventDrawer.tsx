@@ -9,6 +9,7 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
+import { EventNightNotice } from './EventNightNotice'
 import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import { generateEventSeoContent } from '@/app/actions/event-content'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
@@ -683,6 +684,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 onChange={(e) => setStatus(e.target.value)}
               />
             </div>
+            <EventNightNotice date={date} eventId={event?.id ?? null} />
             {bookingMode !== 'general' ? (
               <div className="space-y-3">
                 <p className="text-sm text-text-muted">Seating is limited by the tables available during this event. Each booking must fit the available seating.</p>

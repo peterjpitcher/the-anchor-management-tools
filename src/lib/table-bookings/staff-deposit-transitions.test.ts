@@ -321,7 +321,7 @@ describe('both party-size routes hand the deposit columns in', () => {
     // And a deposit left for a manager reaches the person who made the change.
     expect(handler).toContain("depositTransition?.state === 'manual_review'")
     const guestPath = readFileSync(join(process.cwd(), 'src/lib/table-bookings/manage-booking.ts'), 'utf8')
-    expect(guestPath).toContain('.select(PARTY_SIZE_DEPOSIT_COLUMNS)')
+    expect(guestPath).toContain('.select(`booking_reference, ${PARTY_SIZE_DEPOSIT_COLUMNS}`)')
 
     const routes: Array<[string, string]> = [
       ['src/app/api/foh/bookings/[id]/party-size/route.ts', "'foh'"],

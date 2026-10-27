@@ -44,7 +44,9 @@ function buildCustomerSearchSupabase(rows: unknown[]) {
   const limit = vi.fn().mockResolvedValue({ data: rows, error: null })
   const order = vi.fn().mockReturnValue({ limit })
   const or = vi.fn().mockReturnValue({ order })
-  const select = vi.fn().mockReturnValue({ or })
+  // The FOH search leaves out made-up walk-in records first (BK-082); the events search does not.
+  const eq = vi.fn().mockReturnValue({ or })
+  const select = vi.fn().mockReturnValue({ or, eq })
 
   return {
     supabase: {

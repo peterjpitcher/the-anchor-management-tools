@@ -21,6 +21,7 @@ import {
   type BookingAuditTrailEntry,
   type LegacyBookingAuditRow,
 } from '@/lib/table-bookings/audit-trail'
+import { BookingContactEmailNotice } from '@/components/features/bookings/BookingContactEmailNotice'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -29,12 +30,13 @@ interface Props {
 export default async function BookingDetailPage({ params }: Props) {
   const { id } = await params
 
-  const [canView, canEdit, canManage, canRefund, permissionsResult] = await Promise.all([
+  const [canView, canEdit, canManage, canRefund, permissionsResult, canManageCustomers] = await Promise.all([
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('table_bookings', 'refund'),
     getUserPermissions(),
+    checkUserPermission('customers', 'manage'),
   ])
 
   if (!canView) redirect('/unauthorized')
@@ -59,8 +61,9 @@ export default async function BookingDetailPage({ params }: Props) {
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
       deposit_review_needed_at, deposit_review_note,
+      contact_email,
       customer:customers!table_bookings_customer_id_fkey(
-        id, first_name, last_name, mobile_number
+        id, first_name, last_name, mobile_number, email
       ),
       table_booking_tables:booking_table_assignments(
         id, start_datetime, end_datetime,
@@ -140,6 +143,15 @@ export default async function BookingDetailPage({ params }: Props) {
       depositRefunds={depositRefunds}
       seasonalPreorder={seasonalPreorder}
       emailOption={emailOption}
+      contactEmailNotice={rawBooking.contact_email ? (
+        <BookingContactEmailNotice
+          bookingType="table"
+          bookingId={rawBooking.id}
+          contactEmail={rawBooking.contact_email}
+          customerEmail={customer?.email ?? null}
+          canUpdateCustomer={canManageCustomers}
+        />
+      ) : null}
     />
   )
 }
@@ -217,7 +229,10 @@ async function loadDepositRefunds(bookingId: string): Promise<BookingDepositRefu
 async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage: boolean) {
   // The booking's own snapshot answers this, not the live period row: a guest who said "no, this
   // is not a Christmas dinner" gets the normal menu and owes nobody a choice.
-  if (rawBooking.booking_period_requires_preorder !== true || rawBooking.booking_period_answer !== true) {
+  // A Christmas booking with courses recorded has a seat per guest for a name and a dietary note even
+  // when everyone is on 1 course (BK-148), so it gets the card too.
+  const hasChristmasCourses = Array.isArray(rawBooking.christmas_course_counts)
+  if ((rawBooking.booking_period_requires_preorder !== true && !hasChristmasCourses) || rawBooking.booking_period_answer !== true) {
     return null
   }
 
@@ -226,7 +241,7 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage
     loadPreorderOrder(admin, rawBooking.id),
     isPreorderEnabled(admin),
   ])
-  if (!order || !order.requiresPreorder) return null
+  if (!order || !order.hasGuestSeats) return null
 
   // Switched off and never started means there is nothing to show. Switched off with orders
   // already taken still shows them, because hiding what staff typed in would be worse.

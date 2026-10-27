@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Badge, Button, Modal } from '@/ds'
+import { Badge, Button, Input, Modal, Textarea } from '@/ds'
+import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
@@ -195,6 +196,16 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
           />
         )}
 
+        {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
+          // Keyed on the booking so a different booking never inherits half-typed notes.
+          <GuestNotesEditor
+            key={selectedBooking.id}
+            booking={selectedBooking}
+            busy={Boolean(bookingActionInFlight)}
+            onRunAction={onRunAction}
+          />
+        )}
+
         {selectedBooking.is_private_block && (
           <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">
             This block is managed by private-booking area mapping. Edit the private booking or area mapping in settings.
@@ -294,6 +305,77 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
           ))}
         </dl>
       )}
+    </div>
+  )
+}
+
+/**
+ * Notes and allergies, changed from the floor (BK-052). A guest often mentions an allergy on
+ * arrival, and FOH-only staff cannot open the back-office booking page where these used to be
+ * the only fields. Allergies go in their own field, so the red flag, the kitchen sheet and the
+ * timeline marker all see them.
+ */
+function GuestNotesEditor({
+  booking,
+  busy,
+  onRunAction,
+}: {
+  booking: FohBooking
+  busy: boolean
+  onRunAction: FohBookingDetailModalProps['onRunAction']
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [notes, setNotes] = React.useState(booking.special_requirements ?? '')
+  const [allergies, setAllergies] = React.useState((booking.allergies ?? []).join(', '))
+
+  if (!open) {
+    return (
+      <Button type="button" variant="secondary" className="min-h-touch w-full" onClick={() => setOpen(true)}>
+        Edit Notes and Allergies
+      </Button>
+    )
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3">
+      <Input
+        label="Allergies"
+        hint="Separate each one with a comma, for example: peanuts, shellfish."
+        value={allergies}
+        maxLength={600}
+        onChange={(event) => setAllergies(event.target.value)}
+      />
+      <Textarea
+        label="Notes"
+        rows={3}
+        maxLength={2000}
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+      />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="secondary" className="min-h-touch" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          className="min-h-touch"
+          disabled={busy}
+          onClick={async () => {
+            const saved = await onRunAction(
+              () =>
+                postBookingAction(`/api/foh/bookings/${booking.id}/notes`, {
+                  notes: notes.trim() || null,
+                  allergies: parseAllergyList(allergies),
+                }),
+              'Notes and allergies saved',
+              'notes',
+            )
+            if (saved) setOpen(false)
+          }}
+        >
+          Save Notes
+        </Button>
+      </div>
     </div>
   )
 }

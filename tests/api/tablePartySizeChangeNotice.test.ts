@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/foh/api-auth', () => ({
   requireBohTableBookingPermission: mocks.requireBohTableBookingPermission,
   requireFohPermission: mocks.requireFohPermission,
+  tableBookingsManagerCheck: vi.fn(() => async () => false),
 }))
 vi.mock('@/lib/events/staff-seat-updates', () => ({
   updateTableBookingPartySizeWithLinkedEventSeats: mocks.updateSeats,

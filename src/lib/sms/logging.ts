@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { maskPhone } from '@/lib/phone/mask'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.generated'
 
@@ -54,7 +55,7 @@ export async function recordOutboundMessage(params: RecordOutboundSmsParams): Pr
 
   if (!customerId) {
     logger.debug('Skipping outbound message log – no customer id provided', {
-      metadata: { sid, to, channel }
+      metadata: { sid, to: maskPhone(to), channel }
     })
     return null
   }

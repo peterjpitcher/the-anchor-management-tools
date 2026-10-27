@@ -63,6 +63,10 @@ function one<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null
 }
 
+/**
+ * What each booking has paid and still holds: charges taken less refunds made or pending. A fully
+ * refunded charge counts as taken, because its refund is a refund row subtracted here once.
+ */
 async function paidByBooking(
   supabase: ReturnType<typeof createAdminClient>,
   bookingIds: string[],
@@ -74,11 +78,15 @@ async function paidByBooking(
     .select('event_booking_id, amount')
     .in('event_booking_id', bookingIds)
     .in('charge_type', ['prepaid_event', 'seat_increase'])
-    .in('status', ['succeeded', 'partially_refunded'])
+    .in('status', ['succeeded', 'partially_refunded', 'refunded'])
   if (error) throw error
   for (const row of data ?? []) {
     if (!row.event_booking_id) continue
     paid.set(row.event_booking_id, (paid.get(row.event_booking_id) ?? 0) + Math.max(0, Number(row.amount ?? 0)))
+  }
+  const refunded = await refundedByBooking(supabase, bookingIds)
+  for (const [bookingId, amount] of paid) {
+    paid.set(bookingId, Math.round(Math.max(0, amount - (refunded.get(bookingId) ?? 0)) * 100) / 100)
   }
   return paid
 }
@@ -266,11 +274,10 @@ export async function resolveEventPaymentException(input: {
       return { success: true, data: { resolution: 'confirmed' } }
     }
 
-    // Refund what is left of what was paid (an earlier partial refund is not asked for again, or
-    // the refund would come back as partial and be reported as failed), then cancel. One refund
-    // per payment problem, however often the button is pressed.
-    const refunded = (await refundedByBooking(supabase, [booking.id])).get(booking.id) ?? 0
-    const refundable = Math.round(Math.max(0, paid - refunded) * 100) / 100
+    // Refund what is left of what was paid (`paid` is already net of earlier refunds, so a partial
+    // refund is not asked for again and reported as failed), then cancel. One refund per payment
+    // problem, however often the button is pressed.
+    const refundable = paid
     const refund = refundable > 0
       ? await processEventRefund(supabase, {
           bookingId: booking.id,
