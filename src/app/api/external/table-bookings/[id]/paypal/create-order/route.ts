@@ -163,7 +163,10 @@ export async function POST(
           description: `Table booking deposit – ${booking.party_size} guests`,
           amount: depositAmount,
           currency: 'GBP',
-          requestId: `tb-deposit-${bookingId}`,
+          // The amount is part of the key: PayPal answers a repeated request id with the order it
+          // made first, so a deposit re-priced after a party-size change (D20) would otherwise
+          // get the old order back and the capture would be refused as the wrong amount.
+          requestId: `tb-deposit-${bookingId}-${Math.round(depositAmount * 100)}`,
         });
       } catch (err) {
         return NextResponse.json(

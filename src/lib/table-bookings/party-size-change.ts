@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
-import { requireBohTableBookingPermission, requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission, requireFohPermission, tableBookingsManagerCheck } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
   PartySizeUpdateFailedAfterMoveError,
@@ -13,12 +13,16 @@ import {
 } from '@/lib/events/staff-seat-updates'
 import {
   applyPartySizeDepositTransition,
+  PARTY_SIZE_DEPOSIT_COLUMNS,
   type PartySizeDepositTransitionResult
 } from '@/lib/table-bookings/staff-deposit-transitions'
 import {
   syncPreorderCovers,
   type PreorderRemovedCover
 } from '@/lib/table-bookings/preorder'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 /**
  * A staff party-size change, for both staff screens (BK-129, customer bookings review of
@@ -37,6 +41,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 const UpdatePartySizeSchema = z.object({
   christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
+  // The Christmas guests who are leaving, by their seat number now, so their own dishes go (BK-054).
+  removed_seats: z.array(z.number().int().min(1).max(CHRISTMAS_MAX_PARTY_SIZE)).max(CHRISTMAS_MAX_PARTY_SIZE - 1).optional(),
+  // The course list the dialog showed, so a change made against guests that have since changed is refused.
+  expected_course_counts: z.array(z.number().int().min(1).max(3)).max(CHRISTMAS_MAX_PARTY_SIZE).nullable().optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
@@ -88,9 +96,10 @@ export async function changeTableBookingPartySize(
 
   // Read current booking state before the update so we can detect threshold crossings
   const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
-    // booking_period_id and booking_period_name are load-bearing here: their presence is what stops
-    // the deposit transition re-pricing a seasonal booking with the party-size rule, which zeroed it.
-    .select('id, party_size, committed_party_size, status, payment_status, customer_id, booking_date, booking_reference, booking_type, start_datetime, updated_at, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name')
+    // The deposit transition's columns, read BEFORE the change: its status and payment state decide
+    // whether the deposit follows the new size or is flagged (D20). booking_period_answer, not the
+    // period id, says whether a seasonal offer was taken (BK-042).
+    .select(`committed_party_size, booking_reference, updated_at, ${PARTY_SIZE_DEPOSIT_COLUMNS}`)
     .eq('id', id)
     .maybeSingle()
 
@@ -104,6 +113,10 @@ export async function changeTableBookingPartySize(
       tableBookingId: id,
       partySize: newPartySize,
       christmasCourseCounts: parsed.data.christmas_course_counts,
+      christmasRemovedSeats: parsed.data.removed_seats,
+      christmasExpectedCourses: parsed.data.expected_course_counts,
+      // After the Christmas pre-order deadline only a manager may change the numbers (D21).
+      canMakeLateChristmasChange: tableBookingsManagerCheck(auth),
       actor: surface,
       sendSms: parsed.data.send_sms,
       appBaseUrl,
@@ -169,11 +182,11 @@ export async function changeTableBookingPartySize(
         error: depositError instanceof Error ? depositError : new Error(String(depositError)),
         metadata: { tableBookingId: id, previousPartySize, newPartySize },
       })
-      depositWarning = 'Party size saved, but the deposit link could not be updated. Please retry from the booking page.'
+      depositWarning = 'Party size saved, but the deposit could not be brought in line with it. Check the deposit on the booking page.'
     }
 
-    // A seasonal booking is never re-priced automatically, so say so plainly rather than letting
-    // staff assume the deposit followed the new party size.
+    // A deposit left for a manager (paid, so settled on the bill, or not workable out) is said plainly,
+    // and the booking carries the flag until a manager clears it (BK-043).
     if (depositTransition?.state === 'manual_review') {
       depositWarning = depositTransition.message
     }
@@ -186,11 +199,12 @@ export async function changeTableBookingPartySize(
     //
     // Like the deposit above, a failure here must not be reported as a failed amendment. The size
     // is already saved, a stale cover list is recoverable, and the nightly drift check reports it.
-    let preorderRemoved: PreorderRemovedCover[] = []
+    // Guests removed by seat are reported by the write itself; anything trimmed from the end, by the sync.
+    let preorderRemoved: PreorderRemovedCover[] = result.removed_covers ?? []
     if (result.state === 'updated' && currentBooking.booking_period_id) {
       try {
         const sync = await syncPreorderCovers(auth.supabase, id)
-        preorderRemoved = sync.removed
+        preorderRemoved = [...preorderRemoved, ...sync.removed]
       } catch (preorderError) {
         logger.error(`${label} party-size pre-order cover sync failed after party size saved`, {
           error: preorderError instanceof Error ? preorderError : new Error(String(preorderError)),
@@ -199,13 +213,42 @@ export async function changeTableBookingPartySize(
       }
     }
 
+    // Tell the guest their booking now has a different party size (BK-091). Staff changes used to
+    // reach the guest only when they crossed the deposit threshold. The amended-booking notice goes
+    // email first and says where the deposit stands. Not sent when staff chose not to notify, when
+    // the deposit request already went on this request (it states the new size), or for an event
+    // booking, whose own seat-change text has gone. New guest wording, so it is behind the messaging
+    // flag table_party_size_change_notice, off until the owner switches it on.
+    let partySizeNotification: GuestNotificationOutcome | null = null
+    const depositRequestWent = depositTransition?.state === 'deposit_required' && Boolean(depositTransition.notification)
+    if (
+      result.state === 'updated'
+      && result.new_party_size !== previousPartySize
+      && parsed.data.send_sms
+      && !depositRequestWent
+      && !result.event_booking_id
+      && await isMessagingFlagOn('table_party_size_change_notice')
+    ) {
+      partySizeNotification = await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
+        tableBookingId: id,
+        previous: { startDateTime: currentBooking.start_datetime ?? null, partySize: previousPartySize },
+      })
+    }
+
     await logAuditEvent({
       user_id: auth.userId,
       operation_type: 'table_booking.party_size_changed',
       resource_type: 'table_booking',
       resource_id: id,
       operation_status: 'success',
-      additional_info: { source: surface, previousPartySize, newPartySize },
+      additional_info: {
+        source: surface,
+        previousPartySize,
+        newPartySize,
+        ...(parsed.data.removed_seats?.length ? { seats_removed: parsed.data.removed_seats } : {}),
+        // A manager changing a Christmas party after the pre-order deadline (D21).
+        ...(result.late_change ? { late_change: true } : {}),
+      },
     }).catch(() => {})
 
     return NextResponse.json({
@@ -214,8 +257,13 @@ export async function changeTableBookingPartySize(
       booking: updatedBooking,
       depositTransition,
       warning: depositWarning,
+      // An unpaid deposit that followed the new size (D20), for the success message.
+      depositNote: depositTransition?.state === 'deposit_repriced' ? depositTransition.message : null,
       // What the shrink dropped, so staff can tell the booker whose food choice has gone.
       preorderRemoved,
+      // Whether the guest was told about the new size, so the screens can say when nobody was.
+      partySizeNotification,
+      lateChange: result.late_change === true,
       depositRequired: depositTransition?.state === 'deposit_required',
       depositUrl: depositTransition?.state === 'deposit_required' ? depositTransition.depositUrl : null,
       depositAmount: depositTransition?.state === 'deposit_required' ? depositTransition.depositAmount : null,

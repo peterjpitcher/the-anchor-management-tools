@@ -5,6 +5,10 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { getLocalIsoDateDaysAgo } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
 import { GdprService } from '@/services/gdpr'
+import {
+  resolveGuestDetailsRetentionMode,
+  runEventGuestDetailsRetention,
+} from '@/lib/events/guest-details-retention'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -121,7 +125,19 @@ export async function GET(request: Request) {
       metadata: preorders,
     })
 
-    return NextResponse.json({ success: true, result, preorders })
+    // Event guest answers and phones, 90 days after the event (owner decision D6, BK-017).
+    // Ships as a dry run: it only reports until EVENT_GUEST_DETAILS_RETENTION is 'delete'.
+    const guestDetails = await runEventGuestDetailsRetention(createAdminClient(), {
+      mode: resolveGuestDetailsRetentionMode(),
+    })
+    logger.info('Event guest details retention completed', {
+      metadata: guestDetails,
+    })
+    if (guestDetails.bookingsFailed > 0) {
+      throw new Error(`Event guest details retention could not clear ${guestDetails.bookingsFailed} booking(s)`)
+    }
+
+    return NextResponse.json({ success: true, result, preorders, guestDetails })
   } catch (error) {
     logger.error('Retention cleanup failed', {
       error: error instanceof Error ? error : new Error(String(error)),

@@ -8,7 +8,7 @@ vi.mock('../audit', () => ({ logAuditEvent: mocks.audit }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 import { saveEventTicketSettings } from '../event-ticket-settings'
 
-const input = { payment_mode: 'prepaid' as const, online_discount_type: 'fixed' as const, online_discount_value: 5, online_discount_ends_at: '2026-11-19T18:00:00.000Z', booking_questions: [] }
+const input = { payment_mode: 'prepaid' as const, online_discount_type: 'fixed' as const, online_discount_value: 5, online_discount_ends_at: '2026-11-19T18:00:00.000Z', booking_questions: [], collect_guest_details: true }
 
 beforeEach(() => {
   vi.clearAllMocks()

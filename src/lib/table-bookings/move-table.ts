@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
+import { logger } from '@/lib/logger'
 
 export type MoveTableBooking = {
   id: string
@@ -22,7 +23,15 @@ type MoveTableCandidateTable = {
 
 export type MoveTableAvailability = {
   startIso: string
+  /**
+   * When the TABLE is free again: the guest's end plus the turnaround the booking carries. This is
+   * the window every availability check uses and the one written to the new assignment rows.
+   */
   endIso: string
+  /** When the guest's own booking ends. Never includes the turnaround. */
+  bookingEndIso: string
+  /** The turnaround gap the table hold carries beyond the guest's end, in whole minutes. */
+  turnaroundMinutes: number
   assignedTableIds: string[]
   tables: MoveTableCandidateTable[]
 }
@@ -105,6 +114,90 @@ function computeBookingWindow(booking: MoveTableBooking) {
   return { startIso, endIso }
 }
 
+/**
+ * The turnaround a booking's table hold already carries beyond the guest's own end (BK-037,
+ * customer bookings review of 24 October 2026): the latest assignment end minus the booking end,
+ * never negative. Null when the booking holds no table, so the caller can fall back to the
+ * configured gap.
+ *
+ * Read from the booking rather than from the current setting, as the FOH change-time route does:
+ * re-reading the setting would silently re-length a booking taken before the setting changed.
+ * Every move, edit and party-size change keeps this gap; before this, each of them wrote the
+ * guest's end as the table's end, so the table looked free the moment the guest's time was up.
+ */
+export function carriedTurnaroundMs(
+  bookingEndIso: string,
+  assignmentEnds: ReadonlyArray<string | null | undefined>
+): number | null {
+  const bookingEndMs = Date.parse(bookingEndIso)
+  if (!Number.isFinite(bookingEndMs)) return null
+  const endsMs = assignmentEnds
+    .map((value) => (value ? Date.parse(value) : Number.NaN))
+    .filter((value) => Number.isFinite(value))
+  if (endsMs.length === 0) return null
+  return Math.max(0, Math.max(...endsMs) - bookingEndMs)
+}
+
+/**
+ * The turnaround a NEW table hold gets, as the booking engine (create_table_booking_core_v06)
+ * works it out: turnaround_gap_minutes while turn_times_enabled is on, otherwise none. Read through
+ * the same guarded setting functions the engine uses. Only needed for a booking that holds no table
+ * yet; a booking that has one keeps the gap it carries.
+ *
+ * A failed read answers the engine's own default of 15 minutes rather than none: a hold that is
+ * too long is refused as a clash and staff pick another table, a hold that is too short seats the
+ * next party at a table nobody has cleared.
+ */
+export async function readConfiguredTurnaroundMinutes(
+  supabase: SupabaseClient<any, 'public', any>
+): Promise<number> {
+  const DEFAULT_GAP_MINUTES = 15
+  const { data: enabled, error: enabledError } = await supabase.rpc('get_setting_bool', {
+    p_key: 'turn_times_enabled',
+    p_default: false,
+  })
+  if (enabledError) {
+    logger.error('Could not read turn_times_enabled; using the default turnaround gap', {
+      metadata: { code: enabledError.code ?? null, message: enabledError.message },
+    })
+    return DEFAULT_GAP_MINUTES
+  }
+  if (enabled !== true) return 0
+
+  const { data: minutes, error: minutesError } = await supabase.rpc('get_setting_int', {
+    p_key: 'turnaround_gap_minutes',
+    p_default: DEFAULT_GAP_MINUTES,
+  })
+  if (minutesError) {
+    logger.error('Could not read turnaround_gap_minutes; using the default turnaround gap', {
+      metadata: { code: minutesError.code ?? null, message: minutesError.message },
+    })
+    return DEFAULT_GAP_MINUTES
+  }
+  const value = Number(minutes)
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0
+}
+
+/**
+ * The window a booking's table is held for: the guest's window, with the end pushed out by the
+ * turnaround the booking carries (or the configured one when it holds no table yet).
+ */
+export async function resolveTableHoldWindow(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: MoveTableBooking,
+  assignmentEnds: ReadonlyArray<string | null | undefined>
+): Promise<{ startIso: string; bookingEndIso: string; tableEndIso: string; turnaroundMinutes: number }> {
+  const { startIso, endIso: bookingEndIso } = computeBookingWindow(booking)
+  const carried = carriedTurnaroundMs(bookingEndIso, assignmentEnds)
+  const gapMs = carried ?? (await readConfiguredTurnaroundMinutes(supabase)) * 60 * 1000
+  return {
+    startIso,
+    bookingEndIso,
+    tableEndIso: new Date(Date.parse(bookingEndIso) + gapMs).toISOString(),
+    turnaroundMinutes: Math.round(gapMs / 60000),
+  }
+}
+
 function tableLabel(table: { table_number: string | null; name: string | null; id: string }): string {
   return table.name || table.table_number || `Table ${table.id.slice(0, 4)}`
 }
@@ -123,15 +216,16 @@ export async function getMoveTableAvailability(
   supabase: SupabaseClient<any, 'public', any>,
   booking: MoveTableBooking
 ): Promise<MoveTableAvailability> {
-  const { startIso, endIso } = computeBookingWindow(booking)
-
   // Outside bookings hold no table. Never offer any move target — the UI hides the
   // action when the tables list is empty, and the assignments RPC refuses the write
   // as the last line of defence.
   if (booking.is_outside_seating === true) {
+    const guestWindow = computeBookingWindow(booking)
     return {
-      startIso,
-      endIso,
+      startIso: guestWindow.startIso,
+      endIso: guestWindow.endIso,
+      bookingEndIso: guestWindow.endIso,
+      turnaroundMinutes: 0,
       assignedTableIds: [],
       tables: []
     }
@@ -145,7 +239,7 @@ export async function getMoveTableAvailability(
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
     supabase.from('booking_table_assignments')
-      .select('table_id')
+      .select('table_id, end_datetime')
       .eq('table_booking_id', booking.id),
     supabase.from('table_join_links')
       .select('table_id, join_table_id')
@@ -161,6 +255,22 @@ export async function getMoveTableAvailability(
 
   if (joinLinksResult.error) {
     throw new Error('Failed to load table join groups')
+  }
+
+  // The table is held until the guest's end plus the turnaround this booking carries, and every
+  // check below uses that window, so a move never lands on a table the next party needs cleared.
+  const holdWindow = await resolveTableHoldWindow(
+    supabase,
+    booking,
+    (existingAssignmentsResult.data || []).map((row) => (typeof row?.end_datetime === 'string' ? row.end_datetime : null))
+  )
+  const startIso = holdWindow.startIso
+  const endIso = holdWindow.tableEndIso
+  const windowFields = {
+    startIso,
+    endIso,
+    bookingEndIso: holdWindow.bookingEndIso,
+    turnaroundMinutes: holdWindow.turnaroundMinutes,
   }
 
   const assignedTableIds = Array.from(
@@ -183,8 +293,7 @@ export async function getMoveTableAvailability(
 
   if (bookableTables.length === 0) {
     return {
-      startIso,
-      endIso,
+      ...windowFields,
       assignedTableIds,
       tables: []
     }
@@ -395,8 +504,7 @@ export async function getMoveTableAvailability(
   })
 
   return {
-    startIso,
-    endIso,
+    ...windowFields,
     assignedTableIds,
     tables
   }

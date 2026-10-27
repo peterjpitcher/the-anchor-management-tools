@@ -10,6 +10,11 @@ import {
 } from '@/lib/table-bookings/paypal-deposit'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts'
+import {
+  isClosedTableBookingStatus,
+  settleDepositOnClosedBooking,
+  type ClosedBookingDepositOutcome,
+} from '@/lib/table-bookings/late-deposit'
 
 /**
  * Records a table deposit PayPal has already taken but this app never recorded.
@@ -57,7 +62,13 @@ export type TableDepositOrderOutcome =
   /** Another path recorded the capture first. */
   | { outcome: 'already_recorded' }
   /** The capture is now recorded and the booking confirmed. */
-  | { outcome: 'recorded'; amountGbp: number; wasCancelled: boolean }
+  | { outcome: 'recorded'; amountGbp: number }
+  /**
+   * The booking had closed (cancelled, no-show or completed) before the money landed. It stays
+   * closed: the capture is recorded, a cancelled booking is refunded in full, and a person is told
+   * (BK-047). Never confirmed.
+   */
+  | { outcome: 'closed_booking'; settled: ClosedBookingDepositOutcome }
 
 export async function reconcileTableDepositOrder(
   supabase: SupabaseClient<any, 'public', any>,
@@ -190,6 +201,24 @@ export async function reconcileTableDepositOrder(
   }
 
   /*
+   * A booking that had closed before the money landed is never confirmed by a payment (BK-047,
+   * owner decision D19). This sweep used to mark a cancelled booking paid and "confirmed", leave its
+   * cancelled stamps, skip any check that the table was still free, and send the guest a "deposit
+   * confirmed" message. The guest is refunded in full instead, and a person is told.
+   */
+  if (isClosedTableBookingStatus(booking.status)) {
+    const settled = await settleDepositOnClosedBooking(supabase, {
+      bookingId: booking.id,
+      captureId: capture.id,
+      orderId,
+      amountGbp: lockedAmountGbp,
+      capturedAtIso: capture?.create_time ?? null,
+      source: options.source,
+    })
+    return { outcome: 'closed_booking', settled }
+  }
+
+  /*
    * The captured figure is about to be written into deposit_amount_locked, which is what the venue
    * then treats as owed and what any refund is measured against. It must agree with what this
    * booking actually owes: a stale order created before the party size changed would otherwise
@@ -243,6 +272,8 @@ export async function reconcileTableDepositOrder(
     .eq('id', booking.id)
     // Guard against the browser or the webhook winning the race in between.
     .is('paypal_deposit_capture_id', null)
+    // And against the booking being cancelled since it was read: a payment never reopens one.
+    .not('status', 'in', '(cancelled,no_show,completed)')
     .select('id')
     .maybeSingle()
 
@@ -273,23 +304,6 @@ export async function reconcileTableDepositOrder(
 
   if (!updated) return { outcome: 'already_recorded' }
 
-  /*
-   * A booking already cancelled by the deposit timeout is now marked paid and confirmed by the
-   * update above, which is the right end state: the guest did pay. Tell a person, so they check
-   * the table is still actually free for them (BK-114).
-   */
-  const wasCancelled = booking.status === 'cancelled'
-  if (wasCancelled) {
-    await alertMoneyNeedsAPerson(supabase, {
-      domain: 'table_bookings',
-      bookingId: booking.id,
-      kind: 'paid_after_cancel',
-      title: `A guest paid ${formatPounds(lockedAmountGbp)} for a cancelled table booking`,
-      summary: `PayPal took ${formatPounds(lockedAmountGbp)} for this table booking after it had been cancelled for non-payment. It is now recorded as paid and confirmed. Check the table is still free for them, or refund the deposit.`,
-      context: { Booking: booking.booking_reference ?? booking.id, 'PayPal order': orderId, 'PayPal capture': capture.id },
-    })
-  }
-
   await logAuditEvent({
     operation_type: 'payment.captured',
     resource_type: 'table_booking',
@@ -301,9 +315,6 @@ export async function reconcileTableDepositOrder(
       capture_id: capture.id,
       locked_amount_gbp: lockedAmountGbp,
       previous_status: booking.status,
-      action_needed: wasCancelled
-        ? 'This booking had been cancelled for non-payment but the guest had in fact paid. Confirm the table is still available.'
-        : undefined,
     },
   }).catch(() => undefined)
 
@@ -319,5 +330,5 @@ export async function reconcileTableDepositOrder(
     })
   })
 
-  return { outcome: 'recorded', amountGbp: lockedAmountGbp, wasCancelled }
+  return { outcome: 'recorded', amountGbp: lockedAmountGbp }
 }

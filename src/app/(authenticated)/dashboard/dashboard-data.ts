@@ -5,6 +5,7 @@ import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadDayLoads } from '@/services/day-load'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
@@ -242,7 +243,13 @@ type CashingUpSnapshot = {
 type TableBookingsSnapshot = {
   permitted: boolean
   todayTotal: number
+  /** Diners plus event tickets, counted as every screen counts them (BK-075). */
   todayCovers: number
+  /**
+   * Guests at private hires holding their rooms today, shown beside the covers. Optional because
+   * a snapshot cached before it existed has none.
+   */
+  todayPrivateHireGuests?: number
   thisWeekTotal: number
   lastWeekTotal: number
   thisMonthTotal: number
@@ -706,17 +713,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               ? lastMonthNaturalEnd
               : comparableLastMonthEndCandidate
 
-          const [todayResult, todayCoversResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult, coversByDateResult] = await Promise.all([
+          const [todayResult, dayLoads, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
               .not('status', 'in', '(cancelled,no_show)')
               .eq('booking_date', todayIso),
-            supabase
-              .from('table_bookings')
-              .select('party_size')
-              .not('status', 'in', '(cancelled,no_show)')
-              .eq('booking_date', todayIso),
+            // Covers and private-hire guests per day, as the FOH screen, calendar and rota count them.
+            loadDayLoads(todayIso, opsHorizonIso, { db: supabase, withHours: false }),
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
@@ -741,34 +745,24 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .not('status', 'in', '(cancelled,no_show)')
               .gte('booking_date', format(lastMonthStart, 'yyyy-MM-dd'))
               .lte('booking_date', format(lastMonthEnd, 'yyyy-MM-dd')),
-            supabase
-              .from('table_bookings')
-              .select('booking_date, party_size')
-              .not('status', 'in', '(cancelled,no_show)')
-              .gte('booking_date', todayIso)
-              .lte('booking_date', opsHorizonIso),
           ])
 
           if (todayResult.error) throw todayResult.error
-          if (todayCoversResult.error) throw todayCoversResult.error
-          if (coversByDateResult.error) throw coversByDateResult.error
           if (thisWeekResult.error) throw thisWeekResult.error
           if (lastWeekResult.error) throw lastWeekResult.error
           if (thisMonthResult.error) throw thisMonthResult.error
           if (lastMonthResult.error) throw lastMonthResult.error
 
           tableBookings.todayTotal = todayResult.count ?? 0
-          tableBookings.todayCovers = (todayCoversResult.data ?? []).reduce((sum, row) => {
-            const partySize = Number(row.party_size ?? 0)
-            return sum + (Number.isFinite(partySize) ? partySize : 0)
-          }, 0)
-          for (const row of coversByDateResult.data ?? []) {
-            const date = (row as { booking_date?: string | null }).booking_date
-            if (!date) continue
-            const partySize = Number(row.party_size ?? 0)
-            if (!Number.isFinite(partySize)) continue
-            dailyOps.coversByDate[date] = (dailyOps.coversByDate[date] ?? 0) + partySize
+          const todayLoad = dayLoads.get(todayIso)
+          tableBookings.todayCovers = todayLoad?.covers ?? 0
+          tableBookings.todayPrivateHireGuests = todayLoad?.privateHireGuests ?? 0
+          const hireGuestsByDate: Record<string, number> = {}
+          for (const load of dayLoads.values()) {
+            if (load.covers > 0) dailyOps.coversByDate[load.date] = load.covers
+            if (load.privateHireGuests > 0) hireGuestsByDate[load.date] = load.privateHireGuests
           }
+          dailyOps.hireGuestsByDate = hireGuestsByDate
           tableBookings.thisWeekTotal = thisWeekResult.count ?? 0
           tableBookings.lastWeekTotal = lastWeekResult.count ?? 0
           tableBookings.thisMonthTotal = thisMonthResult.count ?? 0
@@ -996,18 +990,22 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       customers.permitted ? (async () => {
         try {
           const [totalResult, newWeekResult, newMonthResult, lastMonthResult] = await Promise.all([
-            supabase.from('customers').select('id', { count: 'exact', head: true }),
+            // Walk-in and anonymised placeholders are not customers to count (BK-082).
+            supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_placeholder', false),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', sevenDaysAgo),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfThisMonth),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
+              .eq('is_placeholder', false)
               .gte('created_at', startOfLastMonth)
               .lt('created_at', startOfThisMonth),
           ])

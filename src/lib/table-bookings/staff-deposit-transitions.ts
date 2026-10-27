@@ -3,8 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createTablePaymentToken } from '@/lib/table-bookings/bookings'
 import {
-  getCanonicalDeposit,
-  requiresDeposit,
+  computeDepositAmount,
+  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
 } from '@/lib/table-bookings/deposit'
 import { depositPerPerson } from '@/lib/table-bookings/deposit-terms'
 import {
@@ -25,6 +25,30 @@ import { buildTableBookingDepositRequestEmail } from '@/lib/table-bookings/guest
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 import { AuditService } from '@/services/audit'
 
+/**
+ * What happens to a table booking's deposit when its party size changes: owner decision D20,
+ * BK-042, BK-043 and BK-044 (customer bookings review of 24 October 2026).
+ *
+ *  - An UNPAID deposit follows the new size. A booking that owes one (waiting for it, or confirmed
+ *    with it owed) is re-priced, or cleared when the new size owes nothing. The PayPal order is
+ *    dropped so the next payment is for the new figure.
+ *  - A PAID deposit stays exactly as it is, is settled on the bill, and the booking is flagged for a
+ *    manager (deposit_review_needed_at) until one has checked it. Nothing is charged or refunded.
+ *  - A CONFIRMED booking that grows into owing a deposit stays confirmed with the deposit owed. It
+ *    used to become a 24-hour unpaid hold that the timeout cron cancelled, so a party of 12 that
+ *    added four friends could lose its whole table a day later (BK-044).
+ *  - A booking that declined the Christmas menu follows the ordinary 15-or-more rule. The seasonal
+ *    branch used to key on booking_period_id, which every booking in the Christmas window carries,
+ *    so a declined party of 11 growing to 16 was never asked for the group deposit (BK-042).
+ *
+ * The rule itself is never restated here. A booking that did not accept a seasonal offer is priced
+ * by computeDepositAmount, the TypeScript twin of resolve_table_booking_deposit (pinned by the
+ * parity test). A booking that accepted one is priced by resolve_table_booking_deposit itself,
+ * because only the database knows the period's terms and how they combine with the group rule.
+ * When neither can answer, the deposit is left exactly as it is and flagged: over-collecting is
+ * visible and correctable, silently zeroing money owed is neither.
+ */
+
 export type PartySizeDepositTransitionBooking = {
   id: string
   customer_id: string | null
@@ -32,17 +56,22 @@ export type PartySizeDepositTransitionBooking = {
   status: string | null
   payment_status: string | null
   booking_type: string | null
+  booking_date?: string | null
   start_datetime: string | null
   deposit_amount: number | string | null
   deposit_amount_locked: number | string | null
   deposit_waived: boolean | null
-  /**
-   * Set when the booking was taken inside a seasonal period. Its presence is what stops this
-   * function re-pricing a booking with a rule that never applied to it. See the guard below.
-   */
+  deposit_rule?: string | null
+  paypal_deposit_capture_id?: string | null
   booking_period_id?: string | null
   booking_period_name?: string | null
+  /** True only when the guest accepted the seasonal offer. A declined booking keeps the period id. */
+  booking_period_answer?: boolean | null
 }
+
+/** The columns applyPartySizeDepositTransition reads. Callers select exactly these. */
+export const PARTY_SIZE_DEPOSIT_COLUMNS =
+  'id, customer_id, party_size, status, payment_status, booking_type, booking_date, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, deposit_rule, paypal_deposit_capture_id, booking_period_id, booking_period_name, booking_period_answer'
 
 export type PartySizeDepositTransitionResult =
   | {
@@ -57,14 +86,24 @@ export type PartySizeDepositTransitionResult =
        * email" or ask staff to send the link themselves. Absent when staff chose not to notify.
        */
       notification?: GuestNotificationOutcome
+      /** The booking stayed confirmed, with the deposit owed (D20). */
+      stillConfirmed: boolean
+    }
+  | {
+      /** An unpaid deposit followed the new party size (D20). */
+      state: 'deposit_repriced'
+      previousAmount: number | null
+      depositAmount: number
+      message: string
     }
   | {
       state: 'deposit_cleared'
     }
   | {
       /**
-       * The party size changed on a seasonal booking, so the deposit was deliberately left exactly
-       * as it was and a person has to decide. Never a failure: the amendment itself succeeded.
+       * The deposit was left exactly as it was and the booking is flagged for a manager: a paid
+       * deposit (settled on the bill), or one whose new figure could not be worked out. Never a
+       * failure: the amendment itself succeeded.
        */
       state: 'manual_review'
       message: string
@@ -74,25 +113,109 @@ export type PartySizeDepositTransitionResult =
       state: 'unchanged'
     }
 
-function computeStaffPaymentHoldExpiry(
-  bookingStartIso: string | null | undefined,
-  now: Date = new Date(),
-): string | null {
-  const maxHold = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-  let expiry = maxHold
+const PAID_PAYMENT_STATUSES = new Set(['completed', 'partial_refund', 'refunded'])
 
-  if (bookingStartIso) {
-    const bookingStart = new Date(bookingStartIso)
-    if (Number.isFinite(bookingStart.getTime()) && bookingStart.getTime() < expiry.getTime()) {
-      expiry = bookingStart
+function toAmount(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount : null
+}
+
+function formatGbp(amount: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
+
+type DepositForSize =
+  | { ok: true; amount: number; rule: string; basis: string | null; rate: number | null }
+  | { ok: false; reason: string }
+
+/**
+ * The deposit a booking owes at a party size, from the one rule. See the module comment for why
+ * a seasonal booking goes to the database and every other booking does not.
+ */
+async function depositForPartySize(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: PartySizeDepositTransitionBooking,
+  partySize: number
+): Promise<DepositForSize> {
+  const acceptedPeriod = booking.booking_period_answer === true && Boolean(booking.booking_period_id)
+
+  if (!acceptedPeriod) {
+    // A Christmas booking with no accepted period cannot be priced from the booking alone.
+    if (isChristmasBookingType(booking.booking_type)) {
+      return { ok: false, reason: 'christmas_booking_without_period' }
     }
+    const amount = computeDepositAmount(partySize)
+    return amount > 0
+      ? { ok: true, amount, rule: 'group', basis: 'per_head', rate: LARGE_GROUP_DEPOSIT_PER_PERSON_GBP }
+      : { ok: true, amount: 0, rule: 'none', basis: null, rate: null }
   }
 
-  if (expiry.getTime() <= now.getTime()) {
-    return null
+  if (!booking.booking_date) {
+    return { ok: false, reason: 'booking_date_missing' }
   }
 
-  return expiry.toISOString()
+  const { data, error } = await supabase.rpc('resolve_table_booking_deposit', {
+    p_party_size: partySize,
+    p_booking_date: booking.booking_date,
+    p_period_id: booking.booking_period_id,
+    p_period_answer: true,
+    p_deposit_waived: false,
+  })
+  if (error) {
+    return { ok: false, reason: error.message }
+  }
+
+  const resolved = (data ?? null) as {
+    ok?: boolean
+    error_code?: string
+    required?: boolean
+    amount?: number | string | null
+    rule?: string | null
+    basis?: string | null
+    rate?: number | string | null
+  } | null
+  if (!resolved || resolved.ok !== true) {
+    return { ok: false, reason: resolved?.error_code ?? 'unreadable_deposit' }
+  }
+
+  const amount = toAmount(resolved.amount ?? null) ?? 0
+  if (resolved.required !== true || amount <= 0) {
+    return { ok: true, amount: 0, rule: resolved.rule ?? 'none', basis: null, rate: null }
+  }
+  return {
+    ok: true,
+    amount: Number(amount.toFixed(2)),
+    rule: resolved.rule ?? 'period',
+    basis: resolved.basis ?? null,
+    rate: toAmount(resolved.rate ?? null),
+  }
+}
+
+/**
+ * Flags the booking for a manager until one has checked it (BK-043), and says so in the audit
+ * trail. The flag is what the booking page and the back-office list show as "deposit to check".
+ */
+async function flagDepositForReview(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string,
+  note: string,
+  details: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase
+    .from('table_bookings')
+    .update({ deposit_review_needed_at: new Date().toISOString(), deposit_review_note: note })
+    .eq('id', bookingId)
+  if (error) {
+    throw new Error(`Failed to flag the deposit for a manager: ${error.message}`)
+  }
+  await AuditService.logAuditEvent({
+    operation_type: 'table_booking.deposit_review_needed',
+    resource_type: 'table_booking',
+    resource_id: bookingId,
+    operation_status: 'success',
+    additional_info: { note, ...details },
+  })
 }
 
 /**
@@ -111,6 +234,8 @@ async function sendPartySizeDepositRequestEmailFirst(
     paymentUrl: string
     holdExpiresAt: string
     wording: PartySizeDepositWording
+    /** The booking stays confirmed while the deposit is owed (D20). */
+    stillBooked: boolean
   }
 ): Promise<GuestNotificationOutcome> {
   const templateKey = 'table_booking_pending_payment'
@@ -173,7 +298,9 @@ async function sendPartySizeDepositRequestEmailFirst(
       depositLabel: input.wording.depositLabel,
       breakdownNote: input.wording.breakdownNote,
       paymentLink: payment.url,
-      payByIso: input.holdExpiresAt,
+      // A booking that stays confirmed has no hold to run out, so no deadline is stated.
+      payByIso: input.stillBooked ? null : input.holdExpiresAt,
+      stillBooked: input.stillBooked,
       // What the deposit is, and what comes back if the booking is cancelled. The request used to
       // state an amount and nothing else, so it never said the money came off the bill.
       isChristmas: isChristmasBookingType(input.booking.booking_type),
@@ -189,15 +316,21 @@ async function sendPartySizeDepositRequestEmailFirst(
       email,
       sms: {
         to: customer.mobile_e164 || customer.mobile_number,
-        body: buildPartySizeDepositText({ firstName, wording: input.wording, paymentUrl: payment.url }),
+        body: buildPartySizeDepositText({
+          firstName,
+          wording: input.wording,
+          paymentUrl: payment.url,
+          stillBooked: input.stillBooked,
+        }),
         metadata: { trigger: 'party_size_threshold_crossed' },
       },
-      // Stable for this request: a later growth past the threshold is a new hold and a new key.
-      idempotencyKey: `${templateKey}:party_size:${tableBookingId}:${input.holdExpiresAt}`,
-      auditContext: { trigger: 'party_size_threshold_crossed', short_link_fallback: !payment.shortened },
+      // Stable for this request: a later growth past the threshold is a new hold, or a new amount,
+      // and a new key.
+      idempotencyKey: `${templateKey}:party_size:${tableBookingId}:${input.holdExpiresAt}:${Math.round(input.depositAmount * 100)}`,
+      auditContext: { trigger: 'party_size_threshold_crossed', short_link_fallback: !payment.shortened, still_booked: input.stillBooked },
       fallback: {
         message: 'party_size_deposit_request',
-        // The booking was set to pending payment with this amount and hold just before this call.
+        // The booking was set to owe this amount, with this payment window, just before this call.
         facts: partySizeDepositRequestFacts({
           partySize: input.newPartySize,
           depositAmount: input.depositAmount,
@@ -225,6 +358,11 @@ async function sendPartySizeDepositRequestEmailFirst(
   }
 }
 
+/**
+ * Brings a booking's deposit in line with a party-size change that has just been saved. `booking`
+ * is the row as it was BEFORE the change (its status and payment state), read with
+ * PARTY_SIZE_DEPOSIT_COLUMNS.
+ */
 export async function applyPartySizeDepositTransition(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -235,138 +373,126 @@ export async function applyPartySizeDepositTransition(
     appBaseUrl: string
   },
 ): Promise<PartySizeDepositTransitionResult> {
-  const depositWaived = input.booking.deposit_waived === true
-  // A Christmas booking already owes a deposit at any party size, so resizing it
-  // never crosses the 15+ threshold: both sides evaluate to true and the
-  // transition is correctly a no-op here (the amount is re-locked elsewhere).
-  const isChristmas = isChristmasBookingType(input.booking.booking_type)
+  const { booking, previousPartySize, newPartySize } = input
+  if (previousPartySize === newPartySize) return { state: 'unchanged' }
+  // A manager waiver beats every rule, at any size.
+  if (booking.deposit_waived === true) return { state: 'unchanged' }
 
-  // SEASONAL BOOKINGS ARE NOT RE-PRICED HERE, AND THAT IS DELIBERATE.
-  //
-  // Everything below reasons with `requiresDeposit`, which knows the party-size rule and nothing
-  // about a period's own terms. A seasonal booking obeys the terms snapshotted on it instead, and
-  // every season other than Christmas carries booking_type 'regular', so `isChristmas` is false and
-  // the party-size rule was silently applied to a deposit that never came from it. Under the
-  // ten-guest threshold of the time, twelve guests on a per-head GBP 25 period paid GBP 300;
-  // amending to eight made the branch below write deposit_amount NULL and status 'confirmed',
-  // turning GBP 300 owed into GBP 0 with nothing logged. The reverse kept a stale figure that was
-  // far too small.
-  //
-  // Re-pricing correctly is not possible from the booking alone: when the large-group rule beat the
-  // seasonal one, the snapshot records the GROUP basis and rate, so the period's own rate is not
-  // there to re-apply, and reading it back off booking_periods would price the guest against terms
-  // a manager may have edited since. Whether an amendment should re-price a seasonal deposit at all
-  // is an owner decision, not one to infer here.
-  //
-  // So the deposit is left EXACTLY as it stands and a person is told. Over-collecting is visible
-  // and correctable; silently zeroing money owed is neither.
-  if (input.booking.booking_period_id) {
-    const currentAmount = Number(input.booking.deposit_amount)
-    const periodLabel = input.booking.booking_period_name || 'seasonal'
+  const sizeLine = `Party size ${previousPartySize} to ${newPartySize}.`
+  const lockedAmount = toAmount(booking.deposit_amount_locked)
+  const storedAmount = toAmount(booking.deposit_amount)
+  const paid =
+    lockedAmount !== null
+    || Boolean(booking.paypal_deposit_capture_id)
+    || PAID_PAYMENT_STATUSES.has(booking.payment_status || '')
+
+  const priced = await depositForPartySize(supabase, booking, newPartySize)
+
+  // A PAID deposit stays as it is and is settled on the bill (D20). Nothing is charged or refunded;
+  // a manager is told, with what the new size would have owed so the bill can be squared.
+  if (paid) {
+    const paidAmount = lockedAmount ?? storedAmount
+    const wouldOwe = priced.ok ? priced.amount : null
+    const newSizeClause =
+      wouldOwe === null || wouldOwe === paidAmount
+        ? ''
+        : wouldOwe === 0
+          ? `; a party of ${newPartySize} would owe no deposit`
+          : `; for ${newPartySize} people it would be ${formatGbp(wouldOwe)}`
+    const note =
+      `${sizeLine} ${paidAmount !== null ? `The ${formatGbp(paidAmount)} deposit is paid` : 'The deposit is paid'}` +
+      `${newSizeClause}. Settle the difference on the bill.`
+    await flagDepositForReview(supabase, booking.id, note, {
+      reason: 'paid_deposit_party_size_changed',
+      previousPartySize,
+      newPartySize,
+      paidAmount,
+      newSizeAmount: wouldOwe,
+    })
     return {
       state: 'manual_review',
-      depositAmount: Number.isFinite(currentAmount) ? currentAmount : null,
-      message:
-        `The party size changed on a ${periodLabel} booking, so the deposit has been left as it is. ` +
-        'Check whether it still needs adjusting and handle it manually.',
+      depositAmount: paidAmount,
+      message: `${note} The booking is flagged for a manager to check.`,
     }
   }
 
-  const wasDepositRequired = requiresDeposit(input.previousPartySize, { depositWaived, isChristmas })
-  const isNowDepositRequired = requiresDeposit(input.newPartySize, { depositWaived, isChristmas })
-  const depositAlreadyHandled = ['completed', 'refunded'].includes(input.booking.payment_status || '')
-
-  if (!wasDepositRequired && isNowDepositRequired && !depositAlreadyHandled) {
-    if (!input.booking.customer_id) {
-      throw new Error('Cannot request a deposit because the booking has no customer.')
-    }
-
-    const holdExpiresAt = computeStaffPaymentHoldExpiry(input.booking.start_datetime)
-    if (!holdExpiresAt) {
-      throw new Error('Cannot request a deposit because the booking hold would already be expired.')
-    }
-
-    const depositAmount = Number(
-      getCanonicalDeposit(
-        {
-          party_size: input.newPartySize,
-          deposit_amount: input.booking.deposit_amount ?? null,
-          deposit_amount_locked: input.booking.deposit_amount_locked ?? null,
-          status: 'pending_payment',
-          payment_status: 'pending',
-          deposit_waived: input.booking.deposit_waived ?? null,
-          booking_type: input.booking.booking_type ?? null,
-        },
-        input.newPartySize,
-      ).toFixed(2),
-    )
-
-    const token = await createTablePaymentToken(createAdminClient(), {
-      customerId: input.booking.customer_id,
-      tableBookingId: input.booking.id,
-      holdExpiresAt,
-      appBaseUrl: input.appBaseUrl,
+  // The new figure cannot be worked out (a seasonal period that has closed, say). Leave the deposit
+  // exactly as it is and tell a manager, rather than guess.
+  if (!priced.ok) {
+    const note =
+      `${sizeLine} The deposit could not be worked out for the new party size` +
+      `${storedAmount !== null ? `, so it stays at ${formatGbp(storedAmount)}` : ''}. Check it with the guest.`
+    await flagDepositForReview(supabase, booking.id, note, {
+      reason: 'deposit_not_resolved',
+      detail: priced.reason,
+      previousPartySize,
+      newPartySize,
+      depositAmount: storedAmount,
     })
-
-    const { error: pendingUpdateError } = await supabase
-      .from('table_bookings')
-      .update({
-        status: 'pending_payment',
-        payment_status: 'pending',
-        hold_expires_at: token.expiresAt,
-        deposit_amount: depositAmount,
-        paypal_deposit_order_id: null,
-      })
-      .eq('id', input.booking.id)
-
-    if (pendingUpdateError) {
-      throw new Error(`Failed to mark booking pending payment: ${pendingUpdateError.message}`)
-    }
-
-    let smsSent = false
-    let notification: GuestNotificationOutcome | undefined
-    const depositWording = describePartySizeDeposit({
-      newPartySize: input.newPartySize,
-      depositAmount,
-      isChristmas,
-      bookingType: input.booking.booking_type,
-    })
-    // Email first, the text as the fallback (BK-129: the text-only path behind the messaging flag
-    // table_party_size_deposit_email_first, on since 15 September 2026, is gone).
-    if (input.sendSms) {
-      notification = await sendPartySizeDepositRequestEmailFirst(supabase, {
-        booking: input.booking,
-        customerId: input.booking.customer_id,
-        newPartySize: input.newPartySize,
-        depositAmount,
-        paymentUrl: token.url,
-        holdExpiresAt: token.expiresAt,
-        wording: depositWording,
-      })
-      smsSent = notification.status === 'sent' && notification.channel === 'sms'
-    }
-
     return {
-      state: 'deposit_required',
-      depositUrl: token.url,
-      depositAmount,
-      holdExpiresAt: token.expiresAt,
-      smsSent,
-      ...(notification ? { notification } : {}),
+      state: 'manual_review',
+      depositAmount: storedAmount,
+      message: `${note} The booking is flagged for a manager to check.`,
     }
   }
 
-  if (wasDepositRequired && !isNowDepositRequired && input.booking.status === 'pending_payment') {
+  const owedNow = booking.status === 'pending_payment' || booking.payment_status === 'pending'
+
+  // An UNPAID deposit follows the new size (D20, BK-042).
+  if (owedNow) {
+    if (priced.amount > 0) {
+      if (storedAmount !== null && Math.abs(storedAmount - priced.amount) < 0.005) {
+        return { state: 'unchanged' }
+      }
+      const { error: repriceError } = await supabase
+        .from('table_bookings')
+        .update({
+          deposit_amount: priced.amount,
+          deposit_rule: priced.rule,
+          deposit_basis: priced.basis,
+          deposit_rate: priced.rate,
+          // The guest's next payment is for the new figure, on a new PayPal order.
+          paypal_deposit_order_id: null,
+        })
+        .eq('id', booking.id)
+        .is('paypal_deposit_capture_id', null)
+      if (repriceError) {
+        throw new Error(`Failed to re-price the deposit: ${repriceError.message}`)
+      }
+      await AuditService.logAuditEvent({
+        operation_type: 'table_booking.deposit_repriced',
+        resource_type: 'table_booking',
+        resource_id: booking.id,
+        operation_status: 'success',
+        old_values: { deposit_amount: storedAmount, party_size: previousPartySize },
+        new_values: { deposit_amount: priced.amount, party_size: newPartySize },
+        additional_info: { rule: priced.rule },
+      })
+      return {
+        state: 'deposit_repriced',
+        previousAmount: storedAmount,
+        depositAmount: priced.amount,
+        message:
+          `The deposit now follows the party size: ${formatGbp(priced.amount)}` +
+          `${storedAmount !== null ? ` (was ${formatGbp(storedAmount)})` : ''}.`,
+      }
+    }
+
+    const nowIso = new Date().toISOString()
     const { error: clearError } = await supabase
       .from('table_bookings')
       .update({
-        status: 'confirmed',
+        ...(booking.status === 'pending_payment' ? { status: 'confirmed', confirmed_at: nowIso } : {}),
         payment_status: null,
         hold_expires_at: null,
         deposit_amount: null,
+        deposit_rule: priced.rule,
+        deposit_basis: null,
+        deposit_rate: null,
         paypal_deposit_order_id: null,
       })
-      .eq('id', input.booking.id)
+      .eq('id', booking.id)
+      .is('paypal_deposit_capture_id', null)
 
     if (clearError) {
       throw new Error(`Failed to clear pending deposit state: ${clearError.message}`)
@@ -375,5 +501,105 @@ export async function applyPartySizeDepositTransition(
     return { state: 'deposit_cleared' }
   }
 
-  return { state: 'unchanged' }
+  if (priced.amount <= 0) {
+    return { state: 'unchanged' }
+  }
+
+  // Nothing was owed, and the new size owes a deposit. A confirmed booking STAYS confirmed with the
+  // deposit owed (D20, BK-044): no hold, nothing for the timeout cron to cancel. Only a confirmed
+  // booking is asked; any other state is left for a manager.
+  if (booking.status !== 'confirmed') {
+    const note = `${sizeLine} The new size owes a ${formatGbp(priced.amount)} deposit, but the booking is ${String(booking.status || 'not confirmed').replace(/_/g, ' ')}. Check it with the guest.`
+    await flagDepositForReview(supabase, booking.id, note, {
+      reason: 'deposit_owed_on_unconfirmed_booking',
+      previousPartySize,
+      newPartySize,
+      depositAmount: priced.amount,
+      status: booking.status,
+    })
+    return { state: 'manual_review', depositAmount: null, message: `${note} The booking is flagged for a manager to check.` }
+  }
+
+  if (!booking.customer_id) {
+    throw new Error('Cannot request a deposit because the booking has no customer.')
+  }
+
+  // The payment link stays usable until the booking starts: the deposit is owed, not a hold.
+  const startMs = booking.start_datetime ? Date.parse(booking.start_datetime) : Number.NaN
+  if (!Number.isFinite(startMs) || startMs <= Date.now()) {
+    throw new Error('Cannot request a deposit for a booking that has already started.')
+  }
+  const payByIso = new Date(startMs).toISOString()
+
+  const token = await createTablePaymentToken(createAdminClient(), {
+    customerId: booking.customer_id,
+    tableBookingId: booking.id,
+    holdExpiresAt: payByIso,
+    appBaseUrl: input.appBaseUrl,
+  })
+
+  const { error: owedUpdateError } = await supabase
+    .from('table_bookings')
+    .update({
+      payment_status: 'pending',
+      // Not a hold: the status stays confirmed, so nothing cancels the booking at this time. It is
+      // how long the payment link and the PayPal capture accept the payment.
+      hold_expires_at: token.expiresAt,
+      deposit_amount: priced.amount,
+      deposit_rule: priced.rule,
+      deposit_basis: priced.basis,
+      deposit_rate: priced.rate,
+      paypal_deposit_order_id: null,
+    })
+    .eq('id', booking.id)
+    .eq('status', 'confirmed')
+
+  if (owedUpdateError) {
+    throw new Error(`Failed to record the deposit owed: ${owedUpdateError.message}`)
+  }
+
+  await AuditService.logAuditEvent({
+    operation_type: 'table_booking.deposit_owed',
+    resource_type: 'table_booking',
+    resource_id: booking.id,
+    operation_status: 'success',
+    old_values: { party_size: previousPartySize },
+    new_values: { party_size: newPartySize, deposit_amount: priced.amount },
+    additional_info: { rule: priced.rule, stays_confirmed: true },
+  })
+
+  let smsSent = false
+  let notification: GuestNotificationOutcome | undefined
+  const isChristmas = isChristmasBookingType(booking.booking_type)
+  const depositWording = describePartySizeDeposit({
+    newPartySize,
+    depositAmount: priced.amount,
+    isChristmas,
+    bookingType: booking.booking_type,
+  })
+  // Email first, the text as the fallback (BK-129: the text-only path behind the messaging flag
+  // table_party_size_deposit_email_first, on since 15 September 2026, is gone).
+  if (input.sendSms) {
+    notification = await sendPartySizeDepositRequestEmailFirst(supabase, {
+      booking,
+      customerId: booking.customer_id,
+      newPartySize,
+      depositAmount: priced.amount,
+      paymentUrl: token.url,
+      holdExpiresAt: token.expiresAt,
+      wording: depositWording,
+      stillBooked: true,
+    })
+    smsSent = notification.status === 'sent' && notification.channel === 'sms'
+  }
+
+  return {
+    state: 'deposit_required',
+    depositUrl: token.url,
+    depositAmount: priced.amount,
+    holdExpiresAt: token.expiresAt,
+    smsSent,
+    stillConfirmed: true,
+    ...(notification ? { notification } : {}),
+  }
 }

@@ -26,6 +26,45 @@ export type EventManagePreviewResult = {
   price_per_seat?: number
   can_cancel?: boolean
   can_change_seats?: boolean
+  /** True when each ticket carries a named guest (20261026203836). */
+  has_named_guests?: boolean
+  /** Why the seat change is not offered, when the database says. */
+  seat_change_blocked_reason?: string | null
+}
+
+/**
+ * Why a guest cannot change the size of this booking from their link, or null when they can.
+ * The same rules staff work under (updateEventBookingSeatsById), plus owner decision D7 (customer
+ * bookings review of 24 October 2026):
+ *   - guest_details_locked: each ticket carries a named guest, so it changes guest by guest (BK-022)
+ *   - change_by_request: the booking is paid online, so any change goes to a manager, who decides
+ *     the refund starting from what the guest paid (BK-021). It used to refund the list price at
+ *     once, with no person involved.
+ *   - multi_ticket_type_booking: the seats come from the ticket lines and cannot be edited directly
+ */
+export type GuestSeatChangeBlock = 'guest_details_locked' | 'change_by_request' | 'multi_ticket_type_booking'
+
+/** The part of the rule the preview alone answers, for the page to choose what to offer. */
+export function guestSeatChangeBlockFromPreview(preview: EventManagePreviewResult): GuestSeatChangeBlock | null {
+  if (preview.payment_mode === 'prepaid' && preview.status === 'confirmed') return 'change_by_request'
+  if (preview.has_named_guests || preview.seat_change_blocked_reason === 'guest_details_locked') return 'guest_details_locked'
+  return null
+}
+
+export async function guestSeatChangeBlock(
+  supabase: SupabaseClient<any, 'public', any>,
+  preview: EventManagePreviewResult,
+): Promise<GuestSeatChangeBlock | null> {
+  const fromPreview = guestSeatChangeBlockFromPreview(preview)
+  if (fromPreview) return fromPreview
+  if (preview.booking_id && preview.event_id) {
+    const items = await loadBookingItems(supabase, preview.booking_id)
+    if (items.length > 0) {
+      const defaultTypeId = await getDefaultTicketTypeId(supabase, preview.event_id)
+      if (bookingItemsAreMultiType(items, defaultTypeId)) return 'multi_ticket_type_booking'
+    }
+  }
+  return null
 }
 
 export type EventManageSeatsUpdateResult = {
@@ -84,30 +123,6 @@ const EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING =
   'The refund went through, but the original payment was not updated to show it. Do not refund ' +
   'again: tell the developer so the payment record can be corrected.'
 
-export type EventSeatIncreaseCheckoutResult =
-  | {
-      state: 'created'
-      checkoutUrl: string
-      bookingId: string
-      targetSeats: number
-      deltaSeats: number
-      amount: number
-      currency: string
-      sessionId: string
-    }
-  | {
-      state: 'blocked'
-      reason:
-        | 'token_invalid'
-        | 'booking_not_manageable'
-        | 'prepaid_required'
-        | 'booking_not_confirmed'
-        | 'invalid_target_seats'
-        | 'event_started'
-        | 'invalid_amount'
-        | 'online_seat_increase_unavailable'
-    }
-
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 const MANAGE_TOKEN_MAX_LIFETIME_MS = 180 * 24 * 60 * 60 * 1000
@@ -133,12 +148,6 @@ export function getEventRefundPolicy(eventStartIso: string, now = new Date()): E
 
 function roundCurrencyAmount(value: number): number {
   return Number(value.toFixed(2))
-}
-
-function parseIsoDate(value: string | undefined): Date | null {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isFinite(parsed.getTime()) ? parsed : null
 }
 
 function resolveBaseUrl(appBaseUrl?: string): string {
@@ -734,54 +743,5 @@ export async function createEventManageToken(
     rawToken: token.rawToken,
     url: `${baseUrl}/g/${token.rawToken}/manage-booking`,
     expiresAt
-  }
-}
-
-export async function createSeatIncreaseCheckoutByManageToken(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    rawToken: string
-    targetSeats: number
-    appBaseUrl?: string
-  }
-): Promise<EventSeatIncreaseCheckoutResult> {
-  const preview = await getEventManagePreviewByRawToken(supabase, input.rawToken)
-  if (preview.state !== 'ready' || !preview.booking_id || !preview.event_id || !preview.event_start_datetime) {
-    return { state: 'blocked', reason: 'token_invalid' }
-  }
-
-  if (!preview.can_change_seats) {
-    return { state: 'blocked', reason: 'booking_not_manageable' }
-  }
-
-  if (preview.payment_mode !== 'prepaid') {
-    return { state: 'blocked', reason: 'prepaid_required' }
-  }
-
-  if (preview.status !== 'confirmed') {
-    return { state: 'blocked', reason: 'booking_not_confirmed' }
-  }
-
-  const currentSeats = Math.max(1, Number(preview.seats ?? 1))
-  const targetSeats = Math.max(1, Math.trunc(input.targetSeats))
-  if (targetSeats <= currentSeats) {
-    return { state: 'blocked', reason: 'invalid_target_seats' }
-  }
-
-  const eventStart = parseIsoDate(preview.event_start_datetime)
-  if (!eventStart || eventStart.getTime() <= Date.now()) {
-    return { state: 'blocked', reason: 'event_started' }
-  }
-
-  const deltaSeats = targetSeats - currentSeats
-  const unitPrice = Math.max(0, Number(preview.price_per_seat ?? 0))
-  const amount = roundCurrencyAmount(unitPrice * deltaSeats)
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { state: 'blocked', reason: 'invalid_amount' }
-  }
-
-  return {
-    state: 'blocked',
-    reason: 'online_seat_increase_unavailable'
   }
 }

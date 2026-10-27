@@ -36,7 +36,6 @@ const BOOKING_RPC = /(event_booking|table_booking|event_table_reservation|waitli
 const KNOWN_UNCOVERED: Record<string, { migration: string; note: string }> = {
   cancel_event_booking_v05: { migration: '20260421000002_event_table_invariants.sql', note: 'no harness' },
   create_event_waitlist_entry_v05: { migration: '20260420000022_event_modes_table_reservations_and_private_buffers.sql', note: 'no harness' },
-  get_event_booking_manage_preview_v05: { migration: '20260420000007_event_manage_runtime.sql', note: 'no harness' },
   update_event_booking_seats_v05: {
     migration: '20260708000000_guard_linked_event_table_capacity.sql',
     note: 'the live body (md5 checked against production 26 October 2026) is in tests/database/event-physical-capacity/setup.sql, which event-physical-capacity-postgres.py loads, but the migration file itself is not loaded',

@@ -13,6 +13,7 @@ import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 const getTableManagePreviewByRawToken = vi.fn()
 const loadBookerPreorderView = vi.fn()
+const loadGuestChristmasParty = vi.fn()
 const warn = vi.fn()
 
 vi.mock('next/headers', () => ({
@@ -40,6 +41,10 @@ vi.mock('@/lib/table-bookings/manage-booking', () => ({
 
 vi.mock('@/app/g/[token]/table-manage/preorder-data', () => ({
   loadBookerPreorderView: (...args: unknown[]) => loadBookerPreorderView(...args),
+}))
+
+vi.mock('@/app/g/[token]/table-manage/christmas-party-data', () => ({
+  loadGuestChristmasParty: (...args: unknown[]) => loadGuestChristmasParty(...args),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -156,6 +161,22 @@ describe('table-manage page', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Booking updated.')
   })
 
+  // BK-040, BK-091: a bigger party we cannot fit online is told why, that nothing changed, and the
+  // number to ring, instead of "We could not process that request".
+  it.each([
+    ['no_table', "We don't have a table free for that many people at your time"],
+    ['slot_full', 'The kitchen is full at your time'],
+    ['too_large', "That's more people than we can book online"],
+  ])('explains a refused %s change and gives the phone number', async (status, opening) => {
+    await renderPage({ status })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(opening)
+    expect(alert).toHaveTextContent("your booking hasn't changed")
+    expect(alert).toHaveTextContent(GUEST_CONTACT.phoneDisplay)
+    expect(alert).not.toHaveTextContent('We could not process that request')
+  })
+
   it('falls back to the shared blocked screen when the link cannot be used', async () => {
     getTableManagePreviewByRawToken.mockResolvedValue({ state: 'blocked', reason: 'invalid_token' })
 
@@ -169,5 +190,64 @@ describe('table-manage page', () => {
       'href',
       GUEST_CONTACT.telHref
     )
+  })
+})
+
+// BK-053 and owner decision D21: a Christmas party changes numbers through its own form until the
+// deadline, never the plain party-size box, and is asked to ring after it.
+describe('table-manage page on a Christmas booking', () => {
+  const CHRISTMAS_PREVIEW = { ...READY_PREVIEW, booking_type: 'christmas', party_size: 5 }
+
+  beforeEach(() => {
+    getTableManagePreviewByRawToken.mockResolvedValue(CHRISTMAS_PREVIEW)
+  })
+
+  it('offers the numbers form, not the party-size box, before the deadline', async () => {
+    loadGuestChristmasParty.mockResolvedValue({
+      courseCounts: [3, 2, 1, 1, 1],
+      seatNames: [null, 'Dave', null, null, null],
+      canChangeOnline: true,
+      closesAt: new Date('2026-12-17T12:00:00.000Z'),
+    })
+
+    await renderPage()
+
+    expect(screen.queryByLabelText(/Party size/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your Christmas numbers' })).toBeInTheDocument()
+    expect(screen.getByText(/You can change your numbers here until/)).toHaveTextContent('Christmas bookings are for 4 to 20 guests.')
+    const dave = screen.getByRole('checkbox', { name: 'Guest 2 (Dave), 2 courses' })
+    expect(dave).toHaveAttribute('name', 'remove_seat')
+    expect(dave).toHaveAttribute('value', '2')
+    expect(screen.getByLabelText('On 1 course')).toHaveAttribute('name', 'add_1')
+    expect(screen.getByLabelText('On 3 courses')).toHaveAttribute('name', 'add_3')
+    expect(screen.getByRole('button', { name: 'Update numbers' }).closest('form')?.querySelector('input[name="action"]')).toHaveAttribute('value', 'christmas_party')
+    // The notes box is still there.
+    expect(screen.getByLabelText('Special requirements')).toBeInTheDocument()
+  })
+
+  it('asks the guest to ring once the deadline has passed', async () => {
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: false, closesAt: null })
+
+    await renderPage()
+
+    expect(screen.getByText(/The deadline for changing your Christmas numbers online has passed/)).toHaveTextContent(GUEST_CONTACT.phoneDisplay)
+    expect(screen.queryByRole('button', { name: 'Update numbers' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Party size/)).not.toBeInTheDocument()
+  })
+
+  it('asks the guest to ring when no courses are recorded', async () => {
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: null, seatNames: [], canChangeOnline: true, closesAt: null })
+
+    await renderPage()
+
+    expect(screen.getByText(`To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.`)).toBeInTheDocument()
+  })
+
+  it('says what happens to the deposit after a change', async () => {
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: true, closesAt: null })
+
+    await renderPage({ status: 'christmas_updated' })
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Your numbers are updated. We'll check your deposit")
   })
 })

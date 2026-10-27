@@ -5,8 +5,12 @@ import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { createNextWaitlistOffer, sendWaitlistOfferSms } from '@/lib/events/waitlist-offers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { withCronRun } from '@/lib/cron/run-recorder'
 
-export async function GET(request: NextRequest) {
+// The 15-second project default is too tight for a run that sends offers (BK-212).
+export const maxDuration = 60
+
+async function sendEventWaitlistOffers(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -214,3 +218,10 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+// Runs every five minutes, so one run record an hour plus one per failed run, and the offers it
+// could not process counted on the record for the daily check (BK-116).
+export const GET = withCronRun('event-waitlist-offers', sendEventWaitlistOffers, {
+  recording: 'hourly',
+  itemFailures: (body) => Number(body.errors ?? 0),
+})

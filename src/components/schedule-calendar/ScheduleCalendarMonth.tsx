@@ -192,6 +192,7 @@ export function ScheduleCalendarMonth({
                             const closure = closureForDay(day, closureEntries ?? entries)
                             const iso = format(day, 'yyyy-MM-dd')
                             const covers = dailyOps?.coversByDate[iso] ?? 0
+                            const hireGuests = dailyOps?.hireGuestsByDate?.[iso] ?? 0
                             const staff = dailyOps?.staffByDate[iso] ?? []
                             return (
                                 <div
@@ -249,10 +250,12 @@ export function ScheduleCalendarMonth({
                                             </Badge>
                                         )}
                                     </div>
-                                    {(covers > 0 || staff.length > 0) && (
+                                    {(covers > 0 || hireGuests > 0 || staff.length > 0) && (
                                         <p className="text-2xs leading-tight text-text-muted">
                                             {covers > 0 && <span>{covers} cover{covers === 1 ? '' : 's'}</span>}
-                                            {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
+                                            {covers > 0 && hireGuests > 0 && <span aria-hidden> · </span>}
+                                            {hireGuests > 0 && <span>{hireGuests} private hire</span>}
+                                            {(covers > 0 || hireGuests > 0) && staff.length > 0 && <span aria-hidden> · </span>}
                                             {staff.length > 0 && <span>{staff.join(', ')}</span>}
                                         </p>
                                     )}

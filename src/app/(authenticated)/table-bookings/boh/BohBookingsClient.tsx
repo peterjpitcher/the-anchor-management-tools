@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
+import type { DayLoad } from '@/services/day-load'
 import {
   Alert,
   Badge,
@@ -37,6 +39,8 @@ import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
+import { BookingNoteMarker } from '@/components/features/table-bookings/BookingNoteMarker'
+import { bookingNoteMarker, type BookingNoteFacts } from '@/lib/table-bookings/allergy-words'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -160,6 +164,8 @@ type BohBooking = {
   status: string | null
   visual_status: string
   special_requirements: string | null
+  allergies?: string[]
+  dietary_requirements?: string[]
   seated_at: string | null
   left_at: string | null
   no_show_at: string | null
@@ -171,6 +177,8 @@ type BohBooking = {
   deposit_amount: number | null
   deposit_amount_locked: number | null
   deposit_waived: boolean | null
+  /** A party-size change left the deposit for a manager to settle (BK-043, D20). */
+  deposit_review_needed?: boolean
   high_chair_count: number | null
   is_outside_seating: boolean | null
   created_at: string | null
@@ -381,6 +389,15 @@ function formatLifecycleTime(value: string | null): string | null {
   }).format(parsed)
 }
 
+/** What the Allergy and Note marker reads from a row (BK-052). */
+function noteFacts(booking: BohBooking): BookingNoteFacts {
+  return {
+    allergies: booking.allergies ?? [],
+    dietaryRequirements: booking.dietary_requirements ?? [],
+    notes: booking.special_requirements,
+  }
+}
+
 function getStatusBadgeClasses(status: string): string {
   return getTableBookingStatusBadgeClasses(status)
 }
@@ -521,6 +538,8 @@ export function BohBookingsClient({
   const [createStatusMessage, setCreateStatusMessage] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<boolean>(false)
   const [dishTotals, setDishTotals] = useState<PreorderDishTotalsResponse['data'] | null>(null)
+  // The day's private hires for the kitchen (BK-075): undefined while loading, null when it failed.
+  const [dayLoad, setDayLoad] = useState<DayLoad | null | undefined>(undefined)
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const clockNow = useMemo(() => new Date(), [])
@@ -639,6 +658,33 @@ export function BohBookingsClient({
         // An aborted fetch is the normal case when the date changes. Either way the panel simply
         // does not appear, which is honest: no totals shown beats stale totals shown.
         setDishTotals(null)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [focusDate, view])
+
+  // Private hires on the focused day, so the kitchen sees a catered party next to the bookings
+  // (BK-075). A failure says so on screen rather than looking like a day with no hire.
+  useEffect(() => {
+    if (view !== 'day') {
+      setDayLoad(undefined)
+      return
+    }
+
+    const controller = new AbortController()
+    setDayLoad(undefined)
+    void (async () => {
+      try {
+        const response = await fetch(`/api/boh/table-bookings/day-load?date=${focusDate}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload = (await response.json()) as { success?: boolean; data?: DayLoad | null }
+        if (controller.signal.aborted) return
+        setDayLoad(response.ok && payload.success ? (payload.data ?? null) : null)
+      } catch {
+        if (!controller.signal.aborted) setDayLoad(null)
       }
     })()
 
@@ -1083,6 +1129,10 @@ export function BohBookingsClient({
           </StatGrid>
         )}
 
+        {isDayView && dayLoad !== undefined && (
+          <PrivateHireTodayStrip hires={dayLoad?.privateHires ?? []} loadFailed={dayLoad === null} />
+        )}
+
         {isDayView &&
           dishTotals &&
           (dishTotals.coverCount > 0 || (dishTotals.christmasTiers?.guests ?? 0) > 0) && (
@@ -1094,7 +1144,7 @@ export function BohBookingsClient({
                 dishTotals.pendingPaymentBookingCount
                   ? `, including ${dishTotals.pendingPaymentBookingCount} still waiting for a deposit`
                   : ''
-              }. Dietary notes and allergies are on the booking sheet.`}
+              }. Allergies, dietary needs and booking notes are printed on the booking sheets, marked confidential.`}
             />
             {(dishTotals.lateChangeCount ?? 0) > 0 && (
               <CardBody className="border-b border-border">
@@ -1312,8 +1362,10 @@ export function BohBookingsClient({
                           )}
                         </dl>
 
-                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
+                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none' || booking.deposit_review_needed || bookingNoteMarker(noteFacts(booking))) && (
                           <div className="mt-3 flex flex-wrap gap-2">
+                            <BookingNoteMarker {...noteFacts(booking)} />
+                            {booking.deposit_review_needed && <Badge tone="warning">Deposit to check</Badge>}
                             {(booking.high_chair_count ?? 0) > 0 && (
                               <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
                             )}
@@ -1375,9 +1427,12 @@ export function BohBookingsClient({
                                 {booking.event_name}
                               </div>
                             )}
-                            {(booking.high_chair_count ?? 0) > 0 && (
-                              <div className="mt-1">
-                                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                            {((booking.high_chair_count ?? 0) > 0 || bookingNoteMarker(noteFacts(booking))) && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <BookingNoteMarker {...noteFacts(booking)} />
+                                {(booking.high_chair_count ?? 0) > 0 && (
+                                  <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                                )}
                               </div>
                             )}
                           </TableCell>
@@ -1407,6 +1462,9 @@ export function BohBookingsClient({
                                 {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                                 {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
                               </Badge>
+                            ) : null}
+                            {booking.deposit_review_needed ? (
+                              <Badge size="sm" tone="warning" className="ml-1">Deposit to check</Badge>
                             ) : null}
                           </TableCell>
                           <TableCell align="right">
