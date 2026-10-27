@@ -66,6 +66,11 @@ interface RefundNotificationParams {
   parkingBookingId?: string | null
   privateBookingId?: string | null
   tableBookingId?: string | null
+  /**
+   * The refund this notice is for (a payment_refunds id), so a retried notice for the same refund
+   * is texted once while a second refund on the same booking still gets its own text.
+   */
+  refundId?: string | null
 }
 
 /** The payment timing, in the one wording both channels use. */
@@ -251,7 +256,26 @@ export async function sendRefundNotification(
 
   // Fall back to SMS
   if (params.phone) {
-    const smsResult = await sendSMS(params.phone, buildRefundSmsBody(params), {})
+    /*
+     * With a template key and the booking it belongs to (BK-170, customer bookings review of 24
+     * October 2026). The text used to go with no options at all, so it had no duplicate protection
+     * (a retried notice could be texted twice), the event and booking kill switch could not see a
+     * table booking text, and it never reached the booking's timeline.
+     *
+     * Always to the phone the caller passed. The customer is still resolved from that phone, not
+     * passed in: a private hire or parking contact number can differ from the customer record's,
+     * and sendSMS refuses a customer id whose numbers do not match, which would drop the fallback.
+     */
+    const smsResult = await sendSMS(params.phone, buildRefundSmsBody(params), {
+      metadata: {
+        template_key: 'refund_confirmation',
+        ...(params.tableBookingId ? { table_booking_id: params.tableBookingId } : {}),
+        ...(params.privateBookingId ? { private_booking_id: params.privateBookingId } : {}),
+        ...(params.parkingBookingId ? { parking_booking_id: params.parkingBookingId } : {}),
+        ...(params.refundId ? { stage: `refund:${params.refundId}` } : {}),
+        refund_subject: params.context?.subject ?? null,
+      },
+    })
     if (smsResult.success) return 'sms_sent'
   }
 

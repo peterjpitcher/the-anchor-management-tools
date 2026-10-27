@@ -10,10 +10,12 @@ import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { EventBookingService } from '@/services/event-bookings'
+import { hasGuestAnswers } from '@/lib/events/guest-answers'
 
 const LONDON_TZ = 'Europe/London'
 const ACTIVE_BOOKING_STATUSES = ['pending_payment', 'confirmed']
@@ -35,6 +37,8 @@ const registerNewSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required').max(80),
   lastName: z.string().trim().max(80).optional(),
   email: z.string().trim().email('Enter a valid email').optional().or(z.literal('')),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketingTextsYes: z.boolean().optional(),
 })
 
 type EventForCheckIn = {
@@ -80,6 +84,11 @@ export type KnownEventGuest = {
     id: string
     seats: number | null
     status: string | null
+    /**
+     * True when a guest on the booking answered the event's questions (BK-015). The kiosk only
+     * says so; the answers themselves stay on the door list and the kitchen summary.
+     */
+    answersOnFile?: boolean
   }
   alreadyCheckedIn: boolean
   attendance?: EventCategoryAttendanceSummary
@@ -260,7 +269,7 @@ async function getActiveBooking(eventId: string, customerId: string) {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bookings')
-    .select('id, seats, status')
+    .select('id, seats, status, attendees')
     .eq('event_id', eventId)
     .eq('customer_id', customerId)
     .in('status', ACTIVE_BOOKING_STATUSES)
@@ -978,6 +987,7 @@ export async function lookupEventGuest(input: z.infer<typeof lookupSchema>): Pro
             id: activeBooking.booking.id,
             seats: activeBooking.booking.seats,
             status: activeBooking.booking.status,
+            answersOnFile: hasGuestAnswers(activeBooking.booking.attendees),
           }
         : undefined,
       alreadyCheckedIn: checkIn.checkedIn,
@@ -1063,11 +1073,12 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
   const lastName = cleanName(parsed.data.lastName ?? '')
   const email = parsed.data.email ? parsed.data.email.trim().toLowerCase() : null
   const admin = createAdminClient()
+  // Staff at the door, talking to the guest, so a blank email on their record may be filled.
   const customerResolution = await ensureCustomerForPhone(admin, normalizedPhone, {
     firstName,
     lastName,
     email,
-  })
+  }, { trustedEntry: true })
 
   if (!customerResolution.customerId) {
     logger.error('Failed to create or resolve check-in customer', {
@@ -1079,7 +1090,7 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
     return { success: false, error: 'Could not create or find customer for this phone number.' }
   }
 
-  return completeCheckIn({
+  const result = await completeCheckIn({
     event: access.event,
     userId: access.userId,
     userEmail: access.userEmail,
@@ -1087,4 +1098,17 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
     normalizedPhone,
     customerName: `${firstName} ${lastName}`.trim(),
   })
+
+  if (result.success) {
+    await recordStaffReadOutConsent({
+      saidYes: parsed.data.marketingTextsYes,
+      customerId: customerResolution.customerId,
+      actorUserId: access.userId,
+      source: 'staff_event_booking',
+      relatedEntityType: 'event_booking',
+      relatedEntityId: result.data.bookingId,
+    })
+  }
+
+  return result
 }

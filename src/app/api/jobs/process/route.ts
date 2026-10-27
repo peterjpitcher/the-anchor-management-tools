@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { authorizeCronRequest } from '@/lib/cron-auth'
+import { withCronRun } from '@/lib/cron/run-recorder'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
@@ -42,6 +43,35 @@ async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
   })
 }
 
+/**
+ * The queue run, with its failure answered as a 500 so the run recorder sees it (BK-116). The
+ * queue is called every minute (by Vercel and by the GitHub workflow), so it keeps one run
+ * record an hour plus one per failed run, and a failure emails CRON_ALERT_EMAIL at most once an
+ * hour. Health checks are answered before this and record nothing.
+ */
+async function processQueue(request: NextRequest, method: 'GET' | 'POST'): Promise<Response> {
+  try {
+    return await handleProcessing(request, method)
+  } catch (error) {
+    logger.error('Job processor error', {
+      error: error as Error,
+      metadata: { url: request.url, method }
+    })
+
+    return NextResponse.json(
+      { error: 'Failed to process jobs' },
+      { status: 500 }
+    )
+  }
+}
+
+const processQueueFromPost = withCronRun('job-queue', (request: NextRequest) => processQueue(request, 'POST'), {
+  recording: 'hourly',
+})
+const processQueueFromGet = withCronRun('job-queue', (request: NextRequest) => processQueue(request, 'GET'), {
+  recording: 'hourly',
+})
+
 export async function POST(request: NextRequest) {
   try {
     const authResult = authorizeCronRequest(request)
@@ -55,7 +85,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    return await handleProcessing(request, 'POST')
+    return await processQueueFromPost(request)
   } catch (error) {
     logger.error('Job processor error', {
       error: error as Error,
@@ -85,7 +115,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return await handleProcessing(request, 'GET')
+    return await processQueueFromGet(request)
   } catch (error) {
     logger.error('Job processor GET error', {
       error: error as Error,

@@ -128,6 +128,8 @@ describe('POST /api/foh/bookings — optional email', () => {
       expect.anything(),
       '+447700900000',
       expect.objectContaining({ email: 'Guest@Example.com' }),
+      // Staff typed it while dealing with the guest (BK-077).
+      { trustedEntry: true },
     )
   })
 
@@ -155,6 +157,8 @@ describe('POST /api/foh/bookings — optional email', () => {
       expect.anything(),
       '+447700900000',
       expect.objectContaining({ email: undefined }),
+      // Staff typed it while dealing with the guest (BK-077).
+      { trustedEntry: true },
     )
   })
 })

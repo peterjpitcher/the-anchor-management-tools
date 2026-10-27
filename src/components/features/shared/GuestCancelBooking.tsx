@@ -6,7 +6,6 @@ import { GuestCard } from '@/components/features/guest/GuestCard'
 import { GuestChoice } from '@/components/features/guest/GuestChoice'
 import { GuestTextarea } from '@/components/features/guest/GuestControls'
 import { GuestField } from '@/components/features/guest/GuestField'
-import { GuestLink } from '@/components/features/guest/GuestLink'
 import { GuestSection } from '@/components/features/guest/GuestSection'
 import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
 
@@ -19,10 +18,13 @@ import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
  * The confirmation step offers two routes, on purpose:
  *
  *   - A form POST carrying an optional reason. This is the normal path.
- *   - A plain GET link that cancels with no reason at all. This is the fallback for sandboxed frames
- *     without `allow-forms`, which block form submission before it reaches the server, and it is why
- *     the original implementation used a link. It doubles as the honest answer to "answering is
- *     optional": a guest who would rather not say just uses the link.
+ *   - A second, smaller form POST that cancels with no reason at all, for a guest who would rather
+ *     not say.
+ *
+ * Both are POSTs. The second used to be a plain GET link, so that a sandboxed frame without
+ * `allow-forms` could still cancel, but anything that fetched that address cancelled the booking
+ * and refunded the deposit: a link scanner, a browser extension (BK-109, 24 October review). Both
+ * forms target `_top`, so a frame that is allowed to navigate its top window submits there.
  *
  * Nobody is ever prevented from cancelling because they will not give a reason.
  */
@@ -71,7 +73,7 @@ export function GuestCancelBooking({
             )}
           </div>
 
-          <form method="post" action={actionUrl} className="flex flex-col gap-guest-md">
+          <form method="post" action={actionUrl} target="_top" className="flex flex-col gap-guest-md">
             <input type="hidden" name="action" value="cancel" />
             <input type="hidden" name="confirm" value="1" />
 
@@ -117,14 +119,16 @@ export function GuestCancelBooking({
           </form>
 
           {/*
-            Fallback for sandboxed frames that block form submission, and for anyone who would rather
-            not answer. Cancels with no reason recorded.
+            For anyone who would rather not answer. Cancels with no reason recorded. A POST, never a
+            link: opening an address must not cancel a booking (BK-109).
           */}
-          <p className={GUEST_NOTE_CLASS}>
-            <GuestLink href={`${actionUrl}?action=cancel&confirm=1`} rel="nofollow">
+          <form method="post" action={actionUrl} target="_top" className={GUEST_NOTE_CLASS}>
+            <input type="hidden" name="action" value="cancel" />
+            <input type="hidden" name="confirm" value="1" />
+            <GuestButton type="submit" variant="link">
               Cancel without giving a reason
-            </GuestLink>
-          </p>
+            </GuestButton>
+          </form>
         </div>
       </GuestCard>
     </GuestSection>

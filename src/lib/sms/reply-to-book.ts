@@ -12,6 +12,7 @@ import { getAppUrl } from '@/lib/env'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EventBookingService } from '@/services/event-bookings'
 import { logger } from '@/lib/logger'
+import { maskPhone } from '@/lib/phone/mask'
 import { normaliseToGsm7 } from '@/lib/sms/gsm7'
 
 // Maximum seats bookable via SMS reply (groups larger than this are handled by phone)
@@ -229,7 +230,7 @@ export async function findActivePromoContext(phoneNumber: string): Promise<Promo
 
     if (error) {
       logger.warn('Failed to look up active promo context for reply-to-book', {
-        metadata: { phoneNumber, error: error.message },
+        metadata: { phoneNumber: maskPhone(phoneNumber), error: error.message },
       })
       return null
     }
@@ -238,7 +239,7 @@ export async function findActivePromoContext(phoneNumber: string): Promise<Promo
   } catch (err) {
     logger.error('Unexpected error looking up promo context for reply-to-book', {
       error: err instanceof Error ? err : new Error(String(err)),
-      metadata: { phoneNumber },
+      metadata: { phoneNumber: maskPhone(phoneNumber) },
     })
     return null
   }
@@ -275,7 +276,7 @@ async function findRecentPromoContext(phoneNumber: string): Promise<RecentPromoR
 
     if (error) {
       logger.warn('reply-to-book fallback: recent promo lookup failed', {
-        metadata: { phoneNumber, error: error.message },
+        metadata: { phoneNumber: maskPhone(phoneNumber), error: error.message },
       })
       return null
     }
@@ -284,7 +285,7 @@ async function findRecentPromoContext(phoneNumber: string): Promise<RecentPromoR
   } catch (err) {
     logger.error('reply-to-book fallback: unexpected error looking up recent promo', {
       error: err instanceof Error ? err : new Error(String(err)),
-      metadata: { phoneNumber },
+      metadata: { phoneNumber: maskPhone(phoneNumber) },
     })
     return null
   }
@@ -409,7 +410,7 @@ export async function handleReplyToBook(
     const venuePhoneForHelp = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || ''
     logger.info('reply-to-book: reply not understood, flagged for staff', {
       metadata: {
-        phoneNumber,
+        phoneNumber: maskPhone(phoneNumber),
         eventId: activePromo.event_id,
         customerId: activePromo.customer_id,
       },
@@ -502,7 +503,7 @@ export async function handleReplyToBook(
 
   if (!customerId || resolutionError) {
     logger.warn('reply-to-book: customer resolution failed; cannot proceed', {
-      metadata: { phoneNumber, resolutionError },
+      metadata: { phoneNumber: maskPhone(phoneNumber), resolutionError },
     })
     return { handled: false }
   }

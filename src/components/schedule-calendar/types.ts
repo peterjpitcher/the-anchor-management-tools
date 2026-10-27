@@ -135,8 +135,11 @@ export type ScheduleCalendarView = 'month' | 'list'
  * mobile schedule list. Keyed by local ISO date (yyyy-MM-dd).
  */
 export interface ScheduleDailyOps {
+    /** Diners plus event tickets, counted as every screen counts them (BK-075). */
     coversByDate: Record<string, number>
     staffByDate: Record<string, string[]>
+    /** Guests at private hires holding their rooms, shown as their own figure. */
+    hireGuestsByDate?: Record<string, number>
 }
 
 // The live ScheduleCalendar prop type is exported from ScheduleCalendar.tsx.

@@ -69,7 +69,9 @@ export async function GET(
       data: {
         booking_id: booking.id,
         start_datetime: availability.startIso,
-        end_datetime: availability.endIso,
+        end_datetime: availability.bookingEndIso,
+        table_end_datetime: availability.endIso,
+        turnaround_minutes: availability.turnaroundMinutes,
         assigned_table_ids: availability.assignedTableIds,
         tables: rightSized.map((table) => ({
           id: table.id,
@@ -197,7 +199,9 @@ export async function POST(
       table_id: targetTable.id,
       table_ids: targetTable.table_ids,
       start_datetime: availability.startIso,
-      end_datetime: availability.endIso,
+      end_datetime: availability.bookingEndIso,
+      table_end_datetime: availability.endIso,
+      turnaround_minutes: availability.turnaroundMinutes,
     },
     additional_info: {
       surface: 'foh',
@@ -212,7 +216,8 @@ export async function POST(
       table_ids: targetTable.table_ids,
       table_name: targetTable.name || targetTable.table_number,
       start_datetime: availability.startIso,
-      end_datetime: availability.endIso
+      end_datetime: availability.bookingEndIso,
+      table_end_datetime: availability.endIso
     }
   })
 }

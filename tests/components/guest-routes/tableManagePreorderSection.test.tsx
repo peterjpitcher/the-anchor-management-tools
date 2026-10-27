@@ -64,6 +64,7 @@ function view(over: Partial<BookerPreorderView> = {}): BookerPreorderView {
       bookingTime: '18:30',
       partySize: 2,
       requiresPreorder: true,
+      hasGuestSeats: true,
       bookingAllergies: [],
       periodId: 'period-1',
       periodName: 'Christmas',
@@ -220,7 +221,11 @@ describe('PreorderSection', () => {
       expect(container.querySelector('#seat-2-courses')).toHaveTextContent(
         '2 courses: choose a main, plus a starter or a dessert.'
       )
-      expect(screen.getByText('Guest 3: 1 course, no pre-order required.')).toBeInTheDocument()
+      // BK-148: a 1 course guest chooses nothing, but has a name and a dietary note (D23).
+      expect(screen.getByText("1 course, chosen on the day, so there's nothing to pre-order.")).toBeInTheDocument()
+      expect(container.querySelector('input[name="seat_3_name"]')).not.toBeNull()
+      expect(container.querySelector('input[name="seat_3_note"]')).not.toBeNull()
+      expect(container.querySelector('select[name="seat_3_main"]')).toBeNull()
       expect(container.querySelector('#seat-4-courses')).toHaveTextContent('3 courses')
 
       expect(screen.queryByText('Starter (optional)')).not.toBeInTheDocument()
@@ -270,5 +275,67 @@ describe('PreorderSection', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.getByText(/Food choices are now closed for this booking/)).toBeInTheDocument()
     expect(screen.getByText('Main: Roast turkey')).toBeInTheDocument()
+  })
+})
+
+// BK-148 and owner decision D23: every guest, 1 course included, can be named and given a dietary
+// note; a party all on 1 course gets the section with nothing to choose.
+describe('PreorderSection for a Christmas party all on 1 course', () => {
+  function allOneCourse(): BookerPreorderView {
+    const base = view()
+    return {
+      ...base,
+      order: {
+        ...base.order,
+        requiresPreorder: false,
+        hasGuestSeats: true,
+        partySize: 2,
+        courseCounts: [1, 1],
+        covers: [
+          cover({ id: 'cover-1', ordinal: 1, guestName: 'Sam', dietaryNote: 'No dairy', courseCount: 1, selections: [] }),
+          cover({ id: 'cover-2', ordinal: 2, guestName: null, courseCount: 1, selections: [] }),
+        ],
+      },
+      addons: [],
+    }
+  }
+
+  it('asks for names and dietary notes only, and saves them as guest details', () => {
+    const { container } = render(<PreorderSection {...allOneCourse()} {...baseProps} />)
+
+    expect(screen.getByRole('heading', { name: 'Your guests' })).toBeInTheDocument()
+    expect(container.querySelector('input[name="seat_1_name"]')).toHaveValue('Sam')
+    expect(container.querySelector('input[name="seat_1_note"]')).toHaveValue('No dairy')
+    expect(container.querySelector('input[name="seat_2_name"]')).toHaveValue('')
+    expect(container.querySelector('select')).toBeNull()
+    expect(screen.queryByText('Allergens on this menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save guest details' })).toBeInTheDocument()
+  })
+})
+
+// BK-060: a guest can check allergens before choosing, and a dish with none recorded never reads as
+// allergen-free.
+describe('PreorderSection allergens', () => {
+  it('lists every dish with its allergens, and the SSOT wording where none are recorded', () => {
+    const withAllergens = view({
+      menuByCourse: {
+        starter: [],
+        main: [
+          { ...menuItem('item-1', 'Roast turkey'), allergens: 'Celery, mustard' } as BookingPeriodMenuItem,
+          menuItem('item-2', 'Nut roast'),
+        ],
+        dessert: [],
+      },
+    })
+    render(<PreorderSection {...withAllergens} {...baseProps} />)
+
+    expect(screen.getByText('Allergens on this menu')).toBeInTheDocument()
+    expect(screen.getByText('Roast turkey:').parentElement).toHaveTextContent('Roast turkey: Celery, mustard')
+    expect(screen.getByText('Nut roast:').parentElement).toHaveTextContent(
+      'Nut roast: See menu or contact us for allergen information'
+    )
+    // Beside the choice, too, where the menu records them.
+    expect(screen.getAllByRole('option', { name: 'Roast turkey (allergens: Celery, mustard)' }).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/no allergens/i)).not.toBeInTheDocument()
   })
 })

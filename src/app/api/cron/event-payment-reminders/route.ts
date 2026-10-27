@@ -6,6 +6,10 @@ import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { createEventPaymentToken, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
 import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
+import { withCronRun } from '@/lib/cron/run-recorder'
+
+// Up to 200 bookings, each a text and an email; the 15-second project default is too tight (BK-212).
+export const maxDuration = 300
 
 type ReminderStage = 'payment_due_12h' | 'payment_due_2h'
 
@@ -25,7 +29,7 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
 }
 
-export async function GET(request: NextRequest) {
+async function sendEventPaymentReminders(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -207,3 +211,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(result)
 }
+
+// A run record per run, a failure email when the run fails, and the reminders it could not send
+// counted on the record for the daily check (BK-116).
+export const GET = withCronRun('event-payment-reminders', sendEventPaymentReminders, {
+  recording: 'every_run',
+  itemFailures: (body) => Number(body.failed ?? 0),
+})

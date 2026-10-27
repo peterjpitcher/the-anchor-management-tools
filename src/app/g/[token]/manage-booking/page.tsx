@@ -4,8 +4,12 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import {
   getEventManagePreviewByRawToken,
-  getEventRefundPolicy
+  guestSeatChangeBlockFromPreview,
 } from '@/lib/events/manage-booking'
+import { loadDoorPayments } from '@/lib/events/door-list'
+import { loadBookingItems } from '@/lib/events/ticket-type-queries'
+import { netPaidAmount } from '@/lib/events/guest-change-request'
+import { logger } from '@/lib/logger'
 import {
   DetailRow,
   GuestAlert,
@@ -23,6 +27,10 @@ import {
   GUEST_SUNK_BOX_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import { bookerCanEditGuestDetails } from '@/lib/events/guest-details-edit'
+import { loadBookingGuestDetails } from '@/lib/events/guest-details-server'
+import { GuestDetailsSection } from './GuestDetailsSection'
 
 type ManageBookingPageProps = {
   params: Promise<{ token: string }>
@@ -37,6 +45,9 @@ export const dynamic = 'force-dynamic'
 
 /** Names the flow in the intro block. Carries no facts. */
 const KICKER = 'Event booking'
+
+/** Under the request form for a paid booking (BK-021). */
+const REQUEST_HINT = "We'll look at it and be in touch. Nothing changes until we do."
 
 /** Where a guest goes when this link cannot help them any more. */
 const WHATS_ON_URL = 'https://www.the-anchor.pub/whats-on'
@@ -85,14 +96,37 @@ function blockedReasonMessage(reason: string | undefined): string {
       return 'Please contact the venue to add paid tickets to this booking.'
     case 'already_cancelled':
       return 'This booking has already been cancelled.'
+    case 'guest_details_locked':
+      return `Each ticket on this booking has a guest's name on it, so please call us on ${GUEST_CONTACT.phoneDisplay} to change it.`
+    case 'change_by_request':
+      return 'This booking is paid for, so please use the form below to ask us to change it.'
+    case 'multi_ticket_type_booking':
+      return `This booking has more than one type of ticket, so please call us on ${GUEST_CONTACT.phoneDisplay} to change it.`
+    case 'request_not_sent':
+      return `We couldn't pass your request on just now. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll sort it out.`
+    case 'invalid_seats':
+      return 'Please choose a number of places different from your booking now.'
     case 'rate_limited':
       return 'Too many attempts were made with this link. Please wait a few minutes and try again.'
+    case 'guest_details_closed':
+      return "Online changes to guest details have closed. Please call us and we'll change them."
+    case 'guest_details_unconfirmed':
+      return "Please confirm everyone you've added is happy to share their details."
+    case 'guest_details_invalid':
+      return 'Please give a name for every ticket, and choose from the answers shown.'
+    case 'guest_details_changed':
+      return 'This booking changed while you were editing. Please check the details and save again.'
     default:
       return 'This booking cannot be changed using this link.'
   }
 }
 
-function actionStatusMessage(state: string | undefined, delta: number, refundStatus: string, refundAmount: number): string | null {
+function actionStatusMessage(state: string | undefined, delta: number, refundStatus: string, refundAmount: number, requestedSeats: number | null): string | null {
+  if (state === 'change_requested') {
+    // BK-021 and D7: the request is with a manager. Nothing has changed yet.
+    return `Thanks, we've passed your request${requestedSeats ? ` for ${requestedSeats} ${requestedSeats === 1 ? 'place' : 'places'}` : ''} to the team. A manager will look at it, and at any refund, and be in touch. Your booking stays as it is until then.`
+  }
+
   if (state === 'updated') {
     if (delta > 0) {
       return `Booking updated. Your party size increased by ${delta}.`
@@ -129,6 +163,10 @@ function actionStatusMessage(state: string | undefined, delta: number, refundSta
       return 'Booking cancelled. Refund requires manual follow-up.'
     }
     return 'Booking cancelled.'
+  }
+
+  if (state === 'guest_details_saved') {
+    return 'Guest details saved. Thank you.'
   }
 
   if (state === 'seat_increase_success') {
@@ -172,6 +210,7 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   const delta = Number.parseInt(getSingleValue(resolvedSearch.delta) || '0', 10) || 0
   const refundStatus = getSingleValue(resolvedSearch.refund_status) || 'none'
   const refundAmount = Number.parseFloat(getSingleValue(resolvedSearch.refund_amount) || '0') || 0
+  const requestedSeats = Number.parseInt(getSingleValue(resolvedSearch.seats) || '', 10) || null
   const headerValues = await headers()
   const throttle = await checkGuestTokenThrottle({
     headers: headerValues,
@@ -193,10 +232,44 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
 
   const currentSeats = Math.max(1, Number(preview.seats ?? 1))
   const eventStart = preview.event_start_datetime ? formatLondonDateTime(preview.event_start_datetime) : 'Event time unavailable'
-  const pricePerSeat = Math.max(0, Number(preview.price_per_seat ?? 0))
-  const policy = preview.event_start_datetime ? getEventRefundPolicy(preview.event_start_datetime) : { refundRate: 0, policyBand: 'none' as const }
-  const statusMessage = actionStatusMessage(state, delta, refundStatus, refundAmount)
+  const statusMessage = actionStatusMessage(state, delta, refundStatus, refundAmount, requestedSeats)
+  // BK-021, BK-022 and D7: what this link offers for a change in size.
+  const seatBlock = guestSeatChangeBlockFromPreview(preview)
+  const showSeatForm = Boolean(preview.can_change_seats) && seatBlock === null
+  const showRequestForm = seatBlock === 'change_by_request' && Boolean(preview.event_start_datetime && Date.parse(preview.event_start_datetime) > Date.now())
+
+  // BK-022: the price the guest actually paid, from the ticket lines and the payments ledger.
+  // The page used to print the event's list price (£45 to a guest who paid £40 online).
+  let ticketPrices: number[] = []
+  let paidSoFar: number | null = null
+  if (preview.payment_mode === 'prepaid' && preview.booking_id) {
+    try {
+      const [items, payments] = await Promise.all([
+        loadBookingItems(supabase, preview.booking_id),
+        loadDoorPayments(supabase, [preview.booking_id]),
+      ])
+      ticketPrices = [...new Set(items.map((item) => Number(item.unit_price)).filter((price) => Number.isFinite(price) && price > 0))]
+      paidSoFar = netPaidAmount(payments.get(preview.booking_id) ?? [])
+    } catch (error) {
+      // Display only: the page still works without the figures.
+      logger.warn('Manage booking page could not load the price paid', {
+        metadata: { bookingId: preview.booking_id, error: error instanceof Error ? error.message : String(error) },
+      })
+    }
+  }
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
+  // BK-016: the booker can add or correct each guest's name and answers until online sales close.
+  const guestDetails = preview.booking_id ? await loadBookingGuestDetails(supabase, preview.booking_id) : null
+  const showGuestDetails = Boolean(guestDetails && (
+    guestDetails.questions.length > 0 ||
+    guestDetails.booking.attendees.length > 0 ||
+    requiresGuestDetails({ collect_guest_details: guestDetails.event.collectGuestDetails, payment_mode: guestDetails.event.paymentMode })
+  ))
+  const guestDetailsEditable = Boolean(guestDetails && bookerCanEditGuestDetails({
+    status: preview.status,
+    eventStart: preview.event_start_datetime,
+    salesCutoff: guestDetails.event.salesCutoff,
+  }))
 
   return (
     <GuestShell>
@@ -222,17 +295,28 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
             <DetailRow label="Payment mode" value={preview.payment_mode || 'free'} />
           </div>
 
+          {preview.payment_mode === 'prepaid' && (paidSoFar !== null || ticketPrices.length > 0) && (
+            <div>
+              {paidSoFar !== null && paidSoFar > 0 && <DetailRow label="Paid" value={formatMoney(paidSoFar)} />}
+              {ticketPrices.length === 1 && <DetailRow label="Price per ticket" value={formatMoney(ticketPrices[0])} />}
+            </div>
+          )}
+
           {preview.payment_mode === 'prepaid' && (
+            // The ticket bands, worded as docs/SSOT.md section 7 has them (owner-confirmed
+            // 12 September 2026), and owner decision D7: a manager confirms the amount.
             <p className={GUEST_SUNK_BOX_CLASS}>
-              Refund policy for cancellations or seat reductions:
-              {' '}
-              {policy.policyBand === 'full' ? '100% refund window' : policy.policyBand === 'partial' ? '50% refund window' : 'No refund window'}.
-              {' '}
-              Price per seat: {formatMoney(pricePerSeat)}.
+              Giving up places: 7 or more days before the event, refunded in full. 3 to 6 days before, half refunded. Fewer than 3 days before, not refunded. A manager confirms the amount, starting from what you paid.
             </p>
           )}
 
-          {!preview.can_change_seats && (
+          {seatBlock === 'guest_details_locked' && (
+            <p className={GUEST_SUNK_BOX_CLASS}>
+              To change named tickets, please call us on <GuestPhoneLink />.
+            </p>
+          )}
+
+          {!preview.can_change_seats && seatBlock === null && (
             <p className={GUEST_SUNK_BOX_CLASS}>
               This booking can no longer be changed online.
             </p>
@@ -240,7 +324,38 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
         </div>
       </GuestCard>
 
-      {preview.can_change_seats && (
+      {showRequestForm && (
+        <GuestCard>
+          {/*
+            BK-021 and owner decision D7: a paid booking is changed by a person. This asks; it
+            changes nothing and refunds nothing on its own.
+          */}
+          <form
+            method="post"
+            action={`/g/${token}/manage-booking/action`}
+            className="flex flex-col gap-guest-lg"
+          >
+            <input type="hidden" name="intent" value="request_change" />
+
+            <GuestField id="requested-seats" label="How many places do you need now?" hint={REQUEST_HINT}>
+              <GuestInput
+                {...guestFieldControlProps({ id: 'requested-seats', hint: REQUEST_HINT })}
+                name="seats"
+                type="number"
+                min={1}
+                max={20}
+                defaultValue={currentSeats}
+              />
+            </GuestField>
+
+            <GuestButton as="button" type="submit" variant="primary" size="md" fullWidth="mobile">
+              Ask us to change it
+            </GuestButton>
+          </form>
+        </GuestCard>
+      )}
+
+      {showSeatForm && (
         <GuestCard>
           {/*
             Server-rendered POST, deliberately. A seat change has to work
@@ -269,6 +384,16 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
             </GuestButton>
           </form>
         </GuestCard>
+      )}
+
+      {showGuestDetails && guestDetails && (
+        <GuestDetailsSection
+          token={token}
+          seats={Math.max(1, guestDetails.booking.seats)}
+          attendees={guestDetails.booking.attendees}
+          questions={guestDetails.questions}
+          editable={guestDetailsEditable}
+        />
       )}
 
       <GuestHelpLine>

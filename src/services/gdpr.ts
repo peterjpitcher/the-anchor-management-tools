@@ -332,6 +332,148 @@ function rowIds(rows: any[]): string[] {
   return uniqueStrings(rows.map((row) => row?.id))
 }
 
+/**
+ * Every row an erasure or a guest's data request covers, found by customer id and by every
+ * email and phone column a table copies the contact details into.
+ *
+ * Erasure and export read through this one list, so a guest's data request is answered from
+ * exactly the tables an erasure clears (BK-081, customer bookings review of 24 October 2026).
+ * The export used to cover only a staff member's own profile. `mode` picks the columns: erasure
+ * needs ids (and attachments, to remove the files), export needs whole rows.
+ */
+interface SubjectRows {
+  messages: any[]
+  emailMessages: any[]
+  unmatchedCommunications: any[]
+  webhookLogs: any[]
+  eventBookings: any[]
+  eventBookingItems: any[]
+  bookingReminders: any[]
+  tableBookings: any[]
+  tableBookingItems: any[]
+  preorderCovers: any[]
+  privateBookings: any[]
+  privateBookingSms: any[]
+  parkingBookings: any[]
+  pendingBookings: any[]
+  smsPromoContext: any[]
+  reviewFeedback: any[]
+}
+
+async function readSubjectRows(
+  adminClient: any,
+  identity: CommunicationIdentity,
+  mode: 'erase' | 'export',
+): Promise<SubjectRows> {
+  const whole = mode === 'export'
+  const withAttachments = whole ? '*' : 'id, attachments'
+  const ids = whole ? '*' : 'id'
+
+  const [
+    messages,
+    emailMessages,
+    unmatchedCommunications,
+    webhookLogs,
+    eventBookings,
+    tableBookings,
+    privateBookings,
+    parkingBookings,
+    pendingBookings,
+    smsPromoContext,
+    reviewFeedback,
+  ] = await Promise.all([
+    fetchRowsByIdentity(adminClient, 'messages', identity, {
+      idColumn: 'customer_id',
+      phoneColumns: ['from_number', 'to_number'],
+    }, withAttachments),
+    fetchRowsByIdentity(adminClient, 'email_messages', identity, {
+      idColumn: 'customer_id',
+      emailColumns: ['to_address', 'from_address'],
+    }, withAttachments),
+    fetchUnmatchedCommunicationRows(adminClient, identity, withAttachments),
+    fetchWebhookLogRows(adminClient, identity, ids),
+    // The guest details on a ticket (names, answers) live on the booking row itself.
+    // contact_email: a booking made under another customer can carry this person's typed
+    // email (BK-078), so it is found by the address as well as by customer.
+    fetchRowsByIdentity(adminClient, 'bookings', identity, { idColumn: 'customer_id', emailColumns: ['contact_email'] },
+      whole ? '*, event:events(id, name, date)' : 'id'),
+    fetchRowsByIdentity(adminClient, 'table_bookings', identity, { idColumn: 'customer_id', emailColumns: ['contact_email'] }, ids),
+    fetchRowsByIdentity(adminClient, 'private_bookings', identity, {
+      idColumn: 'customer_id',
+      emailColumns: ['contact_email'],
+      phoneColumns: ['contact_phone'],
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'parking_bookings', identity, {
+      idColumn: 'customer_id',
+      emailColumns: ['customer_email'],
+      phoneColumns: ['customer_mobile'],
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'pending_bookings', identity, {
+      idColumn: 'customer_id',
+      phoneColumns: ['mobile_number'],
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'sms_promo_context', identity, {
+      idColumn: 'customer_id',
+      phoneColumns: ['phone_number'],
+    }, ids),
+    // review_feedback has no customer_id at all, so name, email and phone are
+    // the only way in.
+    fetchRowsByIdentity(adminClient, 'review_feedback', identity, {
+      emailColumns: ['customer_email'],
+      phoneColumns: ['customer_phone'],
+    }, ids),
+  ])
+
+  const eventBookingIds = rowIds(eventBookings)
+  const tableBookingIds = rowIds(tableBookings)
+  const privateBookingIds = rowIds(privateBookings)
+
+  const [bookingReminders, privateBookingSms, tableBookingItems, preorderCovers, eventBookingItems] = await Promise.all([
+    fetchRowsByIdentity(adminClient, 'booking_reminders', identity, {
+      idColumn: 'booking_id',
+      ids: eventBookingIds,
+      phoneColumns: ['target_phone'],
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'private_booking_sms_queue', identity, {
+      idColumn: 'booking_id',
+      ids: privateBookingIds,
+      phoneColumns: ['customer_phone', 'recipient_phone'],
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'table_booking_items', identity, {
+      idColumn: 'booking_id',
+      ids: tableBookingIds,
+    }, ids),
+    fetchRowsByIdentity(adminClient, 'booking_preorder_covers', identity, {
+      idColumn: 'table_booking_id',
+      ids: tableBookingIds,
+    }, ids),
+    // Ticket lines carry their own copy of the guest names.
+    fetchRowsByIdentity(adminClient, 'booking_items', identity, {
+      idColumn: 'booking_id',
+      ids: eventBookingIds,
+    }, ids),
+  ])
+
+  return {
+    messages,
+    emailMessages,
+    unmatchedCommunications,
+    webhookLogs,
+    eventBookings,
+    eventBookingItems,
+    bookingReminders,
+    tableBookings,
+    tableBookingItems,
+    preorderCovers,
+    privateBookings,
+    privateBookingSms,
+    parkingBookings,
+    pendingBookings,
+    smsPromoContext,
+    reviewFeedback,
+  }
+}
+
 /*
  * Email lookups pull every row that has an address and compare in JavaScript
  * rather than filtering in PostgREST. Neither customers.email nor
@@ -609,6 +751,113 @@ export class GdprService {
   }
 
   /**
+   * Answer a guest's request for their data (BK-081, customer bookings review of 24 October 2026).
+   *
+   * exportUserData only ever exported the signed-in staff member, matched through their staff
+   * profile, so a guest's request could not be answered without hand-written SQL. This takes the
+   * subject an erasure would resolve (email, phone or record id) and exports the same tables an
+   * erasure clears, including each ticket's guest names and answers, the ticket lines and the
+   * audit rows about the guest and their bookings. Reads only.
+   */
+  static async exportSubjectData(subject: ErasureSubject, requestedBy?: string) {
+    const adminClient = createAdminClient()
+    const identity: CommunicationIdentity = {
+      customerIds: subject.customerIds,
+      emails: subject.emails,
+      phones: subject.phones,
+    }
+
+    const rows = await readSubjectRows(adminClient, identity, 'export')
+    const eventBookingIds = rowIds(rows.eventBookings)
+
+    const [customers, customerConsents, profile] = await Promise.all([
+      subject.customerIds.length
+        ? fetchAllRows<any>(() => (adminClient.from('customers') as any).select('*').in('id', subject.customerIds))
+        : Promise.resolve([]),
+      subject.customerIds.length
+        ? fetchAllRows<any>(() => (adminClient.from('customer_consents') as any).select('*').in('customer_id', subject.customerIds))
+        : Promise.resolve([]),
+      subject.profileId
+        ? (adminClient.from('profiles') as any).select('*').eq('id', subject.profileId).maybeSingle()
+            .then((result: { data: unknown }) => result.data ?? null)
+        : Promise.resolve(null),
+    ])
+
+    // The audit rows about this guest: their customer record and their event bookings, and,
+    // for a staff member, what they did themselves. Paged and ordered like exportUserData.
+    const auditQueries: Array<Promise<any[]>> = []
+    if (subject.customerIds.length) {
+      auditQueries.push(fetchAllPagedRows<any>((from, to) =>
+        (adminClient.from('audit_logs') as any).select('*')
+          .eq('resource_type', 'customer').in('resource_id', subject.customerIds)
+          .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to),
+        { label: 'GDPR guest export customer audit history' }))
+    }
+    if (eventBookingIds.length) {
+      auditQueries.push(fetchAllPagedRows<any>((from, to) =>
+        (adminClient.from('audit_logs') as any).select('*')
+          .in('resource_type', ['booking', 'event_booking']).in('resource_id', eventBookingIds)
+          .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to),
+        { label: 'GDPR guest export booking audit history' }))
+    }
+    if (subject.profileId) {
+      auditQueries.push(fetchAllPagedRows<any>((from, to) =>
+        (adminClient.from('audit_logs') as any).select('*')
+          .eq('user_id', subject.profileId)
+          .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to),
+        { label: 'GDPR guest export staff audit history' }))
+    }
+    const auditLogs = mergeRowsById(await Promise.all(auditQueries))
+
+    const exportData = {
+      subject: { customerIds: subject.customerIds, profileId: subject.profileId },
+      profile,
+      customers,
+      customerConsents,
+      eventBookings: rows.eventBookings,
+      eventBookingItems: rows.eventBookingItems,
+      bookingReminders: rows.bookingReminders,
+      tableBookings: rows.tableBookings,
+      tableBookingItems: rows.tableBookingItems,
+      preorderCovers: rows.preorderCovers,
+      privateBookings: rows.privateBookings,
+      privateBookingSms: rows.privateBookingSms,
+      parkingBookings: rows.parkingBookings,
+      pendingBookings: rows.pendingBookings,
+      smsPromoContext: rows.smsPromoContext,
+      reviewFeedback: rows.reviewFeedback,
+      messages: rows.messages,
+      emailMessages: rows.emailMessages,
+      unmatchedCommunications: rows.unmatchedCommunications,
+      webhookLogs: rows.webhookLogs,
+      storageAttachmentRefs: collectAttachmentPaths([
+        ...rows.messages,
+        ...rows.emailMessages,
+        ...rows.unmatchedCommunications,
+      ]),
+      auditLogs,
+    }
+
+    const reference = subject.customerIds[0] ?? subject.profileId ?? 'subject'
+    return {
+      data: JSON.stringify(exportData, null, 2),
+      fileName: `gdpr-export-${reference}-${getTodayIsoDate()}.json`,
+      mimeType: 'application/json',
+      requestedBy: requestedBy ?? null,
+      counts: {
+        customers: customers.length,
+        eventBookings: rows.eventBookings.length,
+        tableBookings: rows.tableBookings.length,
+        privateBookings: rows.privateBookings.length,
+        parkingBookings: rows.parkingBookings.length,
+        messages: rows.messages.length,
+        emailMessages: rows.emailMessages.length,
+        auditLogs: auditLogs.length,
+      },
+    }
+  }
+
+  /**
    * Resolve an erasure request to the records it is actually about.
    *
    * Erasure used to take a profiles.id and then look for customers whose email
@@ -716,81 +965,22 @@ export class GdprService {
     // Read phase. Nothing is written until every target id is known, because
     // once the customer row is rewritten the email and phone are gone and no
     // further row could be matched by identity.
-    const [
-      messageRows,
-      emailRows,
-      unmatchedRows,
-      webhookRows,
-      eventBookingRows,
-      tableBookingRows,
-      privateBookingRows,
-      parkingRows,
-      pendingRows,
-      promoContextRows,
-      reviewRows,
-    ] = await Promise.all([
-      fetchRowsByIdentity(adminClient, 'messages', identity, {
-        idColumn: 'customer_id',
-        phoneColumns: ['from_number', 'to_number'],
-      }, 'id, attachments'),
-      fetchRowsByIdentity(adminClient, 'email_messages', identity, {
-        idColumn: 'customer_id',
-        emailColumns: ['to_address', 'from_address'],
-      }, 'id, attachments'),
-      fetchUnmatchedCommunicationRows(adminClient, identity, 'id, attachments'),
-      fetchWebhookLogRows(adminClient, identity, 'id'),
-      fetchRowsByIdentity(adminClient, 'bookings', identity, { idColumn: 'customer_id' }),
-      fetchRowsByIdentity(adminClient, 'table_bookings', identity, { idColumn: 'customer_id' }),
-      fetchRowsByIdentity(adminClient, 'private_bookings', identity, {
-        idColumn: 'customer_id',
-        emailColumns: ['contact_email'],
-        phoneColumns: ['contact_phone'],
-      }),
-      fetchRowsByIdentity(adminClient, 'parking_bookings', identity, {
-        idColumn: 'customer_id',
-        emailColumns: ['customer_email'],
-        phoneColumns: ['customer_mobile'],
-      }),
-      fetchRowsByIdentity(adminClient, 'pending_bookings', identity, {
-        idColumn: 'customer_id',
-        phoneColumns: ['mobile_number'],
-      }),
-      fetchRowsByIdentity(adminClient, 'sms_promo_context', identity, {
-        idColumn: 'customer_id',
-        phoneColumns: ['phone_number'],
-      }),
-      // review_feedback has no customer_id at all, so name, email and phone are
-      // the only way in.
-      fetchRowsByIdentity(adminClient, 'review_feedback', identity, {
-        emailColumns: ['customer_email'],
-        phoneColumns: ['customer_phone'],
-      }),
-    ])
-
-    const eventBookingIds = rowIds(eventBookingRows)
-    const tableBookingIds = rowIds(tableBookingRows)
-    const privateBookingIds = rowIds(privateBookingRows)
-
-    const [reminderRows, privateSmsRows, tableItemRows, preorderCoverRows] = await Promise.all([
-      fetchRowsByIdentity(adminClient, 'booking_reminders', identity, {
-        idColumn: 'booking_id',
-        ids: eventBookingIds,
-        phoneColumns: ['target_phone'],
-      }),
-      fetchRowsByIdentity(adminClient, 'private_booking_sms_queue', identity, {
-        idColumn: 'booking_id',
-        ids: privateBookingIds,
-        phoneColumns: ['customer_phone', 'recipient_phone'],
-      }),
-      fetchRowsByIdentity(adminClient, 'table_booking_items', identity, {
-        idColumn: 'booking_id',
-        ids: tableBookingIds,
-      }),
-      fetchRowsByIdentity(adminClient, 'booking_preorder_covers', identity, {
-        idColumn: 'table_booking_id',
-        ids: tableBookingIds,
-      }),
-    ])
+    const rows = await readSubjectRows(adminClient, identity, 'erase')
+    const messageRows = rows.messages
+    const emailRows = rows.emailMessages
+    const unmatchedRows = rows.unmatchedCommunications
+    const webhookRows = rows.webhookLogs
+    const parkingRows = rows.parkingBookings
+    const pendingRows = rows.pendingBookings
+    const promoContextRows = rows.smsPromoContext
+    const reviewRows = rows.reviewFeedback
+    const reminderRows = rows.bookingReminders
+    const privateSmsRows = rows.privateBookingSms
+    const tableItemRows = rows.tableBookingItems
+    const preorderCoverRows = rows.preorderCovers
+    const eventBookingIds = rowIds(rows.eventBookings)
+    const tableBookingIds = rowIds(rows.tableBookings)
+    const privateBookingIds = rowIds(rows.privateBookings)
 
     const storagePaths = collectAttachmentPaths([
       ...messageRows,
@@ -810,6 +1000,8 @@ export class GdprService {
       smsPromoContext: 0,
       bookingReminders: 0,
       eventBookings: 0,
+      eventBookingItems: 0,
+      auditLogs: 0,
       tableBookings: 0,
       tableBookingItems: 0,
       preorderCovers: 0,
@@ -823,6 +1015,7 @@ export class GdprService {
       storageObjects: storagePaths.length,
     }
     let unscrubbedRows = 0
+    let auditScrubFailed = false
 
     // Write phase, customers first. See the note above for why the order matters.
     for (const customerId of customerIds) {
@@ -963,11 +1156,24 @@ export class GdprService {
 
       await scrub('eventBookings', 'bookings', {
         attendee_names: null,
+        // The email typed for the booking (BK-078).
+        contact_email: null,
         // 1147 rows carry free-text notes, which is where staff record what a
         // guest told them. Scrubbing attendee_names while leaving this behind
         // defeated the point of the erasure.
         notes: null,
+        // Each ticket's guest name and answers (allergies, access needs) live here
+        // (BK-081). The seat count is untouched, so guard_booking_attendee_count does
+        // not fire, and sync_booking_attendee_names clears the ticket lines' copy too.
+        attendees: [],
       }, 'id', eventBookingIds)
+
+      // Ticket lines keep their own list of guest names. The trigger above only clears
+      // them when the guest details change, so older bookings whose names were typed
+      // by staff (attendees already empty) are cleared here directly.
+      await scrub('eventBookingItems', 'booking_items', {
+        attendee_names: [],
+      }, 'booking_id', eventBookingIds)
 
       await scrub('tableBookings', 'table_bookings', {
         // internal_notes is the only column that was being cleared, and it is
@@ -979,6 +1185,8 @@ export class GdprService {
         cancellation_reason: null,
         allergies: null,
         dietary_requirements: null,
+        // The email typed for the booking (BK-078).
+        contact_email: null,
       }, 'id', tableBookingIds)
 
       await scrub('tableBookingItems', 'table_booking_items', {
@@ -1058,6 +1266,23 @@ export class GdprService {
         customer_id: null,
         error_details: erasureMarker,
       }, 'id', rowIds(webhookRows))
+
+      // The audit log refuses ordinary updates, so its copies of the guest's name, phone
+      // and email go through the one database function allowed to take them out (BK-081,
+      // migration 20261026193741). Ids, statuses and who did what stay.
+      const { data: auditRowsScrubbed, error: auditScrubError } = await adminClient.rpc('gdpr_scrub_audit_logs_v01', {
+        p_customer_ids: customerIds,
+        p_booking_ids: eventBookingIds,
+      })
+      if (auditScrubError) {
+        auditScrubFailed = true
+        logger.error('[GDPR] Failed to clear personal details from the audit log', {
+          error: new Error(String(auditScrubError.message ?? 'gdpr_scrub_audit_logs_v01 failed')),
+          metadata: { customerIds },
+        })
+      } else {
+        counts.auditLogs = Number(auditRowsScrubbed ?? 0)
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       throw new Error(
@@ -1075,6 +1300,8 @@ export class GdprService {
       ['promo context rows', counts.smsPromoContext],
       ['booking reminders', counts.bookingReminders],
       ['event bookings', counts.eventBookings],
+      ['event ticket lines', counts.eventBookingItems],
+      ['audit log rows', counts.auditLogs],
       ['table bookings', counts.tableBookings],
       ['table booking items', counts.tableBookingItems],
       ['pre-order covers', counts.preorderCovers],
@@ -1093,13 +1320,19 @@ export class GdprService {
       .map(([label, value]) => `${label}: ${value}`)
       .join(', ')
 
-    const warning = unscrubbedRows > 0
-      ? ` ${unscrubbedRows} row(s) were rejected by the database and still hold personal data, see the server logs.`
-      : ''
+    const warning = [
+      unscrubbedRows > 0
+        ? ` ${unscrubbedRows} row(s) were rejected by the database and still hold personal data, see the server logs.`
+        : '',
+      auditScrubFailed
+        ? ` The audit log could not be cleared, so it may still hold this guest's name, phone or email. Run the erasure again with the customer id ${customerIds[0] ?? ''} to finish it.`
+        : '',
+    ].join('')
 
     return {
       counts,
       unscrubbedRows,
+      auditScrubFailed,
       message: summary
         ? `Personal data erased. ${summary}.${warning}`
         : `Nothing to erase: the request resolved to records that hold no personal data.${warning}`,

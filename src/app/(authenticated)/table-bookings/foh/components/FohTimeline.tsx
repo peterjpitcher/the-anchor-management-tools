@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
+import { bookingNoteMarker } from '@/lib/table-bookings/allergy-words'
 import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
@@ -65,10 +66,22 @@ type FohTimelineProps = {
 // tokens as Badge so the colours stay consistent with BOH/detail views.
 function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
   const highChairs = booking.high_chair_count ?? 0
-  if (!booking.is_outside_seating && highChairs <= 0) return null
+  // Allergy in red when the allergy field is filled in or a note mentions an allergen, otherwise
+  // Note when the booking carries one (BK-052): allergies have mostly arrived in the notes.
+  const noteMarker = bookingNoteMarker({
+    allergies: booking.allergies,
+    dietaryRequirements: booking.dietary_requirements,
+    notes: booking.special_requirements,
+  })
+  if (!booking.is_outside_seating && highChairs <= 0 && !noteMarker) return null
   const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-2xs font-medium leading-none'
   return (
     <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
+      {noteMarker === 'allergy' ? (
+        <span className={cn(pill, 'border-transparent bg-danger-soft text-danger-fg')}>Allergy</span>
+      ) : noteMarker === 'note' ? (
+        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>Note</span>
+      ) : null}
       {booking.is_outside_seating ? (
         <span className={cn(pill, 'border-transparent bg-info-soft text-info-fg')}>Outside</span>
       ) : null}

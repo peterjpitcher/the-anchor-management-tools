@@ -6,12 +6,16 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { settleWrite } from '@/lib/supabase/settle-write';
+import { withCronRun } from '@/lib/cron/run-recorder';
+
+// The 15-second project default is too tight for a run that tidies each lapsed hold (BK-212).
+export const maxDuration = 60;
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
 // TBD bookings (date_tbd = true, null hold_expiry) are excluded.
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function expirePrivateBookingHolds(request: NextRequest): Promise<NextResponse> {
   const authResult = authorizeCronRequest(request);
   if (!authResult.authorized) {
     return NextResponse.json({ error: authResult.reason ?? 'Unauthorized' }, { status: 401 });
@@ -215,3 +219,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ ok: true, cancelled: ids.length, results });
 }
+
+// A run record per run, a failure email when the run fails, and the bookings whose clean-up
+// failed counted on the record for the daily check (BK-116).
+export const GET = withCronRun('private-bookings-expire-holds', expirePrivateBookingHolds, {
+  recording: 'every_run',
+  itemFailures: (body) =>
+    Array.isArray(body.results) ? body.results.filter((entry) => Boolean((entry as { error?: unknown } | null)?.error)).length : 0,
+});
