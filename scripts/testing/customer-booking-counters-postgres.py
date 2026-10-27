@@ -23,8 +23,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-PART1 = ROOT / 'supabase/migrations/20261027154846_customer_booking_counters_live.sql'
-PART2 = ROOT / 'supabase/migrations/20261027154847_drop_customer_booking_counters.sql'
+PART1 = ROOT / 'supabase/migrations/20261027232415_customer_booking_counters_live.sql'
+PART2 = ROOT / 'supabase/migrations/20261027232433_drop_customer_booking_counters.sql'
 ROLLBACK1 = ROOT / 'tasks/customer-booking-counters/rollback-live.sql'
 ROLLBACK2 = ROOT / 'tasks/customer-booking-counters/rollback-drop.sql'
 PRODUCTION_MD5 = {

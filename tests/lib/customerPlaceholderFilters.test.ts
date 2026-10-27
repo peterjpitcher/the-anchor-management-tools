@@ -39,6 +39,6 @@ describe('placeholder customers are filtered out', () => {
     // 'Delete customer' runs the GDPR erasure path since BK-161, so the flag is set there.
     expect(source('src/services/customers.ts')).toContain('eraseCustomers(')
     expect(source('src/services/gdpr.ts')).toContain('is_placeholder: true')
-    expect(source('supabase/migrations/20261027154845_merge_customers.sql')).toContain('is_placeholder = true')
+    expect(source('supabase/migrations/20261027232352_merge_customers.sql')).toContain('is_placeholder = true')
   })
 })

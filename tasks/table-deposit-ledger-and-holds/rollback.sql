@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027154848_table_deposit_ledger_and_holds.sql.
+-- Rollback for supabase/migrations/20261027232504_table_deposit_ledger_and_holds.sql.
 -- Removes the two hold triggers and their functions (production had neither on 27 October 2026)
 -- and puts the 'pending' payments insert back into create_table_booking_core_v06, patched in
 -- place the same way, so any other in-place patch (release 12's pacing lines) is kept. The body

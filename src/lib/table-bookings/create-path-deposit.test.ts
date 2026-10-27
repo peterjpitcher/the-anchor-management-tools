@@ -106,10 +106,10 @@ describe('the create path resolves the deposit rather than inventing one', () =>
     expect(core).toContain('CASE WHEN v_deposit_required THEN v_deposit_amount ELSE NULL END')
 
     // The newest full definition still holds the old 'pending' payments insert, and
-    // 20261027154848 takes it out in place. Its patch only applies when it finds that insert, word
+    // 20261027232504 takes it out in place. Its patch only applies when it finds that insert, word
     // for word, exactly once, so this pins the two together: change the insert in a new full
     // definition and this fails before the patch would refuse in production.
-    const patch = readFileSync(join(MIGRATIONS, '20261027154848_table_deposit_ledger_and_holds.sql'), 'utf8')
+    const patch = readFileSync(join(MIGRATIONS, '20261027232504_table_deposit_ledger_and_holds.sql'), 'utf8')
     const marker = 'v_insert text := $insert$'
     const removed = patch.slice(patch.indexOf(marker) + marker.length, patch.indexOf('$insert$;'))
     expect(removed).toMatch(/'table_deposit',\s*v_deposit_amount,\s*'GBP'/)

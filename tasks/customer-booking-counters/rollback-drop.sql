@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261027154847_drop_customer_booking_counters.sql.
+-- Rollback for supabase/migrations/20261027232433_drop_customer_booking_counters.sql.
 -- Re-adds customers.table_booking_count (integer, default 0) and customers.last_table_booking_date
 -- (date) as production held them, puts back every value from the copy the migration took, and
 -- drops the copy. Customers not in the copy held the defaults (0 and no date), which the re-added

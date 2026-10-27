@@ -29,7 +29,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261027154848_table_deposit_ledger_and_holds.sql'
+MIGRATION = MIGRATIONS / '20261027232504_table_deposit_ledger_and_holds.sql'
 ROLLBACK = ROOT / 'tasks/table-deposit-ledger-and-holds/rollback.sql'
 LONE_PARTY = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
 SOURCES = {
