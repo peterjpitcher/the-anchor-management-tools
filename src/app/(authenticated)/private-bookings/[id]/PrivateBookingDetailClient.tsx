@@ -195,8 +195,7 @@ interface PrivateBookingDetailClientProps {
   /** Completed and pending deposit refunds, loaded by the page with the payment history. */
   depositRefunds: DepositRefundEntry[];
   /**
-   * Set by the page while private_booking_deposit_confirmation is on: whether the deposit is still
-   * to be confirmed, and the deadline confirming it would set.
+   * Set by the page: whether the deposit is still to be confirmed, and the deadline confirming it would set.
    */
   depositConfirmation?: { awaiting: boolean; holdExpiryPreview: string | null };
   /** Rooms, guest count and a paid deposit that did not confirm the booking (BK-005, BK-007). */

@@ -27,6 +27,17 @@ vi.mock('@/services/sms-queue', () => ({
   },
 }))
 
+// What each action reports about its message is under test here, not the channel. Every private
+// booking message goes email first now (owner decision D16, 26 October 2026); that choice is tested
+// in tests/lib/privateBookingMessenger.test.ts, so here the messenger hands each one to the queue.
+vi.mock('@/lib/private-bookings/messenger', async () => {
+  const { SmsQueueService } = await import('@/services/sms-queue')
+  return {
+    sendPrivateBookingMessage: vi.fn((input: { sms: Parameters<typeof SmsQueueService.queueAndSend>[0] }) =>
+      SmsQueueService.queueAndSend(input.sms)),
+  }
+})
+
 vi.mock('@/lib/google-calendar', () => ({
   syncCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
@@ -162,6 +173,16 @@ describe('PrivateBookingService SMS side-effect meta', () => {
           update,
         }
       }),
+    })
+
+    // Confirming reads the deposit confirmation first (owner decision, 11 September 2026). This
+    // booking owes no deposit, so it is not waiting on one.
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { deposit_confirmed_at: null, deposit_waived: false }, error: null }),
+      })),
     })
 
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({

@@ -10,7 +10,6 @@ import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/
 import { privateBookingsNav, canOpenPrivateBookingSettings } from '../_shared/nav'
 import { smsQueueTone } from '../_shared/status-ui'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 type SmsQueueRow = NonNullable<Awaited<ReturnType<typeof SmsQueueService.getQueue>>>[number]
 
@@ -95,9 +94,6 @@ export default async function SmsQueuePage() {
   if (!canViewQueue) {
     redirect('/unauthorized')
   }
-
-  // Email first (P6): Send Now may deliver an approved message by email, so say so up front.
-  const emailFirst = await isMessagingFlagOn('private_booking_email_first')
 
   // Fetch SMS queue with booking details
   let smsQueue = null
@@ -303,11 +299,7 @@ export default async function SmsQueuePage() {
                     smsId={sms.id}
                     confirmTitle="Send Message"
                     confirmLabel="Send Now"
-                    confirmMessage={
-                      emailFirst
-                        ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
-                        : 'Send this approved SMS now?'
-                    }
+                    confirmMessage='Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
                     leftIcon={<Icon name="send" size={16} />}
                     successMessage="SMS sent"
                     disabled={!canSendSms}

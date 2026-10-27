@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ db: null as any, depositConfirmation: true }))
+const state = vi.hoisted(() => ({ db: null as any }))
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(() => ({ authorized: true })),
@@ -13,9 +13,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) =>
-    key === 'private_booking_deposit_confirmation' ? state.depositConfirmation : false
-  ),
+  isMessagingFlagOn: vi.fn(async () => false),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -116,7 +114,6 @@ describe('deposit reminders and hold expiry for a deposit still to be confirmed'
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
-    state.depositConfirmation = true
   })
 
   afterEach(() => {
@@ -140,16 +137,7 @@ describe('deposit reminders and hold expiry for a deposit still to be confirmed'
     }
   })
 
-  it('with the flag off the monitor reminds every live hold, exactly as today', async () => {
-    state.depositConfirmation = false
-    seed([draft('unconfirmed', { deposit_confirmed_at: null }), draft('confirmed', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z' })])
-
-    await runMonitorRoute(new Request('http://localhost/api/cron/private-booking-monitor'))
-
-    expect(remindedBookingIds().sort()).toEqual(['confirmed', 'unconfirmed'])
-  })
-
-  it('if the reminder query fails with the flag on, nothing is sent and the failure is logged', async () => {
+  it('if the reminder query fails, nothing is sent and the failure is logged', async () => {
     seed([draft('confirmed', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z' })])
     state.db.failures.push({ table: 'private_bookings', op: 'select', error: { code: '42703', message: 'column private_bookings.deposit_confirmed_at does not exist' } })
 
@@ -158,7 +146,7 @@ describe('deposit reminders and hold expiry for a deposit still to be confirmed'
     expect(response.status).toBe(200)
     expect(remindedBookingIds()).toEqual([])
     expect(logger.error).toHaveBeenCalledWith(
-      'Private booking monitor: deposit reminder query failed with deposit confirmation on',
+      'Private booking monitor: deposit reminder query failed',
       expect.objectContaining({ metadata: expect.objectContaining({ code: '42703' }) })
     )
   })
@@ -180,17 +168,4 @@ describe('deposit reminders and hold expiry for a deposit still to be confirmed'
     expect(lapsed.map((sms) => sms.booking_id)).toEqual(['confirmed'])
   })
 
-  it('with the flag off every lapsed hold expires, exactly as today', async () => {
-    state.depositConfirmation = false
-    seed([
-      draft('unconfirmed', { deposit_confirmed_at: null, hold_expiry: '2026-09-19T22:30:00.000Z' }),
-      draft('confirmed', { deposit_confirmed_at: '2026-09-11T10:00:00.000Z', hold_expiry: '2026-09-19T22:30:00.000Z' }),
-    ])
-
-    const response = await runExpireHoldsRoute(new Request('http://localhost/api/cron/private-bookings-expire-holds') as any)
-    const body = await response.json()
-
-    expect(body.cancelled).toBe(2)
-    expect(state.db.tables.private_bookings.every((row: any) => row.status === 'cancelled')).toBe(true)
-  })
 })

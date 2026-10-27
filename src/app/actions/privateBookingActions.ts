@@ -48,7 +48,6 @@ import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
 import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import {
@@ -2654,7 +2653,7 @@ export type ConfirmPrivateBookingDepositResult = {
 }
 
 /**
- * Confirm deposit (flag private_booking_deposit_confirmation): staff confirm the amount and the
+ * Confirm deposit (owner decision, 11 September 2026): staff confirm the amount and the
  * guest gets one deposit request, by email (text when there is no usable email address), saying
  * it can be paid in cash at the bar or by PayPal, with the link. For staff who manage deposits,
  * the permission that governs private booking payments. A reduction below the £250 standard needs
@@ -2677,10 +2676,6 @@ export async function confirmPrivateBookingDeposit(
   ])
   if (!canManageDeposits && !canManage) {
     return { error: 'You do not have permission to confirm deposits' }
-  }
-
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
-    return { error: 'Deposit confirmation is switched off, so nothing was sent.' }
   }
 
   const parsed = confirmDepositInputSchema.safeParse({
@@ -2870,27 +2865,25 @@ export async function sendDepositPaymentLink(
   if (depositAmount <= 0) return { error: 'No deposit amount set for this booking' }
   if (!booking.contact_email) return { error: 'No email address on file for this customer' }
 
-  // Deposit confirmation (flag private_booking_deposit_confirmation): the guest hears about a
-  // deposit only through Confirm deposit, which sends the payment link with the request. While the
-  // amount is still to be confirmed the link is not sent on its own.
-  if (await isMessagingFlagOn('private_booking_deposit_confirmation')) {
-    const { data: confirmation, error: confirmationError } = await admin
-      .from('private_bookings')
-      .select('deposit_confirmed_at, deposit_waived')
-      .eq('id', bookingId)
-      .maybeSingle()
-    if (confirmationError || !confirmation) {
-      return { error: 'Could not check whether the deposit has been confirmed, so no link was sent. Please try again.' }
-    }
-    if (isDepositAwaitingConfirmation({
-      status: booking.status,
-      deposit_amount: depositAmount,
-      deposit_paid_date: booking.deposit_paid_date,
-      deposit_waived: confirmation.deposit_waived,
-      deposit_confirmed_at: confirmation.deposit_confirmed_at,
-    })) {
-      return { error: 'Confirm the deposit first. Confirming it sends the guest the deposit request with the payment link.' }
-    }
+  // Deposit confirmation (owner decision, 11 September 2026): the guest hears about a deposit only
+  // through Confirm deposit, which sends the payment link with the request. While the amount is
+  // still to be confirmed the link is not sent on its own.
+  const { data: confirmation, error: confirmationError } = await admin
+    .from('private_bookings')
+    .select('deposit_confirmed_at, deposit_waived')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (confirmationError || !confirmation) {
+    return { error: 'Could not check whether the deposit has been confirmed, so no link was sent. Please try again.' }
+  }
+  if (isDepositAwaitingConfirmation({
+    status: booking.status,
+    deposit_amount: depositAmount,
+    deposit_paid_date: booking.deposit_paid_date,
+    deposit_waived: confirmation.deposit_waived,
+    deposit_confirmed_at: confirmation.deposit_confirmed_at,
+  })) {
+    return { error: 'Confirm the deposit first. Confirming it sends the guest the deposit request with the payment link.' }
   }
 
   try {

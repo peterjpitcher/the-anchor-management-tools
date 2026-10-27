@@ -15,7 +15,6 @@ import {
 } from './types';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { loadPrivateBookingEmailTimeline } from '@/lib/private-bookings/email-timeline';
-import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
 import {
   contractProblem,
@@ -35,10 +34,10 @@ function normalizeDepositStatus(booking: {
 }
 
 /**
- * Which of the listed bookings have a deposit still to be confirmed (flag
- * private_booking_deposit_confirmation), so the list can say so and nobody forgets them. The list
- * reads a view that has no confirmation column, so it comes from the table in one query. With the
- * flag off, or if that read fails (logged), no booking is marked.
+ * Which of the listed bookings have a deposit still to be confirmed (owner decision, 11 September
+ * 2026), so the list can say so and nobody forgets them. The list reads a view that has no
+ * confirmation column, so it comes from the table in one query. If that read fails (logged), no
+ * booking is marked.
  */
 async function loadDepositAwaitingConfirmation(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -46,7 +45,6 @@ async function loadDepositAwaitingConfirmation(
 ): Promise<Map<string, boolean>> {
   const result = new Map<string, boolean>();
   if (bookings.length === 0) return result;
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return result;
 
   const { data, error } = await supabase
     .from('private_bookings')

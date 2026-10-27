@@ -3,7 +3,6 @@ import { SmsQueueService, shouldAutoSendPrivateBookingSms, type QueueSmsInput } 
 import {
   attemptPrivateBookingEmail,
   finishPrivateBookingEmailFirstDelivery,
-  isPrivateBookingEmailFirstOn,
 } from '@/lib/private-bookings/email-first'
 import type { PrivateBookingEmailContent } from '@/lib/email/private-booking-emails'
 import type { FallbackBookingFacts } from '@/lib/notifications/delayed-fallback/types'
@@ -38,22 +37,14 @@ export type SendPrivateBookingMessageInput = {
    * if the email does not go.
    */
   emailEvenWhenTextNeedsApproval?: boolean
-  /**
-   * The private_booking_email_first flag as the calling action already read it. An action that
-   * decides anything else on the flag (skipping the old email, choosing which bookings to remind)
-   * must pass it, so this send and that decision cannot disagree: a failed read is not cached, so
-   * a second read in the same action can answer differently. Read here only when absent.
-   */
-  emailFirst?: boolean
 }
 
 /**
- * The one way an automated private booking message leaves the system (P6).
+ * The one way an automated private booking message leaves the system (P6). Email first, always:
+ * the flag private_booking_email_first was on from 15 September 2026 and its text-only path is
+ * gone (owner decision D16, 26 October 2026), so a failed settings read can no longer text a guest
+ * who has an email address.
  *
- * With the flag private_booking_email_first off, this is SmsQueueService.queueAndSend and nothing
- * else: same arguments, same result.
- *
- * With it on:
  * - A trigger that waits for staff approval still queues its text for approval; the channel is
  *   chosen when staff press Send Now (sms-queue.ts sendApprovedSms).
  * - Otherwise, if the booking has a usable address (its contact email, then the customer's), the
@@ -63,11 +54,6 @@ export type SendPrivateBookingMessageInput = {
  * - With no usable address, the text goes exactly as before.
  */
 export async function sendPrivateBookingMessage(input: SendPrivateBookingMessageInput): Promise<PrivateBookingMessageResult> {
-  const emailFirst = input.emailFirst ?? (await isPrivateBookingEmailFirstOn())
-  if (!emailFirst) {
-    return SmsQueueService.queueAndSend(input.sms)
-  }
-
   const textNeedsApproval = !shouldAutoSendPrivateBookingSms(input.sms.trigger_type)
   if ((textNeedsApproval && !input.emailEvenWhenTextNeedsApproval) || !input.email) {
     return SmsQueueService.queueAndSend(input.sms)

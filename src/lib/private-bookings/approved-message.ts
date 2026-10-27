@@ -2,8 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { renderPrivateBookingMessage } from '@/lib/private-bookings/message-catalogue'
 import { cancellationFromQueueMetadata, loadPrivateBookingMessageContext } from '@/lib/private-bookings/message-context'
-import { attemptPrivateBookingEmail, isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { attemptPrivateBookingEmail } from '@/lib/private-bookings/email-first'
 import { isBalanceReminderTrigger } from '@/lib/private-bookings/balance-reminders'
 
 export type ApprovedMessageEmailOutcome =
@@ -34,10 +33,6 @@ export async function tryEmailForApprovedPrivateBookingText(input: {
   performedBy: string | null
   now?: Date
 }): Promise<ApprovedMessageEmailOutcome> {
-  if (!(await isPrivateBookingEmailFirstOn())) {
-    return { status: 'not_attempted', reason: 'flag_off' }
-  }
-
   const triggerType = input.row.trigger_type?.trim()
   const templateKey = input.row.template_key?.trim()
   if (!triggerType || !templateKey) {
@@ -46,10 +41,9 @@ export async function tryEmailForApprovedPrivateBookingText(input: {
 
   try {
     const client = createAdminClient()
-    // Balance reminder emails list the payments made while private_booking_balance_email_auto is
-    // on; if those cannot be read the approved text goes instead (the context says so).
-    const withPaymentStatement =
-      isBalanceReminderTrigger(triggerType) && (await isMessagingFlagOn('private_booking_balance_email_auto'))
+    // Balance reminder emails list the payments made; if those cannot be read the approved text
+    // goes instead (the context says so).
+    const withPaymentStatement = isBalanceReminderTrigger(triggerType)
     const context = await loadPrivateBookingMessageContext({
       client,
       bookingId: input.row.booking_id,

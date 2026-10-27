@@ -185,8 +185,7 @@ async function restoreUnconfirmed(db: AdminClient, before: ConfirmationBooking, 
 }
 
 /**
- * Confirm deposit (owner decision, 11 September 2026; flag private_booking_deposit_confirmation,
- * checked by the calling action).
+ * Confirm deposit (owner decision, 11 September 2026).
  *
  * Records the confirmed amount, who confirmed it and when, sets the hold expiry
  * (resolveConfirmationHoldExpiry: a future hold is kept, otherwise the creation rule), sends the
@@ -370,8 +369,6 @@ export async function confirmDeposit(input: {
         // undone) is a new request.
         windowKey: `confirmed-${confirmedAt}`,
         facts: message.facts,
-        // The owner asked for this one by email whatever private_booking_email_first says.
-        emailFirst: true,
       })) as unknown as Record<string, unknown>
     } catch (error) {
       logger.error('Confirm deposit: sending the deposit request threw', {

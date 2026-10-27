@@ -121,12 +121,4 @@ describe('Send Now for an approved private booking text (email first)', () => {
     expect(mockedFinish).not.toHaveBeenCalled()
   })
 
-  it('flag off: the email path is never tried', async () => {
-    state.flagOn = false
-
-    await SmsQueueService.sendApprovedSms('sms-1')
-
-    expect(mockedTryEmail).not.toHaveBeenCalled()
-    expect(mockedSendSms).toHaveBeenCalledTimes(1)
-  })
 })

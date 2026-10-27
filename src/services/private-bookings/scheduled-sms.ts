@@ -20,7 +20,6 @@ import {
   reviewVisitCandidateKey,
 } from '@/lib/sms/review-once'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 
 /**
@@ -469,7 +468,7 @@ export async function getBookingScheduledSms(
 }
 
 /**
- * Deposit confirmation (flag private_booking_deposit_confirmation): the monitor sends no deposit
+ * Deposit confirmation (owner decision, 11 September 2026): the monitor sends no deposit
  * reminder while the deposit is still to be confirmed, so the preview must not advertise one.
  * The view this preview reads has no confirmation column, so it is read from the table. If it
  * cannot be read the reminder is not listed, which is also what the monitor does then.
@@ -479,8 +478,6 @@ async function isDepositReminderPausedForConfirmation(
   bookingId: string,
   booking: { status?: string | null; deposit_amount?: number | string | null; deposit_paid_date?: string | null },
 ): Promise<boolean> {
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return false
-
   const { data, error } = await db
     .from('private_bookings')
     .select('deposit_confirmed_at, deposit_waived')
