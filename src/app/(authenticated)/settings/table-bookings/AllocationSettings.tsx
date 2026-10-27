@@ -48,6 +48,7 @@ const SECTION_SAVE_LABEL: Record<SectionKey, string> = {
 const PUBLIC_REASONS = [
   { key: 'tables_full',  label: 'No table fits', hint: 'Also used when a private booking or maintenance blocks a table. The customer is never told which.' },
   { key: 'kitchen_full', label: 'Kitchen at capacity' },
+  { key: 'drinks_full',  label: 'Drinks arrivals full' },
   { key: 'outside_full', label: 'Outside full' },
   { key: 'closed',       label: 'Closed' },
   { key: 'too_late',     label: 'Too close to closing' },
@@ -315,16 +316,12 @@ export function AllocationSettings() {
           <CardHeader title="Drinks Bookings" />
           <CardBody className="space-y-4">
             <p className="text-sm text-text-muted">Drinks fill the bar first and overflow into the dining room only when the bar is full.</p>
+            <p className="text-sm text-text-muted">A drinks booking keeps its table once booked; nothing moves it to make room for food.</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              {numberField('drinks_arrivals_ceiling', 'Drinks covers arriving per window', 40)}
-              {numberField('drinks_bump_protection_minutes', 'Never move a booking within (minutes)', 60,
-                'A guest about to walk in is never moved, even if it means refusing a food booking.')}
+              {numberField('drinks_arrivals_ceiling', 'Drinks covers arriving per window', 40,
+                'The website and the staff screen stop offering a time once this many drinks guests arrive around it.')}
             </div>
-            <div>
-              {toggleField('drinks_bump_enabled', 'Let a food booking move a drinks booking', false,
-                'Only ever to a table that suits it. If there is nowhere to move it, the food booking is refused instead.')}
-            </div>
-            {saveButton('drinks', ['drinks_arrivals_ceiling','drinks_bump_protection_minutes','drinks_bump_enabled'])}
+            {saveButton('drinks', ['drinks_arrivals_ceiling'])}
           </CardBody>
         </Card>
 
@@ -332,13 +329,11 @@ export function AllocationSettings() {
         <Card>
           <CardHeader title="Party Size Limits" />
           <CardBody className="space-y-4">
-            <p className="text-sm text-text-muted">Above the online limit, customers are sent to a private booking.</p>
+            <p className="text-sm text-text-muted">One limit for every table booking, online and by staff. A bigger group is a private booking.</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              {numberField('table_booking_max_party_online', 'Largest party the website takes', 20)}
-              {numberField('table_booking_max_party_staff', 'Largest party staff can take', 40,
-                'A typo guard, not a physical limit: the dining room joins to 26, and above that staff use tables that are not next to each other.')}
+              {numberField('table_booking_max_party_online', 'Largest party for a table booking', 20)}
             </div>
-            {saveButton('party_limits', ['table_booking_max_party_online','table_booking_max_party_staff'])}
+            {saveButton('party_limits', ['table_booking_max_party_online'])}
           </CardBody>
         </Card>
 
