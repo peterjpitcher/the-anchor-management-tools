@@ -51,6 +51,7 @@ import {
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
 import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
+import { AwaitingConfirmationPanel } from '@/components/features/table-bookings/AwaitingConfirmationPanel'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -582,6 +583,9 @@ export function FohScheduleClient({
       <FohLoadWarningsBanner warnings={schedule?.load_warnings} />
 
       <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
+
+      {/* Guests asked to confirm the day before who have not answered (BK-094). */}
+      <AwaitingConfirmationPanel canEdit={canEdit} />
 
       {viewMode === 'inside' ? (
         <>

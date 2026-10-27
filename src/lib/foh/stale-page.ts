@@ -1,4 +1,4 @@
-import toast from 'react-hot-toast'
+import { toast } from '@/ds'
 
 /** Message shown before an out-of-date FOH screen reloads itself (BK-096). */
 export const STALE_PAGE_MESSAGE = 'This screen is out of date, reloading'
