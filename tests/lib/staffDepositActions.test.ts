@@ -175,6 +175,43 @@ describe('deposit taken at the bar', () => {
     expect(result).toMatchObject({ ok: false, status: 409 })
     expect(db.rpc).not.toHaveBeenCalled()
   })
+
+  it('takes nothing when PayPal cannot be reached to check for an online payment', async () => {
+    const db = seed({ paypal_deposit_order_id: 'ORDER-1' })
+    vi.mocked(reconcileTableDepositOrder).mockResolvedValueOnce({ outcome: 'lookup_failed' })
+
+    const result = await runStaffDepositAction(db as never, { bookingId: BOOKING_ID, userId: 'manager-1', request: { action: 'cash', reason: 'Cash' } })
+
+    expect(result).toMatchObject({ ok: false, status: 503 })
+    expect(db.rpc).not.toHaveBeenCalled()
+    // The order stays on the booking, so the payment can still be found.
+    expect(row(db)).toMatchObject({ paypal_deposit_order_id: 'ORDER-1', payment_status: 'pending', payment_method: null })
+  })
+
+  it('writes no cash row when the deposit was paid online after the booking was read', async () => {
+    const db = seed({ paypal_deposit_order_id: 'ORDER-1' })
+    // PayPal's capture lands between this request reading the booking and recording the cash.
+    vi.mocked(reconcileTableDepositOrder).mockImplementationOnce(async () => {
+      Object.assign(row(db), { status: 'confirmed', payment_status: 'completed', payment_method: 'paypal', paypal_deposit_capture_id: 'CAP-1' })
+      return { outcome: 'not_paid' }
+    })
+
+    const result = await runStaffDepositAction(db as never, { bookingId: BOOKING_ID, userId: 'manager-1', request: { action: 'cash', reason: 'Cash' } })
+
+    expect(result).toMatchObject({ ok: false, status: 409 })
+    expect(db.rpc).not.toHaveBeenCalled()
+    expect(row(db)).toMatchObject({ payment_method: 'paypal', paypal_deposit_order_id: 'ORDER-1' })
+  })
+
+  it('hands the claim back when the cash row cannot be written', async () => {
+    const db = seed()
+    db.rpc.mockResolvedValueOnce({ data: null, error: { message: 'connection reset' } })
+
+    const result = await runStaffDepositAction(db as never, { bookingId: BOOKING_ID, userId: 'manager-1', request: { action: 'cash', reason: 'Cash' } })
+
+    expect(result).toMatchObject({ ok: false, status: 500 })
+    expect(row(db)).toMatchObject({ payment_status: 'pending', payment_method: null, deposit_amount_locked: null, hold_expires_at: HOLD })
+  })
 })
 
 describe('give longer to pay', () => {
