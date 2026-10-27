@@ -87,6 +87,9 @@ export type FohScheduleResponse = {
     // True when private hires could not be read, so their tables are not drawn as blocked
     // (BK-159). Optional so existing fixtures keep compiling.
     private_hires_unavailable?: boolean
+    // Parts of the floor that could not be loaded and are drawn as empty (BK-179). Optional so
+    // existing fixtures keep compiling.
+    load_warnings?: Array<'private_hires' | 'event_names' | 'communal_event_seats' | 'standing_event_guests' | 'table_areas'>
     // Who is in that day, counted as every other screen counts it (BK-075); null when it could
     // not be read. Optional so existing fixtures keep compiling.
     day_load?: DayLoad | null

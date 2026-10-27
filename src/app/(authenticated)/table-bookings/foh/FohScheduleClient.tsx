@@ -31,6 +31,7 @@ import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
 import { useFohCreateBooking } from './hooks/useFohCreateBooking'
 import { useFohDeploymentRefresh } from './hooks/useFohDeploymentRefresh'
+import { FohLoadWarningsBanner } from './components/FohLoadWarningsBanner'
 import { useFohDrag } from './useFohDrag'
 
 import { FohHeader } from './components/FohHeader'
@@ -577,6 +578,8 @@ export function FohScheduleClient({
           in a room that may be hired tonight.
         </Alert>
       )}
+
+      <FohLoadWarningsBanner warnings={schedule?.load_warnings} />
 
       <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
 
