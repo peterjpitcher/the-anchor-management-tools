@@ -1537,7 +1537,7 @@ export async function GET(request: Request) {
       const inspectionToday = getLondonRunKey(new Date())
       const { data: inspectionDue, error: inspectionError } = await supabase
         .from('private_bookings')
-        .select('id, status, event_date')
+        .select('id, status, event_date, invoice_deposit_treatment')
         .or(`status.eq.completed,and(status.eq.confirmed,event_date.lt.${inspectionToday})`)
         .not('deposit_paid_date', 'is', null)
         .is('deposit_refund_status', null)
@@ -1551,6 +1551,9 @@ export async function GET(request: Request) {
       } else {
         for (const booking of inspectionDue ?? []) {
           if (deadline.timeIsUp('post_event_inspections', () => (inspectionDue ?? []).length - (inspectionDue ?? []).indexOf(booking))) break
+          // A deposit an invoice put against the bill is not held, so there is nothing to inspect
+          // or return (BK-062): the close-out records it as applied.
+          if ((booking as { invoice_deposit_treatment?: string | null }).invoice_deposit_treatment === 'deducted') continue
           const { data: flaggedRow, error: flagError } = await supabase
             .from('private_bookings')
             .update({ post_event_status: 'awaiting_inspection', updated_at: new Date().toISOString() })

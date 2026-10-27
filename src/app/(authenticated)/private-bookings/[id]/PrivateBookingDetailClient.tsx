@@ -63,6 +63,7 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 import { HireReadinessPanel } from './HireReadinessPanel'
+import { CloseOutPanel } from './CloseOutPanel'
 import { HireNightPanel } from './HireNightPanel'
 import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import { setPrivateBookingKitchenLoad } from '@/app/actions/kitchen-load'
@@ -2457,6 +2458,18 @@ export default function PrivateBookingDetailClient({
 
   const supplementaryTotal = toNumber(booking.supplementary_charges_total, 0);
   const aggregateBookingTotal = bookingMoney.grossTotal + supplementaryTotal;
+  // BK-062, BK-131: a hire whose night has passed is closed out, its balance and deposit recorded.
+  const closeOutPaidSoFar = (booking.payments ?? []).reduce((sum, payment) => sum + toNumber(payment.amount), 0) + appliedDepositAmount;
+  const closeOutBalance = booking.invoice_id && booking.invoice_balance_total != null
+    ? toNumber(booking.invoice_balance_total)
+    : Math.max(0, aggregateBookingTotal - closeOutPaidSoFar);
+  const closeOutDepositLeft = booking.deposit_paid_date && !depositAppliedToInvoice &&
+    (!booking.deposit_refund_status || booking.deposit_refund_status === 'partially_refunded')
+    ? Math.max(0, depositAmount - refundTotals.totalRefunded - refundTotals.totalPending)
+    : 0;
+  const showCloseOut = !isDateTbd && Boolean(booking.event_date) &&
+    String(booking.event_date).slice(0, 10) <= getTodayIsoDate() &&
+    (booking.status === 'confirmed' || (booking.status === 'completed' && closeOutDepositLeft > 0));
 
   const editDepositValue = Number(editDepositAmount);
   const showDepositReductionReason =
@@ -2656,6 +2669,18 @@ export default function PrivateBookingDetailClient({
       )}
 
       <RecordLockBanner booking={booking} />
+
+      {showCloseOut && (
+        <CloseOutPanel
+          bookingId={bookingId}
+          balanceOutstanding={closeOutBalance}
+          depositLeft={closeOutDepositLeft}
+          canClose={canManageDeposits || canEdit}
+          canRefund={canRefund}
+          onOpenRefund={() => setShowRefundDialog(true)}
+          onClosed={() => router.refresh()}
+        />
+      )}
 
       {refundOwed > 0 && (
         <Alert tone="warning" title={`Refund owed: ${formatMoney(refundOwed)}`}>

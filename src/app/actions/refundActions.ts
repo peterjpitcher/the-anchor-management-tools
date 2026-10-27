@@ -1,5 +1,7 @@
 'use server'
 
+import { getTodayIsoDate } from '@/lib/dateUtils'
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -354,6 +356,23 @@ async function updateRefundStatus(
         note: 'the refund itself went through',
       }
     )
+    // BK-062: a refund after the event closes the deposit's post-event step too, which the nightly
+    // job set to 'awaiting_inspection' and nothing ever cleared. A cancelled booking has none.
+    // Never fails the refund: it has already gone.
+    try {
+      const { error: postEventError } = await db
+        .from('private_bookings')
+        .update({ post_event_status: status === 'refunded' ? 'complete' : 'refund_processed' })
+        .eq('id', sourceId)
+        .in('status', ['confirmed', 'completed'])
+        .lte('event_date', getTodayIsoDate())
+      if (postEventError) throw new Error(postEventError.message)
+    } catch (postEventError) {
+      console.error('[payment_refunds] Recording the post-event deposit step failed; the refund itself went through', {
+        sourceId,
+        message: postEventError instanceof Error ? postEventError.message : String(postEventError),
+      })
+    }
   } else if (sourceType === 'table_booking') {
     // Both columns, not just the refund one. `payment_status` left at 'completed' means a
     // fully refunded booking still reads as paid to hasUnpaidRequiredDeposit and to the

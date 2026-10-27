@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
 import { formatPrivateBookingReference } from '@/lib/email/private-booking-emails'
 import { PRIVATE_BOOKINGS_MANAGER_EMAIL } from '@/lib/private-bookings/manager-notifications'
@@ -129,9 +129,19 @@ export interface PrivateHireToDo {
   textsAwaitingApproval: number
   /** Refunds a cancellation promised and the refunds recorded do not yet cover (BK-065). */
   refundsOwed: Array<{ bookingId: string; reference: string; owed: number; dueBy: string | null }>
+  /**
+   * Deposits held after the event with no outcome recorded (BK-062). The contract promises them
+   * back within 48 hours, so each is due two days after its event.
+   */
+  depositsDueBack: Array<{ bookingId: string; reference: string; amount: number; dueBy: string }>
+  /** Hires still "confirmed" more than two days after their event (BK-131). */
+  hiresToClose: Array<{ bookingId: string; reference: string; eventDate: string }>
 }
 
-const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0, refundsOwed: [] }
+const EMPTY_TO_DO: PrivateHireToDo = { textsAwaitingApproval: 0, refundsOwed: [], depositsDueBack: [], hiresToClose: [] }
+
+/** Days after the event a deposit is promised back by (the contract's 48 hours). */
+const DEPOSIT_RETURN_DAYS = 2
 
 const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000
 
@@ -176,11 +186,38 @@ export async function findPrivateHireToDo(input: { now: Date; db?: DbClient }): 
     .filter((row) => row.owed > 0)
     .sort((a, b) => (a.dueBy ?? '9999').localeCompare(b.dueBy ?? '9999'))
 
-  return { textsAwaitingApproval: (data ?? []).length, refundsOwed }
+  const todayIso = toLocalIsoDate(input.now)
+  const { data: past, error: pastError } = await db
+    .from('private_bookings')
+    .select('id, status, event_date, deposit_amount, deposit_paid_date, deposit_refund_status, invoice_deposit_treatment')
+    .in('status', ['confirmed', 'completed'])
+    .lt('event_date', todayIso)
+    .gte('event_date', shiftIsoDate(todayIso, -365) ?? todayIso)
+    .order('event_date', { ascending: true })
+  if (pastError) throw new Error(`Could not read the past hires: ${pastError.message}`)
+  const pastRows = (past ?? []) as Array<{
+    id: string; status: string; event_date: string; deposit_amount: number | string | null
+    deposit_paid_date: string | null; deposit_refund_status: string | null; invoice_deposit_treatment: string | null
+  }>
+  const closeBy = shiftIsoDate(todayIso, -DEPOSIT_RETURN_DAYS) ?? todayIso
+  const hiresToClose = pastRows
+    .filter((row) => row.status === 'confirmed' && String(row.event_date).slice(0, 10) < closeBy)
+    .map((row) => ({ bookingId: row.id, reference: formatPrivateBookingReference(row.id), eventDate: String(row.event_date).slice(0, 10) }))
+  const depositsDueBack = pastRows
+    .filter((row) => row.deposit_paid_date && Number(row.deposit_amount ?? 0) > 0 && row.invoice_deposit_treatment !== 'deducted'
+      && ((row.deposit_refund_status ?? null) === null || row.deposit_refund_status === 'partially_refunded'))
+    .map((row) => ({
+      bookingId: row.id,
+      reference: formatPrivateBookingReference(row.id),
+      amount: Number(row.deposit_amount ?? 0),
+      dueBy: shiftIsoDate(String(row.event_date).slice(0, 10), DEPOSIT_RETURN_DAYS) ?? String(row.event_date).slice(0, 10),
+    }))
+
+  return { textsAwaitingApproval: (data ?? []).length, refundsOwed, depositsDueBack, hiresToClose }
 }
 
 function hasToDo(toDo: PrivateHireToDo): boolean {
-  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0
+  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0 || toDo.depositsDueBack.length > 0 || toDo.hiresToClose.length > 0
 }
 
 function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string; url: string }> {
@@ -199,6 +236,19 @@ function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string;
     lines.push({
       text: `${refund.reference}: £${refund.owed.toFixed(2)} refund owed to a cancelled booking${due}.`,
       url: `${appUrl}/private-bookings/${refund.bookingId}`,
+    })
+  }
+  const day = (iso: string) => formatDateInLondon(iso, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  for (const deposit of toDo.depositsDueBack) {
+    lines.push({
+      text: `${deposit.reference}: £${deposit.amount.toFixed(2)} deposit has no outcome recorded; due back by ${day(deposit.dueBy)}.`,
+      url: `${appUrl}/private-bookings/${deposit.bookingId}`,
+    })
+  }
+  for (const hire of toDo.hiresToClose) {
+    lines.push({
+      text: `${hire.reference}: the hire on ${day(hire.eventDate)} has not been closed out.`,
+      url: `${appUrl}/private-bookings/${hire.bookingId}`,
     })
   }
   return lines

@@ -71,7 +71,7 @@ function seed() {
       hire('dddddddd-0000-0000-0000-000000000004', { status: 'draft', deposit_paid_date: null, hold_expiry: null }),
       hire('eeeeeeee-0000-0000-0000-000000000005', { date_tbd: true }),
       hire('ffffffff-0000-0000-0000-000000000006'),
-      hire('99999999-0000-0000-0000-000000000007', { event_date: '2026-10-20' }),
+      hire('99999999-0000-0000-0000-000000000007', { event_date: '2026-10-20', deposit_amount: 250 }),
       hire('88888888-0000-0000-0000-000000000008', { status: 'cancelled' }),
     ],
     private_booking_items: [
@@ -132,6 +132,9 @@ describe('the manager email', () => {
     expect(email.subject).toBe('Private hires needing attention: 3 bookings')
     expect(email.text).toContain('PB-AAAAAAAA: Sat, 14 Nov 2026, 30 guests, Birthday party (confirmed)')
     expect(email.text).toContain('Open the booking: https://management.example.test/private-bookings/aaaaaaaa-0000-0000-0000-000000000001')
+    // BK-062 and BK-131: the past hire on 20 October is still open, with its deposit unrecorded.
+    expect(email.text).toContain('PB-99999999: £250.00 deposit has no outcome recorded; due back by Thu, 22 Oct 2026.')
+    expect(email.text).toContain('PB-99999999: the hire on Tue, 20 Oct 2026 has not been closed out.')
     for (const body of [email.text, email.html]) {
       expect(body).not.toContain('Jamie')
       expect(body).not.toContain('07700')

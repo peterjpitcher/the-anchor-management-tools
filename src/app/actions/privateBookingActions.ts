@@ -3412,3 +3412,57 @@ export async function markEventSheetGenerated(
     return { error: getErrorMessage(error) }
   }
 }
+
+/**
+ * Close a private hire after the night (BK-062, BK-131; owner decision D27): record the balance as
+ * settled at the till, what happened to the deposit, and mark the hire completed without sending
+ * the guest anything. Keeping any of a deposit is a General Manager decision, as it is at
+ * cancellation.
+ */
+export async function closeOutPrivateBooking(
+  bookingId: string,
+  input: {
+    balanceSettledAtTill?: { method: 'cash' | 'card' } | null
+    deposit?: import('@/services/private-bookings/close-out').DepositOutcome | null
+  },
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const [canManage, canManageDeposits] = await Promise.all([
+    checkUserPermission('private_bookings', 'manage'),
+    checkUserPermission('private_bookings', 'manage_deposits'),
+  ])
+  if (!canManage && !canManageDeposits) return { error: 'You do not have permission to close out private hires' }
+  if (input.deposit?.outcome === 'kept' && !(await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION))) {
+    return { error: 'Keeping a deposit requires General Manager override permission' }
+  }
+
+  try {
+    const { closeOutPrivateBooking: closeOut } = await import('@/services/private-bookings/close-out')
+    const result = await closeOut({ bookingId, ...input, performedBy: user.id })
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'close_out',
+        balance_recorded: result.balanceRecorded,
+        deposit_status: result.depositStatus,
+      },
+    })
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/private-bookings')
+    revalidateTag('dashboard')
+    return { success: true }
+  } catch (error: unknown) {
+    logger.error('Error closing out a private hire', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
+    })
+    return { error: getErrorMessage(error) }
+  }
+}
