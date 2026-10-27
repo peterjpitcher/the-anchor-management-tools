@@ -1,14 +1,28 @@
 'use client'
 
 import { useState } from 'react'
-import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
+import { exportUserData, exportGuestData, deleteUserData } from '@/app/actions/gdpr'
 import { Alert, Button, Card, CardBody, CardHeader, Icon, Input, Modal, PageLayout, toast } from '@/ds'
 
 export default function GDPRSettingsPage() {
   const [isExporting, setIsExporting] = useState(false)
+  const [guestIdentifier, setGuestIdentifier] = useState('')
+  const [isExportingGuest, setIsExportingGuest] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteEmail, setDeleteEmail] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const downloadJson = (data: string, fileName: string, mimeType: string | undefined) => {
+    const blob = new Blob([data], { type: mimeType || 'application/json' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  }
 
   const handleExportData = async () => {
     setIsExporting(true)
@@ -21,23 +35,38 @@ export default function GDPRSettingsPage() {
       }
       
       if (result.success && result.data) {
-        // Create and download the file
-        const blob = new Blob([result.data], { type: result.mimeType })
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = result.fileName
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-        
+        downloadJson(result.data, result.fileName, result.mimeType)
         toast.success('Your data has been exported successfully')
       }
     } catch (error) {
       toast.error('Failed to export data')
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  // A guest's request for their data (BK-081): the same tables an erasure clears.
+  const handleExportGuestData = async () => {
+    if (!guestIdentifier.trim()) {
+      toast.error('Enter the guest\'s email address, phone number or record id')
+      return
+    }
+    setIsExportingGuest(true)
+    try {
+      const result = await exportGuestData(guestIdentifier.trim())
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      if (result.success && result.data && result.fileName) {
+        downloadJson(result.data, result.fileName, result.mimeType)
+        toast.success('The guest\'s data has been exported')
+        setGuestIdentifier('')
+      }
+    } catch (error) {
+      toast.error('Failed to export the guest\'s data')
+    } finally {
+      setIsExportingGuest(false)
     }
   }
 
@@ -95,6 +124,38 @@ export default function GDPRSettingsPage() {
           >
             Export My Data
           </Button>
+        </CardBody>
+      </Card>
+
+      {/* A guest's data request (BK-081). Super admins only: the server checks. */}
+      <Card>
+        <CardHeader title="Export a Guest's Data" />
+        <CardBody className="space-y-4">
+          <p className="max-w-xl text-sm text-text-muted">
+            Answer a guest&apos;s request for a copy of their data. Enter the email address, phone
+            number or customer record id they are known by. The file covers everything an erasure
+            would clear: their bookings, each ticket&apos;s guest names and answers, messages and the
+            audit history about them.
+          </p>
+          <form
+            className="flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleExportGuestData()
+            }}
+          >
+            <div className="flex-1">
+              <Input
+                label="Guest email, phone or record id"
+                value={guestIdentifier}
+                onChange={(e) => setGuestIdentifier(e.target.value)}
+                placeholder="guest@example.com or 07700 900123"
+              />
+            </div>
+            <Button type="submit" variant="secondary" loading={isExportingGuest} icon={<Icon name="download" size={16} />}>
+              Export Guest Data
+            </Button>
+          </form>
         </CardBody>
       </Card>
 

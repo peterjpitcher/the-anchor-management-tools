@@ -11,6 +11,9 @@ import {
   loadOneHireReadiness,
   type HireReadinessView,
 } from '@/services/private-bookings/readiness'
+import { loadHireNightView, type HireNightView } from '@/services/private-bookings/night-clashes'
+import { loadKitchenLoadFor } from '@/services/kitchen-load'
+import type { KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
 export const dynamic = 'force-dynamic'
@@ -149,6 +152,36 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     }
   }
 
+  // Diners, event seats and events in this hire's rooms that night (BK-070, BK-071, D24). If this
+  // cannot be read the page says so, rather than looking as if the night is clear.
+  let hireNight: HireNightView | null = null
+  let hireNightError = false
+  if (bookingData) {
+    try {
+      hireNight = await loadHireNightView(bookingData.id)
+    } catch (error) {
+      console.error('Failed to load the private hire night', error)
+      hireNightError = true
+    }
+  }
+
+  // The covers the kitchen counts for this hire against online food bookings (D29, BK-072).
+  let kitchen: KitchenLoadSummary | null = null
+  let kitchenError = false
+  if (bookingData && (bookingData.status === 'draft' || bookingData.status === 'confirmed') && bookingData.event_date && !bookingData.date_tbd) {
+    try {
+      const load = await loadKitchenLoadFor('private_booking', bookingData.id, bookingData.event_date)
+      kitchen = {
+        load: load ? { covers: load.covers, foodTime: load.foodTime } : null,
+        covers: bookingData.kitchen_covers ?? null,
+        foodTime: bookingData.kitchen_food_time ? String(bookingData.kitchen_food_time).slice(0, 5) : null,
+      }
+    } catch (error) {
+      console.error('Failed to load the kitchen covers for a private hire', error)
+      kitchenError = true
+    }
+  }
+
   // Invoicing is super_admin only. The server action re-checks this on every
   // call; asking here just avoids showing a manager a button that will refuse.
   let canInvoice = false
@@ -182,6 +215,10 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
       depositConfirmation={depositConfirmation}
       hireReadiness={hireReadiness}
       hireReadinessError={hireReadinessError}
+      hireNight={hireNight}
+      hireNightError={hireNightError}
+      kitchen={kitchen}
+      kitchenError={kitchenError}
       canOverrideCapacity={canOverrideCapacity}
       initialError={initialError}
     />

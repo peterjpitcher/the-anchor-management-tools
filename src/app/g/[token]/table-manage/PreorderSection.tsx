@@ -23,8 +23,10 @@ import {
   summariseOrderAddons,
 } from '@/lib/table-bookings/preorder'
 import { cn } from '@/lib/utils'
+import type { BookingPeriodMenuItem } from '@/lib/table-bookings/periods'
 import {
   PREORDER_ADDON_GUEST_NOTE,
+  PREORDER_ALLERGEN_FALLBACK,
   PREORDER_COURSES,
   PREORDER_COURSE_LABELS,
   PREORDER_SELECTION_COURSE_LABELS,
@@ -144,6 +146,71 @@ function emptyOptionLabel(course: PreorderCourse, courseCount: PreorderCourseCou
   return 'None, thank you'
 }
 
+/** A dish in a choice list: its name, and its allergens when the menu records them (BK-060). */
+function dishOptionLabel(item: BookingPeriodMenuItem): string {
+  const allergens = item.allergens?.trim()
+  return allergens ? `${item.name} (allergens: ${allergens})` : item.name
+}
+
+/**
+ * Every dish on the menu with its allergens, so a guest can check before choosing (BK-060). A dish
+ * with none recorded says the SSOT wording, never "no allergens": missing data means unknown. A
+ * <details> block, so it needs no JavaScript and stays out of the way once read.
+ */
+function MenuAllergens({ dishes }: { dishes: BookingPeriodMenuItem[] }) {
+  if (dishes.length === 0) return null
+  return (
+    <details className={GUEST_SUNK_BOX_CLASS}>
+      <summary className="cursor-pointer font-semibold">Allergens on this menu</summary>
+      <ul className="mt-2 flex flex-col gap-guest-xs">
+        {dishes.map((item) => (
+          <li key={item.id}>
+            <span className="font-semibold">{item.name}:</span> {item.allergens?.trim() || PREORDER_ALLERGEN_FALLBACK}
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/**
+ * A 1 course guest's seat (BK-148, owner decision D23): nothing to choose in advance, but a name
+ * and a dietary note, both optional, so the kitchen can tie a need to a guest on a big table.
+ */
+function OneCourseSeatFields({ ordinal, cover }: { ordinal: number; cover: PreorderCover | undefined }) {
+  return (
+    <fieldset className={PREORDER_SEAT_BLOCK_CLASS}>
+      <legend className={cn('px-1', SEAT_TITLE_CLASS)}>{seatLabel(cover, ordinal)}</legend>
+      <div className="flex flex-col gap-guest-md">
+        <p className={GUEST_BODY_CLASS}>1 course, chosen on the day, so there&apos;s nothing to pre-order.</p>
+        <div className="grid grid-cols-1 gap-guest-md sm:grid-cols-2">
+          <GuestField id={`seat-${ordinal}-name`} label="Name (optional)">
+            <GuestInput
+              {...guestFieldControlProps({ id: `seat-${ordinal}-name` })}
+              name={`seat_${ordinal}_name`}
+              type="text"
+              maxLength={100}
+              autoComplete="off"
+              defaultValue={cover?.guestName ?? ''}
+            />
+          </GuestField>
+          <GuestField id={`seat-${ordinal}-note`} label="Dietary requirement (optional)">
+            <GuestInput
+              {...guestFieldControlProps({ id: `seat-${ordinal}-note` })}
+              name={`seat_${ordinal}_note`}
+              type="text"
+              maxLength={200}
+              autoComplete="off"
+              defaultValue={cover?.dietaryNote ?? ''}
+              placeholder="For example, no dairy"
+            />
+          </GuestField>
+        </div>
+      </div>
+    </fieldset>
+  )
+}
+
 /** "Seat 2 needs a dessert. Seat 4 needs a starter or a dessert." for the alert above the form. */
 function describeOutstanding(gaps: Array<{ ordinal: number; missing: string }>): string {
   return gaps.map((gap) => `Seat ${gap.ordinal} needs ${gap.missing}.`).join(' ')
@@ -176,15 +243,20 @@ export function PreorderSection({
   // reason as above; the read-only view below totals what is on the record instead.
   const orderAddons = summariseOrderAddons({ covers: order.covers.map(liveOnly) })
   const savedOrderAddons = summariseOrderAddons(order)
+  // A Christmas party all on 1 course has nothing to choose, only a name and a note per guest.
+  const nothingToChoose = !order.requiresPreorder
+  const allDishes = [...PREORDER_COURSES.flatMap((course) => menuByCourse[course]), ...addons]
 
   return (
     <GuestSection
-      title="Your food choices"
+      title={nothingToChoose ? 'Your guests' : 'Your food choices'}
       titleId="preorder-heading"
       description={
-        order.covers.some(cover => cover.courseCount != null)
-          ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
-          : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`
+        nothingToChoose
+          ? "Everyone is on 1 course, chosen on the day, so there's nothing to pre-order. You can add each guest's name and any dietary needs so the kitchen knows who's who."
+          : order.covers.some(cover => cover.courseCount != null)
+            ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
+            : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`
       }
     >
       {hasAddons && (
@@ -209,13 +281,15 @@ export function PreorderSection({
             </GuestAlert>
           )}
 
+          {!nothingToChoose && <MenuAllergens dishes={allDishes} />}
+
           <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
             <input type="hidden" name="action" value="preorder" />
 
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
               const courseCount = getSeatCourseCount(order, ordinal)
-              if (courseCount === 1) return <p key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</p>
+              if (courseCount === 1) return <OneCourseSeatFields key={ordinal} ordinal={ordinal} cover={cover} />
               const instruction = tierInstruction(courseCount)
               const withdrawn = withdrawnChoices(cover)
               const hasError = errorSeat === ordinal
@@ -291,7 +365,7 @@ export function PreorderSection({
                               <option value="">{emptyOptionLabel(course, courseCount)}</option>
                               {items.map((item) => (
                                 <option key={item.id} value={item.id}>
-                                  {item.name}
+                                  {dishOptionLabel(item)}
                                 </option>
                               ))}
                             </GuestSelect>
@@ -326,7 +400,7 @@ export function PreorderSection({
                                   defaultChecked={tickedAddonIds.has(addon.id)}
                                   aria-invalid={hasError || undefined}
                                   aria-describedby={describedBy}
-                                  label={`${addon.name}, ${formatPreorderAddonPrice(addon.priceGbp)}`}
+                                  label={`${dishOptionLabel(addon)}, ${formatPreorderAddonPrice(addon.priceGbp)}`}
                                 />
                               </li>
                             ))}
@@ -380,14 +454,14 @@ export function PreorderSection({
             </div>
 
             <div>
-              <GuestSubmitButton loadingText="Saving...">Save food choices</GuestSubmitButton>
+              <GuestSubmitButton loadingText="Saving...">{nothingToChoose ? 'Save guest details' : 'Save food choices'}</GuestSubmitButton>
             </div>
           </form>
         </>
       ) : (
         <>
           <p className={GUEST_SUNK_BOX_CLASS}>
-            Food choices are now closed for this booking. Please ring us on {contactPhone} if anything
+            {nothingToChoose ? 'Guest details are' : 'Food choices are'} now closed for this booking. Please ring us on {contactPhone} if anything
             needs to change.
           </p>
 
@@ -395,7 +469,15 @@ export function PreorderSection({
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
               const courseCount = getSeatCourseCount(order, ordinal)
-              if (courseCount === 1) return <li key={ordinal} className={GUEST_BODY_CLASS}>Guest {ordinal}: 1 course, no pre-order required.</li>
+              if (courseCount === 1) {
+                return (
+                  <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, GUEST_BODY_CLASS)}>
+                    <p className={SEAT_TITLE_CLASS}>{seatLabel(cover, ordinal)}, 1 course</p>
+                    <p className="mt-1">Chosen on the day, nothing to pre-order.</p>
+                    {cover?.dietaryNote && <p className="mt-1">Dietary requirement: {cover.dietaryNote}</p>}
+                  </li>
+                )
+              }
               const chosen = PREORDER_COURSES.map((course) => {
                 const selection = cover ? getCoverCourse(cover, course) : null
                 return selection ? `${PREORDER_COURSE_LABELS[course]}: ${selection.itemName}` : null

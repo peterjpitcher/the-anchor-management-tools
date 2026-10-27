@@ -107,13 +107,18 @@ export async function fetchCalendarDailyOps(): Promise<CalendarDataset<CalendarD
   const { startIso, endIso } = calendarRange()
 
   const [covers, staff] = await Promise.all([
-    canViewCovers ? readCoversByDate(supabase, startIso, endIso) : Promise.resolve(denied()),
+    // The admin client after the permission check: the day load reads hires and event tickets too.
+    canViewCovers ? readCoversByDate(createAdminClient(), startIso, endIso) : Promise.resolve(denied()),
     canViewRota ? readStaffByDate(supabase, startIso, endIso) : Promise.resolve(denied()),
   ])
 
   const coversByDate: Record<string, number> = {}
+  const hireGuestsByDate: Record<string, number> = {}
   if (covers.status === 'ok') {
-    for (const row of covers.data) coversByDate[row.date] = row.covers
+    for (const row of covers.data) {
+      if (row.covers > 0) coversByDate[row.date] = row.covers
+      if (row.hireGuests > 0) hireGuestsByDate[row.date] = row.hireGuests
+    }
   }
 
   const staffByDate: Record<string, string[]> = {}
@@ -121,5 +126,5 @@ export async function fetchCalendarDailyOps(): Promise<CalendarDataset<CalendarD
     for (const row of staff.data) staffByDate[row.date] = row.staff
   }
 
-  return ok([{ coversByDate, staffByDate }])
+  return ok([{ coversByDate, staffByDate, hireGuestsByDate }])
 }

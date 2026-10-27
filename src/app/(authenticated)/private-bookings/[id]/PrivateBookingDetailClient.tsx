@@ -63,7 +63,11 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 import { HireReadinessPanel } from './HireReadinessPanel'
+import { HireNightPanel } from './HireNightPanel'
+import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
+import { setPrivateBookingKitchenLoad } from '@/app/actions/kitchen-load'
 import type { HireReadinessView } from '@/services/private-bookings/readiness'
+import type { HireNightView } from '@/services/private-bookings/night-clashes'
 // Design system components
 import {
   Alert,
@@ -202,6 +206,14 @@ interface PrivateBookingDetailClientProps {
   hireReadiness?: HireReadinessView | null;
   /** True when the page could not check the rooms. */
   hireReadinessError?: boolean;
+  /** Diners, event seats and events in the hire's rooms that night (BK-070, BK-071, D24). */
+  hireNight?: HireNightView | null;
+  /** True when the page could not check the night. */
+  hireNightError?: boolean;
+  /** The covers the kitchen counts for this hire (D29, BK-072). */
+  kitchen?: KitchenLoadSummary | null;
+  /** True when the page could not read the kitchen covers. */
+  kitchenError?: boolean;
   /** Managers may allow more guests than the rooms hold (gm_override). */
   canOverrideCapacity?: boolean;
   initialError?: string | null;
@@ -715,6 +727,8 @@ function StatusModal({
         ? await cancelPrivateBooking(bookingId, undefined, retention, capture)
         : await updateBookingStatus(bookingId, newStatus);
     if ('success' in result && result.success) {
+      // Diners, event seats or events already in the rooms that night (D24: warned, not refused).
+      if ('warning' in result && result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
       onClose();
     } else if ('error' in result && result.error) {
@@ -1665,6 +1679,10 @@ export default function PrivateBookingDetailClient({
   depositConfirmation,
   hireReadiness,
   hireReadinessError,
+  hireNight,
+  hireNightError,
+  kitchen,
+  kitchenError,
   canOverrideCapacity,
   initialError,
 }: PrivateBookingDetailClientProps) {
@@ -2606,6 +2624,19 @@ export default function PrivateBookingDetailClient({
         guestCount={booking.guest_count === null || booking.guest_count === undefined ? null : toNumber(booking.guest_count)}
         canOverrideCapacity={canOverrideCapacity === true}
         onChanged={() => router.refresh()}
+      />
+
+      <HireNightPanel view={hireNight ?? null} loadFailed={hireNightError === true} />
+
+      <KitchenLoadEditor
+        title="Kitchen"
+        summary={kitchen ?? null}
+        loadFailed={kitchenError === true}
+        automaticRule="Left blank, a hire with kitchen catering booked counts each guest as one cover, at its start time, once it holds its room."
+        emptyReason="No kitchen covers are counted: no kitchen catering is booked, or the hire does not hold its room yet."
+        canEdit={permissions.canEdit}
+        save={(input) => setPrivateBookingKitchenLoad(bookingId, { covers: input.covers, foodTime: input.foodTime })}
+        onSaved={() => router.refresh()}
       />
 
       {isDateTbd && (

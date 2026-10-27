@@ -7,6 +7,7 @@ import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment,
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
@@ -49,6 +50,7 @@ import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { hireNightWarning } from '@/services/private-bookings/night-clashes'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import {
   confirmDeposit,
@@ -372,6 +374,18 @@ export async function createPrivateBooking(formData: FormData) {
       date_tbd: isDateTbd
     } as CreatePrivateBookingInput);
 
+    // Staff read the guest the marketing notice and they said yes (owner decision D32).
+    if (user?.id) {
+      await recordStaffReadOutConsent({
+        saidYes: formData.get('marketing_texts_yes') === 'true',
+        customerId: booking.customer_id,
+        actorUserId: user.id,
+        source: 'staff_private_booking',
+        relatedEntityType: 'private_booking',
+        relatedEntityId: booking.id,
+      })
+    }
+
     await logAuditEvent({
       user_id: user?.id,
       operation_type: 'create',
@@ -391,7 +405,9 @@ export async function createPrivateBooking(formData: FormData) {
     revalidatePath('/private-bookings')
     revalidatePath('/events')
     revalidateTag('dashboard')
-    return { success: true, data: booking }
+    // D24: diners, event seats or events already in the rooms that night are warned about, not refused.
+    const warning = await hireNightWarning(booking.id)
+    return warning ? { success: true, data: booking, warning } : { success: true, data: booking }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error creating private booking:', error)
     return { error: getErrorMessage(error) }
@@ -558,7 +574,9 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     revalidatePath(`/private-bookings/${id}`)
     revalidatePath('/events')
     revalidateTag('dashboard')
-    return { success: true, data: booking }
+    // D24: diners, event seats or events already in the rooms that night are warned about, not refused.
+    const warning = await hireNightWarning(id)
+    return warning ? { success: true, data: booking, warning } : { success: true, data: booking }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error updating private booking:', error)
     return { error: getErrorMessage(error) }
@@ -589,7 +607,10 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
     revalidatePath(`/private-bookings/${id}`)
     revalidatePath('/events')
     revalidateTag('dashboard')
-    return { success: true }
+    // Confirming or reinstating a hire (BK-070, D24): warn about diners, event seats or events
+    // already in its rooms that night.
+    const warning = status === 'confirmed' || status === 'draft' ? await hireNightWarning(id) : null
+    return warning ? { success: true, warning } : { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking status:', error)
     return { error: getErrorMessage(error) }

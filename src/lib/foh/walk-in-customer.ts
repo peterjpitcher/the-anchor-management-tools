@@ -82,6 +82,8 @@ export async function createWalkInCustomer(
         mobile_e164: syntheticPhone,
         sms_opt_in: false,
         sms_status: 'sms_deactivated',
+        // Made up for an anonymous walk-in: kept out of lists, counts and insights (BK-082).
+        is_placeholder: true,
         ...(includeEmail && sanitizedEmail ? { email: sanitizedEmail } : {})
       })
       .select('id')

@@ -10,10 +10,25 @@ import { logger } from '@/lib/logger'
  *   layout (seated / standing / mixed).
  *
  * Conflict detection delegates to the get_private_booking_conflicts RPC so
- * the window maths lives in one place (the database). On infrastructure
- * errors we fail OPEN (return no conflicts) — we must never invent a
- * conflict and wrongly block a booking; the RPC failure is logged instead.
+ * the window maths lives in one place (the database: private_booking_occupied_window).
+ *
+ * A check that could not run fails CLOSED (review BK-070, 24 October 2026). It
+ * used to return "no clashes" on any error, so a hire could be saved over
+ * another one whenever the diary read failed. Staff saves now refuse with
+ * DIARY_CHECK_FAILED_MESSAGE; the deposit path catches the error, records the
+ * money and leaves the booking a draft.
  */
+
+export const DIARY_CHECK_FAILED_MESSAGE =
+  'Could not check the diary for other private hires in these rooms, so nothing was saved. Please try again.'
+
+function diaryCheckFailed(cause: unknown, metadata: Record<string, unknown>): Error {
+  logger.error('Private booking conflict check failed', {
+    error: cause instanceof Error ? cause : new Error(String(cause)),
+    metadata,
+  })
+  return new Error(DIARY_CHECK_FAILED_MESSAGE)
+}
 
 export type BookingConflict = {
   booking_id: string
@@ -35,9 +50,11 @@ export async function findBookingConflicts(input: {
   spaceIds: string[]
   excludeBookingId?: string | null
 }): Promise<BookingConflict[]> {
+  const metadata = { eventDate: input.eventDate, spaceIds: input.spaceIds }
+  let result: { data: unknown; error: { message: string } | null }
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin.rpc('get_private_booking_conflicts', {
+    result = await admin.rpc('get_private_booking_conflicts', {
       p_event_date: input.eventDate,
       p_start_time: input.startTime ?? null,
       p_end_time: input.endTime ?? null,
@@ -47,23 +64,15 @@ export async function findBookingConflicts(input: {
       p_space_ids: input.spaceIds,
       p_exclude_booking_id: input.excludeBookingId ?? null,
     })
-
-    if (error) {
-      logger.error('Private booking conflict check failed', {
-        error: new Error(error.message),
-        metadata: { eventDate: input.eventDate, spaceIds: input.spaceIds },
-      })
-      return []
-    }
-
-    return (data ?? []) as BookingConflict[]
   } catch (rpcError) {
-    logger.error('Private booking conflict check threw', {
-      error: rpcError instanceof Error ? rpcError : new Error(String(rpcError)),
-      metadata: { eventDate: input.eventDate, spaceIds: input.spaceIds },
-    })
-    return []
+    throw diaryCheckFailed(rpcError, metadata)
   }
+
+  if (result.error) {
+    throw diaryCheckFailed(new Error(result.error.message), metadata)
+  }
+
+  return (result.data ?? []) as BookingConflict[]
 }
 
 export type CapacityCheckResult = { ok: boolean; reason?: string; capacity?: number }
@@ -134,75 +143,77 @@ export function checkCapacity(input: {
   return { ok: true, capacity }
 }
 
-/** Space item ids currently attached to a booking (item_type 'space'). */
+/**
+ * Space item ids currently attached to a booking (item_type 'space'). Throws when they cannot be
+ * read: an empty list would skip the clash check as if the booking had no rooms (BK-070).
+ */
 export async function getBookingSpaceIds(bookingId: string): Promise<string[]> {
+  let result: { data: unknown; error: { message: string } | null }
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
+    result = await admin
       .from('private_booking_items')
       .select('space_id')
       .eq('booking_id', bookingId)
       .eq('item_type', 'space')
       .not('space_id', 'is', null)
-
-    if (error) {
-      logger.error('Failed to load booking space ids', {
-        error: new Error(error.message),
-        metadata: { bookingId },
-      })
-      return []
-    }
-
-    const ids = (data ?? [])
-      .map((row: { space_id: string | null }) => row.space_id)
-      .filter((id): id is string => Boolean(id))
-    return Array.from(new Set(ids))
   } catch (queryError) {
-    logger.error('Failed to load booking space ids', {
-      error: queryError instanceof Error ? queryError : new Error(String(queryError)),
-      metadata: { bookingId },
-    })
-    return []
+    throw diaryCheckFailed(queryError, { bookingId, step: 'load booked rooms' })
   }
+
+  if (result.error) {
+    throw diaryCheckFailed(new Error(result.error.message), { bookingId, step: 'load booked rooms' })
+  }
+
+  const ids = ((result.data ?? []) as Array<{ space_id: string | null }>)
+    .map((row) => row.space_id)
+    .filter((id): id is string => Boolean(id))
+  return Array.from(new Set(ids))
 }
 
-/** Conflicts for an existing booking, based on its stored dates, times and spaces. */
+/**
+ * Conflicts for an existing booking, based on its stored dates, times and spaces. Throws when the
+ * check cannot run, so the deposit path keeps the booking a draft rather than confirming it blind.
+ */
 export async function getBookingConflictSummary(bookingId: string): Promise<BookingConflict[]> {
+  let result: { data: unknown; error: { message: string } | null }
   try {
     const admin = createAdminClient()
-    const { data: booking, error } = await admin
+    result = await admin
       .from('private_bookings')
-      .select('event_date, start_time, end_time, setup_date, setup_time, cleardown_time')
+      .select('event_date, start_time, end_time, setup_date, setup_time, cleardown_time, date_tbd')
       .eq('id', bookingId)
       .single()
-
-    if (error || !booking?.event_date) {
-      if (error) {
-        logger.error('Failed to load booking for conflict summary', {
-          error: new Error(error.message),
-          metadata: { bookingId },
-        })
-      }
-      return []
-    }
-
-    const spaceIds = await getBookingSpaceIds(bookingId)
-
-    return findBookingConflicts({
-      eventDate: booking.event_date as string,
-      startTime: booking.start_time as string | null,
-      endTime: booking.end_time as string | null,
-      setupDate: booking.setup_date as string | null,
-      setupTime: booking.setup_time as string | null,
-      cleardownTime: booking.cleardown_time as string | null,
-      spaceIds,
-      excludeBookingId: bookingId,
-    })
-  } catch (summaryError) {
-    logger.error('Booking conflict summary failed', {
-      error: summaryError instanceof Error ? summaryError : new Error(String(summaryError)),
-      metadata: { bookingId },
-    })
-    return []
+  } catch (loadError) {
+    throw diaryCheckFailed(loadError, { bookingId, step: 'load booking' })
   }
+
+  if (result.error) {
+    throw diaryCheckFailed(new Error(result.error.message), { bookingId, step: 'load booking' })
+  }
+
+  const booking = result.data as {
+    event_date: string | null
+    start_time: string | null
+    end_time: string | null
+    setup_date: string | null
+    setup_time: string | null
+    cleardown_time: string | null
+    date_tbd: boolean | null
+  } | null
+  // An undated hire holds no room, so nothing can clash with it.
+  if (!booking?.event_date || booking.date_tbd) return []
+
+  const spaceIds = await getBookingSpaceIds(bookingId)
+
+  return findBookingConflicts({
+    eventDate: booking.event_date,
+    startTime: booking.start_time,
+    endTime: booking.end_time,
+    setupDate: booking.setup_date,
+    setupTime: booking.setup_time,
+    cleardownTime: booking.cleardown_time,
+    spaceIds,
+    excludeBookingId: bookingId,
+  })
 }

@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
+import { maskPhone } from '@/lib/phone/mask'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
 import { generateGuestToken, hashGuestToken } from '@/lib/guest/tokens'
@@ -156,7 +157,7 @@ async function sendSmsSafe(
     return await sendSMS(to, body, options)
   } catch (err) {
     logger.warn('Failed sending an email capture SMS', {
-      metadata: { to, error: err instanceof Error ? err.message : String(err) },
+      metadata: { to: maskPhone(to), error: err instanceof Error ? err.message : String(err) },
     })
     return {
       success: false,

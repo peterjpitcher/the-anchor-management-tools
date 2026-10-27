@@ -661,13 +661,25 @@ async function loadCustomerEmailHealthTarget(
   if (customerId) {
     const { data: customer, error } = await adminClient
       .from('customers')
-      .select('id, email_delivery_failures')
+      .select('id, email, email_delivery_failures')
       .eq('id', customerId)
       .maybeSingle()
 
     if (error) {
       logger.warn('Failed to load customer for email health by id', {
         metadata: { customerId, error: error.message },
+      })
+      return null
+    }
+
+    // A booking may send to the email typed for it (contact_email, BK-078) under the customer's
+    // id. A bounce or complaint from that address says nothing about the different address on the
+    // customer's record, so it must not deactivate it or record a marketing opt-out against it.
+    // The address itself is still suppressed by the caller.
+    const storedEmail = typeof customer?.email === 'string' ? customer.email.trim().toLowerCase() : null
+    if (customer && storedEmail !== recipient) {
+      logger.info('Resend event is for an address other than the customer record holds; customer email health left alone', {
+        metadata: { customerId },
       })
       return null
     }

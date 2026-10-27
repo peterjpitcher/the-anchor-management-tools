@@ -30,8 +30,49 @@ const ExternalBookingSchema = z.object({
   preferredTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   notes: z.string().trim().max(2000).optional(),
   extras: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
-  perks: z.array(z.string().trim().min(1).max(120)).max(20).optional()
+  perks: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
+  // What the guest asked for, as the website's Christmas form sends it (BK-061). Zod used to strip
+  // these, so every enquiry became a 'Christmas Party' and staff had to read the notes to tell a
+  // meal from a party. Optional, and lenient on values, so an older or newer website still books.
+  enquiryMode: z.enum(['meal', 'party']).optional().catch(undefined),
+  mealService: z.enum(['lunch', 'dinner']).optional().catch(undefined),
+  courseTier: z.enum(['undecided', 'one_course', 'two_course', 'three_course']).optional().catch(undefined),
+  partyFormat: z.string().trim().max(60).optional().catch(undefined)
 });
+
+type ExternalBooking = z.infer<typeof ExternalBookingSchema>;
+
+const COURSE_TIER_LABELS: Record<NonNullable<ExternalBooking['courseTier']>, string> = {
+  undecided: 'courses not decided yet',
+  one_course: 'mostly 1 course per guest',
+  two_course: 'mostly 2 courses per guest',
+  three_course: 'mostly 3 courses per guest',
+};
+
+/**
+ * The private booking's event type, from what the guest asked for: a sit-down Christmas meal or a
+ * Christmas party (BK-061). An enquiry from an older website, which says neither, stays a
+ * 'Christmas Party' as before.
+ */
+function christmasEnquiryEventType(payload: Pick<ExternalBooking, 'enquiryMode' | 'mealService'>): string {
+  if (payload.enquiryMode !== 'meal') return 'Christmas Party';
+  if (payload.mealService === 'lunch') return 'Christmas Meal (Lunch)';
+  if (payload.mealService === 'dinner') return 'Christmas Meal (Dinner)';
+  return 'Christmas Meal';
+}
+
+/** One plain line for the notes, so the structured answer is on the booking as well as the type. */
+function christmasEnquirySummary(payload: ExternalBooking): string | null {
+  if (payload.enquiryMode === 'meal') {
+    const sitting = payload.mealService ? `, ${payload.mealService}` : '';
+    const tier = payload.courseTier ? `, ${COURSE_TIER_LABELS[payload.courseTier]}` : '';
+    return `Enquiry: Christmas meal${sitting}${tier}`;
+  }
+  if (payload.enquiryMode === 'party') {
+    return `Enquiry: Christmas party${payload.partyFormat ? `, style ${payload.partyFormat.replace(/_/g, ' ')}` : ''}`;
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   return withApiAuth(async (req) => {
@@ -116,6 +157,10 @@ export async function POST(request: NextRequest) {
           nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
 
         const noteSections: string[] = [];
+        const enquirySummary = christmasEnquirySummary(payload);
+        if (enquirySummary) {
+          noteSections.push(enquirySummary);
+        }
         if (payload.notes?.trim()) {
           noteSections.push(payload.notes.trim());
         }
@@ -135,7 +180,7 @@ export async function POST(request: NextRequest) {
           event_date: payload.preferredDate,
           start_time: payload.preferredTime,
           guest_count: payload.partySize,
-          event_type: 'Christmas Party',
+          event_type: christmasEnquiryEventType(payload),
           source: 'website',
           status: 'draft',
           internal_notes: noteSections.join('\n\n'),

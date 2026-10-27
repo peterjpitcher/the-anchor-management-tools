@@ -12,6 +12,8 @@ export const CASHING_UP_NAV: HeaderNavItem[] = [
   { label: 'Daily Entry', href: '/cashing-up/daily' },
   { label: 'Weekly', href: '/cashing-up/weekly' },
   { label: 'Insights', href: '/cashing-up/insights' },
+  // Money taken online, kept off the till (BK-117, D33).
+  { label: 'Online Income', href: '/cashing-up/online-income' },
   { label: 'Import', href: '/cashing-up/import' },
 ]
 

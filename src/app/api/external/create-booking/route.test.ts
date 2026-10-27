@@ -120,3 +120,46 @@ describe('POST /api/external/create-booking', () => {
     expect(sendManagerEmailMock).not.toHaveBeenCalled();
   });
 });
+
+// BK-061: the website says whether the guest asked for a sit-down Christmas meal or a party, and how,
+// and the booking says so too, instead of every enquiry becoming a 'Christmas Party'.
+describe('POST /api/external/create-booking: what the guest asked for', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createBookingMock.mockResolvedValue({ id: 'pb-test-2', booking_reference: 'PB-TEST-2', status: 'draft' });
+  });
+
+  async function send(extra: Record<string, unknown>) {
+    currentRequest = buildRequest({ ...validBody, ...extra });
+    const { POST } = await import('./route');
+    const response = await POST(currentRequest as never);
+    return { response, input: createBookingMock.mock.calls[0]?.[0] };
+  }
+
+  it('records a meal enquiry as a Christmas meal, with its sitting and courses', async () => {
+    const { response, input } = await send({ enquiryMode: 'meal', mealService: 'lunch', courseTier: 'two_course' });
+
+    expect(response.status).toBe(201);
+    expect(input.event_type).toBe('Christmas Meal (Lunch)');
+    expect(input.internal_notes).toContain('Enquiry: Christmas meal, lunch, mostly 2 courses per guest');
+  });
+
+  it('records a party enquiry as a Christmas party, with its style', async () => {
+    const { input } = await send({ enquiryMode: 'party', partyFormat: 'buffet_party' });
+
+    expect(input.event_type).toBe('Christmas Party');
+    expect(input.internal_notes).toContain('Enquiry: Christmas party, style buffet party');
+  });
+
+  it('keeps an older website enquiry, which says neither, as a Christmas party', async () => {
+    const { input } = await send({});
+    expect(input.event_type).toBe('Christmas Party');
+    expect(input.internal_notes).not.toContain('Enquiry:');
+  });
+
+  it('never refuses an enquiry over a value it does not know', async () => {
+    const { response, input } = await send({ enquiryMode: 'brunch', courseTier: 'four_course', mealService: 'supper' });
+    expect(response.status).toBe(201);
+    expect(input.event_type).toBe('Christmas Party');
+  });
+});

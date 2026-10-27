@@ -7,6 +7,13 @@ import type { Mock } from 'vitest'
 vi.mock('@/services/private-bookings/readiness', async (importOriginal) =>
   (await import('../helpers/readyHire')).readyHireReadiness(importOriginal))
 
+// The diary is clear here: this file is about something else (the clash checks fail closed and are
+// tested in tests/services/privateHireNightClashes.test.ts).
+vi.mock('@/services/private-bookings/conflicts', async (importOriginal) =>
+  (await import('../helpers/clearDiary')).clearDiaryConflicts(importOriginal))
+vi.mock('@/services/private-bookings/night-clashes', async (importOriginal) =>
+  (await import('../helpers/clearDiary')).clearDiaryNight(importOriginal))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
