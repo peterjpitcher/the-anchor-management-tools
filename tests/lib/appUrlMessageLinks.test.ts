@@ -65,7 +65,6 @@ import {
   sendEventTicketTransferredEmail,
 } from '@/lib/email/event-ticket-emails'
 import { createBookingConfirmToken, createTableManageToken } from '@/lib/table-bookings/manage-booking'
-import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import { createTablePaymentToken } from '@/lib/table-bookings/bookings'
 import { sendEmailCaptureSms } from '@/lib/sms/email-capture'
 import { requestOpenShift } from '@/app/actions/rota'
@@ -209,7 +208,6 @@ describe('guest links built from the app URL', () => {
       (await createEventPaymentToken(db, { customerId: 'customer-1', bookingId: BOOKING_ID, holdExpiresAt: HOLD_EXPIRES_AT })).url,
       (await createTableManageToken(db, { customerId: 'customer-1', tableBookingId: 'table-1', bookingStartIso: TABLE_START })).url,
       (await createBookingConfirmToken(db, { customerId: 'customer-1', tableBookingId: 'table-1', bookingStartIso: TABLE_START })).url,
-      (await createSundayPreorderToken(db, { customerId: 'customer-1', tableBookingId: 'table-1', bookingStartIso: TABLE_START })).url,
       (await createTablePaymentToken(db, { customerId: 'customer-1', tableBookingId: 'table-1', holdExpiresAt: HOLD_EXPIRES_AT })).url,
     ]
 
@@ -218,7 +216,6 @@ describe('guest links built from the app URL', () => {
       `${APP_URL}/g/guest-token/event-payment`,
       `${APP_URL}/g/guest-token/table-manage`,
       `${APP_URL}/g/guest-token/confirm-booking`,
-      `${APP_URL}/g/guest-token/sunday-preorder`,
       `${APP_URL}/g/guest-token/table-payment`,
     ])
   })

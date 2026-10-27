@@ -6,6 +6,13 @@ vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
   getLondonDateIso: vi.fn(() => '2026-04-05')
 }))
+// Waiving a deposit needs table_bookings manage, not a role name (D18, BK-106).
+vi.mock('@/app/actions/rbac', () => ({
+  checkUserPermission: vi.fn().mockResolvedValue(false),
+}))
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue({
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) }
@@ -20,6 +27,7 @@ vi.mock('@/lib/table-bookings/bookings', async (importOriginal) => ({
 }))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/bookings/route'
 import {
@@ -91,6 +99,7 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
       }
     }
     vi.mocked(requireFohPermission).mockResolvedValue(mockResult as unknown as Awaited<ReturnType<typeof requireFohPermission>>)
+    vi.mocked(checkUserPermission).mockResolvedValue(false)
 
     const req = makeRequest({ ...baseBookingPayload, waive_deposit: true })
     const res = await POST(req)
@@ -167,6 +176,7 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
       supabase: mockSupabase
     }
     vi.mocked(requireFohPermission).mockResolvedValue(mockResult as unknown as Awaited<ReturnType<typeof requireFohPermission>>)
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
 
     const req = makeRequest({ ...baseBookingPayload, waive_deposit: true })
     const res = await POST(req)

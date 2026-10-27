@@ -134,6 +134,15 @@ describe('resolveTableBookingDeposit: a manager waiver', () => {
     expect(deposit.rule).toBe('waived')
   })
 
+  // BK-106: who took the deposit off, and why, as staff read it.
+  it('names a pub event apart from a manager waiver', () => {
+    const pubEvent = expectOk(resolve({ partySize: 18, depositWaived: true, waivedFor: 'pub_event' }))
+    expect(pubEvent.reason).toBe('No deposit: this booking is a pub event.')
+    expect(pubEvent.rule).toBe('waived')
+    const manager = expectOk(resolve({ partySize: 18, depositWaived: true }))
+    expect(manager.reason).toBe('A manager waived the deposit for this booking.')
+  })
+
   it('wins even when the period id is stale, because nothing is priced', () => {
     const result = resolve({
       partySize: 12,

@@ -11,11 +11,12 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatDateWithTimeForSms } from '@/lib/dateUtils'
-import { isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-token'
+import { hasBookingStarted, isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-token'
 import {
   GuestAlert,
   GuestButton,
   GuestIntro,
+  GuestPhoneLink,
   GuestShell,
   GUEST_MESSAGE_CLASS,
   GUEST_MUTED_CLASS,
@@ -45,6 +46,18 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   )
 }
 
+/** Once the table time has started, nothing can be changed from the link. */
+function TooLate() {
+  return (
+    <Shell title="It's too late to change this online">
+      <p className={GUEST_MESSAGE_CLASS}>Your booking time has already started, so we can&apos;t change it from this link.</p>
+      <p className={GUEST_MESSAGE_CLASS}>
+        If you need to tell us anything, call us on <GuestPhoneLink />.
+      </p>
+    </Shell>
+  )
+}
+
 export default async function ConfirmBookingPage({ params, searchParams }: PageProps) {
   const { token } = await params
   const { state } = await searchParams
@@ -65,6 +78,10 @@ export default async function ConfirmBookingPage({ params, searchParams }: PageP
         <p className={GUEST_MESSAGE_CLASS}>You are always welcome to book again whenever suits you.</p>
       </Shell>
     )
+  }
+
+  if (state === 'too_late') {
+    return <TooLate />
   }
 
   const lookup = await lookupConfirmToken(supabase, token)
@@ -105,6 +122,13 @@ export default async function ConfirmBookingPage({ params, searchParams }: PageP
         </p>
       </Shell>
     )
+  }
+
+  // The table time has started: neither answer can be taken any more (BK-112). Without this the
+  // buttons stayed, and "Sorry, I need to cancel" showed "Your table is cancelled" for a booking
+  // that stayed confirmed.
+  if (hasBookingStarted(booking)) {
+    return <TooLate />
   }
 
   if (state === 'cancel_failed' || state === 'error') {

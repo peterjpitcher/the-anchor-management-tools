@@ -26,6 +26,7 @@ export type TableBookingFallbackMessage =
   | 'party_size_deposit_request'
   | 'confirm_reminder'
   | 'preorder_reminder'
+  | 'deposit_hold_reminder'
 
 /** The template key each message is sent under. */
 export const TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS: Record<TableBookingFallbackMessage, string> = {
@@ -34,6 +35,7 @@ export const TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS: Record<TableBookingFallbackMe
   party_size_deposit_request: 'table_booking_pending_payment',
   confirm_reminder: 'table_booking_confirm_reminder',
   preorder_reminder: 'table_booking_preorder_reminder',
+  deposit_hold_reminder: 'table_booking_deposit_reminder',
 }
 
 /**
@@ -148,6 +150,8 @@ export function cancellationFacts(input: {
     deposit_owed: refund.refunded ? null : yesNo(refund.depositOwed === true),
     amount_owed_pence: !refund.refunded && typeof refund.amountOwedPence === 'number' ? refund.amountOwedPence : null,
     refund_cutoff_days: !refund.refunded && typeof refund.cutoffDays === 'number' ? refund.cutoffDays : null,
+    // The pub cancelled (BK-046): the fallback text must apologise as the email did.
+    cancelled_by: refund.cancelledBy === 'venue' ? 'venue' : null,
   }
 }
 
@@ -159,6 +163,7 @@ export function cancellationFacts(input: {
 export function refundResultFromFacts(facts: Record<string, unknown> | null | undefined): TableBookingCancellationRefundResult | null {
   const outcome = facts?.refund_outcome
   if (typeof outcome !== 'string' || !outcome) return null
+  const byVenue = facts?.cancelled_by === 'venue' ? { cancelledBy: 'venue' as const } : {}
 
   if (outcome === 'refunded') {
     const amountPence = Number(facts?.refund_amount_pence)
@@ -172,6 +177,7 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
       amountPence,
       tier,
       ...(Number.isFinite(alreadyReturnedPence) && alreadyReturnedPence > 0 ? { alreadyReturnedPence } : {}),
+      ...byVenue,
     }
   }
 
@@ -185,6 +191,7 @@ export function refundResultFromFacts(facts: Record<string, unknown> | null | un
     ...(facts?.deposit_owed === 'yes' ? { depositOwed: true } : {}),
     ...(Number.isFinite(owedPence) && owedPence > 0 ? { amountOwedPence: owedPence } : {}),
     ...(Number.isInteger(cutoffDays) && cutoffDays >= 0 ? { cutoffDays } : {}),
+    ...byVenue,
   }
 }
 
@@ -217,6 +224,19 @@ export function partySizeDepositRequestFacts(input: {
     hold_expires_at: isoInstant(input.holdExpiresAt),
     awaiting_payment: yesNo(input.awaitingPayment),
   }
+}
+
+/**
+ * The deposit hold reminder (BK-088) states the same facts as the deposit request: the party size,
+ * the amount, when the hold runs out, and that it is still owed.
+ */
+export function depositHoldReminderFacts(input: {
+  partySize: number | null
+  depositAmount: number | string | null
+  holdExpiresAt: string | null
+  awaitingPayment: boolean
+}): FallbackBookingFacts {
+  return partySizeDepositRequestFacts(input)
 }
 
 /** Whether a booking is still waiting for its deposit, as the payment page itself decides it. */

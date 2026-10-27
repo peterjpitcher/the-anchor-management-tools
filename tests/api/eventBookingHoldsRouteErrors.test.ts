@@ -105,6 +105,36 @@ describe('event booking holds route error payloads', () => {
     )
   })
 
+  // BK-113: this cron used to cancel every lapsed plain table deposit hold too, silently: no
+  // message to the guest, no audit row, nobody named as cancelling it, five minutes ahead of the
+  // table cron built to do it properly. Plain table bookings are now left to that cron.
+  it('never reads or touches a plain table booking', async () => {
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    const tables: string[] = []
+    const supabase = {
+      from: vi.fn((table: string) => {
+        tables.push(table)
+        const builder: Record<string, Mock> & { then?: Promise<{ data: unknown; error: unknown }>['then'] } = {} as any
+        const resolveNext = () => Promise.resolve(
+          table === 'table_bookings'
+            // What the old block found: a plain table booking whose deposit hold had lapsed.
+            ? { data: [{ id: 'table-1', customer_id: 'customer-1', booking_type: 'regular' }], error: null }
+            : { data: [], error: null },
+        )
+        for (const method of ['select', 'eq', 'not', 'lte', 'limit', 'in', 'neq', 'update']) builder[method] = vi.fn(() => builder)
+        builder.maybeSingle = vi.fn(resolveNext)
+        builder.then = (resolve, reject) => resolveNext().then(resolve, reject)
+        return builder
+      }),
+    }
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
+
+    const response = await GET(new Request('http://localhost/api/cron/event-booking-holds') as any)
+
+    expect(response.status).toBe(200)
+    expect(tables).not.toContain('table_bookings')
+  })
+
   // BK-019: a booking whose payment PayPal is still holding for review is not "unpaid". The job
   // used to expire it and text the guest that payment was not completed.
   it('leaves a booking alone while PayPal holds its payment, and sends no expiry message', async () => {

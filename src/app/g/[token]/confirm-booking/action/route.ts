@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
-import { isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-token'
+import { hasBookingStarted, isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-token'
 import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
 
 export const runtime = 'nodejs'
@@ -57,6 +57,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     )
   }
 
+  // Neither answer means anything once the table time has started (BK-112): a "yes" to a meal
+  // under way is noise, and the cancel path refuses to cancel. Say so rather than pretend.
+  if (hasBookingStarted(lookup.booking)) {
+    return NextResponse.redirect(
+      new URL(`/g/${token}/confirm-booking?state=too_late`, request.url),
+      { status: 303 },
+    )
+  }
+
   if (answer === 'yes') {
     // Idempotent by construction: a second tap writes the same column again and the guest
     // sees the same page. Messaging apps retry POSTs, and a guest who is unsure often taps
@@ -87,13 +96,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // status here. That path owns freeing the table, the audit row and the cancellation
     // message; a second implementation would drift from it and silently stop releasing
     // capacity, which is the opposite of what this feature is for.
+    //
+    // The result decides the page. It used to be thrown away, so a cancellation the guest path
+    // refused (the table time had started, or staff had changed the booking since the page
+    // loaded) still showed "Your table is cancelled" while the booking stayed confirmed and the
+    // table was held for a guest who thought they had cancelled (BK-112).
+    let state: 'cancelled' | 'too_late' | 'not_answerable' | 'cancel_failed'
     try {
-      await updateTableBookingByRawToken(supabase, {
+      const result = await updateTableBookingByRawToken(supabase, {
         rawToken: token,
         action: 'cancel',
         cancellationReason: 'guest_declined_confirmation',
         allowedActionTypes: ['booking_confirm'],
       })
+      if (result.state === 'cancelled') {
+        state = 'cancelled'
+      } else if (result.state === 'blocked' && result.reason === 'booking_started') {
+        state = 'too_late'
+      } else if (result.state === 'blocked' && result.reason === 'booking_not_confirmed') {
+        state = 'not_answerable'
+      } else {
+        logger.error('The confirm link could not cancel a booking', {
+          metadata: {
+            tableBookingId: lookup.booking.id,
+            state: result.state,
+            reason: result.reason ?? null,
+          },
+        })
+        state = 'cancel_failed'
+      }
     } catch (cancelError) {
       logger.error('Failed to cancel a booking from the confirm link', {
         metadata: {
@@ -101,14 +132,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
           error: cancelError instanceof Error ? cancelError.message : String(cancelError),
         },
       })
-      return NextResponse.redirect(
-        new URL(`/g/${token}/confirm-booking?state=cancel_failed`, request.url),
-        { status: 303 },
-      )
+      state = 'cancel_failed'
     }
 
     return NextResponse.redirect(
-      new URL(`/g/${token}/confirm-booking?state=cancelled`, request.url),
+      new URL(`/g/${token}/confirm-booking?state=${state}`, request.url),
       { status: 303 },
     )
   }

@@ -13,45 +13,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
  *     number they could check looked wrong.
  */
 
-const sendSMS = vi.fn().mockResolvedValue({ success: true })
-
-vi.mock('@/lib/twilio', () => ({ sendSMS: (...args: unknown[]) => sendSMS(...args) }))
-vi.mock('@/lib/sms/bulk', () => ({ getSmartFirstName: (n: string) => n }))
 vi.mock('@/lib/sms/support', () => ({ ensureReplyInstruction: (body: string) => body }))
-vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({})) }))
 
-const { sendTableBookingCancelledSmsIfAllowed } = await import('./bookings')
-
-function fakeSupabase() {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: {
-              id: 'cust-1',
-              first_name: 'Sarah',
-              mobile_number: '+447700900123',
-              sms_status: 'active',
-            },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as never
-}
+// The words themselves. Since BK-129 the notice always goes email first, and this text is what the
+// fallback and the bounce fallback send, built by the one function both use.
+const { buildTableBookingCancelledText } = await import('./guest-texts')
 
 async function sendWith(refundResult: Record<string, unknown>): Promise<string> {
-  await sendTableBookingCancelledSmsIfAllowed(fakeSupabase(), {
-    customerId: 'cust-1',
-    bookingReference: 'TB-TEST',
+  return buildTableBookingCancelledText({
+    firstName: 'Sarah',
     bookingDate: '2026-09-12',
     refundResult: refundResult as never,
   })
-  expect(sendSMS).toHaveBeenCalled()
-  return String(sendSMS.mock.calls.at(-1)?.[1] ?? '')
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -132,9 +105,60 @@ describe('cancellation SMS', () => {
     expect(body).not.toMatch(/3 days/)
   })
 
+  // BK-113: a hold that ran out unpaid used to be cancelled with no word of why.
+  it('says the deposit was not paid in time when the payment hold ran out, with the pub number', async () => {
+    const body = await sendWith({ refunded: false, reason: 'hold_expired' })
+    expect(body).toMatch(/^The Anchor: Sarah, your booking on .+ has been cancelled\. /)
+    expect(body).toContain(
+      "has been cancelled. The deposit wasn't paid in time, so the table has been released. If you'd still like to come, call us on 01753 682707."
+    )
+    // Plain GSM-7 characters only: one curly apostrophe or dash halves what fits in a text.
+    expect(body).toMatch(/^[\x20-\x7E]+$/)
+  })
+
   it('uses the generic sentence only when there was genuinely no deposit', async () => {
     const body = await sendWith({ refunded: false, reason: 'no_deposit' })
     expect(body).toMatch(/has been cancelled\. Hope to see you again soon!/)
     expect(body).not.toMatch(/deposit|refund/i)
+  })
+})
+
+// BK-046 (owner decision D7): when the pub cancels, the text says sorry, says it was us, and the
+// deposit comes back in full. BK-041 (D19): a cash deposit is owed back across the bar.
+describe('cancellation SMS when the pub cancels, or the deposit was cash', () => {
+  it('apologises and refunds in full when the pub cancels', async () => {
+    const body = await sendWith({ refunded: true, amountPence: 16000, tier: 'full', cancelledBy: 'venue' })
+    expect(body).toBe(
+      "The Anchor: Sarah, we're sorry, but we've had to cancel your booking on Sat, 12 Sept 2026. We're refunding your £160.00 deposit in full. It will land within 5-10 days."
+    )
+  })
+
+  it('says what has already gone back when the pub cancels a part-refunded deposit', async () => {
+    const body = await sendWith({ refunded: true, amountPence: 10000, tier: 'full', alreadyReturnedPence: 6000, cancelledBy: 'venue' })
+    expect(body).toContain("we've had to cancel")
+    expect(body).toContain("You've already had £60.00 of the deposit back, so the remaining £100.00 will land within 5-10 days.")
+  })
+
+  it('gives the number to rebook when the pub cancels a booking with no deposit', async () => {
+    const body = await sendWith({ refunded: false, reason: 'no_deposit', cancelledBy: 'venue' })
+    expect(body).toContain("we've had to cancel your booking")
+    expect(body).toMatch(/If you'd like to book another time, call us on 01753 682707\.$/)
+  })
+
+  it("keeps the guest's own wording when the guest asked", async () => {
+    const body = await sendWith({ refunded: false, reason: 'zero_tier', cancelledBy: 'guest' })
+    expect(body).toContain('has been cancelled.')
+    expect(body).not.toContain('sorry')
+  })
+
+  it('says a cash deposit is owed and where to collect it', async () => {
+    const body = await sendWith({ refunded: false, reason: 'cash_refund_due', depositOwed: true, amountOwedPence: 16000 })
+    expect(body).toContain("We owe you your £160.00 cash deposit. Collect it from the bar, or call us on 01753 682707 and we'll sort it out.")
+  })
+
+  it('still says the cash is owed when the amount is unknown', async () => {
+    const body = await sendWith({ refunded: false, reason: 'cash_refund_due', depositOwed: true })
+    expect(body).toContain('We owe you your cash deposit.')
+    expect(body).not.toMatch(/undefined|NaN|£0\.00/)
   })
 })

@@ -117,14 +117,16 @@ beforeEach(() => {
   // whatever day the suite runs.
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-12-03T18:00:00Z'))
-  vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => key === 'table_party_size_deposit_email_first')
+  // Every messaging flag reads off, and the message still goes email first: since BK-129 no flag
+  // gates it (table_party_size_deposit_email_first is gone).
+  vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
   vi.mocked(isEmailSuppressed).mockResolvedValue(false)
   vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true } as never)
   vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 're_pay' } as never)
   vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM2' } as never)
 })
 
-describe('party-size deposit request, email first (flag on)', () => {
+describe('party-size deposit request, email first', () => {
   it('emails a guest with a usable address and tells staff it went by email', async () => {
     const db = buildDb()
 
@@ -232,28 +234,8 @@ describe('party-size deposit request, email first (flag on)', () => {
   })
 })
 
-describe('party-size deposit request with the flag off: exactly today', () => {
-  it('sends the same text with the long link and reports as before', async () => {
-    vi.mocked(isMessagingFlagOn).mockResolvedValue(false)
-    const db = buildDb()
-
-    const result = await grow(db)
-
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(vi.mocked(sendSMS).mock.calls[0]).toEqual([
-      '+447700900222',
-      TEXT_WITH_SHORT_LINK.replace('https://l.the-anchor.pub/pay1', PAYMENT_URL),
-      {
-        customerId: 'cust-2',
-        metadata: { table_booking_id: 'b-2', template_key: 'table_booking_pending_payment', trigger: 'party_size_threshold_crossed' },
-      },
-    ])
-    expect(result).toEqual(expect.objectContaining({ smsSent: true }))
-    expect(result).not.toHaveProperty('notification')
-    const customerQuery = db.queries.find((query) => query.table === 'customers')!
-    expect(argsOf(customerQuery, 'select')[0]).toEqual(['id, first_name, mobile_number, mobile_e164, sms_status'])
-  })
-})
+// The text-only path behind table_party_size_deposit_email_first is gone (BK-129): the message always
+// goes email first, so there is no flag-off case left to pin.
 
 describe('deposit request email renders', () => {
   it.each([

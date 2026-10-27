@@ -30,13 +30,17 @@ vi.mock('@/lib/analytics/events', () => ({
 vi.mock('@/lib/table-bookings/move-table', () => ({
   isAssignmentConflictError: vi.fn(() => false),
 }))
-vi.mock('@/lib/table-bookings/deposit', () => ({
-  requiresDeposit: vi.fn(() => false),
-  computeDepositAmount: vi.fn(() => 0),
-  // The route now reaches the seasonal resolver, which reads the live party-size rule from here.
-  LARGE_GROUP_DEPOSIT_THRESHOLD: 10,
-  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP: 10,
-}))
+vi.mock('@/lib/table-bookings/deposit', async (importActual) => {
+  // The real threshold and rate, never a copy (BK-125: a hard-coded 10 outlived the move to 15).
+  const actual = await importActual<typeof import('@/lib/table-bookings/deposit')>()
+  return {
+    requiresDeposit: vi.fn(() => false),
+    computeDepositAmount: vi.fn(() => 0),
+    // The route reaches the seasonal resolver, which reads the live party-size rule from here.
+    LARGE_GROUP_DEPOSIT_THRESHOLD: actual.LARGE_GROUP_DEPOSIT_THRESHOLD,
+    LARGE_GROUP_DEPOSIT_PER_PERSON_GBP: actual.LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+  }
+})
 // No seasonal period covers the dates these tests use.
 vi.mock('@/lib/table-bookings/period-lookup', () => ({
   loadBookingPeriodContext: vi.fn().mockResolvedValue({ period: null, collectPeriodDeposits: true }),

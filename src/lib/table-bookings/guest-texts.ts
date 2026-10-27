@@ -15,6 +15,7 @@ import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 /** The number the reply instruction names, read exactly as the table booking texts always have. */
 function supportPhone(): string | undefined {
@@ -62,13 +63,23 @@ export function describeChristmasCourseCounts(counts?: number[] | null): string 
 // ---------------------------------------------------------------------------
 
 export type TableBookingCancellationRefundResult =
-  | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number; cutoffDays?: number }
+  | {
+      refunded: false
+      reason: string
+      depositOwed?: boolean
+      amountOwedPence?: number
+      cutoffDays?: number
+      /** 'venue' when the pub cancelled (BK-046): the message apologises and says so. */
+      cancelledBy?: 'guest' | 'venue'
+    }
   | {
       refunded: true
       amountPence: number
       tier: string
       /** Pence already returned before this refund (a staff part refund), when any had been. */
       alreadyReturnedPence?: number
+      /** 'venue' when the pub cancelled (BK-046): the message apologises and says so. */
+      cancelledBy?: 'guest' | 'venue'
     }
 
 function formatGbpFromPence(pence: number): string {
@@ -81,6 +92,8 @@ function formatGbpFromPence(pence: number): string {
  * same on either channel.
  */
 export function describeTableBookingCancellationRefund(refundResult: TableBookingCancellationRefundResult): string {
+  const byVenue = refundResult.cancelledBy === 'venue'
+
   if (refundResult.refunded) {
     const amountGbp = formatGbpFromPence(refundResult.amountPence)
 
@@ -88,9 +101,20 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
     // Say so: a bare "your £25.00 refund" to someone who paid £150 looks like a mistake.
     if (refundResult.alreadyReturnedPence && refundResult.alreadyReturnedPence > 0) {
       const alreadyGbp = formatGbpFromPence(refundResult.alreadyReturnedPence)
+      if (byVenue) {
+        return `You've already had ${alreadyGbp} of the deposit back, so the remaining ${amountGbp} will land within 5-10 days.`
+      }
       return refundResult.tier === 'half'
         ? `As it's within a week, half the deposit is refundable. You've already had ${alreadyGbp} back, so the remaining ${amountGbp} will land within 5-10 days.`
         : `You've already had ${alreadyGbp} of the deposit back, so the remaining ${amountGbp} will land within 5-10 days. Hope to see you again soon!`
+    }
+
+    // The pub cancelled, so the whole deposit goes back (owner decision D7).
+    if (byVenue && refundResult.tier === 'full') {
+      return `We're refunding your ${amountGbp} deposit in full. It will land within 5-10 days.`
+    }
+    if (byVenue) {
+      return `Your ${amountGbp} refund will land within 5-10 days.`
     }
 
     // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
@@ -98,6 +122,13 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
     return refundResult.tier === 'half'
       ? `As it's within a week, half the deposit is refundable: your ${amountGbp} refund will land within 5-10 days.`
       : `Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
+  }
+
+  // A deposit paid in cash at the bar goes back the same way (BK-041, owner decision D19).
+  if (refundResult.reason === 'cash_refund_due') {
+    const owed = refundResult.amountOwedPence
+    const deposit = owed ? `your ${formatGbpFromPence(owed)} cash deposit` : 'your cash deposit'
+    return `We owe you ${deposit}. Collect it from the bar, or call us on ${GUEST_CONTACT.phoneDisplay} and we'll sort it out.`
   }
 
   if (refundResult.reason === 'zero_tier') {
@@ -130,6 +161,17 @@ export function describeTableBookingCancellationRefund(refundResult: TableBookin
     return "We'll check your deposit and be in touch about it shortly."
   }
 
+  // The payment hold ran out before the deposit was paid (BK-113). Without this the guest was told
+  // only "Hope to see you again soon!" and never why their table had gone.
+  if (refundResult.reason === 'hold_expired') {
+    return `The deposit wasn't paid in time, so the table has been released. If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay}.`
+  }
+
+  // The pub cancelled a booking that held no deposit: say how to book again.
+  if (byVenue) {
+    return `If you'd like to book another time, call us on ${GUEST_CONTACT.phoneDisplay}.`
+  }
+
   return 'Hope to see you again soon!'
 }
 
@@ -149,7 +191,7 @@ function formatCancellationTextDate(bookingDate: string): string {
   }
 }
 
-/** The cancellation text, word for word as it has always read, ready to send. */
+/** The cancellation text, ready to send. A guest's cancellation reads as it always has. */
 export function buildTableBookingCancelledText(input: {
   /** As the text shows it (getSmartFirstName). */
   firstName: string
@@ -157,7 +199,13 @@ export function buildTableBookingCancelledText(input: {
   bookingDate: string
   refundResult: TableBookingCancellationRefundResult
 }): string {
-  const body = `The Anchor: ${input.firstName}, your booking on ${formatCancellationTextDate(input.bookingDate)} has been cancelled. ${describeTableBookingCancellationRefund(input.refundResult)}`
+  const date = formatCancellationTextDate(input.bookingDate)
+  // The pub cancelled (BK-046): say sorry and say it was us, not "has been cancelled" as if the
+  // guest had asked.
+  const opening = input.refundResult.cancelledBy === 'venue'
+    ? `The Anchor: ${input.firstName}, we're sorry, but we've had to cancel your booking on ${date}.`
+    : `The Anchor: ${input.firstName}, your booking on ${date} has been cancelled.`
+  const body = `${opening} ${describeTableBookingCancellationRefund(input.refundResult)}`
   return ensureReplyInstruction(body, supportPhone())
 }
 
@@ -243,6 +291,33 @@ export function buildPartySizeDepositText(input: {
 }): string {
   const { wording } = input
   const body = `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${input.paymentUrl}`
+  return ensureReplyInstruction(body, supportPhone())
+}
+
+// ---------------------------------------------------------------------------
+// The one reminder before an unpaid deposit hold runs out (table_booking_deposit_reminder, BK-088)
+// ---------------------------------------------------------------------------
+
+/**
+ * The deposit hold reminder text. Straight apostrophes and no dashes, so it stays in the cheap
+ * GSM-7 alphabet. The booking moment and the deadline are both London times.
+ */
+export function buildDepositHoldReminderText(input: {
+  /** As the text shows it (getSmartFirstName). */
+  firstName: string
+  partySize: number
+  startDateTime: string | null
+  holdExpiresAt: string
+  /** "£160.00", as the deposit request said it. */
+  depositLabel: string
+  isOutsideSeating: boolean
+  paymentUrl: string
+}): string {
+  const noun = input.isOutsideSeating ? 'outside booking' : 'table'
+  const body =
+    `The Anchor: ${input.firstName}, we're still holding your ${noun} for ${input.partySize} on ` +
+    `${formatLondonDateTime(input.startDateTime)}. Pay the ${input.depositLabel} deposit by ` +
+    `${formatLondonDateTime(input.holdExpiresAt)} to keep it: ${input.paymentUrl}`
   return ensureReplyInstruction(body, supportPhone())
 }
 

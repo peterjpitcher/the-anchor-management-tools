@@ -72,7 +72,7 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
 // Helper to mock a successful Supabase select chain
 function mockBookingFetch(booking: ReturnType<typeof makeBooking> | null, dbError: unknown = null) {
   mockSingle.mockResolvedValueOnce({ data: booking, error: dbError });
-  mockEq.mockReturnValue({ single: mockSingle });
+  mockEq.mockReturnValue({ maybeSingle: mockSingle });
   mockSelect.mockReturnValue({ eq: mockEq });
 }
 
@@ -133,7 +133,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
 
   it('returns 404 if booking not found', async () => {
     mockSingle.mockResolvedValueOnce({ data: null, error: null });
-    mockEq.mockReturnValue({ single: mockSingle });
+    mockEq.mockReturnValue({ maybeSingle: mockSingle });
     mockSelect.mockReturnValue({ eq: mockEq });
 
     const res = await callRoute('non-existent-id', { orderId: 'ORDER-123' });
