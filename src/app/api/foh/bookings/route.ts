@@ -45,6 +45,11 @@ import {
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import {
+  PARTY_SIZE_INPUT_CEILING,
+  readTableBookingPartyLimit,
+  staffPartyLimitMessage,
+} from '@/lib/table-bookings/party-limit'
+import {
   FOH_BOOKING_CLIENT_HEADER,
   FOH_CLIENT_OUTDATED_CODE,
   isCurrentFohBookingClient,
@@ -76,9 +81,11 @@ const CreateFohTableBookingSchema = z.object({
   walk_in_guest_name: z.string().trim().max(120).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
+  // A typo guard only. The limit is the setting the booking functions read (D30, BK-146): the staff
+  // function refuses a bigger party as too_large_party, and the override path checks it itself.
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(20)
+    z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)
   ),
   // `christmas` creates a `booking_type = 'christmas'` booking. The RPC maps it
   // to a food purpose internally, so kitchen hours, duration and pacing behave
@@ -205,16 +212,34 @@ function buildWalkInBookingReference(): string {
   return `TB-W${randomBytes(4).toString('hex').toUpperCase()}`
 }
 
-function getWalkInDurationMinutes(input: {
-  purpose: FohBookingPurpose
-}): number {
-  // Christmas is a food purpose, so it takes the food duration.
-  return input.purpose === 'drinks' ? 90 : 120
+/**
+ * The visit length and turnaround gap, from table_booking_turn_minutes: the booking function's own
+ * rule (turn times by party size, the Sunday uplift and the gap when turn times are on). This path
+ * used fixed 90 or 120 minutes with no gap (BK-145).
+ */
+async function getWalkInTurnMinutes(
+  supabase: any,
+  input: { date: string; partySize: number; purpose: FohBookingPurpose }
+): Promise<{ durationMinutes: number; turnaroundMinutes: number }> {
+  const { data, error } = await supabase.rpc('table_booking_turn_minutes', {
+    p_booking_date: input.date,
+    p_party_size: input.partySize,
+    p_purpose: input.purpose,
+  })
+  const row = Array.isArray(data) ? data[0] : data
+  const durationMinutes = Number(row?.duration_minutes)
+  const turnaroundMinutes = Number(row?.turnaround_minutes)
+  if (error || !Number.isInteger(durationMinutes) || durationMinutes <= 0 || !Number.isInteger(turnaroundMinutes)) {
+    throw new Error(`Could not read the visit length for a walk-in override: ${error?.message ?? 'no answer'}`)
+  }
+  return { durationMinutes, turnaroundMinutes: Math.max(0, turnaroundMinutes) }
 }
 
 // Raw-insert override path (management override + walk-in hours-bypass fallback).
-// Never calls create_table_booking_v05, so it already bypasses kitchen pacing —
-// do not add a duplicate pacing check here.
+// Never calls the booking function, so it already bypasses kitchen pacing and hours; do not add a
+// duplicate pacing check here. Tables come from find_table_allocation_candidates, the booking
+// function's own picker, so priority, accessibility, high chairs, maintenance and live bookings are
+// judged the same way (BK-145).
 async function createManualWalkInBookingOverride(params: {
   supabase: any
   customerId: string
@@ -237,6 +262,8 @@ async function createManualWalkInBookingOverride(params: {
     // Outside bookings hold no indoor table, so table allocation and the
     // assignment insert are skipped for them.
     outside_seating?: boolean
+    // Kept on the booking and given to the table picker, as the booking function does.
+    requires_accessible_table?: boolean
   }
 }): Promise<TableBookingRpcResult> {
   const bookingTime = params.payload.time.length === 5 ? `${params.payload.time}:00` : params.payload.time
@@ -251,11 +278,16 @@ async function createManualWalkInBookingOverride(params: {
     throw new Error('Invalid walk-in booking time')
   }
 
-  const durationMinutes = getWalkInDurationMinutes({
-    purpose: params.payload.purpose
+  const { durationMinutes, turnaroundMinutes } = await getWalkInTurnMinutes(params.supabase, {
+    date: params.payload.date,
+    partySize: Math.max(1, Number(params.payload.party_size || 1)),
+    purpose: params.payload.purpose,
   })
   const startIso = start.toISOString()
+  // The booking's own end, and the table hold, which runs on by the turnaround gap, as the booking
+  // function writes them.
   const endIso = new Date(startMs + durationMinutes * 60 * 1000).toISOString()
+  const occupancyEndIso = new Date(startMs + (durationMinutes + turnaroundMinutes) * 60 * 1000).toISOString()
   const nowIso = new Date().toISOString()
   // Mirror what the RPC does: a Christmas request stamps booking_type
   // 'christmas' and stores booking_purpose 'food'.
@@ -268,12 +300,7 @@ async function createManualWalkInBookingOverride(params: {
     0,
     Math.min(2, Math.trunc(Number(params.payload.high_chair_count ?? 0)) || 0)
   )
-
-  type TableCandidate = {
-    id: string
-    displayName: string
-    capacity: number
-  }
+  const requiresAccessibleTable = params.payload.requires_accessible_table === true
 
   type TableCombo = {
     tableIds: string[]
@@ -281,260 +308,37 @@ async function createManualWalkInBookingOverride(params: {
     totalCapacity: number
   }
 
+  // Every valid candidate in the picker's order (rank 1 first), so a lost race on the first falls
+  // through to the next. Channel 'walkin': online holds and minimum party sizes do not apply to a
+  // guest standing at the bar, but live bookings, private hires, communal event seats, maintenance
+  // and accessibility do.
   async function computeAvailableCombos(): Promise<TableCombo[]> {
-    const [tablesResult, joinLinksResult] = await Promise.all([
-      (params.supabase.from('tables') as any)
-        .select('id, table_number, name, capacity, is_bookable')
-        .order('table_number', { ascending: true, nullsFirst: false })
-        .order('name', { ascending: true, nullsFirst: false }),
-      (params.supabase.from('table_join_links') as any)
-        .select('table_id, join_table_id')
-    ])
-
-    if (tablesResult.error) {
-      throw new Error('Failed to load tables for walk-in override allocation')
+    const { data, error } = await params.supabase.rpc('find_table_allocation_candidates', {
+      p_start_at: startIso,
+      p_end_at: occupancyEndIso,
+      p_party_size: Math.max(1, Number(params.payload.party_size || 1)),
+      p_purpose: storedBookingPurpose === 'drinks' ? 'drinks' : 'food',
+      p_high_chair_count: requestedHighChairs,
+      p_requires_accessible_table: requiresAccessibleTable,
+      p_channel: 'walkin',
+    })
+    if (error) {
+      throw new Error(`Failed to find tables for walk-in override: ${error.message}`)
     }
-
-    if (joinLinksResult.error) {
-      throw new Error('Failed to load table join links for walk-in override allocation')
+    type CandidateRow = {
+      rank: number | null
+      table_ids: string[] | null
+      table_names: string[] | null
+      total_capacity: number | null
     }
-
-    const partySize = Math.max(1, Number(params.payload.party_size || 1))
-    const rawTables = (tablesResult.data || []) as any[]
-    const candidates = rawTables
-      .filter((row) => row?.id && row.is_bookable !== false)
+    return ((data || []) as CandidateRow[])
+      .filter((row) => typeof row.rank === 'number' && Array.isArray(row.table_ids) && row.table_ids.length > 0)
+      .sort((a, b) => (a.rank as number) - (b.rank as number))
       .map((row) => ({
-        id: String(row.id),
-        table_number: typeof row.table_number === 'string' ? row.table_number : null,
-        name: typeof row.name === 'string' ? row.name : null,
-        capacity: Math.max(0, Number(row.capacity || 0))
+        tableIds: row.table_ids as string[],
+        tableNames: row.table_names ?? [],
+        totalCapacity: Number(row.total_capacity ?? 0),
       }))
-      .filter((row) => row.capacity > 0)
-
-    if (candidates.length === 0) {
-      return []
-    }
-
-    const candidateTableIds = candidates.map((row) => row.id)
-
-    const { data: overlappingAssignments, error: overlapError } = await (params.supabase.from('booking_table_assignments') as any)
-      .select('table_id, table_booking_id')
-      .in('table_id', candidateTableIds)
-      .lt('start_datetime', endIso)
-      .gt('end_datetime', startIso)
-
-    if (overlapError) {
-      throw new Error('Failed to check walk-in override table overlaps')
-    }
-
-    const overlappingRows = (overlappingAssignments || []) as any[]
-    const overlappingBookingIds = Array.from(
-      new Set(
-        overlappingRows
-          .map((row) => (typeof row?.table_booking_id === 'string' ? row.table_booking_id : null))
-          .filter((value): value is string => Boolean(value))
-      )
-    )
-
-    const activeOverlappingBookingIds = new Set<string>()
-    if (overlappingBookingIds.length > 0) {
-      const { data: overlappingBookings, error: overlappingBookingsError } = await (params.supabase.from('table_bookings') as any)
-        .select('id, status')
-        .in('id', overlappingBookingIds)
-
-      if (overlappingBookingsError) {
-        throw new Error('Failed to check overlapping booking statuses for walk-in override')
-      }
-
-      for (const row of (overlappingBookings || []) as any[]) {
-        if (typeof row?.id === 'string' && row.status !== 'cancelled') {
-          activeOverlappingBookingIds.add(row.id)
-        }
-      }
-    }
-
-    const unavailableByAssignment = new Set<string>()
-    for (const row of overlappingRows) {
-      if (
-        typeof row?.table_id === 'string'
-        && typeof row?.table_booking_id === 'string'
-        && activeOverlappingBookingIds.has(row.table_booking_id)
-      ) {
-        unavailableByAssignment.add(row.table_id)
-      }
-    }
-
-    const unavailableByPrivateBlocks = new Set<string>()
-    await Promise.all(
-      candidates.map(async (table) => {
-        const { data: privateBlockResult, error: privateBlockError } = await params.supabase.rpc(
-          'is_table_blocked_by_private_booking_v05',
-          {
-            p_table_id: table.id,
-            p_window_start: startIso,
-            p_window_end: endIso,
-            p_exclude_private_booking_id: null
-          }
-        )
-
-        if (privateBlockError) {
-          throw new Error('Failed to check private blocks for walk-in override')
-        }
-
-        if (privateBlockResult === true) {
-          unavailableByPrivateBlocks.add(table.id)
-        }
-      })
-    )
-
-    // A table used for a communal event cannot be shared with a food booking at all —
-    // the DB trigger enforce_booking_table_assignment_integrity_v05 rejects any
-    // assignment on a table with active communal seats. Mirror the same "active
-    // allocation" definition as getMoveTableAvailability (confirmed, or
-    // pending_payment with an unexpired hold, overlapping the booking window) so
-    // the override never selects a combo the database will refuse.
-    const { data: communalAllocations, error: communalError } = await (params.supabase.from('event_communal_seat_allocations') as any)
-      .select('table_id, booking:bookings!event_communal_seat_allocations_event_booking_id_fkey(status, hold_expires_at)')
-      .in('table_id', candidateTableIds)
-      .lt('start_datetime', endIso)
-      .gt('end_datetime', startIso)
-
-    if (communalError) {
-      throw new Error('Failed to check communal event seating for walk-in override')
-    }
-
-    const unavailableByCommunal = new Set<string>()
-    for (const row of (communalAllocations || []) as any[]) {
-      const tableId = typeof row?.table_id === 'string' ? row.table_id : null
-      if (!tableId) continue
-      const bookingRow = Array.isArray(row?.booking) ? row.booking[0] : row?.booking
-      const status = String(bookingRow?.status || '')
-      const holdExpiresAt = typeof bookingRow?.hold_expires_at === 'string' ? bookingRow.hold_expires_at : null
-      const active =
-        status === 'confirmed' ||
-        (
-          status === 'pending_payment' &&
-          (!holdExpiresAt || Date.parse(holdExpiresAt) > Date.now())
-        )
-      if (active) {
-        unavailableByCommunal.add(tableId)
-      }
-    }
-
-    const availableTables: TableCandidate[] = candidates
-      .filter((table) => !unavailableByAssignment.has(table.id))
-      .filter((table) => !unavailableByPrivateBlocks.has(table.id))
-      .filter((table) => !unavailableByCommunal.has(table.id))
-      .map((table) => ({
-        id: table.id,
-        displayName: table.name || table.table_number || `Table ${table.id.slice(0, 4)}`,
-        capacity: table.capacity
-      }))
-
-    if (availableTables.length === 0) {
-      return []
-    }
-
-    const availableById = new Map<string, TableCandidate>()
-    for (const table of availableTables) {
-      availableById.set(table.id, table)
-    }
-
-    const neighbors = new Map<string, Set<string>>()
-    for (const row of (joinLinksResult.data || []) as any[]) {
-      const a = typeof row?.table_id === 'string' ? row.table_id : null
-      const b = typeof row?.join_table_id === 'string' ? row.join_table_id : null
-      if (!a || !b) continue
-      if (!availableById.has(a) || !availableById.has(b)) continue
-
-      const aSet = neighbors.get(a) || new Set<string>()
-      aSet.add(b)
-      neighbors.set(a, aSet)
-
-      const bSet = neighbors.get(b) || new Set<string>()
-      bSet.add(a)
-      neighbors.set(b, bSet)
-    }
-
-    const sortedIds = Array.from(availableById.keys()).sort((a, b) => a.localeCompare(b))
-    const combos: TableCombo[] = []
-
-    for (const table of availableTables) {
-      if (table.capacity >= partySize) {
-        combos.push({
-          tableIds: [table.id],
-          tableNames: [table.displayName],
-          totalCapacity: table.capacity
-        })
-      }
-    }
-
-    function isConnectedToCombo(candidateId: string, existingIds: string[]): boolean {
-      for (const existingId of existingIds) {
-        if (neighbors.get(existingId)?.has(candidateId)) {
-          return true
-        }
-      }
-      return false
-    }
-
-    function dfs(currentIds: string[], lastIndex: number, totalCapacity: number, currentNames: string[]) {
-      if (currentIds.length >= 2 && totalCapacity >= partySize) {
-        combos.push({
-          tableIds: [...currentIds],
-          tableNames: [...currentNames],
-          totalCapacity
-        })
-      }
-
-      if (currentIds.length >= 4) return
-
-      for (let idx = lastIndex + 1; idx < sortedIds.length; idx += 1) {
-        const nextId = sortedIds[idx]
-        if (!nextId) continue
-        if (!isConnectedToCombo(nextId, currentIds)) continue
-        const nextTable = availableById.get(nextId)
-        if (!nextTable) continue
-
-        dfs(
-          [...currentIds, nextId],
-          idx,
-          totalCapacity + nextTable.capacity,
-          [...currentNames, nextTable.displayName]
-        )
-      }
-    }
-
-    for (let idx = 0; idx < sortedIds.length; idx += 1) {
-      const baseId = sortedIds[idx]
-      const base = availableById.get(baseId)
-      if (!base) continue
-      dfs([baseId], idx, base.capacity, [base.displayName])
-    }
-
-    const filtered = combos
-      .filter((combo) => combo.totalCapacity >= partySize)
-      .sort((a, b) => {
-        if (a.tableIds.length !== b.tableIds.length) {
-          return a.tableIds.length - b.tableIds.length
-        }
-        if (a.totalCapacity !== b.totalCapacity) {
-          return a.totalCapacity - b.totalCapacity
-        }
-        return a.tableNames.join(' + ').localeCompare(b.tableNames.join(' + '))
-      })
-
-    // De-dupe identical combos.
-    const seen = new Set<string>()
-    const deduped: TableCombo[] = []
-    for (const combo of filtered) {
-      const key = combo.tableIds.join(',')
-      if (seen.has(key)) continue
-      seen.add(key)
-      deduped.push(combo)
-    }
-
-    return deduped
   }
 
   // Outside bookings hold no indoor table, so skip allocation entirely — they
@@ -578,6 +382,7 @@ async function createManualWalkInBookingOverride(params: {
         // — never count-then-insert in JS (not atomic across separate requests).
         high_chair_count: 0,
         is_outside_seating: isOutsideSeating,
+        requires_accessible_table: requiresAccessibleTable,
         created_at: nowIso,
         updated_at: nowIso
       })
@@ -666,7 +471,7 @@ async function createManualWalkInBookingOverride(params: {
           table_booking_id: tableBookingId,
           table_id: tableId,
           start_datetime: startIso,
-          end_datetime: endIso,
+          end_datetime: occupancyEndIso,
           created_at: nowIso
         }))
 
@@ -870,6 +675,8 @@ type FohCreateBookingResponseData = {
     | 'customer_conflict'
     | 'in_past'
     | 'slot_full'
+    | 'drinks_full'
+    | 'outside_full'
     | 'blocked'
     | null
   next_step_url: string | null
@@ -1066,6 +873,14 @@ async function createFohTableBooking(
       return NextResponse.json({ error: 'Management override requires super_admin role' }, { status: 403 })
     }
 
+    // One party limit for every channel (owner decision D30, BK-146), from the setting the booking
+    // functions read. The override inserts directly, so it checks here; every other path goes
+    // through create_table_booking_staff_v06, which refuses a bigger party as too_large_party.
+    const partyLimit = await readTableBookingPartyLimit(auth.supabase)
+    if (payload.party_size > partyLimit) {
+      return NextResponse.json({ error: staffPartyLimitMessage(partyLimit) }, { status: 400 })
+    }
+
     // Customer must already be resolved (schema enforces customer_id is set)
     const mgmtCustomerId = payload.customer_id!
     const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time
@@ -1089,7 +904,8 @@ async function createFohTableBooking(
           purpose: payload.purpose,
           notes: payload.notes,
           high_chair_count: payload.high_chair_count,
-          outside_seating: payload.outside_seating
+          outside_seating: payload.outside_seating,
+          requires_accessible_table: payload.requires_accessible_table
         }
       })
     } catch (mgmtError) {
@@ -1615,7 +1431,8 @@ async function createFohTableBooking(
           purpose: payload.purpose,
           notes: payload.notes,
           high_chair_count: payload.high_chair_count,
-          outside_seating: payload.outside_seating
+          outside_seating: payload.outside_seating,
+          requires_accessible_table: payload.requires_accessible_table
         }
       })
       shouldSendBookingSms = false

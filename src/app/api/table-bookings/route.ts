@@ -39,6 +39,7 @@ import {
   isChristmasPurpose,
 } from '@/lib/table-bookings/christmas'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
+import { PARTY_SIZE_INPUT_CEILING } from '@/lib/table-bookings/party-limit'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
@@ -103,9 +104,11 @@ const CreateTableBookingSchema = z.object({
   email: z.string().trim().email().max(320).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
+  // A typo guard only. The limit is the setting create_table_booking_public_v06 reads (D30, BK-146):
+  // a bigger party comes back blocked as too_large_party, not a number kept here as well.
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(20)
+    z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)
   ),
   // `christmas` creates a `booking_type = 'christmas'` booking. The RPC maps it
   // to a food purpose internally, so kitchen hours, duration and pacing behave
@@ -227,6 +230,8 @@ type TableBookingResponseData = {
     | 'customer_conflict'
     | 'in_past'
     | 'slot_full'
+    | 'drinks_full'
+    | 'outside_full'
     | 'blocked'
     | null
   next_step_url: string | null
