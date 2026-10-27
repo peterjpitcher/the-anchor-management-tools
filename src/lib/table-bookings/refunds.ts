@@ -425,7 +425,7 @@ async function refundPayPalDeposit(
     return { refunded: false, reason: 'terms_unreadable' }
   }
 
-  const refundGbp = Math.round((entitledGbp - soFar.reservedGbp) * 100) / 100
+  const refundGbp = amountDueNow(entitlement, depositGbp, soFar.reservedGbp)
   // Everything they were due has already gone back, or is on its way.
   if (refundGbp <= 0) return { refunded: false, reason: 'already_refunded' }
 
@@ -435,7 +435,10 @@ async function refundPayPalDeposit(
       captureId,
       refundGbp,
       // Deterministic, so a retry of the same cancellation cannot refund twice.
-      requestKey,
+      // A manager's later choice after an earlier refund is a new refund, so it gets its own key.
+      entitlement.chosenNow && soFar.reservedGbp > 0
+        ? `${requestKey}-after-${Math.round(soFar.reservedGbp * 100)}`
+        : requestKey,
       PAYPAL_DEFAULT_CURRENCY,
     )
   } catch (error) {
@@ -552,12 +555,29 @@ async function refundPayPalDeposit(
 }
 
 type Entitlement =
-  | { entitledGbp: number; tier: RefundTier; requestKey: string; ledgerReason?: string }
+  | { entitledGbp: number; tier: RefundTier; requestKey: string; ledgerReason?: string; chosenNow?: boolean }
   | { refused: RefundResult }
 
 /**
- * What the guest is due before anything already returned is taken off: a manager's chosen amount,
- * the whole deposit when the pub cancelled, or the booking's own terms when the guest did.
+ * What goes back now. An entitlement covers the deposit's whole life, so earlier refunds come off
+ * it. A manager's chosen amount is different: they pick it from what is still held, so it is this
+ * refund, capped at what is left, and earlier refunds are not taken off a second time.
+ */
+function amountDueNow(
+  entitlement: { entitledGbp: number; chosenNow?: boolean },
+  depositGbp: number,
+  reservedGbp: number,
+): number {
+  const due = entitlement.chosenNow
+    ? Math.min(entitlement.entitledGbp, depositGbp - reservedGbp)
+    : entitlement.entitledGbp - reservedGbp
+  return Math.round(due * 100) / 100
+}
+
+/**
+ * What the guest is due: the whole deposit when the pub cancelled, or the booking's own terms when
+ * the guest did, before anything already returned is taken off; or a manager's chosen amount for
+ * this refund alone (`chosenNow`, see amountDueNow).
  */
 function resolveEntitlement(
   tableBookingId: string,
@@ -582,6 +602,7 @@ function resolveEntitlement(
     return {
       entitledGbp,
       tier,
+      chosenNow: true,
       requestKey: `tbl-paypal-refund-${tableBookingId}-chosen-${Math.round(entitledGbp * 100)}`,
     }
   }
@@ -669,7 +690,7 @@ async function cashDepositOwed(
     return { refunded: false, reason: 'terms_unreadable' }
   }
 
-  const owedGbp = Math.round((entitlement.entitledGbp - soFar.reservedGbp) * 100) / 100
+  const owedGbp = amountDueNow(entitlement, paidGbp, soFar.reservedGbp)
   if (owedGbp <= 0) return { refunded: false, reason: 'already_refunded' }
 
   await recordCashRefundOwed(supabase, tableBookingId, owedGbp, terms)

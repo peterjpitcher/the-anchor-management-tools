@@ -627,6 +627,39 @@ describe('refundTableBookingDeposit, who cancelled', () => {
 
     expect(result).toMatchObject({ refunded: true, amountPence: 16000, tier: 'full' })
   })
+
+  // The booking page offers what is still held, so the chosen amount is this refund, not a
+  // lifetime total with earlier refunds taken off again.
+  it("refunds the manager's chosen amount on top of an earlier part refund", async () => {
+    ledgerRows = [{ amount: 60, status: 'completed' }]
+    bookingRow = paidBooking({ payment_status: 'partial_refund', deposit_refund_status: 'partially_refunded' })
+
+    const result = await refundTableBookingDeposit('booking-1', daysOut(1), { managerAmountGbp: 100 })
+
+    expect(refundPayPalPayment).toHaveBeenCalledWith('CAP-1', 100, 'tbl-paypal-refund-booking-1-chosen-10000-after-6000', 'GBP')
+    expect(result).toMatchObject({ refunded: true, amountPence: 10000, alreadyReturnedPence: 6000 })
+    expect(bookingUpdates[0]).toMatchObject({ deposit_refund_status: 'refunded' })
+  })
+
+  it('refunds a chosen amount no bigger than what was already returned', async () => {
+    ledgerRows = [{ amount: 60, status: 'completed' }]
+    bookingRow = paidBooking({ payment_status: 'partial_refund', deposit_refund_status: 'partially_refunded' })
+
+    const result = await refundTableBookingDeposit('booking-1', daysOut(1), { managerAmountGbp: 60 })
+
+    expect(refundPayPalPayment.mock.calls[0][1]).toBe(60)
+    expect(result).toMatchObject({ refunded: true, amountPence: 6000, tier: 'chosen' })
+  })
+
+  it('caps a chosen amount at what is still held after an earlier refund', async () => {
+    ledgerRows = [{ amount: 60, status: 'completed' }]
+    bookingRow = paidBooking({ payment_status: 'partial_refund', deposit_refund_status: 'partially_refunded' })
+
+    const result = await refundTableBookingDeposit('booking-1', daysOut(1), { managerAmountGbp: 160 })
+
+    expect(refundPayPalPayment.mock.calls[0][1]).toBe(100)
+    expect(result).toMatchObject({ refunded: true, amountPence: 10000 })
+  })
 })
 
 /**
@@ -716,6 +749,16 @@ describe('refundTableBookingDeposit, cash deposits', () => {
     const result = await refundTableBookingDeposit('booking-1', farFutureDate())
 
     expect(result).toMatchObject({ reason: 'cash_refund_due', amountOwedPence: 6000 })
+  })
+
+  it("owes a manager's chosen cash amount on top of cash already handed back", async () => {
+    paymentRow = { id: 'pay-1', amount: 160, stripe_payment_intent_id: null, status: 'succeeded' }
+    bookingRow = cashBooking({ payment_status: 'partial_refund' })
+    ledgerRows = [{ amount: 100, status: 'completed' }]
+
+    const result = await refundTableBookingDeposit('booking-1', farFutureDate(), { managerAmountGbp: 40 })
+
+    expect(result).toMatchObject({ reason: 'cash_refund_due', amountOwedPence: 4000 })
   })
 
   it('owes nothing when the cash has all been handed back', async () => {
