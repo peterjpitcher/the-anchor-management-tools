@@ -16,7 +16,7 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
-import { ConsentService } from '@/services/consent'
+import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
 import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 import { formatPhoneForStorage } from '@/lib/utils'
 
@@ -331,11 +331,14 @@ export async function POST(request: NextRequest) {
             { client: supabase }
           )
           booking = result.booking
+          // The booking is saved by now, so a consent failure must not turn into a failed booking
+          // (BK-039, same pattern as the table and private hire routes): it is logged and raised
+          // with the manager, and the booking carries on to its payment step.
           if (booking.customer_id) {
-            await ConsentService.applyBookingContactConsent(
-              booking.customer_id,
-              payload.communication_consent,
-              {
+            await applyBookingContactConsentSafe({
+              customerId: booking.customer_id,
+              consent: payload.communication_consent,
+              context: {
                 source: payload.source === 'website' ? 'public_parking_booking' : 'staff_parking_booking',
                 captureMethod: payload.source === 'website' ? 'checkbox' : 'staff_verbal',
                 sourceUrl: req.headers.get('referer'),
@@ -343,8 +346,9 @@ export async function POST(request: NextRequest) {
                 relatedEntityType: 'parking_booking',
                 relatedEntityId: booking.id,
                 metadata: { idempotency_key: idempotencyKey ?? null }
-              }
-            )
+              },
+              alert: { domain: 'parking', bookingId: booking.id, path: null },
+            })
           }
         } catch (serviceError) {
           // A database refusal is a plain object, not an Error (see toLoggableError), so read its

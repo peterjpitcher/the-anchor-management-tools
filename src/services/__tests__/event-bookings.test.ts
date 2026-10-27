@@ -416,6 +416,13 @@ describe('EventBookingService.createBooking', () => {
       'Failed to create event payment token',
       expect.objectContaining({ error: expect.any(Error) })
     )
+
+    // The booking that cannot be paid for is cancelled, so its seats go back on sale (BK-128).
+    const bookingsCall = supabase.from.mock.calls.findIndex(([table]) => table === 'bookings')
+    expect(bookingsCall).toBeGreaterThanOrEqual(0)
+    const bookingsBuilder = supabase.from.mock.results[bookingsCall].value as { update: ReturnType<typeof vi.fn>; eq: ReturnType<typeof vi.fn> }
+    expect(bookingsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelled_by: 'system' }))
+    expect(bookingsBuilder.eq).toHaveBeenCalledWith('id', PENDING_PAYMENT_RPC_RESULT.booking_id)
   })
 
   // ── Table booking mode ──────────────────────────────────────────────────────
