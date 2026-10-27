@@ -6,6 +6,7 @@ import { sendEventGuestDetailsRequestEmail } from '@/lib/email/event-ticket-emai
 import { bookingQuestionsSchema, requiresGuestDetails } from '@/lib/events/booking-questions'
 import { ticketsMissingDetails } from '@/lib/events/guest-details-edit'
 import { formatEventDateShortLondon } from '@/lib/events/event-when'
+import { createEventManageToken } from '@/lib/events/manage-booking'
 
 /**
  * "Details to follow" (BK-011, customer bookings review of 24 October 2026; owner decision D5).
@@ -54,7 +55,16 @@ function one<T>(value: T | T[] | null | undefined): T | null {
  */
 export async function requestMissingGuestDetails(
   supabase: SupabaseClient<any, 'public', any>,
-  input: { bookingId: string; manageUrl: string | null; appBaseUrl?: string },
+  input: {
+    bookingId: string
+    manageUrl: string | null
+    appBaseUrl?: string
+    /**
+     * A waitlist offer accepted on our own page (BK-011). The booking is recorded with the
+     * website as its source, but nobody asked for guest details on the way.
+     */
+    waitlistAcceptance?: boolean
+  },
 ): Promise<GuestDetailsRequestOutcome> {
   try {
     if (!(await isMessagingFlagOn(GUEST_DETAILS_REQUEST_FLAG))) return 'flag_off'
@@ -76,7 +86,8 @@ export async function requestMissingGuestDetails(
     const customer = one(row.customer)
     if (!event || !customer) return 'not_needed'
     if (row.status !== 'confirmed' && row.status !== 'pending_payment') return 'not_needed'
-    if (row.source === 'walk-in' || row.source === 'brand_site') return 'not_needed'
+    if (row.source === 'walk-in') return 'not_needed'
+    if (row.source === 'brand_site' && !input.waitlistAcceptance) return 'not_needed'
     if (!requiresGuestDetails(event)) return 'not_needed'
     const questions = bookingQuestionsSchema.safeParse(event.booking_questions ?? [])
     const missing = ticketsMissingDetails([{ seats: row.seats, attendees: row.attendees }], questions.success ? questions.data : [])
@@ -87,12 +98,25 @@ export async function requestMissingGuestDetails(
     // A failed send may still have reached the guest (refused or unknown), so no text follows it.
     if (!emailed.skipped) return 'failed'
 
-    if (!input.manageUrl || customer.sms_status !== 'active' || !customer.mobile_number) return 'no_channel'
+    if (customer.sms_status !== 'active' || !customer.mobile_number) return 'no_channel'
+    let link = input.manageUrl
+    if (!link) {
+      try {
+        link = (await createEventManageToken(supabase, {
+          customerId: customer.id,
+          bookingId: row.id,
+          eventStartIso: event.start_datetime,
+          appBaseUrl: input.appBaseUrl,
+        })).url
+      } catch {
+        return 'no_channel'
+      }
+    }
     const body = buildGuestDetailsRequestSms({
       firstName: customer.first_name?.trim() || 'there',
       eventName: event.name || 'your event',
       eventDate: formatEventDateShortLondon(event.start_datetime),
-      link: input.manageUrl,
+      link,
     })
     const sms = await sendSMS(customer.mobile_number, body, {
       customerId: customer.id,

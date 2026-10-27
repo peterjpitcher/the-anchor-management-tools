@@ -111,7 +111,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
       setAttendanceSummary(result.data.attendance ?? null)
 
       if (result.data.alreadyCheckedIn) {
-        const name = [result.data.customer.first_name, result.data.customer.last_name].filter(Boolean).join(' ') || 'there'
+        const name = result.data.customer.displayName || 'there'
         setMessage(`Hello ${name}. You are already checked in for ${event.name}.`)
         setStep('already')
         return
@@ -193,8 +193,11 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
   const renderKnown = () => {
     if (!knownGuest) return null
-    const name = [knownGuest.customer.first_name, knownGuest.customer.last_name].filter(Boolean).join(' ') || 'there'
+    const name = knownGuest.customer.displayName || 'there'
     const seats = knownGuest.booking?.seats ?? 1
+    // BK-032, owner decision D12: an unpaid booking on a night paid in advance pays at the bar
+    // first. The kiosk says so and offers no check-in.
+    const paymentDue = knownGuest.booking?.paymentDue
 
     return (
       <div className="space-y-5">
@@ -212,10 +215,17 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
             </p>
           )}
         </div>
+        {paymentDue && (
+          <Alert tone="warning" title="Please see the bar">
+            {paymentDue.message}
+          </Alert>
+        )}
         <div className="flex flex-col gap-3">
-          <Button type="button" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base" onClick={handleKnownCheckIn}>
-            Yes, Check Me In
-          </Button>
+          {!paymentDue && (
+            <Button type="button" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base" onClick={handleKnownCheckIn}>
+              Yes, Check Me In
+            </Button>
+          )}
           <Button type="button" variant="secondary" size="lg" fullWidth className="h-12" onClick={() => setStep('lookup')}>
             Search Again
           </Button>
@@ -226,8 +236,8 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
   const renderUnknown = () => (
     <form onSubmit={handleNewCheckIn} className="space-y-4">
-      <Alert tone="info" title="Guest not found">
-        Add their name to check in {normalizedPhone}.
+      <Alert tone="info" title="No booking found">
+        Add your name to check in on {normalizedPhone}.
       </Alert>
       {/* min-h-touch: 44px fields on an iPad in landscape too (owner decision D6). */}
       <div className="grid gap-3 sm:grid-cols-2">

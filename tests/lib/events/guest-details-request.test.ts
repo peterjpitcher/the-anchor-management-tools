@@ -16,6 +16,7 @@ vi.mock('@/lib/email/event-ticket-emails', async (importOriginal) => ({
   sendEventGuestDetailsRequestEmail: mocks.email,
 }))
 vi.mock('@/lib/twilio', () => ({ sendSMS: mocks.sms }))
+vi.mock('@/lib/events/manage-booking', () => ({ createEventManageToken: vi.fn(async () => ({ url: 'https://l.example/new-link' })) }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
 import { buildGuestDetailsRequestSms, requestMissingGuestDetails } from '@/lib/events/guest-details-request'
@@ -75,6 +76,20 @@ describe('requestMissingGuestDetails', () => {
     mocks.email.mockResolvedValue({ success: false, error: 'timeout' })
     expect(await requestMissingGuestDetails(db(), { bookingId: 'booking-1', manageUrl: 'https://l.example/m' })).toBe('failed')
     expect(mocks.sms).not.toHaveBeenCalled()
+  })
+
+  it('asks a waitlist booker, recorded with the website as source, and makes them a link (BK-011)', async () => {
+    mocks.flagOn = true
+    mocks.booking = booking({ source: 'brand_site' })
+    mocks.email.mockResolvedValue({ success: false, skipped: true })
+    expect(await requestMissingGuestDetails(db(), { bookingId: 'booking-1', manageUrl: null, waitlistAcceptance: true })).toBe('sent_sms')
+    expect(mocks.sms.mock.calls[0][1]).toContain('https://l.example/new-link')
+  })
+
+  it('never asks a website booker outside the waitlist', async () => {
+    mocks.flagOn = true
+    mocks.booking = booking({ source: 'brand_site' })
+    expect(await requestMissingGuestDetails(db(), { bookingId: 'booking-1', manageUrl: 'https://l.example/m' })).toBe('not_needed')
   })
 
   it.each([

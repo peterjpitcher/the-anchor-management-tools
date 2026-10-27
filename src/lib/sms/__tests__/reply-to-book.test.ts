@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { parseSeatCount, findActivePromoContext, handleReplyToBook } from '../reply-to-book'
+import { parseSeatCount, findActivePromoContext, handleReplyToBook, isDeclineReply, isYesWithoutNumber, placesLeftReply } from '../reply-to-book'
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -15,6 +15,10 @@ vi.mock('@/lib/logger', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/money-alerts', () => ({
+  alertMoneyNeedsAPerson: vi.fn(async () => ({ sent: true, duplicate: false })),
 }))
 
 vi.mock('@/lib/sms/customers', () => ({
@@ -38,6 +42,7 @@ vi.mock('@/services/event-bookings', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EventBookingService } from '@/services/event-bookings'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 
 const mockCreateAdminClient = vi.mocked(createAdminClient)
 const mockEnsureCustomerForPhone = vi.mocked(ensureCustomerForPhone)
@@ -434,7 +439,7 @@ describe('handleReplyToBook', () => {
     })
     mockCreateBooking.mockResolvedValue({
       resolvedState: 'blocked',
-      resolvedReason: 'duplicate_booking',
+      resolvedReason: 'customer_conflict',
       bookingId: null,
       seatsRemaining: null,
       nextStepUrl: null,
@@ -444,7 +449,7 @@ describe('handleReplyToBook', () => {
       tableBookingId: null,
       tableName: null,
       eventSeatingType: null,
-      rpcResult: { state: 'blocked', reason: 'duplicate_booking' },
+      rpcResult: { state: 'blocked', reason: 'customer_conflict' },
     })
 
     const result = await handleReplyToBook(PHONE, '2')
@@ -553,3 +558,117 @@ describe('handleReplyToBook', () => {
     expect(mockCreateBooking).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// BK-034, owner decision D14: every reply gets an answer that says what happened
+// ---------------------------------------------------------------------------
+
+const blockedResult = (state: string, reason: string | null, extra: Record<string, unknown> = {}) => ({
+  resolvedState: state,
+  resolvedReason: reason,
+  bookingId: null,
+  seatsRemaining: null,
+  nextStepUrl: null,
+  manageUrl: null,
+  smsMeta: null,
+  notificationChannel: null,
+  tableBookingId: null,
+  tableName: null,
+  eventSeatingType: null,
+  rpcResult: { state, reason, ...extra },
+}) as never
+
+describe('reply-to-book outcomes (BK-034)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER = '01784 123456'
+    mockEnsureCustomerForPhone.mockResolvedValue({ customerId: 'cust-uuid-001', standardizedPhone: PHONE })
+  })
+
+  it('reads "no thanks" as a decline, and "no problem, 4 please" as a booking', () => {
+    expect(isDeclineReply('No thanks')).toBe(true)
+    expect(isDeclineReply('Can\u2019t make it this time')).toBe(true)
+    expect(isDeclineReply('No problem, 4 please')).toBe(false)
+    expect(isYesWithoutNumber('Yes please!')).toBe(true)
+    expect(isYesWithoutNumber('yes 2')).toBe(false)
+    expect(isYesWithoutNumber('no')).toBe(false)
+  })
+
+  it('sends no reply to a decline and flags nothing', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    const result = await handleReplyToBook(PHONE, 'No thanks, not this time', { inboundMessageId: 'inbound-1' })
+    expect(result).toEqual({ handled: true })
+    expect(db.update).not.toHaveBeenCalled()
+  })
+
+  it('asks how many when the guest says yes without a number', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    const result = await handleReplyToBook(PHONE, 'Yes please!', { inboundMessageId: 'inbound-1' })
+    expect(result).toEqual({ handled: true, response: 'Great! How many of you? Just reply with a number.' })
+    expect(db.update).not.toHaveBeenCalled()
+  })
+
+  it('tells a guest whose booking clashes with one they already hold that they are booked in', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockCreateBooking.mockResolvedValue(blockedResult('blocked', 'customer_conflict'))
+    const result = await handleReplyToBook(PHONE, '2')
+    expect(result.response).toBe("Looks like you're already booked in for Quiz Night! See you there.")
+  })
+
+  it('says how many places are left when the night fills first, and never marks it booked', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockCreateBooking.mockResolvedValue({ ...(blockedResult('full_with_waitlist_option', null) as object), seatsRemaining: 1 } as never)
+    const result = await handleReplyToBook(PHONE, '2')
+    expect(result.response).toBe("We've only got 1 seat left for Quiz Night. Reply 1 or less and we'll get you in!")
+    expect(db.update).not.toHaveBeenCalledWith(expect.objectContaining({ booking_created: true }))
+  })
+
+  it('says bookings have closed when sales have closed', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockCreateBooking.mockResolvedValue(blockedResult('blocked', 'booking_closed'))
+    const result = await handleReplyToBook(PHONE, '2')
+    expect(result).toEqual({ handled: true, response: 'Sorry, bookings for Quiz Night have closed.' })
+  })
+
+  it('flags any other refusal for a person and tells the guest so, instead of going silent', async () => {
+    const db = buildDbMock({ eventData: { ...EVENT_ROW, start_datetime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() } })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockCreateBooking.mockResolvedValue(blockedResult('blocked', 'something_new'))
+    const result = await handleReplyToBook(PHONE, '2', { inboundMessageId: 'inbound-9' })
+    expect(result.handled).toBe(true)
+    expect(result.response).toContain('one of us will pick it up')
+    expect(db.update).toHaveBeenCalledWith({ metadata: expect.objectContaining({ reply_to_book_unbooked: true, reply_to_book_event_id: 'event-uuid-001' }) })
+    // Within 48 hours of the night, the manager hears about it at once.
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'unbooked_text_reply', bookingId: 'inbound-9', path: '/events/event-uuid-001' }))
+  })
+
+  it('does not email the manager about a flagged reply for a night more than 48 hours away', async () => {
+    const db = buildDbMock({ eventData: { ...EVENT_ROW, start_datetime: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() } })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockCreateBooking.mockResolvedValue(blockedResult('blocked', 'something_new'))
+    await handleReplyToBook(PHONE, '2', { inboundMessageId: 'inbound-9' })
+    expect(alertMoneyNeedsAPerson).not.toHaveBeenCalled()
+  })
+
+  it('checks a shared-seating night against the seats left, not seats plus standing', async () => {
+    const db = buildDbMock({
+      eventData: { ...EVENT_ROW, booking_mode: 'communal' },
+      capacityRows: [{ ...CAPACITY_ROW, seats_remaining: 12, seated_remaining: 1, standing_remaining: 11 }],
+    })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    const result = await handleReplyToBook(PHONE, '4')
+    expect(result.response).toBe("We've only got 1 seat left for Quiz Night. Reply 1 or less and we'll get you in!")
+    expect(mockCreateBooking).not.toHaveBeenCalled()
+  })
+
+  it('words a night with standing room only plainly', () => {
+    expect(placesLeftReply({ eventName: 'Gig', communal: true, seatsRemaining: 5, seatedRemaining: 0, standingRemaining: 5 }))
+      .toBe("Sorry, we're out of seats for Gig, but we've got 5 standing places left. Give us a ring and we'll sort you out.")
+  })
+})
+

@@ -14,6 +14,7 @@ import { EventBookingService } from '@/services/event-bookings'
 import { logger } from '@/lib/logger'
 import { maskPhone } from '@/lib/phone/mask'
 import { normaliseToGsm7 } from '@/lib/sms/gsm7'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 
 // Maximum seats bookable via SMS reply (groups larger than this are handled by phone)
 const SMS_REPLY_MAX_SEATS = 10
@@ -22,6 +23,9 @@ const SMS_REPLY_MAX_SEATS = 10
 // numeric reply with no live booking window deserves a helpful fallback reply
 // (rather than silence). Keeps ordinary conversations from being hijacked.
 const FALLBACK_PROMO_LOOKBACK_DAYS = 45
+
+// A booking reply nobody could book is emailed to the manager when the night is this close.
+const UNBOOKED_REPLY_ALERT_WINDOW_MS = 48 * 60 * 60 * 1000
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +39,8 @@ type PromoContextRow = {
 type CapacitySnapshotRow = {
   event_id: string
   seats_remaining: number | null
+  seated_remaining?: number | null
+  standing_remaining?: number | null
   is_full: boolean
   capacity: number | null
   confirmed_seats: number
@@ -45,6 +51,7 @@ type EventRow = {
   id: string
   name: string
   booking_mode: string | null
+  start_datetime?: string | null
 }
 
 type ReplyToBookOptions = {
@@ -197,6 +204,69 @@ export function parseSeatCount(body: string): number | null {
   return null
 }
 
+/**
+ * A "not this time" reply (BK-034, owner decision D14). It gets no reply and is not flagged for
+ * staff: telling someone who said no that their reply "could not be read" was wrong, and the
+ * flag sent staff after people who had already answered.
+ */
+export function isDeclineReply(body: string): boolean {
+  const text = normaliseToGsm7(body ?? '').trim()
+  if (!text) return false
+  // "No problem, 4 please" is a booking, and parseSeatCount reads it as one.
+  if (parseSeatCount(text) !== null) return false
+  return DECLINE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+const AFFIRMATIVE = /^\s*(?:yes|yeah|yep|yup|yea|ya|sure|ok|okay|go on|definitely|absolutely|count (?:me|us) in|(?:we|i)'?(?:re|m) in|sounds good|lovely|great)\b/i
+
+/**
+ * "Yes" with no number (BK-034). They want to come, so ask how many rather than flagging the
+ * reply for a person.
+ */
+export function isYesWithoutNumber(body: string): boolean {
+  const text = normaliseToGsm7(body ?? '').trim()
+  if (!text || /\d/.test(text)) return false
+  if (isDeclineReply(text)) return false
+  return AFFIRMATIVE.test(text)
+}
+
+export const ASK_HOW_MANY_REPLY = 'Great! How many of you? Just reply with a number.'
+
+/** What a guest is told when the booking could not be made automatically and a person will look. */
+function pickUpReply(venuePhone: string): string {
+  return venuePhone
+    ? `Thanks! We couldn't book that automatically, so one of us will pick it up. Or give us a ring on ${venuePhone}.`
+    : "Thanks! We couldn't book that automatically, so one of us will pick it up shortly."
+}
+
+/**
+ * The places left, said as they are (BK-034). On a shared-seating night "seats left" used to
+ * count standing places too, so a guest asking for seats was told there was room and then
+ * refused in silence.
+ */
+export function placesLeftReply(input: {
+  eventName: string
+  communal: boolean
+  seatsRemaining: number | null | undefined
+  seatedRemaining: number | null | undefined
+  standingRemaining: number | null | undefined
+}): string {
+  if (input.communal) {
+    const seated = Math.max(0, Number(input.seatedRemaining ?? 0))
+    const standing = Math.max(0, Number(input.standingRemaining ?? 0))
+    if (seated === 0 && standing === 0) return `Sorry, ${input.eventName} is fully booked. Keep an eye out for the next one.`
+    if (seated === 0) return `Sorry, we're out of seats for ${input.eventName}, but we've got ${standing} standing ${standing === 1 ? 'place' : 'places'} left. Give us a ring and we'll sort you out.`
+    return `We've only got ${seated} ${seated === 1 ? 'seat' : 'seats'} left for ${input.eventName}. Reply ${seated} or less and we'll get you in!`
+  }
+  const remaining = Math.max(0, Number(input.seatsRemaining ?? 0))
+  if (remaining === 0) return `Sorry, ${input.eventName} is fully booked. Keep an eye out for the next one.`
+  return `We've only got ${remaining} ${remaining === 1 ? 'seat' : 'seats'} left for ${input.eventName}. Reply ${remaining} or less and we'll get you in!`
+}
+
+const FULL_REASONS = new Set(['insufficient_capacity', 'insufficient_seated_capacity', 'seated_capacity_changed', 'event_full', 'sold_out', 'no_table', 'table_capacity_insufficient', 'standing_capacity_not_configured'])
+const CLOSED_REASONS = new Set(['booking_closed', 'event_started', 'not_bookable', 'bookings_disabled', 'event_not_bookable', 'sales_closed'])
+const ALREADY_BOOKED_REASONS = new Set(['customer_conflict', 'duplicate_booking', 'already_booked'])
+
 // ─── Promo Context Lookup ─────────────────────────────────────────────────────
 
 /**
@@ -297,7 +367,8 @@ async function findRecentPromoContext(phoneNumber: string): Promise<RecentPromoR
  */
 async function markInboundNeedsAttention(
   db: ReturnType<typeof createAdminClient>,
-  inboundMessageId?: string | null
+  inboundMessageId?: string | null,
+  eventId?: string | null
 ): Promise<void> {
   if (!inboundMessageId) return
   try {
@@ -315,13 +386,51 @@ async function markInboundNeedsAttention(
     await settleWrite(
       db
         .from('messages')
-        .update({ metadata: { ...existing, reply_to_book_unbooked: true } })
+        .update({ metadata: { ...existing, reply_to_book_unbooked: true, ...(eventId ? { reply_to_book_event_id: eventId } : {}) } })
         .eq('id', inboundMessageId),
       { table: 'messages', what: 'Flagging the inbound message as unbooked', ids: { inboundMessageId } }
     )
   } catch (err) {
     logger.error('reply-to-book fallback: failed to flag inbound message', {
       metadata: { inboundMessageId, error: err instanceof Error ? err.message : String(err) },
+    })
+  }
+}
+
+/**
+ * Flags a booking reply nobody could book, for the "Unbooked event replies" list on the event
+ * page and the dashboard, and emails the manager when the event is within 48 hours (BK-034):
+ * a request found after the night is a lost booking. Ids only in the email. Never throws.
+ */
+async function flagUnbookedReply(
+  db: ReturnType<typeof createAdminClient>,
+  input: { inboundMessageId?: string | null; eventId: string; why: string }
+): Promise<void> {
+  await markInboundNeedsAttention(db, input.inboundMessageId, input.eventId)
+  try {
+    const { data: eventRow } = await db
+      .from('events')
+      .select('name, start_datetime')
+      .eq('id', input.eventId)
+      .maybeSingle()
+    const start = (eventRow as { start_datetime?: string | null } | null)?.start_datetime
+    const startMs = start ? Date.parse(start) : Number.NaN
+    const untilStart = startMs - Date.now()
+    if (!Number.isFinite(startMs) || untilStart < 0 || untilStart > UNBOOKED_REPLY_ALERT_WINDOW_MS) return
+    const eventName = (eventRow as { name?: string | null } | null)?.name || 'an event'
+    await alertMoneyNeedsAPerson(db, {
+      domain: 'event_bookings',
+      bookingId: input.inboundMessageId || input.eventId,
+      kind: 'unbooked_text_reply',
+      title: `A text reply about ${eventName} needs a person`,
+      summary: `A guest replied to an event text for ${eventName}, which starts within 48 hours, and the reply could not be booked automatically. Open Messages to read it and book them by hand. The guest has been told one of us will pick it up.`,
+      path: `/events/${input.eventId}`,
+      context: { 'Inbound message': input.inboundMessageId ?? null, Event: input.eventId, Why: input.why },
+    })
+  } catch (err) {
+    logger.error('reply-to-book: could not alert the manager about an unbooked reply', {
+      error: err instanceof Error ? err : new Error(String(err)),
+      metadata: { inboundMessageId: input.inboundMessageId, eventId: input.eventId },
     })
   }
 }
@@ -361,7 +470,7 @@ async function buildLateReplyFallback(
     .in('status', ['confirmed', 'pending_payment'])
     .maybeSingle()
 
-  await markInboundNeedsAttention(db, options.inboundMessageId)
+  await markInboundNeedsAttention(db, options.inboundMessageId, recent.event_id)
 
   let response: string
   if (existingBooking) {
@@ -404,8 +513,21 @@ export async function handleReplyToBook(
     const activePromo = await findActivePromoContext(phoneNumber)
     if (!activePromo) return { handled: false }
 
+    // BK-034, owner decision D14: a "no thanks" gets no reply and nobody is asked to chase it.
+    if (isDeclineReply(messageBody)) {
+      logger.info('reply-to-book: decline received, no reply sent', {
+        metadata: { phoneNumber: maskPhone(phoneNumber), eventId: activePromo.event_id },
+      })
+      return { handled: true }
+    }
+
+    // BK-034: "yes" with no number is asked how many, rather than handed to a person.
+    if (isYesWithoutNumber(messageBody)) {
+      return { handled: true, response: ASK_HOW_MANY_REPLY }
+    }
+
     const db = createAdminClient()
-    await markInboundNeedsAttention(db, options.inboundMessageId)
+    await flagUnbookedReply(db, { inboundMessageId: options.inboundMessageId, eventId: activePromo.event_id, why: 'not_understood' })
 
     const venuePhoneForHelp = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || ''
     logger.info('reply-to-book: reply not understood, flagged for staff', {
@@ -466,7 +588,7 @@ export async function handleReplyToBook(
   // Load event name for response messages
   const { data: eventRow, error: eventError } = await db
     .from('events')
-    .select('id, name, booking_mode')
+    .select('id, name, booking_mode, start_datetime')
     .eq('id', promo.event_id)
     .maybeSingle()
 
@@ -479,21 +601,25 @@ export async function handleReplyToBook(
 
   const event = eventRow as EventRow | null
   const eventName = event?.name ?? 'this event'
+  const communal = event?.booking_mode === 'communal'
 
   if (capacityRow) {
-    const seatsRemaining = capacityRow.seats_remaining // null = unlimited capacity
+    // A text booking asks for seats. On a shared-seating night the seats left are the seated
+    // places, not seated plus standing (BK-034). null means unlimited.
+    const available = communal && capacityRow.seated_remaining !== undefined
+      ? capacityRow.seated_remaining
+      : capacityRow.seats_remaining
 
-    if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining <= 0) {
+    if (available !== null && available !== undefined && available < seats) {
       return {
         handled: true,
-        response: `Sorry, ${eventName} is fully booked. Keep an eye out for the next one.`,
-      }
-    }
-
-    if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining < seats) {
-      return {
-        handled: true,
-        response: `We've only got ${seatsRemaining} seats left for ${eventName}. Reply ${seatsRemaining} or less and we'll get you in!`,
+        response: placesLeftReply({
+          eventName,
+          communal,
+          seatsRemaining: capacityRow.seats_remaining,
+          seatedRemaining: capacityRow.seated_remaining,
+          standingRemaining: capacityRow.standing_remaining,
+        }),
       }
     }
   }
@@ -554,32 +680,46 @@ export async function handleReplyToBook(
       error: err instanceof Error ? err : new Error(String(err)),
       metadata: { eventId: promo.event_id, customerId, seats },
     })
-    return { handled: false }
+    await flagUnbookedReply(db, { inboundMessageId: options.inboundMessageId, eventId: promo.event_id, why: 'booking_error' })
+    return { handled: true, response: pickUpReply(venuePhone) }
   }
 
-  // 9. Handle duplicate booking from RPC (unique constraint or reason = duplicate_booking)
-  if (
-    bookingResult.resolvedState === 'blocked' &&
-    (bookingResult.resolvedReason === 'duplicate_booking' ||
-      bookingResult.resolvedReason === 'already_booked')
-  ) {
-    return {
-      handled: true,
-      response: `Looks like you're already booked in for ${eventName}! See you there.`,
-    }
-  }
-
-  // If the booking was blocked for any other reason, fall through — don't claim handled
-  if (bookingResult.resolvedState === 'blocked') {
-    logger.warn('reply-to-book: booking was blocked by RPC', {
+  // 9. Every outcome that is not a booking gets a reply that says what happened (BK-034). A
+  //    refusal used to get no reply at all, and a full night was marked as booked.
+  const booked = bookingResult.resolvedState === 'confirmed' || bookingResult.resolvedState === 'pending_payment'
+  if (!booked) {
+    const reason = bookingResult.resolvedReason ?? null
+    logger.warn('reply-to-book: booking was not made', {
       metadata: {
         eventId: promo.event_id,
         customerId,
         seats,
-        reason: bookingResult.resolvedReason,
+        state: bookingResult.resolvedState,
+        reason,
+        rpcFailed: bookingResult.rpcFailed === true,
       },
     })
-    return { handled: false }
+    if (reason && ALREADY_BOOKED_REASONS.has(reason)) {
+      return { handled: true, response: `Looks like you're already booked in for ${eventName}! See you there.` }
+    }
+    if (bookingResult.resolvedState === 'full_with_waitlist_option' || (reason && FULL_REASONS.has(reason))) {
+      const rpc = (bookingResult.rpcResult ?? {}) as { seated_remaining?: number | null; standing_remaining?: number | null }
+      return {
+        handled: true,
+        response: placesLeftReply({
+          eventName,
+          communal,
+          seatsRemaining: bookingResult.seatsRemaining ?? capacityRow?.seats_remaining,
+          seatedRemaining: rpc.seated_remaining ?? capacityRow?.seated_remaining,
+          standingRemaining: rpc.standing_remaining ?? capacityRow?.standing_remaining,
+        }),
+      }
+    }
+    if (reason && CLOSED_REASONS.has(reason)) {
+      return { handled: true, response: `Sorry, bookings for ${eventName} have closed.` }
+    }
+    await flagUnbookedReply(db, { inboundMessageId: options.inboundMessageId, eventId: promo.event_id, why: reason ?? bookingResult.resolvedState ?? 'unknown' })
+    return { handled: true, response: pickUpReply(venuePhone) }
   }
 
   // 10. Mark promo context as booking_created = true (best-effort)
