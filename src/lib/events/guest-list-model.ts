@@ -39,7 +39,8 @@ export interface GuestGroup {
  * first named guest never appeared and could be turned away at the door, while the booker was
  * listed (BK-031, customer bookings review of 24 October 2026). Now every named ticket is a line
  * from ticket 1, and the booker is named in the heading. A booking with no ticket names keeps the
- * old shape: the booker, then blank lines to write in.
+ * old shape: the booker, then blank lines to write in. A booking with stored guest rows always
+ * uses the per-ticket shape, named or not.
  */
 function toGroup(b: GuestListBookingInput): GuestGroup {
   const bookerName = `${(b.customerFirstName ?? '').trim()} ${(b.customerLastName ?? '').trim()}`.trim()
@@ -51,7 +52,10 @@ function toGroup(b: GuestListBookingInput): GuestGroup {
   const hasNames = named.some((guest) => guest.name.length > 0)
   const paymentNote = b.paymentNote?.trim() || null
 
-  if (hasNames) {
+  // Stored guest rows always use the per-ticket shape, even when every name is still to follow:
+  // staff may have saved answers or mobiles without names (BK-011), and the booker may not be
+  // coming. A blank name prints as a line to write in, with that guest's answers beneath it.
+  if (detailed.length > 0 || hasNames) {
     const lineCount = Math.max(seats, named.length)
     const lines: GuestLine[] = Array.from({ length: lineCount }, (_, index) => ({
       name: named[index]?.name ?? '',
