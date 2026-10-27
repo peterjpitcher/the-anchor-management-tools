@@ -55,7 +55,7 @@ import {
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
 import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
-import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
+import { formatDateTimeInLondon, londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 import { staffStatusActionsFor } from '@/lib/table-bookings/staff-status-actions'
 import {
   describeGuestNotificationChannel,
@@ -288,6 +288,8 @@ export type BookingAuditEntry = BookingAuditTrailEntry
 
 export interface Booking {
   id: string
+  /** When the guest tapped 'confirm' on the day-before text, or null (BK-094). */
+  guest_confirmed_at?: string | null
   booking_reference: string | null
   booking_date: string
   booking_time: string | null
@@ -1146,6 +1148,19 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     { key: 'date', label: 'Date', value: formatBookingDate(booking.booking_date) },
                     { key: 'time', label: 'Time', value: booking.booking_time ? booking.booking_time.slice(0, 5) : '-' },
                     { key: 'duration', label: 'Duration', value: formatDuration(booking.duration_minutes) },
+                    // BK-094: the guest answered the day-before 'please confirm' text.
+                    ...(booking.guest_confirmed_at && Number.isFinite(Date.parse(booking.guest_confirmed_at))
+                      ? [{
+                          key: 'guest-confirmed',
+                          label: 'Guest confirmed',
+                          value: (
+                            <span className="inline-flex flex-wrap items-center gap-2">
+                              <Badge tone="success">Confirmed by guest</Badge>
+                              {formatDateTimeInLondon(booking.guest_confirmed_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
+                            </span>
+                          ),
+                        }]
+                      : []),
                     {
                       key: 'party-size',
                       label: 'Party size',

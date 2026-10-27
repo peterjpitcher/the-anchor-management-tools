@@ -13,7 +13,11 @@ vi.mock('@/app/actions/timeclock', () => ({
   clockOut: mocks.clockOut,
   getOpenSessions: mocks.getOpenSessions,
 }))
-vi.mock('react-hot-toast', () => ({ default: { error: mocks.toastError, success: vi.fn() } }))
+vi.mock('react-hot-toast', () => {
+  // The @/ds toast calls react-hot-toast as a function; FohClockBand calls toast.error.
+  const hot = Object.assign(mocks.toastError, { error: mocks.toastError, success: vi.fn(), loading: vi.fn(), dismiss: vi.fn() })
+  return { default: hot, toast: hot }
+})
 
 import { FohClockBand } from '@/ds/shell/FohClockBand'
 import {
@@ -91,7 +95,7 @@ describe('FohClockBand when the clock action throws (BK-096)', () => {
       fireEvent.click(button)
     })
 
-    expect(mocks.toastError).toHaveBeenCalledWith(STALE_PAGE_MESSAGE)
+    expect(mocks.toastError.mock.calls[0][0]).toBe(STALE_PAGE_MESSAGE)
     expect(screen.getByRole('button', { name: /clock in/i })).not.toBeDisabled()
     await act(async () => {
       vi.advanceTimersByTime(2_000)

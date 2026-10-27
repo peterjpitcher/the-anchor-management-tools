@@ -38,6 +38,8 @@ export type FohBooking = {
   christmas_course_counts?: number[] | null
   /** The latest party-size change the guest made through their manage link (BK-091). */
   guest_party_size_change?: { at: string; from: number | null; to: number | null } | null
+  /** When the guest tapped 'confirm' on the day-before text, or null (BK-094). */
+  guest_confirmed_at?: string | null
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]
