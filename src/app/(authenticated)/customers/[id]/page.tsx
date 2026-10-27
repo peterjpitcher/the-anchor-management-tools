@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { Customer } from '@/types/database'
@@ -182,6 +183,8 @@ type UnifiedCustomerBookingRow = {
   status: string
   /** The stored status, for the badge colour (BK-092). */
   status_key: string
+  /** Where the booking lives, so staff can open it from the profile (BK-181). */
+  href: string | null
   interest: string
   party_size: number | null
   amount: number | null
@@ -868,6 +871,7 @@ export default function CustomerViewPage() {
         reference: booking.booking_reference || booking.id.slice(0, 8).toUpperCase(),
         status: formatLabel(booking.status, 'Unknown'),
         status_key: (booking.status || 'unknown').toLowerCase(),
+        href: `/table-bookings/${booking.id}`,
         interest: formatLabel(booking.booking_purpose || booking.booking_type, 'Dining'),
         party_size: booking.party_size ?? null,
         amount: null,
@@ -899,6 +903,7 @@ export default function CustomerViewPage() {
         reference: eventBookingReference(booking.id),
         status: eventStatus.label,
         status_key: eventStatus.key,
+        href: booking.event_id ? `/events/${booking.event_id}` : null,
         interest: booking.event?.category?.name || 'Live Event',
         party_size: booking.seats ?? null,
         amount: null,
@@ -927,6 +932,7 @@ export default function CustomerViewPage() {
         reference: booking.id.slice(0, 8).toUpperCase(),
         status: formatLabel(booking.status, 'Unknown'),
         status_key: (booking.status || 'unknown').toLowerCase(),
+        href: `/private-bookings/${booking.id}`,
         interest: formatLabel(booking.event_type, 'Private Event'),
         party_size: booking.guest_count ?? null,
         amount: booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? null,
@@ -955,6 +961,7 @@ export default function CustomerViewPage() {
           ? `${formatLabel(booking.status, 'Unknown')} / ${formatLabel(booking.payment_status)}`
           : formatLabel(booking.status, 'Unknown'),
         status_key: (booking.status || 'unknown').toLowerCase(),
+        href: null,
         interest: 'Parking',
         party_size: null,
         amount: null,
@@ -1149,7 +1156,14 @@ export default function CustomerViewPage() {
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.title.localeCompare(b.title),
       cell: (booking: UnifiedCustomerBookingRow) => (
         <div className="space-y-1">
-          <p className="text-sm font-medium text-text">{booking.title}</p>
+          {booking.href ? (
+            // Opens the booking itself (BK-181); the event row opens its event page.
+            <Link href={booking.href} className="text-sm font-medium text-primary hover:underline">
+              {booking.title}
+            </Link>
+          ) : (
+            <p className="text-sm font-medium text-text">{booking.title}</p>
+          )}
           <p className="text-xs text-text-muted">{booking.summary}</p>
         </div>
       )

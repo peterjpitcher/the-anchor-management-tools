@@ -13,6 +13,7 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
+  CustomerLink,
   ConfirmDialog,
   DescriptionList,
   Empty,
@@ -1132,7 +1133,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   columns={3}
                   items={[
                     { key: 'reference', label: 'Reference', value: orDash(booking.booking_reference) },
-                    { key: 'guest', label: 'Guest', value: guestName },
+                    // Opens the guest's profile: past no-shows, other bookings, notes (BK-181).
+                    { key: 'guest', label: 'Guest', value: <CustomerLink customerId={booking.customer?.id} name={customerName} fallback={guestName} /> },
                     {
                       key: 'mobile',
                       label: 'Mobile',
