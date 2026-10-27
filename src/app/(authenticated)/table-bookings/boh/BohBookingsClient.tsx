@@ -33,6 +33,8 @@ import {
   TableRow,
   toast,
 } from '@/ds'
+import { matchesPhoneSearch } from '@/lib/phone/search-match'
+import { FindBookingByReference } from '@/components/features/table-bookings/FindBookingByReference'
 import { MessageGuestsModal } from './MessageGuestsModal'
 import { tableBookingsNav } from '../_shared/nav'
 import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
@@ -779,7 +781,9 @@ export function BohBookingsClient({
         .join(' ')
         .toLowerCase()
 
+      // An 07 number matches the stored +44 one (BK-180).
       return searchBlob.includes(normalizedSearch)
+        || matchesPhoneSearch(searchTerm, [booking.customer?.mobile_number])
     })
   }, [bookings, searchTerm, statusFilter])
 
@@ -1269,6 +1273,7 @@ export function BohBookingsClient({
                     placeholder="Search by guest, ref, table, phone, notes"
                   />
                 </div>
+                <FindBookingByReference />
                 <div className="w-full sm:w-48">
                   <Select
                     id="boh-status-filter"
