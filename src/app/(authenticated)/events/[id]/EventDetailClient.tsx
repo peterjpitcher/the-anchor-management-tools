@@ -423,14 +423,21 @@ export default function EventDetailClient({
 
   const handleRequestDoorPayment = useCallback((bookingId: string, method: 'cash' | 'card_terminal') => {
     setDoorPayment({ bookingId, method, amount: null, seats: null, error: null })
-    getEventBookingDoorCharge(bookingId).then((result) => {
-      setDoorPayment((current) => {
-        if (!current || current.bookingId !== bookingId) return current
-        return 'error' in result
-          ? { ...current, error: result.error }
-          : { ...current, amount: result.data.amount, seats: result.data.seats }
+    getEventBookingDoorCharge(bookingId)
+      .then((result) => {
+        setDoorPayment((current) => {
+          if (!current || current.bookingId !== bookingId) return current
+          return 'error' in result
+            ? { ...current, error: result.error }
+            : { ...current, amount: result.data.amount, seats: result.data.seats }
+        })
       })
-    })
+      .catch(() => {
+        // A dropped connection: say so in the dialog rather than leaving it working forever.
+        setDoorPayment((current) => (current && current.bookingId === bookingId
+          ? { ...current, error: 'Could not work out the amount to record. Try again.' }
+          : current))
+      })
   }, [])
 
   const handleConfirmDoorPayment = useCallback(async (): Promise<void> => {
