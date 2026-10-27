@@ -1,4 +1,4 @@
-import type { EventAttendeeInput } from '@/lib/events/booking-questions'
+import type { EventAttendeeInput, StaffEventAttendeeInput } from '@/lib/events/booking-questions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -115,14 +115,20 @@ export type CreateBookingParams = {
    * Used when the customer DB record has a placeholder name.
    */
   firstName?: string
-  /**
-   * Per-ticket attendee names (ordered; index 0 = lead booker). Persisted to
-   * bookings.attendee_names once the booking row exists. Optional — staff, FOH
-   * and SMS bookings don't supply them, and legacy rows stay NULL.
-   */
+  /** Website bookings: every ticket must carry a name and the event's answers (BK-014). */
   requireGuestDetails?: boolean
   expectedTotal?: number
-  attendees?: EventAttendeeInput[]
+  /**
+   * One guest row per ticket: name, answers and an optional own phone (BK-013). Every channel can
+   * send them (BK-011, owner decision D5). A staff, FOH, text or kiosk booking may leave a name or
+   * a required answer blank, "details to follow", for the booker to add from their manage link;
+   * a website booking may not. Phones are E.164 and stay on this booking only.
+   */
+  attendees?: Array<EventAttendeeInput | StaffEventAttendeeInput>
+  /**
+   * Per-ticket attendee names (ordered; index 0 = lead booker) for bookings that send no guest
+   * rows. Persisted to bookings.attendee_names once the booking row exists.
+   */
   attendeeNames?: string[]
   /**
    * First-party attribution forwarded by the brand site. Stored in analytics
@@ -210,7 +216,7 @@ function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | '
 export type BookingRpcErrorCode = 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | 'guest_details_invalid'
 
 /**
- * The codes create_event_booking_v08 raises when the event's questions moved under the guest:
+ * The codes create_event_booking_v08 and v09 raise when the event's questions moved under the guest:
  * an answer to a question since removed, a required question since added, or a choice since
  * changed. The website refetches the event and asks again.
  */
@@ -224,7 +230,7 @@ const QUESTIONS_CHANGED_CODES = ['unknown_attendee_question', 'attendee_answer_r
 const GUEST_DETAILS_INVALID_CODES = [
   'invalid_attendees', 'attendee_count_mismatch', 'invalid_attendee_id', 'attendee_name_required',
   'invalid_attendee_ticket_type', 'invalid_attendee_answers', 'attendee_answer_too_long',
-  'attendee_ticket_quantity_mismatch', 'attendee_quantity_mismatch',
+  'attendee_ticket_quantity_mismatch', 'attendee_quantity_mismatch', 'invalid_attendee_phone',
 ]
 
 function hasCode(text: string, code: string): boolean {
@@ -621,7 +627,7 @@ export class EventBookingService {
     const hasRequests = Boolean(diningRequest || earlyArrivalRequest)
     const needsAttendees = Boolean(requireGuestDetails || attendees?.length)
     const { data: rpcResultRaw, error: rpcError } = needsAttendees && hasRequests
-      ? await supabase.rpc('create_event_booking_with_attendees_and_requests_v01', {
+      ? await supabase.rpc('create_event_booking_with_attendees_and_requests_v02', {
           p_event_id: eventId,
           p_customer_id: customerId,
           p_seats: seats,
@@ -635,7 +641,7 @@ export class EventBookingService {
           p_early_arrival_request: earlyArrivalRequest ?? false,
         })
       : needsAttendees
-      ? await supabase.rpc('create_event_booking_v08', {
+      ? await supabase.rpc('create_event_booking_v09', {
           p_event_id: eventId,
           p_customer_id: customerId,
           p_seats: seats,
@@ -678,7 +684,7 @@ export class EventBookingService {
 
     if (rpcError) {
       const rpcErrorCode = classifyBookingRpcError(rpcError.message)
-      logger.error(`${needsAttendees ? (hasRequests ? 'create_event_booking_with_attendees_and_requests_v01' : 'create_event_booking_v08') : hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
+      logger.error(`${needsAttendees ? (hasRequests ? 'create_event_booking_with_attendees_and_requests_v02' : 'create_event_booking_v09') : hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source, rpcErrorCode }
       })

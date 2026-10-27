@@ -54,8 +54,8 @@ describe('guest answers CSV', () => {
     expect(response.status).toBe(200)
     const text = (await response.text()).replace(/^﻿/, '')
     const lines = text.split('\n')
-    expect(lines[0]).toBe('Booking reference,Booked by,Guest,Any allergies?')
-    expect(lines[1]).toBe('ANC-A1B2C3D4,Pat Booker,Ann Guest,Peanuts')
+    expect(lines[0]).toBe('Booking reference,Booked by,Guest,Guest mobile,Any allergies?')
+    expect(lines[1]).toBe('ANC-A1B2C3D4,Pat Booker,Ann Guest,,Peanuts')
     expect(text).not.toContain('Lapsed Guest')
   })
 

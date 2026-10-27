@@ -40,7 +40,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const questions = summariseGuestAnswers(data.bookings, data.event.questions).questions
     const rows: string[][] = [
-      ['Booking reference', 'Booked by', 'Guest', ...questions.map((question) => question.label)],
+      ['Booking reference', 'Booked by', 'Guest', 'Guest mobile', ...questions.map((question) => question.label)],
     ]
     let tickets = 0
     for (const booking of data.bookings) {
@@ -51,6 +51,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           booking.reference,
           escapeCsvCell(booking.bookerName),
           escapeCsvCell(attendee.name),
+          escapeCsvCell(typeof attendee.phone === 'string' ? attendee.phone : ''),
           ...questions.map((question) => {
             const answer = byQuestion.get(question.questionId)
             const value = typeof answer?.value === 'string' ? answer.value.trim() : ''

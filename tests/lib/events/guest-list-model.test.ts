@@ -60,6 +60,20 @@ describe('buildGuestListModel', () => {
     expect(group.lines[1].answers).toEqual([])
   })
 
+  // BK-013: the guest's own mobile goes on the confidential door list under their name.
+  it('prints a guest mobile under the guest, after their answers', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 1, customerFirstName: 'Pat', customerLastName: 'Booker',
+        attendees: [{ id: 'a', name: 'Ann Guest', ticket_type_id: null, phone: '+447700900123', answers: [
+          { question_id: 'q1', label: 'Any allergies?', type: 'text', value: 'Peanuts' },
+        ] }] }),
+    ])
+    expect(group.lines[0].answers).toEqual([
+      { label: 'Any allergies?', value: 'Peanuts' },
+      { label: 'Mobile', value: '+447700900123' },
+    ])
+  })
+
   it('carries what the door still has to take', () => {
     const [group] = buildGuestListModel([
       booking({ seats: 1, customerFirstName: 'Sol', customerLastName: 'Reed', paymentNote: 'Not paid yet: £45.00 due' }),

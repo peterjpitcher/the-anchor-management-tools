@@ -29,8 +29,8 @@ function toNumber(input: FormDataEntryValue | null): number | null {
 }
 
 /**
- * The guest details form posts one guest_id per ticket, in order, with guest_name_<n> and
- * answer_<n>_<questionId> beside it. Anything else in the form is ignored.
+ * The guest details form posts one guest_id per ticket, in order, with guest_name_<n>,
+ * guest_phone_<n> and answer_<n>_<questionId> beside it. Anything else in the form is ignored.
  */
 function readGuestDetailsForm(formData: FormData): unknown {
   const ids = formData.getAll('guest_id').map(String)
@@ -41,7 +41,8 @@ function readGuestDetailsForm(formData: FormData): unknown {
       if (key.startsWith(prefix) && typeof value === 'string') answers[key.slice(prefix.length)] = value
     }
     const name = formData.get(`guest_name_${index}`)
-    return { id, name: typeof name === 'string' ? name : '', answers }
+    const phone = formData.get(`guest_phone_${index}`)
+    return { id, name: typeof name === 'string' ? name : '', answers, ...(typeof phone === 'string' ? { phone } : {}) }
   })
 }
 
