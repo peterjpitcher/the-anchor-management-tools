@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026181322_booking_functions_server_only.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261026212313_booking_functions_server_only.sql'
 ROLLBACK = ROOT / 'tasks/booking-functions-server-only/rollback.sql'
 PUBLIC_V06 = ('create_table_booking_public_v06(uuid,date,time without time zone,integer,text,text,boolean,'
               'text,boolean,boolean,boolean,integer,boolean,boolean,uuid,boolean)')

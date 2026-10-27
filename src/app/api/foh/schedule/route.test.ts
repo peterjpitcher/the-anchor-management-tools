@@ -231,6 +231,49 @@ describe('GET /api/foh/schedule: private hire blocks', () => {
   })
 })
 
+// BK-179: a failed read of part of the floor is reported, never drawn silently as free tables.
+describe('GET /api/foh/schedule: load warnings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    adminRpc.mockResolvedValue({ data: [], error: null })
+    adminFrom.mockImplementation(() => makeBuilder({ data: [], error: null }))
+    dayLoadMock.mockResolvedValue(new Map())
+  })
+
+  it('returns no warnings when everything loads', async () => {
+    mockAuthSuccess(createSupabaseMock({ tables: { data: [INDOOR_TABLE], error: null } }))
+    const payload = await (await GET(makeRequest())).json()
+    expect(payload.data.load_warnings).toEqual([])
+  })
+
+  it('warns when the private hires, communal seats or standing guests cannot be read', async () => {
+    adminRpc.mockResolvedValue({ data: null, error: { message: 'timeout' } })
+    mockAuthSuccess(createSupabaseMock({
+      tables: { data: [INDOOR_TABLE], error: null },
+      event_communal_seat_allocations: { data: null, error: { message: 'timeout' } },
+      bookings: { data: null, error: { message: 'timeout' } },
+    }))
+
+    const res = await GET(makeRequest())
+    const payload = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(payload.data.load_warnings).toEqual(
+      expect.arrayContaining(['private_hires', 'communal_event_seats', 'standing_event_guests'])
+    )
+  })
+
+  it('still fails hard when the table assignments cannot be read', async () => {
+    mockAuthSuccess(createSupabaseMock({
+      tables: { data: [INDOOR_TABLE], error: null },
+      table_bookings: { data: [{ ...OUTSIDE_BOOKING_A, is_outside_seating: false }], error: null },
+      booking_table_assignments: { data: null, error: { message: 'timeout' } },
+    }))
+    const res = await GET(makeRequest())
+    expect(res.status).toBe(500)
+  })
+})
+
 describe('GET /api/foh/schedule — outside bookings', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -2,7 +2,7 @@
 """Run the private-hire room window and diner clash migration in an isolated socket-only PostgreSQL database.
 
 BK-159 and BK-070, customer bookings review of 24 October 2026. The functions start as production
-holds them today (the release 3 rollback file), then release 3's migration (20261026175212) runs,
+holds them today (the release 3 rollback file), then release 3's migration (20261026212246) runs,
 because this migration replaces its bodies and must be applied after it. Against those definitions
 it shows the defects: the table block ignores a hire's clear-down time, a whole-pub hire leaves a
 table area it is not hand-mapped to on sale, the garden block ignores clear-down too, the clash
@@ -26,9 +26,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026201513_private_hire_room_window_and_diner_clashes.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027132945_private_hire_room_window_and_diner_clashes.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-room-window/rollback.sql'
-RELEASE_3 = ROOT / 'supabase/migrations/20261026175212_private_hire_occupies_space.sql'
+RELEASE_3 = ROOT / 'supabase/migrations/20261026212246_private_hire_occupies_space.sql'
 RELEASE_3_ROLLBACK = ROOT / 'tasks/private-hire-occupies-space/rollback.sql'
 GUARD_SOURCE = ROOT / 'supabase/migrations/20260906155336_outside_private_hire_blocking.sql'
 FUNCTIONS = (

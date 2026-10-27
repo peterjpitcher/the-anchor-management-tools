@@ -1272,7 +1272,7 @@ export class GdprService {
 
       // The audit log refuses ordinary updates, so its copies of the guest's name, phone
       // and email go through the one database function allowed to take them out (BK-081,
-      // migration 20261026193741). Ids, statuses and who did what stay.
+      // migration 20261027132811). Ids, statuses and who did what stay.
       const { data: auditRowsScrubbed, error: auditScrubError } = await adminClient.rpc('gdpr_scrub_audit_logs_v01', {
         p_customer_ids: customerIds,
         p_booking_ids: eventBookingIds,

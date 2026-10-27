@@ -5,6 +5,7 @@ import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
+import { AuditService } from '@/services/audit'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -121,7 +122,9 @@ export async function POST(
         template_key: 'boh_manual_booking_sms',
         trigger_type: 'boh_manual_booking_sms',
         stage: messageStage,
-        source: 'boh_manual_booking_sms'
+        source: 'boh_manual_booking_sms',
+        // Who typed it, so a complaint about a text can be traced (BK-182).
+        sent_by_user_id: auth.userId
       }
     })
   } catch (smsError) {
@@ -147,6 +150,21 @@ export async function POST(
       },
     })
   }
+
+  // Recorded the way the email route records its sends (BK-182). Ids and lengths only.
+  await AuditService.logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'table_booking.manual_sms_sent',
+    resource_type: 'table_booking',
+    resource_id: booking.id,
+    operation_status: smsResult.success ? 'success' : 'failure',
+    error_message: smsResult.success ? undefined : smsResult.error || 'Failed to send SMS',
+    additional_info: {
+      customer_id: customer.id,
+      message_sid: smsResult.sid || null,
+      message_length: smsBody.length,
+    },
+  })
 
   if (!smsResult.success && !smsLogFailure) {
     return NextResponse.json(

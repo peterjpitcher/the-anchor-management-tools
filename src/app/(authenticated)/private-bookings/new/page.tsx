@@ -120,11 +120,6 @@ export default function NewPrivateBookingPage() {
   tomorrow.setDate(tomorrow.getDate() + 1)
   const defaultDate = toLocalIsoDate(tomorrow)
 
-  // Default deposit due date (14 days from today)
-  const defaultDepositDate = new Date()
-  defaultDepositDate.setDate(defaultDepositDate.getDate() + 14)
-  const defaultDepositDateIso = toLocalIsoDate(defaultDepositDate)
-
   // Set min date to today and max to 1 year from now
   const today = getTodayIsoDate()
   const oneYearFromNow = new Date()
@@ -384,15 +379,16 @@ export default function NewPrivateBookingPage() {
                   onChange={(e) => setDepositAmountInput(e.target.value)}
                 />
               </Field>
+              {/* No default date (BK-110): a date posted with every booking took the manual path, whose
+                  cap ended the hold at midnight at the start of its deadline day. */}
               <Field
                 label="Deposit Due (Hold Expiry)"
-                hint="The provisional hold is released if the deposit hasn't arrived by this date"
+                hint="Leave blank for the usual hold: 14 days, or until the balance deadline if that is sooner, and 48 hours (never into the event day) for a booking made within 14 days of the event. Only a date you enter here is used instead."
               >
                 <Input
                   type="date"
                   id="deposit_due_date"
                   name="deposit_due_date"
-                  defaultValue={defaultDepositDateIso}
                 />
               </Field>
               <Field

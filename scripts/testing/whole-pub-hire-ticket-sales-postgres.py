@@ -5,7 +5,7 @@ Owner decision D24 (BK-071, customer bookings review of 24 October 2026): a whol
 stops event ticket sales for the event it overlaps. Builds on the event physical capacity fixture
 (tests/database/event-physical-capacity/setup.sql plus 20260921074304), so create_event_booking_v05
 is the body production runs today (its md5 is checked), with private hires added as fixtures and
-the room rules loaded from 20261026175212 and 20261026201513.
+the room rules loaded from 20261026212246 and 20261027132945.
 
 Against production's function it shows the defect: a ticket sells on a night an Entire Pub hire
 has taken. Then the migration runs and that booking is refused as 'booking_closed' with nothing
@@ -24,9 +24,9 @@ ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 FIXTURE = ROOT / 'tests/database/event-physical-capacity/setup.sql'
 CAPACITY = ROOT / 'supabase/migrations/20260921074304_event_physical_capacity.sql'
-RELEASE_3 = ROOT / 'supabase/migrations/20261026175212_private_hire_occupies_space.sql'
-ROOM_WINDOW = ROOT / 'supabase/migrations/20261026201513_private_hire_room_window_and_diner_clashes.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261026202026_whole_pub_hire_stops_ticket_sales.sql'
+RELEASE_3 = ROOT / 'supabase/migrations/20261026212246_private_hire_occupies_space.sql'
+ROOM_WINDOW = ROOT / 'supabase/migrations/20261027132945_private_hire_room_window_and_diner_clashes.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133013_whole_pub_hire_stops_ticket_sales.sql'
 ROLLBACK = ROOT / 'tasks/whole-pub-hire-ticket-sales/rollback.sql'
 # md5(prosrc) of create_event_booking_v05 in production on 26 October 2026.
 PRODUCTION_MD5 = 'b902aaf91f8a4aad7f318bebd57c9463'

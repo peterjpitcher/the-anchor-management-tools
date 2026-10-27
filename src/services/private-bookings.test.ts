@@ -23,6 +23,7 @@ import {
   updateDepositAmount,
   deleteDeposit,
 } from './private-bookings'
+import { PAYPAL_DEPOSIT_REFUND_ONLY } from './private-bookings/payments'
 
 type MockAdminClientOptions = {
   booking: Record<string, unknown> | null
@@ -231,14 +232,31 @@ describe('deleteBalancePayment', () => {
 describe('updateDeposit', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  function depositClient(captureId: string | null, update = vi.fn().mockReturnThis()) {
+    return {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { paypal_deposit_capture_id: captureId }, error: null }),
+        update,
+        eq: vi.fn(function (this: unknown) { return Object.assign(Promise.resolve({ error: null }), this as object) }),
+      })),
+      rpc: vi.fn(),
+    }
+  }
+
   it('updates deposit fields without calling RPC', async () => {
-    const rpcMock = vi.fn()
-    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({
-      from: vi.fn(() => ({ update: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ error: null }) })),
-      rpc: rpcMock,
-    })
+    const client = depositClient(null)
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(client)
     await updateDeposit('booking-id', { amount: 150, method: 'card' })
-    expect(rpcMock).not.toHaveBeenCalled()
+    expect(client.rpc).not.toHaveBeenCalled()
+  })
+
+  // BK-069: a PayPal deposit goes back through Process Refund, never by editing its record.
+  it('refuses to edit a deposit PayPal took', async () => {
+    const update = vi.fn().mockReturnThis()
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(depositClient('CAPTURE-1', update))
+    await expect(updateDeposit('booking-id', { amount: 150, method: 'cash' })).rejects.toThrow(PAYPAL_DEPOSIT_REFUND_ONLY)
+    expect(update).not.toHaveBeenCalled()
   })
 })
 
@@ -318,6 +336,21 @@ describe('deleteDeposit', () => {
       from: vi.fn(() => ({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }) })),
     })
     await expect(deleteDeposit('booking-id')).rejects.toThrow()
+  })
+
+  // BK-069: clearing a PayPal deposit refunded nothing, and the reconciliation sweep put it back.
+  it('refuses to delete a deposit PayPal took', async () => {
+    const update = vi.fn()
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { status: 'confirmed', deposit_paid_date: '2026-10-01T10:00:00Z', deposit_amount: 250, deposit_payment_method: 'paypal', paypal_deposit_capture_id: 'CAPTURE-1' }, error: null }),
+        update,
+      })),
+    })
+    await expect(deleteDeposit('booking-id')).rejects.toThrow(PAYPAL_DEPOSIT_REFUND_ONLY)
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('returns statusReverted=false for completed booking', async () => {

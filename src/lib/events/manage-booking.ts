@@ -26,7 +26,7 @@ export type EventManagePreviewResult = {
   price_per_seat?: number
   can_cancel?: boolean
   can_change_seats?: boolean
-  /** True when each ticket carries a named guest (20261026203836). */
+  /** True when each ticket carries a named guest (20261027133100). */
   has_named_guests?: boolean
   /** Why the seat change is not offered, when the database says. */
   seat_change_blocked_reason?: string | null

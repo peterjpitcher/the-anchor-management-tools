@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * These database functions run with full rights and have no permission check inside, so only
- * service_role may run them (migration 20261026181322, BK-105). A call through the staff
+ * service_role may run them (migration 20261026212313, BK-105). A call through the staff
  * session client is refused with "permission denied for function", which would break the
  * event, invoice payment, customer import or private booking screen that made it.
  *

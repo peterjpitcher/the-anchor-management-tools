@@ -1,4 +1,4 @@
--- Rollback for 20261026192817_christmas_seats_for_every_guest.sql. Restores preorder_sync_covers
+-- Rollback for 20261027132744_christmas_seats_for_every_guest.sql. Restores preorder_sync_covers
 -- exactly as production held it on 26 October 2026 (body from 20260804000100_seasonal_preorders,
 -- md5(prosrc) f225b098125e5e11ca54a432c1142e28), with its grants. Seats already made for 1 course
 -- guests stay; the old function keeps existing seats in step and never removes them for that reason.

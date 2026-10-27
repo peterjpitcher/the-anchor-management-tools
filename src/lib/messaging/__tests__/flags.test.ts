@@ -58,14 +58,14 @@ describe('isMessagingFlagOn', () => {
     settingRowResult.data = {
       value: {
         table_preorder_choices_copy: true,
-        private_booking_email_first: false,
+        table_deposit_hold_reminder: false,
         event_promo_last_push: 'true',
         bounce_sms_fallback: 1,
       },
     }
 
     expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(true)
-    expect(await isMessagingFlagOn('private_booking_email_first')).toBe(false)
+    expect(await isMessagingFlagOn('table_deposit_hold_reminder')).toBe(false)
     expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
     expect(await isMessagingFlagOn('bounce_sms_fallback')).toBe(false)
     expect(await isMessagingFlagOn('staff_message_email_option')).toBe(false)
@@ -135,17 +135,17 @@ describe('isMessagingFlagOn', () => {
   it('answers a failed read with the last value read, even after its minute', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-26T10:00:00Z'))
-    settingRowResult.data = { value: { private_booking_email_first: true, table_preorder_choices_copy: false } }
-    expect(await isMessagingFlagOn('private_booking_email_first')).toBe(true)
+    settingRowResult.data = { value: { table_deposit_hold_reminder: true, table_preorder_choices_copy: false } }
+    expect(await isMessagingFlagOn('table_deposit_hold_reminder')).toBe(true)
 
     vi.setSystemTime(new Date('2026-10-26T10:05:00Z'))
     settingRowResult.error = { code: '57014', message: 'canceling statement', details: null, hint: null }
-    expect(await isMessagingFlagOn('private_booking_email_first')).toBe(true)
+    expect(await isMessagingFlagOn('table_deposit_hold_reminder')).toBe(true)
     expect(await isMessagingFlagOn('table_preorder_choices_copy')).toBe(false)
     expect(maybeSingleMock).toHaveBeenCalledTimes(3)
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to read messaging flags; using the last value read',
-      expect.objectContaining({ metadata: expect.objectContaining({ flag: 'private_booking_email_first' }) }),
+      expect.objectContaining({ metadata: expect.objectContaining({ flag: 'table_deposit_hold_reminder' }) }),
     )
   })
 
@@ -153,14 +153,14 @@ describe('isMessagingFlagOn', () => {
     settingRowResult.error = { code: '57014', message: 'canceling statement', details: null, hint: null }
 
     expect(await isMessagingFlagOn('table_preorder_email_first')).toBe(true)
-    for (const key of ['table_preorder_choices_copy', 'bounce_sms_fallback', 'private_booking_email_first'] as const) {
+    for (const key of ['table_preorder_choices_copy', 'bounce_sms_fallback', 'table_deposit_hold_reminder'] as const) {
       expect(await isMessagingFlagOn(key), key).toBe(false)
     }
   })
 
   it('caches a missing row too, so an absent row costs one read a minute', async () => {
     await isMessagingFlagOn('table_preorder_choices_copy')
-    await isMessagingFlagOn('private_booking_email_first')
+    await isMessagingFlagOn('table_deposit_hold_reminder')
 
     expect(maybeSingleMock).toHaveBeenCalledTimes(1)
   })

@@ -105,7 +105,7 @@ function seed(booking: Record<string, unknown> = bookingRow()) {
 describe('bounce fallback for the deposit request', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    state.flags = { bounce_sms_fallback: true }
     mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-1' })
   })
 
