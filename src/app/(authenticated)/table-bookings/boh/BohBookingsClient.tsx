@@ -11,6 +11,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  CustomerLink,
   Dropdown,
   DropdownItem,
   Empty,
@@ -1318,7 +1319,8 @@ export function BohBookingsClient({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-text" title={booking.guest_name || ''}>
-                              {booking.guest_name || 'Unknown guest'}
+                              {/* The guest's profile, one tap away (BK-181). */}
+                              <CustomerLink customerId={booking.customer?.id} name={booking.guest_name} fallback="Unknown guest" />
                             </p>
                             <p className="mt-0.5 text-xs text-text-muted">{formatBookingDateTime(booking)}</p>
                           </div>
@@ -1420,8 +1422,15 @@ export function BohBookingsClient({
                           <TableCell className="font-medium">{formatBookingDateTime(booking)}</TableCell>
                           <TableCell className="whitespace-normal">
                             <div className="max-w-[220px] truncate font-medium" title={booking.guest_name || ''}>
-                              {booking.guest_name || 'Unknown guest'}
+                              <CustomerLink customerId={booking.customer?.id} name={booking.guest_name} fallback="Unknown guest" />
                             </div>
+                            {/* An upright iPad (md to lg) hides the Ref and Phone columns, so they sit
+                                under the name there (BK-183). */}
+                            {(booking.booking_reference || booking.customer?.mobile_number) && (
+                              <div className="max-w-[220px] truncate text-xs text-text-muted lg:hidden">
+                                {[booking.booking_reference, booking.customer?.mobile_number].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
                             {booking.event_name && (
                               <div className="max-w-[220px] truncate text-xs text-text-muted" title={booking.event_name}>
                                 {booking.event_name}
@@ -1449,10 +1458,25 @@ export function BohBookingsClient({
                               </div>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-normal">
                             <Badge size="sm" className={getStatusBadgeClasses(visualState)}>
                               {getStatusLabel(visualState)}
                             </Badge>
+                            {/* The Deposit column is hidden below lg, so the deposit shows here (BK-183). */}
+                            {(depositState.kind !== 'none' || booking.deposit_review_needed) && (
+                              <div className="mt-1 flex flex-wrap gap-1 lg:hidden">
+                                {depositState.kind !== 'none' ? (
+                                  <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                                    {depositState.label}
+                                    {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                                    {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
+                                  </Badge>
+                                ) : null}
+                                {booking.deposit_review_needed ? (
+                                  <Badge size="sm" tone="warning">Deposit to check</Badge>
+                                ) : null}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="hidden lg:table-cell">{booking.customer?.mobile_number || '-'}</TableCell>
                           <TableCell className="hidden lg:table-cell">
