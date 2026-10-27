@@ -54,6 +54,8 @@ export type CustomerCommunication = {
   cost: number | null
   segments: number | null
   updated_at: string | null
+  /** The member of staff who wrote this text by hand, when recorded (BK-182). */
+  sent_by?: string | null
 }
 
 type EmailMessage = {

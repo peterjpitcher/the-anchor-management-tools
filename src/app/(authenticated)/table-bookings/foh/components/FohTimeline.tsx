@@ -73,10 +73,17 @@ function BookingBadges({ booking, className }: { booking: FohBooking; className?
     dietaryRequirements: booking.dietary_requirements,
     notes: booking.special_requirements,
   })
-  if (!booking.is_outside_seating && highChairs <= 0 && !noteMarker) return null
+  // The guest tapped 'confirm' on the day-before text (BK-094).
+  const guestConfirmed = Boolean(booking.guest_confirmed_at)
+  if (!booking.is_outside_seating && highChairs <= 0 && !noteMarker && !guestConfirmed) return null
   const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-2xs font-medium leading-none'
   return (
     <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
+      {guestConfirmed ? (
+        <span className={cn(pill, 'border-transparent bg-success-soft text-success-fg')} title="Confirmed by guest">
+          Confirmed ✓
+        </span>
+      ) : null}
       {noteMarker === 'allergy' ? (
         <span className={cn(pill, 'border-transparent bg-danger-soft text-danger-fg')}>Allergy</span>
       ) : noteMarker === 'note' ? (
