@@ -36,6 +36,7 @@ vi.mock('@/lib/logger', () => ({ logger: { error, warn: vi.fn(), info: vi.fn(), 
 import {
   checkDistributedRateLimit,
   isDistributedRateLimitExhausted,
+  localMissCountSizeForTests,
   recordDistributedRateLimitHit,
 } from '@/lib/distributed-rate-limit'
 import { hashRateLimitSubject, limitBookingAttempt } from '@/lib/api/booking-rate-limits'
@@ -150,5 +151,21 @@ describe('without Upstash (each server counts for itself)', () => {
 
     vi.setSystemTime(new Date('2026-10-27T11:00:01Z'))
     expect(await isDistributedRateLimitExhausted(guesser, options)).toBe(false)
+  })
+
+  it('drops expired addresses so scanner traffic cannot grow memory without limit', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-27T12:00:00Z'))
+    const options = { prefix: 'local-scan', window: '1 h' as const, max: 30 }
+    for (let i = 0; i < 1_500; i += 1) {
+      await recordDistributedRateLimitHit(requestFrom(`10.0.${Math.floor(i / 250)}.${i % 250}`), options)
+    }
+    const before = localMissCountSizeForTests()
+    expect(before).toBeGreaterThanOrEqual(1_500)
+
+    // An hour later every one of those has expired, and the next miss sweeps them out.
+    vi.setSystemTime(new Date('2026-10-27T13:00:01Z'))
+    await recordDistributedRateLimitHit(requestFrom('192.0.2.200'), options)
+    expect(localMissCountSizeForTests()).toBeLessThan(before - 1_400)
   })
 })

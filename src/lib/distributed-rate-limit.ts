@@ -166,6 +166,27 @@ export async function isDistributedRateLimitExhausted(
  * so peeking never counts: a counter of misses per subject, reset when its window ends.
  */
 const localMissCounts = new Map<string, { count: number; resetAt: number }>()
+// Bounds the map under scanner traffic: expired subjects are swept once it grows, and the oldest
+// are dropped past the cap, so memory tracks the current window, not every address ever seen.
+const LOCAL_MISS_SWEEP_AT = 1_000
+const LOCAL_MISS_MAX = 10_000
+
+function makeRoomForLocalMiss(now: number): void {
+  if (localMissCounts.size < LOCAL_MISS_SWEEP_AT) return
+  for (const [key, entry] of localMissCounts) {
+    if (entry.resetAt < now) localMissCounts.delete(key)
+  }
+  while (localMissCounts.size >= LOCAL_MISS_MAX) {
+    const oldest = localMissCounts.keys().next().value
+    if (oldest === undefined) break
+    localMissCounts.delete(oldest)
+  }
+}
+
+/** Test hook: how many subjects the per-copy miss counter is holding. */
+export function localMissCountSizeForTests(): number {
+  return localMissCounts.size
+}
 
 function peekLocalCount(options: RateLimitOptions, identifier: string): number {
   const key = `${options.prefix}:${identifier}`
@@ -189,6 +210,8 @@ export async function recordDistributedRateLimitHit(
     const now = Date.now()
     const entry = localMissCounts.get(key)
     if (!entry || entry.resetAt < now) {
+      localMissCounts.delete(key)
+      makeRoomForLocalMiss(now)
       localMissCounts.set(key, { count: 1, resetAt: now + (options.localWindowMs ?? windowToMs(options.window)) })
     } else {
       entry.count += 1
