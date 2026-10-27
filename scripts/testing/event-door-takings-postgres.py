@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026231744_event_door_takings.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133406_event_door_takings.sql'
 ROLLBACK = ROOT / 'tasks/event-door-takings/rollback.sql'
 EVENT = '00000000-0000-0000-0000-0000000000e1'
 

@@ -130,7 +130,8 @@ describe('MaintenanceTimeline', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
 
     await waitFor(() => expect(screen.getByText('Rang the landlord.')).toBeInTheDocument())
-    expect((screen.getByLabelText('Add a note') as HTMLTextAreaElement).value).toBe('')
+    // The draft clears in the render after the note appears, which a loaded CI runner can show late.
+    await waitFor(() => expect((screen.getByLabelText('Add a note') as HTMLTextAreaElement).value).toBe(''))
   })
 
   it('re-enables the note button and keeps the draft when the save never comes back', async () => {

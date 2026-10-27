@@ -1,4 +1,4 @@
--- Rollback for 20261026181322_booking_functions_server_only.sql: restores create_table_booking_public_v06 exactly as production held it
+-- Rollback for 20261026212313_booking_functions_server_only.sql: restores create_table_booking_public_v06 exactly as production held it
 -- on 26 October 2026 and gives authenticated back EXECUTE on the thirteen functions. service_role
 -- kept EXECUTE throughout; anon and PUBLIC held none before or after.
 

@@ -1,4 +1,4 @@
--- Rollback for 20261026204729_kitchen_pacing_counts_hire_and_event_food.sql: takes the food lines
+-- Rollback for 20261027133140_kitchen_pacing_counts_hire_and_event_food.sql: takes the food lines
 -- back out of create_table_booking_core_v06 and check_table_availability_v06, leaving their bodies
 -- exactly as production held them on 26 October 2026, then drops the two functions and the five
 -- columns the migration added. Dropping the columns loses any kitchen covers and food times staff

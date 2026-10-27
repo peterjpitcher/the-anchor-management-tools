@@ -26,7 +26,7 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 FIXTURE = ROOT / 'tests/database/event-physical-capacity/setup.sql'
 CAPACITY = ROOT / 'supabase/migrations/20260921074304_event_physical_capacity.sql'
 COMMUNAL = ROOT / 'supabase/migrations/20261026135338_event_payment_confirm_communal_seats.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261026182224_event_late_payment_capacity_check.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261026212408_event_late_payment_capacity_check.sql'
 ROLLBACK = ROOT / 'tasks/event-late-payment-capacity/rollback.sql'
 SIGNATURE = 'confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text)'
 # md5(prosrc) of confirm_event_paypal_payment_v01 in production on 26 October 2026.

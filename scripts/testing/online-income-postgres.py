@@ -21,7 +21,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026234203_online_income.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133456_online_income.sql'
 ROLLBACK = ROOT / 'tasks/online-income/rollback.sql'
 
 SETUP = r"""

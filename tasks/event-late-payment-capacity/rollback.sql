@@ -1,4 +1,4 @@
--- Rollback for 20261026182224_event_late_payment_capacity_check.sql.
+-- Rollback for 20261026212408_event_late_payment_capacity_check.sql.
 -- Restores confirm_event_paypal_payment_v01 exactly as production holds it before that
 -- migration: the body from 20261026135338_event_payment_confirm_communal_seats
 -- (md5(prosrc) d9a7c35bd0d76e8b31c6e431cfc194ea, checked against production 26 October 2026),
