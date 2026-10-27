@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { jobQueue } from '@/lib/unified-job-queue'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 // Vercel Cron: 0 3 1 * * (03:00 UTC on the 1st). Enqueues the 24-month retention purge
 // (decision 27). A no-op until mid-2028 since no row can reach 24 months old before then.
 export async function GET(request: Request) {

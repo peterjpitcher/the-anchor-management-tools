@@ -4,6 +4,9 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { logger } from '@/lib/logger'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 function isHealthCheck(request: NextRequest): boolean {
   return request.nextUrl.searchParams.get('health') === 'true'
 }

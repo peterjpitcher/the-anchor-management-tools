@@ -5,6 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { displayName } from '@/lib/employees/display-name';
 import { finalizeEmployeeSeparation } from '@/lib/employees/separation';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 const TIMEZONE = 'Europe/London';
 
 export async function GET(request: NextRequest) {
