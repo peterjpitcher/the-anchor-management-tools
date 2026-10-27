@@ -115,6 +115,16 @@ describe('a PayPal deposit captured for a closed private booking', () => {
     expect(sendPrivateBookingMessage).not.toHaveBeenCalled()
   })
 
+  it('stores the amount PayPal actually took, not the deposit the booking last asked for', async () => {
+    seed({ deposit_amount: 250 })
+
+    await finalizeDepositPayment({ bookingId: BOOKING, amount: 300, method: 'paypal', paypalCaptureId: 'CAPTURE-MORE' })
+
+    const [booking] = db.rows('private_bookings')
+    expect(booking.deposit_amount).toBe(300)
+    expect(booking).toMatchObject({ refund_due_amount: 300, deposit_refund_status: 'refund_due' })
+  })
+
   it('treats the same capture arriving again as already recorded, with no second alert', async () => {
     seed({ deposit_paid_date: '2026-10-20T10:00:00.000Z', deposit_payment_method: 'paypal', paypal_deposit_capture_id: 'CAPTURE-LATE' })
 

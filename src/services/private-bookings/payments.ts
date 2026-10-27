@@ -447,6 +447,9 @@ async function recordDepositPaidAfterClose(
         deposit_paid_date: nowIso,
         deposit_payment_method: 'paypal',
         paypal_deposit_capture_id: capture,
+        // What PayPal took, which the refund is capped at: the booking's figure may have changed
+        // since the guest opened the checkout.
+        deposit_amount: payment.amount,
         updated_at: nowIso,
       })
       .eq('id', bookingId)
