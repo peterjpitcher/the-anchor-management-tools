@@ -1,4 +1,4 @@
--- Rollback for 20261026202026_whole_pub_hire_stops_ticket_sales.sql: takes the whole-pub hire check
+-- Rollback for 20261027133013_whole_pub_hire_stops_ticket_sales.sql: takes the whole-pub hire check
 -- back out of create_event_booking_v05, leaving its body exactly as production held it on 26 October
 -- 2026 (md5(prosrc) b902aaf91f8a4aad7f318bebd57c9463), then drops the function it called.
 

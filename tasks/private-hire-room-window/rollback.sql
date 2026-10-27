@@ -1,5 +1,5 @@
--- Rollback for 20261026201513_private_hire_room_window_and_diner_clashes.sql: restores the clash check,
--- the table block and the garden block exactly as 20261026175212_private_hire_occupies_space left them
+-- Rollback for 20261027132945_private_hire_room_window_and_diner_clashes.sql: restores the clash check,
+-- the table block and the garden block exactly as 20261026212246_private_hire_occupies_space left them
 -- (the state this migration replaced), then drops the four functions it added.
 
 CREATE OR REPLACE FUNCTION public.get_private_booking_conflicts(p_event_date date, p_start_time time without time zone, p_end_time time without time zone, p_setup_date date DEFAULT NULL::date, p_setup_time time without time zone DEFAULT NULL::time without time zone, p_cleardown_time time without time zone DEFAULT NULL::time without time zone, p_space_ids uuid[] DEFAULT '{}'::uuid[], p_exclude_booking_id uuid DEFAULT NULL::uuid)

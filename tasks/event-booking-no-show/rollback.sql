@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261026231641_event_booking_no_show.sql.
+-- Rollback for supabase/migrations/20261027133352_event_booking_no_show.sql.
 -- Restores both constraints exactly as production printed them on 26 October 2026.
 -- It refuses while any row still uses a new value: a no-show booking or a check-in ticked from the
 -- staff list would break the narrower check. Decide those rows first (for example, set no-show

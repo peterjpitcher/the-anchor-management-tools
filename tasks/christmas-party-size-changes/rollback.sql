@@ -1,4 +1,4 @@
--- Rollback for 20261026190515_christmas_party_size_changes.sql. Restores production exactly as it
+-- Rollback for 20261027132719_christmas_party_size_changes.sql. Restores production exactly as it
 -- stood on 26 October 2026: assert_christmas_course_snapshot_v01 as written in
 -- 20260905124506_christmas_course_snapshot (md5(prosrc) 9a9b32e9948155f0a945ec020984f536), no
 -- change_christmas_party_v01, and the seat touch trigger firing on every update.

@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261026233632_table_booking_deposit_review.sql.
+-- Rollback for supabase/migrations/20261027133418_table_booking_deposit_review.sql.
 -- Restores table_bookings exactly as production held it on 26 October 2026: no deposit review
 -- columns and no index on them. Any flag a manager had not yet cleared is lost with the columns;
 -- the audit_logs rows ('table_booking.deposit_review_needed') still say which bookings were flagged.

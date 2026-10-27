@@ -10,13 +10,13 @@ them:
   create_table_booking_core_v06       20260913120622_booking_start_inside_trading_day.sql, then
                                       20261016180511_kitchen_pacing_lone_party.sql patches it in place
   create_table_booking_staff_v06      20260803000200_seasonal_deposit_on_create.sql
-  create_table_booking_public_v06     20261026181322_booking_functions_server_only.sql
+  create_table_booking_public_v06     20261026212313_booking_functions_server_only.sql
   create_table_booking_christmas_v01  20261026172410_christmas_booking_minimum_four.sql
 
 Each body's md5 is checked against the one read from production on 26 October 2026, so a migration
 that replaces a function makes this fail until the harness moves with it. The one exception is the
 public function: production still ran the 20260803000200 body (md5 975d6af...) on 26 October, and
-20261026181322 replaces it with one that passes false for the waiver; the harness loads the newer
+20261026212313 replaces it with one that passes false for the waiver; the harness loads the newer
 body because that is what production runs once the release it belongs to is applied, and nothing
 here depends on the waiver argument of the public path.
 
@@ -48,7 +48,7 @@ SOURCES = {
     'resolve_table_booking_deposit': MIGRATIONS / '20260809100000_group_deposit_threshold_15.sql',
     'create_table_booking_core_v06': MIGRATIONS / '20260913120622_booking_start_inside_trading_day.sql',
     'create_table_booking_staff_v06': MIGRATIONS / '20260803000200_seasonal_deposit_on_create.sql',
-    'create_table_booking_public_v06': MIGRATIONS / '20261026181322_booking_functions_server_only.sql',
+    'create_table_booking_public_v06': MIGRATIONS / '20261026212313_booking_functions_server_only.sql',
     'create_table_booking_christmas_v01': MIGRATIONS / '20261026172410_christmas_booking_minimum_four.sql',
 }
 PACING_PATCH = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
@@ -60,7 +60,7 @@ EXPECTED_MD5 = {
     'resolve_table_booking_deposit': '64a531d219249438752e92f6abb50644',
     'create_table_booking_core_v06': 'e831d41dc33d4331c09db4570fd85003',
     'create_table_booking_staff_v06': '188703b01e45042d6331cf5026211bc5',
-    # Production ran 975d6af996f285095868acea9e90e157 until 20261026181322 is applied.
+    # Production ran 975d6af996f285095868acea9e90e157 until 20261026212313 is applied.
     'create_table_booking_public_v06': '6f822b08a2377eb48d683bf1681fd2b8',
     'create_table_booking_christmas_v01': 'b06f1242dd0382742a2454271ecdb047',
     'get_setting_bool': 'cc24148be692a4b9b1092d3a3bed300f',

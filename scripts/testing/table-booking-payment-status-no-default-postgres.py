@@ -21,7 +21,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026211052_table_booking_payment_status_no_default.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133206_table_booking_payment_status_no_default.sql'
 ROLLBACK = ROOT / 'tasks/table-booking-payment-status-no-default/rollback.sql'
 
 # Two of the ids the rollback lists, so the harness can see it restore them.
