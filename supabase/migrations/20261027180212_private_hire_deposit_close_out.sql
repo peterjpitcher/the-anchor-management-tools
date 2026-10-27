@@ -3,7 +3,7 @@
 --
 -- Nothing let staff record what happened to the security deposit after a hire, and a kept
 -- deposit could not be stored at all: the refund status allowed only 'partially_refunded' and
--- 'refunded' (and 'refund_due' since 20261027160421). The nightly job marked every past paid
+-- 'refunded' (and 'refund_due' since 20261027180147). The nightly job marked every past paid
 -- deposit 'awaiting_inspection' and nothing cleared it, even after a refund.
 --
 -- 1. Three more refund status values: 'retained' (all kept, with a reason), 'partially_retained'

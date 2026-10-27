@@ -22,7 +22,7 @@ import { logger } from '@/lib/logger'
  * Everything it records is audited on the booking.
  *
  * All of it happens in one database transaction, close_out_private_booking (migration
- * 20261027163736), under the booking's row lock: either every part is recorded and the booking is
+ * 20261027180246), under the booking's row lock: either every part is recorded and the booking is
  * closed, or nothing is. A failure part-way used to leave a deposit applied to the bill with the
  * booking still showing it open, so a retry applied it twice. The checks here only give staff a
  * plain message before the call; the function checks everything again under the lock.

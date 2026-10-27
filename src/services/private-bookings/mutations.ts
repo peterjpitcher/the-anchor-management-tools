@@ -2147,7 +2147,7 @@ export async function cancelBooking(
     .select('id')
     .maybeSingle();
 
-  // Migration 20261027160421 not applied yet: cancel anyway, and log that the refund owed was not kept.
+  // Migration 20261027180147 not applied yet: cancel anyway, and log that the refund owed was not kept.
   if (updateError && refundDue && (updateError.code === 'PGRST204' || (updateError.message || '').includes('refund_due'))) {
     logger.error('Cancelled a private booking without recording the refund owed: the refund columns are missing', {
       error: new Error(updateError.message || 'refund columns missing'),

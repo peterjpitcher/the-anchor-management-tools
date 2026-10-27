@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261027160421_private_hire_refunds_owed.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027180147_private_hire_refunds_owed.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-refunds-owed/rollback.sql'
 
 PRODUCTION_CHECK = "CHECK ((deposit_refund_status = ANY (ARRAY['partially_refunded'::text, 'refunded'::text])))"

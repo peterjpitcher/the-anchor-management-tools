@@ -2,7 +2,7 @@
 """Run the private-hire-close-out-atomic migration (review of release 13) in an isolated socket-only PostgreSQL database.
 
 The fixture has production's private_bookings columns the close-out reads, its refund status and
-post-event checks (after 20261027160422), payment_refunds and private_booking_payments with their
+post-event checks (after 20261027180212), payment_refunds and private_booking_payments with their
 checks, the payment trigger that refuses a booking payment on an invoiced hire, and production's
 record_balance_payment status guard. Against that baseline it shows the two defects: the old path
 cannot record a balance on a completed hire, and its separate writes leave a deposit applied to the
@@ -24,7 +24,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261027163736_private_hire_close_out_atomic.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027180246_private_hire_close_out_atomic.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-close-out-atomic/rollback.sql'
 
 USER = '00000000-0000-4000-8000-0000000000aa'
