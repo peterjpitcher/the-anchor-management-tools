@@ -9,6 +9,8 @@
  * so an event looks the same wherever it appears.
  */
 
+import type { EventAttendance } from '@/lib/events/attendance'
+
 export type EventBadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
 // A Map rather than an object literal, so a status such as "constructor" can never resolve to
@@ -39,11 +41,27 @@ const EVENT_BOOKING_STATUS_TONES = new Map<string, EventBadgeTone>([
   ['confirmed', 'primary'],
   ['pending_payment', 'warning'],
   ['cancelled', 'neutral'],
+  // A guest staff marked as not coming (BK-130), red as a table no-show is.
+  ['no_show', 'danger'],
 ])
 
 export function eventBookingStatusTone(status: string | null | undefined): EventBadgeTone {
   if (!status) return 'neutral'
   return EVENT_BOOKING_STATUS_TONES.get(status) ?? 'neutral'
+}
+
+// Who came to an event (BK-130): came is good news, did not come is a no-show (red, as a table
+// no-show is), and nobody ticked is quiet. Nothing is ever marked as a no-show automatically.
+export const EVENT_ATTENDANCE_TONE: Record<EventAttendance, EventBadgeTone> = {
+  came: 'success',
+  did_not_come: 'danger',
+  not_recorded: 'neutral',
+}
+
+export const EVENT_ATTENDANCE_LABEL: Record<EventAttendance, string> = {
+  came: 'Came',
+  did_not_come: 'Did not come',
+  not_recorded: 'Not recorded',
 }
 
 // How urgent an outstanding checklist todo is. Overdue is the only red; anything still to do

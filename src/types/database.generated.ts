@@ -5041,6 +5041,44 @@ export type Database = {
           },
         ]
       }
+      event_door_takings: {
+        Row: {
+          event_id: string
+          free_entries: number
+          note: string | null
+          recorded_at: string
+          recorded_by: string | null
+          till_total: number
+          updated_at: string
+        }
+        Insert: {
+          event_id: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total: number
+          updated_at?: string
+        }
+        Update: {
+          event_id?: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_door_takings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_faqs: {
         Row: {
           answer: string
@@ -11150,6 +11188,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      paypal_capture_fees: {
+        Row: {
+          capture_id: string
+          currency: string
+          fee_amount: number
+          gross_amount: number | null
+          net_amount: number | null
+          recorded_at: string
+          source: string
+        }
+        Insert: {
+          capture_id: string
+          currency?: string
+          fee_amount: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source: string
+        }
+        Update: {
+          capture_id?: string
+          currency?: string
+          fee_amount?: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source?: string
+        }
+        Relationships: []
       }
       payroll_month_approvals: {
         Row: {
@@ -20663,6 +20731,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      online_income_movements: {
+        Row: {
+          booking_reference: string | null
+          capture_id: string | null
+          gross: number | null
+          is_booking_money: boolean | null
+          method: string | null
+          money_date: string | null
+          net: number | null
+          paypal_fee: number | null
+          refunded: number | null
+          source: string | null
+          source_id: string | null
+          status: string | null
+          visit_date: string | null
+        }
+        Relationships: []
       }
       private_booking_sms_reminders: {
         Row: {

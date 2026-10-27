@@ -76,7 +76,9 @@ interface SessionRow {
   created_at: string | null
   total_counted_amount: number | string | null
   total_variance_amount: number | string | null
+  notes?: string | null
   cashup_payment_breakdowns: BreakdownRow[] | null
+  cashup_sales_breakdowns?: Array<{ amount: number | string | null }> | null
 }
 
 interface EnteredDay {
@@ -89,6 +91,13 @@ interface EnteredDay {
   /** Cash counted; null when the cash-up has no payment breakdown. */
   cash: number | null
   variance: number | null
+  /**
+   * Till sales less takings (BK-119): what sales beat takings by, or a negative when takings beat
+   * sales. Null when no sales split was entered or the amounts cannot be read.
+   */
+  salesGap: number | null
+  /** The cash-up carries a note. Only whether one exists is read: notes may name people. */
+  noted: boolean
 }
 
 interface SiteData {
@@ -131,7 +140,7 @@ interface ComparedWeek {
   lastComplete: boolean
 }
 
-const SESSION_COLUMNS = 'id, site_id, session_date, status, voided_at, created_at, total_counted_amount, total_variance_amount, cashup_payment_breakdowns(payment_type_code, counted_amount, variance_amount)'
+const SESSION_COLUMNS = 'id, site_id, session_date, status, voided_at, created_at, total_counted_amount, total_variance_amount, notes, cashup_payment_breakdowns(payment_type_code, counted_amount, variance_amount), cashup_sales_breakdowns(amount)'
 
 function toAmount(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined || value === '') return null
@@ -192,28 +201,41 @@ function enteredOnOf(date: string, createdAt: string | null): string {
   return created > date ? created : date
 }
 
+/** Till sales less takings, when a sales split was entered and both can be read (BK-119). */
+function salesGapOf(row: SessionRow, takings: number | null): number | null {
+  const sales = (row.cashup_sales_breakdowns ?? []).map((line) => toAmount(line.amount))
+  if (takings === null || sales.length === 0 || sales.some((value) => value === null)) return null
+  const salesTotal = sum(sales as number[])
+  return salesTotal > 0 ? roundPence(salesTotal - takings) : null
+}
+
 function toEnteredDay(row: SessionRow): EnteredDay {
   const breakdowns = row.cashup_payment_breakdowns ?? []
   const date = String(row.session_date).slice(0, 10)
   const enteredOn = enteredOnOf(date, row.created_at)
+  const noted = Boolean(row.notes?.trim())
   if (breakdowns.length > 0) {
     const counted = breakdowns.map((line) => toAmount(line.counted_amount))
     const variances = breakdowns.map((line) => toAmount(line.variance_amount))
     if (counted.every((value): value is number => value !== null) && variances.every((value): value is number => value !== null)) {
       const cash = breakdowns
         .map((line, index) => (line.payment_type_code === 'CASH' ? counted[index] as number : 0))
-      return { sessionId: row.id, date, enteredOn, takings: sum(counted), cash: sum(cash), variance: sum(variances) }
+      const takings = sum(counted)
+      return { sessionId: row.id, date, enteredOn, takings, cash: sum(cash), variance: sum(variances), salesGap: salesGapOf(row, takings), noted }
     }
   }
   const takings = toAmount(row.total_counted_amount)
   const variance = toAmount(row.total_variance_amount)
+  const knownTakings = takings === null ? null : roundPence(takings)
   return {
     sessionId: row.id,
     date,
     enteredOn,
-    takings: takings === null ? null : roundPence(takings),
+    takings: knownTakings,
     cash: null,
     variance: variance === null ? null : roundPence(variance),
+    salesGap: salesGapOf(row, knownTakings),
+    noted,
   }
 }
 
@@ -468,6 +490,12 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
   const varianceDays = weekReported
     .filter((day) => day.variance !== null && Math.abs(day.variance) >= CASHING_UP.varianceAmber)
   const redVariances = varianceDays.filter((day) => Math.abs(day.variance as number) >= CASHING_UP.varianceRed)
+  // Gaps between till sales and takings over the D33 threshold, entered this week (BK-119). A
+  // gap with no note is unexplained: online deposits, tickets, vouchers and hire money paid by
+  // bank all look the same as a real loss until someone says which it is.
+  const gapDays = weekReported
+    .filter((day) => day.salesGap !== null && Math.abs(day.salesGap) > CASHING_UP.salesGapNote)
+  const unexplainedGapDays = gapDays.filter((day) => !day.noted)
   const baselineDays = windowEntered.filter((day) => isInRange(day.enteredOn, previous13Weeks) && day.variance !== null)
   const baselineVarianceCount = baselineDays.filter((day) => Math.abs(day.variance as number) >= CASHING_UP.varianceAmber).length
   const varianceRateKnown = baselineDays.length >= CASHING_UP.varianceRateMinimumDays
@@ -650,6 +678,16 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
     baselineMetric(baseline4),
     baselineMetric(baselineYear),
   ]
+  metrics.push({
+    label: `${prefix}Sales and takings gaps over ${pounds(CASHING_UP.salesGapNote)}`,
+    value: String(gapDays.length),
+    comparison: gapDays.length === 0
+      ? 'none entered this week'
+      : `${unexplainedGapDays.length === 0 ? 'every one has a note' : `${plural(unexplainedGapDays.length, 'day')} with no note`}; sales ${(() => {
+        const net = roundPence(sum(gapDays.map((day) => day.salesGap as number)))
+        return net >= 0 ? `beat takings by ${exact(net)}` : `fell short of takings by ${exact(-net)}`
+      })()} in all`,
+  })
   if (weekCashShare !== null) {
     metrics.push({
       label: `${prefix}Cash share of takings`,
@@ -706,6 +744,19 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
         rag: Math.abs(day.variance as number) >= CASHING_UP.varianceRed ? 'red' as const : 'amber' as const,
       })),
       emptyText: `No variances of ${pounds(CASHING_UP.varianceAmber)} or more entered this week.`,
+    },
+    {
+      title: listTitle(`Sales and takings gaps over ${pounds(CASHING_UP.salesGapNote)} entered this week`),
+      items: gapDays.map((day) => {
+        const gap = day.salesGap as number
+        const direction = gap >= 0 ? `sales ${exact(gap)} over takings` : `takings ${exact(-gap)} over sales`
+        return {
+          text: `${varianceDate(day)}: ${direction}, ${day.noted ? 'explained in the note' : 'no note'}`,
+          href: ctx.link(dayPath(day.date)),
+          ...(day.noted ? {} : { rag: 'amber' as const }),
+        }
+      }),
+      emptyText: `No gaps over ${pounds(CASHING_UP.salesGapNote)} between sales and takings entered this week.`,
     },
   ]
 

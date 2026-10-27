@@ -75,7 +75,7 @@ interface EventView {
 }
 
 /** Statuses that hold seats outright. Kept in step with src/lib/events/stats.ts. */
-const HELD_STATUSES = new Set(['confirmed', 'visited_waiting_for_review', 'review_clicked', 'completed'])
+const HELD_STATUSES = new Set(['confirmed', 'visited_waiting_for_review', 'review_clicked', 'completed', 'no_show'])
 /** Unpaid holds: they hold seats only until `hold_expires_at`. */
 const HOLD_STATUSES = new Set(['pending_payment', 'expired'])
 

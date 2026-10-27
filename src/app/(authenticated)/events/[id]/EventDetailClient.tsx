@@ -18,6 +18,7 @@ import {
   Input,
   Select,
   ConfirmDialog,
+  Textarea,
   CustomerLink,
   DescriptionList,
   Empty,
@@ -38,6 +39,7 @@ import {
   cancelEventManualBooking,
   getEventBookingRefundInfo,
   markEventBookingPaidManually,
+  getEventBookingDoorCharge,
   transferEventBooking,
   deleteEvent,
 } from '@/app/actions/events'
@@ -56,6 +58,7 @@ import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawe
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
+import { EventOutcomesCard } from './EventOutcomesCard'
 import { EventNightNotice } from '../_components/EventNightNotice'
 import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
@@ -224,6 +227,14 @@ export default function EventDetailClient({
   const [refundingBooking, setRefundingBooking] = useState<EventBookingRow | null>(null)
   const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
+  const [compReason, setCompReason] = useState('')
+  const [doorPayment, setDoorPayment] = useState<{
+    bookingId: string
+    method: 'cash' | 'card_terminal'
+    amount: number | null
+    seats: number | null
+    error: string | null
+  } | null>(null)
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
@@ -406,23 +417,61 @@ export default function EventDetailClient({
     })
   }, [cancellingBookingId, event, refreshBookings, cancelRefundInfo, cancelRefundOn, cancelRefundMode, cancelRefundAmount])
 
-  const handleMarkPaid = useCallback((bookingId: string, method: 'cash' | 'card_terminal' | 'comp') => {
-    startTransition(async () => {
-      const result = await markEventBookingPaidManually({ bookingId, method })
-      if ('error' in result) {
-        toast.error(result.error)
-        return
-      }
-      if (result.data.state === 'manual_review') {
-        toast.warning('Payment recorded. Booking needs staff review.')
-      } else if (result.data.state === 'blocked') {
-        toast.error(formatStatusLabel(result.data.reason || 'Payment blocked'))
-      } else {
-        toast.success('Booking marked paid')
-      }
-      await refreshBookings()
-    })
+  // Cash Paid and Card Paid show the amount before anything is recorded, and a comp needs a
+  // reason (BK-217). Errors throw so the dialog stays open and shows them.
+  const handleMarkPaid = useCallback(async (
+    bookingId: string,
+    method: 'cash' | 'card_terminal' | 'comp',
+    details: { confirmedAmount?: number; note?: string },
+  ): Promise<void> => {
+    const result = await markEventBookingPaidManually({ bookingId, method, ...details })
+    if ('error' in result) {
+      throw new Error(result.error)
+    }
+    if (result.data.state === 'manual_review') {
+      toast.warning('Payment recorded. Booking needs staff review.')
+    } else if (result.data.state === 'blocked') {
+      throw new Error(formatStatusLabel(result.data.reason || 'Payment blocked'))
+    } else {
+      toast.success(method === 'comp' ? 'Booking comped' : 'Booking marked paid')
+    }
+    await refreshBookings()
   }, [refreshBookings])
+
+  const handleRequestDoorPayment = useCallback((bookingId: string, method: 'cash' | 'card_terminal') => {
+    setDoorPayment({ bookingId, method, amount: null, seats: null, error: null })
+    getEventBookingDoorCharge(bookingId)
+      .then((result) => {
+        setDoorPayment((current) => {
+          if (!current || current.bookingId !== bookingId) return current
+          return 'error' in result
+            ? { ...current, error: result.error }
+            : { ...current, amount: result.data.amount, seats: result.data.seats }
+        })
+      })
+      .catch(() => {
+        // A dropped connection: say so in the dialog rather than leaving it working forever.
+        setDoorPayment((current) => (current && current.bookingId === bookingId
+          ? { ...current, error: 'Could not work out the amount to record. Try again.' }
+          : current))
+      })
+  }, [])
+
+  const handleConfirmDoorPayment = useCallback(async (): Promise<void> => {
+    if (!doorPayment || doorPayment.amount === null) {
+      throw new Error(doorPayment?.error ?? 'Still working out the amount. Try again in a moment.')
+    }
+    await handleMarkPaid(doorPayment.bookingId, doorPayment.method, { confirmedAmount: doorPayment.amount })
+  }, [doorPayment, handleMarkPaid])
+
+  const handleConfirmComp = useCallback(async (): Promise<void> => {
+    if (!compBookingId) return
+    const reason = compReason.trim()
+    if (!reason) {
+      throw new Error('Say why this booking is free.')
+    }
+    await handleMarkPaid(compBookingId, 'comp', { note: reason })
+  }, [compBookingId, compReason, handleMarkPaid])
 
   const handleTransferBooking = useCallback(() => {
     if (!transferringBookingId || !transferTargetEventId.trim()) return
@@ -592,6 +641,12 @@ export default function EventDetailClient({
                 canManage={permissions.canManage}
                 onResolved={refreshBookings}
               />
+              <EventOutcomesCard
+                event={event}
+                bookings={bookings}
+                canManage={permissions.canManage}
+                onChanged={refreshBookings}
+              />
               <AttendeesTab
                 event={event}
                 visibleBookings={visibleBookings}
@@ -618,8 +673,11 @@ export default function EventDetailClient({
                   setEditSeatsError(null)
                 }}
                 onCancelBooking={setCancellingBookingId}
-                onMarkPaid={handleMarkPaid}
-                onRequestComp={setCompBookingId}
+                onMarkPaid={handleRequestDoorPayment}
+                onRequestComp={(bookingId) => {
+                  setCompReason('')
+                  setCompBookingId(bookingId)
+                }}
                 onRefundBooking={setRefundingBooking}
                 onEditNames={setAddDetailsBooking}
                 transferringBookingId={transferringBookingId}
@@ -763,20 +821,53 @@ export default function EventDetailClient({
         loading={cancelRefundLoading || isPending}
       />
 
-      {/* Comp confirmation dialog */}
+      {/* Comp confirmation dialog: a free booking needs a reason (BK-217). */}
       <ConfirmDialog
         open={compBookingId !== null}
         onClose={() => setCompBookingId(null)}
-        onConfirm={() => {
-          if (compBookingId) {
-            handleMarkPaid(compBookingId, 'comp')
-          }
-        }}
+        onConfirm={handleConfirmComp}
         title="Comp Booking"
-        message="Mark this booking as complimentary? It will be confirmed with no payment taken."
+        message={
+          <div className="space-y-3">
+            <p className="text-sm text-text-muted">
+              Mark this booking as complimentary? It will be confirmed with no payment taken.
+            </p>
+            <Textarea
+              label="Reason"
+              hint="Required, so the free entry can be explained later."
+              value={compReason}
+              onChange={(e) => setCompReason(e.target.value)}
+              maxLength={500}
+              minRows={2}
+              required
+            />
+          </div>
+        }
         confirmLabel="Comp Booking"
         tone="primary"
-        loading={isPending}
+      />
+
+      {/* Cash Paid / Card Paid: show the amount before it is recorded (BK-217). */}
+      <ConfirmDialog
+        open={doorPayment !== null}
+        onClose={() => setDoorPayment(null)}
+        onConfirm={handleConfirmDoorPayment}
+        title={doorPayment?.method === 'card_terminal' ? 'Record card payment' : 'Record cash payment'}
+        message={
+          doorPayment?.error ? (
+            <Alert tone="danger" size="sm">{doorPayment.error}</Alert>
+          ) : doorPayment?.amount === null || doorPayment?.amount === undefined ? (
+            <PageLoading inline label="Working out the amount" className="py-4" />
+          ) : (
+            <p className="text-sm text-text">
+              Record {formatCurrency(doorPayment.amount)} paid{' '}
+              {doorPayment.method === 'card_terminal' ? 'by card' : 'in cash'} for{' '}
+              {doorPayment.seats === 1 ? '1 seat' : `${doorPayment.seats} seats`}? This confirms the booking.
+            </p>
+          )
+        }
+        confirmLabel={doorPayment?.amount != null ? `Record ${formatCurrency(doorPayment.amount)}` : 'Record payment'}
+        tone="primary"
       />
 
       {/* After-the-fact refund dialog */}
@@ -1063,7 +1154,7 @@ function AttendeesTab({
   onSaveSeats: () => void
   onCancelEdit: () => void
   onCancelBooking: (id: string) => void
-  onMarkPaid: (id: string, method: 'cash' | 'card_terminal' | 'comp') => void
+  onMarkPaid: (id: string, method: 'cash' | 'card_terminal') => void
   onRequestComp: (id: string) => void
   onRefundBooking: (booking: EventBookingRow) => void
   onEditNames: (booking: EventBookingRow) => void
@@ -1284,7 +1375,12 @@ function AttendeesTab({
         <Stat label="Total Seats Booked" value={totalSeats} />
         <Stat label="Active Bookings" value={activeBookingsCount} />
         <Stat label="Capacity" value={capacityPct !== null ? `${capacityPct}%` : '-'} />
-        <Stat label="Est. Revenue" value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'} />
+        {/* A flat £25 a booked seat for bar and food, not ticket money (BK-118). */}
+        <Stat
+          label="Est. bar and food spend"
+          value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}
+          hint="£25 a head, not ticket money"
+        />
         <Stat label="Paid" value={formatCurrency(totalPaidAmount)} />
         <Stat label="Link Clicks" value={totalLinkClicks.toLocaleString()} />
       </StatGrid>

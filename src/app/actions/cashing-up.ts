@@ -8,6 +8,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getErrorCode, getErrorMessage } from '@/lib/errors';
 import { isMatchingCashupSubmissionRetry } from '@/lib/cashing-up/submission-retry';
+import { cashupSalesGap, needsSalesGapNote, salesGapNoteMessage } from '@/lib/cashing-up/sales-gap';
 
 const CASHUP_ALREADY_EXISTS_MESSAGE = 'A session for this site and date already exists.';
 const CASHUP_ALREADY_EXISTS_HELP = 'A cash-up for this site and date already exists. Refresh the page to view it.';
@@ -79,6 +80,12 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
 
   if (!hasUpsertPermission || !hasSubmitPermission) {
     return { success: false, error: 'Forbidden' };
+  }
+
+  // A gap over £5 between till sales and takings needs the member of staff's own note (D33).
+  const salesGap = cashupSalesGap(data);
+  if (needsSalesGapNote(salesGap) && !data.gapNote?.trim()) {
+    return { success: false, error: salesGapNoteMessage(salesGap as number) };
   }
 
   try {
