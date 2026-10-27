@@ -39,6 +39,7 @@ import { Input } from '@/ds'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
+import { MergeCustomerDialog } from '@/components/features/customers/MergeCustomerDialog'
 import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
 import { privateBookingStatusTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 import { CUSTOMERS_BACK_LABEL } from '../_shared/nav'
@@ -266,6 +267,9 @@ export default function CustomerViewPage() {
 
   const canViewMessages = hasPermission('messages', 'view')
   const canManageCustomers = hasPermission('customers', 'manage')
+  // Merging folds this record into another and anonymises it, so it needs customers delete:
+  // managers and super admins (BK-164).
+  const canMergeCustomers = hasPermission('customers', 'delete')
   const canManageContactPreferences = hasPermission('customers', 'manage_contact_preferences')
   const canManageWhatsAppOptIn = hasPermission('customers', 'manage_whatsapp_opt_in')
   const canViewConsentAudit = hasPermission('messages', 'view_consent_audit')
@@ -304,6 +308,7 @@ export default function CustomerViewPage() {
   const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
   const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
   const [isEditingCustomer, setIsEditingCustomer] = useState(false)
+  const [isMergingCustomer, setIsMergingCustomer] = useState(false)
   const [savingCustomer, setSavingCustomer] = useState(false)
   const [isEmailingCustomer, setIsEmailingCustomer] = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
@@ -1201,7 +1206,7 @@ export default function CustomerViewPage() {
       {...layoutProps}
       subtitle={customer.mobile_number || 'No mobile number'}
       headerActions={
-        (canEmailCustomer && customer.email) || canManageCustomers ? (
+        (canEmailCustomer && customer.email) || canManageCustomers || canMergeCustomers ? (
           <>
             {canEmailCustomer && customer.email && (
               <Button
@@ -1221,6 +1226,16 @@ export default function CustomerViewPage() {
                 onClick={() => setIsEditingCustomer(true)}
               >
                 Edit
+              </Button>
+            )}
+            {canMergeCustomers && (
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => setIsMergingCustomer(true)}
+              >
+                Merge into...
               </Button>
             )}
           </>
@@ -1897,6 +1912,15 @@ export default function CustomerViewPage() {
             />
           </div>
         </Modal>
+
+        {canMergeCustomers && (
+          <MergeCustomerDialog
+            open={isMergingCustomer}
+            onClose={() => setIsMergingCustomer(false)}
+            customerId={customer.id}
+            customerName={customerName}
+          />
+        )}
     </PageLayout>
   )
 }

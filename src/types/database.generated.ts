@@ -22886,6 +22886,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      merge_customers: {
+        Args: { p_dry_run: boolean; p_keep_id: string; p_merge_id: string }
+        Returns: Json
+      }
+      merge_customers_apply: {
+        Args: { p_keep_id: string; p_merge_id: string }
+        Returns: Json
+      }
       merge_receipt_vendor: {
         Args: { p_from: string; p_into: string; p_performed_by?: string }
         Returns: Json
