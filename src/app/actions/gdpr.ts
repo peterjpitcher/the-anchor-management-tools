@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from './audit'
 import { GdprService } from '@/services/gdpr'
+import { eraseCustomers } from '@/services/customer-erasure'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getErrorMessage } from '@/lib/errors';
 
@@ -123,16 +124,11 @@ export async function deleteUserData(subjectIdentifier: string) {
       return { error: 'No customer or user found with that email address, phone number or record id' }
     }
 
-    // Vouchers link to customer records. Scrub the voucher side FIRST: once the
-    // service has anonymised the customer, a retry could no longer resolve
-    // these rows by email or phone. Voucher rows and events themselves are
-    // retained as business records (voucher_events.detail stores customer ids
-    // only, never names or phone numbers), so erasure only unlinks the customer
-    // and cancels pending reminders (voucher spec 7.5, F37).
-    const voucherCleanup = await scrubVoucherLinksForCustomers(subject.customerIds)
-
-    // Execute deletion first, then write audit log on success (H6 fix)
-    const result = await GdprService.deleteUserData(subject)
+    // The shared erasure path (BK-161): the record's opt-outs go on the suppression list first, so
+    // a guest who books again starts opted out; then vouchers are unlinked while the ids still
+    // resolve (voucher spec 7.5, F37); then the service anonymises everything. Execute deletion
+    // first, then write audit log on success (H6 fix).
+    const { result, voucherCleanup } = await eraseCustomers(subject, 'gdpr_erasure')
 
     await logAuditEvent({
       user_id: user.id,
@@ -241,51 +237,4 @@ async function appendVoucherDataToExport(exportJson: string): Promise<string> {
   }))
 
   return JSON.stringify(parsed, null, 2)
-}
-
-/**
- * Erasure support: cancel pending voucher reminders and unlink vouchers from
- * the erasure subject's customer records. Runs BEFORE the main erasure so a
- * retry can still resolve the customer ids. Voucher rows and events are
- * retained as business records; voucher_events.detail holds customer ids only,
- * never names or phone numbers, so it needs no scrubbing.
- *
- * Takes the already-resolved ids rather than re-deriving them from an email,
- * which never matched a customer.
- */
-async function scrubVoucherLinksForCustomers(
-  customerIds: string[]
-): Promise<{ vouchersUnlinked: number; remindersCancelled: number }> {
-  if (customerIds.length === 0) {
-    return { vouchersUnlinked: 0, remindersCancelled: 0 }
-  }
-
-  const adminClient = createAdminClient()
-  const nowIso = new Date().toISOString()
-
-  const { data: cancelledReminders, error: reminderError } = await adminClient
-    .from('voucher_reminders')
-    .update({ status: 'cancelled', updated_at: nowIso })
-    .in('customer_id', customerIds)
-    .eq('status', 'pending')
-    .select('id')
-
-  if (reminderError) {
-    throw new Error(`Failed to cancel voucher reminders for erasure: ${reminderError.message}`)
-  }
-
-  const { data: unlinkedVouchers, error: voucherError } = await adminClient
-    .from('vouchers')
-    .update({ customer_id: null, updated_at: nowIso })
-    .in('customer_id', customerIds)
-    .select('id')
-
-  if (voucherError) {
-    throw new Error(`Failed to unlink vouchers for erasure: ${voucherError.message}`)
-  }
-
-  return {
-    vouchersUnlinked: unlinkedVouchers?.length ?? 0,
-    remindersCancelled: cancelledReminders?.length ?? 0
-  }
 }

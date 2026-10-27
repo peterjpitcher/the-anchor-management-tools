@@ -3079,6 +3079,45 @@ export type Database = {
           },
         ]
       }
+      customer_contact_suppressions: {
+        Row: {
+          contact_hash: string
+          contact_kind: string
+          created_at: string
+          marketing_email_opted_out: boolean
+          marketing_sms_opted_out: boolean
+          marketing_whatsapp_opted_out: boolean
+          sms_opted_out: boolean
+          source: string
+          updated_at: string
+          whatsapp_opted_out: boolean
+        }
+        Insert: {
+          contact_hash: string
+          contact_kind: string
+          created_at?: string
+          marketing_email_opted_out?: boolean
+          marketing_sms_opted_out?: boolean
+          marketing_whatsapp_opted_out?: boolean
+          sms_opted_out?: boolean
+          source: string
+          updated_at?: string
+          whatsapp_opted_out?: boolean
+        }
+        Update: {
+          contact_hash?: string
+          contact_kind?: string
+          created_at?: string
+          marketing_email_opted_out?: boolean
+          marketing_sms_opted_out?: boolean
+          marketing_whatsapp_opted_out?: boolean
+          sms_opted_out?: boolean
+          source?: string
+          updated_at?: string
+          whatsapp_opted_out?: boolean
+        }
+        Relationships: []
+      }
       customer_label_assignments: {
         Row: {
           assigned_at: string | null
@@ -21865,6 +21904,10 @@ export type Database = {
         Returns: Json
       }
       current_user_employee_ids: { Args: never; Returns: string[] }
+      customer_contact_hash: {
+        Args: { p_kind: string; p_value: string }
+        Returns: string
+      }
       debug_booking_hours: {
         Args: { p_date: string; p_time?: string }
         Returns: {
@@ -23107,6 +23150,10 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: string
+      }
+      record_customer_contact_suppression: {
+        Args: { p_customer_ids: string[]; p_source: string }
+        Returns: number
       }
       record_invoice_payment_transaction: {
         Args: { p_payment_data: Json }

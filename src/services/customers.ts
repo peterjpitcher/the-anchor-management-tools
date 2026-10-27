@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import { emailAddressResetFields, isEmailAddressChange } from '@/lib/email/address-reset';
-import { createHash } from 'node:crypto';
+import { getTodayIsoDate } from '@/lib/dateUtils';
+import { GdprService } from '@/services/gdpr';
+import { eraseCustomers } from '@/services/customer-erasure';
 import type { 
   CreateCustomerInput, 
   UpdateCustomerInput, 
@@ -60,10 +62,6 @@ function isDuplicateKeyError(error: { code?: string; message?: string } | null):
   return error?.code === '23505';
 }
 
-function isForeignKeyViolation(error: { code?: string } | null): boolean {
-  return error?.code === '23503';
-}
-
 function isPhoneUniqueViolation(error: { message?: string } | null): boolean {
   const message = error?.message?.toLowerCase() || '';
   return (
@@ -79,79 +77,113 @@ function isEmailUniqueViolation(error: { message?: string } | null): boolean {
   return message.includes('idx_customers_email_unique') || message.includes('customers_email');
 }
 
-function buildDeletedCustomerPhone(customerId: string, attempt: number): string {
-  const hash = createHash('sha256').update(`${customerId}:${attempt}`).digest('hex');
-  let digits = '';
-  for (const char of hash) {
-    digits += String(parseInt(char, 16) % 10);
-  }
-  return `+447000${digits.slice(0, 8)}`;
-}
+/** Names an erased, deleted or merged record carries once its personal data is gone. */
+const ANONYMISED_NAMES = new Set(['Erased Customer', 'Deleted Customer', 'Merged Customer']);
 
-async function anonymizeCustomerForDelete(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+export type UpcomingCustomerBookings = {
+  tableBookings: number;
+  eventBookings: number;
+  privateBookings: number;
+  parkingBookings: number;
+  total: number;
+};
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+/**
+ * Bookings a customer still has ahead of them, which a delete must not strip of their contact
+ * details (BK-161). Fails closed: if any count cannot be read the delete is refused.
+ */
+export async function findUpcomingCustomerBookings(
+  db: AdminClient,
   customerId: string
-): Promise<void> {
-  let lastError: { code?: string; message?: string } | null = null;
+): Promise<UpcomingCustomerBookings> {
+  const today = getTodayIsoDate();
+  const nowIso = new Date().toISOString();
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const deletedPhone = buildDeletedCustomerPhone(customerId, attempt);
-    const payload: Record<string, unknown> = {
-      first_name: 'Deleted',
-      last_name: 'Customer',
-      internal_notes: null,
-      mobile_number: deletedPhone,
-      mobile_e164: deletedPhone,
-      mobile_number_raw: null,
-      email: null,
-      sms_opt_in: false,
-      sms_status: 'opted_out',
-      marketing_sms_opt_in: false,
-      whatsapp_opt_in: false,
-      whatsapp_status: 'opted_out',
-      marketing_whatsapp_opt_in: false,
-      marketing_email_opt_in: false,
-      messaging_status: 'opted_out',
-      stripe_customer_id: null,
-      sms_delivery_failures: 0,
-      last_sms_failure_reason: null,
-      last_successful_sms_at: null,
-      last_successful_delivery: null,
-      consecutive_failures: 0,
-      total_failures_30d: 0,
-      last_failure_type: null,
-      sms_deactivated_at: new Date().toISOString(),
-      sms_deactivation_reason: 'customer_deleted',
-    };
+  const [tableResult, eventBookingResult, privateResult, parkingResult] = await Promise.all([
+    db
+      .from('table_bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .in('status', ['pending_payment', 'confirmed', 'pending_card_capture'])
+      .gte('booking_date', today),
+    db
+      .from('bookings')
+      .select('id, event_id')
+      .eq('customer_id', customerId)
+      .in('status', ['pending_payment', 'confirmed']),
+    db
+      .from('private_bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .in('status', ['draft', 'confirmed'])
+      .or(`event_date.gte.${today},date_tbd.eq.true`),
+    db
+      .from('parking_bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .in('status', ['pending_payment', 'confirmed'])
+      .gte('end_at', nowIso),
+  ]);
 
-    const { data: anonymizedCustomer, error } = await supabase
-      .from('customers')
-      .update(payload)
-      .eq('id', customerId)
-      .select('id')
-      .maybeSingle();
-
-    if (!error && anonymizedCustomer) return;
-
-    if (error) {
-      lastError = error as { code?: string; message?: string };
-      if (
-        isDuplicateKeyError(lastError) &&
-        isPhoneUniqueViolation(lastError)
-      ) {
-        continue;
-      }
-
-      console.error('Customer anonymization error:', describeDbError(error));
-      throw new Error('Failed to delete customer');
-    }
-
-    throw new Error('Customer not found');
+  const failed = [tableResult, eventBookingResult, privateResult, parkingResult].find((result) => result.error);
+  if (failed?.error) {
+    console.error('Upcoming booking check before customer delete failed:', describeDbError(failed.error));
+    throw new Error("Could not check the customer's upcoming bookings, so nothing was deleted. Try again.");
   }
 
-  console.error('Customer anonymization exhausted unique phone retries:', describeDbError(lastError));
-  throw new Error('Failed to delete customer');
+  const liveEventBookings = (eventBookingResult.data ?? []) as Array<{ id: string; event_id: string | null }>;
+  const eventIds = Array.from(new Set(liveEventBookings.map((row) => row.event_id).filter((id): id is string => Boolean(id))));
+  let eventBookings = 0;
+  if (eventIds.length > 0) {
+    const { data: upcomingEvents, error: eventError } = await db
+      .from('events')
+      .select('id')
+      .in('id', eventIds)
+      .gte('date', today);
+    if (eventError) {
+      console.error('Upcoming event check before customer delete failed:', describeDbError(eventError));
+      throw new Error("Could not check the customer's upcoming bookings, so nothing was deleted. Try again.");
+    }
+    const upcomingIds = new Set(((upcomingEvents ?? []) as Array<{ id: string }>).map((row) => row.id));
+    eventBookings = liveEventBookings.filter((row) => row.event_id && upcomingIds.has(row.event_id)).length;
+  }
+
+  const tableBookings = tableResult.count ?? 0;
+  const privateBookings = privateResult.count ?? 0;
+  const parkingBookings = parkingResult.count ?? 0;
+
+  return {
+    tableBookings,
+    eventBookings,
+    privateBookings,
+    parkingBookings,
+    total: tableBookings + eventBookings + privateBookings + parkingBookings,
+  };
 }
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** "This customer has 1 table booking and 2 event bookings coming up. ..." */
+export function describeUpcomingBookingsRefusal(upcoming: UpcomingCustomerBookings): string {
+  const parts = [
+    upcoming.tableBookings > 0 ? plural(upcoming.tableBookings, 'table booking') : null,
+    upcoming.eventBookings > 0 ? plural(upcoming.eventBookings, 'event booking') : null,
+    upcoming.privateBookings > 0 ? plural(upcoming.privateBookings, 'private booking') : null,
+    upcoming.parkingBookings > 0 ? plural(upcoming.parkingBookings, 'parking booking') : null,
+  ].filter((part): part is string => Boolean(part));
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
+  return `This customer has ${list} coming up. Cancel or move ${upcoming.total === 1 ? 'it' : 'them'} before deleting the customer, so the booking keeps its contact details.`;
+}
+
+export type CustomerDeleteResult = {
+  message: string;
+  counts: Record<string, number>;
+  unscrubbedRows: number;
+};
 
 async function findExistingCustomerByPhone(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -339,45 +371,59 @@ export class CustomerService {
     return customer;
   }
 
-  static async deleteCustomer(id: string): Promise<Customer | null> {
-    const supabase = await createClient();
+  /**
+   * 'Delete customer' anonymises the record rather than wiping it (BK-161, customer bookings review
+   * of 24 October 2026).
+   *
+   * It used to try a hard delete first, which cascaded away the guest's free and unpaid event
+   * bookings, messages and consent history, and fell back to a made-up phone number only when a
+   * foreign key refused. Either way their opt-outs were lost. Now it refuses while the customer
+   * has bookings coming up, and otherwise runs the shared erasure path: opt-outs onto the
+   * suppression list, vouchers unlinked, then the GDPR anonymisation, which keeps every booking and
+   * consent row without the personal data. The caller has already checked customers manage.
+   */
+  static async deleteCustomer(id: string): Promise<CustomerDeleteResult> {
+    const admin = createAdminClient();
 
-    // Fetch first to return for audit log
-    const { data: customer, error: fetchError } = await supabase
+    const { data: customer, error: fetchError } = await admin
       .from('customers')
-      .select('*')
+      .select('id, first_name, last_name')
       .eq('id', id)
       .maybeSingle();
 
     if (fetchError) {
-      console.error('Customer lookup before delete error:', fetchError);
+      console.error('Customer lookup before delete error:', describeDbError(fetchError));
       throw new Error('Failed to delete customer');
     }
     if (!customer) {
       throw new Error('Customer not found');
     }
-
-    const { data: deletedCustomer, error } = await supabase
-      .from('customers')
-      .delete()
-      .eq('id', id)
-      .select('id')
-      .maybeSingle();
-
-    if (error) {
-      if (isForeignKeyViolation(error as { code?: string } | null)) {
-        await anonymizeCustomerForDelete(supabase, id);
-        return customer;
-      }
-
-      console.error('Customer deletion error:', error);
-      throw new Error('Failed to delete customer');
+    if (ANONYMISED_NAMES.has(`${customer.first_name} ${customer.last_name}`.trim())) {
+      throw new Error('This customer has already been deleted.');
     }
-    if (!deletedCustomer) {
+
+    const upcoming = await findUpcomingCustomerBookings(admin, id);
+    if (upcoming.total > 0) {
+      throw new Error(describeUpcomingBookingsRefusal(upcoming));
+    }
+
+    const subject = await GdprService.resolveErasureSubject(id);
+    if (!subject || !subject.customerIds.includes(id)) {
       throw new Error('Customer not found');
     }
 
-    return customer;
+    // Only this customer: a profile can never share a customer's id, but the erasure must not
+    // reach past the record that was asked for.
+    const { result } = await eraseCustomers(
+      { ...subject, profileId: null, profileEmail: null, customerIds: [id] },
+      'customer_deleted'
+    );
+
+    return {
+      message: result.message,
+      counts: { ...result.counts },
+      unscrubbedRows: result.unscrubbedRows,
+    };
   }
 
   static async importCustomers(customers: CreateCustomerInput[]): Promise<CustomerImportResult> {
