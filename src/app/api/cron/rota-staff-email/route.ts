@@ -6,6 +6,9 @@ import { authorizeCronRequest } from '@/lib/cron-auth';
 import { getRotaWeekReadiness, readinessWeekFromRow } from '@/lib/rota/week-readiness';
 import type { PublishedShiftSnapshot, RotaPublishShift } from '@/lib/rota/publish-status';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 // Vercel Cron: runs at 21:00 Europe/London every Sunday
 const TIMEZONE = 'Europe/London';
 
