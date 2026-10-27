@@ -6,6 +6,7 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
@@ -1000,6 +1001,39 @@ export class EventBookingService {
             }
           })()
         })
+      } else if (
+        resolvedState === 'pending_payment' &&
+        source === 'admin' &&
+        rpcResult.booking_id &&
+        nextStepUrl
+      ) {
+        // BK-142: a phone or bar booking's payment link goes by email first, where the guest has
+        // a usable address, and by text only when no email went (owner decision D14).
+        const pendingBookingId = rpcResult.booking_id
+        const paymentLink = nextStepUrl
+        tasks.push({
+          label: 'email:event_payment_link',
+          promise: (async () => {
+            let emailed = false
+            try {
+              const emailResult = await sendEventPaymentLinkEmail(supabase, {
+                bookingId: pendingBookingId,
+                paymentLink,
+                holdExpiresAt: rpcResult.hold_expires_at,
+              })
+              emailed = emailResult.success === true
+              confirmationEmailed = emailed
+            } catch (emailError) {
+              logger.warn(`${logTagCap} payment link email rejected unexpectedly`, {
+                metadata: {
+                  bookingId: pendingBookingId,
+                  error: emailError instanceof Error ? emailError.message : String(emailError)
+                }
+              })
+            }
+            if (!emailed && canText) await runBookingSms()
+          })()
+        })
       } else if (canText) {
         tasks.push({
           label: 'sms:booking_created',
@@ -1007,9 +1041,24 @@ export class EventBookingService {
         })
       }
 
+      // BK-011, owner decision D5: a phone, bar or text booking for an event that needs guest
+      // details may be saved with some to follow. The booker is sent their link to add them
+      // (behind the event_guest_details_request flag; a walk-in is in the room already).
+      if ((source === 'admin' || source === 'sms_reply') && rpcResult.booking_id) {
+        tasks.push({
+          label: 'message:event_guest_details_request',
+          promise: requestMissingGuestDetails(supabase, {
+            bookingId: rpcResult.booking_id,
+            manageUrl,
+            appBaseUrl,
+          }),
+        })
+      }
+
       if (
         resolvedState === 'pending_payment' &&
         source !== 'brand_site' &&
+        source !== 'admin' &&
         rpcResult.booking_id &&
         nextStepUrl
       ) {
