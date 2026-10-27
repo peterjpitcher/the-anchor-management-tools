@@ -28,6 +28,12 @@ import {
   formatGbp,
   getLondonDateIso,
 } from '../utils'
+import {
+  StaffGuestDetailsFields,
+  resizeStaffGuestRows,
+  type StaffGuestRow,
+} from '@/components/features/events/StaffGuestDetailsFields'
+import { MAX_FOH_EVENT_SEATS, fohEventOffersTicketTypes, fohEventSeatCount } from '../event-guest-details'
 
 export type CreateForm = {
   booking_date: string
@@ -56,6 +62,10 @@ export type CreateForm = {
   christmas_course_counts?: number[]
   /** Staff read the guest the marketing notice and they said yes (D32). Never assumed. */
   marketing_texts_yes?: boolean
+  /** Event bookings: each ticket's guest details, any of which may follow (BK-011). */
+  event_guest_rows?: StaffGuestRow[]
+  /** Event bookings on events with ticket types: quantity typed per type (BK-141). */
+  event_ticket_quantities?: Record<string, string>
 }
 
 type FohCreateBookingModalProps = {
@@ -452,7 +462,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                     if (createMode === 'walk_in') {
                       onSetWalkInPurposeAutoSelectionEnabled(false)
                     }
-                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated' }))
+                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated', event_ticket_quantities: {}, event_guest_rows: [] }))
                   }}
                   className={FIELD_CLASS}
                 >
@@ -518,6 +528,42 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   </div>
                 </div>
               )}
+
+              {selectedEventOption && fohEventOffersTicketTypes(selectedEventOption) && (
+                <div className="space-y-2 rounded-default border border-border bg-surface px-3 py-2 md:col-span-2">
+                  <p className="text-xs font-medium text-text">Tickets</p>
+                  {(selectedEventOption.ticket_types ?? []).map((type) => (
+                    <Input
+                      key={type.id}
+                      label={`${type.name} (${formatGbp(type.price)})`}
+                      inputMode="numeric"
+                      value={createForm.event_ticket_quantities?.[type.id] ?? ''}
+                      placeholder="0"
+                      onChange={(event) => {
+                        const value = event.target.value.replace(/\D/g, '')
+                        onSetCreateForm((current) => ({ ...current, event_ticket_quantities: { ...(current.event_ticket_quantities ?? {}), [type.id]: value } }))
+                      }}
+                      className={FIELD_CLASS}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {selectedEventOption && (() => {
+                const seatCount = fohEventSeatCount({ option: selectedEventOption, partySize: createForm.party_size, quantities: createForm.event_ticket_quantities })
+                if (seatCount < 1 || seatCount > MAX_FOH_EVENT_SEATS) return null
+                return (
+                  <div className="md:col-span-2">
+                    <StaffGuestDetailsFields
+                      idPrefix="foh-event-guest"
+                      rows={resizeStaffGuestRows(createForm.event_guest_rows ?? [], seatCount)}
+                      questions={selectedEventOption.booking_questions ?? []}
+                      required={selectedEventOption.guest_details_required === true}
+                      onChange={(rows) => onSetCreateForm((current) => ({ ...current, event_guest_rows: rows }))}
+                    />
+                  </div>
+                )
+              })()}
 
               {eventOptionsError && (
                 <p className="text-xs text-danger md:col-span-2">{eventOptionsError}</p>

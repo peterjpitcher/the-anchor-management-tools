@@ -155,3 +155,40 @@ export function describeSeatUpdateBlock(reason: string | null | undefined): stri
   const known = reason ? SEAT_UPDATE_BLOCKED_MESSAGES[reason] : undefined
   return known ?? 'The seat count could not be changed. Nothing was saved.'
 }
+
+/** What staff see after adding a booking from the event page (BK-033, BK-011). */
+export interface ManualBookingOutcome {
+  tone: 'success' | 'warning' | 'danger'
+  message: string
+  links: Array<{ label: 'Payment link' | 'Guest details link'; url: string }>
+}
+
+/**
+ * Turns the booking result into what staff on the phone need to say. A full event used to show
+ * "Booking created successfully" and clear the form although nothing was booked (BK-033).
+ */
+export function describeManualBookingOutcome(data: {
+  state: string
+  seats_remaining?: number | null
+  next_step_url?: string | null
+  manage_booking_url?: string | null
+  details_to_follow?: boolean
+}): ManualBookingOutcome {
+  if (data.state !== 'confirmed' && data.state !== 'pending_payment') {
+    const left = typeof data.seats_remaining === 'number' ? ` (${data.seats_remaining} left)` : ''
+    return { tone: 'danger', message: `This event is full for that request${left}. Nothing was booked.`, links: [] }
+  }
+  const links: ManualBookingOutcome['links'] = []
+  const parts: string[] = []
+  if (data.state === 'pending_payment') {
+    parts.push('Seats held, waiting on payment. Read the guest the payment link if they have not had it.')
+    if (data.next_step_url) links.push({ label: 'Payment link', url: data.next_step_url })
+  } else {
+    parts.push('Booking confirmed.')
+  }
+  if (data.details_to_follow) {
+    parts.push('Some guest details are still to follow. The guest can add them from their booking link.')
+    if (data.manage_booking_url) links.push({ label: 'Guest details link', url: data.manage_booking_url })
+  }
+  return { tone: data.details_to_follow ? 'warning' : 'success', message: parts.join(' '), links }
+}
