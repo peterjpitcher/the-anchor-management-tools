@@ -16,6 +16,10 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   sendTableBookingCancelledSmsIfAllowed: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@/app/actions/rbac', () => ({
+  checkUserPermission: vi.fn().mockResolvedValue(false),
+}))
+
 vi.mock('@/lib/payments/stripe', () => ({
   expireStripeCheckoutSession: vi.fn(),
   isStripeConfigured: vi.fn(() => false),
@@ -25,7 +29,44 @@ import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { logAuditEvent } from '@/app/actions/audit'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { DELETE as deleteBohTableBooking } from '@/app/api/boh/table-bookings/[id]/route'
+import { NextRequest } from 'next/server'
+
+const BOOKING_ID = '00000000-0000-4000-8000-000000000001'
+
+function deleteRequest(body?: Record<string, unknown>): NextRequest {
+  return new NextRequest(`http://localhost/api/boh/table-bookings/${BOOKING_ID}`, {
+    method: 'DELETE',
+    ...(body ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+  })
+}
+
+/** A live booking the soft delete cancels; returns the update spy. */
+function mockLiveBooking() {
+  const loadMaybeSingle = vi.fn().mockResolvedValue({
+    data: { id: BOOKING_ID, booking_reference: 'TB-1', booking_date: '2026-02-23', customer_id: 'customer-1', status: 'confirmed' },
+    error: null,
+  })
+  const updateMaybeSingle = vi.fn().mockResolvedValue({
+    data: { id: BOOKING_ID, booking_reference: 'TB-1', status: 'cancelled', cancelled_at: '2026-02-23T11:00:00.000Z', cancellation_reason: 'x' },
+    error: null,
+  })
+  const updateChain = { eq: vi.fn(() => updateChain), select: vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle }) }
+  const update = vi.fn().mockReturnValue(updateChain)
+  ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
+    ok: true,
+    supabase: {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: loadMaybeSingle }) }),
+        update,
+        delete: vi.fn(),
+      }),
+    },
+    userId: 'user-1',
+  })
+  return { update }
+}
 
 describe('BOH table-booking DELETE behavior', () => {
   beforeEach(() => {
@@ -81,7 +122,7 @@ describe('BOH table-booking DELETE behavior', () => {
       userId: 'user-1',
     })
 
-    const response = await deleteBohTableBooking({} as any, {
+    const response = await deleteBohTableBooking(deleteRequest(), {
       params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
@@ -91,7 +132,8 @@ describe('BOH table-booking DELETE behavior', () => {
       expect.objectContaining({
         status: 'cancelled',
         cancelled_by: 'staff',
-        cancellation_reason: 'boh_soft_delete',
+        // A screen that sends no choice keeps the guest's terms (BK-046).
+        cancellation_reason: 'Guest asked staff to cancel',
       })
     )
     expect(hardDelete).not.toHaveBeenCalled()
@@ -102,7 +144,12 @@ describe('BOH table-booking DELETE behavior', () => {
       resource_type: 'table_booking',
       resource_id: '00000000-0000-4000-8000-000000000001',
       operation_status: 'success',
-      additional_info: { action: 'boh_table_booking_soft_cancel' },
+      additional_info: {
+        action: 'boh_table_booking_soft_cancel',
+        cancelled_by: 'guest',
+        cancelled_by_given: false,
+        manager_refund_gbp: null,
+      },
     }))
     expect(payload).toMatchObject({
       success: true,
@@ -234,5 +281,75 @@ describe('BOH table-booking DELETE behavior', () => {
     expect(hardDelete).toHaveBeenCalled()
     expect(response.status).toBe(409)
     expect(payload.error).toContain('still holds a paid deposit')
+  })
+
+  describe('who is cancelling (BK-046)', () => {
+    it('refunds a pub cancellation in full and records it on the booking', async () => {
+      const { update } = mockLiveBooking()
+
+      const response = await deleteBohTableBooking(deleteRequest({ cancelled_by: 'venue' }), {
+        params: Promise.resolve({ id: BOOKING_ID }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ cancellation_reason: 'The pub cancelled' }))
+      expect(refundTableBookingDeposit).toHaveBeenCalledWith(BOOKING_ID, expect.any(Date), {
+        cancelledBy: 'venue',
+        managerAmountGbp: null,
+      })
+    })
+
+    it('applies the guest terms when the guest asked', async () => {
+      mockLiveBooking()
+
+      await deleteBohTableBooking(deleteRequest({ cancelled_by: 'guest' }), { params: Promise.resolve({ id: BOOKING_ID }) })
+
+      expect(refundTableBookingDeposit).toHaveBeenCalledWith(BOOKING_ID, expect.any(Date), {
+        cancelledBy: 'guest',
+        managerAmountGbp: null,
+      })
+    })
+
+    it('refuses a chosen refund amount from someone without table_bookings manage, before anything changes', async () => {
+      const { update } = mockLiveBooking()
+      vi.mocked(checkUserPermission).mockResolvedValue(false)
+
+      const response = await deleteBohTableBooking(
+        deleteRequest({ cancelled_by: 'venue', refund_amount_gbp: 40 }),
+        { params: Promise.resolve({ id: BOOKING_ID }) },
+      )
+
+      expect(response.status).toBe(403)
+      expect(checkUserPermission).toHaveBeenCalledWith('table_bookings', 'manage', 'user-1')
+      expect(update).not.toHaveBeenCalled()
+      expect(refundTableBookingDeposit).not.toHaveBeenCalled()
+    })
+
+    it("passes a manager's chosen amount to the refund", async () => {
+      mockLiveBooking()
+      vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+      const response = await deleteBohTableBooking(
+        deleteRequest({ cancelled_by: 'guest', refund_amount_gbp: '40.00' }),
+        { params: Promise.resolve({ id: BOOKING_ID }) },
+      )
+
+      expect(response.status).toBe(200)
+      expect(refundTableBookingDeposit).toHaveBeenCalledWith(BOOKING_ID, expect.any(Date), {
+        cancelledBy: 'guest',
+        managerAmountGbp: 40,
+      })
+    })
+
+    it('refuses an unknown choice', async () => {
+      const { update } = mockLiveBooking()
+
+      const response = await deleteBohTableBooking(deleteRequest({ cancelled_by: 'kitchen' }), {
+        params: Promise.resolve({ id: BOOKING_ID }),
+      })
+
+      expect(response.status).toBe(400)
+      expect(update).not.toHaveBeenCalled()
+    })
   })
 })
