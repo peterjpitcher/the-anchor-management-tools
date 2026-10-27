@@ -503,6 +503,24 @@ describe('event guest emails', () => {
     })
   })
 
+  it('sends to the email typed for this booking when the customer record holds another (BK-078)', async () => {
+    await sendEventBookingConfirmedEmail(
+      buildSupabase({
+        booking: { contact_email: 'pat.new@example.com' },
+        // The record's address bounced: that says nothing about the one typed for this booking.
+        customer: { email: 'pat.old@example.com', email_status: 'bounced' },
+      }) as any,
+      { bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70' }
+    )
+
+    expect((lastSend() as unknown as { to: string }).to).toBe('pat.new@example.com')
+  })
+
+  it('sends to the customer address when the booking has none of its own', async () => {
+    await sendEventBookingConfirmedEmail(buildSupabase() as any, { bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70' })
+    expect((lastSend() as unknown as { to: string }).to).toBe('pat@example.com')
+  })
+
   it('sends a manual-review email when payment needs staff action, and says nothing about a zero payment', async () => {
     const result = await sendEventPaymentManualReviewEmail(buildSupabase() as any, {
       bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',

@@ -89,7 +89,7 @@ function buildHarness(): Harness {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
               maybeSingle: vi.fn().mockResolvedValue({
-                data: { id: 'customer-1', email_delivery_failures: 1 },
+                data: { id: 'customer-1', email: 'guest@example.com', email_delivery_failures: 1 },
                 error: null,
               }),
             }),

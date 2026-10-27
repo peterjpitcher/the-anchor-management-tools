@@ -65,6 +65,8 @@ import { EventMarketingLinksCard } from '@/components/features/events/EventMarke
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventArtworkDownloadsCard } from '@/components/features/events/EventArtworkDownloadsCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
+import { BookingContactEmailNotice } from '@/components/features/bookings/BookingContactEmailNotice'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
@@ -1074,6 +1076,8 @@ function AttendeesTab({
   onCancelTransfer: () => void
   isPending: boolean
 }) {
+  // Copying a booking's email onto the customer record edits the customer (BK-078).
+  const canUpdateCustomerEmail = usePermissions().hasPermission('customers', 'manage')
   const pageSize = 25
   const [attendeePage, setAttendeePage] = useState(1)
   const totalAttendeePages = Math.max(1, Math.ceil(visibleBookings.length / pageSize))
@@ -1264,6 +1268,18 @@ function AttendeesTab({
 
   return (
     <div className="space-y-6">
+      {/* Guests who gave a different email for their booking than the one on their record (BK-078). */}
+      {visibleBookings.filter((booking) => booking.contact_email).map((booking) => (
+        <BookingContactEmailNotice
+          key={`contact-email-${booking.id}`}
+          bookingType="event"
+          bookingId={booking.id}
+          guestName={[booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || null}
+          contactEmail={booking.contact_email as string}
+          customerEmail={booking.customer?.email ?? null}
+          canUpdateCustomer={canUpdateCustomerEmail}
+        />
+      ))}
       <StatGrid columns={3}>
         <Stat label="Total Seats Booked" value={totalSeats} />
         <Stat label="Active Bookings" value={activeBookingsCount} />

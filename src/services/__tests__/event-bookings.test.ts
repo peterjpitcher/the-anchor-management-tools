@@ -42,6 +42,11 @@ vi.mock('@/lib/logger', () => ({
   }
 }))
 
+vi.mock('@/lib/bookings/contact-email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/bookings/contact-email')>()),
+  recordBookingContactEmail: vi.fn()
+}))
+
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -51,6 +56,7 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
+import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
 import { EventBookingService, type CreateBookingParams } from '../event-bookings'
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -320,6 +326,28 @@ describe('EventBookingService.createBooking', () => {
     expect(result.resolvedState).toBe('blocked')
     expect(result.resolvedReason).toBe('event_full')
     expect(result.bookingId).toBeNull()
+  })
+
+  // A refused duplicate names the guest's EXISTING booking: the typed email must not land on it,
+  // or a rejected request (even with somebody else's number) redirects that booking's payment
+  // links and ticket emails (PR 263 review).
+  it('keeps the typed email only on a booking this request actually made', async () => {
+    const conflict = makeSupabaseMock({
+      rpcResults: {
+        create_event_booking_v05: {
+          data: { state: 'blocked', reason: 'customer_conflict', booking_id: 'existing-booking' },
+          error: null
+        }
+      }
+    })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(conflict)
+    await EventBookingService.createBooking({ ...BASE_PARAMS, contactEmail: 'someone.else@example.com' })
+    expect(recordBookingContactEmail).not.toHaveBeenCalled()
+
+    const made = makeSupabaseMock({ rpcResults: { create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null } } })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(made)
+    await EventBookingService.createBooking({ ...BASE_PARAMS, contactEmail: 'pat.new@example.com' })
+    expect(recordBookingContactEmail).toHaveBeenCalledWith('bookings', 'booking-uuid-001', 'pat.new@example.com')
   })
 
   // ── RPC error ───────────────────────────────────────────────────────────────

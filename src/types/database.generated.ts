@@ -1209,6 +1209,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           completed_at: string | null
+          contact_email: string | null
           created_at: string
           customer_id: string
           event_id: string
@@ -1236,6 +1237,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           completed_at?: string | null
+          contact_email?: string | null
           created_at?: string
           customer_id: string
           event_id: string
@@ -1263,6 +1265,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           completed_at?: string | null
+          contact_email?: string | null
           created_at?: string
           customer_id?: string
           event_id?: string
@@ -3304,6 +3307,7 @@ export type Database = {
           first_name: string
           id: string
           internal_notes: string | null
+          is_placeholder: boolean
           last_email_failure_reason: string | null
           last_failure_type: string | null
           last_name: string
@@ -3363,6 +3367,7 @@ export type Database = {
           first_name: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name: string
@@ -3422,6 +3427,7 @@ export type Database = {
           first_name?: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name?: string
@@ -18480,6 +18486,7 @@ export type Database = {
           committed_party_size: number
           completed_at: string | null
           confirmed_at: string | null
+          contact_email: string | null
           correlation_id: string | null
           created_at: string | null
           customer_id: string | null
@@ -18557,6 +18564,7 @@ export type Database = {
           committed_party_size: number
           completed_at?: string | null
           confirmed_at?: string | null
+          contact_email?: string | null
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -18634,6 +18642,7 @@ export type Database = {
           committed_party_size?: number
           completed_at?: string | null
           confirmed_at?: string | null
+          contact_email?: string | null
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null

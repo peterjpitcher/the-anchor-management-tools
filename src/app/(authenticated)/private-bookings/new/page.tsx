@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { HireDateHoursNotice } from '@/components/private-bookings/HireDateHoursNotice'
 import { useRouter } from 'next/navigation'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
+import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
 import {
@@ -39,6 +40,8 @@ export default function NewPrivateBookingPage() {
   const [customerLastName, setCustomerLastName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  const [marketingYes, setMarketingYes] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [dateTbd, setDateTbd] = useState(false)
@@ -216,6 +219,14 @@ export default function NewPrivateBookingPage() {
                   />
                 </Field>
               </div>
+
+              <StaffMarketingConsentField
+                idPrefix="private-booking-marketing"
+                checked={marketingYes}
+                onChange={setMarketingYes}
+                disabled={isSubmitting}
+              />
+              {marketingYes && <input type="hidden" name="marketing_texts_yes" value="true" />}
             </CardBody>
           </Card>
 

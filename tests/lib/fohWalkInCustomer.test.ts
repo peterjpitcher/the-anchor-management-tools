@@ -92,6 +92,14 @@ describe('createWalkInCustomer', () => {
     expect(inserts[0]).toMatchObject({ sms_opt_in: false, sms_status: 'sms_deactivated' })
   })
 
+  it('marks the record as a placeholder, so it stays out of customer lists and counts (BK-082)', async () => {
+    const { client, inserts } = supabaseReturning([OK])
+
+    await createWalkInCustomer(client, { guestName: 'Dana Fox' })
+
+    expect(inserts[0]).toMatchObject({ is_placeholder: true })
+  })
+
   it('falls back to Walk-in when no name is given at all', async () => {
     const { client, inserts } = supabaseReturning([OK])
 

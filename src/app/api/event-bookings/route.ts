@@ -17,6 +17,7 @@ import {
 import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUrl } from '@/lib/api/attribution-labels'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
@@ -159,6 +160,12 @@ export async function POST(request: NextRequest) {
       })
     } catch {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
+    }
+
+    // A landline or non-UK number cannot take our texts, so without an email the guest would get
+    // no confirmation or payment link (BK-162). Ask for an email instead.
+    if (!parsed.data.email && !isUkMobile(normalizedPhone)) {
+      return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
     }
 
     // Per-ticket attendee names are optional here (the website enforces them for
@@ -305,20 +312,6 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
-      await ConsentService.applyBookingContactConsent(
-        customerResolution.customerId,
-        parsed.data.communication_consent,
-        {
-          source: 'public_event_booking',
-          captureMethod: 'checkbox',
-          // The referer is a page address too, so it gets the same cleaning: no click id is kept.
-          sourceUrl: parsed.data.source_url || cleanAttributionUrl(req.headers.get('referer'), 2048) || null,
-          userAgent: req.headers.get('user-agent'),
-          relatedEntityType: 'event_booking',
-          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-        }
-      )
-
       const appBaseUrl = getAppUrl()
       const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
 
@@ -395,6 +388,7 @@ export async function POST(request: NextRequest) {
         attribution,
         ticketSelections,
         diningRequest: parsed.data.dining_request,
+        contactEmail: customerResolution.bookingContactEmail,
         earlyArrivalRequest: parsed.data.early_arrival_request
       })
 
@@ -437,6 +431,29 @@ export async function POST(request: NextRequest) {
       // (even if a subsequent step failed), so the finally block does not release
       // the idempotency claim and risk creating a duplicate booking on retry.
       mutationCommitted = Boolean(result.rpcResult.booking_id)
+
+      // Recorded once the booking exists, so the consent names it (BK-080). It used to be recorded
+      // before the booking was made, so no event consent was ever tied to its booking. Decided on
+      // the state, never on whether an id came back (tasks/lessons.md, 2026-07-03).
+      if (
+        result.bookingId &&
+        (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment')
+      ) {
+        await ConsentService.applyBookingContactConsent(
+          customerResolution.customerId,
+          parsed.data.communication_consent,
+          {
+            source: 'public_event_booking',
+            captureMethod: 'checkbox',
+            // The referer is a page address too, so it gets the same cleaning: no click id is kept.
+            sourceUrl: parsed.data.source_url || cleanAttributionUrl(req.headers.get('referer'), 2048) || null,
+            userAgent: req.headers.get('user-agent'),
+            relatedEntityType: 'event_booking',
+            relatedEntityId: result.bookingId,
+            metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+          }
+        )
+      }
 
       if (result.rollbackFailed) {
         return createErrorResponse(

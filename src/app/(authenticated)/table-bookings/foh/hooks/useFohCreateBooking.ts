@@ -468,7 +468,7 @@ export function useFohCreateBooking(input: {
         notes: walkInMode ? '' : current.notes, allergies: walkInMode ? '' : current.allergies,
         waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-        christmas_course_counts: []
+        christmas_course_counts: [], marketing_texts_yes: false
       }
     })
     if (walkInMode) {
@@ -535,7 +535,8 @@ export function useFohCreateBooking(input: {
             seating_preference:
               selectedEventOption?.booking_mode === 'communal'
                 ? createForm.seating_preference
-                : undefined
+                : undefined,
+            marketing_texts_yes: createForm.marketing_texts_yes === true || undefined
           })
         })
         const payload = (await response.json()) as FohCreateEventBookingResponse
@@ -585,7 +586,11 @@ export function useFohCreateBooking(input: {
 
         const paymentLinkText = payload.data.next_step_url ? ` Payment link: ${payload.data.next_step_url}` : ''
         const manageLinkText = payload.data.manage_booking_url ? ` Manage link: ${payload.data.manage_booking_url}` : ''
-        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
+        // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+        const notificationText = payload.data.notification_sent === false
+          ? ' No confirmation reached the guest, so give them the details now.'
+          : ''
+        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')
@@ -652,6 +657,7 @@ export function useFohCreateBooking(input: {
           requires_accessible_table:
             (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
           christmas_course_counts: christmasCourseCounts,
+          marketing_texts_yes: (!isManagement && createForm.marketing_texts_yes === true) || undefined,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
           // never the truthiness. Absent for Christmas, which travels as a
@@ -692,11 +698,15 @@ export function useFohCreateBooking(input: {
       const coursesText = payload.data.christmas_courses_saved === false
         ? ' The Christmas courses did not save: set them on the booking.'
         : ''
+      // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+      const notificationText = payload.data.notification_sent === false
+        ? ' No confirmation reached the guest, so give them the details now.'
+        : ''
       // The booking exists either way; an allergy that did not save must be said, not dropped.
       const allergiesText = payload.data.allergies_saved === false
         ? ' The allergies did not save: add them to the booking now.'
         : ''
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${allergiesText}${paymentLinkText}`)
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${allergiesText}${notificationText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

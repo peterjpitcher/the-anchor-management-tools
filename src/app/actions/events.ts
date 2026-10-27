@@ -13,6 +13,7 @@ import { getAppUrl } from '@/lib/env'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import {
   createEventManageToken,
   getEventRefundPolicy,
@@ -87,6 +88,8 @@ export type EventBookingRow = {
   ticket_breakdown?: string | null
   /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
   charge_total?: number | null
+  /** The email typed for this booking when the customer record holds a different one (BK-078). */
+  contact_email?: string | null
   customer?: {
     id: string
     first_name: string | null
@@ -736,7 +739,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, contact_email, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -882,7 +885,9 @@ const createEventManualBookingSchema = z.object({
   ticketSelections: z.array(z.object({
     ticketTypeId: z.string().uuid(),
     quantity: z.number().int().min(1).max(20)
-  })).min(1).max(20).optional()
+  })).min(1).max(20).optional(),
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  marketingTextsYes: z.boolean().optional()
 })
 
 type EventManualBookingResult =
@@ -916,6 +921,8 @@ export async function createEventManualBooking(input: {
   lastName?: string
   attendeeNames?: string[]
   ticketSelections?: Array<{ ticketTypeId: string; quantity: number }>
+  /** Staff read the guest the marketing notice and they said yes (owner decision D32). */
+  marketingTextsYes?: boolean
 }): Promise<EventManualBookingResult> {
   try {
     // ── Admin-specific pre-checks ────────────────────────────────────────────
@@ -942,7 +949,7 @@ export async function createEventManualBooking(input: {
     const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
       firstName: parsed.data.firstName,
       lastName: parsed.data.lastName
-    })
+    }, { trustedEntry: true })
 
     if (!customerResolution.customerId) {
       return { error: 'Could not create or find customer for this phone number.' }
@@ -1117,6 +1124,14 @@ export async function createEventManualBooking(input: {
             quantity: line.quantity
           })) ?? null
         }
+      })
+      await recordStaffReadOutConsent({
+        saidYes: parsed.data.marketingTextsYes,
+        customerId,
+        actorUserId: user.id,
+        source: 'staff_event_booking',
+        relatedEntityType: 'event_booking',
+        relatedEntityId: bookingId,
       })
     }
 

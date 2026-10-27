@@ -7,6 +7,7 @@ import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment,
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
@@ -373,6 +374,18 @@ export async function createPrivateBooking(formData: FormData) {
       created_by: user?.id,
       date_tbd: isDateTbd
     } as CreatePrivateBookingInput);
+
+    // Staff read the guest the marketing notice and they said yes (owner decision D32).
+    if (user?.id) {
+      await recordStaffReadOutConsent({
+        saidYes: formData.get('marketing_texts_yes') === 'true',
+        customerId: booking.customer_id,
+        actorUserId: user.id,
+        source: 'staff_private_booking',
+        relatedEntityType: 'private_booking',
+        relatedEntityId: booking.id,
+      })
+    }
 
     await logAuditEvent({
       user_id: user?.id,

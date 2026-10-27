@@ -1042,11 +1042,13 @@ export async function createBooking(
   // Always resolve customer through the shared lookup-first helper.
   let resolvedCustomerId = input.customer_id ?? null;
   if (!resolvedCustomerId && normalizedContactPhone) {
+    // A website enquiry has no proof the person typing owns the number, so it never fills in
+    // the matched customer's email (BK-077); the booking keeps its own contact_email anyway.
     const ensured = await ensureCustomerForPhone(createAdminClient(), normalizedContactPhone, {
       firstName: input.customer_first_name,
       lastName: input.customer_last_name?.trim() || undefined,
       email: normalizedContactEmail
-    });
+    }, { trustedEntry: input.is_web_enquiry !== true });
     resolvedCustomerId = ensured.customerId;
   }
 

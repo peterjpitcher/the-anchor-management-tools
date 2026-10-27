@@ -366,6 +366,8 @@ interface Props {
    * whether this guest has a usable address, which makes email the default.
    */
   emailOption?: { enabled: boolean; usable: boolean }
+  /** Shown when the guest gave a different email for this booking (BK-078). Null otherwise. */
+  contactEmailNotice?: ReactNode
 }
 
 type MoveTableOption = {
@@ -399,7 +401,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption, contactEmailNotice }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -1107,6 +1109,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 />
               )}
             </Card>
+
+            {contactEmailNotice}
 
             {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
             {seasonalPreorder}
