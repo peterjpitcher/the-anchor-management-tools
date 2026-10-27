@@ -9,6 +9,7 @@ import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/p
 import { EVENT_MARKETING_CHANNEL_MAP, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links';
 import { eventTicketTypesEnabled, type EventTicketTypeDTO } from '@/lib/events/ticket-types';
 import { loadEventTicketTypeDTOs } from '@/lib/events/ticket-type-queries';
+import { requiresGuestDetails } from '@/lib/events/booking-questions';
 
 type EventFaqRow = {
   sort_order: number | null;
@@ -263,6 +264,9 @@ export async function GET(
       online_discount_value: event.online_discount_value ?? null,
       online_discount_ends_at: event.online_discount_ends_at ?? null,
       booking_questions: event.booking_questions ?? [],
+      // Whether to ask for each ticket's name and answers: the event's own setting (BK-014). The
+      // website reads this instead of working the rule out itself.
+      guest_details_required: requiresGuestDetails(event),
       is_free: event.is_free === true,
       capacity: capacityRow.capacity,
       seated_capacity: capacityRow.communal_seated_capacity ?? null,

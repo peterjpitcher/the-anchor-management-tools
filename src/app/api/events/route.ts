@@ -14,6 +14,7 @@ import {
   type EventTicketTypeRow,
 } from '@/lib/events/ticket-types';
 import { logger } from '@/lib/logger';
+import { requiresGuestDetails } from '@/lib/events/booking-questions';
 // Removed unused date-fns imports
 
 type EventFaqRow = {
@@ -259,6 +260,9 @@ export async function GET(_request: NextRequest) {
         online_discount_value: event.online_discount_value ?? null,
       online_discount_ends_at: event.online_discount_ends_at ?? null,
       booking_questions: event.booking_questions ?? [],
+      // Whether to ask for each ticket's name and answers: the event's own setting (BK-014). The
+      // website reads this instead of working the rule out itself.
+      guest_details_required: requiresGuestDetails(event),
         primary_keywords: event.primary_keywords || [],
         secondary_keywords: event.secondary_keywords || [],
         local_seo_keywords: event.local_seo_keywords || [],

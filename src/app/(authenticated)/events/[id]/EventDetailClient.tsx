@@ -47,12 +47,16 @@ import {
 import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
+import { EventGuestAnswersCard } from './EventGuestAnswersCard'
+import { isOnDoorList } from '@/lib/events/door-list'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import { ticketsMissingDetails } from '@/lib/events/guest-details-edit'
 import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
-import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
+import { AddGuestDetailsModal } from './AddGuestDetailsModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
@@ -208,7 +212,7 @@ export default function EventDetailClient({
 
   // Row action dialogs
   const [refundingBooking, setRefundingBooking] = useState<EventBookingRow | null>(null)
-  const [editNamesBooking, setEditNamesBooking] = useState<EventBookingRow | null>(null)
+  const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
 
   // Cancel confirmation state
@@ -228,11 +232,14 @@ export default function EventDetailClient({
 
   /* ---- Derived data ---- */
 
-  // Expired payment holds are dead bookings too: counting them inflates the
-  // Overview tab count and "Active Bookings" card relative to totalSeats.
-  const activeBookings = useMemo(
-    () => bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'expired' && b.is_reminder_only !== true),
-    [bookings],
+  // The door list rule the booking sheets and guest list use too (BK-030): cancelled bookings
+  // and lapsed payment holds are not coming.
+  const activeBookings = useMemo(() => bookings.filter(isOnDoorList), [bookings])
+  // BK-016: on an event that needs every guest's details, how many tickets still lack a name or a
+  // required answer (phone, bar and kiosk bookings, and bookings made before a question was added).
+  const ticketsNeedingDetails = useMemo(
+    () => (event && requiresGuestDetails(event) ? ticketsMissingDetails(activeBookings, event.booking_questions ?? []) : 0),
+    [event, activeBookings],
   )
 
   const visibleBookings = useMemo(
@@ -546,6 +553,11 @@ export default function EventDetailClient({
                     ) : resolvedEventPrice > 0 ? (
                       <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
                     ) : null}
+                    {ticketsNeedingDetails > 0 && (
+                      <Badge tone="warning">
+                        {ticketsNeedingDetails} {ticketsNeedingDetails === 1 ? 'ticket' : 'tickets'} missing details
+                      </Badge>
+                    )}
                   </>
                 }
               />
@@ -583,7 +595,7 @@ export default function EventDetailClient({
                 onMarkPaid={handleMarkPaid}
                 onRequestComp={setCompBookingId}
                 onRefundBooking={setRefundingBooking}
-                onEditNames={setEditNamesBooking}
+                onEditNames={setAddDetailsBooking}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
                 transferEvents={transferEvents}
@@ -599,6 +611,12 @@ export default function EventDetailClient({
                 }}
                 isPending={isPending}
               />
+              <EventGuestAnswersCard
+                eventId={event.id}
+                questions={event.booking_questions ?? []}
+                bookings={activeBookings}
+                canManage={permissions.canManage}
+              />
               <MarketingMessagesCard messages={marketingMessages} />
             </div>
           )}
@@ -612,7 +630,7 @@ export default function EventDetailClient({
                 allowMultiple={allowMultipleTicketTypes}
                 event={event as TicketSettingsEvent}
               />
-              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
             </div>
           )}
 
@@ -742,10 +760,11 @@ export default function EventDetailClient({
         onDone={refreshBookings}
       />
 
-      {/* Edit attendee names modal */}
-      <EditAttendeeNamesModal
-        booking={editNamesBooking}
-        onClose={() => setEditNamesBooking(null)}
+      {/* Add guest details to a booking that has none (BK-016) */}
+      <AddGuestDetailsModal
+        booking={addDetailsBooking}
+        questions={event?.booking_questions ?? []}
+        onClose={() => setAddDetailsBooking(null)}
         onSaved={refreshBookings}
       />
 
@@ -1064,7 +1083,7 @@ function AttendeesTab({
   // Numbered attendee-name list, shared between the desktop table cell and the
   // mobile card so both stay in sync.
   const renderAttendeeNames = (booking: EventBookingRow) => {
-    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} canEdit={canManage} />
+    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} questions={event.booking_questions ?? []} canEdit={canManage} />
     const attendeeNames = (booking.attendee_names ?? []).filter(
       (name) => typeof name === 'string' && name.trim().length > 0
     )
@@ -1075,6 +1094,19 @@ function AttendeesTab({
           <li key={index}>{name}</li>
         ))}
       </ol>
+    )
+  }
+
+  // The booking's notes, where online meal and early-arrival requests land as "UNCONFIRMED
+  // REQUEST" (BK-015). They were only seen if someone printed the booking sheets.
+  const renderBookingNotes = (booking: EventBookingRow) => {
+    const note = booking.notes?.trim()
+    if (!note || booking.is_reminder_only) return null
+    return (
+      <div className="mt-1 flex flex-wrap items-start gap-1 text-xs text-text-muted">
+        {/^UNCONFIRMED REQUEST/i.test(note) && <Badge tone="warning" size="sm">Unconfirmed request</Badge>}
+        <span>{note}</span>
+      </div>
     )
   }
 
@@ -1177,7 +1209,7 @@ function AttendeesTab({
         </Button>
         {canEditNames && (
           <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-            Edit Names
+            Add Guest Details
           </Button>
         )}
         {booking.status === 'confirmed' && (
@@ -1312,6 +1344,7 @@ function AttendeesTab({
                             fallback="-"
                           />
                           {renderAttendeeNames(booking)}
+                          {renderBookingNotes(booking)}
                         </TableCell>
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
@@ -1431,6 +1464,7 @@ function AttendeesTab({
                     </dl>
 
                     {renderAttendeeNames(booking)}
+                    {renderBookingNotes(booking)}
 
                     {canManage && (
                       <div className="mt-3 flex flex-wrap gap-2">

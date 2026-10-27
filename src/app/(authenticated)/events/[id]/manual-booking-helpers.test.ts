@@ -122,6 +122,11 @@ describe('describeSeatUpdateBlock', () => {
     expect(describeSeatUpdateBlock('insufficient_seated_capacity')).toMatch(/standing/)
   })
 
+  // BK-022: the seat function now answers this instead of failing.
+  it('should explain named tickets instead of a plain refusal', () => {
+    expect(describeSeatUpdateBlock('guest_details_locked')).toMatch(/named guest/)
+  })
+
   it('should fall back to a plain refusal for unknown or missing reasons', () => {
     const fallback = 'The seat count could not be changed. Nothing was saved.'
     expect(describeSeatUpdateBlock('something_new')).toBe(fallback)
