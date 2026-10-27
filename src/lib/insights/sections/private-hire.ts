@@ -1,5 +1,4 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
-import type { MessagingFlagKey } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import { paperworkWarning, PAPERWORK_WARNING_DAYS, type PaperworkWarning } from '@/lib/private-bookings/paperwork'
 import { readStalePendingOutcomes, type StalePendingOutcome } from '@/lib/private-bookings/stale-outcomes'
@@ -29,6 +28,10 @@ import type {
  * 2. Further ahead: on later bookings, red hold and payment problems, a deposit still to be
  *    confirmed, and texts waiting for approval.
  * 3. Past: bookings whose outcome email went more than 14 days ago with no outcome recorded.
+ * 4. Past 90 days, still to close (BK-121, customer bookings review of 24 October 2026): a hire
+ *    whose night has passed with a balance not recorded as paid, a deposit with no outcome, or
+ *    still not closed out. The report used to look only at bookings from today on, so an unpaid
+ *    balance dropped out of it the day after the event.
  *
  * Texts waiting for approval are checked on every booking: the balance reminders that wait for
  * approval are queued 14 to 21 days before the event, before it enters the upcoming scope.
@@ -54,14 +57,6 @@ const VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name
  */
 const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, contract_sent_at, contract_accepted_at, outside_food, waiver_status, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
 
-/**
- * The switch the rest of the app reads through isMessagingFlagOn (src/lib/messaging/flags.ts):
- * one system_settings row holding an object of booleans. While private_booking_deposit_confirmation
- * is on, a new booking's deposit waits for staff to confirm it; until then the guest has not been
- * asked for it and the hold does not run (the expiry cron and deposit reminders skip it).
- */
-const MESSAGING_FLAGS_KEY = 'messaging_flags'
-const DEPOSIT_CONFIRMATION_FLAG: MessagingFlagKey = 'private_booking_deposit_confirmation'
 
 interface ViewRow {
   id: string
@@ -213,13 +208,7 @@ function linkedInvoice(row: InvoiceRow | null): LinkedInvoice | null {
   return { id: row.id, name: number ? `invoice ${number}` : 'the invoice', dueDate: row.due_date ? row.due_date.slice(0, 10) : null, outstanding }
 }
 
-/** On only when the stored value is an object whose entry is the boolean true, as isMessagingFlagOn reads it. */
-function isFlagOn(value: unknown, flag: MessagingFlagKey): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  return (value as Record<string, unknown>)[flag] === true
-}
-
-function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, depositConfirmationOn: boolean, today: string): Booking {
+function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, today: string): Booking {
   const holdMs = view.hold_expiry ? Date.parse(view.hold_expiry) : Number.NaN
   const balance = toAmount(view.balance_remaining)
   // Normalised for the shared classifier rule, which expects a number.
@@ -257,8 +246,9 @@ function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, deposit
     depositAmount: toAmount(view.deposit_amount),
     depositPaid: Boolean(view.deposit_paid_date),
     depositWaived: table.deposit_waived === true,
-    // The same rule as the booking page and list: only while the switch is on.
-    depositAwaitingConfirmation: depositConfirmationOn && isDepositAwaitingConfirmation({
+    // The same rule as the booking page and list (owner decision, 11 September 2026): a new
+    // booking's deposit waits for staff to confirm it, and until then the hold does not run.
+    depositAwaitingConfirmation: isDepositAwaitingConfirmation({
       status: view.status,
       deposit_amount: view.deposit_amount,
       deposit_paid_date: view.deposit_paid_date,
@@ -563,6 +553,72 @@ function outcomeCheck(outcome: StalePendingOutcome, ctx: SectionContext): Check 
   }
 }
 
+/** How far back scope 4 looks (BK-121). */
+const PAST_CLOSE_OUT_DAYS = 90
+
+const PAST_VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name, status, event_date, date_tbd, internal_notes, deposit_amount, deposit_paid_date, balance_remaining, final_payment_date'
+
+interface PastViewRow {
+  id: string
+  customer_name: string | null
+  customer_first_name: string | null
+  customer_last_name: string | null
+  status: string | null
+  event_date: string | null
+  date_tbd: boolean | null
+  internal_notes: string | null
+  deposit_amount: number | string | null
+  deposit_paid_date: string | null
+  balance_remaining: number | string | null
+  final_payment_date: string | null
+}
+
+interface PastTableRow {
+  id: string
+  deposit_refund_status: string | null
+  invoice_deposit_treatment: string | null
+}
+
+/** What is still to settle on a hire whose night has passed (BK-121). */
+function closeOutChecks(view: PastViewRow, table: PastTableRow, ctx: SectionContext): Check[] {
+  const who = `${clientLabel(view)} (${formatDayDate(String(view.event_date).slice(0, 10))})`
+  const href = ctx.link(`/private-bookings/${view.id}`)
+  const checks: Check[] = []
+  const balance = toAmount(view.balance_remaining) ?? 0
+  if (!view.final_payment_date && balance > 0) {
+    checks.push({
+      rule: 'past_balance',
+      rag: 'red',
+      kind: 'issue',
+      short: `${money(balance)} balance not recorded as paid`,
+      text: `${who}: the ${money(balance)} balance is not recorded as paid.`,
+      action: { text: `Record how the ${who} was paid`, href, target: 'record', impact: 'money' },
+    })
+  }
+  const depositHeld = Boolean(view.deposit_paid_date) && (toAmount(view.deposit_amount) ?? 0) > 0 && table.invoice_deposit_treatment !== 'deducted'
+  if (depositHeld && ((table.deposit_refund_status ?? null) === null || table.deposit_refund_status === 'partially_refunded')) {
+    checks.push({
+      rule: 'past_deposit',
+      rag: 'amber',
+      kind: 'issue',
+      short: 'deposit outcome not recorded',
+      text: `${who}: what happened to the ${money(toAmount(view.deposit_amount) ?? 0)} deposit is not recorded.`,
+      action: { text: `Close the deposit for the ${who}`, href, target: 'record', impact: 'money' },
+    })
+  }
+  if (view.status === 'confirmed') {
+    checks.push({
+      rule: 'not_closed',
+      rag: 'amber',
+      kind: 'issue',
+      short: 'not closed out',
+      text: `${who}: the hire has not been closed out.`,
+      action: { text: `Close out the ${who}`, href, target: 'record', impact: 'money' },
+    })
+  }
+  return checks
+}
+
 function toSignals(bookingId: string, checks: Check[]): InsightSignal[] {
   return checks.filter((check) => !check.listOnly).map((check) => ({
     key: `private_hire.${check.rule}.${bookingId}`,
@@ -618,7 +674,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   const { today, next7, next14 } = ctx.windows
   const pipelineEnd = addDays(today, PRIVATE_HIRE.pipelineDays - 1)
 
-  const [viewRows, tableRows, pendingTexts, staleOutcomes, flagsResult] = await Promise.all([
+  const [viewRows, tableRows, pendingTexts, staleOutcomes] = await Promise.all([
     fetchAllRows<ViewRow>(
       (from, to) => ctx.db
         .from('private_bookings_with_details')
@@ -649,16 +705,39 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
       { label: 'private hire texts awaiting approval' },
     ),
     readStalePendingOutcomes(ctx.db, ctx.now),
-    ctx.db
-      .from('system_settings')
-      .select('value')
-      .eq('key', MESSAGING_FLAGS_KEY)
-      .maybeSingle(),
   ])
-  // Unread, the switch could turn every unconfirmed deposit into a false "hold expired", so the
-  // section fails rather than guessing. A missing row means off, as it does for the app.
-  if (flagsResult.error) throw new Error(`insights private hire messaging flags failed: ${flagsResult.error.message}`)
-  const depositConfirmationOn = isFlagOn((flagsResult.data as { value?: unknown } | null)?.value, DEPOSIT_CONFIRMATION_FLAG)
+
+  const pastStart = addDays(today, -PAST_CLOSE_OUT_DAYS)
+  const [pastViewRows, pastTableRows] = await Promise.all([
+    fetchAllRows<PastViewRow>(
+      (from, to) => ctx.db
+        .from('private_bookings_with_details')
+        .select(PAST_VIEW_COLUMNS)
+        .gte('event_date', pastStart)
+        .lt('event_date', today)
+        .in('status', ['confirmed', 'completed'])
+        .order('id', { ascending: true })
+        .range(from, to),
+      { label: 'past private hires' },
+    ),
+    fetchAllRows<PastTableRow>(
+      (from, to) => ctx.db
+        .from('private_bookings')
+        .select('id, deposit_refund_status, invoice_deposit_treatment')
+        .gte('event_date', pastStart)
+        .lt('event_date', today)
+        .in('status', ['confirmed', 'completed'])
+        .order('id', { ascending: true })
+        .range(from, to),
+      { label: 'past private hire deposits' },
+    ),
+  ])
+  const pastTableById = new Map(pastTableRows.map((row) => [row.id, row]))
+  const toClose = pastViewRows
+    .filter((row) => row.event_date && pastTableById.has(row.id) && !isBookingDateTbd(row))
+    .map((row) => ({ row, checks: closeOutChecks(row, pastTableById.get(row.id) as PastTableRow, ctx) }))
+    .filter(({ checks }) => checks.length > 0)
+    .sort((a, b) => String(a.row.event_date).localeCompare(String(b.row.event_date)))
 
   const textsByBooking = new Map<string, number>()
   for (const row of pendingTexts) {
@@ -670,7 +749,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   const tableById = new Map(tableRows.map((row) => [row.id, row]))
   const bookings = viewRows
     .filter((row) => row.event_date && tableById.has(row.id))
-    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, depositConfirmationOn, today))
+    .map((row) => toBooking(row, tableById.get(row.id) as TableRow, textsByBooking.get(row.id) ?? 0, today))
     .sort(compareBookings)
 
   const withdrawnInvoices = bookings.filter((booking) => booking.invoiced && !booking.invoice).length
@@ -698,6 +777,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
     ...upcomingEntries.flatMap(({ booking, checks }) => toSignals(booking.id, checks)),
     ...laterEntries.flatMap(({ booking, checks }) => toSignals(booking.id, checks)),
     ...pastOutcomes.flatMap((outcome) => toSignals(outcome.booking_id, [outcomeCheck(outcome, ctx)])),
+    ...toClose.flatMap(({ row, checks }) => toSignals(row.id, checks)),
   ]
   const otherTextsFor = `${plural(otherTexts, 'text')} for ${otherTexts === 1 ? 'a past or cancelled booking' : 'past or cancelled bookings'}`
   if (otherTexts > 0) {
@@ -752,6 +832,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
   }
   if (laterEntries.length > 0) headlineParts.push(`${plural(laterEntries.length, 'later booking')} ${needsVerb(laterEntries.length)} action`)
   if (pastOutcomes.length > 0) headlineParts.push(`${plural(pastOutcomes.length, 'past booking')} with no outcome recorded`)
+  if (toClose.length > 0) headlineParts.push(`${plural(toClose.length, 'past hire')} still to close`)
   if (otherTexts > 0) headlineParts.push(`${otherTextsFor} waiting for approval`)
   const headline = `${headlineParts.join('; ')}.`
 
@@ -764,6 +845,7 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
     { label: `Next ${PRIVATE_HIRE.pipelineDays} days`, value: `${formatCount(confirmed)} confirmed, ${formatCount(drafts)} draft` },
     { label: 'Later bookings needing action', value: plural(laterEntries.length, 'booking') },
     { label: 'Outcomes not recorded', value: plural(pastOutcomes.length, 'past booking') },
+    { label: `Past ${PAST_CLOSE_OUT_DAYS} days still to close`, value: plural(toClose.length, 'hire') },
   ]
 
   const lists: InsightList[] = [
@@ -791,6 +873,17 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
         const date = outcome.event_date ? `${formatDayDate(outcome.event_date)}, ` : ''
         return { text: `${date}${clientLabel(outcome)}: ${check.short}`, href: ctx.link(`/private-bookings/${outcome.booking_id}`), rag: 'amber' as const }
       }),
+    })
+  }
+
+  if (toClose.length > 0) {
+    lists.push({
+      title: `Past ${PAST_CLOSE_OUT_DAYS} days: still to close`,
+      items: toClose.map(({ row, checks }) => ({
+        text: `${formatDayDate(String(row.event_date).slice(0, 10))}, ${clientLabel(row)}: ${checks.map((check) => check.short).join(', ')}`,
+        href: ctx.link(`/private-bookings/${row.id}`),
+        rag: worstRag(checks),
+      })),
     })
   }
 

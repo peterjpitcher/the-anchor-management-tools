@@ -49,7 +49,6 @@ import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
 import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { hireNightWarning } from '@/services/private-bookings/night-clashes'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
@@ -823,13 +822,16 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
  */
 export async function getCancellationPreview(
   bookingId: string,
-  retention?: { retainedAmount: number } | null
+  retention?: { retainedAmount: number } | null,
+  costs?: { amount: number } | null
 ): Promise<{
   outcome: import('@/services/private-bookings/financial').CancellationFinancialOutcome | null
   refund_amount: number
   retained_amount: number
   deposit_deduction: number
   max_retainable: number
+  /** The refund before any costs are kept: the most that may be kept for costs. */
+  refund_before_costs?: number
   preview_body: string | null
   error?: string
 }> {
@@ -866,19 +868,8 @@ export async function getCancellationPreview(
     const { getPrivateBookingCancellationOutcome } = await import(
       '@/services/private-bookings/financial'
     )
-    const [
-      {
-        bookingCancelledHoldMessage,
-        bookingCancelledRefundableMessage,
-        bookingCancelledPartialRefundMessage,
-        bookingCancelledRetentionMessage,
-        bookingCancelledReviewPendingMessage,
-        bookingCancelledManualReviewMessage,
-      },
-      outcome,
-      bookingResult,
-    ] = await Promise.all([
-      import('@/lib/private-bookings/messages'),
+    const [{ chooseCancellationVariant, refundBeforeCosts }, outcome, bookingResult] = await Promise.all([
+      import('@/lib/private-bookings/cancellation-variant'),
       getPrivateBookingCancellationOutcome(bookingId),
       getPrivateBooking(bookingId),
     ])
@@ -894,66 +885,13 @@ export async function getCancellationPreview(
         })
       : 'your event date'
 
-    let previewBody: string
-    let previewRefund = outcome.refund_amount
-    let previewRetained = outcome.retained_amount
-    switch (outcome.outcome) {
-      case 'no_money':
-        previewBody = bookingCancelledHoldMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-        })
-        break
-      case 'deposit_partial_refund':
-        previewBody = bookingCancelledPartialRefundMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-          refundAmount: outcome.refund_amount,
-          deductionAmount: outcome.deposit_deduction,
-        })
-        break
-      case 'refundable':
-        previewBody = bookingCancelledRefundableMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-          refundAmount: outcome.refund_amount,
-        })
-        break
-      case 'gm_review_required': {
-        // SOP §14: retention up to the full deposit is a manager decision.
-        // Preview reflects the retained amount chosen in the cancel modal.
-        if (retention) {
-          const retained = Math.min(Math.max(retention.retainedAmount, 0), outcome.max_retainable)
-          previewRefund = outcome.refund_amount + (outcome.max_retainable - retained)
-          previewRetained = retained
-          previewBody = retained > 0
-            ? bookingCancelledRetentionMessage({
-                customerFirstName,
-                eventDate: eventDateReadable,
-                retainedAmount: retained,
-                refundAmount: previewRefund,
-              })
-            : bookingCancelledRefundableMessage({
-                customerFirstName,
-                eventDate: eventDateReadable,
-                refundAmount: previewRefund,
-              })
-        } else {
-          previewBody = bookingCancelledReviewPendingMessage({
-            customerFirstName,
-            eventDate: eventDateReadable,
-          })
-        }
-        break
-      }
-      case 'manual_review':
-      default:
-        previewBody = bookingCancelledManualReviewMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-        })
-        break
-    }
+    // The same rule cancelBooking sends by (BK-065), so the preview is the message.
+    const decisions = { retainedAmount: retention?.retainedAmount ?? null, costsKept: costs?.amount ?? null }
+    const variant = chooseCancellationVariant(outcome, { customerFirstName, eventDate: eventDateReadable }, decisions)
+    const base = refundBeforeCosts(outcome, decisions)
+    const previewBody = variant.messageBody
+    const previewRefund = variant.refundAmount
+    const previewRetained = variant.retainedAmount
 
     return {
       outcome: outcome.outcome,
@@ -961,6 +899,7 @@ export async function getCancellationPreview(
       retained_amount: previewRetained,
       deposit_deduction: outcome.deposit_deduction,
       max_retainable: outcome.max_retainable,
+      ...(base ? { refund_before_costs: base.refund } : {}),
       preview_body: previewBody,
     }
   } catch (error) {
@@ -1337,12 +1276,21 @@ export async function cancelPrivateBooking(
   capture?: {
     channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
     receivedAt?: string
-  } | null
+  } | null,
+  costsKept?: { amount: number; reason: string } | null
 ) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
     || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to cancel private bookings' }
+  }
+
+  // Owner decision D26: keeping costs back from a refund is a manager's call, as retention is.
+  if (costsKept && costsKept.amount > 0) {
+    const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION)
+    if (!canOverride) {
+      return { error: 'Keeping costs back from a refund requires General Manager override permission' }
+    }
   }
 
   // SOP §14/§25: retaining any part of the deposit is a General Manager
@@ -1363,8 +1311,8 @@ export async function cancelPrivateBooking(
       bookingId,
       reason || '',
       user?.id || undefined,
-      (retention || capture)
-        ? { retentionDecision: retention ?? null, capture: capture ?? null }
+      (retention || capture || costsKept)
+        ? { retentionDecision: retention ?? null, capture: capture ?? null, costsKept: costsKept ?? null }
         : undefined
     )
 
@@ -2386,6 +2334,11 @@ export async function captureDepositPayment(
     return { error: 'Order ID does not match this booking' }
   }
 
+  // BK-063: checked before PayPal is asked to take anything, as order creation already is.
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: `This booking is ${booking.status}, so the deposit was not taken.` }
+  }
+
   if (booking.deposit_paid_date) {
     // Already captured — idempotent success
     return { success: true }
@@ -2517,6 +2470,12 @@ export async function captureDepositPayment(
     revalidatePath('/private-bookings')
     revalidatePath('/events')
     revalidateTag('dashboard')
+    if (finalizeResult.paidAfterClose) {
+      return {
+        success: true,
+        warning: 'The booking was closed while PayPal took this deposit. It is recorded on the booking for refunding, and a manager has been told.',
+      }
+    }
     // Review BK-005: say so when the money is in but the booking did not confirm.
     return finalizeResult.confirmationBlocked
       ? { success: true, warning: describeBlockedDeposit(finalizeResult.confirmationBlockedReasons ?? []) }
@@ -2664,7 +2623,7 @@ export type ConfirmPrivateBookingDepositResult = {
 }
 
 /**
- * Confirm deposit (flag private_booking_deposit_confirmation): staff confirm the amount and the
+ * Confirm deposit (owner decision, 11 September 2026): staff confirm the amount and the
  * guest gets one deposit request, by email (text when there is no usable email address), saying
  * it can be paid in cash at the bar or by PayPal, with the link. For staff who manage deposits,
  * the permission that governs private booking payments. A reduction below the £250 standard needs
@@ -2687,10 +2646,6 @@ export async function confirmPrivateBookingDeposit(
   ])
   if (!canManageDeposits && !canManage) {
     return { error: 'You do not have permission to confirm deposits' }
-  }
-
-  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
-    return { error: 'Deposit confirmation is switched off, so nothing was sent.' }
   }
 
   const parsed = confirmDepositInputSchema.safeParse({
@@ -2880,27 +2835,25 @@ export async function sendDepositPaymentLink(
   if (depositAmount <= 0) return { error: 'No deposit amount set for this booking' }
   if (!booking.contact_email) return { error: 'No email address on file for this customer' }
 
-  // Deposit confirmation (flag private_booking_deposit_confirmation): the guest hears about a
-  // deposit only through Confirm deposit, which sends the payment link with the request. While the
-  // amount is still to be confirmed the link is not sent on its own.
-  if (await isMessagingFlagOn('private_booking_deposit_confirmation')) {
-    const { data: confirmation, error: confirmationError } = await admin
-      .from('private_bookings')
-      .select('deposit_confirmed_at, deposit_waived')
-      .eq('id', bookingId)
-      .maybeSingle()
-    if (confirmationError || !confirmation) {
-      return { error: 'Could not check whether the deposit has been confirmed, so no link was sent. Please try again.' }
-    }
-    if (isDepositAwaitingConfirmation({
-      status: booking.status,
-      deposit_amount: depositAmount,
-      deposit_paid_date: booking.deposit_paid_date,
-      deposit_waived: confirmation.deposit_waived,
-      deposit_confirmed_at: confirmation.deposit_confirmed_at,
-    })) {
-      return { error: 'Confirm the deposit first. Confirming it sends the guest the deposit request with the payment link.' }
-    }
+  // Deposit confirmation (owner decision, 11 September 2026): the guest hears about a deposit only
+  // through Confirm deposit, which sends the payment link with the request. While the amount is
+  // still to be confirmed the link is not sent on its own.
+  const { data: confirmation, error: confirmationError } = await admin
+    .from('private_bookings')
+    .select('deposit_confirmed_at, deposit_waived')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (confirmationError || !confirmation) {
+    return { error: 'Could not check whether the deposit has been confirmed, so no link was sent. Please try again.' }
+  }
+  if (isDepositAwaitingConfirmation({
+    status: booking.status,
+    deposit_amount: depositAmount,
+    deposit_paid_date: booking.deposit_paid_date,
+    deposit_waived: confirmation.deposit_waived,
+    deposit_confirmed_at: confirmation.deposit_confirmed_at,
+  })) {
+    return { error: 'Confirm the deposit first. Confirming it sends the guest the deposit request with the payment link.' }
   }
 
   try {
@@ -3456,6 +3409,60 @@ export async function markEventSheetGenerated(
     return { success: true }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error marking event sheet as generated:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
+ * Close a private hire after the night (BK-062, BK-131; owner decision D27): record the balance as
+ * settled at the till, what happened to the deposit, and mark the hire completed without sending
+ * the guest anything. Keeping any of a deposit is a General Manager decision, as it is at
+ * cancellation.
+ */
+export async function closeOutPrivateBooking(
+  bookingId: string,
+  input: {
+    balanceSettledAtTill?: { method: 'cash' | 'card' } | null
+    deposit?: import('@/services/private-bookings/close-out').DepositOutcome | null
+  },
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const [canManage, canManageDeposits] = await Promise.all([
+    checkUserPermission('private_bookings', 'manage'),
+    checkUserPermission('private_bookings', 'manage_deposits'),
+  ])
+  if (!canManage && !canManageDeposits) return { error: 'You do not have permission to close out private hires' }
+  if (input.deposit?.outcome === 'kept' && !(await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION))) {
+    return { error: 'Keeping a deposit requires General Manager override permission' }
+  }
+
+  try {
+    const { closeOutPrivateBooking: closeOut } = await import('@/services/private-bookings/close-out')
+    const result = await closeOut({ bookingId, ...input, performedBy: user.id })
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'close_out',
+        balance_recorded: result.balanceRecorded,
+        deposit_status: result.depositStatus,
+      },
+    })
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/private-bookings')
+    revalidateTag('dashboard')
+    return { success: true }
+  } catch (error: unknown) {
+    logger.error('Error closing out a private hire', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
+    })
     return { error: getErrorMessage(error) }
   }
 }

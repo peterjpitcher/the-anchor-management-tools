@@ -2,14 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
-const state = vi.hoisted(() => ({ db: null as any, flagOn: true }))
+const state = vi.hoisted(() => ({ db: null as any }))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => state.db),
-}))
-
-vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) => (key === 'private_booking_email_first' ? state.flagOn : false)),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -33,7 +29,6 @@ vi.mock('@/services/sms-queue', async () => {
 })
 
 import { sendEmail } from '@/lib/email/emailService'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { SmsQueueService } from '@/services/sms-queue'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
@@ -92,23 +87,9 @@ function send(overrides: Partial<Parameters<typeof sendPrivateBookingMessage>[0]
 describe('sendPrivateBookingMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flagOn = true
     seed()
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'queue-1', sid: 'SM-1' })
-  })
-
-  it('flag off: exactly today, the text through the queue with the same input and result, no email', async () => {
-    state.flagOn = false
-    const input = sms()
-
-    const result = await send({ sms: input })
-
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
-    expect(mockedQueueAndSend).toHaveBeenCalledWith(input)
-    expect(result).toEqual({ success: true, sent: true, queueId: 'queue-1', sid: 'SM-1' })
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(state.db.tables.notification_deliveries).toEqual([])
   })
 
   it('a usable email: the email only, no queued text, recorded for the bounce fallback and the timeline', async () => {
@@ -159,30 +140,6 @@ describe('sendPrivateBookingMessage', () => {
     ])
     // The address itself is not copied into the audit row.
     expect(JSON.stringify(state.db.tables.private_booking_audit)).not.toContain('host@example.com')
-  })
-
-  it('uses the flag value the calling action read, and does not read the flag again', async () => {
-    const reads = () => vi.mocked(isMessagingFlagOn).mock.calls.filter(([key]) => key === 'private_booking_email_first').length
-
-    // The flag row now answers on, but the action read it as off: the send follows the action.
-    state.flagOn = true
-    const offResult = await send({ emailFirst: false })
-    expect(offResult).toEqual({ success: true, sent: true, queueId: 'queue-1', sid: 'SM-1' })
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
-
-    // And the other way round.
-    state.flagOn = false
-    const onResult = await send({ emailFirst: true })
-    expect(onResult).toMatchObject({ sent: true, channel: 'email' })
-    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
-
-    expect(reads()).toBe(0)
-  })
-
-  it('reads the flag itself when the caller did not', async () => {
-    await send()
-    expect(vi.mocked(isMessagingFlagOn)).toHaveBeenCalledWith('private_booking_email_first')
   })
 
   it("no contact email: the customer's own address is used", async () => {
@@ -263,16 +220,18 @@ describe('sendPrivateBookingMessage', () => {
     expect(reportCronFailure).toHaveBeenCalledTimes(1)
   })
 
+  // Every trigger the app sends goes straight out now (owner decision D16), so only a trigger nobody
+  // has listed waits for approval: it fails safe.
   it('a text that waits for approval keeps waiting: nothing is emailed until Send Now', async () => {
     await send({
-      sms: sms({ trigger_type: 'deposit_reminder_3day', template_key: 'private_booking_deposit_reminder_3day' }),
+      sms: sms({ trigger_type: 'not_a_listed_trigger', template_key: 'private_booking_not_a_listed_trigger' }),
     })
     expect(mockedSendEmail).not.toHaveBeenCalled()
     expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
   })
 
   it('a path that always emailed at once (cancellation) still emails now, and queues the text only if the email fails', async () => {
-    const gated = sms({ trigger_type: 'booking_cancelled_retention', template_key: 'private_booking_cancelled_retention' })
+    const gated = sms({ trigger_type: 'not_a_listed_trigger', template_key: 'private_booking_not_a_listed_trigger' })
 
     await send({ sms: gated, emailEvenWhenTextNeedsApproval: true })
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
@@ -296,9 +255,12 @@ describe('sendPrivateBookingMessage', () => {
     expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
   })
 
+  // BK-064 and owner decision D16 (26 October 2026): the 3-day deposit reminder, the balance
+  // reminders and the partial-refund, retention and review-pending cancellations waited for an
+  // approval nobody gave. They send automatically again, email first.
   const AUTOMATED_TRIGGERS = [
-    'booking_created',
     'deposit_reminder_7day',
+    'deposit_reminder_3day',
     'deposit_reminder_1day',
     'deposit_received',
     'booking_confirmed',
@@ -314,6 +276,13 @@ describe('sendPrivateBookingMessage', () => {
     'booking_cancelled_hold',
     'booking_cancelled_refundable',
     'booking_cancelled_manual_review',
+    'balance_reminder_21day',
+    'balance_reminder_16day',
+    'balance_reminder_15day',
+    'balance_reminder_due',
+    'booking_cancelled_partial_refund',
+    'booking_cancelled_retention',
+    'booking_cancelled_review_pending',
   ]
 
   it.each(AUTOMATED_TRIGGERS)('%s: email only when usable, the text when the email fails', async (trigger) => {
@@ -328,22 +297,5 @@ describe('sendPrivateBookingMessage', () => {
     await send({ sms: sms({ trigger_type: trigger, template_key: `private_booking_${trigger}` }) })
     expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
     expect(state.db.tables.notification_attempts.map((row: any) => row.channel)).toEqual(['email', 'sms'])
-  })
-
-  const APPROVAL_TRIGGERS = [
-    'deposit_reminder_3day',
-    'balance_reminder_21day',
-    'balance_reminder_16day',
-    'balance_reminder_15day',
-    'balance_reminder_due',
-    'booking_cancelled_partial_refund',
-    'booking_cancelled_retention',
-    'booking_cancelled_review_pending',
-  ]
-
-  it.each(APPROVAL_TRIGGERS)('%s: still waits for approval, nothing emailed until Send Now', async (trigger) => {
-    await send({ sms: sms({ trigger_type: trigger, template_key: `private_booking_${trigger}` }) })
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
   })
 })

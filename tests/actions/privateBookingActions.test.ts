@@ -643,7 +643,7 @@ describe('privateBookingActions', () => {
         'booking-1',
         'Customer cancelled',
         'user-1',
-        { retentionDecision: retention, capture: null }
+        { retentionDecision: retention, capture: null, costsKept: null }
       )
     })
 
@@ -675,7 +675,7 @@ describe('privateBookingActions', () => {
         'booking-1',
         'Customer cancelled',
         'user-1',
-        { retentionDecision: retention, capture: null }
+        { retentionDecision: retention, capture: null, costsKept: null }
       )
     })
 

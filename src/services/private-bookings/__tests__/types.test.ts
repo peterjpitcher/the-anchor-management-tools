@@ -36,9 +36,13 @@ describe('computeHoldExpiry', () => {
     expect(iso(expiry)).toBe('2026-07-12')
   })
 
-  it('should cap a short-notice hold at the event start', () => {
+  // BK-110: the cap used to be the event start (00:00 UTC on the event day), so the 06:00 job
+  // cancelled an unpaid short-notice booking on the morning of its own event.
+  it('should end a short-notice hold with the day before the event, never on the event day', () => {
     const expiry = computeHoldExpiry(event, new Date('2026-07-18T00:00:00Z'))
-    expect(expiry.getTime()).toBe(event.getTime())
+    // The last instant of 18 July in London (BST).
+    expect(expiry.toISOString()).toBe('2026-07-18T22:59:59.000Z')
+    expect(expiry.getTime()).toBeLessThan(event.getTime())
   })
 })
 

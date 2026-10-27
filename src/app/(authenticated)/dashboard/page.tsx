@@ -274,6 +274,28 @@ export default async function DashboardPage() {
   if (snapshot.privateBookings.permitted && balancesDueSoon > 0) {
     actionItems.push({ id: 'pb-balance', title: 'Balances Due Soon', description: `${balancesDueSoon} due in next 14 days`, href: '/private-bookings', severity: 'medium' })
   }
+  // BK-062, BK-064, BK-065, BK-131: money and messages on private hires that need a person.
+  const pbToDo = snapshot.privateBookings.permitted ? snapshot.privateBookings.toDo : undefined
+  if (pbToDo && pbToDo.refundsOwed > 0) {
+    actionItems.push({ id: 'pb-refunds-owed', title: 'Refunds Owed', description: `${pbToDo.refundsOwed} promised to cancelled hires`, href: '/private-bookings', severity: 'high' })
+  }
+  if (pbToDo && pbToDo.depositsDueBack > 0) {
+    actionItems.push({
+      id: 'pb-deposits-due-back',
+      title: 'Deposits Due Back',
+      description: pbToDo.depositsOverdue > 0
+        ? `${pbToDo.depositsDueBack} with no outcome, ${pbToDo.depositsOverdue} past 48 hours`
+        : `${pbToDo.depositsDueBack} with no outcome`,
+      href: '/private-bookings',
+      severity: pbToDo.depositsOverdue > 0 ? 'high' : 'medium',
+    })
+  }
+  if (pbToDo && pbToDo.hiresToClose > 0) {
+    actionItems.push({ id: 'pb-close-out', title: 'Hires To Close', description: `${pbToDo.hiresToClose} past hires not closed out`, href: '/private-bookings', severity: 'medium' })
+  }
+  if (pbToDo && pbToDo.textsAwaitingApproval > 0) {
+    actionItems.push({ id: 'pb-texts', title: 'Texts Awaiting Approval', description: `${pbToDo.textsAwaitingApproval} waiting over a day`, href: '/private-bookings/sms-queue', severity: 'medium' })
+  }
   if (snapshot.systemHealth.permitted && snapshot.systemHealth.smsFailures24h > 0) {
     actionItems.push({ id: 'sms', title: 'SMS Failures', description: `${snapshot.systemHealth.smsFailures24h} failed in last 24h`, href: '/settings/sms-failures', severity: 'high' })
   }

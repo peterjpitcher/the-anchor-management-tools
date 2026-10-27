@@ -20,6 +20,17 @@ vi.mock('@/services/sms-queue', () => ({
   },
 }))
 
+// Which reminders the monitor sends is under test here, not the channel. Every private booking
+// message goes email first now (owner decision D16, 26 October 2026); that choice is tested in
+// tests/lib/privateBookingMessenger.test.ts, so here the messenger hands each one to the text queue.
+vi.mock('@/lib/private-bookings/messenger', async () => {
+  const { SmsQueueService } = await import('@/services/sms-queue')
+  return {
+    sendPrivateBookingMessage: vi.fn((input: { sms: Parameters<typeof SmsQueueService.queueAndSend>[0] }) =>
+      SmsQueueService.queueAndSend(input.sms)),
+  }
+})
+
 vi.mock('@/services/private-bookings', () => ({
   PrivateBookingService: {
     expireBooking: vi.fn(),
@@ -134,7 +145,8 @@ describe('private booking monitor idempotency guard', () => {
                   return {
                     eq: vi.fn(() => ({
                       gt: vi.fn(() => ({
-                        not: vi.fn().mockResolvedValue({ data: [draftBooking], error: null }),
+                        // Pass 1 also leaves out a deposit still to be confirmed: .not('deposit_confirmed_at', 'is', null).
+                        not: vi.fn(() => ({ not: vi.fn().mockResolvedValue({ data: [draftBooking], error: null }) })),
                       })),
                     })),
                   }
@@ -174,7 +186,7 @@ describe('private booking monitor idempotency guard', () => {
                   }
                 }
                 // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
-                if (columns === 'id, status, event_date') {
+                if (columns === 'id, status, event_date, invoice_deposit_treatment') {
                   return {
                     or: () => ({
                       not: () => ({
@@ -323,7 +335,8 @@ describe('private booking monitor idempotency guard', () => {
                   return {
                     eq: vi.fn(() => ({
                       gt: vi.fn(() => ({
-                        not: vi.fn().mockResolvedValue({ data: [draftBooking], error: null }),
+                        // Pass 1 also leaves out a deposit still to be confirmed: .not('deposit_confirmed_at', 'is', null).
+                        not: vi.fn(() => ({ not: vi.fn().mockResolvedValue({ data: [draftBooking], error: null }) })),
                       })),
                     })),
                   }
@@ -360,7 +373,7 @@ describe('private booking monitor idempotency guard', () => {
                   }
                 }
                 // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
-                if (columns === 'id, status, event_date') {
+                if (columns === 'id, status, event_date, invoice_deposit_treatment') {
                   return {
                     or: () => ({
                       not: () => ({

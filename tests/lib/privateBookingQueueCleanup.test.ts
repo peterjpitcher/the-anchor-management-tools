@@ -178,7 +178,8 @@ describe('queue bulk-cancel source guard', () => {
     const mutations = readFileSync(resolve(process.cwd(), 'src/services/private-bookings/mutations.ts'), 'utf8')
     const cron = readFileSync(resolve(process.cwd(), 'src/app/api/cron/private-bookings-expire-holds/route.ts'), 'utf8')
 
-    expect(mutations.match(/cancelPendingQueuedSms\(/g)?.length).toBe(3)
+    // cancelBooking and expireBooking: the edit form's own cancellation is gone (BK-065).
+    expect(mutations.match(/cancelPendingQueuedSms\(/g)?.length).toBe(2)
     expect(cron).toContain('cancelPendingQueuedSms(supabase, id')
   })
 })

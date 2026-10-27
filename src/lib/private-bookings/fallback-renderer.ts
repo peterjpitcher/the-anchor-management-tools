@@ -66,11 +66,11 @@ export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
       validUntil: message.validUntil,
     }
 
-    // A text staff must approve (the 3-day hold reminder, the balance reminders, the partial
-    // refund, retention and review-pending cancellations) never goes without that approval, even
-    // when the email carrying it went at once or was sent with Send Now. It is listed for staff
-    // instead, unless the booking has since been cancelled, started or changed, or the words have
-    // run out, which the job checks first.
+    // A text staff must approve (since owner decision D16, 26 October 2026, only a trigger nobody
+    // has listed in sms-approval.ts) never goes without that approval, even when the email
+    // carrying it went at once or was sent with Send Now. It is listed for staff instead, unless
+    // the booking has since been cancelled, started or changed, or the words have run out, which
+    // the job checks first.
     if (!shouldAutoSendPrivateBookingSms(triggerType)) {
       return { kind: 'unavailable', reason: 'needs_approval', booking: bookingRef, current }
     }

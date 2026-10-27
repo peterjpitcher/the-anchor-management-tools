@@ -225,5 +225,61 @@ describe('PayPal deposit reconciliation cron', () => {
     expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'capture_declined' }])
     expect(finalizeDepositPayment).not.toHaveBeenCalled()
   })
-})
 
+  // BK-063: cancelled bookings used to be left out, so money PayPal took after a cancellation was
+  // never found. They are looked at now, and nothing is ever taken for them.
+  describe('a booking that has closed', () => {
+    beforeEach(() => {
+      mockFetchLimit.mockResolvedValue({
+        data: [{ id: 'booking-1', paypal_deposit_order_id: 'ORDER-LATE', deposit_amount: 100, status: 'cancelled' }],
+        error: null,
+      })
+    })
+
+    it('is included in the sweep', async () => {
+      mockGetPayPalOrder.mockResolvedValueOnce({ status: 'CREATED', purchase_units: [{ amount: { value: '100.00', currency_code: 'GBP' } }] })
+
+      await callRoute()
+
+      expect(fetchBookingsChain.in).toHaveBeenCalledWith('status', ['draft', 'confirmed', 'cancelled', 'completed'])
+    })
+
+    it('records a deposit PayPal already took, whatever the amount, for refunding', async () => {
+      const { finalizeDepositPayment } = await import('@/services/private-bookings')
+      vi.mocked(finalizeDepositPayment).mockResolvedValueOnce({ success: true, paidAfterClose: true } as never)
+      mockGetPayPalOrder.mockResolvedValueOnce({
+        status: 'COMPLETED',
+        purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-LATE', status: 'COMPLETED', amount: { value: '90.00', currency_code: 'GBP' } }] } }],
+      })
+
+      const response = await callRoute()
+      const body = await response.json()
+
+      expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'recorded_after_close' }])
+      expect(finalizeDepositPayment).toHaveBeenCalledWith(
+        { bookingId: 'booking-1', amount: 90, method: 'paypal', paypalCaptureId: 'CAPTURE-LATE' },
+        expect.anything(),
+      )
+      // Not the amount-mismatch alert: finalizeDepositPayment tells the manager about this one.
+      expect(mockAlertMoneyNeedsAPerson).not.toHaveBeenCalled()
+      expect(mockAuditInsert).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'paypal_deposit_reconciled_after_close' }))
+    })
+
+    it('never takes an approved payment, and clears the order instead', async () => {
+      const { finalizeDepositPayment } = await import('@/services/private-bookings')
+      mockGetPayPalOrder.mockResolvedValueOnce({ status: 'APPROVED', purchase_units: [{ amount: { value: '100.00', currency_code: 'GBP' } }] })
+
+      const response = await callRoute()
+      const body = await response.json()
+
+      expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'cleared_booking_closed' }])
+      expect(mockCapturePayPalPayment).not.toHaveBeenCalled()
+      expect(finalizeDepositPayment).not.toHaveBeenCalled()
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ paypal_deposit_order_id: null }))
+      expect(mockAuditInsert).toHaveBeenCalledWith(expect.objectContaining({
+        operation_type: 'paypal_deposit_order_cleared_booking_closed',
+        additional_info: expect.objectContaining({ reason: 'booking_closed', order_status: 'APPROVED' }),
+      }))
+    })
+  })
+})

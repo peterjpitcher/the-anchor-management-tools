@@ -110,8 +110,7 @@ export type CatalogueContext = {
   /** The guest's booking page, for the deposit request (buildPrivateBookingPortalUrl). */
   paymentLink?: string | null
   /**
-   * The payments made, for a balance reminder email while private_booking_balance_email_auto is on
-   * (loaded only when asked for). paymentStatementUnavailable means it was asked for and could not
+   * The payments made, for a balance reminder email (loaded only when asked for). paymentStatementUnavailable means it was asked for and could not
    * be read or did not add up: the reminder then has no email version, so the text goes instead.
    */
   paymentStatement?: PrivateBookingPaymentStatement | null

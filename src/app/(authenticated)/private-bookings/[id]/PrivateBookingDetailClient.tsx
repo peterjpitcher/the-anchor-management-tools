@@ -63,6 +63,7 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 import { HireReadinessPanel } from './HireReadinessPanel'
+import { CloseOutPanel } from './CloseOutPanel'
 import { HireNightPanel } from './HireNightPanel'
 import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import { setPrivateBookingKitchenLoad } from '@/app/actions/kitchen-load'
@@ -119,6 +120,7 @@ import {
 } from '@/components/private-bookings/WorkflowPanels'
 import { formatCurrency } from '@/lib/format'
 import { computeBookingMoney } from '@/lib/private-bookings/vat'
+import { refundStillOwed } from '@/lib/private-bookings/refund-due'
 import { PrivateBookingBilling } from '@/components/private-bookings/PrivateBookingBilling'
 import { PrivateBookingReceiptPanel } from '@/components/private-bookings/PrivateBookingReceiptPanel'
 import {
@@ -199,8 +201,7 @@ interface PrivateBookingDetailClientProps {
   /** Completed and pending deposit refunds, loaded by the page with the payment history. */
   depositRefunds: DepositRefundEntry[];
   /**
-   * Set by the page while private_booking_deposit_confirmation is on: whether the deposit is still
-   * to be confirmed, and the deadline confirming it would set.
+   * Set by the page: whether the deposit is still to be confirmed, and the deadline confirming it would set.
    */
   depositConfirmation?: { awaiting: boolean; holdExpiryPreview: string | null };
   /** Rooms, guest count and a paid deposit that did not confirm the booking (BK-005, BK-007). */
@@ -570,6 +571,8 @@ type CancellationPreview = {
   retained_amount: number;
   deposit_deduction: number;
   max_retainable: number;
+  /** The refund before any costs are kept: the most that may be kept for costs (D26). */
+  refund_before_costs?: number;
   preview_body: string | null;
   error?: string;
 };
@@ -611,6 +614,10 @@ function StatusModal({
   const [retainedAmountStr, setRetainedAmountStr] = useState('');
   const [retentionReason, setRetentionReason] = useState('');
   const [retentionSeeded, setRetentionSeeded] = useState(false);
+  // Owner decision D26: direct costs already committed may be kept back from the refund, with a
+  // reason. Blank means none.
+  const [costsStr, setCostsStr] = useState('');
+  const [costsReason, setCostsReason] = useState('');
   // SOP §14: capture how the cancellation reached us. A phone call alone is
   // not written cancellation, so record the channel and when it was received.
   const [cancelChannel, setCancelChannel] = useState<
@@ -629,6 +636,8 @@ function StatusModal({
       setRetainedAmountStr('');
       setRetentionReason('');
       setRetentionSeeded(false);
+      setCostsStr('');
+      setCostsReason('');
       setCancelChannel('email');
       setCancelReceivedAt(toLondonDateTimeLocalValue(new Date()));
     }
@@ -672,21 +681,22 @@ function StatusModal({
     };
   }, [newStatus, isOpen, bookingId, currentStatus]);
 
-  // Live-update the SMS preview as the manager adjusts the retained amount.
+  // Live-update the message preview as the manager adjusts the retained amount or the costs kept.
   useEffect(() => {
-    if (!isOpen || !retentionSeeded) return;
-    if (newStatus !== 'cancelled') return;
+    if (!isOpen || newStatus !== 'cancelled') return;
+    if (!retentionSeeded && costsStr.trim() === '') return;
     const parsed = Number(retainedAmountStr);
-    if (!Number.isFinite(parsed) || parsed < 0) return;
+    const retention = retentionSeeded && Number.isFinite(parsed) && parsed >= 0 ? { retainedAmount: parsed } : null;
+    if (retentionSeeded && !retention) return;
+    const costs = Number(costsStr);
+    const costsKept = costsStr.trim() !== '' && Number.isFinite(costs) && costs > 0 ? { amount: costs } : null;
 
     const handle = setTimeout(async () => {
-      const preview = await getCancellationPreview(bookingId, {
-        retainedAmount: parsed,
-      });
+      const preview = await getCancellationPreview(bookingId, retention, costsKept);
       setCancelPreview(preview);
     }, 400);
     return () => clearTimeout(handle);
-  }, [retainedAmountStr, retentionSeeded, isOpen, newStatus, bookingId]);
+  }, [retainedAmountStr, retentionSeeded, costsStr, isOpen, newStatus, bookingId]);
 
   const handleSubmit = async () => {
     let retention: { retainedAmount: number; reason: string } | null = null;
@@ -711,6 +721,21 @@ function StatusModal({
       retention = { retainedAmount: parsed, reason: retentionReason.trim() };
     }
 
+    let costsKept: { amount: number; reason: string } | null = null;
+    if (newStatus === 'cancelled' && costsStr.trim() !== '') {
+      const parsedCosts = Number(costsStr);
+      const most = cancelPreview?.refund_before_costs ?? 0;
+      if (!Number.isFinite(parsedCosts) || parsedCosts <= 0 || parsedCosts > most + 0.005) {
+        toast.error(`Costs kept must be between £0.01 and £${most.toFixed(2)}`);
+        return;
+      }
+      if (!costsReason.trim()) {
+        toast.error('Please record what the costs kept were for');
+        return;
+      }
+      costsKept = { amount: parsedCosts, reason: costsReason.trim() };
+    }
+
     // SOP §14: record how and when the cancellation reached us.
     const capture =
       newStatus === 'cancelled'
@@ -725,9 +750,17 @@ function StatusModal({
     // retention decision (SOP §14) reaches the service layer.
     const result =
       newStatus === 'cancelled'
-        ? await cancelPrivateBooking(bookingId, undefined, retention, capture)
+        ? await cancelPrivateBooking(bookingId, undefined, retention, capture, costsKept)
         : await updateBookingStatus(bookingId, newStatus);
     if ('success' in result && result.success) {
+      // BK-065: an invoice with money on it stays open for a credit note; say so.
+      const openInvoices = ('invoices' in result && Array.isArray(result.invoices) ? result.invoices : [])
+        .filter((invoice: { result: string }) => invoice.result !== 'voided');
+      if (openInvoices.length > 0) {
+        toast.error(
+          `Booking cancelled, but ${openInvoices.map((invoice: { invoiceNumber: string | null }) => invoice.invoiceNumber ?? 'an invoice').join(', ')} could not be cancelled. Issue a credit note for anything paid on it.`,
+        );
+      }
       // Diners, event seats or events already in the rooms that night (D24: warned, not refused).
       if ('warning' in result && result.warning) toast.warning(result.warning, { duration: 12000 });
       onSuccess();
@@ -932,6 +965,36 @@ function StatusModal({
                               required
                               disabled={isSubmitting}
                               placeholder="Required when retaining any of the deposit"
+                            />
+                          </Field>
+                        )}
+                      </>
+                    )}
+                    {(cancelPreview.refund_before_costs ?? 0) > 0 && (
+                      <>
+                        <Field
+                          label="Costs already committed to keep (£, optional)"
+                          hint={`Direct costs the booking has already run up, kept back from the refund. Up to ${formatCurrency(cancelPreview.refund_before_costs ?? 0)}. Needs manager permission.`}
+                        >
+                          <Input
+                            type="number"
+                            min="0"
+                            max={(cancelPreview.refund_before_costs ?? 0).toFixed(2)}
+                            step="0.01"
+                            value={costsStr}
+                            onChange={(e) => setCostsStr(e.target.value)}
+                            disabled={isSubmitting}
+                          />
+                        </Field>
+                        {Number(costsStr) > 0 && (
+                          <Field label="What the costs were for">
+                            <Textarea
+                              value={costsReason}
+                              onChange={(e) => setCostsReason(e.target.value)}
+                              rows={2}
+                              required
+                              disabled={isSubmitting}
+                              placeholder="For example, the DJ's deposit we can't get back"
                             />
                           </Field>
                         )}
@@ -2358,6 +2421,24 @@ export default function PrivateBookingDetailClient({
     depositConfirmation?.awaiting === true && depositRequired && !booking.deposit_paid_date;
   const appliedDepositAmount = toNumber(booking.applied_deposit_amount, 0);
   const depositAppliedToInvoice = Boolean(booking.invoice_id && booking.invoice_deposit_treatment === "deducted");
+  // BK-063: PayPal took the deposit after the booking was cancelled. It is recorded so it can go
+  // back, and the page says so until it has.
+  const depositPaidAfterCancellation = Boolean(
+    booking.status === 'cancelled' &&
+      booking.paypal_deposit_capture_id &&
+      booking.deposit_paid_date &&
+      booking.cancelled_at &&
+      Date.parse(booking.deposit_paid_date) > Date.parse(booking.cancelled_at) &&
+      refundTotals.totalRefunded + refundTotals.totalPending < depositAmount,
+  );
+  // BK-065: what a cancellation promised to refund, until the refunds recorded reach it.
+  const refundOwed = booking.status === 'cancelled' ? refundStillOwed(booking, refundTotals.totalRefunded) : 0;
+  // Money the booking holds that a refund can return: the deposit paid and the payments on the
+  // booking. Before the event only the deposit is returned this way (the deposit refund rules).
+  const refundableHeld = booking.status === 'cancelled'
+    ? (booking.deposit_paid_date ? depositAmount : 0) +
+      (booking.payments ?? []).reduce((sum, payment) => sum + toNumber(payment.amount), 0)
+    : depositAmount;
   // Colours the deposit line the way the bookings list colours its deposit badge.
   const depositPaymentState: PrivateBookingPaymentState = !depositRequired
     ? 'not_required'
@@ -2377,6 +2458,18 @@ export default function PrivateBookingDetailClient({
 
   const supplementaryTotal = toNumber(booking.supplementary_charges_total, 0);
   const aggregateBookingTotal = bookingMoney.grossTotal + supplementaryTotal;
+  // BK-062, BK-131: a hire whose night has passed is closed out, its balance and deposit recorded.
+  const closeOutPaidSoFar = (booking.payments ?? []).reduce((sum, payment) => sum + toNumber(payment.amount), 0) + appliedDepositAmount;
+  const closeOutBalance = booking.invoice_id && booking.invoice_balance_total != null
+    ? toNumber(booking.invoice_balance_total)
+    : Math.max(0, aggregateBookingTotal - closeOutPaidSoFar);
+  const closeOutDepositLeft = booking.deposit_paid_date && !depositAppliedToInvoice &&
+    (!booking.deposit_refund_status || booking.deposit_refund_status === 'partially_refunded')
+    ? Math.max(0, depositAmount - refundTotals.totalRefunded - refundTotals.totalPending)
+    : 0;
+  const showCloseOut = !isDateTbd && Boolean(booking.event_date) &&
+    String(booking.event_date).slice(0, 10) <= getTodayIsoDate() &&
+    (booking.status === 'confirmed' || (booking.status === 'completed' && closeOutDepositLeft > 0));
 
   const editDepositValue = Number(editDepositAmount);
   const showDepositReductionReason =
@@ -2576,6 +2669,62 @@ export default function PrivateBookingDetailClient({
       )}
 
       <RecordLockBanner booking={booking} />
+
+      {showCloseOut && (
+        <CloseOutPanel
+          bookingId={bookingId}
+          balanceOutstanding={closeOutBalance}
+          depositLeft={closeOutDepositLeft}
+          invoiced={Boolean(booking.invoice_id)}
+          canClose={canManageDeposits || canEdit}
+          canRefund={canRefund}
+          onOpenRefund={() => setShowRefundDialog(true)}
+          onClosed={() => router.refresh()}
+        />
+      )}
+
+      {refundOwed > 0 && (
+        <Alert tone="warning" title={`Refund owed: ${formatMoney(refundOwed)}`}>
+          <p>
+            The cancellation told the guest they&apos;d get {formatMoney(toNumber(booking.refund_due_amount))} back
+            {booking.refund_due_by ? ` by ${formatDateFull(booking.refund_due_by)}` : ''}.
+            {refundTotals.totalRefunded > 0 ? ` ${formatMoney(refundTotals.totalRefunded)} has been refunded so far.` : ''}
+            {refundTotals.totalPending > 0 ? ` ${formatMoney(refundTotals.totalPending)} is waiting on PayPal.` : ''}
+            {depositPaidAfterCancellation ? ' The deposit was paid through PayPal after the booking was cancelled.' : ''}
+          </p>
+          {canRefund && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => setShowRefundDialog(true)}
+            >
+              Record the refund
+            </Button>
+          )}
+        </Alert>
+      )}
+
+      {refundOwed <= 0 && !booking.refund_due_amount && depositPaidAfterCancellation && (
+        <Alert tone="danger" title="Deposit paid after this booking was cancelled">
+          <p>
+            The guest paid a {formatMoney(depositAmount)} deposit through PayPal after this booking
+            was cancelled. Refund it, unless the guest is coming after all.
+          </p>
+          {canRefund && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => setShowRefundDialog(true)}
+            >
+              Refund deposit
+            </Button>
+          )}
+        </Alert>
+      )}
 
       {depositAwaitingConfirmation && (
         <ConfirmDepositPanel
@@ -3737,7 +3886,7 @@ export default function PrivateBookingDetailClient({
           onOpenChange={setShowRefundDialog}
           sourceType="private_booking"
           sourceId={booking.id}
-          originalAmount={booking.deposit_amount ?? 0}
+          originalAmount={refundableHeld}
           totalRefunded={refundTotals.totalRefunded}
           totalPending={refundTotals.totalPending}
           hasPayPalCapture={!!booking.paypal_deposit_capture_id}

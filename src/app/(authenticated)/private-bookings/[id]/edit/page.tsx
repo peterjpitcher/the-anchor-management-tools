@@ -15,7 +15,6 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
-  ConfirmDialog,
   Field,
   FormFooter,
   Input,
@@ -31,16 +30,16 @@ type FormState = { error: string } | { success: boolean } | null
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
 const DEFAULT_TBD_TIME = '12:00'
 
+// No Cancelled here (BK-065): a cancellation goes through Change Status on the booking page, which
+// works out the refund owed and shows the guest's message before anything is sent.
 const STATUS_OPTIONS: Record<string, { value: string; label: string }[]> = {
   draft: [
     { value: 'draft', label: 'Draft' },
     { value: 'confirmed', label: 'Confirmed' },
-    { value: 'cancelled', label: 'Cancelled' },
   ],
   confirmed: [
     { value: 'confirmed', label: 'Confirmed' },
     { value: 'completed', label: 'Completed' },
-    { value: 'cancelled', label: 'Cancelled' },
   ],
   completed: [{ value: 'completed', label: 'Completed' }],
   cancelled: [
@@ -87,13 +86,8 @@ export default function EditPrivateBookingPage({
   // SOP §12: changing the deposit below the £250 standard needs a recorded
   // GM reason; £0 needs an explicit GM waiver plus reason.
   const [depositAmountDraft, setDepositAmountDraft] = useState<string | null>(null)
-  // Saving with the status set to Cancelled cancels the booking for real: it
-  // texts the customer, drops the calendar entry and kills any queued SMS.
-  // Nothing here previously asked, so the confirmation below is the gate.
   const [statusValue, setStatusValue] = useState('draft')
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
-  const cancelConfirmedRef = useRef(false)
 
   useEffect(() => {
     async function loadBooking() {
@@ -233,10 +227,6 @@ export default function EditPrivateBookingPage({
     return <PageLayout {...layoutProps} error={error || 'Booking not found'} />
   }
 
-  // Saving with the status switched to Cancelled is a real cancellation, not a
-  // field edit, so it needs naming before it happens.
-  const isCancelling = statusValue === 'cancelled' && booking.status !== 'cancelled'
-
   return (
     <PageLayout {...layoutProps}>
           {state && 'error' in state && (
@@ -250,16 +240,6 @@ export default function EditPrivateBookingPage({
             ref={formRef}
             action={formAction}
             className="space-y-6"
-            onSubmit={(event) => {
-              // First submit of a cancellation opens the confirmation; the
-              // dialog re-submits with the ref set so the save actually runs.
-              if (isCancelling && !cancelConfirmedRef.current) {
-                event.preventDefault()
-                setShowCancelConfirm(true)
-                return
-              }
-              cancelConfirmedRef.current = false
-            }}
           >
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           <input type="hidden" name="default_country_code" value="44" />
@@ -350,7 +330,7 @@ export default function EditPrivateBookingPage({
 
                 <Field
                   label="Booking Status"
-                  hint="Confirming, completing or cancelling all text the customer when you save"
+                  hint="Confirming or completing messages the customer when you save. To cancel, use Change Status on the booking page."
                 >
                   <Select
                     name="status"
@@ -645,19 +625,6 @@ export default function EditPrivateBookingPage({
           </FormFooter>
         </form>
 
-      <ConfirmDialog
-        open={showCancelConfirm}
-        onClose={() => setShowCancelConfirm(false)}
-        onConfirm={() => {
-          cancelConfirmedRef.current = true
-          formRef.current?.requestSubmit()
-        }}
-        title="Cancel Booking"
-        message="Saving with the status set to Cancelled cancels the booking: the customer is sent a cancellation text, the diary entry is removed and any messages still queued for them are dropped. This cannot be undone from here."
-        confirmLabel="Cancel Booking"
-        cancelLabel="Keep Booking"
-        tone="danger"
-      />
     </PageLayout>
   )
 }

@@ -4,9 +4,6 @@ import { createFakeSupabase } from '../helpers/fakeSupabase'
 
 const state = vi.hoisted(() => ({
   db: null as any,
-  flagOn: true,
-  /** Answers for the next reads of the email-first flag, before falling back to flagOn. */
-  flagAnswers: [] as boolean[],
 }))
 
 // Confirming needs a room that fits the guests and a contract sent (owner decisions D24 and
@@ -24,10 +21,8 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(async (key: string) => {
-    if (key !== 'private_booking_email_first') return false
-    return state.flagAnswers.length > 0 ? (state.flagAnswers.shift() as boolean) : state.flagOn
-  }),
+  // Every flag answers off, as a failed settings read does.
+  isMessagingFlagOn: vi.fn(async () => false),
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -150,15 +145,14 @@ function seed(booking: Record<string, unknown>) {
   })
 }
 
+/** Reads of the retired email-first flag, by its old name. There must be none. */
 function emailFirstFlagReads(): number {
-  return vi.mocked(isMessagingFlagOn).mock.calls.filter(([key]) => key === 'private_booking_email_first').length
+  return vi.mocked(isMessagingFlagOn).mock.calls.filter(([key]) => String(key) === 'private_booking_email_first').length
 }
 
 describe('private booking call sites, email first', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flagOn = true
-    state.flagAnswers = []
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'queue-1' })
     ;(getPrivateBookingCancellationOutcome as unknown as Mock).mockResolvedValue({
@@ -182,17 +176,6 @@ describe('private booking call sites, email first', () => {
     expect(email.commType).toBe('private_booking_cancelled_refundable')
     expect(email.text).toContain("We'll refund £450 within 10 working days")
     expect(email.text).toContain('Saturday, 3 October 2026')
-  })
-
-  it('cancelBooking with the flag off: the text and the old email, exactly as today', async () => {
-    state.flagOn = false
-    seed(bookingRow())
-
-    await PrivateBookingService.cancelBooking('booking-1', 'Customer asked', 'user-1')
-
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
-    expect(sendBookingCancelledEmail).toHaveBeenCalledTimes(1)
-    expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 
   it('cancelBooking: when the email fails the text goes, and the old email does not', async () => {
@@ -243,12 +226,12 @@ describe('private booking call sites, email first', () => {
   })
 })
 
-describe('each action reads the email-first flag once', () => {
+// Owner decision D16 (26 October 2026): the flag private_booking_email_first, on since 15 September,
+// is gone, and with it the old text-and-email path. Every flag here answers off, as a failed
+// settings read did: the guest still gets the one email, and the old email never goes.
+describe('a failed settings read can no longer bring back the old text and email', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.flagOn = true
-    // The first read fails, which answers off and is not cached; a second read would say on.
-    state.flagAnswers = [false, true]
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1', emailMessageId: 'email-row-1' })
     mockedQueueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'queue-1' })
     ;(getPrivateBookingCancellationOutcome as unknown as Mock).mockResolvedValue({
@@ -260,47 +243,36 @@ describe('each action reads the email-first flag once', () => {
     })
   })
 
-  it('cancelBooking: the guest gets today\'s text and email, never the new email as well as the old one', async () => {
+  it('cancelBooking: one variant email, no text, no old cancellation email', async () => {
     seed(bookingRow())
 
     await PrivateBookingService.cancelBooking('booking-1', 'Customer asked', 'user-1')
 
-    expect(emailFirstFlagReads()).toBe(1)
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(sendBookingCancelledEmail).toHaveBeenCalledTimes(1)
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
+    expect(emailFirstFlagReads()).toBe(0)
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+    expect(sendBookingCancelledEmail).not.toHaveBeenCalled()
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
   })
 
-  it('deposit received: today\'s text and deposit email, never the new email as well', async () => {
+  it('deposit received: one email, no text, no old deposit email', async () => {
     seed(bookingRow({ status: 'draft' }))
 
     await finalizeDepositPayment({ bookingId: 'booking-1', amount: 250, method: 'card', performedByUserId: 'user-1' }, state.db)
 
-    expect(emailFirstFlagReads()).toBe(1)
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(sendDepositReceivedEmail).toHaveBeenCalledTimes(1)
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
+    expect(emailFirstFlagReads()).toBe(0)
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+    expect(sendDepositReceivedEmail).not.toHaveBeenCalled()
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
   })
 
-  it('a waived deposit: today\'s confirmation email and text, never the new email as well', async () => {
+  it('a waived deposit: one confirmation email, no text, no old confirmation email', async () => {
     seed(bookingRow({ status: 'draft', deposit_amount: 250 }))
 
     await updateDepositAmount('booking-1', 0, 'user-1', { waived: true, waivedReason: 'Regular customer' })
 
-    expect(emailFirstFlagReads()).toBe(1)
-    expect(mockedSendEmail).not.toHaveBeenCalled()
-    expect(sendBookingConfirmationEmail).toHaveBeenCalledTimes(1)
-    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
-  })
-
-  it('cancelBooking with a steady flag still reads it once and sends the one variant email', async () => {
-    state.flagAnswers = []
-    seed(bookingRow())
-
-    await PrivateBookingService.cancelBooking('booking-1', 'Customer asked', 'user-1')
-
-    expect(emailFirstFlagReads()).toBe(1)
+    expect(emailFirstFlagReads()).toBe(0)
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
-    expect(sendBookingCancelledEmail).not.toHaveBeenCalled()
+    expect(sendBookingConfirmationEmail).not.toHaveBeenCalled()
+    expect(mockedQueueAndSend).not.toHaveBeenCalled()
   })
 })

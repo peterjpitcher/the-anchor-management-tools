@@ -91,3 +91,23 @@ describe('deposit refunds in the booking payment history', () => {
     expect(screen.getByText(/Deposit refund/).parentElement).toHaveTextContent('-£250.00')
   })
 })
+
+// BK-069: Delete on a PayPal deposit returned nothing to the guest, and the reconciliation sweep
+// recorded the PayPal payment again within 15 minutes.
+describe('a deposit paid through PayPal', () => {
+  const deposit = { id: 'deposit', type: 'deposit', amount: 250, method: 'paypal', date: '2026-10-01', readonly: true, refundOnly: true } as const
+
+  it('has no Edit or Delete, and points staff at Process Refund', () => {
+    render(<PaymentHistoryTable bookingId="booking" canEditPayments totalAmount={500} payments={[deposit]} />)
+    expect(screen.queryByRole('button', { name: 'Delete deposit payment' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit deposit payment' })).not.toBeInTheDocument()
+    expect(screen.getByText('Return it with Process Refund')).toBeInTheDocument()
+  })
+
+  it('stops pointing at Process Refund once it has all gone back', () => {
+    render(<PaymentHistoryTable bookingId="booking" canEditPayments totalAmount={500} payments={[deposit]} refunds={[
+      { id: 'refund-1', type: 'refund', amount: 250, method: 'paypal', date: '2026-10-02', status: 'completed' },
+    ]} />)
+    expect(screen.queryByText('Return it with Process Refund')).not.toBeInTheDocument()
+  })
+})
