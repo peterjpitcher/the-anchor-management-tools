@@ -96,6 +96,11 @@ export interface PrivateBooking {
   updated_at: string
   paypal_deposit_order_id?: string
   paypal_deposit_capture_id?: string
+  /** What a cancellation promised to refund (BK-065); owed until the refunds recorded reach it. */
+  refund_due_amount?: number | null
+  /** The London date that refund was promised by. */
+  refund_due_by?: string | null
+  deposit_refund_status?: string | null
   deposit_waived?: boolean
   deposit_waived_reason?: string
   /**

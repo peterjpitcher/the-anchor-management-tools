@@ -50,12 +50,12 @@ describe('every private booking text the app sends is on the auto-send list', ()
     for (const trigger of triggers) expect(shouldAutoSendPrivateBookingSms(trigger), trigger).toBe(true)
   })
 
-  it('each cancellation text resolveCancellationSmsVariant can choose', async () => {
+  it('each cancellation text chooseCancellationVariant can choose', async () => {
     const { readFileSync } = await import('node:fs')
     const { resolve } = await import('node:path')
-    const source = readFileSync(resolve(process.cwd(), 'src/services/private-bookings/mutations.ts'), 'utf8')
-    const start = source.indexOf('async function resolveCancellationSmsVariant(')
-    const body = source.slice(start, source.indexOf('\n}\n', start))
+    const source = readFileSync(resolve(process.cwd(), 'src/lib/private-bookings/cancellation-variant.ts'), 'utf8')
+    const start = source.indexOf('export function chooseCancellationVariant(')
+    const body = source.slice(start)
     const triggers = [...new Set([...body.matchAll(/triggerType: '([a-z_]+)'/g)].map((match) => match[1]))].sort()
     expect(triggers).toEqual([
       'booking_cancelled_hold',

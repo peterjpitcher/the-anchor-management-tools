@@ -70,6 +70,11 @@ interface SourceBookingData {
   captureId: string | null
   captureDate: string | null
   originalAmount: number
+  /**
+   * What the booking's refund status is measured against, when that is not originalAmount: a
+   * cancelled private hire's promised refund (BK-065), so it reads refunded once that is paid.
+   */
+  refundStatusBase?: number
   customerId: string | null
   customerName: string | null
   customerEmail: string | null
@@ -107,15 +112,28 @@ async function loadSourceBooking(
   if (sourceType === 'private_booking') {
     const { data } = await db
       .from('private_bookings')
-      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment, event_date')
+      .select('id, status, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, refund_due_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment, event_date')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
+    // A cancelled hire can owe back more than its deposit: the balance paid on the booking too
+    // (BK-065). The money held is the cap; the refund promised decides when it reads refunded.
+    let held = Number(data.deposit_amount) || 0
+    if (data.status === 'cancelled') {
+      const { data: payments } = await db
+        .from('private_booking_payments')
+        .select('amount')
+        .eq('booking_id', sourceId)
+      const paidOnBooking = (payments ?? []).reduce((sum: number, row: { amount: unknown }) => sum + (Number(row.amount) || 0), 0)
+      held = Math.round(((data.deposit_paid_date ? Number(data.deposit_amount) || 0 : 0) + paidOnBooking) * 100) / 100
+    }
+    const promised = Number(data.refund_due_amount)
     return {
       id: data.id,
       captureId: data.paypal_deposit_capture_id,
       captureDate: data.deposit_paid_date,
-      originalAmount: Number(data.deposit_amount) || 0,
+      originalAmount: held,
+      ...(data.status === 'cancelled' && Number.isFinite(promised) && promised > 0 ? { refundStatusBase: promised } : {}),
       customerId: data.customer_id ?? null,
       customerName: data.customer_name,
       customerEmail: data.contact_email,
@@ -634,7 +652,7 @@ export async function processPayPalRefund(
       // refund notice goes out at all, and the reconciled result below tells that notice whether
       // the booking was cancelled. A completed private booking used to get both emails, the
       // itemised deposit one and the generic one, disagreeing with each other (review PB-19).
-      const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+      const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.refundStatusBase ?? booking.originalAmount)
       // 'paypal' is the method, not the staff reason: the reason is labelled internal only in the
       // refund dialog and was reaching the guest verbatim (review PB-6).
       const privateBookingEmailSent = await sendPrivateBookingRefundEmailSideEffect(
@@ -909,7 +927,7 @@ export async function processManualRefund(
   const refundRow = { id: row.refund_id }
 
   // 6. Update booking refund status
-  const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+  const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.refundStatusBase ?? booking.originalAmount)
   await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, refundMethod)
 
   // 7. Audit

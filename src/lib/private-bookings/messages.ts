@@ -299,7 +299,7 @@ export function bookingCancelledRetentionMessage(input: {
     ? ` ${money(input.refundAmount)} will be refunded within 10 working days.`
     : ''
   return cap(
-    `Hi ${name(input.customerFirstName)}, your booking on ${input.eventDate} is cancelled. Following review, ${money(input.retainedAmount)} of your deposit has been retained to cover costs from the cancellation.${refundPart} We'll send a breakdown on request.`
+    `Hi ${name(input.customerFirstName)}, your booking on ${input.eventDate} is cancelled. Following review, we've kept ${money(input.retainedAmount)} to cover costs from the cancellation.${refundPart} We'll send a breakdown on request.`
   )
 }
 

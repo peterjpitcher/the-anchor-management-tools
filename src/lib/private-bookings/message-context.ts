@@ -114,6 +114,10 @@ export function cancellationFromQueueMetadata(metadata: Record<string, unknown> 
   return {
     refundAmount: toNumber(metadata.refund_amount),
     retainedAmount: retained,
-    deductionAmount: metadata.financial_outcome === 'deposit_partial_refund' ? retained : 0,
+    // Written since BK-065 (costs kept turn a 30-day refund into the retention message); older rows
+    // carry only the outcome.
+    deductionAmount: metadata.deduction_amount !== undefined
+      ? toNumber(metadata.deduction_amount)
+      : metadata.financial_outcome === 'deposit_partial_refund' ? retained : 0,
   }
 }

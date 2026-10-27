@@ -379,8 +379,8 @@ describe('portalPayPalActions', () => {
   // BK-063: a guest still at the PayPal checkout, or holding the emailed link, after the booking
   // was cancelled used to have the deposit taken and was then told it was "being confirmed".
   it.each([
-    ['cancelled', 'This booking has been cancelled, so we have not taken a payment.'],
-    ['completed', 'This booking has already finished, so we have not taken a payment.'],
+    ['cancelled', "This booking has been cancelled, so we haven't taken a payment."],
+    ['completed', "This booking has already finished, so we haven't taken a payment."],
   ])('takes nothing from PayPal for a %s booking', async (status, message) => {
     mockedVerifyBookingToken.mockReturnValue('booking-1')
     mockAdminForCapture({ status })
@@ -410,7 +410,7 @@ describe('portalPayPalActions', () => {
     const result = await captureDepositPaymentByToken('portal-token', 'ORDER-OLD')
 
     const closed = {
-      error: 'Your payment went through, but this booking was no longer open, so the team has been told and will be in touch about refunding it.',
+      error: "Your payment went through, but this booking had already closed. We've told the team, and they'll be in touch about refunding it.",
     }
     expect(result).toEqual(closed)
     expect(mockedPersistIdempotencyResponse).toHaveBeenLastCalledWith(

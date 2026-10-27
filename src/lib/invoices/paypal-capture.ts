@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 import { capturePayPalPayment, getPayPalOrder, isPayPalOrderAlreadyCapturedError, PAYPAL_DEFAULT_CURRENCY } from '@/lib/paypal'
 import { invoiceBalanceDue, type InvoiceBalanceInput } from './balance'
 import { invoicePaymentCustomId } from './paypal-custom-id'
+import { CANCELLED_BOOKING_INVOICE_UNPAYABLE, invoiceBookingCancelled } from '@/lib/invoices/cancelled-private-booking'
 
 type InvoicePaymentState = InvoiceBalanceInput & {
   id: string
@@ -65,6 +66,12 @@ export async function settleInvoicePayPalOrder(
     const payable = ['sent', 'overdue', 'partially_paid'].includes(invoice.status ?? '')
       || (invoice.status === 'draft' && Boolean(invoice.sent_at))
     if (!payable) return { error: 'This invoice cannot be paid online.' }
+    // BK-065: nothing is taken for an invoice whose private booking has been cancelled. A capture
+    // PayPal has already completed is still recorded below: that money has moved.
+    const bookingCancelled = await invoiceBookingCancelled(invoice.id)
+    if (bookingCancelled !== false) {
+      return { error: bookingCancelled === 'unknown' ? 'We could not check this invoice just now. Please try again in a few minutes.' : CANCELLED_BOOKING_INVOICE_UNPAYABLE }
+    }
     if (invoice.vendor?.paypal_payments_enabled !== true) {
       return { error: 'PayPal payments are not enabled for this vendor.' }
     }

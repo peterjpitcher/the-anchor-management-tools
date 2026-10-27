@@ -41,6 +41,7 @@ import {
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts';
+import { refundDueByIso } from '@/lib/private-bookings/refund-due';
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient> | any
 
@@ -460,6 +461,32 @@ async function recordDepositPaidAfterClose(
       })
     }
     recorded = Boolean(updated)
+
+    // A cancelled booking now owes this money back (BK-065): the booking page, dashboard and
+    // daily email list it until it is refunded. Kept apart so that, before the refund columns
+    // exist, the payment itself is still recorded.
+    if (recorded && booking.status === 'cancelled') {
+      const { data: owed } = await admin
+        .from('private_bookings')
+        .select('refund_due_amount')
+        .eq('id', bookingId)
+        .maybeSingle()
+      const already = Number((owed as { refund_due_amount?: unknown } | null)?.refund_due_amount ?? 0) || 0
+      const { error: owedError } = await admin
+        .from('private_bookings')
+        .update({
+          refund_due_amount: Math.round((already + payment.amount) * 100) / 100,
+          refund_due_by: refundDueByIso(new Date()),
+          deposit_refund_status: 'refund_due',
+        })
+        .eq('id', bookingId)
+      if (owedError) {
+        logger.error('A deposit paid after cancellation was recorded, but not as a refund owed', {
+          error: new Error(owedError.message),
+          metadata: { bookingId, captureId: capture },
+        })
+      }
+    }
   }
 
   const { error: auditError } = await admin.from('private_booking_audit').insert({

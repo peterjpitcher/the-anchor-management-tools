@@ -822,13 +822,16 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
  */
 export async function getCancellationPreview(
   bookingId: string,
-  retention?: { retainedAmount: number } | null
+  retention?: { retainedAmount: number } | null,
+  costs?: { amount: number } | null
 ): Promise<{
   outcome: import('@/services/private-bookings/financial').CancellationFinancialOutcome | null
   refund_amount: number
   retained_amount: number
   deposit_deduction: number
   max_retainable: number
+  /** The refund before any costs are kept: the most that may be kept for costs. */
+  refund_before_costs?: number
   preview_body: string | null
   error?: string
 }> {
@@ -865,19 +868,8 @@ export async function getCancellationPreview(
     const { getPrivateBookingCancellationOutcome } = await import(
       '@/services/private-bookings/financial'
     )
-    const [
-      {
-        bookingCancelledHoldMessage,
-        bookingCancelledRefundableMessage,
-        bookingCancelledPartialRefundMessage,
-        bookingCancelledRetentionMessage,
-        bookingCancelledReviewPendingMessage,
-        bookingCancelledManualReviewMessage,
-      },
-      outcome,
-      bookingResult,
-    ] = await Promise.all([
-      import('@/lib/private-bookings/messages'),
+    const [{ chooseCancellationVariant, refundBeforeCosts }, outcome, bookingResult] = await Promise.all([
+      import('@/lib/private-bookings/cancellation-variant'),
       getPrivateBookingCancellationOutcome(bookingId),
       getPrivateBooking(bookingId),
     ])
@@ -893,66 +885,13 @@ export async function getCancellationPreview(
         })
       : 'your event date'
 
-    let previewBody: string
-    let previewRefund = outcome.refund_amount
-    let previewRetained = outcome.retained_amount
-    switch (outcome.outcome) {
-      case 'no_money':
-        previewBody = bookingCancelledHoldMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-        })
-        break
-      case 'deposit_partial_refund':
-        previewBody = bookingCancelledPartialRefundMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-          refundAmount: outcome.refund_amount,
-          deductionAmount: outcome.deposit_deduction,
-        })
-        break
-      case 'refundable':
-        previewBody = bookingCancelledRefundableMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-          refundAmount: outcome.refund_amount,
-        })
-        break
-      case 'gm_review_required': {
-        // SOP §14: retention up to the full deposit is a manager decision.
-        // Preview reflects the retained amount chosen in the cancel modal.
-        if (retention) {
-          const retained = Math.min(Math.max(retention.retainedAmount, 0), outcome.max_retainable)
-          previewRefund = outcome.refund_amount + (outcome.max_retainable - retained)
-          previewRetained = retained
-          previewBody = retained > 0
-            ? bookingCancelledRetentionMessage({
-                customerFirstName,
-                eventDate: eventDateReadable,
-                retainedAmount: retained,
-                refundAmount: previewRefund,
-              })
-            : bookingCancelledRefundableMessage({
-                customerFirstName,
-                eventDate: eventDateReadable,
-                refundAmount: previewRefund,
-              })
-        } else {
-          previewBody = bookingCancelledReviewPendingMessage({
-            customerFirstName,
-            eventDate: eventDateReadable,
-          })
-        }
-        break
-      }
-      case 'manual_review':
-      default:
-        previewBody = bookingCancelledManualReviewMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-        })
-        break
-    }
+    // The same rule cancelBooking sends by (BK-065), so the preview is the message.
+    const decisions = { retainedAmount: retention?.retainedAmount ?? null, costsKept: costs?.amount ?? null }
+    const variant = chooseCancellationVariant(outcome, { customerFirstName, eventDate: eventDateReadable }, decisions)
+    const base = refundBeforeCosts(outcome, decisions)
+    const previewBody = variant.messageBody
+    const previewRefund = variant.refundAmount
+    const previewRetained = variant.retainedAmount
 
     return {
       outcome: outcome.outcome,
@@ -960,6 +899,7 @@ export async function getCancellationPreview(
       retained_amount: previewRetained,
       deposit_deduction: outcome.deposit_deduction,
       max_retainable: outcome.max_retainable,
+      ...(base ? { refund_before_costs: base.refund } : {}),
       preview_body: previewBody,
     }
   } catch (error) {
@@ -1336,12 +1276,21 @@ export async function cancelPrivateBooking(
   capture?: {
     channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
     receivedAt?: string
-  } | null
+  } | null,
+  costsKept?: { amount: number; reason: string } | null
 ) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
     || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to cancel private bookings' }
+  }
+
+  // Owner decision D26: keeping costs back from a refund is a manager's call, as retention is.
+  if (costsKept && costsKept.amount > 0) {
+    const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION)
+    if (!canOverride) {
+      return { error: 'Keeping costs back from a refund requires General Manager override permission' }
+    }
   }
 
   // SOP §14/§25: retaining any part of the deposit is a General Manager
@@ -1362,8 +1311,8 @@ export async function cancelPrivateBooking(
       bookingId,
       reason || '',
       user?.id || undefined,
-      (retention || capture)
-        ? { retentionDecision: retention ?? null, capture: capture ?? null }
+      (retention || capture || costsKept)
+        ? { retentionDecision: retention ?? null, capture: capture ?? null, costsKept: costsKept ?? null }
         : undefined
     )
 
