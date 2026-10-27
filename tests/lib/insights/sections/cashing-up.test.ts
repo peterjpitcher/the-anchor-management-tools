@@ -864,6 +864,41 @@ describe('cashing up section', () => {
     })
   })
 
+  describe('sales and takings gaps (BK-119, D33)', () => {
+    it('lists the gaps over £5 entered this week and counts the ones with no note', async () => {
+      const sessions = [...history(), ...days(THIS_WEEK)].map((row) => {
+        if (row.session_date === '2026-09-19') return { ...row, cashup_sales_breakdowns: [{ amount: 400 }, { amount: 220 }] }
+        if (row.session_date === '2026-09-22') return { ...row, cashup_sales_breakdowns: [{ amount: 503 }] }
+        if (row.session_date === '2026-09-23') return { ...row, notes: '  ', cashup_sales_breakdowns: [{ amount: 560 }] }
+        return row
+      })
+
+      const result = await build(db({ sessions }))
+
+      expect(metric(result, 'Sales and takings gaps over £5')).toEqual({
+        label: 'Sales and takings gaps over £5',
+        value: '2',
+        comparison: '1 day with no note; sales beat takings by £180.00 in all',
+      })
+      expect(result.lists[3]).toEqual({
+        title: 'Sales and takings gaps over £5 entered this week',
+        items: [
+          { text: 'Sat 19 Sep: sales £120.00 over takings, explained in the note', href: `${TEST_APP_URL}/cashing-up/daily?date=2026-09-19` },
+          { text: 'Wed 23 Sep: sales £60.00 over takings, no note', href: `${TEST_APP_URL}/cashing-up/daily?date=2026-09-23`, rag: 'amber' },
+        ],
+        emptyText: 'No gaps over £5 between sales and takings entered this week.',
+      })
+      // Only whether a note exists is read: the note itself may name the person who counted.
+      expectClean(result)
+    })
+
+    it('says none when no sales split was entered', async () => {
+      const result = await build(db({ sessions: [...history(), ...days(THIS_WEEK)] }))
+      expect(metric(result, 'Sales and takings gaps over £5')).toEqual({ label: 'Sales and takings gaps over £5', value: '0', comparison: 'none entered this week' })
+      expect(result.lists[3].items).toEqual([])
+    })
+  })
+
   describe('sites', () => {
     it('reports only the site that cashes up and says which', async () => {
       const result = await build(db({

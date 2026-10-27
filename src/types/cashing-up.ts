@@ -89,6 +89,12 @@ export interface UpsertCashupSessionDTO {
     salesCategory: CashupSalesCategory;
     amount: number;
   }[];
+  /**
+   * The note the member of staff wrote themselves, without the auto-detected events added to
+   * `notes`. Read only to check that a gap over £5 between till sales and takings is explained
+   * at submit (BK-119, D33); it is saved as part of `notes`, not on its own.
+   */
+  gapNote?: string | null;
 }
 
 interface CashupDashboardStats {
