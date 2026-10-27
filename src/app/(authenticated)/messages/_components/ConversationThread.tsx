@@ -103,6 +103,8 @@ export function buildRuns(messages: CustomerCommunication[]): MessageRun[] {
       last.isOutbound === isOutbound &&
       last.channel === message.channel &&
       last.messages[last.messages.length - 1].status === message.status &&
+      // A run names one sender, so texts typed by different staff stay apart (BK-182).
+      (last.messages[last.messages.length - 1].sent_by ?? null) === (message.sent_by ?? null) &&
       !isFailed(message)
 
     if (canExtend) {
@@ -467,6 +469,9 @@ export function ConversationThread({
                         </div>
 
                         <div className="mt-1 flex items-center gap-1.5">
+                          {run.isOutbound && lastMessage.sent_by ? (
+                            <span className="text-meta text-text-muted">Sent by {lastMessage.sent_by} ·</span>
+                          ) : null}
                           <span aria-hidden="true" className="text-meta text-text-muted">
                             {getMessageTime(lastMessage.created_at)}
                           </span>

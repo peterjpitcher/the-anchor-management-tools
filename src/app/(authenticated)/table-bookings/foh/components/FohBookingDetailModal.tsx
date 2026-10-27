@@ -148,6 +148,13 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
               {formatChristmasCourseTally(selectedBooking.christmas_course_counts) || 'not recorded yet'}
             </p>
           )}
+          {selectedBooking.guest_confirmed_at && Number.isFinite(Date.parse(selectedBooking.guest_confirmed_at)) && (
+            // BK-094: the guest answered the day-before 'please confirm' text.
+            <p className="mt-1 text-xs text-text">
+              <Badge tone="success">Confirmed by guest</Badge>{' '}
+              {formatDateTime12Hour(selectedBooking.guest_confirmed_at)}
+            </p>
+          )}
           {selectedBooking.guest_party_size_change && (
             // BK-091: the guest changed the party size themselves, so staff know who did it.
             <p className="mt-1 text-xs text-text">

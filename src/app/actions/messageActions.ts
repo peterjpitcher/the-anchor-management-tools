@@ -1,6 +1,8 @@
 'use server'
 
 import { checkUserPermission } from './rbac'
+import { logAuditEvent } from './audit'
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { MessageService } from '@/services/messages'
 import { logger } from '@/lib/logger'
@@ -79,7 +81,25 @@ export async function sendSmsReply(customerId: string, message: string) {
       return { error: 'Insufficient permissions' }
     }
 
-    const result = await MessageService.sendReply(customerId, message);
+    // Who typed the reply is recorded on the message and in the audit log (BK-182).
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const result = await MessageService.sendReply(customerId, message, user?.id ?? null);
+    if (user?.id) {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'message.reply_sent',
+        resource_type: 'customer',
+        resource_id: customerId,
+        operation_status: result.success ? 'success' : 'failure',
+        error_message: result.success ? undefined : result.error,
+        additional_info: {
+          customer_id: customerId,
+          message_sid: result.success ? result.messageSid ?? null : null,
+          message_length: message.length,
+        },
+      })
+    }
     return result;
   } catch (error: unknown) {
     logger.error('Failed to send SMS reply', {
