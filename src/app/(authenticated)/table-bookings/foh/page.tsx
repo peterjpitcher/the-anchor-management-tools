@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { PageLayout } from '@/ds'
-import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
+import { checkUserPermission, getPermissionStatus, getUserPermissions } from '@/app/actions/rbac'
+import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { FohScheduleClient } from './FohScheduleClient'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
@@ -19,9 +20,9 @@ const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 export default async function TableBookingsFohPage() {
   const supabase = await createClient()
 
-  const [authResult, canView, canEdit, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
+  const [authResult, viewStatus, canEdit, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
     supabase.auth.getUser(),
-    checkUserPermission('table_bookings', 'view'),
+    getPermissionStatus('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('reports', 'view'),
     checkUserPermission('settings', 'manage'),
@@ -44,7 +45,12 @@ export default async function TableBookingsFohPage() {
     canWaiveDeposit = await checkUserPermission('table_bookings', 'manage', userId)
   }
 
-  if (!canView) {
+  // A failed lookup is a connection problem, not a refusal: show a retry screen, never Access
+  // Denied (BK-095). A real refusal still redirects.
+  if (viewStatus === 'unavailable') {
+    return <PermissionsUnavailable />
+  }
+  if (viewStatus !== 'allowed') {
     redirect('/unauthorized')
   }
 

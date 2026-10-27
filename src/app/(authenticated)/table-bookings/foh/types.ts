@@ -38,6 +38,8 @@ export type FohBooking = {
   christmas_course_counts?: number[] | null
   /** The latest party-size change the guest made through their manage link (BK-091). */
   guest_party_size_change?: { at: string; from: number | null; to: number | null } | null
+  /** When the guest tapped 'confirm' on the day-before text, or null (BK-094). */
+  guest_confirmed_at?: string | null
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]
@@ -87,6 +89,9 @@ export type FohScheduleResponse = {
     // True when private hires could not be read, so their tables are not drawn as blocked
     // (BK-159). Optional so existing fixtures keep compiling.
     private_hires_unavailable?: boolean
+    // Parts of the floor that could not be loaded and are drawn as empty (BK-179). Optional so
+    // existing fixtures keep compiling.
+    load_warnings?: Array<'private_hires' | 'event_names' | 'communal_event_seats' | 'standing_event_guests' | 'table_areas'>
     // Who is in that day, counted as every other screen counts it (BK-075); null when it could
     // not be read. Optional so existing fixtures keep compiling.
     day_load?: DayLoad | null

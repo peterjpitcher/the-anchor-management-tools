@@ -8,10 +8,15 @@ import { getOpenSessions } from '@/app/actions/timeclock'
 import { VouchersFohClient } from './VouchersFohClient'
 import { displayName } from '@/lib/employees/display-name'
 import type { FohStaffMember } from './lib'
+import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 
 export default async function VouchersFohPage() {
   const viewCheck = await requireFohVoucherPermission('view')
   if (!viewCheck.ok) {
+    // 503 means the lookup failed, not a refusal: retry instead of Access Denied (BK-095).
+    if (viewCheck.response.status === 503) {
+      return <PermissionsUnavailable />
+    }
     redirect('/unauthorized')
   }
 

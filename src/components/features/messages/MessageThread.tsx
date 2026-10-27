@@ -192,6 +192,10 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                         <p className="whitespace-pre-wrap break-words text-ui leading-relaxed">{messageText}</p>
                       </div>
                       <div className={`flex items-center mt-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
+                        {/* Who typed it, when a member of staff did (BK-182). */}
+                        {!isInbound && message.sent_by ? (
+                          <span className="mr-1 text-xs sm:text-sm text-text-muted">Sent by {message.sent_by} ·</span>
+                        ) : null}
                         <span className="text-xs sm:text-sm text-text-muted">
                           {getMessageTime(message.created_at)}
                         </span>
