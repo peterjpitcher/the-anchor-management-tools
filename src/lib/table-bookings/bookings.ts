@@ -225,6 +225,8 @@ export function mapTableBookingBlockedReason(reason?: string | null):
   | 'customer_conflict'
   | 'in_past'
   | 'slot_full'
+  | 'drinks_full'
+  | 'outside_full'
   | 'blocked' {
   switch (reason) {
     case 'too_large_party':
@@ -241,6 +243,12 @@ export function mapTableBookingBlockedReason(reason?: string | null):
       return 'in_past'
     case 'slot_full':
       return 'slot_full'
+    // BK-144: each has its own words on the website and the FOH screen; they read as the generic
+    // 'blocked' before, which told the guest nothing useful.
+    case 'drinks_full':
+      return 'drinks_full'
+    case 'outside_full':
+      return 'outside_full'
     case 'outside_hours':
     case 'hours_not_configured':
     case 'outside_service_window':
