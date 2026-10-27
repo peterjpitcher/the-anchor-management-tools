@@ -5,6 +5,9 @@ import { sendChaseEmail, sendPortalInviteEmail } from '@/lib/email/employee-invi
 import { reportCronFailure } from '@/lib/cron/alerting';
 import { getAppUrl } from '@/lib/env';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 function buildOnboardingUrl(token: string): string {
   return `${getAppUrl()}/onboarding/${token}`;
 }

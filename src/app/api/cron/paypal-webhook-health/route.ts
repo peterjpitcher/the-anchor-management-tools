@@ -16,6 +16,9 @@ import { sendEmail } from '@/lib/email/emailService'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { STAFF } from '@/lib/brand/palette'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 export const dynamic = 'force-dynamic'
 
 /**

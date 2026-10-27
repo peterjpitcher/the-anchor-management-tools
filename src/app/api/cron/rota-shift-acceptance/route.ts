@@ -18,6 +18,9 @@ import {
   shiftStartInstant,
 } from '@/lib/rota/acceptance-cutoff';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 const WARNING_DAYS_BEFORE_CUTOFF = SHIFT_ACCEPTANCE_WARNING_DAYS_BEFORE_CUTOFF;
 const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
   'In line with our policy, all shifts must be accepted or rejected no less than two weeks before the shift.';

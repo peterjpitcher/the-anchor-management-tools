@@ -23,6 +23,8 @@ import {
   type SavePreorderCoverInput
 } from '@/lib/table-bookings/preorder'
 import { PREORDER_COURSES } from '@/types/preorders'
+import { changeChristmasPartyByRawToken } from '@/lib/table-bookings/guest-christmas-party'
+import { CHRISTMAS_MAX_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import { resolvePreorderCutoff } from '../preorder-data'
 
 const ActionSchema = z.object({
@@ -92,13 +94,38 @@ async function syncCoversAfterPartySizeChange(
     const result = await syncPreorderCovers(supabase, bookingId)
     return { removed: result.removed.length }
   } catch (error) {
-    logger.warn('Could not sync pre-order seats after a guest party-size change', {
-      metadata: {
-        tableBookingId: bookingId,
-        error: error instanceof Error ? error.message : String(error)
-      }
+    logger.error('Could not sync pre-order seats after a guest party-size change', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId: bookingId }
     })
     return { removed: 0 }
+  }
+}
+
+/**
+ * The banner a refused change lands on. Each says what to do next, with the phone number where a
+ * person has to help, instead of "please try again" for a change that can never work (BK-053).
+ */
+function blockedStatus(reason: string | undefined): string {
+  switch (reason) {
+    case 'no_table':
+      return 'no_table'
+    case 'too_large_party':
+      return 'too_large'
+    case 'christmas_closed':
+      return 'christmas_closed'
+    case 'christmas_size':
+      return 'christmas_size'
+    case 'christmas_no_change':
+      return 'christmas_no_change'
+    case 'christmas_changed':
+      return 'christmas_changed'
+    case 'christmas_call_us':
+      return 'christmas_call'
+    case 'rate_limited':
+      return 'rate_limited'
+    default:
+      return 'error'
   }
 }
 
@@ -124,7 +151,7 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
           tableBookingId: result.table_booking_id || null
         }
       })
-      return redirectWithStatus(request, token, 'error')
+      return redirectWithStatus(request, token, blockedStatus(result.reason))
     }
 
     if (result.state === 'cancelled') {
@@ -139,11 +166,79 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
 
     return redirectWithStatus(request, token, 'updated')
   } catch (error) {
-    logger.warn('Guest table-manage action failed unexpectedly', {
-      metadata: {
-        action: payload.action,
-        error: error instanceof Error ? error.message : String(error)
-      }
+    // An error, not a warning: warnings are silent in production, and this is a guest whose change
+    // did not save (BK-053).
+    logger.error('Guest table-manage action failed unexpectedly', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { action: payload.action }
+    })
+    return redirectWithStatus(request, token, 'error')
+  }
+}
+
+/** A "how many join on this tier" box: blank is none, anything else a whole number in range. */
+function readJoinCount(formData: FormData, name: string): number | null {
+  const raw = formData.get(name)
+  if (raw == null) return 0
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (trimmed === '') return 0
+  if (!/^\d{1,2}$/.test(trimmed)) return null
+  const value = Number.parseInt(trimmed, 10)
+  return value <= CHRISTMAS_MAX_PARTY_SIZE ? value : null
+}
+
+/**
+ * The Christmas numbers form (BK-053, D21): who is not coming, by seat, and how many join on each
+ * tier. The change itself, and every rule it must pass, lives in guest-christmas-party.ts.
+ */
+async function runGuestChristmasPartyChange(request: NextRequest, token: string, formData: FormData) {
+  const supabase = createAdminClient()
+
+  const removedSeats: number[] = []
+  for (const value of formData.getAll('remove_seat')) {
+    if (typeof value !== 'string' || !/^\d{1,2}$/.test(value.trim())) {
+      return redirectWithStatus(request, token, 'error')
+    }
+    removedSeats.push(Number.parseInt(value.trim(), 10))
+  }
+  // The course list the page showed, so a change from a page left open after the numbers changed is
+  // refused rather than removing whoever now holds that seat number.
+  const expectedRaw = formData.get('expected_courses')
+  let expectedCourses: number[] | undefined
+  if (typeof expectedRaw === 'string' && expectedRaw.trim() !== '') {
+    if (!/^[1-3](,[1-3]){0,19}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
+    expectedCourses = expectedRaw.trim().split(',').map((value) => Number.parseInt(value, 10))
+  }
+  const oneCourse = readJoinCount(formData, 'add_1')
+  const twoCourses = readJoinCount(formData, 'add_2')
+  const threeCourses = readJoinCount(formData, 'add_3')
+  if (oneCourse === null || twoCourses === null || threeCourses === null) {
+    return redirectWithStatus(request, token, 'christmas_size')
+  }
+
+  try {
+    const result = await changeChristmasPartyByRawToken(supabase, {
+      rawToken: token,
+      removedSeats,
+      expectedCourses,
+      added: { oneCourse, twoCourses, threeCourses },
+      appBaseUrl: getAppUrl()
+    })
+
+    if (result.state === 'blocked') {
+      logger.warn('Guest Christmas numbers change refused', {
+        metadata: { reason: result.reason, tableBookingId: result.tableBookingId ?? null }
+      })
+      return redirectWithStatus(request, token, blockedStatus(result.reason))
+    }
+
+    // Seats for anyone joining. The leaving guests' seats were removed with the change itself.
+    await syncCoversAfterPartySizeChange(supabase, result.tableBookingId)
+    return redirectWithStatus(request, token, 'christmas_updated')
+  } catch (error) {
+    logger.error('Guest Christmas numbers change failed unexpectedly', {
+      error: error instanceof Error ? error : new Error(String(error))
     })
     return redirectWithStatus(request, token, 'error')
   }
@@ -229,7 +324,8 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
     await syncPreorderCovers(supabase, preview.table_booking_id)
 
     const order = await loadPreorderOrder(supabase, preview.table_booking_id)
-    if (!order || !order.requiresPreorder) {
+    // Names and dietary notes save on every Christmas seat, 1 course included (BK-148).
+    if (!order || !order.hasGuestSeats) {
       return redirectWithPreorderStatus(request, token, 'error')
     }
 
@@ -386,44 +482,23 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
   }
 }
 
+/**
+ * A GET never changes a booking (BK-109, customer bookings review of 24 October 2026).
+ *
+ * This used to cancel the table, and refund the deposit, for `?action=cancel&confirm=1`, so that
+ * a plain link could cancel from a sandboxed frame that blocks forms. Anything that fetched the
+ * address did the same: a link scanner, a browser extension, a preview. Cancelling is now a POST
+ * only. An old link, or anyone who opens this address, is sent back to the manage page with the
+ * cancel step open, where the guest confirms with a button.
+ */
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ token: string }> }
 ) {
   const { token } = await context.params
-  const throttle = await checkGuestTokenThrottle({
-    request,
-    rawToken: token,
-    scope: 'guest_table_manage_action',
-    maxAttempts: 12
-  })
-
-  if (!throttle.allowed) {
-    return redirectWithStatus(request, token, 'rate_limited')
-  }
-
-  const action = request.nextUrl.searchParams.get('action')
-  const confirm = request.nextUrl.searchParams.get('confirm')
-
-  if (action !== 'cancel' || confirm !== '1') {
-    logger.warn('Guest table-manage GET action rejected', {
-      metadata: {
-        action,
-        hasConfirm: Boolean(confirm)
-      }
-    })
-    return redirectWithStatus(request, token, 'error')
-  }
-
-  // The "cancel without giving a reason" fallback, and the path sandboxed frames take when
-  // they cannot submit a form. No reason is recorded, by design.
-  return runGuestTableManageAction(request, token, {
-    action: 'cancel',
-    party_size: undefined,
-    notes: undefined,
-    cancellation_reason: undefined,
-    cancellation_reason_detail: undefined
-  })
+  const wantsCancel = request.nextUrl.searchParams.get('action') === 'cancel'
+  const target = wantsCancel ? `/g/${token}/table-manage?confirmCancel=1` : `/g/${token}/table-manage`
+  return NextResponse.redirect(new URL(target, request.url), 303)
 }
 
 export async function POST(
@@ -452,6 +527,10 @@ export async function POST(
 
   if (isPreorder) {
     return runGuestPreorderSave(request, token, formData)
+  }
+
+  if (formData.get('action') === 'christmas_party') {
+    return runGuestChristmasPartyChange(request, token, formData)
   }
 
   const parsed = ActionSchema.safeParse({

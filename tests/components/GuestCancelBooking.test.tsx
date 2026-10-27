@@ -36,15 +36,26 @@ describe('GuestCancelBooking', () => {
     expect(screen.getByLabelText(/Anything else/i)).not.toBeRequired()
   })
 
-  it('keeps a link-only cancel path, for sandboxed frames and for anyone who would rather not say', () => {
-    // The original implementation used a link rather than a form because sandboxed frames
-    // without allow-forms block submission before it reaches the server. Adding the reason
-    // form must not remove that route, or cancelling breaks in those frames.
-    render(<GuestCancelBooking {...baseProps} confirmCancel />)
+  it('cancels without a reason by POST, never by a link (BK-109)', () => {
+    // Opening an address must never cancel a booking: a link scanner or browser extension that
+    // fetched the old GET link cancelled the table and refunded the deposit. The no-reason path is
+    // now its own small form.
+    const { container } = render(<GuestCancelBooking {...baseProps} confirmCancel />)
 
-    expect(
-      screen.getByRole('link', { name: 'Cancel without giving a reason' })
-    ).toHaveAttribute('href', '/g/raw-token/table-manage/action?action=cancel&confirm=1')
+    expect(screen.queryByRole('link', { name: 'Cancel without giving a reason' })).toBeNull()
+    for (const link of container.querySelectorAll('a')) {
+      expect(link.getAttribute('href') ?? '').not.toContain('action=cancel')
+    }
+
+    const button = screen.getByRole('button', { name: 'Cancel without giving a reason' })
+    expect(button).toHaveAttribute('type', 'submit')
+    const form = button.closest('form')
+    expect(form).toHaveAttribute('method', 'post')
+    expect(form).toHaveAttribute('action', '/g/raw-token/table-manage/action')
+    expect(form).toHaveAttribute('target', '_top')
+    expect(form?.querySelector('input[name="action"]')).toHaveValue('cancel')
+    expect(form?.querySelector('input[name="confirm"]')).toHaveValue('1')
+    expect(form?.querySelector('input[name="cancellation_reason"]')).toBeNull()
 
     expect(screen.getByRole('link', { name: 'No, keep my booking' })).toHaveAttribute(
       'href',
@@ -57,6 +68,7 @@ describe('GuestCancelBooking', () => {
 
     const form = container.querySelector('form')
     expect(form).not.toBeNull()
+    expect(form).toHaveAttribute('target', '_top')
     expect(form).toHaveAttribute('method', 'post')
     expect(form).toHaveAttribute('action', '/g/raw-token/table-manage/action')
 

@@ -34,6 +34,12 @@ vi.mock('@/lib/events/payment-alerts', () => ({
   alertEventPaymentNeedsAPerson: mockAlert,
 }))
 
+// The run record and failure email (BK-116) are tested in tests/api/bookingCronRunRecords.test.ts.
+// Here the route runs bare, so these tests see only its own reads and log lines.
+vi.mock('@/lib/cron/run-recorder', () => ({
+  withCronRun: (_jobName: string, handler: unknown) => handler,
+}))
+
 const mockLoggerError = vi.fn()
 vi.mock('@/lib/logger', () => ({
   logger: {

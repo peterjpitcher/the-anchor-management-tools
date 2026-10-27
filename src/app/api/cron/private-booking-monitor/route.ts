@@ -20,6 +20,7 @@ import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/fe
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { createRunDeadline } from '@/lib/cron/run-deadline'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import {
   getFirstVisitReviewEligibleCandidateKeys,
@@ -48,7 +49,13 @@ import {
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { runHireAttentionCheck } from '@/services/private-bookings/attention'
 
+// The daily private hire monitor has taken up to 9.2 seconds against the 15-second project
+// default, and a run cut off skips that day's reminders and chasers until tomorrow (BK-212).
+export const maxDuration = 300
+
 const JOB_NAME = 'private-booking-monitor'
+// Time kept back from maxDuration to record the run and send its alert after the passes stop.
+const DEADLINE_MARGIN_MS = 30_000
 
 /**
  * The bookings the balance, 1-day and outcome passes cover: confirmed ones, and drafts whose
@@ -393,12 +400,14 @@ async function resolveCronRunResult(
   supabase: ReturnType<typeof createAdminClient>,
   runId: string,
   status: 'completed' | 'failed',
-  errorMessage?: string
+  errorMessage?: string,
+  result?: Record<string, unknown>
 ) {
   await persistCronRunResult(supabase, {
     runId,
     status,
     errorMessage,
+    result,
     context: JOB_NAME
   })
 }
@@ -408,6 +417,12 @@ export const revalidate = 0
 
 export async function GET(request: Request) {
   let runContext: { supabase: ReturnType<typeof createAdminClient>; runId: string; runKey: string } | null = null
+  // BK-212: Vercel stops the function at maxDuration without warning, and the run key is the
+  // London date, so a run cut off would skip the rest of the day's reminders with no record.
+  // Each per-booking loop checks this first and stops cleanly; what it did not reach is kept in
+  // cron_job_runs.result and emailed, and the run is marked failed so a second call the same
+  // day picks up where it stopped (every send is claimed, so nothing goes twice).
+  const deadline = createRunDeadline(Date.now() + maxDuration * 1000 - DEADLINE_MARGIN_MS)
 
   try {
     const authResult = authorizeCronRequest(request)
@@ -602,6 +617,7 @@ export async function GET(request: Request) {
       }
 
       for (const booking of drafts) {
+        if (deadline.timeIsUp('deposit_reminders', () => drafts.length - drafts.indexOf(booking))) break
         if (!canSendMoreSms()) {
           stats.smsCapReached = true
           break
@@ -963,6 +979,7 @@ export async function GET(request: Request) {
           Math.floor(Date.parse(`${isoDate.slice(0, 10)}T00:00:00Z`) / 86400000)
 
         for (const booking of confirmedBookings) {
+          if (deadline.timeIsUp('balance_reminders', () => confirmedBookings.length - confirmedBookings.indexOf(booking))) break
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -1171,6 +1188,7 @@ export async function GET(request: Request) {
 
       if (tomorrowBookings) {
         for (const booking of tomorrowBookings) {
+          if (deadline.timeIsUp('event_reminders', () => tomorrowBookings.length - tomorrowBookings.indexOf(booking))) break
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -1276,6 +1294,7 @@ export async function GET(request: Request) {
 
       if (eligibleForEmail && eligibleForEmail.length > 0) {
         for (const booking of eligibleForEmail) {
+          if (deadline.timeIsUp('outcome_emails', () => eligibleForEmail.length - eligibleForEmail.indexOf(booking))) break
           if (isBookingDateTbd(booking)) continue
 
           const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
@@ -1393,6 +1412,7 @@ export async function GET(request: Request) {
         const reviewLink = await getGoogleReviewLink(supabase)
 
         for (const booking of unprocessedReviewBookings) {
+          if (deadline.timeIsUp('review_requests', () => unprocessedReviewBookings.length - unprocessedReviewBookings.indexOf(booking))) break
           if (abortState.aborted) break
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
@@ -1552,6 +1572,7 @@ export async function GET(request: Request) {
         })
       } else {
         for (const booking of inspectionDue ?? []) {
+          if (deadline.timeIsUp('post_event_inspections', () => (inspectionDue ?? []).length - (inspectionDue ?? []).indexOf(booking))) break
           const { data: flaggedRow, error: flagError } = await supabase
             .from('private_bookings')
             .update({ post_event_status: 'awaiting_inspection', updated_at: new Date().toISOString() })
@@ -1616,12 +1637,30 @@ export async function GET(request: Request) {
     logger.info('Private booking monitor completed', {
       metadata: { stats }
     })
+    const timeUp = deadline.summary()
+    const timeUpMessage = timeUp
+      ? `Stopped at its time limit in ${timeUp.stoppedIn}; what it did not reach waits for the next run`
+      : undefined
     await resolveCronRunResult(
       supabase,
       runId,
-      abortState.aborted ? 'failed' : 'completed',
-      abortState.aborted ? abortState.abortReason || 'sms_safety_abort' : undefined
+      abortState.aborted || timeUp ? 'failed' : 'completed',
+      abortState.aborted ? abortState.abortReason || 'sms_safety_abort' : timeUpMessage,
+      timeUp ? { deadline: timeUp, stats } : undefined
     )
+    if (timeUp) {
+      logger.error('Private booking monitor stopped at its time limit', {
+        error: new Error(timeUpMessage),
+        metadata: { runKey, deadline: timeUp }
+      })
+      await reportCronFailure(JOB_NAME, new Error(timeUpMessage), {
+        stoppedIn: timeUp.stoppedIn,
+        skipped: timeUp.skipped
+          .map((entry) => `${entry.stage}: ${entry.items === null ? 'whole stage' : `${entry.items} booking(s)`}`)
+          .join('; '),
+        whatToDo: 'It needs a second run today to finish, because some reminders are only due today. The GitHub cron-jobs workflow calls it again at 10:30 UTC, and it can be run by hand from that workflow. Sends are claimed one by one, so a second run repeats none.'
+      })
+    }
 
     return new NextResponse(
       JSON.stringify({
@@ -1631,6 +1670,7 @@ export async function GET(request: Request) {
         maxSmsPerRun: MAX_PRIVATE_BOOKING_SMS_PER_RUN,
         totalSmsSent: totalSmsSent(),
         stats,
+        deadline: timeUp,
         ...abortState
       }),
       { status: 200 }

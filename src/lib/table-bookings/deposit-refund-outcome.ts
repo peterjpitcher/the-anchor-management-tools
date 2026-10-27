@@ -11,7 +11,7 @@ import type { RefundResult } from './refunds'
  */
 
 export type DepositRefundOutcome = {
-  state: 'refunded' | 'owed' | 'needs_check' | 'not_due' | 'already_refunded' | 'none'
+  state: 'refunded' | 'owed' | 'cash_owed' | 'needs_check' | 'not_due' | 'already_refunded' | 'none'
   amount_pence?: number | null
   cutoff_days?: number | null
 }
@@ -22,6 +22,8 @@ export function toDepositRefundOutcome(result: RefundResult | null | undefined):
   switch (result.reason) {
     case 'refund_failed':
       return { state: 'owed', amount_pence: result.amountOwedPence ?? null }
+    case 'cash_refund_due':
+      return { state: 'cash_owed', amount_pence: result.amountOwedPence ?? null }
     case 'terms_unreadable':
       return { state: 'needs_check' }
     case 'zero_tier':
@@ -35,7 +37,7 @@ export function toDepositRefundOutcome(result: RefundResult | null | undefined):
   }
 }
 
-const STATES = new Set<DepositRefundOutcome['state']>(['refunded', 'owed', 'needs_check', 'not_due', 'already_refunded', 'none'])
+const STATES = new Set<DepositRefundOutcome['state']>(['refunded', 'owed', 'cash_owed', 'needs_check', 'not_due', 'already_refunded', 'none'])
 
 export function readDepositRefundOutcome(value: unknown): DepositRefundOutcome | null {
   if (!value || typeof value !== 'object') return null
@@ -66,6 +68,14 @@ export function describeDepositRefundForStaff(
       return {
         tone: 'error',
         message: `The deposit refund did not go through, so the guest is owed ${amount ?? 'their deposit'}. Refund it by hand in PayPal. A manager has been emailed.`,
+      }
+    }
+    case 'cash_owed': {
+      // BK-041: a cash deposit cannot go back automatically. Hand it back at the bar.
+      const amount = pounds(outcome.amount_pence)
+      return {
+        tone: 'error',
+        message: `The deposit was paid in cash, so the guest is owed ${amount ?? 'their deposit'}. Hand it back at the bar and record it with Process Refund (method: cash). A manager has been emailed.`,
       }
     }
     case 'needs_check':

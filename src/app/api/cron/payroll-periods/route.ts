@@ -4,6 +4,9 @@ import { authorizeCronRequest } from '@/lib/cron-auth';
 import { PAYROLL_PERIOD_FUTURE_MONTHS } from '@/lib/rota/payroll-periods';
 import { ensurePayrollPeriodsAheadRecords } from '@/lib/rota/payroll-period-store';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

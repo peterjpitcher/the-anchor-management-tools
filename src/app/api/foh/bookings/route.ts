@@ -85,6 +85,8 @@ const CreateFohTableBookingSchema = z.object({
   // exactly as for `food`, but a deposit is always taken whatever the size.
   purpose: z.enum(['food', 'drinks', 'christmas']),
   notes: z.string().trim().max(500).optional(),
+  // Allergies in their own field (BK-052), split on the screen. The same limits as the public API.
+  allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   // Deprecated. Older FOH clients may still post this while their bundle rolls
   // forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
@@ -824,6 +826,27 @@ async function markWalkInBookingAsSeated(
   }
 }
 
+/**
+ * The guest's allergies, in their own field (BK-052). The booking functions do not take them, so they
+ * are written straight after the booking. A failure is an error, not a warning, and the screen tells
+ * staff to add them: a booking that quietly lost an allergy is the outcome to avoid.
+ */
+async function saveStaffBookingAllergies(
+  supabase: any,
+  tableBookingId: string,
+  allergies: string[]
+): Promise<boolean> {
+  const { error } = await supabase.from('table_bookings').update({ allergies }).eq('id', tableBookingId)
+  if (error) {
+    logger.error('Staff booking saved but its allergies did not', {
+      error: new Error(error.message || 'Allergy update failed'),
+      metadata: { tableBookingId, allergyCount: allergies.length },
+    })
+    return false
+  }
+  return true
+}
+
 type FohCreateBookingResponseData = {
   /** Present when staff sent Christmas courses: false means the booking exists without them. */
   christmas_courses_saved?: boolean
@@ -832,6 +855,8 @@ type FohCreateBookingResponseData = {
    * did (a landline with no email, say), null when none was due. Staff are told on false (BK-162).
    */
   notification_sent?: boolean | null
+  /** Present when staff sent allergies: false means the booking exists without them. */
+  allergies_saved?: boolean
   state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
@@ -1085,6 +1110,12 @@ async function createFohTableBooking(
       return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
     }
 
+    const mgmtAllergiesSaved =
+      (payload.allergies?.length ?? 0) > 0 &&
+      mgmtResult.table_booking_id &&
+      (mgmtResult.state === 'confirmed' || mgmtResult.state === 'pending_payment')
+        ? await saveStaffBookingAllergies(auth.supabase, mgmtResult.table_booking_id, payload.allergies ?? [])
+        : undefined
     if (mgmtResult.state === 'confirmed') {
       await recordFohBookingCreated({
         userId: auth.userId,
@@ -1104,6 +1135,7 @@ async function createFohTableBooking(
     }
 
     const responseData: FohCreateBookingResponseData = {
+      ...(mgmtAllergiesSaved === undefined ? {} : { allergies_saved: mgmtAllergiesSaved }),
       state: mgmtResult.state as FohCreateBookingResponseData['state'],
       table_booking_id: mgmtResult.table_booking_id ?? null,
       booking_reference: mgmtResult.booking_reference ?? null,
@@ -1679,6 +1711,13 @@ async function createFohTableBooking(
     }
   }
 
+  const allergiesSaved =
+    (payload.allergies?.length ?? 0) > 0 &&
+    bookingResult.table_booking_id &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+      ? await saveStaffBookingAllergies(auth.supabase, bookingResult.table_booking_id, payload.allergies ?? [])
+      : undefined
+
   // The courses staff chose for each guest are recorded on the booking (BK-057), so the pre-order
   // forms, the chase and the kitchen know who is on 1, 2 or 3 courses. A request without them (an
   // older FOH bundle) keeps the earlier rule: inside the Christmas pre-order deadline the 1 course
@@ -2061,7 +2100,8 @@ async function createFohTableBooking(
         high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
         is_outside_seating: bookingResult.is_outside_seating ?? false,
         notification_sent: notificationSent,
-        ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved })
+        ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved }),
+        ...(allergiesSaved === undefined ? {} : { allergies_saved: allergiesSaved })
       } satisfies FohCreateBookingResponseData
     },
     { status: responseStatus }

@@ -1,13 +1,13 @@
 'use client'
 
 import React from 'react'
-import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
+import { ChristmasCourseFields, type ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { Button, Input, Modal } from '@/ds'
 import { ModalActions } from '@/ds/compat'
 
 type FohPartySizeModalProps = {
   bookingId?: string | null
-  onCoursesChange?: (counts: number[] | undefined) => void
+  onCoursesChange?: (change: ChristmasPartyChange | undefined) => void
   open: boolean
   bookingActionInFlight: string | null
   partySizeEditValue: string

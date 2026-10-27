@@ -14,6 +14,11 @@ describe('cancellation facts carry what had already gone back', () => {
     ['plain full refund', { refunded: true, amountPence: 15000, tier: 'full' }],
     ['Christmas, inside its 7-day cutoff', { refunded: false, reason: 'seasonal_cutoff', cutoffDays: 7 }],
     ['a deposit that was never refundable', { refunded: false, reason: 'seasonal_cutoff', cutoffDays: 0 }],
+    // BK-046 and BK-041: the bounce fallback must apologise as the email did, and name the cash owed.
+    ['the pub cancelled, refunded in full', { refunded: true, amountPence: 16000, tier: 'full', cancelledBy: 'venue' }],
+    ['the pub cancelled, no deposit', { refunded: false, reason: 'no_deposit', cancelledBy: 'venue' }],
+    ['a manager chose the amount', { refunded: true, amountPence: 4000, tier: 'chosen' }],
+    ['a cash deposit is owed', { refunded: false, reason: 'cash_refund_due', depositOwed: true, amountOwedPence: 8000 }],
   ]
 
   it.each(variants)('%s: the rebuilt sentence is the sentence first sent', (_label, refundResult) => {

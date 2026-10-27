@@ -175,6 +175,9 @@ function draftMissingCourses(draft: DraftCover, courseCount: PreorderCourseCount
 
 /** The card's subtitle: the tier rule when the booking recorded tiers, the old rule when it did not. */
 function describeSectionRule(order: PreorderOrder): string {
+  if (!order.requiresPreorder) {
+    return 'Every guest is on 1 course, chosen on the day, so there is nothing to pre-order. Each guest can still have a name and a dietary note for the kitchen.'
+  }
   return order.courseCounts?.length
     ? 'Each guest chooses the courses they are paying for: a starter, a main and a dessert on 3 courses, a main plus a starter or a dessert on 2, and nothing in advance on 1. Add-ons are extras that never make an order complete.'
     : 'Every guest needs a main. A starter and a dessert are optional, and add-ons are extras that never make an order complete.'
@@ -376,6 +379,38 @@ export default function SeasonalPreorderSection({
     })
   }
 
+  function renderGuestNameInput(coverId: string, coverDraft: DraftCover) {
+    return (
+      <Input
+        label="Guest name (optional)"
+        value={coverDraft.guestName}
+        maxLength={GUEST_NAME_MAX_LENGTH}
+        disabled={!editable}
+        autoComplete="off"
+        onChange={(event) => updateCover(coverId, { guestName: event.target.value })}
+      />
+    )
+  }
+
+  function renderDietaryNote(coverId: string, coverDraft: DraftCover) {
+    return (
+      <div>
+        <Textarea
+          label="Dietary requirement (optional)"
+          rows={2}
+          value={coverDraft.dietaryNote}
+          maxLength={DIETARY_NOTE_MAX_LENGTH}
+          disabled={!editable}
+          hint={`What we need to do for this guest, in ${DIETARY_NOTE_MAX_LENGTH} characters. Anyone with a serious allergy should ring the pub so we can talk it through. Staff and kitchen only.`}
+          onChange={(event) => updateCover(coverId, { dietaryNote: event.target.value })}
+        />
+        <p className="mt-1 text-right text-xs text-text-muted">
+          {coverDraft.dietaryNote.length}/{DIETARY_NOTE_MAX_LENGTH}
+        </p>
+      </div>
+    )
+  }
+
   async function handleSave() {
     if (dirtyCoverIds.length === 0) return
     setSaving(true)
@@ -501,7 +536,11 @@ export default function SeasonalPreorderSection({
             {editable && (
               <div className="mt-3">
                 <Button size="sm" variant="secondary" onClick={handleSync} loading={syncing} disabled={syncing}>
-                  {order.covers.length === 0 ? 'Start the Pre-Order' : 'Put the Seats Right'}
+                  {order.covers.length === 0
+                    ? order.requiresPreorder
+                      ? 'Start the Pre-Order'
+                      : 'Add Seats for Guest Names'
+                    : 'Put the Seats Right'}
                 </Button>
               </div>
             )}
@@ -514,15 +553,22 @@ export default function SeasonalPreorderSection({
           <ul className="divide-y divide-border">
             {order.covers.map((cover) => {
               const courseCount = getSeatCourseCount(order, cover.ordinal)
+              const coverDraft = draft[cover.id]
+              if (!coverDraft) return null
+              // A 1 course guest has nothing to pre-order, but a name and a dietary note tie a need
+              // to a guest on a big table (BK-148, owner decision D23).
               if (courseCount === 1) {
                 return (
-                  <li key={cover.id} className="py-4 text-sm first:pt-0 last:pb-0">
-                    Seat {cover.ordinal}: 1 course, no pre-order required.
+                  <li key={cover.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                    <SubHeading>Seat {cover.ordinal} · 1 course</SubHeading>
+                    <p className="text-sm text-text">Chosen on the day, nothing to pre-order.</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {renderGuestNameInput(cover.id, coverDraft)}
+                    </div>
+                    {renderDietaryNote(cover.id, coverDraft)}
                   </li>
                 )
               }
-              const coverDraft = draft[cover.id]
-              if (!coverDraft) return null
               const missing = draftMissingCourses(coverDraft, courseCount)
               // A 2 course seat with a starter AND a dessert: the save refuses it, so say so here first.
               const tooManyOthers =
@@ -552,14 +598,7 @@ export default function SeasonalPreorderSection({
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <Input
-                      label="Guest name (optional)"
-                      value={coverDraft.guestName}
-                      maxLength={GUEST_NAME_MAX_LENGTH}
-                      disabled={!editable}
-                      autoComplete="off"
-                      onChange={(event) => updateCover(cover.id, { guestName: event.target.value })}
-                    />
+                    {renderGuestNameInput(cover.id, coverDraft)}
                     {PREORDER_COURSES.map((course) => (
                       <CourseSelect
                         key={course}
@@ -601,20 +640,7 @@ export default function SeasonalPreorderSection({
                     </Fieldset>
                   )}
 
-                  <div>
-                    <Textarea
-                      label="Dietary requirement (optional)"
-                      rows={2}
-                      value={coverDraft.dietaryNote}
-                      maxLength={DIETARY_NOTE_MAX_LENGTH}
-                      disabled={!editable}
-                      hint={`What we need to do for this guest, in ${DIETARY_NOTE_MAX_LENGTH} characters. Anyone with a serious allergy should ring the pub so we can talk it through. Staff and kitchen only.`}
-                      onChange={(event) => updateCover(cover.id, { dietaryNote: event.target.value })}
-                    />
-                    <p className="mt-1 text-right text-xs text-text-muted">
-                      {coverDraft.dietaryNote.length}/{DIETARY_NOTE_MAX_LENGTH}
-                    </p>
-                  </div>
+                  {renderDietaryNote(cover.id, coverDraft)}
                 </li>
               )
             })}

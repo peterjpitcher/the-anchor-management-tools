@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayName } from '@/lib/employees/display-name'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
+import { loadDayLoads } from '@/services/day-load'
 import {
   buildPrivateBookingBalanceDueSummaries,
   type DashboardPrivateBookingBalanceDueSummary,
@@ -356,37 +357,36 @@ export async function readMarketingSends(
 // --- Daily operations ----------------------------------------------------
 
 export interface CalendarDailyOps {
+  /** Diners plus event tickets, counted as every screen counts them (BK-075). */
   coversByDate: Record<string, number>
   staffByDate: Record<string, string[]>
+  /** Guests at private hires holding their rooms, shown as their own figure. */
+  hireGuestsByDate?: Record<string, number>
 }
 
+/**
+ * Covers and private-hire guests per day, from the shared day load (review BK-075): the calendar
+ * used to count every table booking, so an event's tables counted, its shared-seating and general
+ * admission tickets did not, and a night full of a private party read as empty. The client must be
+ * the admin client, after the caller's own permission check: the day load reads hires, event
+ * tickets and the kitchen list, which staff sessions cannot all see.
+ */
 export async function readCoversByDate(
   client: SupabaseClient,
   startIso: string,
   endIso: string,
-): Promise<CalendarDataset<{ date: string; covers: number }>> {
-  const { data, error } = await client
-    .from('table_bookings')
-    .select('booking_date, party_size')
-    .not('status', 'in', '(cancelled,no_show)')
-    .gte('booking_date', startIso)
-    .lte('booking_date', endIso)
-
-  if (error) {
+): Promise<CalendarDataset<{ date: string; covers: number; hireGuests: number }>> {
+  try {
+    const loads = await loadDayLoads(startIso, endIso, { db: client, withHours: false })
+    return ok(
+      [...loads.values()]
+        .filter((load) => load.covers > 0 || load.privateHireGuests > 0)
+        .map((load) => ({ date: load.date, covers: load.covers, hireGuests: load.privateHireGuests })),
+    )
+  } catch (error) {
     console.error('Failed to load covers for the calendar:', error)
     return failed('Covers could not be loaded.')
   }
-
-  const byDate = new Map<string, number>()
-  for (const row of data ?? []) {
-    const date = (row as { booking_date?: string | null }).booking_date
-    if (!date) continue
-    const partySize = Number((row as { party_size?: unknown }).party_size ?? 0)
-    if (!Number.isFinite(partySize)) continue
-    byDate.set(date, (byDate.get(date) ?? 0) + partySize)
-  }
-
-  return ok([...byDate.entries()].map(([date, covers]) => ({ date, covers })))
 }
 
 /** One rota shift as the calendar reads it. */
