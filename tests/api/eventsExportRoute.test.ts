@@ -44,7 +44,7 @@ beforeEach(() => {
       { id: 'q5', event_id: 'quiz', customer_id: 'c5', seats: 5, status: 'cancelled', is_reminder_only: false },
       { id: 't1', event_id: 'tinsel', customer_id: 'c6', seats: 2, status: 'confirmed', is_reminder_only: false },
       { id: 't2', event_id: 'tinsel', customer_id: 'c7', seats: 2, status: 'confirmed', is_reminder_only: false },
-      { id: 't3', event_id: 'tinsel', customer_id: 'c8', seats: 1, status: 'confirmed', is_reminder_only: false },
+      { id: 't3', event_id: 'tinsel', customer_id: 'c8', seats: 3, status: 'confirmed', is_reminder_only: false },
     ],
     event_check_ins: [
       { event_id: 'quiz', booking_id: 'q1', customer_id: 'c1' },
@@ -87,13 +87,14 @@ describe('events export (BK-218)', () => {
       'Event Name': 'Tinsel and Tipples',
       Price: '£45.00',
       'How Paid': 'Prepaid online',
-      'Seats Booked': '5',
+      'Seats Booked': '7',
       'Seats Came': '2',
       'Online Tickets (net)': '75.00',
       'Online Refunds': '15.00',
       'Door Payments Recorded': '90.00',
       'Door Till Total': '',
-      Comps: '1',
+      // One comp row for a booking of three is three free places, as door free entries count guests.
+      Comps: '3',
       'Total Taken (net)': '165.00',
       Brief: 'Christmas cocktails',
     })

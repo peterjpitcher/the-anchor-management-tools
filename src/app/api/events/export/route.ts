@@ -113,9 +113,12 @@ async function loadEventMoney(
     checkIns.filter((row) => !row.booking_id && row.customer_id && row.event_id).map((row) => `${row.event_id}:${row.customer_id}`)
   )
   const bookingEvent = new Map<string, string>()
+  // A comp is recorded once for the whole booking, so it counts that booking's seats.
+  const bookingSeats = new Map<string, number>()
   for (const booking of bookings) {
     if (booking.is_reminder_only === true) continue
     bookingEvent.set(booking.id, booking.event_id)
+    bookingSeats.set(booking.id, Math.max(0, Number(booking.seats ?? 0)))
     const money = byEvent.get(booking.event_id)
     if (!money || !BOOKED_STATUSES.has(String(booking.status ?? ''))) continue
     const seats = Math.max(0, Number(booking.seats ?? 0))
@@ -159,7 +162,7 @@ async function loadEventMoney(
     for (const payment of paymentRows) {
       const money = byEvent.get(bookingEvent.get(payment.event_booking_id ?? '') ?? '')
       if (!money || payment.status !== 'succeeded') continue
-      if (payment.payment_method === 'comp') money.comps += 1
+      if (payment.payment_method === 'comp') money.comps += Math.max(1, bookingSeats.get(payment.event_booking_id ?? '') ?? 1)
       else money.doorRecorded = pounds(money.doorRecorded + pounds(payment.amount))
     }
     for (const row of onlineRows) {
