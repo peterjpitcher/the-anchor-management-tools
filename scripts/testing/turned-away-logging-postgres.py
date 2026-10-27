@@ -23,7 +23,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261026220419_turned_away_logging.sql'
+MIGRATION = MIGRATIONS / '20261027133244_turned_away_logging.sql'
 ROLLBACK = ROOT / 'tasks/turned-away-logging/rollback.sql'
 LONE_PARTY = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
 SOURCES = {

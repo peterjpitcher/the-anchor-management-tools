@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026224114_promo_audience_consent_basis.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133329_promo_audience_consent_basis.sql'
 ROLLBACK = ROOT / 'tasks/promo-audience-consent-basis/rollback.sql'
 SIGNATURE = 'get_cross_promo_audience(uuid,uuid,integer,integer,integer,integer,integer)'
 PRODUCTION_MD5 = '2e7eb2740facd6397bea90194ae0c661'

@@ -1,11 +1,11 @@
--- Rollback for supabase/migrations/20261026220419_turned_away_logging.sql.
+-- Rollback for supabase/migrations/20261027133244_turned_away_logging.sql.
 --
 -- Restores production as it stood on 26 October 2026: check_table_availability_v06 without the
 -- warning line (md5(prosrc) 60eccdcfbfabdee9433d84c0bcbd3ef1 when no other patch has been applied
 -- since), service_role only, and no booking_funnel_events table or website_booking_funnel
 -- function. Dropping the table discards the funnel rows recorded since; they hold no personal
 -- data. Only the warning line is taken out, so a later patch to the same function (for example
--- 20261026204729_kitchen_pacing_counts_hire_and_event_food) is left in place.
+-- 20261027133140_kitchen_pacing_counts_hire_and_event_food) is left in place.
 --
 -- Tested by scripts/testing/turned-away-logging-postgres.py.
 

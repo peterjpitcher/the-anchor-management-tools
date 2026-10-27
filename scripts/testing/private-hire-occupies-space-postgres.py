@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026175212_private_hire_occupies_space.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261026212246_private_hire_occupies_space.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-occupies-space/rollback.sql'
 FUNCTIONS = ('get_private_booking_conflicts', 'is_table_blocked_by_private_booking_v05', 'outside_private_hire_windows')
 GUARD_SOURCE = ROOT / 'supabase/migrations/20260906155336_outside_private_hire_blocking.sql'

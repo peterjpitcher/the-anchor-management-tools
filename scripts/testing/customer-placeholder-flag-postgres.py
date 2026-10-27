@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026225211_customer_placeholder_flag.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027133339_customer_placeholder_flag.sql'
 ROLLBACK = ROOT / 'tasks/customer-placeholder-flag/rollback.sql'
 
 SETUP = r"""

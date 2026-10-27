@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20261026211052_table_booking_payment_status_no_default.sql.
+-- Rollback for supabase/migrations/20261027133206_table_booking_payment_status_no_default.sql.
 -- Restores both column defaults as production held them on 26 October 2026, and puts 'pending'
 -- back on the 15 walk-in and override bookings the backfill cleared (listed by id, as read from
 -- production that day; a walk-in written after the migration and before this rollback keeps NULL,
