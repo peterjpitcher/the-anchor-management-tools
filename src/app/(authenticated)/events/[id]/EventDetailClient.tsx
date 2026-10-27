@@ -50,6 +50,7 @@ import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
 import { EventGuestAnswersCard } from './EventGuestAnswersCard'
+import { EventUnbookedRepliesCard } from './EventUnbookedRepliesCard'
 import { isOnDoorList } from '@/lib/events/door-list'
 import { requiresGuestDetails } from '@/lib/events/booking-questions'
 import { ticketsMissingDetails } from '@/lib/events/guest-details-edit'
@@ -695,6 +696,7 @@ export default function EventDetailClient({
                 }}
                 isPending={isPending}
               />
+              <EventUnbookedRepliesCard eventId={event.id} />
               <EventGuestAnswersCard
                 eventId={event.id}
                 questions={event.booking_questions ?? []}
