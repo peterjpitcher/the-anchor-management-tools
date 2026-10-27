@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useTransition } from 'react'
 import { Alert, Button, CardBody, ConfirmDialog, Field, Input, Modal, Tabs, toast } from '@/ds'
+import { HoursImpactDialog, hoursImpactNoticeFrom, type HoursImpactNotice } from './HoursImpactDialog'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   createScheduledHoursVersion,
@@ -38,6 +39,8 @@ export function HoursVersionStrip({
   canManage,
   onChanged,
 }: HoursVersionStripProps) {
+  // Bookings a published schedule left outside the hours (BK-076).
+  const [impactNotice, setImpactNotice] = useState<HoursImpactNotice | null>(null)
   const [creating, setCreating] = useState(false)
   const [newDate, setNewDate] = useState('')
   const [newLabel, setNewLabel] = useState('')
@@ -77,6 +80,7 @@ export function HoursVersionStrip({
           return
         }
         toast.success('Schedule published')
+        setImpactNotice(hoursImpactNoticeFrom(result))
         onChanged()
       })
     },
@@ -253,6 +257,7 @@ export function HoursVersionStrip({
           ) : undefined
         }
       />
+      <HoursImpactDialog notice={impactNotice} onClose={() => setImpactNotice(null)} />
     </CardBody>
   )
 }

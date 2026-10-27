@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/night-clashes';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { buildEventImageFields } from '@/lib/api/eventImageFields';
@@ -164,6 +165,8 @@ export async function GET(
       return createErrorResponse('Event availability is temporarily unavailable', 'AVAILABILITY_UNAVAILABLE', 503)
     }
     const capacityRow = capacityRows[0] as EventCapacityRow
+    // Owner decision D24: a whole-pub private hire stops ticket sales for an event it overlaps.
+    const closedByWholePubHire = await loadEventIdsClosedByWholePubHire([event.id], supabase)
     const seatsRemaining = capacityRow.seats_remaining
     const seatedRemaining = capacityRow.seated_remaining
     const standingRemaining = capacityRow.standing_remaining
@@ -292,7 +295,7 @@ export async function GET(
       attendance_note: event.attendance_note || null,
       cancellation_policy: event.cancellation_policy || null,
       accessibility_notes: event.accessibility_notes || null,
-      bookings_enabled: event.bookings_enabled ?? true,
+      bookings_enabled: (event.bookings_enabled ?? true) && !closedByWholePubHire.has(event.id),
       booking_cutoff_at: event.booking_cutoff_at ?? null,
       shortDescription: event.short_description,
       longDescription: event.long_description,

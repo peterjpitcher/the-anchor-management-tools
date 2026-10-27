@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { Alert } from '@/ds'
+import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -162,9 +164,15 @@ export function FohScheduleClient({
       const s = (b.status || '').toLowerCase()
       return s !== 'cancelled' && s !== 'no_show'
     })
+    const counted = active.reduce((sum, b) => { const p = Number(b.party_size || 1); return sum + (Number.isFinite(p) && p > 0 ? p : 1) }, 0)
+    // Covers as every other screen counts them (BK-075): diners plus event tickets, with private
+    // hire guests as their own figure. The count of what is on screen stays as the fallback when
+    // the day load could not be read.
+    const dayLoad = schedule.day_load
     return {
       bookings: active.length,
-      covers: active.reduce((sum, b) => { const p = Number(b.party_size || 1); return sum + (Number.isFinite(p) && p > 0 ? p : 1) }, 0)
+      covers: dayLoad ? dayLoad.covers : counted,
+      privateHireGuests: dayLoad ? dayLoad.privateHireGuests : null,
     }
   }, [schedule])
   const nextUpcomingEvent = useMemo(() => upcomingEvents[0] || null, [upcomingEvents])
@@ -523,6 +531,21 @@ export function FohScheduleClient({
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}
       />
+
+      {schedule && (
+        <PrivateHireTodayStrip
+          hires={schedule.day_load?.privateHires ?? []}
+          loadFailed={schedule.day_load === null}
+          withLinks={!isManagerKioskStyle}
+        />
+      )}
+
+      {schedule?.private_hires_unavailable && (
+        <Alert tone="warning" title="Private hires not shown">
+          Private hires could not be loaded, so tables they take are not shown as blocked. Refresh before seating anyone
+          in a room that may be hired tonight.
+        </Alert>
+      )}
 
       <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
 

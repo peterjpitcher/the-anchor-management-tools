@@ -56,6 +56,9 @@ import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawe
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
+import { EventNightNotice } from '../_components/EventNightNotice'
+import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
+import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
 import { AddGuestDetailsModal } from './AddGuestDetailsModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
@@ -88,6 +91,9 @@ interface EventDetailClientProps {
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
   ticketTypesEnabled: boolean
   initialTicketTypes: EventTicketTypeRow[]
+  /** The covers the kitchen counts for this event (D29, BK-072). */
+  kitchen?: KitchenLoadSummary | null
+  kitchenError?: boolean
   initialError: string | null
 }
 
@@ -183,6 +189,8 @@ export default function EventDetailClient({
   permissions,
   ticketTypesEnabled,
   initialTicketTypes,
+  kitchen,
+  kitchenError,
   initialError,
 }: EventDetailClientProps) {
   const router = useRouter()
@@ -521,6 +529,22 @@ export default function EventDetailClient({
       {initialError && (
         <Alert tone="danger">{initialError}</Alert>
       )}
+
+      {/* Private hires that night, and whether a whole-pub hire has stopped ticket sales (D24). */}
+      <EventNightNotice date={event.date} eventId={event.id} />
+
+      {/* The food the kitchen cooks for this event, held back from online food bookings (D29). */}
+      <KitchenLoadEditor
+        title="Kitchen"
+        summary={kitchen ?? null}
+        loadFailed={kitchenError === true}
+        automaticRule="Tick this when guests eat at the event. Left blank, each live ticket counts as one cover at the event's start."
+        emptyReason="No kitchen covers are counted: guests do not eat at this event."
+        withFoodSwitch
+        canEdit={permissions.canManage}
+        save={(input) => setEventKitchenLoad(event.id, input)}
+        onSaved={() => router.refresh()}
+      />
 
       {/* Tabs */}
       <Tabs

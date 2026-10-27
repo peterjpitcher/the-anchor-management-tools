@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage } from '@/lib/utils';
-import { endOfLondonDayUtc, formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
+import { endOfLondonDayUtc, formatDateInLondon, formatTimeInLondon, toLocalIsoDate } from '@/lib/dateUtils';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit';
@@ -49,11 +49,13 @@ import {
   deriveRiskStatus,
 } from './types';
 import {
+  DIARY_CHECK_FAILED_MESSAGE,
   findBookingConflicts,
   checkCapacity,
   getBookingSpaceIds,
   type BookingConflict,
 } from './conflicts';
+import { hireNightWarning } from './night-clashes';
 import {
   describeConfirmationBlockers,
   hireConfirmationProblems,
@@ -543,15 +545,24 @@ const ELECTRICITY_CHARGE_DESCRIPTION = 'Electricity charge — high-power equipm
 // is unavailable (pre-migration schema). Flag-first everywhere else (SOP §21).
 const WAIVER_PACKAGE_NAME_PATTERN = /bring your own|self[\s-]?cater|\bbyo\b/i
 
+/** "Fri 4 Dec 17:30" on the London clock, for a clash message staff can read. */
+function formatConflictMoment(value: string): string {
+  const moment = new Date(value)
+  if (!Number.isFinite(moment.getTime())) return value
+  return `${formatDateInLondon(moment, { weekday: 'short', day: 'numeric', month: 'short' })} ${formatTimeInLondon(moment)}`
+}
+
 function formatConflictError(conflict: BookingConflict): string {
-  return `Space conflict: ${conflict.space_name} is held by ${conflict.customer_name || 'another booking'} (${conflict.booking_status}) from ${conflict.occupies_from} to ${conflict.occupies_until}`
+  return `Space conflict: ${conflict.space_name} is held by ${conflict.customer_name || 'another booking'} (${conflict.booking_status}) from ${formatConflictMoment(conflict.occupies_from)} to ${formatConflictMoment(conflict.occupies_until)}, including time to set up and clear down`
 }
 
 /**
  * SOP §6/§28: block bookings whose spaces clash with existing holds/confirmed
  * bookings, or whose guest count exceeds the safe capacity for the layout.
- * Genuine conflicts and capacity breaches throw; infrastructure failures fail
- * open (logged) so a broken check never blocks the flow.
+ * Genuine conflicts and capacity breaches throw. A clash check that cannot run
+ * throws too (BK-070: it used to let the save through as if the diary were
+ * clear); only the capacity lookup still fails open, as the confirm gate checks
+ * capacity again and fails closed.
  */
 async function assertSpaceAvailabilityAndCapacity(input: {
   spaceIds: string[]
@@ -568,8 +579,7 @@ async function assertSpaceAvailabilityAndCapacity(input: {
 }): Promise<void> {
   if (input.spaceIds.length === 0) return
 
-  // findBookingConflicts fails open internally (returns [] on RPC errors), so
-  // any conflicts returned here are genuine.
+  // findBookingConflicts throws when the check cannot run, so nothing is saved on a blind check.
   const conflicts = await findBookingConflicts({
     eventDate: input.eventDate,
     startTime: input.startTime ?? null,
@@ -1512,8 +1522,16 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   const cleardownTouched = input.cleardown_time !== undefined
   const timingChanged = Boolean(dateChanged) || startTimeChanged || endTimeChangedForConflicts || setupTouched || cleardownTouched
   const effectiveDateTbd = input.date_tbd ?? wasTbd
+  const statusAfter = input.status ?? currentBooking.status
+  const willBeLive = statusAfter === 'draft' || statusAfter === 'confirmed'
 
-  if (timingChanged && !effectiveDateTbd && finalEventDate) {
+  // Confirming a draft, or reinstating a cancelled hire, re-checks the room too (BK-070): a lapsed
+  // draft or a cancelled hire held nothing, so another hire may have taken the room meanwhile.
+  const enteringLiveStatus = Boolean(input.status) && input.status !== currentBooking.status && willBeLive
+
+  // Only a hire that will be live can clash: a cancelled or completed booking holds no room, and
+  // correcting one (a contact email, say) must not wait on the diary.
+  if (willBeLive && (timingChanged || enteringLiveStatus) && !effectiveDateTbd && finalEventDate) {
     const bookingSpaceIds = await getBookingSpaceIds(id)
     if (bookingSpaceIds.length > 0) {
       await assertSpaceAvailabilityAndCapacity({
@@ -1539,7 +1557,6 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     String(input.guest_count ?? '') !== String(currentBooking.guest_count ?? '')
   const layoutChanged = input.layout !== undefined &&
     String(input.layout ?? '') !== String((currentBooking as any).layout ?? '')
-  const willBeLive = (input.status ?? currentBooking.status) === 'draft' || (input.status ?? currentBooking.status) === 'confirmed'
   if (willBeLive && (guestCountChanged || layoutChanged || timingChanged)) {
     await assertGuestsStillFit(id, { guestCount: input.guest_count, layout: input.layout })
   }
@@ -3041,11 +3058,12 @@ export async function addBookingItem(data: {
       .eq('id', data.booking_id)
       .maybeSingle();
     if (bookingLookupError) {
-      // Fail open: a broken lookup must not block the item flow.
-      logger.error('Space conflict pre-check skipped: booking lookup failed', {
+      // Fails closed (BK-070): a room added without the clash check could sit on another hire.
+      logger.error('Space conflict pre-check failed: booking lookup failed', {
         error: new Error(bookingLookupError.message),
         metadata: { bookingId: data.booking_id },
       });
+      throw new Error(DIARY_CHECK_FAILED_MESSAGE);
     } else if (bookingRow?.event_date && !isBookingDateTbd(bookingRow)) {
       const conflicts = await findBookingConflicts({
         eventDate: bookingRow.event_date as string,
@@ -3140,6 +3158,10 @@ export async function addBookingItem(data: {
       const capacityWarning = `The room was added, but the guests still do not fit. ${capacityError instanceof Error ? capacityError.message : String(capacityError)}`
       warning = warning ? `${warning} ${capacityWarning}` : capacityWarning
     }
+
+    // BK-070 and D24: diners or event seats already in the room are listed, not refused.
+    const nightWarning = await hireNightWarning(data.booking_id)
+    if (nightWarning) warning = warning ? `${warning} ${nightWarning}` : nightWarning
   }
 
   // SOP §21: catering changes can flip the waiver requirement.

@@ -3,6 +3,18 @@ import { NextRequest } from 'next/server'
 import { GET } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 
+// Private hire blocks come from the database list (private_hire_table_blocks, service-role only),
+// read with the admin client after the FOH permission check.
+const adminRpc = vi.fn()
+const adminFrom = vi.fn()
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(() => ({ rpc: adminRpc, from: adminFrom })),
+}))
+
+// Who is in that day, from the shared day load (BK-075), which has its own tests.
+const dayLoadMock = vi.fn()
+vi.mock('@/services/day-load', () => ({ loadDayLoads: (...args: unknown[]) => dayLoadMock(...args) }))
+
 vi.mock('@/lib/foh/api-auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/foh/api-auth')>('@/lib/foh/api-auth')
   return {
@@ -116,62 +128,106 @@ const OUTSIDE_BOOKING_B = {
 describe('GET /api/foh/schedule: private hire blocks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    adminRpc.mockResolvedValue({ data: [], error: null })
+    adminFrom.mockImplementation(() => makeBuilder({ data: [], error: null }))
+    dayLoadMock.mockResolvedValue(new Map())
   })
 
   const AREA_TABLE = { ...INDOOR_TABLE, area_id: 'area-1' }
-  const hire = (id: string, overrides: Record<string, unknown>) => ({
+  const HIDDEN_TABLE = { ...INDOOR_TABLE, id: 'table-hidden', table_number: '9', name: 'Table 9', is_bookable: false }
+  const hire = (id: string, guest_count: number | null) => ({
     id,
     customer_name: 'Fixture Hire',
     customer_first_name: 'Fixture',
     customer_last_name: 'Hire',
     event_type: 'Birthday',
-    status: 'confirmed',
-    event_date: SERVICE_DATE,
     start_time: '18:00:00',
-    end_time: '23:00:00',
-    setup_date: null,
-    setup_time: null,
-    guest_count: 30,
-    deposit_paid_date: null,
-    hold_expiry: null,
-    date_tbd: false,
-    ...overrides,
+    guest_count,
   })
 
-  it('blocks only hires that hold their room, and shows the party size (BK-005, BK-007, BK-160)', async () => {
-    const db = createSupabaseMock({
-      tables: { data: [AREA_TABLE], error: null },
-      private_bookings: {
-        data: [
-          hire('pb-confirmed', {}),
-          hire('pb-paid-draft', { status: 'draft', deposit_paid_date: '2026-07-01T10:00:00Z', guest_count: 70 }),
-          hire('pb-lapsed-draft', { status: 'draft', hold_expiry: '2020-01-01T00:00:00Z' }),
-          hire('pb-date-tbd', { date_tbd: true }),
-        ],
-        error: null,
-      },
-      private_booking_items: {
-        data: ['pb-confirmed', 'pb-paid-draft', 'pb-lapsed-draft', 'pb-date-tbd'].map((booking_id) => ({
-          booking_id,
-          space_id: 'space-1',
-          item_type: 'space',
-        })),
-        error: null,
-      },
-      venue_space_table_areas: { data: [{ venue_space_id: 'space-1', table_area_id: 'area-1' }], error: null },
+  // BK-159: the screen draws the tables the database takes off sale, for exactly the times it
+  // holds them (setup, clear-down and turnaround included), instead of recomputing the window.
+  // Which hires count, and the window across clock changes, are tested against the SQL in
+  // scripts/testing/private-hire-room-window-postgres.py.
+  it('draws the blocks the database returns, with the party size, for the schedule window', async () => {
+    adminRpc.mockResolvedValue({
+      data: [
+        { private_booking_id: 'pb-1', table_id: 'table-1', blocked_from: '2026-07-08T16:30:00+00:00', blocked_until: '2026-07-08T23:30:00+00:00' },
+        { private_booking_id: 'pb-1', table_id: 'table-hidden', blocked_from: '2026-07-08T16:30:00+00:00', blocked_until: '2026-07-08T23:30:00+00:00' },
+        { private_booking_id: 'pb-2', table_id: 'table-1', blocked_from: '2026-07-08T11:00:00+00:00', blocked_until: '2026-07-08T15:30:00+00:00' },
+      ],
+      error: null,
     })
+    adminFrom.mockImplementation((table: string) =>
+      makeBuilder(table === 'private_bookings' ? { data: [hire('pb-1', 30), hire('pb-2', null)], error: null } : { data: [], error: null }))
+    const db = createSupabaseMock({ tables: { data: [AREA_TABLE, HIDDEN_TABLE], error: null } })
     mockAuthSuccess(db)
 
     const res = await GET(makeRequest())
     const payload = await res.json()
 
     expect(res.status).toBe(200)
-    const lane = (payload.data.lanes as Array<{ table_id: string; bookings: Array<Record<string, unknown>> }>)
-      .find((l) => l.table_id === 'table-1')!
-    const blocks = lane.bookings.filter((b) => b.is_private_block)
-    expect(blocks.map((b) => b.private_booking_id).sort()).toEqual(['pb-confirmed', 'pb-paid-draft'])
-    expect(blocks.find((b) => b.private_booking_id === 'pb-confirmed')!.party_size).toBe(30)
-    expect(blocks.find((b) => b.private_booking_id === 'pb-paid-draft')!.party_size).toBe(70)
+    expect(adminRpc).toHaveBeenCalledWith('private_hire_table_blocks', {
+      // Midnight to 6am the next morning on the London clock (BST in July).
+      p_window_start: '2026-07-07T23:00:00.000Z',
+      p_window_end: '2026-07-09T05:00:00.000Z',
+    })
+    const lanes = payload.data.lanes as Array<{ table_id: string; bookings: Array<Record<string, unknown>> }>
+    expect(lanes.map((lane) => lane.table_id)).toEqual(['table-1'])
+    const blocks = lanes[0].bookings.filter((b) => b.is_private_block)
+    expect(blocks.map((b) => b.private_booking_id).sort()).toEqual(['pb-1', 'pb-2'])
+    expect(blocks.find((b) => b.private_booking_id === 'pb-1')).toMatchObject({
+      party_size: 30,
+      start_datetime: '2026-07-08T16:30:00+00:00',
+      end_datetime: '2026-07-08T23:30:00+00:00',
+      booking_reference: 'PB-PB-1',
+      guest_name: 'Fixture Hire',
+    })
+    expect(blocks.find((b) => b.private_booking_id === 'pb-2')!.party_size).toBeNull()
+    expect(payload.data.private_hires_unavailable).toBe(false)
+  })
+
+  // BK-075: the header counts covers as every other screen does, and lists the day's hires.
+  it('returns the day load, or null when it cannot be read', async () => {
+    const load = { date: SERVICE_DATE, covers: 46, privateHireGuests: 120, privateHires: [{ id: 'pb-1' }] }
+    dayLoadMock.mockResolvedValueOnce(new Map([[SERVICE_DATE, load]]))
+    mockAuthSuccess(createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } }))
+
+    const payload = await (await GET(makeRequest())).json()
+
+    expect(payload.data.day_load).toEqual(load)
+    expect(dayLoadMock).toHaveBeenCalledWith(SERVICE_DATE, SERVICE_DATE, expect.objectContaining({ withHours: false }))
+
+    dayLoadMock.mockRejectedValueOnce(new Error('timeout'))
+    mockAuthSuccess(createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } }))
+    expect((await (await GET(makeRequest())).json()).data.day_load).toBeNull()
+  })
+
+  it('says so, and draws no blocks, when the hires cannot be read', async () => {
+    adminRpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } })
+    const db = createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } })
+    mockAuthSuccess(db)
+
+    const res = await GET(makeRequest())
+    const payload = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(payload.data.private_hires_unavailable).toBe(true)
+    expect(payload.data.lanes[0].bookings.filter((b: { is_private_block?: boolean }) => b.is_private_block)).toEqual([])
+  })
+
+  it('says so when the hire details cannot be read', async () => {
+    adminRpc.mockResolvedValue({
+      data: [{ private_booking_id: 'pb-1', table_id: 'table-1', blocked_from: '2026-07-08T16:30:00+00:00', blocked_until: '2026-07-08T23:30:00+00:00' }],
+      error: null,
+    })
+    adminFrom.mockImplementation(() => makeBuilder({ data: null, error: { message: 'timeout' } }))
+    const db = createSupabaseMock({ tables: { data: [AREA_TABLE], error: null } })
+    mockAuthSuccess(db)
+
+    const payload = await (await GET(makeRequest())).json()
+
+    expect(payload.data.private_hires_unavailable).toBe(true)
   })
 })
 
