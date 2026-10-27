@@ -31,8 +31,14 @@ vi.mock('@/lib/events/staff-seat-updates', () => ({
   ChristmasCourseValidationError: class ChristmasCourseValidationError extends Error {},
   PartySizeUpdateFailedAfterMoveError: class PartySizeUpdateFailedAfterMoveError extends Error {},
 }))
-vi.mock('@/lib/table-bookings/staff-deposit-transitions', () => ({ applyPartySizeDepositTransition: mocks.deposit }))
+vi.mock('@/lib/table-bookings/staff-deposit-transitions', () => ({
+  applyPartySizeDepositTransition: mocks.deposit,
+  PARTY_SIZE_DEPOSIT_COLUMNS: 'id, party_size, status',
+}))
 vi.mock('@/lib/table-bookings/preorder', () => ({ syncPreorderCovers: mocks.sync }))
+// The amended notice to the guest (BK-091) sits behind a messaging flag, off here.
+vi.mock('@/lib/table-bookings/bookings', () => ({ sendTableBookingRescheduledNotificationIfAllowed: vi.fn() }))
+vi.mock('@/lib/messaging/flags', () => ({ isMessagingFlagOn: vi.fn(async () => false) }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: mocks.audit }))
 vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.example' }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))

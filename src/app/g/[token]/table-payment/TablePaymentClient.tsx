@@ -23,6 +23,8 @@ interface TablePaymentClientProps {
   currency: string
   partySize: number
   holdExpiresAt: string
+  /** The booking is confirmed and the deposit is owed (owner decision D20): nothing is held. */
+  stillBooked?: boolean
   showCancelledMessage: boolean
   paypalClientId: string
   paypalEnvironment: string
@@ -68,6 +70,7 @@ export function TablePaymentClient({
   currency,
   partySize,
   holdExpiresAt,
+  stillBooked = false,
   showCancelledMessage,
   paypalClientId,
   paypalEnvironment,
@@ -93,8 +96,9 @@ export function TablePaymentClient({
       {/* Between the intro and the card, as on event-payment: every guest page leads with its h1. */}
       {showCancelledMessage && paymentState === 'idle' && (
         <GuestAlert tone="notice" role="alert" icon="clock">
-          Payment was not completed. Your {isOutsideSeating ? 'booking' : 'table'} is still
-          reserved if you pay before the hold expiry time below.
+          {stillBooked
+            ? `Payment was not completed. Your ${isOutsideSeating ? 'booking' : 'table'} is still booked, and you can pay any time before the time below.`
+            : `Payment was not completed. Your ${isOutsideSeating ? 'booking' : 'table'} is still reserved if you pay before the hold expiry time below.`}
         </GuestAlert>
       )}
 
@@ -106,7 +110,8 @@ export function TablePaymentClient({
             <DetailRow label="Booking reference" value={bookingReference} />
             <DetailRow label="Covers" value={`${partySize} ${seatWord}`} />
             <DetailRow
-              label="Hold expires"
+              // A confirmed booking that owes a deposit (D20) holds nothing that runs out.
+              label={stillBooked ? 'Pay by' : 'Hold expires'}
               value={formatLondonDateTime(holdExpiresAt)}
               emphasis="deadline"
             />
@@ -114,7 +119,9 @@ export function TablePaymentClient({
 
           {holdExpired ? (
             <GuestAlert tone="problem" role="alert">
-              This hold has expired. Please call us to arrange a new booking.
+              {stillBooked
+                ? 'This payment link has expired. Please call us about your deposit.'
+                : 'This hold has expired. Please call us to arrange a new booking.'}
             </GuestAlert>
           ) : (
             // The pointer-events guard stops a second tap reaching PayPal while

@@ -22,6 +22,7 @@ vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.example' }))
 vi.mock('@/lib/analytics/events', () => ({ recordAnalyticsEvent: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 vi.mock('@/lib/table-bookings/staff-deposit-transitions', () => ({
+  PARTY_SIZE_DEPOSIT_COLUMNS: 'id, party_size, status',
   applyPartySizeDepositTransition: mocks.applyPartySizeDepositTransition,
 }))
 vi.mock('@/lib/table-bookings/party-size-alerts', () => ({
@@ -48,6 +49,7 @@ type Booking = {
 }
 
 type Write = { table: string; op: 'update' | 'insert' | 'delete'; payload?: Record<string, unknown> }
+type RpcCall = { fn: string; args: Record<string, unknown> }
 
 /**
  * Just enough of the query builder for this path. Every chain resolves through `answer`, which
@@ -60,6 +62,7 @@ function createStub(options: {
   bookingUpdateError?: { message: string } | null
 }) {
   const writes: Write[] = []
+  const rpcCalls: RpcCall[] = []
   const answer = (table: string, op: string, payload?: Record<string, unknown>) => {
     if (table === 'guest_tokens') {
       return {
@@ -118,6 +121,18 @@ function createStub(options: {
   }
 
   const client = {
+    // The booking engine's table picker offers the free table; the atomic move always succeeds.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ fn, args })
+      if (fn === 'find_table_allocation_candidates') {
+        return {
+          data: options.freeTable ? [{ table_ids: [options.freeTable.id], rank: 1, reason_code: null }] : [],
+          error: null,
+        }
+      }
+      if (fn === 'move_table_booking_assignments_v05') return { data: { state: 'moved' }, error: null }
+      return { data: null, error: { message: `unexpected rpc ${fn}` } }
+    },
     from: (table: string) => ({
       select: () => chain(table, 'select'),
       update: (payload: Record<string, unknown>) => {
@@ -134,7 +149,7 @@ function createStub(options: {
       },
     }),
   }
-  return { client: client as never, writes }
+  return { client: client as never, writes, rpcCalls }
 }
 
 const BASE: Booking = {
@@ -187,7 +202,7 @@ describe('guest party-size change on the manage link', () => {
   })
 
   it('puts the booking back on its table when the size fails to save after a move', async () => {
-    const { client, writes } = createStub({
+    const { client, rpcCalls } = createStub({
       booking: BASE,
       tableCapacity: 4,
       freeTable: { id: 'table-big', capacity: 8 },
@@ -198,11 +213,10 @@ describe('guest party-size change on the manage link', () => {
       updateTableBookingByRawToken(client, { rawToken: 'raw', action: 'update', newPartySize: 6 }),
     ).rejects.toMatchObject({ message: 'update failed' })
 
-    const assignmentWrites = writes.filter((write) => write.table === 'booking_table_assignments')
-    expect(assignmentWrites).toEqual([
-      expect.objectContaining({ op: 'update', payload: expect.objectContaining({ table_id: 'table-big' }) }),
-      expect.objectContaining({ op: 'update', payload: { table_id: 'table-old' } }),
-    ])
+    // Moved to the bigger table, then back onto the old one over the same window.
+    const moves = rpcCalls.filter((call) => call.fn === 'move_table_booking_assignments_v05')
+    expect(moves.map((call) => call.args.p_table_ids)).toEqual([['table-big'], ['table-old']])
+    expect(moves[1].args.p_end_datetime).toBe(moves[0].args.p_end_datetime)
   })
 
   it('tells the manager when a seasonal deposit is left for a person to check', async () => {

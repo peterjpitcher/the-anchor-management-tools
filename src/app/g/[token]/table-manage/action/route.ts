@@ -110,6 +110,8 @@ function blockedStatus(reason: string | undefined): string {
   switch (reason) {
     case 'no_table':
       return 'no_table'
+    case 'slot_full':
+      return 'slot_full'
     case 'too_large_party':
       return 'too_large'
     case 'christmas_closed':
@@ -151,6 +153,8 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
           tableBookingId: result.table_booking_id || null
         }
       })
+      // A bigger party that cannot be seated is told why, with the number to ring (BK-040, BK-091),
+      // rather than "we could not process that request", which reads as a fault on our side.
       return redirectWithStatus(request, token, blockedStatus(result.reason))
     }
 
@@ -159,6 +163,13 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
     }
 
     const sync = await syncCoversAfterPartySizeChange(supabase, result.table_booking_id)
+
+    // The bigger party now owes a deposit and the booking stays confirmed (D20, BK-044). Take the
+    // guest straight to the payment page, which shows the amount, rather than a bare "Booking
+    // updated" with no link. The same link is in the email.
+    if (result.deposit_payment_url) {
+      return NextResponse.redirect(result.deposit_payment_url, 303)
+    }
 
     if (sync.removed > 0) {
       return redirectWithPreorderStatus(request, token, 'seats_removed')

@@ -36,10 +36,14 @@ export async function recordGuestPartySizeChange(input: GuestPartySizeChange): P
 
   try {
     await logAuditEvent({
-      operation_type: 'table_booking.party_size_changed',
+      // The guest's own change, which the booking page and the FOH floor show as made by the guest
+      // (BK-091). The staff path writes 'table_booking.party_size_changed'.
+      operation_type: 'table_booking.party_size_changed_by_guest',
       resource_type: 'table_booking',
       resource_id: input.tableBookingId,
       operation_status: 'success',
+      old_values: { party_size: input.previousPartySize },
+      new_values: { party_size: input.newPartySize },
       additional_info: {
         source: 'guest_manage_link',
         booking_reference: reference,
