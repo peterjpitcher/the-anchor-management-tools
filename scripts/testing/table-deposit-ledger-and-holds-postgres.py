@@ -5,8 +5,8 @@ BK-223 (customer bookings review of 24 October 2026): a paid PayPal table deposi
 a 'pending' ledger row and an active hold behind.
 
 create_table_booking_core_v06 is loaded from the migration that last defined it and patched by
-20261016180511, exactly as release 12's harness does, and its body is checked against
-production's md5. Bodies are not compiled here (check_function_bodies is off), because the patch
+20261016180511, exactly as release 12's harness does, release 12's pacing lines are added,
+and its body is checked against production's md5. Bodies are not compiled here (check_function_bodies is off), because the patch
 is text: the harness proves it by showing the patched body is production's with only the payments
 insert taken out, byte for byte. table_bookings and booking_holds are fixtures with the columns
 the triggers read.
@@ -29,14 +29,17 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261027005812_table_deposit_ledger_and_holds.sql'
+MIGRATION = MIGRATIONS / '20261027154848_table_deposit_ledger_and_holds.sql'
 ROLLBACK = ROOT / 'tasks/table-deposit-ledger-and-holds/rollback.sql'
 LONE_PARTY = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
 SOURCES = {
     'create_table_booking_core_v06': MIGRATIONS / '20260913120622_booking_start_inside_trading_day.sql',
     'check_table_availability_v06': MIGRATIONS / '20260906155336_outside_private_hire_blocking.sql',
 }
-PRODUCTION_CORE_MD5 = 'e831d41dc33d4331c09db4570fd85003'
+# md5(prosrc) before release 12's pacing patch (26 October 2026) and in production on 27 October 2026,
+# after release 12's 20261026204729 was applied.
+PRE_RELEASE_12_CORE_MD5 = 'e831d41dc33d4331c09db4570fd85003'
+PRODUCTION_CORE_MD5 = '7bd5ba3e1bbf40ad350248960e7b75dd'
 
 SETUP = """
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
@@ -130,7 +133,10 @@ def main():
                 sql(f"REVOKE ALL ON FUNCTION public.{name} FROM PUBLIC, anon, authenticated;"
                     f"GRANT EXECUTE ON FUNCTION public.{name} TO service_role;")
             sql(LONE_PARTY.read_text())
-            check(f"md5({CORE}) = '{PRODUCTION_CORE_MD5}'", 'create_table_booking_core_v06 starts as production holds it')
+            check(f"md5({CORE}) = '{PRE_RELEASE_12_CORE_MD5}'", 'create_table_booking_core_v06 loads as it was before release 12')
+            sql(f"DO $$ BEGIN EXECUTE replace(pg_get_functiondef('create_table_booking_core_v06'::regproc), "
+                f"{literal(RELEASE_12_ANCHOR)}, {literal(RELEASE_12_LINES + RELEASE_12_ANCHOR)}); END $$;")
+            check(f"md5({CORE}) = '{PRODUCTION_CORE_MD5}'", "with release 12's pacing lines it is production's body exactly")
             production_core = sql(f"SELECT md5({CORE});")
             check(f"position({literal(insert_text)} in pg_get_functiondef('create_table_booking_core_v06'::regproc)) > 0",
                   "the migration's payments insert is production's text exactly")
@@ -202,14 +208,14 @@ def main():
                 raise RuntimeError('FAIL the rollback did not restore the functions and triggers')
             print('PASS the rollback restores production exactly')
 
+            check(f"position('kitchen_food_load_covers' in {CORE}) > 0", "the patch and its rollback keep release 12's pacing lines")
             sql(f"DO $$ BEGIN EXECUTE replace(pg_get_functiondef('create_table_booking_core_v06'::regproc), "
-                f"{literal(RELEASE_12_ANCHOR)}, {literal(RELEASE_12_LINES + RELEASE_12_ANCHOR)}); END $$;")
+                f"{literal(RELEASE_12_LINES + RELEASE_12_ANCHOR)}, {literal(RELEASE_12_ANCHOR)}); END $$;")
             sql(MIGRATION.read_text())
-            check(f"position('INSERT INTO public.payments' in {CORE}) = 0 AND position('kitchen_food_load_covers' in {CORE}) > 0",
-                  "the patch applies on top of release 12's pacing lines and keeps them")
+            check(f"position('INSERT INTO public.payments' in {CORE}) = 0 AND md5(replace({CORE}, {literal(note_text)}, {literal(insert_text)})) = '{PRE_RELEASE_12_CORE_MD5}'",
+                  'the patch also applies to the body without release 12 (either order)')
             sql(ROLLBACK.read_text())
-            check(f"position('INSERT INTO public.payments' in {CORE}) > 0 AND position('kitchen_food_load_covers' in {CORE}) > 0",
-                  "the rollback keeps release 12's lines too")
+            check(f"md5({CORE}) = '{PRE_RELEASE_12_CORE_MD5}'", 'and its rollback restores that body exactly')
 
             sql(f"DO $$ BEGIN EXECUTE replace(pg_get_functiondef('create_table_booking_core_v06'::regproc), "
                 f"{literal(insert_text)}, {literal(insert_text + insert_text)}); END $$;")

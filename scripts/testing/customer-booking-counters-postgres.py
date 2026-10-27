@@ -23,8 +23,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-PART1 = ROOT / 'supabase/migrations/20261027005339_customer_booking_counters_live.sql'
-PART2 = ROOT / 'supabase/migrations/20261027005403_drop_customer_booking_counters.sql'
+PART1 = ROOT / 'supabase/migrations/20261027154846_customer_booking_counters_live.sql'
+PART2 = ROOT / 'supabase/migrations/20261027154847_drop_customer_booking_counters.sql'
 ROLLBACK1 = ROOT / 'tasks/customer-booking-counters/rollback-live.sql'
 ROLLBACK2 = ROOT / 'tasks/customer-booking-counters/rollback-drop.sql'
 PRODUCTION_MD5 = {
@@ -111,7 +111,7 @@ def main():
                 " ROLLBACK;")
 
             error = sql_error('BEGIN;\n' + PART2.read_text() + '\nROLLBACK;')
-            if 'apply 20261027005339_customer_booking_counters_live first' not in error:
+            if 'apply 20261027154846_customer_booking_counters_live first' not in error:
                 raise RuntimeError(f'FAIL part 2 ran before part 1: {error!r}')
             print('PASS part 2 refuses to run before part 1')
 

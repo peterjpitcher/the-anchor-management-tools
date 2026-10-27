@@ -32,7 +32,8 @@
 --     duplicate's notes are added to its notes, no-show counts are added, and it keeps the earlier
 --     created date.
 --   * The duplicate is anonymised like an erased record ("Merged Customer", no phone or email,
---     every channel off) and its notes say which record it was merged into. No customers row is
+--     every channel off, is_placeholder set so lists and counts leave it out) and its notes
+--     say which record it was merged into. No customers row is
 --     deleted.
 --
 -- dry_run true runs the whole merge inside a savepoint, reports exactly what it would move and
@@ -41,7 +42,7 @@
 -- Access: service_role only. The app calls it from a server action that checks customers delete
 -- (managers and super admins) and writes the audit row.
 --
--- Depends on 20261027003609_customer_contact_suppressions. Rollback:
+-- Depends on 20261027154844_customer_contact_suppressions. Rollback:
 -- tasks/merge-customers/rollback.sql. Tested by scripts/testing/merge-customers-postgres.py.
 
 CREATE FUNCTION public.merge_customers_apply(p_keep_id uuid, p_merge_id uuid)
@@ -241,6 +242,8 @@ BEGIN
   UPDATE public.customers SET
     first_name = 'Merged',
     last_name = 'Customer',
+    -- Kept out of customer lists, counts and insights, like every anonymised record (BK-082).
+    is_placeholder = true,
     email = NULL,
     mobile_number = '07700900000',
     mobile_e164 = NULL,
