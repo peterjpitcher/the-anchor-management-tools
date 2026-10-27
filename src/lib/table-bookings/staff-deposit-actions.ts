@@ -45,14 +45,15 @@ export type StaffDepositActionInput = z.infer<typeof StaffDepositActionSchema>
 
 export type StaffDepositActionResult =
   | { ok: true; message: string; warning?: string | null }
-  | { ok: false; status: 400 | 404 | 409 | 500; error: string }
+  | { ok: false; status: 400 | 404 | 409 | 500 | 503; error: string }
 
-const BOOKING_COLUMNS = `${TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS}, committed_party_size, hold_expires_at, start_datetime`
+const BOOKING_COLUMNS = `${TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS}, committed_party_size, hold_expires_at, start_datetime, payment_method`
 
 type DepositBooking = TableDepositOrderBooking & {
   committed_party_size: number | null
   hold_expires_at: string | null
   start_datetime: string | null
+  payment_method: string | null
 }
 
 const CLOSED_STATUSES = new Set(['cancelled', 'no_show', 'completed'])
@@ -169,7 +170,8 @@ async function recordCash(
     return { ok: false, status: 409, error: 'This booking has no deposit amount to take. Check the party size first.' }
   }
 
-  // The guest may have paid online a moment ago. Ask PayPal before taking money a second time.
+  // The guest may have paid online a moment ago. Ask PayPal before taking money a second time, and
+  // take cash only when PayPal positively says nothing was paid: an unreachable PayPal is not a no.
   if (booking.paypal_deposit_order_id) {
     const check = await reconcileTableDepositOrder(supabase, booking, { source: 'staff_cash_deposit' })
     if (check.outcome === 'recorded' || check.outcome === 'already_recorded') {
@@ -178,94 +180,108 @@ async function recordCash(
     if (check.outcome === 'needs_attention') {
       return { ok: false, status: 409, error: 'PayPal holds a payment for this deposit that needs a manager. Do not take cash until it is sorted.' }
     }
+    if (check.outcome !== 'not_paid') {
+      return {
+        ok: false,
+        status: 503,
+        error: 'We could not check with PayPal whether the guest has already paid online. Do not take cash yet; try again in a minute.',
+      }
+    }
   }
 
   const nowIso = new Date().toISOString()
-  const lockFields = {
-    payment_status: 'completed',
-    payment_method: 'cash',
-    deposit_amount_locked: amount,
-    hold_expires_at: null,
-    paypal_deposit_order_id: null,
-    updated_at: nowIso,
+
+  /*
+   * Claim the booking first, in one conditional update, so the deposit is marked paid only if it is
+   * still unpaid as it stands in the database. A PayPal capture or another manager's cash that
+   * landed after this request read the booking makes the claim match nothing, and nothing is
+   * written. Only the request that claimed it goes on to write the cash row, so a payment is never
+   * recorded twice and an online payment's method is never overwritten.
+   */
+  const { data: claimed, error: claimError } = await supabase
+    .from('table_bookings')
+    .update({
+      payment_status: 'completed',
+      payment_method: 'cash',
+      deposit_amount_locked: amount,
+      hold_expires_at: null,
+      paypal_deposit_order_id: null,
+      updated_at: nowIso,
+    })
+    .eq('id', booking.id)
+    .eq('status', booking.status)
+    .is('paypal_deposit_capture_id', null)
+    .or('payment_status.is.null,payment_status.eq.pending')
+    // PostgREST applies the .or() to the returned rows too, so they must carry payment_status.
+    .select('id, payment_status')
+    .maybeSingle()
+  if (claimError) {
+    logger.error('Could not record a cash deposit taken after booking', {
+      error: new Error(claimError.message),
+      metadata: { tableBookingId: booking.id },
+    })
+    return { ok: false, status: 500, error: 'The cash could not be recorded. Nothing was saved; please try again.' }
+  }
+  if (!claimed) {
+    return { ok: false, status: 409, error: 'The deposit has just been paid. Refresh to see the booking as it is now.' }
   }
 
-  if (booking.status === 'pending_payment') {
-    // The cash function confirms the booking, closes its hold and its payment links, and writes
-    // the cash row, as the FOH create path has always used it. The amount is then locked here.
-    const { data: raw, error: rpcError } = await supabase.rpc('record_table_cash_deposit_v05', {
-      p_table_booking_id: booking.id,
-      p_amount: amount,
-      p_currency: 'GBP',
+  // The cash function writes the cash row and, for a booking waiting for its deposit, confirms it
+  // and closes its hold and payment links, as the FOH create path has always used it.
+  const { data: raw, error: rpcError } = await supabase.rpc('record_table_cash_deposit_v05', {
+    p_table_booking_id: booking.id,
+    p_amount: amount,
+    p_currency: 'GBP',
+  })
+  const state = (raw as { state?: string } | null)?.state
+  // For any other state the function writes the cash row and answers already_confirmed (or, for a
+  // seated booking, blocked), which is all that is wanted of it here.
+  if (rpcError || (booking.status === 'pending_payment' && state !== 'confirmed')) {
+    logger.error('record_table_cash_deposit_v05 did not record a cash deposit taken after booking', {
+      error: new Error(rpcError?.message ?? `state ${String(state)}`),
+      metadata: { tableBookingId: booking.id, amount },
     })
-    const state = (raw as { state?: string } | null)?.state
-    if (rpcError || state === 'blocked') {
-      logger.error('record_table_cash_deposit_v05 refused a cash deposit taken after booking', {
-        error: new Error(rpcError?.message ?? `state ${String(state)}`),
-        metadata: { tableBookingId: booking.id },
-      })
-      return { ok: false, status: 500, error: 'The cash could not be recorded. Nothing was saved; please try again.' }
-    }
-    const { error: lockError } = await supabase.from('table_bookings').update(lockFields).eq('id', booking.id)
-    if (lockError) {
-      logger.error('Cash deposit recorded but the amount could not be locked on the booking', {
-        error: new Error(lockError.message),
-        metadata: { tableBookingId: booking.id, amount },
-      })
-      await logAuditEvent({
-        user_id: input.userId,
-        operation_type: 'table_booking.deposit_cash_recorded',
-        resource_type: 'table_booking',
-        resource_id: booking.id,
-        operation_status: 'failure',
-        error_message: lockError.message,
-        additional_info: { amount, action_needed: 'Cash recorded and the booking confirmed, but the amount is not locked on the booking' },
-      }).catch(() => {})
-      return { ok: true, message: `${formatGbp(amount)} taken at the bar.`, warning: 'The cash is recorded, but the amount could not be locked on the booking. Tell a manager.' }
-    }
-  } else {
-    // A confirmed booking that owes a deposit (D20): the cash function would leave it owing, so the
-    // booking is marked paid first, and the cash row is written after.
-    const { data: updated, error: updateError } = await supabase
-      .from('table_bookings')
-      .update(lockFields)
-      .eq('id', booking.id)
-      .is('paypal_deposit_capture_id', null)
-      .eq('payment_status', 'pending')
-      .select('id')
-      .maybeSingle()
-    if (updateError) {
-      logger.error('Could not record a cash deposit on a confirmed booking', {
-        error: new Error(updateError.message),
-        metadata: { tableBookingId: booking.id },
-      })
-      return { ok: false, status: 500, error: 'The cash could not be recorded. Nothing was saved; please try again.' }
-    }
-    if (!updated) {
-      return { ok: false, status: 409, error: 'The deposit has just been paid. Refresh to see the booking as it is now.' }
-    }
-    const { error: rpcError } = await supabase.rpc('record_table_cash_deposit_v05', {
-      p_table_booking_id: booking.id,
-      p_amount: amount,
-      p_currency: 'GBP',
-    })
-    await Promise.all([consumePaymentTokens(supabase, booking.id, nowIso), closePaymentHold(supabase, booking.id, nowIso)])
     if (rpcError) {
-      logger.error('Cash deposit recorded on the booking but its cash row could not be written', {
-        error: new Error(rpcError.message),
-        metadata: { tableBookingId: booking.id, amount },
-      })
-      await logAuditEvent({
-        user_id: input.userId,
-        operation_type: 'table_booking.deposit_cash_recorded',
-        resource_type: 'table_booking',
-        resource_id: booking.id,
-        operation_status: 'failure',
-        error_message: rpcError.message,
-        additional_info: { amount, action_needed: 'Cash recorded on the booking, but no cash payment row was written' },
-      }).catch(() => {})
-      return { ok: true, message: `${formatGbp(amount)} taken at the bar.`, warning: 'The booking shows the cash as paid, but the cash record could not be written. Tell a manager.' }
+      // Nothing was written by the function, so the claim is handed back and the deposit is owed again.
+      const { error: undoError } = await supabase
+        .from('table_bookings')
+        .update({
+          payment_status: booking.payment_status,
+          payment_method: booking.payment_method,
+          deposit_amount_locked: booking.deposit_amount_locked ?? null,
+          hold_expires_at: booking.hold_expires_at,
+          paypal_deposit_order_id: booking.paypal_deposit_order_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', booking.id)
+        .eq('payment_status', 'completed')
+        .eq('payment_method', 'cash')
+      if (!undoError) {
+        return { ok: false, status: 500, error: 'The cash could not be recorded. Nothing was saved; please try again.' }
+      }
     }
+    await logAuditEvent({
+      user_id: input.userId,
+      operation_type: 'table_booking.deposit_cash_recorded',
+      resource_type: 'table_booking',
+      resource_id: booking.id,
+      operation_status: 'failure',
+      error_message: rpcError?.message ?? `record_table_cash_deposit_v05 returned ${String(state)}`,
+      additional_info: {
+        amount,
+        action_needed: 'The booking shows the cash deposit as paid, but the cash record or the confirmation may not have been written. Check the booking and its payments',
+      },
+    }).catch(() => {})
+    return {
+      ok: true,
+      message: `${formatGbp(amount)} taken at the bar.`,
+      warning: 'The booking shows the cash as paid, but the cash record could not be written. Tell a manager.',
+    }
+  }
+
+  if (booking.status !== 'pending_payment') {
+    // A confirmed booking that owes a deposit (D20): the function leaves its hold and links alone.
+    await Promise.all([consumePaymentTokens(supabase, booking.id, nowIso), closePaymentHold(supabase, booking.id, nowIso)])
   }
 
   await logAuditEvent({
