@@ -12,6 +12,7 @@ import { formatDateInLondon, startOfLondonDayUtc, parseLondonDateTimeLocal } fro
 import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
+import { maskPhone } from '@/lib/phone/mask'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
 import {
@@ -456,7 +457,7 @@ async function sendSmsSafe(
   } catch (err) {
     logger.warn('Failed sending cross-promo SMS', {
       metadata: {
-        to,
+        to: maskPhone(to),
         error: err instanceof Error ? err.message : String(err),
       },
     })

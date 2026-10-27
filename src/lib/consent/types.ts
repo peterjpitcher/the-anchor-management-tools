@@ -54,6 +54,8 @@ export type CommunicationConsentPayload = {
   whatsapp_opt_in?: boolean
   marketing_whatsapp_opt_in?: boolean
   consent_text_version?: string
+  /** Which notice the guest was shown (BK-080); see GUEST_CONSENT_NOTICES. */
+  notice_key?: string
 }
 
 export type ConsentContext = {

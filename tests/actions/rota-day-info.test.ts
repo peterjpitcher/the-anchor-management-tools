@@ -17,6 +17,14 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+// Covers and private hires come from the shared day load (BK-075), which has its own tests.
+vi.mock('@/services/day-load', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/day-load')>()),
+  loadDayLoads: vi.fn(),
+}))
+
+vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -25,6 +33,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info'
+import { buildDayLoads, loadDayLoads } from '@/services/day-load'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
@@ -177,6 +186,7 @@ beforeEach(() => {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
   })
   mockedPermission.mockResolvedValue(true)
+  vi.mocked(loadDayLoads).mockResolvedValue(new Map())
 })
 
 describe('getRotaWeekDayInfo calendar notes', () => {
@@ -263,23 +273,46 @@ describe('getRotaWeekDayInfo days', () => {
     ])
   })
 
-  it('files events, private bookings and covers under their own date', async () => {
+  it('files events, private bookings and covers under their own date, counted as the day load counts them', async () => {
     useDatabase({
       events: [{ date: '2026-10-25', name: 'Quiz Night', time: '19:00', event_status: 'scheduled' }],
-      private_bookings: [
-        { event_date: '2026-10-19', customer_name: 'Test Party', guest_count: 30, status: 'confirmed' },
-      ],
-      table_bookings: [
-        { booking_date: '2026-10-25', party_size: 4, high_chair_count: 1, is_outside_seating: false, status: 'confirmed' },
-      ],
     })
+    vi.mocked(loadDayLoads).mockResolvedValue(buildDayLoads({
+      startIso: WEEK_START,
+      endIso: WEEK_END,
+      tableBookings: [
+        { booking_date: '2026-10-25', party_size: 4, booking_purpose: 'food', event_id: null, high_chair_count: 1, is_outside_seating: false },
+        // An event's table is its ticket, counted once, as a ticket.
+        { booking_date: '2026-10-25', party_size: 6, booking_purpose: 'drinks', event_id: 'event-1', high_chair_count: 0, is_outside_seating: false },
+      ],
+      events: [{ id: 'event-1', date: '2026-10-25', booking_mode: 'table' }],
+      tickets: [{ event_id: 'event-1', seats: 6, status: 'confirmed', hold_expires_at: null }],
+      hires: [{
+        id: 'hire-1', event_date: '2026-10-19', status: 'confirmed', customer_name: 'Test Party', customer_first_name: null,
+        customer_last_name: null, start_time: '19:00:00', end_time: null, guest_count: 30, date_tbd: false,
+        deposit_paid_date: null, hold_expiry: null,
+      }],
+      hireItems: [],
+      kitchen: [],
+    }))
+
+    const result = await getRotaWeekDayInfo(WEEK_START, WEEK_END)
+
+    expect(loadDayLoads).toHaveBeenCalledWith(WEEK_START, WEEK_END, expect.objectContaining({ withHours: false }))
+    expect(result['2026-10-25'].events).toEqual([{ name: 'Quiz Night', time: '19:00' }])
+    expect(result['2026-10-25'].tableCovers).toBe(10)
+    expect(result['2026-10-25'].highChairs).toBe(1)
+    expect(result['2026-10-19'].privateBookings).toEqual([{ customer_name: 'Test Party', guest_count: 30 }])
+  })
+
+  it('still shows the events and notes when covers cannot be read', async () => {
+    useDatabase({ events: [{ date: '2026-10-25', name: 'Quiz Night', time: '19:00', event_status: 'scheduled' }] })
+    vi.mocked(loadDayLoads).mockRejectedValue(new Error('timeout'))
 
     const result = await getRotaWeekDayInfo(WEEK_START, WEEK_END)
 
     expect(result['2026-10-25'].events).toEqual([{ name: 'Quiz Night', time: '19:00' }])
-    expect(result['2026-10-25'].tableCovers).toBe(4)
-    expect(result['2026-10-25'].highChairs).toBe(1)
-    expect(result['2026-10-19'].privateBookings).toEqual([{ customer_name: 'Test Party', guest_count: 30 }])
+    expect(result['2026-10-25'].tableCovers).toBe(0)
   })
 
   it('refuses a week that is not a pair of real dates, without querying', async () => {

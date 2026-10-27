@@ -16,6 +16,13 @@ import {
 } from '@/lib/event-booking-sheet-template'
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
 import {
+  DOOR_LIST_EXCLUDED_STATUS_FILTER,
+  doorPaymentLabel,
+  isOnDoorList,
+  loadDoorPayments,
+  type DoorPaymentRow,
+} from '@/lib/events/door-list'
+import {
   buildTicketBreakdownLines,
   eventTicketTypesEnabled,
   resolveBookingChargeAmount,
@@ -199,8 +206,10 @@ function toSheetData(input: {
   tableName?: string | null
   /** Present only when the booking is genuinely multi-type — drives the per-type breakdown. */
   multiTypeItems?: BookingItemWithTypeRow[]
+  /** This booking's rows in the payments ledger, which says what was actually paid (BK-030). */
+  payments: DoorPaymentRow[]
 }): EventBookingSheetData {
-  const { event, booking, tableBooking, tableName, multiTypeItems } = input
+  const { event, booking, tableBooking, tableName, multiTypeItems, payments } = input
   const seats = Math.max(1, Number(booking.seats || 1))
   const pricePerSeat = resolveEventPriceAmount(event)
   const paymentMode = resolveEventPaymentMode(event)
@@ -216,13 +225,12 @@ function toSheetData(input: {
     .join(' ')
     .trim()
 
-  let paymentMethod = 'Pay on arrival'
-  if (isFree) paymentMethod = 'Free'
-  else if (paymentMode === 'prepaid') {
-    paymentMethod = booking.status === 'pending_payment' ? 'Payment pending' : 'Paid online'
-  } else if (paymentMode === 'cash_only') {
-    paymentMethod = 'Cash on arrival'
-  }
+  const chargeAmount = breakdownLines && !isFree
+    ? resolveBookingChargeAmount(multiTypeItems ?? [])
+    : pricePerSeat * seats
+  // From the ledger, not the payment method: a lapsed hold on a prepaid night used to print
+  // "Paid online" (BK-030, customer bookings review of 24 October 2026).
+  const paymentMethod = doorPaymentLabel({ paymentMode, isFree, payments, amountDue: chargeAmount })
 
   // Multi-type bookings: annotate each attendee with their ticket type (names are
   // stored per line in booking_items, so the mapping is exact) and show the
@@ -233,9 +241,7 @@ function toSheetData(input: {
     : []
   // Fall back to the flat aggregate list if the line items carry no names.
   const attendeeNames = annotatedAttendeeNames.length > 0 ? annotatedAttendeeNames : legacyAttendeeNames
-  const price = breakdownLines && !isFree
-    ? formatCurrency(resolveBookingChargeAmount(multiTypeItems ?? []))
-    : isFree ? 'Free' : formatCurrency(pricePerSeat * seats)
+  const price = isFree ? 'Free' : formatCurrency(chargeAmount)
   const priceNote = breakdownLines && !isFree
     ? `Event price: ${breakdownLines.map((line) => `${line.quantity} × ${line.typeName} at ${formatCurrency(line.unitPrice)}`).join(' · ')}`
     : isFree ? 'Event price: Free' : `Event price: ${formatCurrency(pricePerSeat)} per person · ${seats} guests`
@@ -285,18 +291,21 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .from('bookings')
       .select('id, seats, event_seating_type, notes, attendee_names, status, is_reminder_only, customer:customers(first_name, last_name, mobile_number)')
       .eq('event_id', eventId)
-      .neq('status', 'cancelled')
+      // The same people as the guest list and the event page (BK-030): a lapsed payment hold
+      // is not coming, so it no longer prints.
+      .not('status', 'in', DOOR_LIST_EXCLUDED_STATUS_FILTER)
       .eq('is_reminder_only', false)
       .order('created_at', { ascending: true })
 
     if (bookingsError) throw bookingsError
 
-    const bookingRows = (bookings ?? []) as unknown as BookingRow[]
+    const bookingRows = ((bookings ?? []) as unknown as BookingRow[]).filter(isOnDoorList)
     if (bookingRows.length === 0) {
       return new NextResponse('No active bookings found for this event', { status: 404 })
     }
 
     const bookingIds = bookingRows.map((booking) => booking.id)
+    const paymentsByBooking = await loadDoorPayments(admin, bookingIds)
 
     // Per-type line items for genuinely multi-type bookings (one batched query).
     // Display-only — a failure here must never block the booking sheets.
@@ -378,6 +387,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         tableBooking,
         tableName: tableNamesByEventBooking.get(booking.id),
         multiTypeItems: multiTypeItemsByBooking.get(booking.id),
+        payments: paymentsByBooking.get(booking.id) ?? [],
       })
     })
 

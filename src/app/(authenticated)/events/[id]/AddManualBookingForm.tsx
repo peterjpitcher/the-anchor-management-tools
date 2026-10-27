@@ -6,6 +6,7 @@ import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import { createEventManualBooking } from '@/app/actions/events'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
+import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import { resolveTicketTypeSellPrice, type EventTicketTypeRow } from '@/lib/events/ticket-types'
 import {
   MAX_MANUAL_BOOKING_SEATS,
@@ -61,6 +62,8 @@ export function AddManualBookingForm({
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [attendeeNames, setAttendeeNames] = useState<string[]>([])
   const [errors, setErrors] = useState<FormErrors>({})
+  // Staff read the guest the marketing notice and they said yes (owner decision D32).
+  const [marketingYes, setMarketingYes] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const basketTypes = useMemo<BasketTypeOption[]>(
@@ -125,6 +128,7 @@ export function AddManualBookingForm({
     setQuantities({})
     setAttendeeNames([])
     setErrors({})
+    setMarketingYes(false)
   }, [])
 
   const handleSubmit = useCallback(() => {
@@ -182,6 +186,7 @@ export function AddManualBookingForm({
         lastName: lastName.trim() || undefined,
         ...(ticketSelections ? { ticketSelections } : {}),
         ...(namesToSubmit ? { attendeeNames: namesToSubmit } : {}),
+        ...(marketingYes ? { marketingTextsYes: true } : {}),
       })
       if ('error' in result) {
         toast.error(result.error)
@@ -205,6 +210,7 @@ export function AddManualBookingForm({
     useBasket,
     basketSummary,
     attendeeNames,
+    marketingYes,
     event,
     resetForm,
     onCreated,
@@ -267,6 +273,13 @@ export function AddManualBookingForm({
               </div>
             </Fieldset>
           )}
+
+          <StaffMarketingConsentField
+            idPrefix="event-manual-booking-marketing"
+            checked={marketingYes}
+            onChange={setMarketingYes}
+            disabled={isPending}
+          />
 
           {useBasket ? (
             <div>

@@ -15,6 +15,9 @@ import {
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { STAFF } from '@/lib/brand/palette';
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60;
+
 /**
  * Chases a shift with nobody on it inside the next week, every morning.
  *

@@ -24,6 +24,7 @@ import {
 import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '../types'
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import {
   FOH_CLIENT_OUTDATED_CODE,
   getFohBookingClientHeaders,
@@ -161,6 +162,7 @@ export function useFohCreateBooking(input: {
     seating_preference: 'seated',
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     notes: '',
+    allergies: '',
     waive_deposit: false,
     is_venue_event: false,
     bypass_pacing: false,
@@ -403,7 +405,7 @@ export function useFohCreateBooking(input: {
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
-      notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+      notes: '', allergies: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
       high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
       christmas_course_counts: []
     }))
@@ -463,9 +465,10 @@ export function useFohCreateBooking(input: {
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
         phone: walkInMode ? '' : current.phone, email: walkInMode ? '' : current.email, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
-        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false,
+        notes: walkInMode ? '' : current.notes, allergies: walkInMode ? '' : current.allergies,
+        waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-        christmas_course_counts: []
+        christmas_course_counts: [], marketing_texts_yes: false
       }
     })
     if (walkInMode) {
@@ -532,7 +535,8 @@ export function useFohCreateBooking(input: {
             seating_preference:
               selectedEventOption?.booking_mode === 'communal'
                 ? createForm.seating_preference
-                : undefined
+                : undefined,
+            marketing_texts_yes: createForm.marketing_texts_yes === true || undefined
           })
         })
         const payload = (await response.json()) as FohCreateEventBookingResponse
@@ -582,7 +586,11 @@ export function useFohCreateBooking(input: {
 
         const paymentLinkText = payload.data.next_step_url ? ` Payment link: ${payload.data.next_step_url}` : ''
         const manageLinkText = payload.data.manage_booking_url ? ` Manage link: ${payload.data.manage_booking_url}` : ''
-        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
+        // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+        const notificationText = payload.data.notification_sent === false
+          ? ' No confirmation reached the guest, so give them the details now.'
+          : ''
+        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')
@@ -638,6 +646,8 @@ export function useFohCreateBooking(input: {
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: isChristmasBooking ? 'christmas' : createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
+          // Its own field, so the allergy flag, the kitchen sheet and the FOH marker see it (BK-052).
+          allergies: parseAllergyList(createForm.allergies).length > 0 ? parseAllergyList(createForm.allergies) : undefined,
           sunday_deposit_method: (!isWalkIn && !isManagement && !isVenueEvent && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: isVenueEvent || undefined,
           bypass_pacing: createForm.bypass_pacing || undefined,
@@ -647,6 +657,7 @@ export function useFohCreateBooking(input: {
           requires_accessible_table:
             (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
           christmas_course_counts: christmasCourseCounts,
+          marketing_texts_yes: (!isManagement && createForm.marketing_texts_yes === true) || undefined,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
           // never the truthiness. Absent for Christmas, which travels as a
@@ -687,7 +698,15 @@ export function useFohCreateBooking(input: {
       const coursesText = payload.data.christmas_courses_saved === false
         ? ' The Christmas courses did not save: set them on the booking.'
         : ''
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${paymentLinkText}`)
+      // A landline with no email, or a failed send: the guest has nothing in writing (BK-162).
+      const notificationText = payload.data.notification_sent === false
+        ? ' No confirmation reached the guest, so give them the details now.'
+        : ''
+      // The booking exists either way; an allergy that did not save must be said, not dropped.
+      const allergiesText = payload.data.allergies_saved === false
+        ? ' The allergies did not save: add them to the booking now.'
+        : ''
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${allergiesText}${notificationText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

@@ -13,6 +13,7 @@ const unlockSessionActionMock = vi.hoisted(() => vi.fn())
 const setDailyTargetActionMock = vi.hoisted(() => vi.fn())
 const getDailySummaryActionMock = vi.hoisted(() => vi.fn())
 const getMissingCashupDatesActionMock = vi.hoisted(() => vi.fn())
+const getCashupDayMoneyActionMock = vi.hoisted(() => vi.fn())
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -44,6 +45,18 @@ vi.mock('@/app/actions/missing-cashups', () => ({
   getMissingCashupDatesAction: getMissingCashupDatesActionMock,
 }))
 
+vi.mock('@/app/actions/cashup-day-money', () => ({
+  getCashupDayMoneyAction: getCashupDayMoneyActionMock,
+}))
+
+const NO_DAY_MONEY = {
+  tableDeposits: { count: 0, amount: 0 },
+  eventTickets: { count: 0, amount: 0 },
+  privateHires: [],
+  vouchersRedeemed: { count: 0, amount: 0 },
+  total: 0,
+}
+
 vi.mock('@/ds/primitives/Toast', () => ({
   toast: toastMock,
 }))
@@ -71,6 +84,7 @@ describe('DailyClient', () => {
     vi.clearAllMocks()
     getDailySummaryActionMock.mockResolvedValue({ success: true, summary: null })
     getMissingCashupDatesActionMock.mockResolvedValue({ success: true, dates: [] })
+    getCashupDayMoneyActionMock.mockResolvedValue({ success: true, data: NO_DAY_MONEY })
     upsertSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1' } })
     upsertAndSubmitSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1' } })
     approveSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1', status: 'approved' } })
@@ -97,14 +111,12 @@ describe('DailyClient', () => {
     const cash50 = getInput(container, '#input-denom-50')
     const cashExpected = getInput(container, '#input-cash-expected')
     const cardTotal = getInput(container, '#input-card-total')
-    const stripeTotal = getInput(container, '#input-stripe-total')
     const drinksSales = getInput(container, '#input-drinks-sales')
     const notes = getInput(container, '#input-notes')
 
     fireEvent.change(cash50, { target: { value: '50' } })
     fireEvent.change(cashExpected, { target: { value: '45' } })
     fireEvent.change(cardTotal, { target: { value: '10' } })
-    fireEvent.change(stripeTotal, { target: { value: '5' } })
     fireEvent.change(drinksSales, { target: { value: '60' } })
     fireEvent.change(notes, { target: { value: 'All checked' } })
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
@@ -120,11 +132,12 @@ describe('DailyClient', () => {
         sessionDate: '2026-05-24',
         status: 'draft',
         notes: 'All checked',
+        gapNote: 'All checked',
         cashCounts: [{ denomination: 50, totalAmount: 50 }],
         paymentBreakdowns: [
           { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: 45, countedAmount: 50 },
           { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: 10, countedAmount: 10 },
-          { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: 5, countedAmount: 5 },
+          { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: 0, countedAmount: 0 },
         ],
         salesBreakdowns: [
           { salesCategory: 'drinks_sales', amount: 60 },
@@ -139,7 +152,6 @@ describe('DailyClient', () => {
       expect(cash50.value).toBe('')
       expect(cashExpected.value).toBe('')
       expect(cardTotal.value).toBe('')
-      expect(stripeTotal.value).toBe('')
       expect(notes.value).toBe('')
     })
     expect(routerPushMock).toHaveBeenCalledWith('/cashing-up/daily?date=2026-05-25&siteId=site-1')
@@ -299,4 +311,94 @@ describe('DailyClient', () => {
     })
     expect(routerRefreshMock).toHaveBeenCalled()
   })
+
+  describe('sales and takings gap and Stripe (BK-119, D33)', () => {
+    const session = (overrides: Record<string, unknown> = {}) => ({
+      id: 'session-1',
+      status: 'draft' as const,
+      site_id: 'site-1',
+      session_date: '2026-05-24',
+      notes: null,
+      total_expected_amount: 0,
+      total_counted_amount: 0,
+      total_variance_amount: 0,
+      prepared_by_user_id: 'user-1',
+      approved_by_user_id: null,
+      created_by_user_id: 'user-1',
+      updated_by_user_id: 'user-1',
+      created_at: '',
+      updated_at: '',
+      cashup_payment_breakdowns: [],
+      cashup_cash_counts: [],
+      cashup_sales_breakdowns: [],
+      ...overrides,
+    })
+
+    it('has no Stripe field on a new cash-up', () => {
+      const { container } = render(<DailyClient {...baseProps} />)
+      expect(container.querySelector('#input-stripe-total')).toBeNull()
+      expect(screen.queryByText('Stripe')).not.toBeInTheDocument()
+    })
+
+    it('keeps a historic Stripe amount on the cash-up that holds one', async () => {
+      const { container } = render(
+        <DailyClient
+          {...baseProps}
+          existingSession={session({
+            cashup_payment_breakdowns: [
+              { id: 'p1', cashup_session_id: 'session-1', payment_type_code: 'STRIPE', payment_type_label: 'Stripe', expected_amount: 12.5, counted_amount: 12.5, variance_amount: 0 },
+            ],
+          })}
+        />
+      )
+      expect(getInput(container, '#input-stripe-total').value).toBe('12.5')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
+
+      await waitFor(() => expect(upsertSessionActionMock).toHaveBeenCalledTimes(1))
+      expect(upsertSessionActionMock.mock.calls[0][0].paymentBreakdowns).toContainEqual(
+        { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: 12.5, countedAmount: 12.5 },
+      )
+    })
+
+    it('will not submit a gap over £5 between till sales and takings without a note', async () => {
+      const { container } = render(<DailyClient {...baseProps} />)
+      fireEvent.change(getInput(container, '#input-card-total'), { target: { value: '100' } })
+      fireEvent.change(getInput(container, '#input-drinks-sales'), { target: { value: '130' } })
+
+      expect(screen.getAllByText('Till sales are £30.00 more than takings. Say why in the notes before submitting (any gap over £5.00).').length).toBeGreaterThan(0)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+      expect(toastMock.error).toHaveBeenCalledWith('Till sales are £30.00 more than takings. Say why in the notes before submitting (any gap over £5.00).')
+      expect(upsertAndSubmitSessionActionMock).not.toHaveBeenCalled()
+
+      fireEvent.change(getInput(container, '#input-notes'), { target: { value: 'Christening deposit paid by PayPal' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+      await waitFor(() => expect(upsertAndSubmitSessionActionMock).toHaveBeenCalledTimes(1))
+      expect(upsertAndSubmitSessionActionMock.mock.calls[0][0]).toMatchObject({ gapNote: 'Christening deposit paid by PayPal' })
+    })
+
+    it('shows what was paid outside the till for the day', async () => {
+      getCashupDayMoneyActionMock.mockResolvedValue({
+        success: true,
+        data: {
+          tableDeposits: { count: 2, amount: 320 },
+          eventTickets: { count: 0, amount: 0 },
+          privateHires: [{ id: 'pb-1', label: 'Christening', paidOutsideTill: 744.8 }],
+          vouchersRedeemed: { count: 1, amount: 25 },
+          total: 1089.8,
+        },
+      })
+      render(<DailyClient {...baseProps} />)
+
+      expect(await screen.findByText('Paid outside the till for this day')).toBeInTheDocument()
+      expect(screen.getByText('Table deposits paid online (2 bookings)')).toBeInTheDocument()
+      expect(screen.getByText('Private hire: Christening, paid online or by bank')).toBeInTheDocument()
+      expect(screen.getByText('£1,089.80')).toBeInTheDocument()
+      expect(getCashupDayMoneyActionMock).toHaveBeenCalledWith('2026-05-24')
+    })
+  })
 })
+

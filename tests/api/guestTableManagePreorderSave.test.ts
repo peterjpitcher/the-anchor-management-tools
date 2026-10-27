@@ -64,6 +64,7 @@ describe('guest pre-order save route', () => {
       bookingTime: '19:00',
       partySize: 1,
       requiresPreorder: true,
+      hasGuestSeats: true,
       bookingAllergies: [],
       periodId: 'period-1',
       periodName: 'Christmas dinner 2026',
@@ -143,5 +144,39 @@ describe('guest pre-order save route', () => {
     await POST(saveRequest({ seat_1_main: '' }), { params: Promise.resolve({ token: 'raw-token' }) })
 
     expect(mocks.logAuditEvent).not.toHaveBeenCalled()
+  })
+
+  // BK-148 and owner decision D23: a party all on 1 course has nothing to pre-order, but each guest's
+  // name and dietary note save to their seat from the guest page.
+  it("saves a 1 course guest's name and dietary note on a party with nothing to pre-order", async () => {
+    mocks.savePreorderCover.mockResolvedValue({})
+    mocks.loadPreorderOrder.mockResolvedValue({
+      tableBookingId: 'booking-1',
+      bookingReference: 'TB-FIXTURE',
+      bookingDate: '2026-12-12',
+      bookingTime: '19:00',
+      partySize: 1,
+      requiresPreorder: false,
+      hasGuestSeats: true,
+      bookingAllergies: [],
+      periodId: 'period-1',
+      periodName: 'Christmas dinner 2026',
+      preorderCutoffDays: 7,
+      courseCounts: [1],
+      covers: [
+        { id: 'cover-1', tableBookingId: 'booking-1', ordinal: 1, guestName: null, dietaryNote: null, courseCount: 1, selections: [], ...STAMP },
+      ],
+    })
+
+    const response = await POST(saveRequest({ seat_1_name: 'Sam', seat_1_note: 'No dairy' }), {
+      params: Promise.resolve({ token: 'raw-token' }),
+    })
+
+    expect(new URL(response.headers.get('location') || '').searchParams.get('preorder')).toBe('saved')
+    expect(mocks.savePreorderCover).toHaveBeenCalledWith(expect.anything(), {
+      coverId: 'cover-1',
+      guestName: 'Sam',
+      dietaryNote: 'No dairy',
+    })
   })
 })

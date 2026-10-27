@@ -6,6 +6,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { getErrorCode } from '@/lib/errors'
 
+// Its own time limit rather than the 15-second project default (BK-212).
+export const maxDuration = 60
+
 /**
  * How much of the backlog a single run will look at.
  *

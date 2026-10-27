@@ -6,8 +6,10 @@ import type { TradingHours } from '@/lib/business-hours/open-now'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
-import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { resolveStaffCancellation, staffCancellationAuditInfo } from '@/lib/table-bookings/staff-cancellation-auth'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
+import { carriedTurnaroundMs } from '@/lib/table-bookings/move-table'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
@@ -130,7 +132,7 @@ export async function PATCH(
   }
 
   const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
-    .select('id, status, booking_date, booking_time, duration_minutes, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes, high_chair_count, is_outside_seating')
+    .select('id, status, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes, high_chair_count, is_outside_seating')
     .eq('id', id)
     .maybeSingle()
 
@@ -213,7 +215,16 @@ export async function PATCH(
   // a turnaround gap that the booking's own window does not.
   let savedAssignmentWindows: AssignmentWindow[] = []
 
-  if (!isOutsideSeating) {
+  // The table windows are rewritten only when the guest's window really moves (BK-037): the date,
+  // the time or the duration. A save that changes only notes or the customer used to rewrite them
+  // to the guest's window and throw away the turnaround gap. `windowChanged` above cannot be used
+  // for this: it compares the stored '18:00:00' with the form's '18:00', so it is almost always true.
+  const guestWindowMoved =
+    existing.booking_date !== parsed.data.booking_date ||
+    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time ||
+    Number(existing.duration_minutes) !== parsed.data.duration_minutes
+
+  if (!isOutsideSeating && guestWindowMoved) {
     const { data: currentAssignments, error: currentAssignmentsError } = await auth.supabase
       .from('booking_table_assignments')
       .select('id, start_datetime, end_datetime')
@@ -233,10 +244,20 @@ export async function PATCH(
     }
     savedAssignmentWindows = (currentAssignments ?? []) as AssignmentWindow[]
 
+    // The gap the table hold carries beyond the guest's old end goes with it to the new window.
+    const previousBookingEndIso = existing.end_datetime
+      ?? (existing.start_datetime && Number(existing.duration_minutes) > 0
+        ? new Date(Date.parse(existing.start_datetime) + Number(existing.duration_minutes) * 60 * 1000).toISOString()
+        : null)
+    const turnaroundMs = previousBookingEndIso
+      ? carriedTurnaroundMs(previousBookingEndIso, savedAssignmentWindows.map((row) => row.end_datetime)) ?? 0
+      : 0
+    const tableEndIso = new Date(Date.parse(window.endIso) + turnaroundMs).toISOString()
+
     const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
       .update({
         start_datetime: window.startIso,
-        end_datetime: window.endIso,
+        end_datetime: tableEndIso,
       })
       .eq('table_booking_id', id)
 
@@ -358,7 +379,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireBohTableBookingPermission('manage')
@@ -521,7 +542,15 @@ export async function DELETE(
     }
   }
 
-  const cancellationReason = 'boh_soft_delete'
+  // Deleting a live booking cancels it, so who is cancelling decides the refund here too (BK-046).
+  // A body-less request (a screen loaded before this change) keeps the guest's terms.
+  const body = await request.json().catch(() => ({}))
+  const cancellation = await resolveStaffCancellation(body, auth.userId)
+  if (!cancellation.ok) {
+    return cancellation.response
+  }
+
+  const cancellationReason = cancellation.cancellationReason
   const { data: cancelledBooking, error: cancelError } = await auth.supabase.from('table_bookings')
     .update({
       status: 'cancelled',
@@ -565,7 +594,7 @@ export async function DELETE(
       ...cancelledBooking,
       soft_deleted: true,
     },
-    additional_info: { action: 'boh_table_booking_soft_cancel' },
+    additional_info: { action: 'boh_table_booking_soft_cancel', ...staffCancellationAuditInfo(cancellation.choice) },
   }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
@@ -580,6 +609,8 @@ export async function DELETE(
       bookingDate: existing.booking_date,
       customerId: existing.customer_id,
       source: 'boh_soft_delete',
+      terms: cancellation.terms,
+      staffCancel: true,
     })
     guestNotification = cancelOutcome?.notification ?? null
     depositRefund = toDepositRefundOutcome(cancelOutcome?.refundResult)

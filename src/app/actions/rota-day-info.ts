@@ -5,11 +5,14 @@ import { createClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { eachIsoDateInRange, isValidIsoDate } from '@/lib/dateUtils';
 import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours';
+import { logger } from '@/lib/logger';
+import { loadDayLoads, type DayLoad } from '@/services/day-load';
 
 export type RotaDayInfo = {
   date: string;
   events: { name: string; time: string | null }[];
   privateBookings: { customer_name: string; guest_count: number }[];
+  /** Diners plus event tickets, as every screen counts them (BK-075). */
   tableCovers: number;
   highChairs: number;
   outsideCovers: number;
@@ -36,7 +39,7 @@ export async function getRotaWeekDayInfo(
 
   const supabase = createAdminClient();
 
-  const [eventsRes, pbRes, tbRes, notesRes] = await Promise.all([
+  const [eventsRes, dayLoads, notesRes] = await Promise.all([
     supabase
       .from('events')
       .select('date, name, time')
@@ -45,19 +48,16 @@ export async function getRotaWeekDayInfo(
       .neq('event_status', 'cancelled')
       .order('time', { ascending: true }),
 
-    supabase
-      .from('private_bookings')
-      .select('event_date, customer_name, customer_first_name, guest_count, status')
-      .gte('event_date', weekStart)
-      .lte('event_date', weekEnd)
-      .neq('status', 'cancelled'),
-
-    supabase
-      .from('table_bookings')
-      .select('booking_date, party_size, high_chair_count, is_outside_seating')
-      .gte('booking_date', weekStart)
-      .lte('booking_date', weekEnd)
-      .neq('status', 'cancelled'),
+    // Covers and private hires counted as every other screen counts them (BK-075). The rota used
+    // to count no-shows and every event table, and none of the shared-seating or general
+    // admission tickets.
+    loadDayLoads(weekStart, weekEnd, { db: supabase, withHours: false }).catch((error: unknown) => {
+      logger.error('Could not load covers and private hires for the rota', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { weekStart, weekEnd },
+      });
+      return new Map<string, DayLoad>();
+    }),
 
     // Calendar notes that overlap any part of the week. end_date is nullable and
     // a note without one lasts a single day. `end_date >= weekStart` is never
@@ -88,26 +88,16 @@ export async function getRotaWeekDayInfo(
     }
   }
 
-  for (const pb of pbRes.data ?? []) {
-    const iso = pb.event_date as string;
-    if (result[iso]) {
-      result[iso].privateBookings.push({
-        customer_name: (pb.customer_name || pb.customer_first_name || 'Private booking') as string,
-        guest_count: (pb.guest_count ?? 0) as number,
-      });
-    }
-  }
-
-  for (const tb of tbRes.data ?? []) {
-    const iso = tb.booking_date as string;
-    if (result[iso]) {
-      const partySize = (tb.party_size ?? 0) as number;
-      result[iso].tableCovers += partySize;
-      result[iso].highChairs += (tb.high_chair_count ?? 0) as number;
-      if (tb.is_outside_seating) {
-        result[iso].outsideCovers += partySize;
-      }
-    }
+  for (const load of dayLoads.values()) {
+    const day = result[load.date];
+    if (!day) continue;
+    day.privateBookings = load.privateHires.map((hire) => ({
+      customer_name: hire.customerName,
+      guest_count: hire.guestCount ?? 0,
+    }));
+    day.tableCovers = load.covers;
+    day.highChairs = load.diners.highChairs;
+    day.outsideCovers = load.diners.outside;
   }
 
   // Calendar notes span a range: add to every day they cover within the week.

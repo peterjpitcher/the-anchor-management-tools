@@ -18,6 +18,7 @@ import {
   Input,
   Select,
   ConfirmDialog,
+  Textarea,
   CustomerLink,
   DescriptionList,
   Empty,
@@ -38,6 +39,7 @@ import {
   cancelEventManualBooking,
   getEventBookingRefundInfo,
   markEventBookingPaidManually,
+  getEventBookingDoorCharge,
   transferEventBooking,
   deleteEvent,
 } from '@/app/actions/events'
@@ -47,17 +49,27 @@ import {
 import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
+import { EventGuestAnswersCard } from './EventGuestAnswersCard'
+import { isOnDoorList } from '@/lib/events/door-list'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import { ticketsMissingDetails } from '@/lib/events/guest-details-edit'
 import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
-import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
+import { EventOutcomesCard } from './EventOutcomesCard'
+import { EventNightNotice } from '../_components/EventNightNotice'
+import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
+import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
+import { AddGuestDetailsModal } from './AddGuestDetailsModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventArtworkDownloadsCard } from '@/components/features/events/EventArtworkDownloadsCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
+import { BookingContactEmailNotice } from '@/components/features/bookings/BookingContactEmailNotice'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
@@ -84,6 +96,9 @@ interface EventDetailClientProps {
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
   ticketTypesEnabled: boolean
   initialTicketTypes: EventTicketTypeRow[]
+  /** The covers the kitchen counts for this event (D29, BK-072). */
+  kitchen?: KitchenLoadSummary | null
+  kitchenError?: boolean
   initialError: string | null
 }
 
@@ -179,6 +194,8 @@ export default function EventDetailClient({
   permissions,
   ticketTypesEnabled,
   initialTicketTypes,
+  kitchen,
+  kitchenError,
   initialError,
 }: EventDetailClientProps) {
   const router = useRouter()
@@ -208,8 +225,16 @@ export default function EventDetailClient({
 
   // Row action dialogs
   const [refundingBooking, setRefundingBooking] = useState<EventBookingRow | null>(null)
-  const [editNamesBooking, setEditNamesBooking] = useState<EventBookingRow | null>(null)
+  const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
+  const [compReason, setCompReason] = useState('')
+  const [doorPayment, setDoorPayment] = useState<{
+    bookingId: string
+    method: 'cash' | 'card_terminal'
+    amount: number | null
+    seats: number | null
+    error: string | null
+  } | null>(null)
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
@@ -228,11 +253,14 @@ export default function EventDetailClient({
 
   /* ---- Derived data ---- */
 
-  // Expired payment holds are dead bookings too: counting them inflates the
-  // Overview tab count and "Active Bookings" card relative to totalSeats.
-  const activeBookings = useMemo(
-    () => bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'expired' && b.is_reminder_only !== true),
-    [bookings],
+  // The door list rule the booking sheets and guest list use too (BK-030): cancelled bookings
+  // and lapsed payment holds are not coming.
+  const activeBookings = useMemo(() => bookings.filter(isOnDoorList), [bookings])
+  // BK-016: on an event that needs every guest's details, how many tickets still lack a name or a
+  // required answer (phone, bar and kiosk bookings, and bookings made before a question was added).
+  const ticketsNeedingDetails = useMemo(
+    () => (event && requiresGuestDetails(event) ? ticketsMissingDetails(activeBookings, event.booking_questions ?? []) : 0),
+    [event, activeBookings],
   )
 
   const visibleBookings = useMemo(
@@ -389,23 +417,61 @@ export default function EventDetailClient({
     })
   }, [cancellingBookingId, event, refreshBookings, cancelRefundInfo, cancelRefundOn, cancelRefundMode, cancelRefundAmount])
 
-  const handleMarkPaid = useCallback((bookingId: string, method: 'cash' | 'card_terminal' | 'comp') => {
-    startTransition(async () => {
-      const result = await markEventBookingPaidManually({ bookingId, method })
-      if ('error' in result) {
-        toast.error(result.error)
-        return
-      }
-      if (result.data.state === 'manual_review') {
-        toast.warning('Payment recorded. Booking needs staff review.')
-      } else if (result.data.state === 'blocked') {
-        toast.error(formatStatusLabel(result.data.reason || 'Payment blocked'))
-      } else {
-        toast.success('Booking marked paid')
-      }
-      await refreshBookings()
-    })
+  // Cash Paid and Card Paid show the amount before anything is recorded, and a comp needs a
+  // reason (BK-217). Errors throw so the dialog stays open and shows them.
+  const handleMarkPaid = useCallback(async (
+    bookingId: string,
+    method: 'cash' | 'card_terminal' | 'comp',
+    details: { confirmedAmount?: number; note?: string },
+  ): Promise<void> => {
+    const result = await markEventBookingPaidManually({ bookingId, method, ...details })
+    if ('error' in result) {
+      throw new Error(result.error)
+    }
+    if (result.data.state === 'manual_review') {
+      toast.warning('Payment recorded. Booking needs staff review.')
+    } else if (result.data.state === 'blocked') {
+      throw new Error(formatStatusLabel(result.data.reason || 'Payment blocked'))
+    } else {
+      toast.success(method === 'comp' ? 'Booking comped' : 'Booking marked paid')
+    }
+    await refreshBookings()
   }, [refreshBookings])
+
+  const handleRequestDoorPayment = useCallback((bookingId: string, method: 'cash' | 'card_terminal') => {
+    setDoorPayment({ bookingId, method, amount: null, seats: null, error: null })
+    getEventBookingDoorCharge(bookingId)
+      .then((result) => {
+        setDoorPayment((current) => {
+          if (!current || current.bookingId !== bookingId) return current
+          return 'error' in result
+            ? { ...current, error: result.error }
+            : { ...current, amount: result.data.amount, seats: result.data.seats }
+        })
+      })
+      .catch(() => {
+        // A dropped connection: say so in the dialog rather than leaving it working forever.
+        setDoorPayment((current) => (current && current.bookingId === bookingId
+          ? { ...current, error: 'Could not work out the amount to record. Try again.' }
+          : current))
+      })
+  }, [])
+
+  const handleConfirmDoorPayment = useCallback(async (): Promise<void> => {
+    if (!doorPayment || doorPayment.amount === null) {
+      throw new Error(doorPayment?.error ?? 'Still working out the amount. Try again in a moment.')
+    }
+    await handleMarkPaid(doorPayment.bookingId, doorPayment.method, { confirmedAmount: doorPayment.amount })
+  }, [doorPayment, handleMarkPaid])
+
+  const handleConfirmComp = useCallback(async (): Promise<void> => {
+    if (!compBookingId) return
+    const reason = compReason.trim()
+    if (!reason) {
+      throw new Error('Say why this booking is free.')
+    }
+    await handleMarkPaid(compBookingId, 'comp', { note: reason })
+  }, [compBookingId, compReason, handleMarkPaid])
 
   const handleTransferBooking = useCallback(() => {
     if (!transferringBookingId || !transferTargetEventId.trim()) return
@@ -515,6 +581,22 @@ export default function EventDetailClient({
         <Alert tone="danger">{initialError}</Alert>
       )}
 
+      {/* Private hires that night, and whether a whole-pub hire has stopped ticket sales (D24). */}
+      <EventNightNotice date={event.date} eventId={event.id} />
+
+      {/* The food the kitchen cooks for this event, held back from online food bookings (D29). */}
+      <KitchenLoadEditor
+        title="Kitchen"
+        summary={kitchen ?? null}
+        loadFailed={kitchenError === true}
+        automaticRule="Tick this when guests eat at the event. Left blank, each live ticket counts as one cover at the event's start."
+        emptyReason="No kitchen covers are counted: guests do not eat at this event."
+        withFoodSwitch
+        canEdit={permissions.canManage}
+        save={(input) => setEventKitchenLoad(event.id, input)}
+        onSaved={() => router.refresh()}
+      />
+
       {/* Tabs */}
       <Tabs
         tabs={[
@@ -546,6 +628,11 @@ export default function EventDetailClient({
                     ) : resolvedEventPrice > 0 ? (
                       <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
                     ) : null}
+                    {ticketsNeedingDetails > 0 && (
+                      <Badge tone="warning">
+                        {ticketsNeedingDetails} {ticketsNeedingDetails === 1 ? 'ticket' : 'tickets'} missing details
+                      </Badge>
+                    )}
                   </>
                 }
               />
@@ -553,6 +640,12 @@ export default function EventDetailClient({
                 eventId={event.id}
                 canManage={permissions.canManage}
                 onResolved={refreshBookings}
+              />
+              <EventOutcomesCard
+                event={event}
+                bookings={bookings}
+                canManage={permissions.canManage}
+                onChanged={refreshBookings}
               />
               <AttendeesTab
                 event={event}
@@ -580,10 +673,13 @@ export default function EventDetailClient({
                   setEditSeatsError(null)
                 }}
                 onCancelBooking={setCancellingBookingId}
-                onMarkPaid={handleMarkPaid}
-                onRequestComp={setCompBookingId}
+                onMarkPaid={handleRequestDoorPayment}
+                onRequestComp={(bookingId) => {
+                  setCompReason('')
+                  setCompBookingId(bookingId)
+                }}
                 onRefundBooking={setRefundingBooking}
-                onEditNames={setEditNamesBooking}
+                onEditNames={setAddDetailsBooking}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
                 transferEvents={transferEvents}
@@ -599,6 +695,12 @@ export default function EventDetailClient({
                 }}
                 isPending={isPending}
               />
+              <EventGuestAnswersCard
+                eventId={event.id}
+                questions={event.booking_questions ?? []}
+                bookings={activeBookings}
+                canManage={permissions.canManage}
+              />
               <MarketingMessagesCard messages={marketingMessages} />
             </div>
           )}
@@ -612,7 +714,7 @@ export default function EventDetailClient({
                 allowMultiple={allowMultipleTicketTypes}
                 event={event as TicketSettingsEvent}
               />
-              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
             </div>
           )}
 
@@ -719,20 +821,53 @@ export default function EventDetailClient({
         loading={cancelRefundLoading || isPending}
       />
 
-      {/* Comp confirmation dialog */}
+      {/* Comp confirmation dialog: a free booking needs a reason (BK-217). */}
       <ConfirmDialog
         open={compBookingId !== null}
         onClose={() => setCompBookingId(null)}
-        onConfirm={() => {
-          if (compBookingId) {
-            handleMarkPaid(compBookingId, 'comp')
-          }
-        }}
+        onConfirm={handleConfirmComp}
         title="Comp Booking"
-        message="Mark this booking as complimentary? It will be confirmed with no payment taken."
+        message={
+          <div className="space-y-3">
+            <p className="text-sm text-text-muted">
+              Mark this booking as complimentary? It will be confirmed with no payment taken.
+            </p>
+            <Textarea
+              label="Reason"
+              hint="Required, so the free entry can be explained later."
+              value={compReason}
+              onChange={(e) => setCompReason(e.target.value)}
+              maxLength={500}
+              minRows={2}
+              required
+            />
+          </div>
+        }
         confirmLabel="Comp Booking"
         tone="primary"
-        loading={isPending}
+      />
+
+      {/* Cash Paid / Card Paid: show the amount before it is recorded (BK-217). */}
+      <ConfirmDialog
+        open={doorPayment !== null}
+        onClose={() => setDoorPayment(null)}
+        onConfirm={handleConfirmDoorPayment}
+        title={doorPayment?.method === 'card_terminal' ? 'Record card payment' : 'Record cash payment'}
+        message={
+          doorPayment?.error ? (
+            <Alert tone="danger" size="sm">{doorPayment.error}</Alert>
+          ) : doorPayment?.amount === null || doorPayment?.amount === undefined ? (
+            <PageLoading inline label="Working out the amount" className="py-4" />
+          ) : (
+            <p className="text-sm text-text">
+              Record {formatCurrency(doorPayment.amount)} paid{' '}
+              {doorPayment.method === 'card_terminal' ? 'by card' : 'in cash'} for{' '}
+              {doorPayment.seats === 1 ? '1 seat' : `${doorPayment.seats} seats`}? This confirms the booking.
+            </p>
+          )
+        }
+        confirmLabel={doorPayment?.amount != null ? `Record ${formatCurrency(doorPayment.amount)}` : 'Record payment'}
+        tone="primary"
       />
 
       {/* After-the-fact refund dialog */}
@@ -742,10 +877,11 @@ export default function EventDetailClient({
         onDone={refreshBookings}
       />
 
-      {/* Edit attendee names modal */}
-      <EditAttendeeNamesModal
-        booking={editNamesBooking}
-        onClose={() => setEditNamesBooking(null)}
+      {/* Add guest details to a booking that has none (BK-016) */}
+      <AddGuestDetailsModal
+        booking={addDetailsBooking}
+        questions={event?.booking_questions ?? []}
+        onClose={() => setAddDetailsBooking(null)}
         onSaved={refreshBookings}
       />
 
@@ -1018,7 +1154,7 @@ function AttendeesTab({
   onSaveSeats: () => void
   onCancelEdit: () => void
   onCancelBooking: (id: string) => void
-  onMarkPaid: (id: string, method: 'cash' | 'card_terminal' | 'comp') => void
+  onMarkPaid: (id: string, method: 'cash' | 'card_terminal') => void
   onRequestComp: (id: string) => void
   onRefundBooking: (booking: EventBookingRow) => void
   onEditNames: (booking: EventBookingRow) => void
@@ -1031,6 +1167,8 @@ function AttendeesTab({
   onCancelTransfer: () => void
   isPending: boolean
 }) {
+  // Copying a booking's email onto the customer record edits the customer (BK-078).
+  const canUpdateCustomerEmail = usePermissions().hasPermission('customers', 'manage')
   const pageSize = 25
   const [attendeePage, setAttendeePage] = useState(1)
   const totalAttendeePages = Math.max(1, Math.ceil(visibleBookings.length / pageSize))
@@ -1064,7 +1202,7 @@ function AttendeesTab({
   // Numbered attendee-name list, shared between the desktop table cell and the
   // mobile card so both stay in sync.
   const renderAttendeeNames = (booking: EventBookingRow) => {
-    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} canEdit={canManage} />
+    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} questions={event.booking_questions ?? []} canEdit={canManage} />
     const attendeeNames = (booking.attendee_names ?? []).filter(
       (name) => typeof name === 'string' && name.trim().length > 0
     )
@@ -1075,6 +1213,19 @@ function AttendeesTab({
           <li key={index}>{name}</li>
         ))}
       </ol>
+    )
+  }
+
+  // The booking's notes, where online meal and early-arrival requests land as "UNCONFIRMED
+  // REQUEST" (BK-015). They were only seen if someone printed the booking sheets.
+  const renderBookingNotes = (booking: EventBookingRow) => {
+    const note = booking.notes?.trim()
+    if (!note || booking.is_reminder_only) return null
+    return (
+      <div className="mt-1 flex flex-wrap items-start gap-1 text-xs text-text-muted">
+        {/^UNCONFIRMED REQUEST/i.test(note) && <Badge tone="warning" size="sm">Unconfirmed request</Badge>}
+        <span>{note}</span>
+      </div>
     )
   }
 
@@ -1177,7 +1328,7 @@ function AttendeesTab({
         </Button>
         {canEditNames && (
           <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-            Edit Names
+            Add Guest Details
           </Button>
         )}
         {booking.status === 'confirmed' && (
@@ -1208,11 +1359,28 @@ function AttendeesTab({
 
   return (
     <div className="space-y-6">
+      {/* Guests who gave a different email for their booking than the one on their record (BK-078). */}
+      {visibleBookings.filter((booking) => booking.contact_email).map((booking) => (
+        <BookingContactEmailNotice
+          key={`contact-email-${booking.id}`}
+          bookingType="event"
+          bookingId={booking.id}
+          guestName={[booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || null}
+          contactEmail={booking.contact_email as string}
+          customerEmail={booking.customer?.email ?? null}
+          canUpdateCustomer={canUpdateCustomerEmail}
+        />
+      ))}
       <StatGrid columns={3}>
         <Stat label="Total Seats Booked" value={totalSeats} />
         <Stat label="Active Bookings" value={activeBookingsCount} />
         <Stat label="Capacity" value={capacityPct !== null ? `${capacityPct}%` : '-'} />
-        <Stat label="Est. Revenue" value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'} />
+        {/* A flat £25 a booked seat for bar and food, not ticket money (BK-118). */}
+        <Stat
+          label="Est. bar and food spend"
+          value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}
+          hint="£25 a head, not ticket money"
+        />
         <Stat label="Paid" value={formatCurrency(totalPaidAmount)} />
         <Stat label="Link Clicks" value={totalLinkClicks.toLocaleString()} />
       </StatGrid>
@@ -1312,6 +1480,7 @@ function AttendeesTab({
                             fallback="-"
                           />
                           {renderAttendeeNames(booking)}
+                          {renderBookingNotes(booking)}
                         </TableCell>
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
@@ -1431,6 +1600,7 @@ function AttendeesTab({
                     </dl>
 
                     {renderAttendeeNames(booking)}
+                    {renderBookingNotes(booking)}
 
                     {canManage && (
                       <div className="mt-3 flex flex-wrap gap-2">

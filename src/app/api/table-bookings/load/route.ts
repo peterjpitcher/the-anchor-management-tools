@@ -23,6 +23,7 @@ import {
 } from '@/lib/table-bookings/kitchen-pacing'
 import { getKitchenWindowForDate } from '@/services/business-hours'
 import { logger } from '@/lib/logger'
+import { daysAhead, recordFunnelEvent, summariseAvailability } from '@/lib/booking-funnel/events'
 
 // Grid resolution for the per-slot availability read-out (minutes between offered times).
 const SLOT_STEP_MINUTES = 15
@@ -88,7 +89,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  return withApiAuth(async (req) => {
+  return withApiAuth(async (req, apiKey) => {
     const url = new URL(req.url)
     const date = url.searchParams.get('date')
 
@@ -199,6 +200,31 @@ export async function GET(request: NextRequest) {
       } else {
         tableAvailability = data
       }
+
+      // BK-101 and BK-097: every answer is counted, so "no tables" and "could not check" can be
+      // told apart from fewer visitors. No personal data: the date, party size and outcome only.
+      const outcome = summariseAvailability(tableAvailability)
+      if (outcome.calculationState === 'unknown' && !error) {
+        // The database function caught its own error and answered "unknown"; its WARNING in the
+        // database log says why. Logged here as well, so it shows in the app's logs too.
+        logger.error('Table availability came back unknown', {
+          error: new Error('check_table_availability_v06 answered unknown'),
+          metadata: { date, partySize, purpose, publicReason: outcome.publicReason },
+        })
+      }
+      await recordFunnelEvent(supabase, {
+        source: 'ams',
+        stage: 'availability',
+        route: 'table-bookings/load',
+        booking_date: date,
+        days_ahead: daysAhead(date),
+        party_size: partySize <= 500 ? partySize : null,
+        purpose,
+        calculation_state: outcome.calculationState,
+        slots_offered: outcome.slotsOffered,
+        public_reason: outcome.publicReason,
+        api_key_id: apiKey?.id ?? null,
+      })
     }
 
     return createApiResponse(

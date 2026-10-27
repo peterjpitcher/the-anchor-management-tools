@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import {
+  Alert,
   BarChart,
   Card,
   CardBody,
@@ -25,7 +26,8 @@ import {
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { tableBookingsNav } from '../_shared/nav'
 import { ReportsWindowSwitch } from './ReportsWindowSwitch'
-import { formatDateTimeInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
+import { loadWebsiteBookingFunnel } from '@/lib/analytics/website-booking-funnel'
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-GB').format(value)
@@ -89,7 +91,8 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
     getUserPermissions()
   ])
 
-  if (!canViewReports) {
+  // The report lists guests and their bookings, so it needs table bookings access too (BK-120).
+  if (!canViewReports || !canViewTableBookings) {
     redirect('/unauthorized')
   }
 
@@ -97,7 +100,10 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
     redirect('/table-bookings/foh')
   }
 
-  const snapshot = await loadTableBookingReportsSnapshot({ window: selectedWindow })
+  const [snapshot, websiteFunnel] = await Promise.all([
+    loadTableBookingReportsSnapshot({ window: selectedWindow }),
+    loadWebsiteBookingFunnel(8)
+  ])
 
   return (
     <PageLayout
@@ -154,6 +160,59 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
             ariaLabel={`Covers trend: ${describeCoverTrend(snapshot.covers_trend.granularity)}`}
           />
         </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Website Booking Funnel"
+          subtitle="Website table bookings by week, Monday to Sunday. Searches, no tables, could not check and refusals are counted from when this record started; test and preview traffic is left out."
+        />
+        {websiteFunnel.error ? (
+          <CardBody>
+            <Alert tone="danger" size="sm">
+              {websiteFunnel.error}
+            </Alert>
+          </CardBody>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Week of</TableHead>
+                <TableHead align="right">Date checks</TableHead>
+                <TableHead align="right">Searches</TableHead>
+                <TableHead align="right">No tables</TableHead>
+                <TableHead align="right">Could not check</TableHead>
+                <TableHead align="right">Refused</TableHead>
+                <TableHead align="right">Failed</TableHead>
+                <TableHead align="right">Bookings</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {websiteFunnel.weeks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8}>
+                    <Empty size="sm" title="No website booking activity recorded yet" />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                websiteFunnel.weeks.map((week) => (
+                  <TableRow key={week.weekStart}>
+                    <TableCell>
+                      {formatDateInLondon(`${week.weekStart}T12:00:00Z`, { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </TableCell>
+                    <TableCell align="right">{formatNumber(week.dateChecks)}</TableCell>
+                    <TableCell align="right">{formatNumber(week.searches)}</TableCell>
+                    <TableCell align="right">{formatNumber(week.noTables)}</TableCell>
+                    <TableCell align="right">{formatNumber(week.couldNotCheck)}</TableCell>
+                    <TableCell align="right">{formatNumber(week.refused)}</TableCell>
+                    <TableCell align="right">{formatNumber(week.failed)}</TableCell>
+                    <TableCell align="right" className="font-medium">{formatNumber(week.bookings)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">

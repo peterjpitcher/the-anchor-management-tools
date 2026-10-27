@@ -535,6 +535,66 @@ export type Database = {
           },
         ]
       }
+      booking_funnel_events: {
+        Row: {
+          api_key_id: string | null
+          booking_date: string | null
+          calculation_state: string | null
+          days_ahead: number | null
+          http_status: number | null
+          id: string
+          occurred_at: string
+          page_path: string | null
+          party_size: number | null
+          public_reason: string | null
+          purpose: string | null
+          reason_code: string | null
+          route: string
+          slots_offered: number | null
+          source: string
+          stage: string
+          upstream_code: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          booking_date?: string | null
+          calculation_state?: string | null
+          days_ahead?: number | null
+          http_status?: number | null
+          id?: string
+          occurred_at?: string
+          page_path?: string | null
+          party_size?: number | null
+          public_reason?: string | null
+          purpose?: string | null
+          reason_code?: string | null
+          route: string
+          slots_offered?: number | null
+          source: string
+          stage: string
+          upstream_code?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          booking_date?: string | null
+          calculation_state?: string | null
+          days_ahead?: number | null
+          http_status?: number | null
+          id?: string
+          occurred_at?: string
+          page_path?: string | null
+          party_size?: number | null
+          public_reason?: string | null
+          purpose?: string | null
+          reason_code?: string | null
+          route?: string
+          slots_offered?: number | null
+          source?: string
+          stage?: string
+          upstream_code?: string | null
+        }
+        Relationships: []
+      }
       booking_holds: {
         Row: {
           consumed_at: string | null
@@ -1149,6 +1209,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           completed_at: string | null
+          contact_email: string | null
           created_at: string
           customer_id: string
           event_id: string
@@ -1176,6 +1237,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           completed_at?: string | null
+          contact_email?: string | null
           created_at?: string
           customer_id: string
           event_id: string
@@ -1203,6 +1265,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           completed_at?: string | null
+          contact_email?: string | null
           created_at?: string
           customer_id?: string
           event_id?: string
@@ -3283,6 +3346,7 @@ export type Database = {
           first_name: string
           id: string
           internal_notes: string | null
+          is_placeholder: boolean
           last_email_failure_reason: string | null
           last_failure_type: string | null
           last_name: string
@@ -3340,6 +3404,7 @@ export type Database = {
           first_name: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name: string
@@ -3397,6 +3462,7 @@ export type Database = {
           first_name?: string
           id?: string
           internal_notes?: string | null
+          is_placeholder?: boolean
           last_email_failure_reason?: string | null
           last_failure_type?: string | null
           last_name?: string
@@ -5008,6 +5074,44 @@ export type Database = {
           },
         ]
       }
+      event_door_takings: {
+        Row: {
+          event_id: string
+          free_entries: number
+          note: string | null
+          recorded_at: string
+          recorded_by: string | null
+          till_total: number
+          updated_at: string
+        }
+        Insert: {
+          event_id: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total: number
+          updated_at?: string
+        }
+        Update: {
+          event_id?: string
+          free_entries?: number
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          till_total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_door_takings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_faqs: {
         Row: {
           answer: string
@@ -5574,6 +5678,7 @@ export type Database = {
           cancellation_policy: string | null
           capacity: number | null
           category_id: string | null
+          collect_guest_details: boolean | null
           created_at: string
           date: string
           doors_time: string | null
@@ -5583,6 +5688,7 @@ export type Database = {
           event_type: string | null
           facebook_event_description: string | null
           facebook_event_name: string | null
+          food_served: boolean
           gallery_image_urls: Json | null
           gbp_event_description: string | null
           gbp_event_title: string | null
@@ -5593,6 +5699,8 @@ export type Database = {
           image_alt_text: string | null
           is_free: boolean | null
           keywords: Json | null
+          kitchen_covers: number | null
+          kitchen_food_time: string | null
           landscape_image_url: string | null
           last_entry_time: string | null
           local_seo_keywords: Json | null
@@ -5642,6 +5750,7 @@ export type Database = {
           cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
+          collect_guest_details?: boolean | null
           created_at?: string
           date: string
           doors_time?: string | null
@@ -5651,6 +5760,7 @@ export type Database = {
           event_type?: string | null
           facebook_event_description?: string | null
           facebook_event_name?: string | null
+          food_served?: boolean
           gallery_image_urls?: Json | null
           gbp_event_description?: string | null
           gbp_event_title?: string | null
@@ -5661,6 +5771,8 @@ export type Database = {
           image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           landscape_image_url?: string | null
           last_entry_time?: string | null
           local_seo_keywords?: Json | null
@@ -5710,6 +5822,7 @@ export type Database = {
           cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
+          collect_guest_details?: boolean | null
           created_at?: string
           date?: string
           doors_time?: string | null
@@ -5719,6 +5832,7 @@ export type Database = {
           event_type?: string | null
           facebook_event_description?: string | null
           facebook_event_name?: string | null
+          food_served?: boolean
           gallery_image_urls?: Json | null
           gbp_event_description?: string | null
           gbp_event_title?: string | null
@@ -5729,6 +5843,8 @@ export type Database = {
           image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           landscape_image_url?: string | null
           last_entry_time?: string | null
           local_seo_keywords?: Json | null
@@ -11106,6 +11222,36 @@ export type Database = {
           },
         ]
       }
+      paypal_capture_fees: {
+        Row: {
+          capture_id: string
+          currency: string
+          fee_amount: number
+          gross_amount: number | null
+          net_amount: number | null
+          recorded_at: string
+          source: string
+        }
+        Insert: {
+          capture_id: string
+          currency?: string
+          fee_amount: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source: string
+        }
+        Update: {
+          capture_id?: string
+          currency?: string
+          fee_amount?: number
+          gross_amount?: number | null
+          net_amount?: number | null
+          recorded_at?: string
+          source?: string
+        }
+        Relationships: []
+      }
       payroll_month_approvals: {
         Row: {
           approved_at: string
@@ -12511,6 +12657,8 @@ export type Database = {
           invoice_deposit_treatment: string | null
           invoice_id: string | null
           invoice_sent_at: string | null
+          kitchen_covers: number | null
+          kitchen_food_time: string | null
           layout: string | null
           locked_at: string | null
           locked_by: string | null
@@ -12608,6 +12756,8 @@ export type Database = {
           invoice_deposit_treatment?: string | null
           invoice_id?: string | null
           invoice_sent_at?: string | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           layout?: string | null
           locked_at?: string | null
           locked_by?: string | null
@@ -12705,6 +12855,8 @@ export type Database = {
           invoice_deposit_treatment?: string | null
           invoice_id?: string | null
           invoice_sent_at?: string | null
+          kitchen_covers?: number | null
+          kitchen_food_time?: string | null
           layout?: string | null
           locked_at?: string | null
           locked_by?: string | null
@@ -18525,6 +18677,7 @@ export type Database = {
           committed_party_size: number
           completed_at: string | null
           confirmed_at: string | null
+          contact_email: string | null
           correlation_id: string | null
           created_at: string | null
           customer_id: string | null
@@ -18535,6 +18688,8 @@ export type Database = {
           deposit_refund_cutoff_days: number | null
           deposit_refund_policy: string | null
           deposit_refund_status: string | null
+          deposit_review_needed_at: string | null
+          deposit_review_note: string | null
           deposit_rule: string | null
           deposit_waived: boolean
           dietary_requirements: string[] | null
@@ -18602,6 +18757,7 @@ export type Database = {
           committed_party_size: number
           completed_at?: string | null
           confirmed_at?: string | null
+          contact_email?: string | null
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -18612,6 +18768,8 @@ export type Database = {
           deposit_refund_cutoff_days?: number | null
           deposit_refund_policy?: string | null
           deposit_refund_status?: string | null
+          deposit_review_needed_at?: string | null
+          deposit_review_note?: string | null
           deposit_rule?: string | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null
@@ -18679,6 +18837,7 @@ export type Database = {
           committed_party_size?: number
           completed_at?: string | null
           confirmed_at?: string | null
+          contact_email?: string | null
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -18689,6 +18848,8 @@ export type Database = {
           deposit_refund_cutoff_days?: number | null
           deposit_refund_policy?: string | null
           deposit_refund_status?: string | null
+          deposit_review_needed_at?: string | null
+          deposit_review_note?: string | null
           deposit_rule?: string | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null
@@ -20694,6 +20855,24 @@ export type Database = {
           },
         ]
       }
+      online_income_movements: {
+        Row: {
+          booking_reference: string | null
+          capture_id: string | null
+          gross: number | null
+          is_booking_money: boolean | null
+          method: string | null
+          money_date: string | null
+          net: number | null
+          paypal_fee: number | null
+          refunded: number | null
+          source: string | null
+          source_id: string | null
+          status: string | null
+          visit_date: string | null
+        }
+        Relationships: []
+      }
       private_booking_sms_reminders: {
         Row: {
           balance_amount: number | null
@@ -21354,6 +21533,15 @@ export type Database = {
         Returns: Json
       }
       categorize_historical_events: { Args: never; Returns: number }
+      change_christmas_party_v01: {
+        Args: {
+          p_booking_id: string
+          p_course_counts: number[]
+          p_expected_course_counts?: number[]
+          p_removed_ordinals?: number[]
+        }
+        Returns: Json
+      }
       check_and_reserve_capacity: {
         Args: {
           p_booking_time: string
@@ -22095,6 +22283,13 @@ export type Database = {
         }
         Returns: number
       }
+      events_closed_by_whole_pub_hire: {
+        Args: { p_assume_holding?: string; p_event_ids: string[] }
+        Returns: {
+          event_id: string
+          private_booking_id: string
+        }[]
+      }
       finalise_marketing_send: {
         Args: {
           p_email_message_id: string
@@ -22137,6 +22332,10 @@ export type Database = {
           p_sent: boolean
         }
         Returns: Json
+      }
+      gdpr_scrub_audit_logs_v01: {
+        Args: { p_booking_ids?: string[]; p_customer_ids: string[] }
+        Returns: number
       }
       generate_booking_reference: { Args: never; Returns: string }
       generate_invoice_reminder_digest: {
@@ -22533,6 +22732,22 @@ export type Database = {
           space_name: string
         }[]
       }
+      get_private_booking_diner_clashes: {
+        Args: { p_booking_id: string }
+        Returns: {
+          booking_reference: string
+          clash_kind: string
+          covers: number
+          ends_at: string
+          event_booking_id: string
+          event_id: string
+          event_name: string
+          guest_name: string
+          starts_at: string
+          table_booking_id: string
+          table_names: string
+        }[]
+      }
       get_private_booking_settlement_total: {
         Args: { p_booking_id: string }
         Returns: number
@@ -22770,6 +22985,20 @@ export type Database = {
           p_expected_revision: number
         }
         Returns: Json
+      }
+      kitchen_food_load_covers: {
+        Args: { p_date: string; p_from_minutes: number; p_to_minutes: number }
+        Returns: number
+      }
+      kitchen_food_loads: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          covers: number
+          food_date: string
+          food_time: string
+          source_id: string
+          source_kind: string
+        }[]
       }
       link_employee_invite_account: {
         Args: { p_auth_user_id: string; p_token: string }
@@ -23097,6 +23326,21 @@ export type Database = {
           unsubscribed_count: number
         }[]
       }
+      private_booking_occupied_window: {
+        Args: {
+          p_cleardown_time: string
+          p_end_time: string
+          p_end_time_next_day: boolean
+          p_event_date: string
+          p_setup_date: string
+          p_setup_time: string
+          p_start_time: string
+        }
+        Returns: {
+          occupied_from: string
+          occupied_until: string
+        }[]
+      }
       private_booking_occupies_space: {
         Args: {
           p_date_tbd: boolean
@@ -23112,6 +23356,19 @@ export type Database = {
           amount: number
           method: string
           paid_at: string
+        }[]
+      }
+      private_hire_table_blocks: {
+        Args: {
+          p_exclude_private_booking_id?: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: {
+          blocked_from: string
+          blocked_until: string
+          private_booking_id: string
+          table_id: string
         }[]
       }
       process_pending_jobs: {
@@ -24113,6 +24370,19 @@ export type Database = {
           p_voucher_number: string
         }
         Returns: Json
+      }
+      website_booking_funnel: {
+        Args: { p_weeks?: number }
+        Returns: {
+          bookings: number
+          could_not_check: number
+          date_checks: number
+          failed: number
+          no_tables: number
+          refused: number
+          searches: number
+          week_start: string
+        }[]
       }
       windows_overlap: {
         Args: {

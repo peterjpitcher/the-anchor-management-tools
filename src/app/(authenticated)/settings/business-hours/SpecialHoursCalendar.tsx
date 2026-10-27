@@ -18,6 +18,7 @@ import {
 import { Badge, Button, Card, CardBody, CardHeader, Icon, IconButton, PageLoading, SubHeading, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SpecialHoursModal } from './SpecialHoursModal'
+import { HoursImpactDialog, type HoursImpactNotice } from './HoursImpactDialog'
 import {
   SPECIAL_HOURS_BADGE,
   SPECIAL_HOURS_DAY_CLASSES,
@@ -133,9 +134,13 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
     setModalData(day.special || null)
   }
 
-  const handleModalSave = () => {
+  // Bookings an hours change left outside the hours (BK-076), shown once the modal has closed.
+  const [impactNotice, setImpactNotice] = useState<HoursImpactNotice | null>(null)
+
+  const handleModalSave = (notice?: HoursImpactNotice | null) => {
     loadMonthData(currentMonth)
     router.refresh()
+    if (notice) setImpactNotice(notice)
   }
 
   const calendarDays: CalendarDay[] = useMemo(() => {
@@ -305,6 +310,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
           onSave={handleModalSave}
         />
       )}
+      <HoursImpactDialog notice={impactNotice} onClose={() => setImpactNotice(null)} />
     </Card>
   )
 }

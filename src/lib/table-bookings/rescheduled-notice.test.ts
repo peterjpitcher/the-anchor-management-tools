@@ -211,6 +211,83 @@ describe('the booking amended notice', () => {
     expect(notice.email?.text).not.toContain('Invalid Date')
   })
 
+  // BK-174: a visit already over, or the retired card-capture state, is never messaged. They used to
+  // be told they were unconfirmed and owed "your deposit of the deposit".
+  it.each(['visited_waiting_for_review', 'review_clicked', 'pending_card_capture', 'no_show', 'completed'])(
+    'never messages a %s booking',
+    async (status) => {
+      const outcome = await sendTableBookingRescheduledNotificationIfAllowed(
+        supabase({ ...CONFIRMED_BOOKING, status }),
+        { tableBookingId: 'tb-1', previous: { startDateTime: '2026-12-05T17:00:00.000Z' } },
+      )
+
+      expect(notifyCustomerMock).not.toHaveBeenCalled()
+      expect(outcome).toBeNull()
+    },
+  )
+
+  it('never says "the deposit of the deposit" when the amount is unknown', async () => {
+    // A pending_payment booking whose deposit cannot be read: no stored amount, and a party the
+    // group rule does not charge.
+    await sendTableBookingRescheduledNotificationIfAllowed(
+      supabase({ ...CONFIRMED_BOOKING, status: 'pending_payment', payment_status: null, party_size: 4 }),
+      { tableBookingId: 'tb-1', previous: { startDateTime: '2026-12-05T17:00:00.000Z' } },
+    )
+
+    const notice = captureNotice()
+    expect(notice.email?.text).toContain('is not confirmed yet: we still need your deposit.')
+    expect(notice.email?.text).not.toContain('the deposit of the deposit')
+    expect(notice.email?.text).not.toContain('deposit of the deposit')
+    expect(notice.sms?.body).toContain('It is not confirmed yet: we still need your deposit.')
+  })
+
+  it('reports which channel reached the guest, and when none did (BK-091)', async () => {
+    const sent = await sendTableBookingRescheduledNotificationIfAllowed(supabase(CONFIRMED_BOOKING), {
+      tableBookingId: 'tb-1',
+      previous: { partySize: 4 },
+    })
+    expect(sent).toMatchObject({ status: 'sent', channel: 'email' })
+
+    notifyCustomerMock.mockResolvedValueOnce({
+      selectedChannels: [],
+      attempts: [],
+      finalStatus: 'no_channel',
+      noChannelReason: 'no_email_or_mobile',
+    })
+    const unreached = await sendTableBookingRescheduledNotificationIfAllowed(supabase(CONFIRMED_BOOKING), {
+      tableBookingId: 'tb-1',
+      previous: { partySize: 4 },
+    })
+    expect(unreached).toMatchObject({ status: 'no_channel' })
+  })
+
+  // Owner decision D20: a confirmed party that grew into owing a deposit stays confirmed, and the
+  // amended notice says the deposit is still to pay, with the link, and no hold deadline.
+  it('tells a confirmed booking that owes a deposit it is still confirmed, with the deposit to pay', async () => {
+    await sendTableBookingRescheduledNotificationIfAllowed(
+      supabase({
+        ...CONFIRMED_BOOKING,
+        status: 'confirmed',
+        payment_status: 'pending',
+        party_size: 16,
+        deposit_amount: 160,
+        deposit_rule: 'group',
+        deposit_rate: 10,
+        deposit_basis: 'per_head',
+        hold_expires_at: '2026-12-05T19:00:00.000Z',
+      }),
+      { tableBookingId: 'tb-1', previous: { partySize: 12 } },
+    )
+
+    const notice = captureNotice()
+    expect(notice.email?.text).toContain('is still confirmed')
+    expect(notice.email?.text).toContain('Your deposit of £160.00 is still to pay.')
+    expect(notice.email?.text).toContain('Your table stays booked. Please pay the deposit before your visit.')
+    expect(notice.email?.text).not.toContain('hold on your table runs out')
+    expect(notice.sms?.body).toContain("It's still confirmed. Your deposit of £160.00 is still to pay.")
+    expect(notice.sms?.body).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
+  })
+
   it('still refuses to message a cancelled booking', async () => {
     await sendTableBookingRescheduledNotificationIfAllowed(
       supabase({ ...CONFIRMED_BOOKING, status: 'cancelled' }),
