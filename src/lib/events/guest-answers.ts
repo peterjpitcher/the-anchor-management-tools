@@ -53,6 +53,16 @@ export function guestAnswers(attendee: StoredEventAttendee): GuestAnswer[] {
     .map((answer) => ({ label: String(answer.label ?? ''), value: displayAnswer(answer.type, answer.value.trim()) }))
 }
 
+/**
+ * The guest's own mobile as a door-sheet line (BK-013), so staff can reach that guest on the
+ * night. Printed only on the confidential door list and the guest answers export, never on a
+ * table card, and never used to send a message.
+ */
+export function guestPhoneLine(attendee: StoredEventAttendee): GuestAnswer[] {
+  const phone = typeof attendee.phone === 'string' ? attendee.phone.trim() : ''
+  return phone ? [{ label: 'Mobile', value: phone }] : []
+}
+
 export function displayAnswer(type: string | undefined, value: string): string {
   if (type === 'yes_no') return value === 'yes' ? 'Yes' : value === 'no' ? 'No' : value
   return value

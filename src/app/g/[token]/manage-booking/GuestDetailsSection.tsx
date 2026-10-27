@@ -17,7 +17,7 @@ import { displayAnswer } from '@/lib/events/guest-answers'
 
 /** Shown beside the guest details, the same promise the website booking form makes (BK-017). */
 const MANAGE_GUEST_DETAILS_PRIVACY_LINE =
-  'Only add people who are happy to share these details with us. We use their answers for this event only, and delete them 90 days after it.'
+  'Only add people who are happy to share these details with us. We use their answers and mobile numbers for this event only, and delete them 90 days after it.'
 const MANAGE_GUEST_DETAILS_CONFIRM_LABEL = "Everyone I've added is happy to share these details."
 
 /**
@@ -79,6 +79,17 @@ export function GuestDetailsSection({
                 defaultValue={guest.name}
                 maxLength={120}
                 required
+              />
+            </GuestField>
+            <GuestField id={`guest_phone_${index}`} label={`Ticket ${index + 1} mobile number (optional)`}>
+              <GuestInput
+                {...guestFieldControlProps({ id: `guest_phone_${index}` })}
+                name={`guest_phone_${index}`}
+                type="tel"
+                autoComplete="off"
+                inputMode="tel"
+                defaultValue={guest.phone ?? ''}
+                maxLength={40}
               />
             </GuestField>
             {guest.answers.map((answer) => {

@@ -1,4 +1,4 @@
-import { guestAnswers, storedAttendees, type GuestAnswer } from '@/lib/events/guest-answers'
+import { guestAnswers, guestPhoneLine, storedAttendees, type GuestAnswer } from '@/lib/events/guest-answers'
 
 export interface GuestListBookingInput {
   seats: number | null
@@ -46,7 +46,7 @@ function toGroup(b: GuestListBookingInput): GuestGroup {
   const seats = Math.max(b.seats ?? 1, 1)
   const detailed = storedAttendees(b.attendees)
   const named = detailed.length > 0
-    ? detailed.map((attendee) => ({ name: attendee.name.trim(), answers: guestAnswers(attendee) }))
+    ? detailed.map((attendee) => ({ name: attendee.name.trim(), answers: [...guestAnswers(attendee), ...guestPhoneLine(attendee)] }))
     : (b.attendeeNames ?? []).map((name) => ({ name: (name ?? '').trim(), answers: [] as GuestAnswer[] }))
   const hasNames = named.some((guest) => guest.name.length > 0)
   const paymentNote = b.paymentNote?.trim() || null
