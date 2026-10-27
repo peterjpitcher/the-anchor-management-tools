@@ -23,12 +23,14 @@ import {
   DescriptionList,
   Empty,
   LinkButton,
+  SearchInput,
   toast,
 } from '@/ds'
 import type { DescriptionListItem } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
+import { filterEventBookings } from '@/lib/events/attendee-search'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import type { EventMarketingMessage } from '@/app/actions/event-marketing-messages'
 import type { EventCategory } from '@/types/event-categories'
@@ -1171,10 +1173,16 @@ function AttendeesTab({
   const canUpdateCustomerEmail = usePermissions().hasPermission('customers', 'manage')
   const pageSize = 25
   const [attendeePage, setAttendeePage] = useState(1)
-  const totalAttendeePages = Math.max(1, Math.ceil(visibleBookings.length / pageSize))
+  // Find a guest by name or by an 07 number without paging through 25 at a time (BK-180).
+  const [attendeeSearch, setAttendeeSearch] = useState('')
+  const matchingBookings = useMemo(
+    () => filterEventBookings(visibleBookings, attendeeSearch),
+    [visibleBookings, attendeeSearch],
+  )
+  const totalAttendeePages = Math.max(1, Math.ceil(matchingBookings.length / pageSize))
   const pagedBookings = useMemo(
-    () => visibleBookings.slice((attendeePage - 1) * pageSize, attendeePage * pageSize),
-    [visibleBookings, attendeePage],
+    () => matchingBookings.slice((attendeePage - 1) * pageSize, attendeePage * pageSize),
+    [matchingBookings, attendeePage],
   )
   const transferOptions = useMemo(() => {
     // Past events are never valid transfer targets (the RPC would bounce them
@@ -1445,6 +1453,20 @@ function AttendeesTab({
           <Empty size="sm" title="No bookings yet" description="Bookings for this event show here once they are made." />
         ) : (
           <>
+            <div className="mb-3 max-w-sm">
+              <SearchInput
+                aria-label="Search attendees by name or phone"
+                value={attendeeSearch}
+                onChange={(value) => {
+                  setAttendeeSearch(value)
+                  setAttendeePage(1)
+                }}
+                placeholder="Search by name or phone (07...)"
+              />
+            </div>
+            {matchingBookings.length === 0 ? (
+              <Empty size="sm" title="No attendees match" description="Check the spelling, or search by phone number." />
+            ) : null}
             {/* Desktop table */}
             <div className="hidden md:block">
               <Table>
