@@ -1,4 +1,4 @@
--- Rollback for 20261026203836_event_guest_manage_link.sql: restores get_event_booking_manage_preview_v05
+-- Rollback for 20261027133100_event_guest_manage_link.sql: restores get_event_booking_manage_preview_v05
 -- (md5(prosrc) f1a56670b57988f4e6655b39dd88524e) and update_event_booking_seats_staff_v05 (md5(prosrc)
 -- 1bef4dd8c32ab580a717809d744d6ef2) exactly as production held them on 26 October 2026: SECURITY
 -- DEFINER, search_path public, service_role only. After it, a seat change on a booking with named

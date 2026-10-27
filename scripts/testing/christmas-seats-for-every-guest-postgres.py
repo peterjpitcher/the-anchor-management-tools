@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026192817_christmas_seats_for_every_guest.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027132744_christmas_seats_for_every_guest.sql'
 ROLLBACK = ROOT / 'tasks/christmas-seats-for-every-guest/rollback.sql'
 SIGNATURE = 'preorder_sync_covers(uuid)'
 

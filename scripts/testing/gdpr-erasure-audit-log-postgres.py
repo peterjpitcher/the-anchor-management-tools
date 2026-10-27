@@ -19,7 +19,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026193741_gdpr_erasure_audit_log.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027132811_gdpr_erasure_audit_log.sql'
 ROLLBACK = ROOT / 'tasks/gdpr-erasure-audit-log/rollback.sql'
 PRODUCTION_TRIGGER_MD5 = 'f6de7f9de4f2184d4cb0f45777356bca'
 SCRUB = 'public.gdpr_scrub_audit_logs_v01(uuid[],uuid[])'

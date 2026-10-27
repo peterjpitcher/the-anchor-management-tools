@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261026182434_staff_database_access.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261027001434_staff_database_access.sql'
 ROLLBACK = ROOT / 'tasks/staff-database-access/rollback.sql'
 SERVER_ONLY = ('payments', 'guest_tokens', 'booking_holds', 'waitlist_entries', 'waitlist_offers', 'charge_requests')
 TABLES = SERVER_ONLY + ('booking_table_assignments',)

@@ -27,10 +27,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261026204729_kitchen_pacing_counts_hire_and_event_food.sql'
+MIGRATION = MIGRATIONS / '20261027133140_kitchen_pacing_counts_hire_and_event_food.sql'
 ROLLBACK = ROOT / 'tasks/kitchen-pacing-hire-event-food/rollback.sql'
 LONE_PARTY = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
-RELEASE_3 = MIGRATIONS / '20261026175212_private_hire_occupies_space.sql'
+RELEASE_3 = MIGRATIONS / '20261026212246_private_hire_occupies_space.sql'
 SOURCES = {
     'create_table_booking_core_v06': MIGRATIONS / '20260913120622_booking_start_inside_trading_day.sql',
     'check_table_availability_v06': MIGRATIONS / '20260906155336_outside_private_hire_blocking.sql',

@@ -7,7 +7,7 @@ import { buildCsvBuffer, escapeCsvCell } from '@/lib/receipts/export/csv-helpers
  * Money taken online (BK-117, customer bookings review of 24 October 2026; owner decision D33).
  *
  * One row per online payment, read from the view online_income_movements (migration
- * 20261026234203), which takes each kind of payment from where it is really recorded: table and
+ * 20261027133456), which takes each kind of payment from where it is really recorded: table and
  * private-hire deposits from the booking, tickets from the payments ledger, invoices and parking
  * from their own tables. Door money recorded by hand is in the till already and is not here.
  *
