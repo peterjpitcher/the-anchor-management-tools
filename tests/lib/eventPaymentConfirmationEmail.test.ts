@@ -704,7 +704,8 @@ describe('event guest emails', () => {
       assertCleanRender(sent)
       expect(sent.subject).toContain('Ticket transferred: Quiz Night')
       expect(sent.text).toContain('Your ticket has been moved from')
-      expect(sent.text).toContain('we owe you £42.00 and will be in touch about your refund')
+      // D7: a manager decides the refund, so the email names the difference without promising it.
+      expect(sent.text).toContain('The new night costs £42.00 less than you paid, and we will be in touch about the difference.')
     })
   })
 

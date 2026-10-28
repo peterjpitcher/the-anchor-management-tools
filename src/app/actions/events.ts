@@ -24,7 +24,7 @@ import {
   type EventManualRefundMethod,
   type EventRefundResult
 } from '@/lib/events/manage-booking'
-import { resolveEventRefundRequestRow } from '@/lib/events/refund-requests'
+import { alertEventRefundRequest, resolveEventRefundRequestRow } from '@/lib/events/refund-requests'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
 import {
   sendEventBookingSeatUpdateSms,
@@ -69,7 +69,7 @@ import {
 } from '@/lib/events/ticket-type-queries'
 import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
 import { staffEventAttendeesInputSchema, type StaffEventAttendeeInput } from '@/lib/events/booking-questions'
-import { carryGuestsToTransfer, prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
+import { prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 import { jobQueue } from '@/lib/unified-job-queue'
 
@@ -2736,7 +2736,8 @@ async function sendEventTransferSms(input: {
   const firstName = getSmartFirstName(customer.first_name)
   const overpaymentPart =
     typeof input.overpayment === 'number' && input.overpayment > 0
-      ? ` We owe you £${input.overpayment.toFixed(2)} and we will be in touch about your refund.`
+      // Not a promise of an amount: a manager decides the refund from what was paid (D7, BK-028).
+      ? ` The new night costs £${input.overpayment.toFixed(2)} less than you paid, and we will be in touch about the difference.`
       : ''
   const body = ensureReplyInstruction(
     `The Anchor: Hi ${firstName}, your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.${overpaymentPart}${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
@@ -2766,120 +2767,17 @@ async function sendEventTransferSms(input: {
   }
 }
 
-/**
- * Copy a multi-type booking's ticket-line composition onto its transfer
- * replacement by matching ticket-type names on the target event. Preserves the
- * original unit-price snapshots (they are what the customer actually paid) and
- * per-line attendee names. Best-effort: when the target has no matching types,
- * the replacement keeps its default line and we report `copied: false`.
- */
-async function copyTransferComposition(
-  supabase: ReturnType<typeof createAdminClient>,
-  input: {
-    originalItems: BookingItemWithTypeRow[]
-    newBookingId: string
-    targetEventId: string
-  }
-): Promise<{ copied: boolean; reason: string | null }> {
-  if (input.originalItems.length === 0) {
-    return { copied: false, reason: 'no_original_items' }
-  }
-
-  const { data: targetTypes, error: targetTypesError } = await supabase
-    .from('event_ticket_types')
-    .select('id, name')
-    .eq('event_id', input.targetEventId)
-    .eq('is_active', true)
-
-  if (targetTypesError) {
-    return { copied: false, reason: targetTypesError.message || 'target_types_unavailable' }
-  }
-
-  const typeIdByName = new Map(
-    ((targetTypes ?? []) as Array<{ id: string; name: string | null }>)
-      .filter((row) => typeof row.name === 'string' && row.name.trim())
-      .map((row) => [String(row.name).trim().toLowerCase(), row.id])
-  )
-
-  const mappedLines = input.originalItems.map((item) => ({
-    targetTypeId: typeIdByName.get(item.ticket_type_name.trim().toLowerCase()) ?? null,
-    quantity: Math.max(1, Number(item.quantity) || 1),
-    unitPrice: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : 0,
-    attendeeNames: item.attendee_names ?? null
-  }))
-
-  if (mappedLines.some((line) => !line.targetTypeId)) {
-    return { copied: false, reason: 'ticket_types_not_matched_on_target' }
-  }
-
-  const { error: deleteError } = await supabase
-    .from('booking_items')
-    .delete()
-    .eq('booking_id', input.newBookingId)
-
-  if (deleteError) {
-    return { copied: false, reason: deleteError.message || 'existing_items_delete_failed' }
-  }
-
-  const { error: insertError } = await supabase
-    .from('booking_items')
-    .insert(mappedLines.map((line) => ({
-      booking_id: input.newBookingId,
-      ticket_type_id: line.targetTypeId,
-      quantity: line.quantity,
-      unit_price: line.unitPrice,
-      attendee_names: line.attendeeNames
-    })))
-
-  if (insertError) {
-    return { copied: false, reason: insertError.message || 'items_insert_failed' }
-  }
-
-  return { copied: true, reason: null }
-}
-
-/**
- * After a multi-type composition is copied, give each carried guest the target event's ticket
- * type that matches their old one by name. Best effort: the booking stands either way.
- */
-async function remapCarriedGuestTicketTypes(
-  supabase: ReturnType<typeof createAdminClient>,
-  input: { newBookingId: string; targetEventId: string; originalItems: BookingItemWithTypeRow[]; originalAttendees: unknown }
-): Promise<void> {
-  try {
-    const { data: targetTypes } = await supabase
-      .from('event_ticket_types')
-      .select('id, name')
-      .eq('event_id', input.targetEventId)
-      .eq('is_active', true)
-    const targetIdByName = new Map(((targetTypes ?? []) as Array<{ id: string; name: string | null }>)
-      .filter((row) => typeof row.name === 'string')
-      .map((row) => [String(row.name).trim().toLowerCase(), row.id]))
-    const targetIdByOriginalId = new Map(input.originalItems.map((item) => [item.ticket_type_id, targetIdByName.get(item.ticket_type_name.trim().toLowerCase()) ?? null]))
-    const originals = Array.isArray(input.originalAttendees) ? (input.originalAttendees as Array<{ ticket_type_id?: string | null }>) : []
-    const { data: created } = await supabase.from('bookings').select('attendees').eq('id', input.newBookingId).maybeSingle()
-    const guests = Array.isArray(created?.attendees) ? (created.attendees as Array<Record<string, unknown>>) : []
-    if (guests.length === 0 || guests.length !== originals.length) return
-    const remapped = guests.map((guest, index) => {
-      const target = targetIdByOriginalId.get(originals[index]?.ticket_type_id ?? '') ?? null
-      return target ? { ...guest, ticket_type_id: target } : guest
-    })
-    const { error: remapError } = await supabase.from('bookings').update({ attendees: remapped }).eq('id', input.newBookingId)
-    if (remapError) {
-      logger.warn('Transfer could not save guest ticket types on the new booking', {
-        metadata: { newBookingId: input.newBookingId, error: remapError.message },
-      })
-    }
-  } catch (error) {
-    logger.warn('Transfer could not match guest ticket types on the new booking', {
-      metadata: { newBookingId: input.newBookingId, error: error instanceof Error ? error.message : String(error) },
-    })
-  }
-}
+const transferAnswersSchema = z.record(
+  z.string().uuid(),
+  z.record(z.string().min(1).max(100), z.string().max(2000))
+)
 
 const transferEventBookingSchema = z.object({
   bookingId: z.string().uuid(),
   targetEventId: z.string().uuid(),
+  // The new night's answers for each guest, by guest id then question id (BK-028). A required
+  // answer may be left to follow, as on any staff booking.
+  answers: transferAnswersSchema.optional().default({}),
   sendSms: z.boolean().optional().default(true)
 })
 
@@ -2893,13 +2791,48 @@ type TransferEventBookingResult =
         original_booking_id: string
         new_booking_id: string | null
         sms_sent: boolean
+        /** Paid beyond the new night's price, waiting for a manager as a refund request (D7). */
+        overpayment?: number
+        refund_request_id?: string | null
+        /** Required answers left to follow on the new night. */
+        answers_to_follow?: number
       }
       meta?: { sms: SmsSafetyMeta }
     }
 
+type TransferRpcResult = {
+  state?: string
+  reason?: string
+  new_booking_id?: string
+  from_event_id?: string
+  to_event_id?: string
+  seats?: number
+  paid_total?: number
+  target_amount?: number
+  overpayment?: number
+  refund_request_id?: string | null
+  answers_to_follow?: number
+}
+
+/**
+ * Moves a paid or free booking to another night (BK-028, customer bookings review of 24 October
+ * 2026; owner decision D7).
+ *
+ * The whole move is one database transaction, transfer_event_booking_v01: the replacement is
+ * created and confirmed at once with no payment hold, so the guest is never sent "Complete your
+ * payment"; its ticket lines map to the new night's ticket types by name; the guests travel with
+ * their names and phones and the new night's answers; the payments move with the booking; the
+ * original is cancelled with its table; the move is recorded. It used to run as a dozen separate
+ * writes that emailed a payment link, lost ticket types (the deferred seat-sum check refused the
+ * separate delete of ticket lines) and refused named bookings.
+ *
+ * A dearer night is refused. On a cheaper night the difference is not promised in a text: it is a
+ * refund request a manager decides, and the manager inbox is told.
+ */
 export async function transferEventBooking(input: {
   bookingId: string
   targetEventId: string
+  answers?: Record<string, Record<string, string>>
   sendSms?: boolean
 }): Promise<TransferEventBookingResult> {
   try {
@@ -2913,10 +2846,6 @@ export async function transferEventBooking(input: {
       return { error: parsed.error.issues[0]?.message || 'Invalid transfer details.' }
     }
 
-    if (parsed.data.bookingId === parsed.data.targetEventId) {
-      return { error: 'Choose a different event.' }
-    }
-
     const authSupabase = await createClient()
     const { data: { user }, error: authError } = await authSupabase.auth.getUser()
     if (authError || !user) {
@@ -2926,58 +2855,38 @@ export async function transferEventBooking(input: {
     const supabase = createAdminClient()
     const { data: bookingRow, error: bookingError } = await supabase
       .from('bookings')
-      .select(`
-        id,
-        event_id,
-        customer_id,
-        seats,
-        status,
-        event_seating_type,
-        attendee_names,
-        attendees,
-        customer:customers(id, first_name, mobile_number, sms_status),
-        event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free, start_datetime, date, time)
-      `)
+      .select('id, event_id, customer_id, event:events(id, name, start_datetime, date, time)')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
 
     if (bookingError || !bookingRow) {
       return { error: 'Booking not found.' }
     }
-
-    if (bookingRow.status !== 'confirmed') {
-      return {
-        success: true,
-        data: {
-          state: 'blocked',
-          reason: 'booking_not_confirmed',
-          original_booking_id: parsed.data.bookingId,
-          new_booking_id: null,
-          sms_sent: false
-        }
-      }
-    }
-
     if (bookingRow.event_id === parsed.data.targetEventId) {
       return { error: 'Choose a different event.' }
     }
 
-    const { data: existingTransfer, error: existingTransferError } = await (supabase.from('event_ticket_transfers') as any)
-      .select('id')
-      .eq('original_booking_id', parsed.data.bookingId)
-      .in('status', ['pending', 'completed'])
-      .maybeSingle()
-
-    if (existingTransferError) {
-      throw existingTransferError
+    const { data: rpcData, error: rpcError } = await supabase.rpc('transfer_event_booking_v01', {
+      p_booking_id: parsed.data.bookingId,
+      p_target_event_id: parsed.data.targetEventId,
+      p_answers: parsed.data.answers,
+      p_performed_by: user.id
+    })
+    if (rpcError) {
+      logger.error('transfer_event_booking_v01 failed', {
+        error: new Error(rpcError.message),
+        metadata: { bookingId: parsed.data.bookingId, targetEventId: parsed.data.targetEventId, code: rpcError.code ?? null }
+      })
+      return { error: 'The booking could not be moved. Nothing has changed; please try again.' }
     }
+    const moved = (rpcData ?? {}) as TransferRpcResult
 
-    if (existingTransfer) {
+    if (moved.state !== 'transferred' || !moved.new_booking_id) {
       return {
         success: true,
         data: {
           state: 'blocked',
-          reason: 'transfer_already_used',
+          reason: moved.reason || 'target_event_unavailable',
           original_booking_id: parsed.data.bookingId,
           new_booking_id: null,
           sms_sent: false
@@ -2985,383 +2894,36 @@ export async function transferEventBooking(input: {
       }
     }
 
-    const { data: targetEvent, error: targetEventError } = await supabase
+    const newBookingId = moved.new_booking_id
+    const overpayment = toMoney(Math.max(0, Number(moved.overpayment ?? 0)))
+    const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const { data: targetEvent } = await supabase
       .from('events')
-      .select('id, name, booking_mode, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free, event_status, start_datetime, date, time')
+      .select('id, name, start_datetime, date, time')
       .eq('id', parsed.data.targetEventId)
       .maybeSingle()
 
-    if (targetEventError || !targetEvent) {
-      return { error: 'Target event not found.' }
-    }
-
-    if (['cancelled', 'draft'].includes(String(targetEvent.event_status || ''))) {
-      return {
-        success: true,
-        data: {
-          state: 'blocked',
-          reason: 'target_event_not_bookable',
-          original_booking_id: parsed.data.bookingId,
-          new_booking_id: null,
-          sms_sent: false
-        }
-      }
-    }
-
-    const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
-    const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
-    const seats = Math.max(1, Number(bookingRow.seats || 1))
-    // BK-011: guest rows travel with the booking. Each guest keeps their name and own mobile; the
-    // answers belonged to the old event's questions, so the new booking asks the new event's
-    // questions afresh and they follow (owner decision D5).
-    const carriedGuests = carryGuestsToTransfer(bookingRow.attendees)
-    const originalAttendeeNames = Array.isArray(bookingRow.attendee_names)
-      ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim())
-      : []
-
-    // Snapshot the original ticket-line composition so per-type door lists and
-    // name lists survive the transfer (best-effort — see copyTransferComposition).
-    let originalItems: BookingItemWithTypeRow[] = []
-    let originalItemsMultiType = false
-    try {
-      const itemsMap = await loadBookingItemsWithTypes(supabase, [parsed.data.bookingId])
-      originalItems = itemsMap.get(parsed.data.bookingId) ?? []
-      if (originalItems.length > 0 && bookingRow.event_id) {
-        const originalDefaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
-        originalItemsMultiType = bookingItemsAreMultiType(originalItems, originalDefaultTypeId)
-      }
-    } catch (itemsError) {
-      logger.warn('Failed to load original booking items for transfer', {
-        metadata: {
-          bookingId: parsed.data.bookingId,
-          error: itemsError instanceof Error ? itemsError.message : String(itemsError),
-        },
+    if (moved.refund_request_id && overpayment > 0) {
+      await alertEventRefundRequest(supabase, {
+        requestId: moved.refund_request_id,
+        bookingId: newBookingId,
+        eventId: parsed.data.targetEventId,
+        eventName: targetEvent?.name ?? null,
+        kind: 'transfer_overpayment',
+        amount: overpayment,
+        pricePaid: typeof moved.paid_total === 'number' ? moved.paid_total : null
       })
-    }
-
-    const { data: paymentRows, error: paymentsError } = await supabase
-      .from('payments')
-      .select('id, amount, charge_type, status')
-      .eq('event_booking_id', parsed.data.bookingId)
-      .in('charge_type', ['prepaid_event', 'seat_increase'])
-      .in('status', ['succeeded', 'partially_refunded'])
-
-    if (paymentsError) {
-      throw paymentsError
-    }
-
-    const paidTotal = (paymentRows || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
-    const targetAmount = toMoney(resolveEventPriceAmount(targetEvent as unknown as Event) * seats)
-    // Money the customer has paid beyond what the new event costs — owed back.
-    const targetChargeable = targetEvent.payment_mode === 'prepaid' ? targetAmount : 0
-    const overpayment = toMoney(Math.max(0, paidTotal - targetChargeable))
-
-    if (targetEvent.payment_mode === 'prepaid' && paidTotal + 0.004 < targetAmount) {
-      return {
-        success: true,
-        data: {
-          state: 'blocked',
-          reason: 'target_event_costs_more',
-          original_booking_id: parsed.data.bookingId,
-          new_booking_id: null,
-          sms_sent: false
-        }
-      }
-    }
-
-    const bookingMode = EventBookingService.normalizeBookingMode(targetEvent.booking_mode)
-    const createResult = await EventBookingService.createBooking({
-      eventId: parsed.data.targetEventId,
-      customerId: bookingRow.customer_id,
-      normalizedPhone: customerRecord?.mobile_number || '',
-      seats,
-      source: 'admin',
-      bookingMode,
-      seatingPreference: bookingRow.event_seating_type === 'standing' ? 'standing' : 'seated',
-      appBaseUrl: getAppUrl(),
-      shouldSendSms: false,
-      supabaseClient: supabase,
-      logTag: 'admin event transfer',
-      firstName: customerRecord?.first_name || undefined,
-      attendees: carriedGuests
-    })
-
-    if (createResult.rpcFailed || createResult.rollbackFailed || createResult.paymentLinkFailed) {
-      return { error: 'Could not create the replacement booking.' }
-    }
-
-    if (!createResult.bookingId || !['confirmed', 'pending_payment'].includes(createResult.resolvedState)) {
-      return {
-        success: true,
-        data: {
-          state: 'blocked',
-          reason: createResult.resolvedReason || 'target_event_unavailable',
-          original_booking_id: parsed.data.bookingId,
-          new_booking_id: null,
-          sms_sent: false
-        }
-      }
-    }
-
-    if (createResult.resolvedState === 'pending_payment') {
-      const { data: confirmRaw, error: confirmError } = await supabase.rpc(
-        'confirm_event_manual_payment_v01',
-        {
-          p_event_booking_id: createResult.bookingId,
-          p_payment_method: 'comp',
-          p_amount: 0,
-          p_currency: 'GBP',
-          p_performed_by: user.id,
-          p_note: `Transfer credit from booking ${parsed.data.bookingId}`
-        }
-      )
-
-      if (confirmError) {
-        return { error: confirmError.message || 'Could not confirm replacement booking.' }
-      }
-
-      const state = typeof (confirmRaw as any)?.state === 'string' ? (confirmRaw as any).state : 'blocked'
-      if (state !== 'confirmed' && state !== 'already_confirmed') {
-        return {
-          success: true,
-          data: {
-            state: 'blocked',
-            reason: typeof (confirmRaw as any)?.reason === 'string' ? (confirmRaw as any).reason : 'replacement_confirmation_failed',
-            original_booking_id: parsed.data.bookingId,
-            new_booking_id: createResult.bookingId,
-            sms_sent: false
-          }
-        }
-      }
-    }
-
-    // Carry the composition + attendee names over to the replacement booking so
-    // door lists and per-type breakdowns stay correct.
-    let compositionCopied: boolean | null = null
-    let compositionCopyReason: string | null = null
-    if (originalItemsMultiType) {
-      const copyResult = await copyTransferComposition(supabase, {
-        originalItems,
-        newBookingId: createResult.bookingId,
-        targetEventId: parsed.data.targetEventId
-      })
-      compositionCopied = copyResult.copied
-      compositionCopyReason = copyResult.reason
-      if (copyResult.copied && carriedGuests) {
-        await remapCarriedGuestTicketTypes(supabase, {
-          newBookingId: createResult.bookingId,
-          targetEventId: parsed.data.targetEventId,
-          originalItems,
-          originalAttendees: bookingRow.attendees,
-        })
-      }
-      if (!copyResult.copied) {
-        logger.warn('Transfer could not copy ticket-line composition to the new booking', {
-          metadata: {
-            bookingId: parsed.data.bookingId,
-            newBookingId: createResult.bookingId,
-            reason: copyResult.reason,
-          },
-        })
-      }
-    }
-
-    if (originalAttendeeNames.length > 0) {
-      const { error: attendeeCopyError } = await supabase
-        .from('bookings')
-        .update({ attendee_names: originalAttendeeNames })
-        .eq('id', createResult.bookingId)
-
-      if (attendeeCopyError) {
-        logger.warn('Transfer could not copy attendee names to the new booking', {
-          metadata: {
-            bookingId: parsed.data.bookingId,
-            newBookingId: createResult.bookingId,
-            error: attendeeCopyError.message,
-          },
-        })
-      }
-    }
-
-    const nowIso = new Date().toISOString()
-
-    // Capture exactly which payment rows are moved so a failed step can move
-    // them back — without touching rows created on the new booking (e.g. the £0
-    // comp confirmation above).
-    const { data: paymentsToMove, error: paymentsToMoveError } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('event_booking_id', parsed.data.bookingId)
-      .in('charge_type', ['prepaid_event', 'seat_increase', 'refund'])
-
-    if (paymentsToMoveError) {
-      throw paymentsToMoveError
-    }
-
-    const movedPaymentIds = ((paymentsToMove ?? []) as Array<{ id: string }>).map((row) => row.id)
-
-    if (movedPaymentIds.length > 0) {
-      const { error: movePaymentsError } = await supabase
-        .from('payments')
-        .update({
-          event_booking_id: createResult.bookingId,
-          updated_at: nowIso
-        })
-        .in('id', movedPaymentIds)
-
-      if (movePaymentsError) {
-        throw movePaymentsError
-      }
-    }
-
-    const { error: cancelOriginalError } = await supabase
-      .from('bookings')
-      .update({
-        status: 'cancelled',
-        cancelled_at: nowIso,
-        cancelled_by: 'admin_transfer',
-        updated_at: nowIso
-      })
-      .eq('id', parsed.data.bookingId)
-
-    if (cancelOriginalError) {
-      // Compensate: put the payments back on the original and withdraw the
-      // replacement so the customer never holds two live bookings.
-      logger.error('Transfer failed to cancel the original booking; compensating', {
-        error: new Error(cancelOriginalError.message || 'cancel_original_failed'),
-        metadata: {
-          bookingId: parsed.data.bookingId,
-          newBookingId: createResult.bookingId,
-        },
-      })
-
-      const compensationErrors: string[] = []
-
-      if (movedPaymentIds.length > 0) {
-        const { error: restorePaymentsError } = await supabase
-          .from('payments')
-          .update({
-            event_booking_id: parsed.data.bookingId,
-            updated_at: new Date().toISOString()
-          })
-          .in('id', movedPaymentIds)
-
-        if (restorePaymentsError) {
-          compensationErrors.push(`restore_payments: ${restorePaymentsError.message}`)
-        }
-      }
-
-      const [revertNewBookingResult, releaseNewHoldsResult, cancelNewTablesResult] = await Promise.all([
-        supabase.from('bookings')
-          .update({
-            status: 'cancelled',
-            cancelled_at: nowIso,
-            cancelled_by: 'system',
-            updated_at: nowIso
-          })
-          .eq('id', createResult.bookingId),
-        supabase.from('booking_holds')
-          .update({ status: 'released', released_at: nowIso, updated_at: nowIso })
-          .eq('event_booking_id', createResult.bookingId)
-          .eq('status', 'active'),
-        supabase.from('table_bookings')
-          .update({
-            status: 'cancelled',
-            cancellation_reason: 'event_booking_transfer_reverted',
-            cancelled_at: nowIso,
-            updated_at: nowIso
-          })
-          .eq('event_booking_id', createResult.bookingId)
-          .not('status', 'in', '(cancelled,no_show)')
-      ])
-
-      if (revertNewBookingResult.error) {
-        compensationErrors.push(`revert_new_booking: ${revertNewBookingResult.error.message}`)
-      }
-      if (releaseNewHoldsResult.error) {
-        compensationErrors.push(`release_new_holds: ${releaseNewHoldsResult.error.message}`)
-      }
-      if (cancelNewTablesResult.error) {
-        compensationErrors.push(`cancel_new_tables: ${cancelNewTablesResult.error.message}`)
-      }
-
-      if (compensationErrors.length > 0) {
-        logger.error('Transfer compensation incomplete', {
-          metadata: {
-            bookingId: parsed.data.bookingId,
-            newBookingId: createResult.bookingId,
-            compensationErrors,
-          },
-        })
-        return {
-          error:
-            'The transfer failed part-way and could not be fully reverted. Please contact engineering before retrying.'
-        }
-      }
-
-      return {
-        error:
-          'The original booking could not be cancelled, so the transfer was reverted. Nothing has changed — please try again.'
-      }
-    }
-
-    const [releaseHoldsResult, cancelTablesResult] = await Promise.all([
-      supabase.from('booking_holds')
-        .update({ status: 'released', released_at: nowIso, updated_at: nowIso })
-        .eq('event_booking_id', parsed.data.bookingId)
-        .eq('status', 'active'),
-      supabase.from('table_bookings')
-        .update({
-          status: 'cancelled',
-          cancellation_reason: 'event_booking_transferred',
-          cancelled_at: nowIso,
-          updated_at: nowIso
-        })
-        .eq('event_booking_id', parsed.data.bookingId)
-        .not('status', 'in', '(cancelled,no_show)')
-    ])
-
-    if (releaseHoldsResult.error) {
-      throw releaseHoldsResult.error
-    }
-    if (cancelTablesResult.error) {
-      throw cancelTablesResult.error
-    }
-
-    const { error: transferInsertError } = await (supabase.from('event_ticket_transfers') as any)
-      .insert({
-        original_booking_id: parsed.data.bookingId,
-        new_booking_id: createResult.bookingId,
-        from_event_id: bookingRow.event_id,
-        to_event_id: parsed.data.targetEventId,
-        status: 'completed',
-        requested_by: 'staff',
-        approved_by: user.id,
-        metadata: {
-          seats,
-          paid_total: paidTotal,
-          target_amount: targetAmount,
-          overpayment,
-          composition_copied: compositionCopied,
-          composition_copy_reason: compositionCopyReason,
-          attendee_names_copied: originalAttendeeNames.length > 0
-        },
-        completed_at: nowIso
-      })
-
-    if (transferInsertError) {
-      throw transferInsertError
     }
 
     let smsSent = false
     let smsMeta: SmsSafetyMeta = null
-    if (parsed.data.sendSms !== false) {
+    if (parsed.data.sendSms !== false && bookingRow.customer_id) {
       const transferSmsMeta = await sendEventTransferSms({
         supabase,
-        bookingId: createResult.bookingId,
+        bookingId: newBookingId,
         customerId: bookingRow.customer_id,
         fromEventName: fromEvent?.name || 'your original event',
-        toEventName: targetEvent.name || 'your new event',
+        toEventName: targetEvent?.name || 'your new event',
         eventStartIso: resolveEventStartIso(targetEvent as EventWhenSource | null),
         appBaseUrl: getAppUrl(),
         overpayment
@@ -3371,9 +2933,9 @@ export async function transferEventBooking(input: {
     }
 
     await sendEventTicketTransferredEmail(supabase, {
-      bookingId: createResult.bookingId,
+      bookingId: newBookingId,
       fromEventName: fromEvent?.name || 'your original event',
-      toEventName: targetEvent.name || 'your new event',
+      toEventName: targetEvent?.name || 'your new event',
       // Two months of the same recurring night share a name, so the old date is what makes the
       // email readable: without it a move between two Quiz Nights said "from Quiz Night to
       // Quiz Night".
@@ -3391,29 +2953,31 @@ export async function transferEventBooking(input: {
       resource_id: parsed.data.bookingId,
       operation_status: 'success',
       additional_info: {
-        new_booking_id: createResult.bookingId,
+        new_booking_id: newBookingId,
         from_event_id: bookingRow.event_id,
         to_event_id: parsed.data.targetEventId,
-        paid_total: paidTotal,
-        target_amount: targetAmount,
+        paid_total: moved.paid_total ?? null,
+        target_amount: moved.target_amount ?? null,
         overpayment,
-        composition_copied: compositionCopied,
-        composition_copy_reason: compositionCopyReason
+        refund_request_id: moved.refund_request_id ?? null,
+        answers_to_follow: moved.answers_to_follow ?? 0
       }
     })
 
     await Promise.allSettled([
-      syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
-        bookingId: parsed.data.bookingId,
-        context: 'admin_event_booking_transferred_from',
-      }),
+      bookingRow.event_id
+        ? syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
+            bookingId: parsed.data.bookingId,
+            context: 'admin_event_booking_transferred_from',
+          })
+        : Promise.resolve(),
       syncPubOpsEventCalendarByEventId(supabase, parsed.data.targetEventId, {
-        bookingId: createResult.bookingId,
+        bookingId: newBookingId,
         context: 'admin_event_booking_transferred_to',
       })
     ])
 
-    revalidatePath(`/events/${bookingRow.event_id}`)
+    if (bookingRow.event_id) revalidatePath(`/events/${bookingRow.event_id}`)
     revalidatePath(`/events/${parsed.data.targetEventId}`)
     revalidatePath('/events')
     revalidatePath('/table-bookings/foh')
@@ -3425,8 +2989,11 @@ export async function transferEventBooking(input: {
         state: 'transferred',
         reason: null,
         original_booking_id: parsed.data.bookingId,
-        new_booking_id: createResult.bookingId,
-        sms_sent: smsSent
+        new_booking_id: newBookingId,
+        sms_sent: smsSent,
+        overpayment,
+        refund_request_id: moved.refund_request_id ?? null,
+        answers_to_follow: Number(moved.answers_to_follow ?? 0)
       },
       meta: { sms: smsMeta }
     }
@@ -3435,5 +3002,77 @@ export async function transferEventBooking(input: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to transfer booking.') }
+  }
+}
+
+type TransferPreviewResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        guests: Array<{ id: string; name: string }>
+        questions: Array<{ id: string; label: string; type: string; required: boolean; options: string[] }>
+        /** Answers already given that match a new night's question by its wording. */
+        prefill: Record<string, Record<string, string>>
+      }
+    }
+
+/**
+ * What a move to another night asks (BK-028): the new night's questions for each guest, with the
+ * answers already given carried over where a question reads the same.
+ */
+export async function getEventTransferPreview(bookingId: string, targetEventId: string): Promise<TransferPreviewResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to transfer event bookings.' }
+    }
+    if (!z.string().uuid().safeParse(bookingId).success || !z.string().uuid().safeParse(targetEventId).success) {
+      return { error: 'Booking not found.' }
+    }
+    const supabase = createAdminClient()
+    const [{ data: bookingRow, error: bookingError }, { data: targetEvent, error: eventError }] = await Promise.all([
+      supabase.from('bookings').select('id, attendees').eq('id', bookingId).maybeSingle(),
+      supabase.from('events').select('id, booking_questions').eq('id', targetEventId).maybeSingle()
+    ])
+    if (bookingError || !bookingRow) return { error: 'Booking not found.' }
+    if (eventError || !targetEvent) return { error: 'Target event not found.' }
+
+    const questions = (Array.isArray(targetEvent.booking_questions) ? targetEvent.booking_questions : [])
+      .map((raw) => raw as Record<string, unknown>)
+      .filter((q) => typeof q.id === 'string' && typeof q.label === 'string')
+      .map((q) => ({
+        id: String(q.id),
+        label: String(q.label),
+        type: typeof q.type === 'string' ? q.type : 'text',
+        required: q.required === true,
+        options: Array.isArray(q.options) ? q.options.filter((o): o is string => typeof o === 'string') : []
+      }))
+    const attendees = Array.isArray(bookingRow.attendees) ? (bookingRow.attendees as Array<Record<string, unknown>>) : []
+    const guests = attendees
+      .filter((a) => typeof a.id === 'string')
+      .map((a) => ({ id: String(a.id), name: typeof a.name === 'string' ? a.name : '' }))
+    const prefill: Record<string, Record<string, string>> = {}
+    const normalise = (value: string) => value.trim().toLowerCase()
+    for (const attendee of attendees) {
+      if (typeof attendee.id !== 'string') continue
+      const given = Array.isArray(attendee.answers) ? (attendee.answers as Array<Record<string, unknown>>) : []
+      const answers: Record<string, string> = {}
+      for (const question of questions) {
+        const match = given.find((answer) => typeof answer.label === 'string' && normalise(answer.label) === normalise(question.label))
+        const value = typeof match?.value === 'string' ? match.value : ''
+        if (!value) continue
+        if (question.type === 'yes_no' && value !== 'yes' && value !== 'no') continue
+        if (question.type === 'choice' && !question.options.includes(value)) continue
+        answers[question.id] = value
+      }
+      prefill[attendee.id] = answers
+    }
+    return { success: true, data: { guests, questions, prefill } }
+  } catch (error) {
+    logger.error('Failed to load the event transfer preview', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to load the questions for the new night.') }
   }
 }

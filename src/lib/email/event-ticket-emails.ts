@@ -1122,7 +1122,8 @@ export async function sendEventTicketTransferredEmail(
   const body = [
     `Hi ${context.firstName},`,
     `Your ${seatWord} ${haveWord} been moved from ${fromText} to ${toText}.`,
-    overpaymentText ? `The new night costs less, so we owe you ${overpaymentText} and will be in touch about your refund.` : null,
+    // A manager decides the refund from what was paid (owner decision D7, BK-028).
+    overpaymentText ? `The new night costs ${overpaymentText} less than you paid, and we will be in touch about the difference.` : null,
     ...buildAttendanceLines(context),
     `Booking reference: ${bookingReference(context.bookingId)}.`,
     `If the new night does not suit you, call ${GUEST_CONTACT.phoneDisplay}.`,
