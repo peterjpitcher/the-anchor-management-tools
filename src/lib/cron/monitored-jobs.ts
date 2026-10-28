@@ -76,6 +76,14 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     label: 'Event and table guest reminders and review asks',
   },
   {
+    jobName: 'event-guest-details-reminders',
+    path: '/api/cron/event-guest-details-reminders',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 120,
+    recording: 'every_run',
+    label: 'Event guest details reminders',
+  },
+  {
     jobName: 'private-bookings-expire-holds',
     path: '/api/cron/private-bookings-expire-holds',
     intervalMinutes: 1440,

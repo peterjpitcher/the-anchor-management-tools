@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { bookingQuestionsSchema, type BookingQuestion, type StoredEventAttendee } from '@/lib/events/booking-questions'
 import { getDefaultTicketTypeId, loadBookingItems } from '@/lib/events/ticket-type-queries'
-import { mergeGuestDetailsEdit, type GuestDetailsEdit } from '@/lib/events/guest-details-edit'
+import { diffGuestDetails, mergeGuestDetailsEdit, type GuestDetailsEdit } from '@/lib/events/guest-details-edit'
 
 /**
  * Saves an edit to a booking's guest details for the staff editor and the booker's manage link
@@ -9,7 +9,16 @@ import { mergeGuestDetailsEdit, type GuestDetailsEdit } from '@/lib/events/guest
  * Guarded by the booking's updated_at, so two people editing at once cannot overwrite each other.
  */
 export type GuestDetailsSaveResult =
-  | { ok: true; eventId: string; guestCount: number; created: boolean; questionsAdded: number }
+  | {
+      ok: true
+      eventId: string
+      guestCount: number
+      created: boolean
+      questionsAdded: number
+      /** Ids only (BK-133): which guests and which questions this save changed. */
+      changedGuestIds: string[]
+      changedQuestionIds: string[]
+    }
   | { ok: false; error: string; reason: 'not_found' | 'not_editable' | 'invalid' | 'conflict' | 'database' }
 
 type BookingRow = {
@@ -101,5 +110,14 @@ export async function saveBookingGuestDetails(
   const { data: saved, error } = await update.select('id').maybeSingle()
   if (error) return { ok: false, error: 'Guest details could not be saved. Please try again.', reason: 'database' }
   if (!saved) return { ok: false, error: 'Someone else changed this booking. Refresh before saving.', reason: 'conflict' }
-  return { ok: true, eventId: booking.eventId, guestCount: attendees.length, created: merged.created, questionsAdded: merged.questionsAdded }
+  const changed = diffGuestDetails(booking.attendees, attendees)
+  return {
+    ok: true,
+    eventId: booking.eventId,
+    guestCount: attendees.length,
+    created: merged.created,
+    questionsAdded: merged.questionsAdded,
+    changedGuestIds: changed.guestIds,
+    changedQuestionIds: changed.questionIds,
+  }
 }

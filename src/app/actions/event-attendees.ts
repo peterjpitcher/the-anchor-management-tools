@@ -46,6 +46,9 @@ export async function updateEventAttendees(input: z.input<typeof editSchema>): P
     additional_info: {
       field: 'guest_details',
       guest_count: result.guestCount,
+      // Which guests and which questions changed, by id, never the values (BK-133).
+      changed_guest_ids: result.changedGuestIds,
+      changed_question_ids: result.changedQuestionIds,
       ...(result.created ? { created: true } : {}),
       ...(result.questionsAdded ? { questions_added: result.questionsAdded } : {}),
     },
