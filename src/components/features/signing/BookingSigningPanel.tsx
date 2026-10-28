@@ -4,8 +4,18 @@ import { useCallback, useEffect, useState, useTransition } from 'react'
 import { Alert, Button, Spinner, toast } from '@/ds'
 import { getBookingSigningState, sendBookingWaiver, type BookingSigningState } from '@/app/actions/signing-bookings'
 import { describeContractAcceptance } from '@/lib/signing/contract-acceptance'
+import { describeContractTermsChanges, type ContractOutOfDate } from '@/lib/private-bookings/contract-terms'
 import { RecordContractAcceptanceModal } from './RecordContractAcceptanceModal'
 import { SignaturePanel } from './SignaturePanel'
+
+/** What changed, and what the customer holds, in one or two plain sentences (BK-154). */
+export function outOfDateText(outOfDate: ContractOutOfDate): string {
+  const changed = describeContractTermsChanges(outOfDate.changes)
+  const holds = outOfDate.accepted
+    ? `The customer accepted version ${outOfDate.currentVersion}`
+    : `The customer was sent version ${outOfDate.currentVersion}`
+  return `${holds}, but ${changed} ${outOfDate.changes.length === 1 ? 'has' : 'have'} changed since. Email Contract sends version ${outOfDate.nextVersion} for them to sign.`
+}
 
 export interface BookingSigningPanelProps {
   bookingId: string
@@ -80,7 +90,11 @@ export function BookingSigningPanel({ bookingId, refreshKey }: BookingSigningPan
 
   return (
     <div className="space-y-3">
-      {state.contractAcceptedAt ? (
+      {state.contractOutOfDate ? (
+        <Alert tone="warning" title={`Contract out of date, send version ${state.contractOutOfDate.nextVersion}`} role="status">
+          {outOfDateText(state.contractOutOfDate)}
+        </Alert>
+      ) : state.contractAcceptedAt ? (
         <Alert tone="success" title="Contract Accepted" role="status">
           {describeContractAcceptance(state.contractAcceptanceMethod, state.contractAcceptedAt)}.
         </Alert>

@@ -271,6 +271,38 @@ describe('a signed booking contract', () => {
   })
 })
 
+// BK-154, D25: a signature on terms the booking no longer has is not acceptance of the booking.
+describe('a signed booking contract whose booking has changed since it was sent', () => {
+  const termsBooking = {
+    event_date: '2026-12-05',
+    date_tbd: false,
+    start_time: '18:00:00',
+    end_time: '23:00:00',
+    end_time_next_day: false,
+    guest_count: 40,
+    discount_type: null,
+    discount_amount: 0,
+    items: [{ space_id: 'room-a', quantity: 1, unit_price: 100, line_total: 100, vat_rate: 20 }],
+  }
+  const sentTerms = {
+    v: 1, event_date: '2026-12-05', start_time: '18:00', end_time: '23:00', end_time_next_day: false,
+    guest_count: 40, space_ids: ['room-a'], total: 120,
+  }
+
+  it('records the acceptance when the booking still says what the contract said', async () => {
+    seed({ private_bookings: [bookingRow(termsBooking)] })
+    await runCompletionHook(contractDocument({ context: { contract_version: 3, contract_terms: sentTerms } }), [])
+    expect(booking()).toMatchObject({ contract_accepted_at: SIGNED_AT, contract_acceptance_method: 'e_signature' })
+  })
+
+  it('leaves the booking unaccepted when its guest numbers have moved since', async () => {
+    seed({ private_bookings: [bookingRow({ ...termsBooking, guest_count: 55 })] })
+    await runCompletionHook(contractDocument({ context: { contract_version: 3, contract_terms: sentTerms } }), [])
+    expect(booking()).toMatchObject({ contract_accepted_at: null, contract_acceptance_method: null })
+    expect(audit()).toHaveLength(0)
+  })
+})
+
 describe('a signed booking contract sent in the older form, with the food agreement on its last page', () => {
   const combined = () => contractDocument({ context: { contract_version: 3, includes_waiver: true } })
 

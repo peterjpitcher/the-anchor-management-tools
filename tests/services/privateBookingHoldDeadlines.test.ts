@@ -238,3 +238,24 @@ describe('BK-110: a capped hold keeps the whole of its last day', () => {
     expect(stored('booking-new').hold_expiry).toBe('2026-10-24T22:59:59.000Z')
   })
 })
+
+// BK-158: who confirmed, completed or reinstated a booking, and when, from and to.
+describe('BK-158: status changes are audited', () => {
+  it('records completing a booking, with who did it and the status it came from', async () => {
+    seed(bookingRow({ status: 'confirmed', event_date: '2026-10-20', hold_expiry: null, deposit_paid_date: '2026-10-01' }))
+
+    await PrivateBookingService.updateBookingStatus('booking-1', 'completed', 'user-1')
+
+    expect(stored().status).toBe('completed')
+    expect(state.db.tables.private_booking_audit).toEqual([
+      expect.objectContaining({
+        booking_id: 'booking-1',
+        action: 'field_updated',
+        field_name: 'status',
+        old_value: 'confirmed',
+        new_value: 'completed',
+        performed_by: 'user-1',
+      }),
+    ])
+  })
+})

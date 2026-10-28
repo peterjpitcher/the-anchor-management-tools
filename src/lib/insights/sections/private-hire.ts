@@ -1,5 +1,6 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
+import { contractOutOfDate, type ContractTermsItem } from '@/lib/private-bookings/contract-terms'
 import { paperworkWarning, PAPERWORK_WARNING_DAYS, type PaperworkWarning } from '@/lib/private-bookings/paperwork'
 import { readStalePendingOutcomes, type StalePendingOutcome } from '@/lib/private-bookings/stale-outcomes'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
@@ -55,7 +56,7 @@ const VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name
  * The view ignores deposit waivers and carries no invoice link, deposit confirmation, contract
  * dates or food agreement state, so they come from the table.
  */
-const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, contract_sent_at, contract_accepted_at, outside_food, waiver_status, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
+const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, contract_sent_at, contract_accepted_at, contract_terms, end_time_next_day, discount_type, discount_amount, outside_food, waiver_status, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat)), items:private_booking_items(space_id, quantity, unit_price, line_total, vat_rate, discount_type, discount_value)'
 
 
 interface ViewRow {
@@ -102,6 +103,12 @@ interface TableRow {
   waiver_status?: string | null
   invoice_id: string | null
   invoice: InvoiceRow | InvoiceRow[] | null
+  /** The terms in the contract last sent, and what the contract-terms check needs besides (BK-154). */
+  contract_terms?: unknown
+  end_time_next_day?: boolean | null
+  discount_type?: string | null
+  discount_amount?: number | string | null
+  items?: ContractTermsItem[] | null
 }
 
 interface PendingTextRow {
@@ -264,6 +271,21 @@ function toBooking(view: ViewRow, table: TableRow, pendingTexts: number, today: 
       contract_version: view.contract_version,
       contract_sent_at: table.contract_sent_at,
       contract_accepted_at: table.contract_accepted_at,
+      contract_out_of_date: contractOutOfDate({
+        status: view.status,
+        event_date: view.event_date,
+        date_tbd: isBookingDateTbd(view),
+        start_time: view.start_time,
+        end_time: view.end_time,
+        end_time_next_day: table.end_time_next_day,
+        guest_count: view.guest_count,
+        discount_type: table.discount_type,
+        discount_amount: table.discount_amount,
+        contract_version: view.contract_version,
+        contract_sent_at: table.contract_sent_at,
+        contract_accepted_at: table.contract_accepted_at,
+        contract_terms: table.contract_terms,
+      }, table.items) !== null,
       outside_food: table.outside_food,
       waiver_status: table.waiver_status,
     }, today),

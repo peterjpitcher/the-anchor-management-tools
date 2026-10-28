@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
 import { paperworkWarning } from "@/lib/private-bookings/paperwork";
+import { contractOutOfDate, type ContractTermsItem } from "@/lib/private-bookings/contract-terms";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
   DndContext,
@@ -2407,7 +2408,15 @@ export default function PrivateBookingDetailClient({
   const isDateTbd = isBookingDateTbd(booking);
   // Contract or food agreement still unsigned with the event 14 days away or less. A warning
   // only: the signing panel lower down has the actions.
-  const paperwork = paperworkWarning({ ...booking, date_tbd: isDateTbd }, getTodayIsoDate());
+  // BK-154: a contract sent or accepted before the booking changed no longer says what it says.
+  const contractStale = contractOutOfDate(
+    { ...booking, date_tbd: isDateTbd },
+    items as unknown as ContractTermsItem[],
+  );
+  const paperwork = paperworkWarning(
+    { ...booking, date_tbd: isDateTbd, contract_out_of_date: contractStale !== null },
+    getTodayIsoDate(),
+  );
   const internalNotesForDisplay = booking.internal_notes
     ? booking.internal_notes
         .split('\n')
@@ -3519,7 +3528,10 @@ export default function PrivateBookingDetailClient({
           )}
 
           {/* Signatures: where the contract and waiver have got to. Sent with Email Contract below. */}
-          <BookingSigningPanel bookingId={bookingId} refreshKey={booking.contract_sent_at ?? null} />
+          <BookingSigningPanel
+            bookingId={bookingId}
+            refreshKey={`${booking.contract_sent_at ?? ''}|${contractStale ? contractStale.changes.join(',') : 'current'}`}
+          />
           <BookingSuppliersPanel bookingId={bookingId} />
 
           {/* Quick Actions Card. Sending a message is the Messages tab, so it has no button here. */}
@@ -3606,6 +3618,15 @@ export default function PrivateBookingDetailClient({
                             ? 'Deposit applied to the invoice.'
                             : 'Deposit held separately.'}
                         </p>
+                        {/* BK-154: the invoice reference names the event date and the due date
+                            follows it, so a moved date leaves both behind. */}
+                        {contractStale?.changes.includes('date') && (
+                          <p className="mt-1 text-xs text-warning-fg">
+                            The date has changed since the contract was sent. The invoice still
+                            shows the old date in its reference and due date: cancel it and invoice
+                            again to reissue it.
+                          </p>
+                        )}
                         <div className="mt-2 flex flex-wrap gap-3">
                           <Link
                             href={`/invoices/${booking.invoice_id}`}

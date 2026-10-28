@@ -7,6 +7,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { logger } from '@/lib/logger';
+import { withdrawOutOfDateContractRequests } from './contract-terms-check';
 import { reportWriteError } from '@/lib/supabase/settle-write';
 import {
   sendBookingConfirmationEmail,
@@ -221,6 +222,12 @@ export type CancellationCaptureDetails = {
   channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
   receivedAt?: string
 }
+
+/** The booking fields a contract fixes (BK-154). Items and discounts are checked where they change. */
+const CONTRACT_TERM_FIELDS = [
+  'event_date', 'date_tbd', 'start_time', 'end_time', 'end_time_next_day', 'guest_count',
+  'discount_type', 'discount_amount',
+] as const
 
 const UPDATE_BOOKING_BASE_SELECT =
   'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status, deposit_waived'
@@ -1398,10 +1405,11 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   }
 
   // SOP §28: field-level audit diffs for key commercial/contact fields
-  // (event_date is covered by the date_changed entry above).
+  // (event_date is covered by the date_changed entry above). Status is here too, so confirming,
+  // completing or reinstating a booking records who did it and when, from and to (BK-158).
   try {
     const auditedFieldKeys = [
-      'start_time', 'end_time', 'guest_count', 'deposit_amount', 'balance_due_date',
+      'status', 'start_time', 'end_time', 'guest_count', 'deposit_amount', 'balance_due_date',
       'contact_phone', 'contact_email', 'layout', 'bar_tab_limit',
     ]
     const stringifyAuditValue = (key: string, value: unknown): string => {
@@ -1410,6 +1418,8 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
     const fieldAuditRows = auditedFieldKeys
       .filter((key) => key in updatePayload)
+      // A reinstatement has its own 'reinstated' row above, with the hold it was given.
+      .filter((key) => !(key === 'status' && reinstating))
       .map((key) => ({
         key,
         oldValue: stringifyAuditValue(key, (currentBooking as any)[key]),
@@ -1435,6 +1445,13 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       error: fieldAuditFailure instanceof Error ? fieldAuditFailure : new Error(String(fieldAuditFailure)),
       metadata: { bookingId: id },
     })
+  }
+
+  // BK-154, D25: a change to the date, times or guest numbers can leave the contract the customer
+  // was sent saying something else. Any request to sign it that is still open is withdrawn, and
+  // the booking page asks for the next version. Never throws.
+  if (CONTRACT_TERM_FIELDS.some((key) => key in updatePayload)) {
+    await withdrawOutOfDateContractRequests(id, performedByUserId)
   }
 
   // SOP §17: add the £25 electricity line when high-power equipment is newly flagged.
@@ -2026,6 +2043,8 @@ export async function applyBookingDiscount(
     'The discount was saved',
     'after discount change',
   );
+  // BK-154: a discount changes the price the contract names.
+  await withdrawOutOfDateContractRequests(bookingId);
 
   return warning ? { success: true, warning } : { success: true };
 }
@@ -2880,6 +2899,8 @@ export async function addBookingItem(data: {
     'The item was saved',
     'after item add',
   );
+  // BK-154: the rooms or the price the contract names may have changed.
+  await withdrawOutOfDateContractRequests(data.booking_id);
 
   // BK-007: a new room only ever adds space, so it is never refused for capacity. When the guests
   // still do not fit, the room is saved and staff are told which room would make them fit.
@@ -2978,6 +2999,8 @@ export async function updateBookingItem(itemId: string, data: {
     'The item was saved',
     'after item update',
   );
+  // BK-154: the price the contract names may have changed.
+  await withdrawOutOfDateContractRequests(currentItem.booking_id as string);
 
   return warning
     ? { success: true, bookingId: currentItem.booking_id, warning }
@@ -3025,6 +3048,8 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
     'The item was removed',
     'after item delete',
   );
+  // BK-154: the rooms or the price the contract names may have changed.
+  await withdrawOutOfDateContractRequests(item.booking_id as string);
 
   // SOP §21: removing the last waiver package drops 'required' back to
   // 'not_required' (never downgrades 'sent'/'signed').

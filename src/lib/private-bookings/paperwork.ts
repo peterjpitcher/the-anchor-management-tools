@@ -26,7 +26,7 @@ export const PAPERWORK_WARNING_DAYS = 14
 const OPEN_STATUSES: readonly string[] = ['draft', 'confirmed']
 
 export type PaperworkDocument = 'contract' | 'food_agreement'
-export type PaperworkState = 'not_sent' | 'sent_not_signed'
+export type PaperworkState = 'not_sent' | 'sent_not_signed' | 'out_of_date'
 
 export interface OutstandingPaperworkItem {
   document: PaperworkDocument
@@ -41,6 +41,12 @@ export interface PaperworkBooking {
   contract_version?: number | null
   contract_sent_at?: string | null
   contract_accepted_at?: string | null
+  /**
+   * True when the booking has changed since its contract was sent or accepted (BK-154). Worked
+   * out by contractOutOfDate (contract-terms.ts) from the booking and its items, which this pure
+   * rule does not read itself.
+   */
+  contract_out_of_date?: boolean | null
   outside_food?: boolean | null
   waiver_status?: string | null
 }
@@ -90,7 +96,11 @@ export function outstandingPaperwork(booking: PaperworkBooking, todayIso: string
 
   const items: OutstandingPaperworkItem[] = []
 
-  if (!booking.contract_accepted_at) {
+  if (booking.contract_out_of_date === true) {
+    // An accepted contract that no longer matches the booking is as good as none: the version
+    // the customer signed names the wrong date, times, guests, rooms or price.
+    items.push({ document: 'contract', state: 'out_of_date' })
+  } else if (!booking.contract_accepted_at) {
     // "Sent" covers both ways a contract reaches the customer: emailed from the booking, or
     // issued (which numbers it) and handed over.
     const sent = Boolean(booking.contract_sent_at) || (booking.contract_version ?? 0) > 0
@@ -110,10 +120,12 @@ const SENTENCES: Record<PaperworkDocument, Record<PaperworkState, string>> = {
   contract: {
     not_sent: 'The contract has not been sent.',
     sent_not_signed: 'The contract has been sent but not signed.',
+    out_of_date: 'The booking has changed since the contract was sent. Send the new version.',
   },
   food_agreement: {
     not_sent: 'The food agreement has not been sent.',
     sent_not_signed: 'The food agreement has been sent but not signed.',
+    out_of_date: 'The food agreement is out of date.',
   },
 }
 

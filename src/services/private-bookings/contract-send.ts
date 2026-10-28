@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
+import { contractTermsChanges, contractTermsOf, type ContractTermsItem } from '@/lib/private-bookings/contract-terms'
 
 /**
  * Send a private booking's contract for signature (SOP §11: the contract must be provided before
@@ -19,6 +20,8 @@ import { logAuditEvent } from '@/app/actions/audit'
  * The heavy modules (the contract template, the PDF renderer) are loaded only when a contract is
  * actually sent.
  */
+const NO_CONTACT_EMAIL = 'This booking has no contact email address. Add one before sending the contract.'
+
 export interface SentContract {
   version: number
   foodAgreementIncluded: boolean
@@ -42,11 +45,28 @@ export async function sendPrivateBookingContractForSignature(input: {
   const { recordSigningLinkSent, voidSigningDocument } = await import('@/lib/signing/service')
   const { getSigningStaffUser } = await import('@/lib/signing/staff')
 
+  // The address is checked before a version is minted, so a send refused for want of an email
+  // leaves the contract version where it was (BK-158).
+  const admin = createAdminClient()
+  const { data: addressRow, error: addressError } = await admin
+    .from('private_bookings')
+    .select('contact_email')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (addressError) throw new Error(`Could not read the booking: ${addressError.message}`)
+  if (!addressRow) throw new Error('Booking not found')
+  if (!(addressRow.contact_email as string | null)?.trim()) {
+    throw new Error(NO_CONTACT_EMAIL)
+  }
+
   const { signingHtml, version, booking } = await generateContractDocument(bookingId, { performedBy: userId })
+  // What this version says: kept with the signing request and on the booking, so a later change
+  // to the booking shows the contract as out of date (BK-154, D25).
+  const terms = contractTermsOf(booking, (booking.items ?? []) as ContractTermsItem[])
 
   const sentTo = booking.contact_email?.trim()
   if (!sentTo) {
-    throw new Error('This booking has no contact email address. Add one before sending the contract.')
+    throw new Error(NO_CONTACT_EMAIL)
   }
 
   // Signatures go through src/lib/signing (CLAUDE.md, Domain rules). The contract is rendered
@@ -63,7 +83,6 @@ export async function sendPrivateBookingContractForSignature(input: {
     waiverAlreadySigned: booking.waiver_status === 'signed',
   })
 
-  const admin = createAdminClient()
   await storeContractSnapshot(admin, {
     bookingId,
     version,
@@ -82,6 +101,7 @@ export async function sendPrivateBookingContractForSignature(input: {
     prepared,
     userId,
     sender,
+    contractTerms: terms,
   })
   const requests = [signing.contract, ...(signing.waiver ? [signing.waiver] : [])]
 
@@ -123,15 +143,47 @@ export async function sendPrivateBookingContractForSignature(input: {
   }
 
   const nowIso = new Date().toISOString()
+  // A contract already accepted, whose terms have changed since, is replaced by this version: the
+  // booking now waits for this one to be signed, so its signature is recorded when it comes
+  // (acceptBookingContract writes only while no acceptance is held). The earlier acceptance stays
+  // on the audit trail. Sending a copy of an unchanged contract leaves the acceptance alone, as
+  // does a contract sent before the terms were kept, whose terms cannot be compared.
+  const replacedChanges = booking.contract_accepted_at ? contractTermsChanges(booking.contract_terms, terms) : []
+  const replacesAcceptance = replacedChanges.length > 0
   const { error: updateError } = await admin
     .from('private_bookings')
-    .update({ contract_sent_at: nowIso, contract_sent_to: booking.contact_email, updated_at: nowIso })
+    .update({
+      contract_sent_at: nowIso,
+      contract_sent_to: booking.contact_email,
+      contract_terms: terms,
+      ...(replacesAcceptance ? { contract_accepted_at: null, contract_acceptance_method: null } : {}),
+      updated_at: nowIso,
+    })
     .eq('id', bookingId)
   if (updateError) {
     logger.error('Failed to record contract send', {
       error: new Error(updateError.message),
       metadata: { bookingId },
     })
+  } else if (replacesAcceptance) {
+    const { error: replacedAuditError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: 'contract_acceptance_replaced',
+      performed_by: userId,
+      metadata: {
+        changes: replacedChanges,
+        replaced_by_version: version,
+        accepted_at: booking.contract_accepted_at,
+        acceptance_method: booking.contract_acceptance_method ?? null,
+        previous_terms: booking.contract_terms ?? null,
+      },
+    })
+    if (replacedAuditError) {
+      logger.error('Could not record the replaced contract acceptance on the audit trail', {
+        error: new Error(replacedAuditError.message),
+        metadata: { bookingId, version, acceptedAt: booking.contract_accepted_at },
+      })
+    }
   }
 
   await logAuditEvent({

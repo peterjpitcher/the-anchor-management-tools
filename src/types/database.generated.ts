@@ -12638,6 +12638,7 @@ export type Database = {
           contract_note: string | null
           contract_sent_at: string | null
           contract_sent_to: string | null
+          contract_terms: Json | null
           contract_version: number | null
           created_at: string
           created_by: string | null
@@ -12739,6 +12740,7 @@ export type Database = {
           contract_note?: string | null
           contract_sent_at?: string | null
           contract_sent_to?: string | null
+          contract_terms?: Json | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
@@ -12840,6 +12842,7 @@ export type Database = {
           contract_note?: string | null
           contract_sent_at?: string | null
           contract_sent_to?: string | null
+          contract_terms?: Json | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
