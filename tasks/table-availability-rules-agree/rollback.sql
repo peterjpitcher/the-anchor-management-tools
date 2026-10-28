@@ -1,4 +1,4 @@
--- Rollback for 20261027193656_table_availability_rules_agree.sql. Puts create_table_booking_core_v06,
+-- Rollback for 20261028125055_table_availability_rules_agree.sql. Puts create_table_booking_core_v06,
 -- check_table_availability_v06, create_table_booking_staff_v06 and validate_table_booking_settings back
 -- exactly as production held them on 27 October 2026 (each patched passage replaced by the original,
 -- last step first), restores public_booking_reason, public_booking_message and
