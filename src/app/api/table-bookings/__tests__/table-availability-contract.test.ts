@@ -36,8 +36,9 @@
 //     time                  "HH:MM" London-local
 //     state                 "available" | "unavailable"
 //     public_reason         null when available, else "tables_full" |
-//                           "kitchen_full" | "outside_full" | "closed" |
-//                           "too_late" | "too_large" | "unknown" (never an
+//                           "kitchen_full" | "drinks_full" | "outside_full" |
+//                           "closed" | "too_late" | "too_large" | "unknown"
+//                           (drinks_full since 20261028125055; never an
 //                           internal reason; a private block reads tables_full)
 //     message               customer-ready sentence, null when available
 //     high_chairs_remaining number >= 0, advisory only (the booking RPC's
@@ -252,7 +253,7 @@ describe('availability contract: table_availability', () => {
         expect(slot.public_reason).toBeNull()
         expect(slot.message).toBeNull()
       } else {
-        expect(['tables_full', 'kitchen_full', 'outside_full', 'closed', 'too_late', 'too_large', 'unknown'])
+        expect(['tables_full', 'kitchen_full', 'drinks_full', 'outside_full', 'closed', 'too_late', 'too_large', 'unknown'])
           .toContain(slot.public_reason)
         expect(typeof slot.message).toBe('string')
       }

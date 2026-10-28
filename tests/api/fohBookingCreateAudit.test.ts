@@ -31,6 +31,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { POST } from '@/app/api/foh/bookings/route'
 import { FOH_BOOKING_CLIENT_CONTRACT, FOH_BOOKING_CLIENT_HEADER } from '@/lib/foh/booking-client-contract'
 import { called, createRecordingSupabase } from '../mocks/recordingSupabase'
+import { walkInOverridePickerRpc } from '../mocks/walkInOverridePicker'
 
 const CUSTOMER_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -50,7 +51,7 @@ function buildDb(options: { role?: string; rpcResult?: unknown }) {
     rpc: (fn) =>
       fn === 'create_table_booking_staff_v06'
         ? options.rpcResult ?? { data: { state: 'confirmed', table_booking_id: 'tb-rpc', booking_reference: 'TB-ABCD1234', party_size: 4, table_ids: ['table-1'] }, error: null }
-        : { data: 0, error: null },
+        : walkInOverridePickerRpc(fn, [{ id: 'table-1', name: 'Window', capacity: 24 }]) ?? { data: 0, error: null },
   })
 }
 
