@@ -21,6 +21,7 @@ import type {
 } from '../types'
 import type { FohBookingPeriod } from '../hooks/useFohCreateBooking'
 import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
+import { FohTimeSlots } from './FohTimeSlots'
 import {
   formatEventBookingMode,
   formatEventOptionDateTime,
@@ -356,11 +357,24 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             />
           )}
 
+          {createForm.purpose !== 'event' && (
+            <FohTimeSlots
+              date={createForm.booking_date}
+              partySize={createForm.party_size}
+              purpose={createForm.purpose}
+              outside={createForm.outside_seating}
+              requiresAccessibleTable={createForm.requires_accessible_table}
+              highChairCount={createForm.high_chair_count}
+              walkIn={createMode === 'walk_in'}
+              selectedTime={createForm.time}
+              onPick={(time) => onSetCreateForm((current) => ({ ...current, time }))}
+            />
+          )}
+
           <Input
             label={createForm.purpose === 'event' ? 'Seats' : 'Party size'}
             type="number"
             min={1}
-            max={20}
             required
             value={createForm.party_size}
             onChange={(event) => onSetCreateForm((current) => ({ ...current, party_size: event.target.value }))}

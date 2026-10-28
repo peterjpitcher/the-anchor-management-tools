@@ -24,6 +24,7 @@ import {
 import { getKitchenWindowForDate } from '@/services/business-hours'
 import { logger } from '@/lib/logger'
 import { daysAhead, recordFunnelEvent, summariseAvailability } from '@/lib/booking-funnel/events'
+import { parsePeriodId, quoteTableBookingDeposit, type TableBookingDepositQuote } from '@/lib/table-bookings/deposit-quote'
 
 // Grid resolution for the per-slot availability read-out (minutes between offered times).
 const SLOT_STEP_MINUTES = 15
@@ -103,6 +104,9 @@ export async function GET(request: NextRequest) {
     const requiresAccessibleTable = url.searchParams.get('requires_accessible_table') === 'true'
     const highChairCountRaw = url.searchParams.get('high_chair_count')
     const highChairCount = highChairCountRaw ? Number.parseInt(highChairCountRaw, 10) || 0 : 0
+    // The seasonal answer, so the deposit quoted matches the one the booking would charge (BK-186).
+    const periodId = parsePeriodId(url.searchParams.get('period_id'))
+    const periodAnswer = url.searchParams.get('period_answer') === 'true'
 
     if (!isValidCalendarDate(date)) {
       return createErrorResponse('Date must use YYYY-MM-DD format', 'VALIDATION_ERROR', 400)
@@ -170,7 +174,12 @@ export async function GET(request: NextRequest) {
     // The old shape goes only once no client is reading it.
     // ---------------------------------------------------------------------
     let tableAvailability: unknown = null
+    // The deposit for this party on this date, from the function the booking charges with, so the
+    // website quotes AMS's figure rather than its own copy of the rule (BK-186). Additive: null
+    // when no party size is given or the figure cannot be worked out, and then nothing is quoted.
+    let deposit: TableBookingDepositQuote | null = null
     if (partySize && partySize > 0) {
+      deposit = await quoteTableBookingDeposit(supabase, { date, partySize, periodId, periodAnswer })
       const { data, error } = await supabase.rpc('check_table_availability_v06', {
         p_booking_date: date,
         p_party_size: partySize,
@@ -231,6 +240,7 @@ export async function GET(request: NextRequest) {
       {
         date,
         table_availability: tableAvailability,
+        deposit,
         window_minutes: publicSettings.window_minutes,
         busy_threshold_covers: publicSettings.busy_threshold_covers,
         filling_threshold_covers: publicSettings.filling_threshold_covers,
