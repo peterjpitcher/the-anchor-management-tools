@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
+import { verifyPortalAccess } from '@/lib/private-bookings/portal-access'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
@@ -152,8 +152,9 @@ export default async function BookingPortalPage({
 }: PageProps): Promise<React.JSX.Element> {
   const { token } = await params
 
-  // Verify the HMAC-signed token: this is the access control mechanism
-  const bookingId = verifyBookingToken(token)
+  // Verify the HMAC-signed token, and that staff have not switched the booking's links off
+  // (BK-204): this is the access control mechanism
+  const bookingId = await verifyPortalAccess(token)
   if (!bookingId) {
     return <InvalidToken />
   }

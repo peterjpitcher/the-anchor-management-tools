@@ -44,6 +44,7 @@ import {
   captureDepositPayment,
   resendCalendarInvite,
   getBookingPortalLink,
+  revokeBookingPortalLinks,
   sendDepositPaymentLink,
   editPrivateBookingPayment,
   getCancellationPreview,
@@ -1804,6 +1805,9 @@ export default function PrivateBookingDetailClient({
   const [depositWaiveConfirmed, setDepositWaiveConfirmed] = useState(false);
   // Share portal link state
   const [isCopyingLink, setIsCopyingLink] = useState(false);
+  // BK-204: switch off every booking page link the guest has had, and copy a new one.
+  const [showRevokeLinksModal, setShowRevokeLinksModal] = useState(false);
+  const [revokingLinks, setRevokingLinks] = useState(false);
   // SOP workflow panels: bump to force suppliers/deductions/complaints reloads
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const refreshWorkflow = useCallback(() => {
@@ -2275,6 +2279,31 @@ export default function PrivateBookingDetailClient({
     }
   }, [bookingId, isCopyingLink]);
 
+  const handleRevokePortalLinks = useCallback(async () => {
+    if (!bookingId || revokingLinks) return;
+    setRevokingLinks(true);
+    try {
+      const result = await revokeBookingPortalLinks(bookingId);
+      if (!result.success) {
+        toast.error(result.error || 'The old links could not be switched off');
+        return;
+      }
+      setShowRevokeLinksModal(false);
+      if (!result.url) {
+        toast.error(result.error || 'The old links are off, but a new one could not be made');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(result.url);
+        toast.success('Old links switched off. A new link is copied, ready to send to the guest');
+      } catch {
+        toast.success(`Old links switched off. New link: ${result.url}`);
+      }
+    } finally {
+      setRevokingLinks(false);
+    }
+  }, [bookingId, revokingLinks]);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!canEdit || isReordering || !bookingId) {
       return;
@@ -2630,6 +2659,12 @@ export default function PrivateBookingDetailClient({
                 Share Link
               </DropdownItem>
               <DropdownItem
+                icon={<Icon name="link" size={16} />}
+                onClick={() => setShowRevokeLinksModal(true)}
+              >
+                Switch Off Old Links
+              </DropdownItem>
+              <DropdownItem
                 icon={<Icon name="externalLink" size={16} />}
                 onClick={() => window.open(privateBookingContractHref(bookingId), '_blank', 'noopener,noreferrer')}
               >
@@ -2868,6 +2903,20 @@ export default function PrivateBookingDetailClient({
                       </span>
                     ),
                   },
+                  // BK-188: the room a website enquiry asked for. It holds nothing: staff add the
+                  // room to the booking when it is agreed.
+                  ...(booking.requested_space_name
+                    ? [{
+                        key: 'requested_space',
+                        label: 'Room Asked For',
+                        value: (
+                          <span className="flex items-center">
+                            <Icon name="home" size={20} className="text-text-subtle mr-2" />
+                            {booking.requested_space_name}
+                          </span>
+                        ),
+                      }]
+                    : []),
                   {
                     key: 'event_type',
                     label: 'Event Type',
@@ -3909,6 +3958,35 @@ export default function PrivateBookingDetailClient({
             rows={3}
             disabled={cancellingInvoice}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        open={showRevokeLinksModal}
+        onClose={() => {
+          if (!revokingLinks) setShowRevokeLinksModal(false);
+        }}
+        title="Switch Off Old Links"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowRevokeLinksModal(false)} disabled={revokingLinks}>
+              Keep Them
+            </Button>
+            <Button variant="danger" onClick={handleRevokePortalLinks} loading={revokingLinks}>
+              Switch Off and Copy New Link
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text">
+            Every booking page link sent for this booking stops working, in every email and text
+            already sent. Use this when a link has been forwarded to someone who should not see
+            the booking.
+          </p>
+          <p className="text-sm text-text">
+            A new link is copied for you to send to the guest. Nothing is sent automatically.
+          </p>
         </div>
       </Modal>
 

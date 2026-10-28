@@ -1,0 +1,41 @@
+import 'server-only'
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { readBookingToken } from './booking-token'
+
+/**
+ * Whether a private booking portal link still opens the booking (BK-204).
+ *
+ * The signed link proves which booking it is for and that it has not expired. Staff can also
+ * switch off every link a booking has had (private_bookings.portal_links_revoked_at), for a link
+ * that was forwarded or leaked: a link issued before that moment is refused, one issued after it
+ * works. Links from before issue times were kept carry none, and count as issued before.
+ *
+ * Returns the booking id, or null for a link that does not open the booking. Throws when the
+ * booking cannot be read, so an outage is shown as one and not as a bad link.
+ */
+export async function verifyPortalAccess(token: string): Promise<string | null> {
+  const verified = readBookingToken(token)
+  if (!verified) return null
+
+  const { data, error } = await createAdminClient()
+    .from('private_bookings')
+    .select('id, portal_links_revoked_at')
+    .eq('id', verified.bookingId)
+    .maybeSingle()
+  if (error) {
+    // Until migration 20261028131500 is applied the column does not exist. The link then works as
+    // it always has (signature and expiry), rather than every guest's link failing.
+    if (/portal_links_revoked_at/.test(error.message ?? '')) return verified.bookingId
+    throw new Error(`Could not check the booking link: ${error.message}`)
+  }
+  if (!data) return null
+
+  const revokedAt = data.portal_links_revoked_at ? Date.parse(data.portal_links_revoked_at as string) : null
+  if (revokedAt !== null && Number.isFinite(revokedAt)) {
+    // Whole seconds, as the link carries them: a link issued in the same second as the switch-off
+    // is the new one staff are sending.
+    if (verified.issuedAt === null || verified.issuedAt < Math.floor(revokedAt / 1000)) return null
+  }
+  return verified.bookingId
+}

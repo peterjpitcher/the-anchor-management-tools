@@ -320,7 +320,7 @@ export const SHORT_LINKS = {
    */
   excludedLinkTypes: ['marketing_email'],
   /** Any of these metadata keys marks a link made for one guest or booking (manage, pay, confirm). */
-  excludedMetadataKeys: ['guest_link_kind', 'guest_token_hash', 'mobile_number', 'customer_id', 'table_booking_id', 'event_booking_id', 'booking_id'],
+  excludedMetadataKeys: ['guest_link_kind', 'guest_token_hash', 'mobile_number', 'customer_id', 'table_booking_id', 'event_booking_id', 'private_booking_id', 'booking_id'],
   /** Metadata values marking texts shortened automatically, guest links and review asks. */
   excludedMetadataValues: {
     source: ['sms_auto_shortener', 'guest_link_builder', 'guest_review_ask', 'google_review_link'],

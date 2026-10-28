@@ -89,6 +89,9 @@ function expectSound(payload: Payload, options: { eventDate?: string | null } = 
   // together because </td> is not a block end.
   expect(text).not.toMatch(/Event[A-Z]/)
   expect(text).toContain('The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ')
+  // BK-175: every one of them gives the venue's number (website SSOT §2).
+  expect(text).toContain('01753 682707')
+  expect(payload.html).toContain('01753 682707')
   // Readable on a 375px phone: nothing in the table refuses to wrap.
   expect(payload.html).not.toContain('white-space: nowrap')
   expect(payload.html).toContain('padding: 16px')
@@ -344,6 +347,31 @@ describe.each([BST_DATE, GMT_DATE])('private booking emails for an event on %s',
     expectSound(payload, { eventDate })
     expect(payload.html).not.toContain('contract version 3')
     expect(payload.attachments?.[0]?.name).toBe('The-Anchor-booking-contract-v3.pdf')
+  })
+})
+
+// BK-175: the older emails said "please get in touch" with no number to ring.
+describe('the older emails close with the number to call', () => {
+  const CONTACT_LINE = 'Questions? Call us on 01753 682707 or email manager@the-anchor.pub.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedSendEmail.mockResolvedValue({ success: true })
+  })
+
+  it.each([
+    ['provisional hold', () => sendBookingConfirmationEmail({ ...booking(), status: 'confirmed', hold_expiry: '2026-09-20T22:59:59.000Z', deposit_paid_date: null } as never)],
+    ['deposit received', () => sendDepositReceivedEmail({ ...booking(), status: 'confirmed', deposit_paid_date: '2026-09-01' } as never)],
+    ['calendar invite', () => sendBookingCalendarInvite(booking() as never)],
+    ['deposit payment link', () => sendDepositPaymentLinkEmail(booking() as never, 'https://paypal.test/checkout?token=ORDER-1', 'https://l.the-anchor.pub/abcdefabcdef')],
+    ['contract', () => sendContractEmailToCustomer(booking() as never, { version: 2, pdf: Buffer.from('pdf') })],
+  ])('%s', async (_label, send) => {
+    await send()
+    const payload = mockedSendEmail.mock.calls[0][0] as Payload
+    expect(payload.text).toContain(CONTACT_LINE)
+    expect(payload.html).toContain('href="tel:+441753682707"')
+    expect(`${payload.html}\n${payload.text}`).not.toContain('please get in touch')
+    for (const part of [payload.subject, payload.html, payload.text as string]) assertCleanText(part)
   })
 })
 

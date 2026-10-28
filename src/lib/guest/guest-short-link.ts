@@ -52,6 +52,7 @@ export type GuestShortLinkKind =
   | 'event_manage'
   | 'event_payment'
   | 'booking_confirm'
+  | 'private_booking_portal'
 
 /**
  * The only path shapes that may be shortened, one per kind. Verified against the
@@ -72,6 +73,8 @@ const LINK_KIND_PATH: Record<GuestShortLinkKind, RegExp> = {
   event_manage: /^\/g\/([^/]+)\/manage-booking\/?$/,
   event_payment: /^\/g\/([^/]+)\/event-payment\/?$/,
   booking_confirm: /^\/g\/([^/]+)\/confirm-booking\/?$/,
+  // The private hire booking page, signed and time-limited (BK-172, BK-204).
+  private_booking_portal: /^\/booking-portal\/([^/]+)\/?$/,
 }
 
 const LINK_KIND_ACTION_TYPE: Record<GuestShortLinkKind, string> = {
@@ -81,6 +84,7 @@ const LINK_KIND_ACTION_TYPE: Record<GuestShortLinkKind, string> = {
   event_manage: 'manage',
   event_payment: 'payment',
   booking_confirm: 'booking_confirm',
+  private_booking_portal: 'manage',
 }
 
 /**
@@ -95,6 +99,7 @@ const LINK_KIND_SOURCE: Record<GuestShortLinkKind, string> = {
   event_manage: 'guest_link_builder',
   event_payment: 'guest_link_builder',
   booking_confirm: 'guest_link_builder',
+  private_booking_portal: 'guest_link_builder',
 }
 
 /**
@@ -121,7 +126,9 @@ export interface GuestShortLinkInput {
   /** The full long URL, exactly as the token minter returned it. */
   longUrl: string
   linkKind: GuestShortLinkKind
-  customerId: string
+  /** Null for a private booking not yet linked to a customer. */
+  customerId: string | null
+  privateBookingId?: string | null
   eventBookingId?: string | null
   tableBookingId?: string | null
 }
@@ -147,6 +154,7 @@ function refuse(
       customer_id: input.customerId,
       event_booking_id: input.eventBookingId ?? null,
       table_booking_id: input.tableBookingId ?? null,
+      private_booking_id: input.privateBookingId ?? null,
     },
   })
 
@@ -212,6 +220,7 @@ export async function buildGuestShortLink(input: GuestShortLinkInput): Promise<G
         customer_id: input.customerId,
         event_booking_id: input.eventBookingId ?? null,
         table_booking_id: input.tableBookingId ?? null,
+        ...(input.privateBookingId ? { private_booking_id: input.privateBookingId } : {}),
       },
     })
 

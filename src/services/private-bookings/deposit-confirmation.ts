@@ -9,7 +9,7 @@ import {
   renderPrivateBookingMessage,
   type CatalogueBooking,
 } from '@/lib/private-bookings/message-catalogue'
-import { buildPrivateBookingPortalUrl } from '@/lib/private-bookings/booking-token'
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link'
 import { resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation'
 import { contractSentOrAccepted } from './readiness'
 
@@ -245,7 +245,8 @@ export async function confirmDeposit(input: {
     throw new DepositConfirmationError('The deposit deadline would already have passed because the event is today or has passed. Check the event date first.')
   }
 
-  const paymentLink = buildPrivateBookingPortalUrl(booking.id)
+  // Short, and ending 30 days after the event (BK-172, BK-204).
+  const paymentLink = await privateBookingPortalLink(booking)
   if (!paymentLink) {
     throw new DepositConfirmationError('The PayPal link could not be made (the app URL is not an http or https address), so nothing was confirmed or sent.')
   }

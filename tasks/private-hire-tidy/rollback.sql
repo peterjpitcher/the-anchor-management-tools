@@ -38,3 +38,16 @@ GRANT EXECUTE ON FUNCTION public.sync_customer_name_from_customers() TO anon, au
 ALTER TABLE public.private_bookings DROP COLUMN IF EXISTS contract_terms;
 
 COMMIT;
+
+-- 2. 20261028131500_private_hire_portal_links_and_requested_room.sql
+--    Drops the two columns. Switched-off booking links start working again until they expire,
+--    and the rooms website enquiries asked for are lost (the manager email still named them).
+--    Roll back the app code first.
+
+BEGIN;
+
+ALTER TABLE public.private_bookings DROP CONSTRAINT IF EXISTS private_bookings_requested_space_id_fkey;
+ALTER TABLE public.private_bookings DROP COLUMN IF EXISTS requested_space_id;
+ALTER TABLE public.private_bookings DROP COLUMN IF EXISTS portal_links_revoked_at;
+
+COMMIT;

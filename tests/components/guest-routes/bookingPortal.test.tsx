@@ -36,6 +36,11 @@ vi.mock('@/lib/private-bookings/booking-token', () => ({
   verifyBookingToken: (token: string) => mocks.verifyBookingToken(token),
 }))
 
+// The switch-off check (BK-204) is tested in tests/lib/private-bookings/portal-access.test.ts.
+vi.mock('@/lib/private-bookings/portal-access', () => ({
+  verifyPortalAccess: async (token: string) => mocks.verifyBookingToken(token),
+}))
+
 vi.mock('@/app/actions/portalPayPalActions', () => ({
   captureDepositPaymentByToken: (...args: unknown[]) => mocks.captureDepositPaymentByToken(...args),
   createDepositPaymentOrderByToken: (...args: unknown[]) =>

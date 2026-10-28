@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
-import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
+import { verifyPortalAccess } from '@/lib/private-bookings/portal-access'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 import {
@@ -89,7 +89,7 @@ async function writePrivateBookingAudit(
 export async function createDepositPaymentOrderByToken(
   portalToken: string
 ): Promise<{ success?: boolean; approveUrl?: string; error?: string }> {
-  const bookingId = verifyBookingToken(portalToken)
+  const bookingId = await verifyPortalAccess(portalToken).catch(() => null)
   if (!bookingId) {
     return { error: 'Invalid booking link' }
   }
@@ -233,7 +233,7 @@ export async function captureDepositPaymentByToken(
   bookingConfirmed?: boolean
 }> {
   // Verify the portal token — this IS the authorisation
-  const bookingId = verifyBookingToken(portalToken)
+  const bookingId = await verifyPortalAccess(portalToken).catch(() => null)
   if (!bookingId) {
     return { error: 'Invalid booking link' }
   }

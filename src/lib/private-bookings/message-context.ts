@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { buildPrivateBookingPortalUrl } from '@/lib/private-bookings/booking-token'
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link'
 import { loadPrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement-loader'
 import {
   PRIVATE_BOOKING_MESSAGE_COLUMNS,
@@ -87,7 +87,9 @@ export async function loadPrivateBookingMessageContext(input: {
   // The deposit request and the reminders all ask for the deposit, so all of them carry the link
   // to the page that takes it (review PB-BR-2).
   if (input.triggerType === 'deposit_request' || input.triggerType.startsWith('deposit_reminder_')) {
-    context.paymentLink = buildPrivateBookingPortalUrl(input.bookingId)
+    // Short, and ending 30 days after the event (BK-172, BK-204).
+    const linkBooking = data as { id: string; customer_id?: string | null; event_date?: string | null; date_tbd?: boolean | null }
+    context.paymentLink = await privateBookingPortalLink({ ...linkBooking, id: input.bookingId })
   }
 
   return context

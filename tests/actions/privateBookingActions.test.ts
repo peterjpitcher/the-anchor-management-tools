@@ -53,6 +53,11 @@ vi.mock('@/lib/paypal', () => ({
   getPayPalOrder: vi.fn(),
 }))
 
+// The short booking page link (BK-172) is tested in tests/lib/private-bookings/portal-link.test.ts.
+vi.mock('@/lib/private-bookings/portal-link', () => ({
+  privateBookingPortalLink: vi.fn(async (booking: { id: string }) => `https://l.the-anchor.pub/short-${booking.id}`),
+}))
+
 vi.mock('@/lib/private-bookings/booking-token', () => ({
   generateBookingToken: vi.fn(() => 'mock-token'),
 }))
@@ -169,6 +174,7 @@ import {
   updateBookingItem,
   deleteBookingItem,
   getBookingPortalLink,
+  revokeBookingPortalLinks,
   editPrivateBookingPayment,
   deletePrivateBookingPayment,
 } from '@/app/actions/privateBookingActions'
@@ -291,17 +297,82 @@ describe('privateBookingActions', () => {
     mockAuthenticatedClient()
   })
 
+  // BK-204: a leaked link can be switched off on its own.
+  describe('revokeBookingPortalLinks', () => {
+    const BOOKING_UUID = '7f3a2c10-4b5d-4e6f-8a9b-0c1d2e3f4a5b'
+
+    function adminWith(updated: Record<string, unknown> | null) {
+      const writes: Array<{ table: string; op: string; payload: unknown }> = []
+      mockedCreateAdminClient.mockReturnValue({
+        from: (table: string) => ({
+          update: (payload: unknown) => {
+            writes.push({ table, op: 'update', payload })
+            return { eq: () => ({ select: () => ({ maybeSingle: async () => ({ data: updated, error: null }) }) }) }
+          },
+          insert: async (payload: unknown) => {
+            writes.push({ table, op: 'insert', payload })
+            return { error: null }
+          },
+        }),
+      } as never)
+      return writes
+    }
+
+    it('switches the old links off, audits it, and hands back a new short link', async () => {
+      const writes = adminWith({ id: BOOKING_UUID, customer_id: 'customer-1', event_date: '2026-12-05', date_tbd: false })
+
+      const result = await revokeBookingPortalLinks(BOOKING_UUID)
+
+      expect(result).toEqual({ success: true, url: `https://l.the-anchor.pub/short-${BOOKING_UUID}` })
+      expect(writes[0]).toMatchObject({ table: 'private_bookings', op: 'update', payload: { portal_links_revoked_at: expect.any(String) } })
+      expect(writes[1]).toMatchObject({
+        table: 'private_booking_audit',
+        op: 'insert',
+        payload: { booking_id: BOOKING_UUID, action: 'portal_links_revoked' },
+      })
+      expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+        additional_info: expect.objectContaining({ action: 'portal_links_revoked' }),
+      }))
+    })
+
+    it('needs edit or manage permission', async () => {
+      mockedPermission.mockResolvedValue(false)
+      const writes = adminWith({ id: BOOKING_UUID })
+      expect(await revokeBookingPortalLinks(BOOKING_UUID)).toEqual({ error: 'Insufficient permissions' })
+      expect(writes).toHaveLength(0)
+    })
+
+    it('says so for a booking that does not exist', async () => {
+      adminWith(null)
+      expect(await revokeBookingPortalLinks(BOOKING_UUID)).toEqual({ error: 'Booking not found' })
+    })
+  })
+
   describe('getBookingPortalLink', () => {
     it('returns the stable customer portal link for staff who manage deposits', async () => {
       mockedPermission.mockImplementation((_module: string, action: string) =>
         Promise.resolve(action === 'manage_deposits')
       )
 
+      mockedCreateAdminClient.mockReturnValue({
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: 'booking-1', customer_id: 'customer-1', event_date: '2026-12-05', date_tbd: false },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      } as never)
+
       const result = await getBookingPortalLink('booking-1')
 
+      // Short (BK-172).
       expect(result).toEqual({
         success: true,
-        url: 'https://management.example.com/booking-portal/mock-token',
+        url: 'https://l.the-anchor.pub/short-booking-1',
       })
       expect(mockedPermission).toHaveBeenCalledWith('private_bookings', 'manage_deposits')
     })
