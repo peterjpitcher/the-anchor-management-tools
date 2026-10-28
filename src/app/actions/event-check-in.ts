@@ -2,7 +2,6 @@
 
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
-import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
@@ -11,8 +10,6 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
-import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { EventBookingService } from '@/services/event-bookings'
 import { hasGuestAnswers } from '@/lib/events/guest-answers'
@@ -24,7 +21,6 @@ import {
   kioskWalkInBlock,
 } from '@/lib/events/kiosk-check-in'
 
-const LONDON_TZ = 'Europe/London'
 const ACTIVE_BOOKING_STATUSES = ['pending_payment', 'confirmed']
 
 const lookupSchema = z.object({
@@ -828,55 +824,6 @@ async function getEventCategoryAttendanceSummary(input: {
   }
 }
 
-function buildThankYouDelayMs(event: EventForCheckIn): number {
-  const eventDateTime = fromZonedTime(`${event.date}T${event.time}`, LONDON_TZ)
-  const nextDayLondon = toZonedTime(eventDateTime, LONDON_TZ)
-  nextDayLondon.setDate(nextDayLondon.getDate() + 1)
-  nextDayLondon.setHours(10, 0, 0, 0)
-  const scheduledUtc = fromZonedTime(nextDayLondon, LONDON_TZ)
-  return Math.max(scheduledUtc.getTime() - Date.now(), 60_000)
-}
-
-async function scheduleThankYouSms(input: {
-  event: EventForCheckIn
-  customerId: string
-  phone: string
-  checkInId: string
-}) {
-  try {
-    const admin = createAdminClient()
-    const reviewLink = await getGoogleReviewLink(admin)
-    const message = `Thanks for coming to ${input.event.name} at The Anchor. We'd love to know how we did: ${reviewLink}`
-
-    const result = await jobQueue.enqueue('send_sms', {
-      to: input.phone,
-      message,
-      customerId: input.customerId,
-      metadata: {
-        event_id: input.event.id,
-        event_check_in_id: input.checkInId,
-        template_key: 'event_check_in_thank_you',
-      },
-    }, {
-      delay: buildThankYouDelayMs(input.event),
-      unique: `event_check_in_thank_you:${input.checkInId}`,
-    })
-
-    if (!result.success) {
-      logger.warn('Failed to enqueue event check-in thank-you SMS', {
-        metadata: { error: result.error, checkInId: input.checkInId },
-      })
-    }
-  } catch (error) {
-    logger.warn('Failed to schedule event check-in thank-you SMS', {
-      metadata: {
-        checkInId: input.checkInId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    })
-  }
-}
-
 async function completeCheckIn(input: {
   event: EventForCheckIn
   userId: string
@@ -936,12 +883,8 @@ async function completeCheckIn(input: {
     customerId: input.customerId,
     assignedBy: input.userId,
   })
-  await scheduleThankYouSms({
-    event: input.event,
-    customerId: input.customerId,
-    phone: input.normalizedPhone,
-    checkInId: checkIn.id,
-  })
+  // No thank-you text from here: the morning-after review ask in the engagement cron is the one
+  // ask per night, and it now asks only the guests who checked in (BK-087).
 
   await logAuditEvent({
     user_id: input.userId,

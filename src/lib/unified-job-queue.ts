@@ -9,6 +9,7 @@ import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { claimIdempotencyKey, releaseIdempotencyClaim } from '@/lib/api/idempotency'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { findStaleEventBookingSmsReason } from '@/lib/sms/held-booking-text'
 
 const DEBUG_JOB_QUEUE = process.env.JOB_QUEUE_DEBUG === '1'
 
@@ -1274,6 +1275,16 @@ export class UnifiedJobQueue {
 
           if (!customerId) {
             throw new Error('send_sms job blocked: missing customer_id')
+          }
+
+          // A booking text held overnight by quiet hours is read against the booking first, and
+          // dropped if the booking has moved on: paid, cancelled, or its hold has lapsed (BK-084).
+          const staleReason = await findStaleEventBookingSmsReason(payload.metadata)
+          if (staleReason) {
+            logger.info('Dropped a held event booking text that no longer matches its booking', {
+              metadata: { reason: staleReason, customerId },
+            })
+            return { skipped: true, reason: staleReason }
           }
 
           const { sendSMS } = await import('@/lib/twilio')
