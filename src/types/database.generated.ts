@@ -12694,12 +12694,14 @@ export type Database = {
           paypal_deposit_order_id: string | null
           paypal_reconciliation_attempts: number
           paypal_reconciliation_last_error: string | null
+          portal_links_revoked_at: string | null
           post_event_outcome: string | null
           post_event_outcome_decided_at: string | null
           post_event_status: string | null
           receipt_version: number
           refund_due_amount: number | null
           refund_due_by: string | null
+          requested_space_id: string | null
           review_clicked_at: string | null
           review_processed_at: string | null
           review_sms_sent_at: string | null
@@ -12796,12 +12798,14 @@ export type Database = {
           paypal_deposit_order_id?: string | null
           paypal_reconciliation_attempts?: number
           paypal_reconciliation_last_error?: string | null
+          portal_links_revoked_at?: string | null
           post_event_outcome?: string | null
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
           refund_due_amount?: number | null
           refund_due_by?: string | null
+          requested_space_id?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -12898,12 +12902,14 @@ export type Database = {
           paypal_deposit_order_id?: string | null
           paypal_reconciliation_attempts?: number
           paypal_reconciliation_last_error?: string | null
+          portal_links_revoked_at?: string | null
           post_event_outcome?: string | null
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
           refund_due_amount?: number | null
           refund_due_by?: string | null
+          requested_space_id?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -12921,6 +12927,13 @@ export type Database = {
           waiver_status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "private_bookings_requested_space_id_fkey"
+            columns: ["requested_space_id"]
+            isOneToOne: false
+            referencedRelation: "venue_spaces"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "private_bookings_cancellation_evidence_document_id_fkey"
             columns: ["cancellation_evidence_document_id"]

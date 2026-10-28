@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import { getErrorMessage } from '@/lib/errors'
@@ -2604,9 +2605,80 @@ export async function getBookingPortalLink(
     return { error: 'Insufficient permissions' }
   }
 
-  const token = generateBookingToken(bookingId)
-  const url = `${getAppUrl()}/booking-portal/${token}`
+  const { data: linkBooking, error: linkBookingError } = await createAdminClient()
+    .from('private_bookings')
+    .select('id, customer_id, event_date, date_tbd')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (linkBookingError) return { error: 'Could not read the booking. Please try again.' }
+  if (!linkBooking) return { error: 'Booking not found' }
 
+  // Short, and ending 30 days after the event (BK-172, BK-204).
+  const url = await privateBookingPortalLink(linkBooking)
+  if (!url) return { error: 'The link could not be made (the app URL is not an http or https address).' }
+
+  return { success: true, url }
+}
+
+/**
+ * Switch off every booking page link this booking has had, for a link that was forwarded or
+ * leaked, and make a new one for staff to send (BK-204). Links issued from now on work; earlier
+ * ones show the expired-link page. Audited. Nothing is sent to the guest from here: the new link
+ * is returned to copy, and the next deposit or balance email carries a working one too.
+ */
+export async function revokeBookingPortalLinks(
+  bookingId: string
+): Promise<{ success?: boolean; url?: string; error?: string }> {
+  if (!z.string().uuid().safeParse(bookingId).success) return { error: 'Booking not found' }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const hasPermission = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
+  if (!hasPermission) return { error: 'Insufficient permissions' }
+
+  const admin = createAdminClient()
+  const revokedAt = new Date().toISOString()
+  const { data: revoked, error: revokeError } = await admin
+    .from('private_bookings')
+    .update({ portal_links_revoked_at: revokedAt, updated_at: revokedAt })
+    .eq('id', bookingId)
+    .select('id, customer_id, event_date, date_tbd')
+    .maybeSingle()
+  if (revokeError) {
+    logger.error('Switching off private booking page links failed', {
+      error: new Error(revokeError.message),
+      metadata: { bookingId },
+    })
+    return { error: 'The old links could not be switched off. Please try again.' }
+  }
+  if (!revoked) return { error: 'Booking not found' }
+
+  const { error: auditError } = await admin.from('private_booking_audit').insert({
+    booking_id: bookingId,
+    action: 'portal_links_revoked',
+    performed_by: user.id,
+    metadata: { revoked_at: revokedAt },
+  })
+  if (auditError) {
+    logger.error('Could not record switching off private booking page links', {
+      error: new Error(auditError.message),
+      metadata: { bookingId },
+    })
+  }
+  await logAuditEvent({
+    user_id: user.id,
+    operation_type: 'update',
+    resource_type: 'private_booking',
+    resource_id: bookingId,
+    operation_status: 'success',
+    additional_info: { action: 'portal_links_revoked', revoked_at: revokedAt },
+  })
+
+  const url = await privateBookingPortalLink(revoked)
+  revalidatePath(`/private-bookings/${bookingId}`)
+  if (!url) return { success: true, error: 'The old links are off, but a new one could not be made (the app URL is not an http or https address).' }
   return { success: true, url }
 }
 
@@ -2865,8 +2937,11 @@ export async function sendDepositPaymentLink(
   }
 
   try {
-    const portalToken = generateBookingToken(bookingId)
+    // PayPal sends the guest back to the full address (a short link cannot carry the query it
+    // adds); the email shows the short one (BK-172). Both end 30 days after the event (BK-204).
+    const portalToken = generateBookingToken(bookingId, { eventDate: booking.event_date, dateTbd: booking.date_tbd })
     const portalUrl = `${getAppUrl()}/booking-portal/${portalToken}`
+    const portalPageLink = (await privateBookingPortalLink(booking)) ?? portalUrl
 
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
@@ -2898,7 +2973,7 @@ export async function sendDepositPaymentLink(
     // The portal page must never create an order just because an email scanner
     // opened its link. The customer creates/reuses the order with an explicit
     // button press on the portal instead.
-    const emailResult = await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
+    const emailResult = await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalPageLink)
 
     // Money path, so it fails closed: staff were told "Payment link sent to customer" while the
     // send had failed, the guest had no link and the hold ran down (review PB-11).

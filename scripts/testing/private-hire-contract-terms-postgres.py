@@ -49,6 +49,13 @@ GRANT EXECUTE ON FUNCTION public.sync_customer_name_from_customers() TO anon, au
 """
 
 
+def rollback_part_one():
+    """Part 1 of the release's rollback file: the part for this migration."""
+    text = ROLLBACK.read_text()
+    end = text.find('\n-- 2. ')
+    return text if end == -1 else text[:end]
+
+
 def production_definition():
     """The function as production holds it: the definition the rollback restores."""
     text = ROLLBACK.read_text()
@@ -153,7 +160,7 @@ def main():
                 check(f"has_function_privilege('{role}', 'public.sync_customer_name_from_customers()', 'EXECUTE')",
                       f'{role} keeps EXECUTE as in production')
 
-            sql(ROLLBACK.read_text())
+            sql(rollback_part_one())
             check(f"{body_md5} = '{PRODUCTION_MD5}' AND NOT {has_column}",
                   'the rollback restores the body byte for byte and drops the column')
 

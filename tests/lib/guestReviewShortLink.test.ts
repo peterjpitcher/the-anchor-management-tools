@@ -114,6 +114,7 @@ describe('buildGuestReviewUrl', () => {
       customer_id: 'customer-1',
       event_booking_id: null,
       table_booking_id: 'table-booking-1',
+      private_booking_id: null,
     })
   })
 

@@ -6,6 +6,7 @@ import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { getSmartFirstName } from '@/lib/sms/name-utils';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { buildPrivateBookingPortalUrl } from '@/lib/private-bookings/booking-token';
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link';
 import { formatPrivateBookingAmount } from '@/lib/private-bookings/messages';
 import {
   describePaymentMethod,
@@ -15,6 +16,18 @@ import type { PaymentHistoryEntry } from '@/types/private-bookings';
 import { signingTokenFromUrl } from '@/lib/signing/tokens';
 
 const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
+
+/** Venue contact details, from the website SSOT §2. */
+const VENUE_PHONE_DISPLAY = '01753 682707';
+const VENUE_PHONE_TEL = '+441753682707';
+const VENUE_EMAIL = 'manager@the-anchor.pub';
+
+/**
+ * The line the older private hire emails close with, as the newer ones do (BK-175). They asked
+ * the guest to get in touch and gave no number, so a guest holding the contract or the payment
+ * link had nothing to ring.
+ */
+const CONTACT_LINE_TEXT = `Questions? Call us on ${VENUE_PHONE_DISPLAY} or email ${VENUE_EMAIL}.`;
 const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
 
 // Applied to every text element so emails render in one font everywhere. Outlook
@@ -25,7 +38,10 @@ const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
 // Shared small-print footer (SOP §26/§27: privacy notice link + complaints
 // contact on customer communications).
 const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: ${GUEST.textMuted}; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
-  <p style="font-family: ${FONT_FAMILY}; color: ${GUEST.textMuted}; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: ${GUEST.textMuted};">${PRIVACY_NOTICE_URL}</a><br>Questions or complaints: <a href="mailto:manager@the-anchor.pub" style="color: ${GUEST.textMuted};">manager@the-anchor.pub</a> or write to us at the address above.</p>`;
+  <p style="font-family: ${FONT_FAMILY}; color: ${GUEST.textMuted}; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: ${GUEST.textMuted};">${PRIVACY_NOTICE_URL}</a><br>Questions or complaints: call <a href="tel:${VENUE_PHONE_TEL}" style="color: ${GUEST.textMuted};">${VENUE_PHONE_DISPLAY}</a>, email <a href="mailto:${VENUE_EMAIL}" style="color: ${GUEST.textMuted};">${VENUE_EMAIL}</a> or write to us at the address above.</p>`;
+
+/** The contact line as HTML, with the number and the address as links. */
+const CONTACT_LINE_HTML = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: ${GUEST.green};">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: ${GUEST.green};">${VENUE_EMAIL}</a>.`;
 
 /**
  * The wrapper every private booking email opens with.
@@ -191,7 +207,7 @@ function legacyEmailText(input: {
     '',
     VENUE_ADDRESS,
     `How we use your data: ${PRIVACY_NOTICE_URL}`,
-    'Questions or complaints: manager@the-anchor.pub or write to us at the address above.',
+    `Questions or complaints: call ${VENUE_PHONE_DISPLAY}, email ${VENUE_EMAIL} or write to us at the address above.`,
   ].join('\n');
 }
 
@@ -284,7 +300,8 @@ export async function sendBookingConfirmationEmail(booking: {
       depositState === 'due' &&
       new Date(booking.hold_expiry as string).getTime() > Date.now();
     const holdExpiryFormatted = holdExpiryIsLive ? formatDate(booking.hold_expiry as string) : null;
-    const paymentLink = depositState === 'due' ? buildPrivateBookingPortalUrl(booking.id) : null;
+    // Short, and ending 30 days after the event (BK-172, BK-204).
+    const paymentLink = depositState === 'due' ? await privateBookingPortalLink(booking) : null;
 
     const heading = depositState === 'due' ? 'Provisional booking hold' : 'Booking confirmed';
     const subject =
@@ -347,7 +364,7 @@ export async function sendBookingConfirmationEmail(booking: {
     ${rowsHtml(rows)}
   </table>${buttonHtml}
   ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
-  <p style="font-family: ${FONT_FAMILY};">If you have any questions, please get in touch.</p>
+  <p style="font-family: ${FONT_FAMILY};">${CONTACT_LINE_HTML}</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
@@ -359,7 +376,7 @@ export async function sendBookingConfirmationEmail(booking: {
       paragraphs,
       rows,
       links: paymentLink ? [['Open your booking and pay the deposit', paymentLink]] : [],
-      notes: [...notes, 'If you have any questions, please get in touch.'],
+      notes: [...notes, CONTACT_LINE_TEXT],
     });
 
     const result = await sendEmail({
@@ -470,7 +487,7 @@ export async function sendDepositReceivedEmail(booking: {
     ${rowsHtml(rows)}
   </table>
   ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
-  <p style="font-family: ${FONT_FAMILY};">If you have any questions in the meantime, please get in touch.</p>
+  <p style="font-family: ${FONT_FAMILY};">${CONTACT_LINE_HTML}</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
@@ -481,7 +498,7 @@ export async function sendDepositReceivedEmail(booking: {
       firstName,
       paragraphs,
       rows,
-      notes: [...notes, 'If you have any questions in the meantime, please get in touch.'],
+      notes: [...notes, CONTACT_LINE_TEXT],
     });
 
     const result = await sendEmail({
@@ -646,7 +663,7 @@ export async function sendBookingCalendarInvite(booking: {
     const paragraphs = [
       `Your calendar invite is attached for ${eventLabel} on ${dateFormatted}.`,
       'Open the attached file to add the event to your calendar.',
-      'If you have any questions, please get in touch.',
+      CONTACT_LINE_TEXT,
     ];
 
     const html = `
@@ -769,7 +786,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">Or copy this link into your browser:<br><a href="${escapeHtml(paypalApproveUrl)}" style="font-family: ${FONT_FAMILY}; color: ${GUEST.green}; word-break: break-all;">${escapeHtml(paypalApproveUrl)}</a></p>
   ${freshLinkHtml}
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(DEPOSIT_TERMS_NOTE)}</p>
-  <p style="font-family: ${FONT_FAMILY};">If you have any questions about your booking, please get in touch.</p>
+  <p style="font-family: ${FONT_FAMILY};">${CONTACT_LINE_HTML}</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
@@ -789,7 +806,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
           ? 'PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, open your secure booking page and choose Pay deposit via PayPal.'
           : 'PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, please contact us and we can send a fresh payment link.',
         DEPOSIT_TERMS_NOTE,
-        'If you have any questions about your booking, please get in touch.',
+        CONTACT_LINE_TEXT,
       ],
     });
 
@@ -1228,6 +1245,7 @@ export async function sendContractEmailToCustomer(booking: {
   ${signButtons.length > 0 ? `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(signLine)}</p>
   ${signButtons.map(buttonHtml).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(signNote)}</p>` : ''}
+  <p style="font-family: ${FONT_FAMILY};">${CONTACT_LINE_HTML}</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
@@ -1256,6 +1274,7 @@ export async function sendContractEmailToCustomer(booking: {
       paragraphs: signButtons.length > 0
         ? [...paragraphs, signLine, ...signButtons.map((button) => `${button.label}:\n${button.url}`), signNote]
         : paragraphs,
+      notes: [CONTACT_LINE_TEXT],
     }),
     attachments,
     ...privateBookingEmailLog(booking, 'private_booking_contract'),
@@ -1370,10 +1389,6 @@ export async function sendPrivateBookingRefundSentEmail(booking: {
 // service messages. The builders are pure, so fixture tests can render them in any time zone.
 // ---------------------------------------------------------------------------
 
-/** Venue contact details, from the website SSOT §2. */
-const VENUE_PHONE_DISPLAY = '01753 682707';
-const VENUE_PHONE_TEL = '+441753682707';
-const VENUE_EMAIL = 'manager@the-anchor.pub';
 
 export type PrivateBookingEmailContent = {
   subject: string;
@@ -1463,8 +1478,8 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
     ...(spec.booking.guest_count ? ([['Guests', String(spec.booking.guest_count)]] as Array<[string, string]>) : []),
     ...(spec.rows ?? []),
   ];
-  const contactHtml = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: ${GUEST.green};">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: ${GUEST.green};">${VENUE_EMAIL}</a>.`;
-  const contactText = `Questions? Call us on ${VENUE_PHONE_DISPLAY} or email ${VENUE_EMAIL}.`;
+  const contactHtml = CONTACT_LINE_HTML;
+  const contactText = CONTACT_LINE_TEXT;
 
   const sections = spec.sections ?? [];
   const sectionsHtml = sections
@@ -1539,8 +1554,14 @@ const money = (amount: number): string => formatPrivateBookingAmount(amount);
  * deposit gave no way to pay it (review PB-BR-2) and one of their senders, the monitor cron, has
  * only the booking row to hand. Pass `null` to leave the button out on purpose.
  */
-function resolvePaymentLink(bookingId: string, provided: string | null | undefined): string | null {
-  return provided !== undefined ? provided : buildPrivateBookingPortalUrl(bookingId);
+function resolvePaymentLink(
+  booking: { id: string; event_date?: string | null; date_tbd?: boolean | null },
+  provided: string | null | undefined,
+): string | null {
+  // The full link, ending 30 days after the event (BK-204). The async senders pass a short one.
+  return provided !== undefined
+    ? provided
+    : buildPrivateBookingPortalUrl(booking.id, { eventDate: booking.event_date, dateTbd: booking.date_tbd });
 }
 
 /** "Pay the deposit by PayPal", the label the guest's booking page uses for the same button. */
@@ -1559,7 +1580,7 @@ export function buildPrivateBookingCreatedEmail(input: {
   const secures = input.holdExpiry
     ? `A ${money(input.depositAmount)} deposit secures it by ${input.holdExpiry}.`
     : `A ${money(input.depositAmount)} deposit secures it.`;
-  const paymentLink = resolvePaymentLink(input.booking.id, input.paymentLink);
+  const paymentLink = resolvePaymentLink(input.booking, input.paymentLink);
   return composeMessageEmail({
     booking: input.booking,
     firstName: input.firstName,
@@ -1644,7 +1665,7 @@ export function buildDepositReminderEmail(input: {
 }): PrivateBookingEmailContent {
   const deposit = money(input.depositAmount);
   const date = onEventDate(input.booking);
-  const paymentLink = resolvePaymentLink(input.booking.id, input.paymentLink);
+  const paymentLink = resolvePaymentLink(input.booking, input.paymentLink);
   let paragraphs: string[];
   let subject: string;
 
@@ -1697,7 +1718,7 @@ export function buildHoldExtendedEmail(input: {
   /** The guest's booking page. Resolved from the booking when not given. */
   paymentLink?: string | null;
 }): PrivateBookingEmailContent {
-  const paymentLink = resolvePaymentLink(input.booking.id, input.paymentLink);
+  const paymentLink = resolvePaymentLink(input.booking, input.paymentLink);
   return composeMessageEmail({
     booking: input.booking,
     firstName: input.firstName,
@@ -2184,7 +2205,7 @@ export function buildBookingConfirmedMessageEmail(input: {
     const expiry = expiryLive
       ? formatDateInLondon(input.holdExpiry as string, { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
-    const paymentLink = resolvePaymentLink(input.booking.id, input.paymentLink);
+    const paymentLink = resolvePaymentLink(input.booking, input.paymentLink);
     return composeMessageEmail({
       booking: input.booking,
       firstName: input.firstName,
