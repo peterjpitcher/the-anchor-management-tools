@@ -1072,7 +1072,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
             <EventLifecycleActions
               eventId={activeEventId}
               status={event?.event_status ?? 'scheduled'}
-              onChanged={() => { onSave(); router.refresh() }}
+              // Close the drawer: its form still holds the old status, and saving it would undo
+              // the cancellation or postponement.
+              onChanged={() => { onSave(); router.refresh(); onClose() }}
             />
           </FieldGroup>
         )}
