@@ -668,8 +668,20 @@ async function finalizeDepositPaymentWithClient(
   if (!updatedBooking) return { success: true, alreadyRecorded: true }
 
   if (confirmationBlocked) {
-    logger.warn('Private booking deposit recorded but confirmation blocked (SOP gate)', {
+    // An error, and the manager is told (BK-115): the guest has paid and their booking is not
+    // confirmed until a person clears the reasons. The list and booking page show "Deposit paid,
+    // not confirmed" too; this makes sure someone looks.
+    logger.error('Private booking deposit recorded but confirmation blocked (SOP gate)', {
+      error: new Error('private_booking_paid_not_confirmed'),
       metadata: { bookingId, method, reasons: confirmationBlockedReasons },
+    })
+    await alertMoneyNeedsAPerson(createAdminClient(), {
+      domain: 'private_bookings',
+      bookingId,
+      kind: 'deposit_paid_not_confirmed',
+      title: `A private hire deposit of ${formatPounds(recordedAmount)} was paid but the booking is not confirmed`,
+      summary: 'The deposit is recorded, but the booking stayed a draft because of the reasons below. Open the booking, sort each one out, then confirm it. The guest has not been told their booking is confirmed.',
+      context: { Amount: formatPounds(recordedAmount), Method: method, Reasons: confirmationBlockedReasons.join('; ') },
     })
     try {
       const { error: blockAuditError } = await createAdminClient().from('private_booking_audit').insert({
@@ -692,7 +704,8 @@ async function finalizeDepositPaymentWithClient(
   }
 
   if (!contractSentBeforePayment) {
-    logger.warn('Private booking deposit received before the contract was sent (SOP compliance flag)', {
+    logger.error('Private booking deposit received before the contract was sent (SOP compliance flag)', {
+      error: new Error('private_booking_deposit_before_contract'),
       metadata: { bookingId, method },
     })
     void logAuditEvent({

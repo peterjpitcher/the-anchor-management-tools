@@ -7,19 +7,24 @@ import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
   getIdempotencyKey,
+  markIdempotencyClaimCommitted,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
-import { createRateLimiter } from '@/lib/rate-limit'
+import {
+  ANONYMOUS_BOOKING_MAX_PER_HOUR,
+  PRIVATE_ENQUIRY_MAX_PER_HOUR,
+  limitBookingAttempt
+} from '@/lib/api/booking-rate-limits'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
-import { ConsentService } from '@/services/consent'
+import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
 import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
-import { withApiAuth } from '@/lib/api/auth'
+import { getApiKeyAuthState, withApiAuth } from '@/lib/api/auth'
 
 // Guest-facing wording. Everything this schema rejects is shown to the person
 // filling in the private-hire form on the brand site, so a raw Zod string like
@@ -51,12 +56,14 @@ const EnquirySchema = z.object({
   communication_consent: OptionalCommunicationConsentSchema
 })
 
-const privateBookingEnquiryLimiter = createRateLimiter({
-  name: 'private-booking-enquiry',
-  windowMs: 5 * 60 * 1000,
-  max: 20,
-  message: 'Too many private booking enquiries. Please try again shortly.'
-})
+// Flood limits (BK-108). This used to be one per-IP bucket of 20 every 5 minutes, checked before
+// the key. The website forwards no client IP, so every website enquiry shared that one bucket and
+// a burst from one person refused everybody. The guest's contact now carries the count, across
+// every server copy; the per-IP bucket is kept only for callers without a valid key.
+const PRIVATE_ENQUIRY_IP_PREFIX = 'private-booking-enquiry-ip'
+const PRIVATE_ENQUIRY_CONTACT_PREFIX = 'private-booking-enquiry-contact'
+const PRIVATE_ENQUIRY_RATE_LIMIT_MESSAGE =
+  'Too many private hire enquiries from these contact details. Please try again later or call us on 01753 682707.'
 
 function splitName(name?: string): { firstName: string; lastName?: string } {
   if (!name || name.trim().length === 0) {
@@ -142,9 +149,16 @@ async function recordPrivateBookingEnquiryAnalyticsSafe(
  * not be checked, which is our outage and not the caller's fault.
  */
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = await privateBookingEnquiryLimiter(request)
-  if (rateLimitResponse) {
-    return rateLimitResponse
+  const authState = await getApiKeyAuthState(request.headers)
+  if (authState !== 'authenticated') {
+    const rateLimitResponse = await limitBookingAttempt(request, {
+      prefix: PRIVATE_ENQUIRY_IP_PREFIX,
+      max: ANONYMOUS_BOOKING_MAX_PER_HOUR,
+      message: 'Too many private booking enquiries. Please try again shortly.'
+    })
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
   }
 
   return withApiAuth(() => handleEnquiry(request), ['create:bookings'], request)
@@ -189,6 +203,16 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
         { success: false, error: 'Please enter a valid phone number', code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
+    }
+
+    const contactLimitResponse = await limitBookingAttempt(request, {
+      prefix: PRIVATE_ENQUIRY_CONTACT_PREFIX,
+      subject: normalizedPhone,
+      max: PRIVATE_ENQUIRY_MAX_PER_HOUR,
+      message: PRIVATE_ENQUIRY_RATE_LIMIT_MESSAGE
+    })
+    if (contactLimitResponse) {
+      return contactLimitResponse
     }
 
     const { firstName, lastName } = splitName(parsed.data.name)
@@ -272,11 +296,33 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
       }, { client: supabase })
       mutationCommitted = true
 
+      const responsePayload = {
+        success: true,
+        state: 'enquiry_created',
+        booking_id: booking.id,
+        reference: booking.booking_reference || booking.id
+      }
+
+      // The enquiry exists from here on. Note it on the claim, so a retry after this function
+      // dies replays it instead of filing a second one (BK-127). Logged only on failure.
+      try {
+        await markIdempotencyClaimCommitted(supabase, idempotencyKey, requestHash, responsePayload)
+      } catch (markError) {
+        logger.error('Could not note a saved private booking enquiry on its idempotency claim', {
+          error: markError instanceof Error ? markError : new Error(String(markError)),
+          metadata: { idempotencyKey, privateBookingId: booking.id },
+        })
+      }
+
+      // A failure is logged and raised with the manager; the enquiry carries on to the manager
+      // email and the success answer (BK-039). It used to throw here, so the guest was told the
+      // enquiry failed, the website's retry got "already being processed", and nobody at the pub
+      // was emailed about a saved draft.
       if (booking?.customer_id && booking?.id) {
-        await ConsentService.applyBookingContactConsent(
-          booking.customer_id,
-          parsed.data.communication_consent,
-          {
+        await applyBookingContactConsentSafe({
+          customerId: booking.customer_id,
+          consent: parsed.data.communication_consent,
+          context: {
             source: 'public_private_booking',
             captureMethod: 'checkbox',
             sourceUrl: request.headers.get('referer'),
@@ -284,8 +330,9 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
             relatedEntityType: 'private_booking',
             relatedEntityId: booking.id,
             metadata: { idempotency_key: idempotencyKey }
-          }
-        )
+          },
+          alert: { domain: 'private_bookings', bookingId: booking.id },
+        })
       }
 
       await recordPrivateBookingWebEnquiryCommunication({
@@ -315,7 +362,10 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
         })
 
         if (!managerEmailResult.sent && managerEmailResult.error) {
-          logger.warn('Failed to send manager private booking created email (enquiry endpoint)', {
+          // An error, not a warning (BK-115): the enquiry is saved as a draft, but nobody at the
+          // pub has been told about it. The failed send is also in email_messages.
+          logger.error('Failed to send manager private booking created email (enquiry endpoint)', {
+            error: new Error(String(managerEmailResult.error)),
             metadata: {
               privateBookingId: booking?.id || null,
               error: managerEmailResult.error
@@ -323,7 +373,8 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
           })
         }
       } catch (managerEmailError) {
-        logger.warn('Manager private booking created email task rejected unexpectedly (enquiry endpoint)', {
+        logger.error('Manager private booking created email task rejected unexpectedly (enquiry endpoint)', {
+          error: managerEmailError instanceof Error ? managerEmailError : new Error(String(managerEmailError)),
           metadata: {
             privateBookingId: booking?.id || null,
             error: managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError)
@@ -350,13 +401,6 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
             error: auditError instanceof Error ? auditError.message : String(auditError),
           },
         })
-      }
-
-      const responsePayload = {
-        success: true,
-        state: 'enquiry_created',
-        booking_id: booking.id,
-        reference: booking.booking_reference || booking.id
       }
 
       try {

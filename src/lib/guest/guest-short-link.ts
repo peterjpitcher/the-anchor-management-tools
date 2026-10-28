@@ -39,6 +39,7 @@
  * lost booking.
  */
 
+import { randomInt } from 'crypto'
 import { hashGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
 import { isShortLinkHost } from '@/lib/short-links/routing'
@@ -94,6 +95,26 @@ const LINK_KIND_SOURCE: Record<GuestShortLinkKind, string> = {
   event_manage: 'guest_link_builder',
   event_payment: 'guest_link_builder',
   booking_confirm: 'guest_link_builder',
+}
+
+/**
+ * Guest short codes are 12 characters of a-z and 0-9 from Node's secure random generator
+ * (BK-203, customer bookings review of 24 October 2026), about 4.7 million million million codes.
+ *
+ * They used to be the database's 6-character codes (about 2.2 billion, made with Postgres
+ * random()), so the long secret inside a manage, payment or confirm link was only as strong as
+ * the short code in front of it. 12 fits the 20-character short_code column, and the redirect
+ * route counts wrong guesses per address.
+ */
+export const GUEST_SHORT_CODE_LENGTH = 12
+const GUEST_SHORT_CODE_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+
+export function generateGuestShortCode(): string {
+  let code = ''
+  for (let i = 0; i < GUEST_SHORT_CODE_LENGTH; i += 1) {
+    code += GUEST_SHORT_CODE_ALPHABET[randomInt(GUEST_SHORT_CODE_ALPHABET.length)]
+  }
+  return code
 }
 
 export interface GuestShortLinkInput {
@@ -178,6 +199,7 @@ export async function buildGuestShortLink(input: GuestShortLinkInput): Promise<G
       // staff /short-links list because createShortLinkInternal leaves created_by
       // NULL, which is exactly what getShortLinks filters on.
       link_type: 'custom',
+      generate_code: generateGuestShortCode,
       // No name: deriveShortLinkName already turns these paths into readable
       // labels ('Table Manage', 'Event Payment', 'Review Link').
       metadata: {
