@@ -20,6 +20,8 @@ import {
   assessEventChange,
   EMPTY_EVENT_BOOKING_IMPACT,
   EVENT_PAYMENT_MODE_LOCKED_MESSAGE,
+  describeSeatedMoveRefusal,
+  isSeatedBookingMode,
   loadEventBookingImpact,
   type EventBookingImpact,
   type EventChangeSnapshot,
@@ -864,7 +866,8 @@ export class EventService {
         capacity: nextCapacity,
       },
       impact,
-      seatedBookingsMoveWithEvent: false,
+      // BK-073: move_event_seated_bookings_v01 takes the tables and seats to the new time.
+      seatedBookingsMoveWithEvent: true,
       lifecycleAction: options.lifecycleAction === true,
     })
     if (assessment.blockers.length > 0) {
@@ -872,6 +875,34 @@ export class EventService {
     }
     if (assessment.confirmations.length > 0 && options.confirmedChanges !== true) {
       throw new EventChangeNeedsConfirmationError(assessment.confirmations, impact)
+    }
+
+    // BK-073: a seated night's tables and communal seats move with it, in one transaction that
+    // also moves the event's date and time, before the rest of the edit is saved. If any booking
+    // does not fit on the new night, nothing changes and staff are told which.
+    const startMoves =
+      nextDate !== currentEvent.date ||
+      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
+      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5))
+    if (startMoves && impact.seatedBookings > 0 && isSeatedBookingMode(currentBookingMode)) {
+      const { data: moveResult, error: moveError } = await createAdminClient().rpc('move_event_seated_bookings_v01', {
+        p_event_id: id,
+        p_new_date: nextDate,
+        p_new_time: String(nextTime ?? '').slice(0, 5),
+        ...(nextEndTime ? { p_new_end_time: String(nextEndTime).slice(0, 5) } : {}),
+        ...(typeof input.duration_minutes === 'number' ? { p_new_duration_minutes: input.duration_minutes } : {}),
+      })
+      if (moveError) {
+        logger.error('Moving an event with its seated bookings failed', {
+          error: new Error(getSupabaseErrorMessage(moveError)),
+          metadata: { eventId: id },
+        })
+        throw new EventChangeBlockedError('The seated bookings could not be moved to the new time, so nothing has changed. Try again, or ask for help moving them.')
+      }
+      const moved = (moveResult ?? {}) as { state?: string; reason?: unknown; bookings?: unknown }
+      if (moved.state !== 'moved') {
+        throw new EventChangeBlockedError(describeSeatedMoveRefusal(moved))
+      }
     }
 
     // A night moved back from cancelled reopens for bookings. The cancellation closed booking_open
