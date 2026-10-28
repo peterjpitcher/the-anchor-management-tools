@@ -27,7 +27,7 @@ import { getSmartFirstName, buildSmartFullName } from '@/lib/sms/name-utils'
 import { getTodayIsoDate, shiftIsoDate, toLocalIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { bookingQuestionsSchema, requiresGuestDetails } from '@/lib/events/booking-questions'
-import { ticketsMissingDetails } from '@/lib/events/guest-details-edit'
+import { bookerCanEditGuestDetails, ticketsMissingDetails } from '@/lib/events/guest-details-edit'
 import { GUEST_DETAILS_REQUEST_FLAG } from '@/lib/events/guest-details-request'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { formatEventWhenLondon, resolveEventStartIso } from '@/lib/events/event-when'
@@ -57,6 +57,7 @@ type EventRow = {
   collect_guest_details: boolean | null
   payment_mode: string | null
   booking_questions: unknown
+  booking_cutoff_at: string | null
 }
 
 type CustomerRow = { id: string; first_name: string | null; last_name: string | null; mobile_number: string | null; sms_status: string | null }
@@ -154,11 +155,21 @@ async function runGuestDetailsReminders(request: NextRequest) {
     return NextResponse.json({ error: 'Could not work out the reminder window' }, { status: 500 })
   }
   const appBaseUrl = getAppUrl()
-  const result = { events: 0, bookingsChecked: 0, remindersSent: 0, remindersFailed: 0, remindersDeferred: 0, managerLists: 0, failed: 0 }
+  const result = {
+    events: 0,
+    bookingsChecked: 0,
+    remindersSent: 0,
+    remindersFailed: 0,
+    remindersDeferred: 0,
+    managerLists: 0,
+    failed: 0,
+    /** Bookings still missing details after online changes closed: left for staff, ids only. */
+    closedForEdits: [] as string[],
+  }
 
   const { data: eventRows, error: eventError } = await supabase
     .from('events')
-    .select('id, name, start_datetime, date, time, event_status, collect_guest_details, payment_mode, booking_questions')
+    .select('id, name, start_datetime, date, time, event_status, collect_guest_details, payment_mode, booking_questions, booking_cutoff_at')
     .gte('start_datetime', windowStart.toISOString())
     .lt('start_datetime', windowEnd.toISOString())
   if (eventError) {
@@ -221,6 +232,13 @@ async function runGuestDetailsReminders(request: NextRequest) {
 
       if (!flagOn || !customer) continue
       if (!isBookerReminderDue({ today, eventDate, bookingCreatedAt: booking.created_at, now, alreadyReminded: reminded.has(booking.id), missing })) continue
+      // Once online sales close the booking page refuses guest detail changes, so asking the
+      // booker to add them would ask for something they cannot do. No claim, no message: the
+      // booking stays on the manager's day-before list for a call instead.
+      if (!bookerCanEditGuestDetails({ status: booking.status, eventStart: startIso, salesCutoff: event.booking_cutoff_at, now: now.getTime() })) {
+        result.closedForEdits.push(booking.id)
+        continue
+      }
 
       const claimed = await claim(supabase, { kind: 'booker_reminder', event_id: event.id, event_booking_id: booking.id, metadata: { missing_count: missing } })
       if (claimed.error) {

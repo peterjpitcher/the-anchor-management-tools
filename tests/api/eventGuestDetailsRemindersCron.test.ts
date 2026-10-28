@@ -73,7 +73,7 @@ import { sendSMS } from '@/lib/twilio'
 const QUESTION = { id: 'q-diet', label: 'Dietary needs', type: 'text', required: true }
 
 function event(id: string, startIso: string) {
-  return { id, name: 'Tasting Night', start_datetime: startIso, date: null, time: null, event_status: 'scheduled', collect_guest_details: true, payment_mode: 'prepaid', booking_questions: [QUESTION] }
+  return { id, name: 'Tasting Night', start_datetime: startIso, date: null, time: null, event_status: 'scheduled', collect_guest_details: true, payment_mode: 'prepaid', booking_questions: [QUESTION], booking_cutoff_at: null as string | null }
 }
 
 function booking(id: string, eventId: string, overrides: Record<string, unknown> = {}) {
@@ -154,6 +154,26 @@ describe('event guest details reminders cron', () => {
     flags.on = false
     await run()
     expect(sendEventGuestDetailsReminderEmail).not.toHaveBeenCalled()
+  })
+
+  it('reminds while online changes are still open before the sales cutoff', async () => {
+    state.events = [{ ...event('event-sat', '2026-11-21T19:00:00.000Z'), booking_cutoff_at: '2026-11-20T12:00:00.000Z' }]
+
+    const body = await run()
+
+    expect(body.result.remindersSent).toBe(1)
+    expect(body.result.closedForEdits).toEqual([])
+  })
+
+  it('sends nothing and claims nothing once the sales cutoff has passed, and lists the booking for staff', async () => {
+    state.events = [{ ...event('event-sat', '2026-11-21T19:00:00.000Z'), booking_cutoff_at: '2026-11-18T09:00:00.000Z' }]
+
+    const body = await run()
+
+    expect(sendEventGuestDetailsReminderEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(state.inserts).toEqual([])
+    expect(body.result.closedForEdits).toEqual(['booking-1'])
   })
 
   it('emails the manager the list the day before, once', async () => {
