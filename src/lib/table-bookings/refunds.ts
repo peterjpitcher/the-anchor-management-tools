@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
-import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { londonCalendarDaysUntil, toLocalIsoDate } from '@/lib/dateUtils'
 import { resolveSeasonalDepositRefund } from './deposit-refund'
 
 /**
@@ -94,12 +94,8 @@ export type RefundResult =
  * - <3 days: 0% (none)
  */
 function calculateRefundTier(bookingDate: Date): { percent: number; tier: RefundTier } {
-  // Compare Europe/London calendar days — server-local midnight maths shifts
-  // this money threshold by a day around BST/UTC boundaries.
-  const MS_PER_DAY = 24 * 60 * 60 * 1000
-  const todayUtcMs = Date.parse(`${getTodayIsoDate()}T00:00:00Z`)
-  const bookingUtcMs = Date.parse(`${toLocalIsoDate(bookingDate)}T00:00:00Z`)
-  const days = Math.round((bookingUtcMs - todayUtcMs) / MS_PER_DAY)
+  // Whole Europe/London calendar days, shared with event tickets (BK-111).
+  const days = londonCalendarDaysUntil(bookingDate) ?? 0
   if (days >= 7) return { percent: 100, tier: 'full' }
   if (days >= 3) return { percent: 50, tier: 'half' }
   return { percent: 0, tier: 'none' }

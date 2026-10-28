@@ -405,8 +405,10 @@ function buildPaymentLines(context: EventTicketEmailContext): string[] {
 /**
  * The cancellation and refund bands, for a booking with money in it.
  *
- * Recorded in SSOT section 7 and applied by `calculateRefundTier`: full 7 or more days before,
- * half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in full. Guest
+ * Recorded in SSOT section 7 and applied by `getEventRefundPolicy` in
+ * src/lib/events/manage-booking.ts, counting whole London calendar days (BK-111): full 7 or more
+ * days before, half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in
+ * full. Guest
  * cancelling was removed from the manage-booking page, so the only route is the phone.
  */
 function buildCancellationTermsLines(): string[] {
