@@ -1,3 +1,4 @@
+import { formatEventWhenCompactLondon } from '@/lib/events/event-when'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
 import { getAppUrl } from '@/lib/env'
@@ -1336,6 +1337,12 @@ export async function sendEventBookingSeatUpdateSms(
   }
 }
 
+/** The payment reminder text (BK-142). Pure, so it can be rendered with fixture data. */
+export function buildEventPaymentReminderSms(input: { firstName: string; eventName: string; heldUntil: string | null; paymentLink: string }): string {
+  const until = input.heldUntil ? ` are held until ${input.heldUntil}` : ' are held for you'
+  return `The Anchor: Hi ${input.firstName}, your seats for ${input.eventName}${until}. Pay here: ${input.paymentLink}`
+}
+
 export async function sendEventPaymentRetrySms(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -1413,8 +1420,15 @@ export async function sendEventPaymentRetrySms(
 
   const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  // BK-142: most people reminded never tried to pay (a phone or bar booking), so the reminder
+  // says what is held and until when, not that a payment "wasn't completed".
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, your event payment wasn't completed. Please try again here: ${paymentLink}`,
+    buildEventPaymentReminderSms({
+      firstName,
+      eventName: event?.name || 'your event',
+      heldUntil: formatEventWhenCompactLondon(booking.hold_expires_at),
+      paymentLink,
+    }),
     supportPhone
   )
 

@@ -23,7 +23,7 @@ interface EventAttendeesEditorProps {
 }
 
 /**
- * Each ticket's name and answers on a booking (BK-016). Staff can add them to a booking that has
+ * Each ticket's name, own mobile (BK-013) and answers on a booking (BK-016). Staff can add them to a booking that has
  * none, and answer a question the booking was made before. Saving goes through
  * updateEventAttendees, which applies the same rules as the booker's manage link.
  */
@@ -53,7 +53,7 @@ export function EventAttendeesEditor({ bookingId, seats, attendees, questions, c
     setSaving(true)
     setError(null)
     try {
-      const result = await updateEventAttendees({ bookingId, attendees: guests.map(guest => ({ id: guest.id, name: guest.name, answers: Object.fromEntries(guest.answers.map(answer => [answer.question_id, answer.value])) })) })
+      const result = await updateEventAttendees({ bookingId, attendees: guests.map(guest => ({ id: guest.id, name: guest.name, phone: guest.phone ?? '', answers: Object.fromEntries(guest.answers.map(answer => [answer.question_id, answer.value])) })) })
       if (result.error) { setError(result.error); return }
       setEditing(false)
       onSaved?.()
@@ -67,6 +67,7 @@ export function EventAttendeesEditor({ bookingId, seats, attendees, questions, c
     </div>
     {guests.map((guest, index) => <div key={guest.id} className="rounded-default border border-border p-4 space-y-3">
       {editing ? <Input label={`Guest ${index + 1} name`} value={guest.name} maxLength={120} required onChange={event => setGuests(previous => previous.map(item => item.id === guest.id ? { ...item, name: event.target.value } : item))} /> : <SubHeading>{guest.name || `Guest ${index + 1}`}</SubHeading>}
+      {editing ? <Input label={`Guest ${index + 1} mobile (optional, for this booking only)`} type="tel" value={guest.phone ?? ''} maxLength={40} onChange={event => setGuests(previous => previous.map(item => item.id === guest.id ? { ...item, phone: event.target.value } : item))} /> : guest.phone ? <p className="text-sm text-text-muted">Mobile: {guest.phone}</p> : null}
       {guest.answers.map(answer => {
         const addedLater = attendees.length > 0 && !askedAtBooking.get(guest.id)?.has(answer.question_id)
         const label = addedLater ? `${answer.label} (added after booking)` : answer.label

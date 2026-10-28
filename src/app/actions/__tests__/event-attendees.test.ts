@@ -45,4 +45,19 @@ describe('staff guest answer editing', () => {
     expect((await updateEventAttendees(input('B'))).error).toContain('Someone else')
     expect(mock.audit).not.toHaveBeenCalled()
   })
+  it('stores a guest mobile in E.164 on that guest, and keeps it out of the audit record (BK-013)', async () => {
+    const result = await updateEventAttendees({ bookingId, attendees: [{ id: guestId, name: 'Changed', phone: '07700 900123', answers: { [questionId]: 'B' } }] })
+    expect(result).toEqual({ success: true })
+    expect(mock.update.mock.calls[0][0].attendees[0].phone).toBe('+447700900123')
+    expect(JSON.stringify(mock.audit.mock.calls[0][0])).not.toContain('900123')
+  })
+  it('refuses a guest mobile that is not a phone number', async () => {
+    const result = await updateEventAttendees({ bookingId, attendees: [{ id: guestId, name: 'Changed', phone: '12', answers: { [questionId]: 'B' } }] })
+    expect(result.error).toContain('mobile')
+    expect(mock.update).not.toHaveBeenCalled()
+  })
+  it('removes a stored mobile when it is cleared', async () => {
+    await updateEventAttendees({ bookingId, attendees: [{ id: guestId, name: 'Changed', phone: '', answers: { [questionId]: 'B' } }] })
+    expect(mock.update.mock.calls[0][0].attendees[0]).not.toHaveProperty('phone')
+  })
 })

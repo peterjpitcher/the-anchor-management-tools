@@ -60,6 +60,43 @@ describe('buildGuestListModel', () => {
     expect(group.lines[1].answers).toEqual([])
   })
 
+  // BK-013: the guest's own mobile goes on the confidential door list under their name.
+  it('prints a guest mobile under the guest, after their answers', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 1, customerFirstName: 'Pat', customerLastName: 'Booker',
+        attendees: [{ id: 'a', name: 'Ann Guest', ticket_type_id: null, phone: '+447700900123', answers: [
+          { question_id: 'q1', label: 'Any allergies?', type: 'text', value: 'Peanuts' },
+        ] }] }),
+    ])
+    expect(group.lines[0].answers).toEqual([
+      { label: 'Any allergies?', value: 'Peanuts' },
+      { label: 'Mobile', value: '+447700900123' },
+    ])
+  })
+
+  // Codex review on PR 274: staff saved answers and mobiles with every name to follow. The list
+  // fell back to the booker-only shape, dropped the answers and listed the booker as a guest.
+  it('keeps answers and mobiles on guest rows whose names are still to follow', () => {
+    const [group] = buildGuestListModel([
+      booking({ seats: 2, customerFirstName: 'Pat', customerLastName: 'Booker',
+        attendees: [
+          { id: 'a', name: '', ticket_type_id: null, phone: '+447700900123', answers: [
+            { question_id: 'q1', label: 'Any allergies?', type: 'text', value: 'Peanuts' },
+          ] },
+          { id: 'b', name: '', ticket_type_id: null, answers: [] },
+        ] }),
+    ])
+    expect(group.lines.map(l => ({ name: l.name, isBooker: l.isBooker }))).toEqual([
+      { name: '', isBooker: false },
+      { name: '', isBooker: false },
+    ])
+    expect(group.lines[0].answers).toEqual([
+      { label: 'Any allergies?', value: 'Peanuts' },
+      { label: 'Mobile', value: '+447700900123' },
+    ])
+    expect(group.bookedBy).toBe('Pat Booker')
+  })
+
   it('carries what the door still has to take', () => {
     const [group] = buildGuestListModel([
       booking({ seats: 1, customerFirstName: 'Sol', customerLastName: 'Reed', paymentNote: 'Not paid yet: £45.00 due' }),

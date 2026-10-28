@@ -1,19 +1,27 @@
 'use client'
 
 import { useCallback, useMemo, useState, useTransition } from 'react'
-import { Button, Card, CardBody, CardHeader, Field, Fieldset, FormFooter, Input, Select, toast } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Field, Fieldset, FormFooter, Input, Select, toast } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import { createEventManualBooking } from '@/app/actions/events'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import { resolveTicketTypeSellPrice, type EventTicketTypeRow } from '@/lib/events/ticket-types'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import {
+  StaffGuestDetailsFields,
+  resizeStaffGuestRows,
+  staffGuestRowsForSubmit,
+  type StaffGuestRow,
+} from '@/components/features/events/StaffGuestDetailsFields'
 import {
   MAX_MANUAL_BOOKING_SEATS,
+  describeManualBookingOutcome,
   summariseTicketBasket,
-  validateAttendeeNameList,
   validateSeatsInput,
   type BasketTypeOption,
+  type ManualBookingOutcome,
 } from './manual-booking-helpers'
 
 interface AddManualBookingFormProps {
@@ -28,9 +36,9 @@ interface AddManualBookingFormProps {
 interface FormErrors {
   phone?: string
   firstName?: string
+  email?: string
   seats?: string
   basket?: string
-  names?: string
 }
 
 function formatCurrency(amount: number): string {
@@ -60,7 +68,11 @@ export function AddManualBookingForm({
   const [seats, setSeats] = useState('')
   const [seatingPreference, setSeatingPreference] = useState<'seated' | 'standing'>('seated')
   const [quantities, setQuantities] = useState<Record<string, string>>({})
-  const [attendeeNames, setAttendeeNames] = useState<string[]>([])
+  const [email, setEmail] = useState('')
+  const [guestRows, setGuestRows] = useState<StaffGuestRow[]>([])
+  // What the last submit did, kept on screen until the next one (BK-033): a full event keeps the
+  // form filled in, and a held booking shows its payment link to read out or copy.
+  const [outcome, setOutcome] = useState<ManualBookingOutcome | null>(null)
   const [errors, setErrors] = useState<FormErrors>({})
   // Staff read the guest the marketing notice and they said yes (owner decision D32).
   const [marketingYes, setMarketingYes] = useState(false)
@@ -97,7 +109,7 @@ export function AddManualBookingForm({
 
   const setQuantity = useCallback((typeId: string, value: string) => {
     setQuantities((prev) => ({ ...prev, [typeId]: value.replace(/\D/g, '') }))
-    setErrors((prev) => ({ ...prev, basket: undefined, names: undefined }))
+    setErrors((prev) => ({ ...prev, basket: undefined }))
   }, [])
 
   const adjustQuantity = useCallback((typeId: string, delta: number) => {
@@ -106,17 +118,18 @@ export function AddManualBookingForm({
       const next = Math.max(0, (Number.isFinite(current) ? current : 0) + delta)
       return { ...prev, [typeId]: next === 0 ? '' : String(next) }
     })
-    setErrors((prev) => ({ ...prev, basket: undefined, names: undefined }))
+    setErrors((prev) => ({ ...prev, basket: undefined }))
   }, [])
 
-  const setAttendeeName = useCallback((index: number, value: string) => {
-    setAttendeeNames((prev) => {
-      const next = [...prev]
-      next[index] = value
-      return next
-    })
-    setErrors((prev) => ({ ...prev, names: undefined }))
-  }, [])
+  // One guest card per ticket (BK-011): the basket total, or the seats typed (blank is one).
+  const questions = useMemo(() => event.booking_questions ?? [], [event.booking_questions])
+  const guestDetailsRequired = requiresGuestDetails(event)
+  const plainSeats = seats.trim() === '' ? 1 : validateSeatsInput(seats).seats ?? 0
+  const ticketCount = useBasket ? totalSeats : plainSeats
+  const visibleGuestRows = useMemo(
+    () => (ticketCount > 0 && ticketCount <= MAX_MANUAL_BOOKING_SEATS ? resizeStaffGuestRows(guestRows, ticketCount) : []),
+    [guestRows, ticketCount],
+  )
 
   const resetForm = useCallback(() => {
     setSelectedCustomerId(null)
@@ -126,7 +139,8 @@ export function AddManualBookingForm({
     setSeats('')
     setSeatingPreference('seated')
     setQuantities({})
-    setAttendeeNames([])
+    setEmail('')
+    setGuestRows([])
     setErrors({})
     setMarketingYes(false)
   }, [])
@@ -139,9 +153,10 @@ export function AddManualBookingForm({
       if (!firstName.trim()) nextErrors.firstName = 'Enter a first name.'
     }
 
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) nextErrors.email = 'Enter a valid email address.'
+
     let seatsToBook = 0
     let ticketSelections: Array<{ ticketTypeId: string; quantity: number }> | undefined
-    let namesToSubmit: string[] | undefined
 
     if (useBasket) {
       if (basketSummary.error) {
@@ -152,12 +167,6 @@ export function AddManualBookingForm({
           ticketTypeId: line.ticketTypeId,
           quantity: line.quantity,
         }))
-        const nameCheck = validateAttendeeNameList(attendeeNames, basketSummary.totalSeats)
-        if (nameCheck.error) {
-          nextErrors.names = nameCheck.error
-        } else if (nameCheck.names.length > 0) {
-          namesToSubmit = nameCheck.names
-        }
       }
     } else {
       // Blank keeps the long-standing default of one seat; anything typed must
@@ -175,6 +184,8 @@ export function AddManualBookingForm({
       return
     }
     setErrors({})
+    setOutcome(null)
+    const attendees = staffGuestRowsForSubmit(resizeStaffGuestRows(guestRows, seatsToBook))
 
     startTransition(async () => {
       const result = await createEventManualBooking({
@@ -185,7 +196,8 @@ export function AddManualBookingForm({
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
         ...(ticketSelections ? { ticketSelections } : {}),
-        ...(namesToSubmit ? { attendeeNames: namesToSubmit } : {}),
+        ...(attendees.length > 0 ? { attendees } : {}),
+        ...(email.trim() ? { email: email.trim() } : {}),
         ...(marketingYes ? { marketingTextsYes: true } : {}),
       })
       if ('error' in result) {
@@ -196,7 +208,14 @@ export function AddManualBookingForm({
         toast.error(formatBlockedReason(result.data.reason))
         return
       }
-      toast.success('Booking created successfully')
+      const described = describeManualBookingOutcome(result.data)
+      setOutcome(described)
+      if (described.tone === 'danger') {
+        // BK-033: nothing was booked, so the form keeps everything staff typed.
+        toast.error(described.message)
+        return
+      }
+      toast.success(described.message)
       resetForm()
       await onCreated()
     })
@@ -209,7 +228,8 @@ export function AddManualBookingForm({
     seatingPreference,
     useBasket,
     basketSummary,
-    attendeeNames,
+    guestRows,
+    email,
     marketingYes,
     event,
     resetForm,
@@ -273,6 +293,19 @@ export function AddManualBookingForm({
               </div>
             </Fieldset>
           )}
+
+          <Input
+            label="Email (optional)"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setErrors((prev) => ({ ...prev, email: undefined }))
+            }}
+            placeholder="name@example.com"
+            hint="The confirmation and any payment link go here first, and by text only if no email goes."
+            error={errors.email}
+          />
 
           <StaffMarketingConsentField
             idPrefix="event-manual-booking-marketing"
@@ -338,26 +371,6 @@ export function AddManualBookingForm({
                   : 'No tickets selected'}
               </p>
 
-              {totalSeats > 0 && totalSeats <= MAX_MANUAL_BOOKING_SEATS && (
-                <Fieldset
-                  legend="Ticket names (optional)"
-                  hint="Name every ticket or leave them all blank."
-                  error={errors.names}
-                  className="mt-3"
-                >
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {Array.from({ length: totalSeats }).map((_, index) => (
-                      <Input
-                        key={index}
-                        value={attendeeNames[index] ?? ''}
-                        onChange={(e) => setAttendeeName(index, e.target.value)}
-                        placeholder={index === 0 ? 'Ticket 1 (lead booker)' : `Ticket ${index + 1}`}
-                        aria-label={`Ticket ${index + 1} name`}
-                      />
-                    ))}
-                  </div>
-                </Fieldset>
-              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -390,6 +403,39 @@ export function AddManualBookingForm({
                 </div>
               )}
             </div>
+          )}
+
+          <StaffGuestDetailsFields
+            idPrefix="event-manual-booking-guest"
+            rows={visibleGuestRows}
+            questions={questions}
+            required={guestDetailsRequired}
+            disabled={isPending}
+            onChange={setGuestRows}
+          />
+
+          {outcome && (
+            <Alert tone={outcome.tone} size="sm">
+              <p>{outcome.message}</p>
+              {outcome.links.map((link) => (
+                <p key={link.label} className="mt-1 break-all">
+                  {link.label}: <a className="underline" href={link.url} target="_blank" rel="noreferrer">{link.url}</a>{' '}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(link.url).then(
+                        () => toast.success(`${link.label} copied`),
+                        () => toast.error('Could not copy the link'),
+                      )
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </p>
+              ))}
+            </Alert>
           )}
 
           <FormFooter>

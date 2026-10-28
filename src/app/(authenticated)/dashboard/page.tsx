@@ -4,6 +4,7 @@ import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { countOpenEventPaymentExceptions } from '@/app/actions/event-payment-exceptions'
+import { listUnbookedEventReplies, type UnbookedEventReply } from '@/app/actions/unbooked-event-replies'
 import DashboardClient from './_components/DashboardClient'
 import { EVENT_FILL_BADGE, attentionCountTone, eventFillStatus } from './_shared/status-ui'
 
@@ -61,13 +62,15 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
 }
 
 export default async function DashboardPage() {
-  const [snapshot, canManageEvents, canManageSettings, paidNeedsAction] = await Promise.all([
+  const [snapshot, canManageEvents, canManageSettings, paidNeedsAction, unbookedReplies] = await Promise.all([
     loadDashboardSnapshot(),
     checkUserPermission('events', 'manage'),
     checkUserPermission('settings', 'manage'),
     // Read live, outside the cached snapshot: a paid booking waiting on a person must not wait
     // for the cache (BK-018). Empty without the events view permission.
     countOpenEventPaymentExceptions().catch(() => ({ count: 0, eventId: null })),
+    // BK-034: event text replies nobody could book, live for the same reason.
+    listUnbookedEventReplies().catch(() => ({ data: [] as UnbookedEventReply[] })),
   ])
   // Calendar notes are written on events:manage, with settings:manage kept as a
   // fallback so nobody loses access. Gating on settings:manage alone meant only
@@ -307,6 +310,17 @@ export default async function DashboardPage() {
   }
   if (snapshot.messages.permitted && snapshot.messages.unread > 0) {
     actionItems.push({ id: 'msg', title: 'Unread Messages', description: `${snapshot.messages.unread} unread`, href: '/messages', severity: 'medium' })
+  }
+  const unbookedReplyCount = unbookedReplies.data?.length ?? 0
+  if (unbookedReplyCount > 0) {
+    const eventIds = [...new Set((unbookedReplies.data ?? []).map((reply) => reply.eventId).filter(Boolean))]
+    actionItems.push({
+      id: 'unbooked-replies',
+      title: 'Unbooked Event Replies',
+      description: `${unbookedReplyCount} text ${unbookedReplyCount === 1 ? 'reply' : 'replies'} to event promotions we could not book`,
+      href: eventIds.length === 1 ? `/events/${eventIds[0]}` : '/messages',
+      severity: 'high',
+    })
   }
   if (snapshot.parking.permitted && snapshot.parking.pendingPayments > 0) {
     actionItems.push({ id: 'parking', title: 'Unpaid Parking', description: `${snapshot.parking.pendingPayments} pending`, href: '/parking', severity: 'medium' })

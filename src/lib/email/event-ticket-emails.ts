@@ -657,6 +657,78 @@ export async function sendEventBookingConfirmedEmail(
   })
 }
 
+/**
+ * Asks the booker to add their guests' names, answers and (optionally) mobiles from their manage
+ * link (BK-011, owner decision D5). Sent once, after a phone, bar or text booking for an event
+ * that needs guest details was saved with some still to follow. Behind the messaging flag
+ * event_guest_details_request, which ships off: new guest wording waits for the owner.
+ */
+export const EVENT_GUEST_DETAILS_REQUEST_SUBJECT = "Tell us who's coming"
+
+export function buildEventGuestDetailsRequestLines(input: {
+  firstName: string
+  eventName: string
+  when: string
+  seats: number
+}): string[] {
+  const ticketLine = input.seats === 1
+    ? 'Add a name for the ticket and answer our questions. A mobile number is optional.'
+    : 'Add a name for each ticket and answer our questions. Mobile numbers are optional.'
+  return [
+    `Hi ${input.firstName},`,
+    `Tell us who's coming to ${input.eventName}${input.when}, so we can look after everyone on the night.`,
+    ticketLine,
+    "We only use these details for this booking, and we delete them 90 days after the event.",
+  ]
+}
+
+export async function sendEventGuestDetailsRequestEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; appBaseUrl?: string }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const alreadySent = await hasSuccessfulEventEmail(supabase, {
+    bookingId: input.bookingId,
+    commType: 'event_guest_details_request',
+  })
+  if (alreadySent) return { success: true, skipped: true }
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  if (!manageResult) return { success: false, skipped: true }
+
+  const body = [
+    ...buildEventGuestDetailsRequestLines({ firstName: context.firstName, eventName: context.eventName, when: whenSuffix(context), seats: context.seats }),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+  ]
+  const heading = EVENT_GUEST_DETAILS_REQUEST_SUBJECT
+  const text = buildGuestEmailText([...body, '', `Add guest details here: ${manageResult.url}`])
+  const html = buildGuestEmailHtml({
+    title: heading,
+    preheader: `Add your guests' details for ${context.eventName}.`,
+    heading,
+    body,
+    cta: { href: manageResult.url, label: 'Add guest details' },
+    footNote: 'This is a service message about your booking.',
+  })
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: subjectWithDate(EVENT_GUEST_DETAILS_REQUEST_SUBJECT, context),
+    text,
+    html,
+    commType: 'event_guest_details_request',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_guest_details_request_email',
+      short_link_fallback: manageResult.shortened === false,
+    },
+  })
+}
+
 export async function sendEventPaymentConfirmationEmail(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
