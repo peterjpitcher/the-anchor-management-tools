@@ -10,6 +10,7 @@ import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { getOAuth2Client } from '@/lib/google-calendar'
 import { PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID } from '@/lib/google-calendar-targets'
 import { logger } from '@/lib/logger'
+import { shiftIsoDate } from '@/lib/dateUtils'
 
 export { PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID } from '@/lib/google-calendar-targets'
 
@@ -139,7 +140,10 @@ function getEventEnd(event: PubOpsEventCalendarEventRow, start: Date): Date {
   if (endTime) {
     let end = fromZonedTime(`${eventDate}T${endTime}`, CALENDAR_TIME_ZONE)
     if (isFiniteDate(end) && end.getTime() <= start.getTime()) {
-      end = addDays(end, 1)
+      // A finish after midnight is that clock time on the next calendar day. Adding 24 hours to
+      // the instant was an hour out on the nights the clocks change, on the UTC server (BK-209).
+      const nextDay = shiftIsoDate(eventDate, 1)
+      end = nextDay ? fromZonedTime(`${nextDay}T${endTime}`, CALENDAR_TIME_ZONE) : addDays(end, 1)
     }
     if (isFiniteDate(end) && end.getTime() > start.getTime()) {
       return end
