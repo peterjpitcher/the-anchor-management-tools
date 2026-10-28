@@ -38,6 +38,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { AuditService } from '@/services/audit'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { GET } from '@/app/api/cron/table-booking-confirm/route'
+import { createBookingConfirmToken } from '@/lib/table-bookings/manage-booking'
 import { buildTableBookingConfirmReminderEmail } from '@/lib/table-bookings/guest-emails'
 import { argsOf, called, createRecordingSupabase } from '../mocks/recordingSupabase'
 import { assertCleanRender, assertCleanText, expectedLongDate } from '../mocks/emailRenderChecks'
@@ -56,7 +57,7 @@ const JANE = {
   email_deactivated_at: null,
 }
 
-function bookingRow(customer: Record<string, unknown> | null = JANE) {
+function bookingRow(customer: Record<string, unknown> | null = JANE, extra: Record<string, unknown> = {}) {
   return {
     id: 'tb-1',
     booking_reference: 'TB-0001',
@@ -67,13 +68,14 @@ function bookingRow(customer: Record<string, unknown> | null = JANE) {
     guest_confirmed_at: null,
     customer_id: 'cust-1',
     customers: customer,
+    ...extra,
   }
 }
 
-function buildDb(customer: Record<string, unknown> | null = JANE) {
+function buildDb(customer: Record<string, unknown> | null = JANE, extra: Record<string, unknown> = {}) {
   const db = createRecordingSupabase({
     tables: {
-      table_bookings: () => ({ data: [bookingRow(customer)], error: null }),
+      table_bookings: () => ({ data: [bookingRow(customer, extra)], error: null }),
       table_booking_confirm_reminders: (query) => (called(query, 'insert') ? { error: null } : { data: [], error: null }),
       notification_deliveries: (query) =>
         called(query, 'insert') ? { data: { id: 'delivery-1' }, error: null } : { data: null, error: null },
@@ -194,6 +196,31 @@ describe('tap-to-confirm reminder, email first', () => {
         resource_id: 'tb-1',
         additional_info: expect.objectContaining({ comm_type: 'table_booking_confirm_reminder' }),
       })
+    )
+  })
+})
+
+// BK-207: the link lasts until 48 hours after the sitting, so the sweep must hand the token a
+// start it can read. booking_time comes back as 'HH:MM:SS'; the old string never parsed.
+describe('tap-to-confirm link expiry start', () => {
+  it('passes the stored start_datetime when there is one', async () => {
+    buildDb(JANE, { start_datetime: '2026-09-12T18:30:00+00:00' })
+
+    await sweep()
+
+    expect(vi.mocked(createBookingConfirmToken).mock.calls[0][1]).toEqual(
+      expect.objectContaining({ tableBookingId: 'tb-1', bookingStartIso: '2026-09-12T18:30:00.000Z' })
+    )
+  })
+
+  it('works the start out from the London clock time when start_datetime is empty', async () => {
+    buildDb(JANE, { start_datetime: null })
+
+    await sweep()
+
+    // 19:30 BST on 12 September is 18:30 UTC, in both test zones.
+    expect(vi.mocked(createBookingConfirmToken).mock.calls[0][1]).toEqual(
+      expect.objectContaining({ bookingStartIso: '2026-09-12T18:30:00.000Z' })
     )
   })
 })

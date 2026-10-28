@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
+import { utcBucketRunKey } from '@/lib/cron/run-key'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -239,22 +240,6 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
 
 function allowEventEngagementSendGuardSchemaGaps(): boolean {
   return parseBooleanEnv('EVENT_ENGAGEMENT_SEND_GUARD_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, '0')
-}
-
-function getLondonRunKey(now: Date = new Date()): string {
-  const londonNow = toZonedTime(now, LONDON_TIMEZONE)
-  const bucketMinute =
-    Math.floor(londonNow.getMinutes() / RUN_KEY_INTERVAL_MINUTES) *
-    RUN_KEY_INTERVAL_MINUTES
-
-  return [
-    `${londonNow.getFullYear()}-${pad2(londonNow.getMonth() + 1)}-${pad2(londonNow.getDate())}`,
-    `${pad2(londonNow.getHours())}:${pad2(bucketMinute)}`
-  ].join('T')
 }
 
 function isRunStale(startedAt: string | null | undefined): boolean {
@@ -2302,7 +2287,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const runStartMs = Date.now()
-    const runKey = getLondonRunKey()
+    // BK-208: UTC buckets, so the repeated hour when the clocks go back gets its own runs.
+    const runKey = utcBucketRunKey(new Date(), RUN_KEY_INTERVAL_MINUTES)
     const acquireResult = await acquireCronRun(runKey)
     const safetyState: EventEngagementCronSafetyState = {
       runKey,

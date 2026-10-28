@@ -1,7 +1,8 @@
 import { readBookingPaymentLedger, readBookingPaymentLedgers } from '@/lib/private-bookings/payment-ledger';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { toLocalIsoDate } from '@/lib/dateUtils';
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
+import { londonCalendarDaysBetween } from '@/lib/private-bookings/hold-deadline';
 import { logger } from '@/lib/logger';
 import type {
   BookingStatus,
@@ -454,9 +455,11 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
    
   const calculatedTotal = items?.reduce((sum: number, item: any) => sum + toNumber(item.line_total), 0) || 0;
 
-  const eventDate = new Date(data.event_date);
-  const today = new Date();
-  const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  // London calendar days (BK-211). The old elapsed-time sum against a UTC midnight read 1
+  // instead of 0 between 00:00 and 01:00 in summer time.
+  const daysUntilEvent =
+    (data.event_date ? londonCalendarDaysBetween(getTodayIsoDate(), String(data.event_date).slice(0, 10)) : null) ??
+    undefined;
 
   const depositStatus = data.deposit_paid_date
     ? 'Paid'
