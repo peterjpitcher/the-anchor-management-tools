@@ -1166,6 +1166,86 @@ export async function sendEventTicketTransferredEmail(
   })
 }
 
+export type EventTicketsChange =
+  | { kind: 'guests_removed'; count: number; refundToDecide: boolean }
+  | { kind: 'guests_added'; count: number; amountTaken: number }
+  | { kind: 'ticket_type_changed'; count: number; ticketTypeName: string | null; amountTaken: number; refundToDecide: boolean }
+
+/**
+ * The booker's updated confirmation after staff change the tickets on a booking (BK-023): guests
+ * taken off or added, or tickets moved to another type. A refund is never promised: when one may
+ * be owed, a manager decides it (owner decision D7), so the email says a manager will look at it.
+ */
+export async function sendEventBookingTicketsChangedEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; change: EventTicketsChange; appBaseUrl?: string }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const { change } = input
+  const count = Math.max(1, change.count)
+  const changedWord = count === 1 ? 'ticket' : 'tickets'
+  const them = count === 1 ? 'it' : 'them'
+  const taken = 'amountTaken' in change ? formatPositiveCurrency(change.amountTaken) : null
+  let changeLine: string
+  if (change.kind === 'guests_removed') {
+    changeLine = `We have taken ${count} ${changedWord} off your booking.`
+  } else if (change.kind === 'guests_added') {
+    changeLine = `We have added ${count} ${changedWord} to your booking.`
+  } else {
+    changeLine = `We have changed ${count} ${changedWord} to ${change.ticketTypeName || 'a different ticket type'}.`
+  }
+  const moneyLine = 'refundToDecide' in change && change.refundToDecide
+    ? `A manager will look at a refund for ${them} and let you know.`
+    : taken
+      ? `We have taken ${taken} for ${them}.`
+      : null
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
+  const seatWord = ticketWord(context.seats)
+  const heading = 'Your booking has been updated'
+  const body = [
+    `Hi ${context.firstName},`,
+    `Your booking for ${context.eventName}${whenSuffix(context)} has been updated. You now have ${context.seats} ${seatWord}.`,
+    changeLine,
+    moneyLine,
+    ...buildAttendanceLines(context),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+    `If anything here is not right, call ${GUEST_CONTACT.phoneDisplay}.`,
+  ]
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: subjectWithDate('Booking updated', context),
+    text: buildGuestEmailText([
+      ...body,
+      manageLink ? `Manage your booking here: ${manageLink}` : null,
+    ]),
+    html: buildGuestEmailHtml({
+      title: heading,
+      preheader: `You now have ${context.seats} ${seatWord} for ${context.eventName}.`,
+      heading,
+      body,
+      cta: manageLink ? { href: manageLink, label: 'Manage booking' } : null,
+      footNote: 'This is a service message about your booking.',
+    }),
+    commType: 'event_booking_tickets_changed',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_booking_tickets_changed_email',
+      change: change.kind,
+      count,
+      amount_taken: taken ? ('amountTaken' in change ? change.amountTaken : null) : null,
+      refund_to_decide: 'refundToDecide' in change ? change.refundToDecide : false,
+      manage_link_included: Boolean(manageLink),
+    },
+  })
+}
+
 /** What a guest's place is worth after a move, in the words that match how they paid. */
 function buildRescheduledTicketLine(context: EventTicketEmailContext): string {
   if (context.bookingStatus === 'pending_payment') {

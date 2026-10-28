@@ -43,4 +43,12 @@ describe('held ticket payment price', () => {
     mocks.items.mockResolvedValue([{ quantity: 2, unit_price: 0, ticket_type_id: 'standard' }])
     expect(await getEventPaymentPreviewByRawToken(client(), 'fixture')).toEqual(expect.objectContaining({ state: 'ready', totalAmount: 90 }))
   })
+  // BK-137, owner decision D10: a staff or phone booking paid by the emailed link is paying online
+  // in advance, so it pays the online price locked on its ticket lines at booking (£40 for
+  // Tinsel and Tipples), never the £45 list price. Paying at the bar stays full price (EV-02).
+  it('charges a phone booking paid by link the online price on its ticket lines', async () => {
+    const preview = await getEventPaymentPreviewByRawToken(client(), 'fixture')
+    expect(preview).toEqual(expect.objectContaining({ state: 'ready', totalAmount: 80, unitPrice: 40 }))
+    expect(preview).not.toEqual(expect.objectContaining({ totalAmount: 90 }))
+  })
 })
