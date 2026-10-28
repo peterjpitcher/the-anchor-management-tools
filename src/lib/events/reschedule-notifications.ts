@@ -267,6 +267,8 @@ export async function dispatchEventPostponedNotifications(params: {
           reached.add(booking.id)
           return
         }
+        // Held back because the send log could not be read: it may already have gone, so no text.
+        if ((email as { deferred?: boolean }).deferred === true) return
         const customer = booking.customers as unknown as {
           id: string
           first_name: string | null
